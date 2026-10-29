@@ -5,6 +5,9 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- One-screen layout: the boot logos, the intro, the title menu and the new
+  game's name entry show in the one-screen layout again (they fell back to
+  the two DS screens since the aletheia update earlier in this release).
 - Remaster battles, double and triple: the Pokemon choosing has corners
   around it on the field. Picking a target puts the corners on the Pokemon
   themselves instead of a list: the arrows move between them as they

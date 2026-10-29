@@ -50,6 +50,9 @@
 /* The game's data                                                     */
 /* ------------------------------------------------------------------ */
 
+/* the global proc system: a variable of the game's own since aletheia
+ * 6c2aae879f defines it, the image's word through its pointer before */
+extern void *g_ProcSys TT_WEAK;
 extern void *bw_dsref_g_ProcSys TT_WEAK;
 extern void *bw_dsref_ov088_d_021BD574 TT_WEAK;     /* title ProcData      */
 extern void *bw_dsref_ov088_d_021BD66C TT_WEAK;     /* menu ProcData       */
@@ -111,10 +114,13 @@ static TtProc *root_proc(void)
 {
     void *sys;
 
-    if (&bw_dsref_g_ProcSys == NULL || bw_dsref_g_ProcSys == NULL) {
+    if (&g_ProcSys != NULL) {
+        sys = g_ProcSys;
+    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+        sys = *(void **)bw_dsref_g_ProcSys;
+    } else {
         return NULL;
     }
-    sys = *(void **)bw_dsref_g_ProcSys;
     if (sys == NULL) {
         return NULL;
     }

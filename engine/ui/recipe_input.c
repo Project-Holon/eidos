@@ -31,6 +31,7 @@
  * stack (the new game's name entry runs on the intro's own stack). */
 extern void *bw_dsref__GameSystemGlobal IN_WEAK;
 extern void *bw_dsref_g_ProcSys IN_WEAK;
+extern void *g_ProcSys IN_WEAK;     /* the variable itself, once aletheia defines it */
 
 /* ------------------------------------------------------------------ */
 /* Reading the game                                                    */
@@ -104,10 +105,13 @@ static void *intro_proc_top(void)
 {
     void *root, *work, *data;
 
-    if (&bw_dsref_g_ProcSys == NULL || bw_dsref_g_ProcSys == NULL) {
+    if (&g_ProcSys != NULL) {
+        root = g_ProcSys;
+    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+        memcpy(&root, bw_dsref_g_ProcSys, sizeof(root));
+    } else {
         return NULL;
     }
-    memcpy(&root, bw_dsref_g_ProcSys, sizeof(root));
     root = procsys_top(root);
     work = proc_work(root, OV_START);
     if (work == NULL) {
