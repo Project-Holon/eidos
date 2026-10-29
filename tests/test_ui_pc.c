@@ -53,7 +53,7 @@ static int g_press_n;
 static u32 g_keys_in;           /* the keys the player pressed this frame   */
 static u32 g_taken;
 static int g_right_click;
-static int g_keys_lit = 1;
+static int g_keys_lit;         /* the keys used last (the kit: until the mouse moves) */
 
 int eidos_ui_hit(EidosUiRect r)
 {
@@ -113,6 +113,29 @@ void eidos_ui_press(u32 keys, u32 frames)
         g_press_log[g_press_n] = keys;
     }
     g_press_n++;
+}
+
+static u32 g_sounds[64];
+static int g_sound_n;
+
+void eidos_ui_sound(u32 seq)
+{
+    if (g_sound_n < 64) {
+        g_sounds[g_sound_n] = seq;
+    }
+    g_sound_n++;
+}
+
+static int heard(u32 seq)
+{
+    int i;
+
+    for (i = 0; i < g_sound_n && i < 64; i++) {
+        if (g_sounds[i] == seq) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void eidos_ui_take_keys(u32 mask)
@@ -489,6 +512,12 @@ static void run_frame(int mx, int my, int click, int down, int pressed, u32 keys
     EidosUiFrame in;
     EidosUiView view;
 
+    /* as the kit does: a click makes the mouse the input, a key the keys */
+    if (click || down || pressed) {
+        g_keys_lit = 0;
+    } else if (keys != 0) {
+        g_keys_lit = 1;
+    }
     memset(&in, 0, sizeof(in));
     in.win_w = g_win_w;
     in.win_h = g_win_h;
@@ -919,11 +948,15 @@ static void test_keys(const char *outdir)
     g_focus = 7;
 
     /* A picks Pika up, the arrows move the focus, A puts it down */
+    g_sound_n = 0;
     key(BW_KEY_A);
     CHECK(g_hand == 7, "A picks the focused Pokemon up");
+    CHECK(heard(0x666u), "picking up plays the game's pick-up sound");
+    g_sound_n = 0;
     key(BW_KEY_RIGHT);
     key(BW_KEY_DOWN);
     CHECK(g_focus == 14, "the arrows move the focus");
+    CHECK(heard(0x548u), "a step plays the cursor sound");
     if (outdir != NULL) {
         run_frame(-1, -1, 0, 0, 0, 0);
         snprintf(path, sizeof(path), "%s/pc_keys_carry_%dx%d.bmp", outdir, g_win_w, g_win_h);
@@ -932,6 +965,7 @@ static void test_keys(const char *outdir)
     key(BW_KEY_A);
     idle(3);
     CHECK(g_hand < 0 && g_box[0][14].species == 25 && !g_box[0][7].exists, "A puts it down on the focused slot");
+    CHECK(heard(0x667u), "putting it down plays the put-down sound");
 
     /* B puts it back; B with an empty hand is the game's B (it leaves) */
     g_focus = 14;

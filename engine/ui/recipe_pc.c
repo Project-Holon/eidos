@@ -1452,8 +1452,20 @@ static int g_probe_key[4];      /* the probe answered: a, target, source box, bo
 static int g_probe_have, g_probe_ok = 1, g_probe_code;
 static int g_probe_asked[4];
 
+/* The game's own PC sounds (ov170 box2_seq.c): the moves the recipe makes
+ * through the game's functions skip the input code that plays them. */
+#define SE_CURSOR   0x548u
+#define SE_DECIDE   0x54Cu
+#define SE_CANCEL   0x551u
+#define SE_REFUSE   0x557u
+#define SE_PICK     0x666u
+#define SE_PUT      0x667u
+
 static void pc_say(const char *text, int bad, u32 frame)
 {
+    if (bad) {
+        eidos_ui_sound(SE_REFUSE);
+    }
     snprintf(g_msg, sizeof(g_msg), "%s", text);
     g_msg_until = frame + 200;
     g_msg_bad = bad;
@@ -1556,6 +1568,7 @@ static void pc_pick(const PcGame *g, int slot, u32 frame)
             return;
         }
     }
+    eidos_ui_sound(SE_PICK);
     g_hand = slot;
     g_hand_box = g->cur_box;
     g_hand_mon = m;
@@ -1568,6 +1581,9 @@ static void pc_pick(const PcGame *g, int slot, u32 frame)
 
 static void pc_putback(void)
 {
+    if (g_hand >= 0) {
+        eidos_ui_sound(SE_CANCEL);
+    }
     g_hand = -1;
     g_dragging = 0;
     g_probe_have = 0;
@@ -1636,6 +1652,7 @@ static void pc_poll_op(const PcGame *g, u32 frame)
 
         g_apply = 0;
         if (g_op.ok) {
+            eidos_ui_sound(SE_PUT);
             snprintf(line, sizeof(line), "%s now holds %s.", g_item_to,
                      pc_text(TXT_ITEM, (u32)g_hand_mon.item));
             pc_say(line, 0, frame);
@@ -1646,6 +1663,7 @@ static void pc_poll_op(const PcGame *g, u32 frame)
     } else if (g_op.kind == OP_APPLY && g_apply) {
         g_apply = 0;
         if (g_op.ok) {
+            eidos_ui_sound(SE_PUT);
             char line[96];
 
             snprintf(line, sizeof(line), "%s is stored.", g_hand_mon.egg ? "Egg" : g_hand_mon.nick);
@@ -2117,7 +2135,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     PcWin *w = &g_w;
     PcBoxHead hd;
     int cw = c->canvas->w, ch = c->canvas->h, k = c->canvas->k;
-    int i, hover = -1, hover_pip = -1, popup, limit, frame = (int)in->frame, mouse_in;
+    int i, hover = -1, hover_pip = -1, popup, limit, frame = (int)in->frame, mouse_in, mouse_live;
     int over_prev = 0, over_next = 0, over_name = 0, hover_chip = -1;
     u32 keys, vk;
     char boxname[48], line[128];
@@ -2138,6 +2156,9 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     limit = g->box_limit > 0 ? g->box_limit : 24;
     popup = w->list_shown || w->yesno || w->msg;
     mouse_in = mouse.x >= 0 && mouse.y >= 0;
+    /* the keys used last: the pointer resting over the screen selects
+     * nothing until it moves or clicks again */
+    mouse_live = mouse_in && !eidos_ui_keys_lit();
 
     /* the keys: the recipe's own while nothing of the game's is open */
     vk = g_vkey;
@@ -2160,7 +2181,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 
     /* what is under the mouse */
-    if (mouse_in && !popup && g_ov == OV_NONE) {
+    if (mouse_live && !popup && g_ov == OV_NONE) {
         hover = pc_slot_at(&l, mouse.x, mouse.y);
         hover_pip = pc_pip_at(&l, limit, mouse.x, mouse.y);
         over_prev = in_rect(mouse.x, mouse.y, hd.hx, hd.hy, 16, 18);
@@ -2269,6 +2290,9 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 
     /* the keys */
+    {
+    int was_ov = g_ov, was_cur = g_ov_cur, was_focus = g_focus;
+
     if (g_ov == OV_BOXES) {
         int step = 0;
 
@@ -2363,6 +2387,27 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 eidos_ui_press(BW_KEY_B, 3);        /* the game closes the PC */
             }
         }
+    }
+    /* the keys' sounds: a panel opening or taking a choice, closing, the
+     * cursor moving in it or on the screen */
+    if (keys != 0) {
+        if (g_ov != was_ov) {
+            eidos_ui_sound(g_ov != OV_NONE || (keys & BW_KEY_A) ? SE_DECIDE : SE_CANCEL);
+        } else if (g_ov != OV_NONE && (g_ov_cur != was_cur || (keys & BW_KEY_A))) {
+            eidos_ui_sound(g_ov_cur != was_cur ? SE_CURSOR : SE_DECIDE);
+        } else if (g_focus != was_focus) {
+            eidos_ui_sound(SE_CURSOR);
+        }
+    }
+    }
+    /* the mouse onto another slot: the cursor sound, as a key step */
+    {
+        static int last_hover = -1;
+
+        if (hover >= 0 && hover != last_hover) {
+            eidos_ui_sound(SE_CURSOR);
+        }
+        last_hover = hover;
     }
 
     /* the rules for the target of a carried Pokemon */
@@ -2589,7 +2634,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         for (i = 0; i < limit; i++) {
             int tx = x + 8 + (i % cols) * (mw + 4), ty = y + 26 + (i / cols) * (mh + 4);
-            int hov = mouse_in && in_rect(mouse.x, mouse.y, tx, ty, mw, mh);
+            int hov = mouse_live && in_rect(mouse.x, mouse.y, tx, ty, mw, mh);
             char nm[48];
 
             box_title(g, i, nm, (int)sizeof(nm));
@@ -2621,7 +2666,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_fill(c, 0, 0, cw, ch - 17, 0x000000u, 150);
         ui_panel(c, mx - 3, my - 3, mw + 6, 5 * (bh + 1) + 5, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_SKY, 248);
         for (i = 0; i < 5; i++) {
-            int by = my + i * (bh + 1), hov = mouse_in && in_rect(mouse.x, mouse.y, mx, by, mw, bh);
+            int by = my + i * (bh + 1), hov = mouse_live && in_rect(mouse.x, mouse.y, mx, by, mw, bh);
             int en = i == 4 || act_enabled(g, i == 0 ? ACT_SUMMARY : i == 1 ? ACT_ITEM : i == 2 ? ACT_MARK
                                            : ACT_RELEASE, g_ov_slot);
 
@@ -2655,7 +2700,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_text(c, mx + 6, my + 3, "MARKING", UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         for (i = 0; i < 6; i++) {
             int on = (mm.mark >> i) & 1, bx = mx + 6 + i * 20;
-            int hov = mouse_in && in_rect(mouse.x, mouse.y, bx, my + 20, 18, 18);
+            int hov = mouse_live && in_rect(mouse.x, mouse.y, bx, my + 20, 18, 18);
 
             if (hov) {
                 g_ov_cur = i;

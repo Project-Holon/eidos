@@ -5,6 +5,10 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- One-screen PC: the game's own sounds for moving the cursor, picking up,
+  putting down, putting back and a refused move. After a key press, a
+  mouse resting over a slot no longer takes the selection back until it
+  moves.
 - One-screen layout: the boot logos, the intro, the title menu and the new
   game's name entry show in the one-screen layout again (they fell back to
   the two DS screens since the aletheia update earlier in this release).
