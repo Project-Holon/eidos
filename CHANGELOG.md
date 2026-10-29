@@ -9,6 +9,9 @@ Each release's notes on GitHub start with its section here
   no longer gets stuck, setting B no longer leaves the screen, and setting
   L, R or a D-Pad direction no longer changes the section or moves the
   cursor.
+- Remaster battles: the prompt ("What will Tepig do?") no longer shows
+  twice while the action menu fades in. It stands in the message box and
+  shows the game's own text.
 
 ## 0.1.7
 

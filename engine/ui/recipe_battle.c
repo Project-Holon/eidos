@@ -774,7 +774,8 @@ typedef struct Shell {
 } Shell;
 
 static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s);
-static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt);
+static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt,
+                       int own);
 
 static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, int h)
 {
@@ -964,7 +965,7 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->hide_2d = 1;
         shell_layout(c, &b, &sh);
         mw = sh.px - 6 - 6;
-        shell_draw(c, &b, &sh, NULL);
+        shell_draw(c, &b, &sh, NULL, 0);
         if (draw_battle_message(c, &b, 6, h - 17 - 6 - 40, mw, 40)) {
             g_msg_frame = now;
         } else if ((since = now - g_msg_frame) < MSG_HOLD_FRAMES + MSG_FADE_FRAMES) {
@@ -1149,7 +1150,8 @@ static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s)
     s->top = h - 17 - 6 - n * (PLATE_H + PLATE_GAP) + PLATE_GAP - 4;
 }
 
-static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt)
+static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt,
+                       int own)
 {
     int w = c->canvas->w, h = c->canvas->h;
     int fw = clampi(w * 34 / 100, 120, 170);
@@ -1208,8 +1210,19 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
         }
         y += PLATE_H + PLATE_GAP;
     }
+    /* The prompt stands in the box of the game's messages (plain_run), and
+     * while the game's own window holds text that text is shown: a crossfade
+     * from a message to a menu then blends two equal pictures, not the
+     * message and the prompt a line apart.  `own`: the interface's line even
+     * then (a prompt the game does not print). */
     if (prompt != NULL) {
-        ui_message(c, 6, h - 17 - 6 - 30, s->px - 6 - 6, prompt);
+        int mw = s->px - 6 - 6, my = h - 17 - 6 - 40;
+
+        if (own || !draw_battle_message(c, b, 6, my, mw, 40)) {
+            ui_panel(c, 6, my, mw, 40, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
+            ui_text(c, 16, my + ui_text_y(40, UI_FONT_LARGE), prompt, UI_WHITE, UI_GREY,
+                    UI_FONT_LARGE, 1);
+        }
     }
 }
 
@@ -1567,7 +1580,7 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         eidos_ui_press(BW_KEY_B, 2);
     }
     prompt_choosing(&b, prompt_buf, sizeof(prompt_buf));
-    shell_draw(c, &b, &sh, prompt_buf);
+    shell_draw(c, &b, &sh, prompt_buf, 0);
     draw_hint_strip(c, 0, c->canvas->w, hints, can_back ? 2 : 1, keys);
 }
 
@@ -1734,7 +1747,7 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         eidos_ui_press(BW_KEY_B, 2);
     }
     prompt_choosing(&b, prompt_buf, sizeof(prompt_buf));
-    shell_draw(c, &b, &sh, prompt_buf);
+    shell_draw(c, &b, &sh, prompt_buf, 0);
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
 }
 
@@ -1868,7 +1881,7 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
         snprintf(prompt_buf, sizeof(prompt_buf), "Use %s on which?", mname);
     }
-    shell_draw(c, &b, &sh, prompt_buf);
+    shell_draw(c, &b, &sh, prompt_buf, 1);
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
 }
 
@@ -2728,7 +2741,7 @@ static void choice_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (eidos_ui_right_click()) {
         eidos_ui_press(BW_KEY_B, 2);
     }
-    shell_draw(c, &b, &sh, question);
+    shell_draw(c, &b, &sh, question, 0);
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
 }
 
