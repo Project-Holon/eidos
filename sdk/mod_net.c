@@ -910,8 +910,16 @@ static BwSock sock_listen_loopback(u16 port)
     if (s == BW_SOCK_INVALID) {
         return BW_SOCK_INVALID;
     }
+    /* Windows' SO_REUSEADDR lets a second socket bind a port another one
+     * listens on, and a tool then reaches that one.  There the bind takes
+     * the default, which fails on a taken port and still rebinds at once
+     * after a restart. */
+#ifndef _WIN32
     (void)SOCK_SETSOCKOPT(s, SOL_SOCKET, SO_REUSEADDR, SOCK_OPT_VALUE(&on),
                           (BwOptLen)sizeof(on));
+#else
+    (void)on;
+#endif
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = SOCK_HTONS(port);
@@ -3263,8 +3271,13 @@ int bw_mod_net_control_set_port(int port)
     bw_mutex_unlock(g_lock);
     if (restart) {
         control_stop();
-        if (port > 0) {
-            (void)control_start();
+        if (port > 0 && control_start() != 0) {
+            /* the port is taken: the control is off, and a later call
+             * with the same port tries again */
+            bw_mutex_lock(g_lock);
+            g_control_port = 0;
+            bw_mutex_unlock(g_lock);
+            return -1;
         }
     }
     return 0;

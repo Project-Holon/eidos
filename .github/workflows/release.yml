@@ -143,12 +143,8 @@ jobs:
             -DBW_DATA_ROOT="$(cygpath -m "$PWD/no-game-data/extract/data")"
       - name: Build the tests
         run: cmake --build build
-      # test_mod_net is left out here: since the windows-2022 image of
-      # 2026-10-25 a tool's connection to the control port is never seen on
-      # the runner (it passes on Linux, macOS and Windows 11 machines);
-      # the control port is looked into for 0.1.8.
       - name: Test (no ROM; tests that need one skip themselves)
-        run: ctest --test-dir build --output-on-failure -j 4 -E "^test_mod_net$"
+        run: ctest --test-dir build --output-on-failure -j 4
       # The game: the wasm32 module, wasm2c, and the native 64-bit program.
       - name: Build the game
         run: |

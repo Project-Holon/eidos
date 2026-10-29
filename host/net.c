@@ -248,7 +248,13 @@ u32 w2c_eidos_sock_listen_loopback(struct w2c_eidos *e, u32 s, u32 port)
     if (!valid(s)) {
         return (u32)-1;
     }
+    /* Windows' SO_REUSEADDR lets a second socket bind a port another one
+     * listens on (a tool then reaches that one): there the default bind. */
+#ifndef _WIN32
     (void)setsockopt(g_sock[s], SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof on);
+#else
+    (void)on;
+#endif
     memset(&a, 0, sizeof a);
     a.sin_family = AF_INET;
     a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);

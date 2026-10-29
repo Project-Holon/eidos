@@ -12,6 +12,9 @@ Each release's notes on GitHub start with its section here
 - Remaster battles: the prompt ("What will Tepig do?") no longer shows
   twice while the action menu fades in. It stands in the message box and
   shows the game's own text.
+- Network: when another program holds the external control's port, the
+  control now reports it and stays off, instead of seeming on while tools
+  reached the other program.
 
 ## 0.1.7
 

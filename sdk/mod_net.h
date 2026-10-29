@@ -281,7 +281,8 @@ void bw_mod_net_reset_mods(void);
 /*
  * The port the external control listens on: the number the port's settings
  * hold.  Zero means the control is off.  Setting it while the control is
- * running restarts the listener on the new port.
+ * running restarts the listener on the new port.  -1 when the listener
+ * cannot take the port (another program holds it): the control is then off.
  */
 int  bw_mod_net_control_set_port(int port);
 int  bw_mod_net_control_port(void);
