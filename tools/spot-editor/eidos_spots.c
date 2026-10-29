@@ -214,7 +214,7 @@ typedef struct App {
 static App A;
 
 static void field_camera(unsigned zone, float *dist, float *pitch, float *yaw, float *fov, float *lift);
-static void preview_in_game(void);
+static void preview_in_game(int play);
 static const char *scene_name(int sc);
 static void scene_frames(void);
 #define SCENE_MOVES 559             /* Black's moves */
@@ -2392,7 +2392,11 @@ static void draw_right(int L)
             }
             px += 138;
             if (button(px, py, 170, 28, "Preview in game", 0)) {
-                preview_in_game();
+                preview_in_game(0);
+            }
+            px += 178;
+            if (button(px, py, 130, 28, "Play battle", 0)) {
+                preview_in_game(1);
             }
         }
     }
@@ -3139,11 +3143,12 @@ static void dir_of(const char *path, char *out, size_t n)
 
 /* The game itself in a window of its own, straight into a battle at this
  * place: the place's trainer for a trainer place, else a wild Pokemon of
- * the foe species chosen; the Pokemon chosen on the player's side using the
- * move chosen, again and again (A pressed every second).  It runs on a copy
- * of the player's save, settings and spots in a folder of its own, so
- * nothing of the player's changes; fast until the battle shows. */
-static void preview_in_game(void)
+ * the foe species chosen, the Pokemon chosen on the player's side.  A
+ * preview uses the move chosen again and again (A pressed every second);
+ * `play` leaves the battle to the player (keys, pad, mouse), to the end.
+ * It runs on a copy of the player's save, settings and spots in a folder of
+ * its own, so nothing of the player's changes; fast until the battle shows. */
+static void preview_in_game(int play)
 {
 #ifdef _WIN32
     const BmapSpot *r = cur();
@@ -3174,11 +3179,12 @@ static void preview_in_game(void)
     (void)copy_file(from, to);
     snprintf(to, sizeof to, "%s\\battle_spots.tsv", tmp);
     (void)copy_file(bmap_spots_user_path(), to);
-    /* the input: the title's Continue, then A every second once the battle runs */
+    /* the input: the title's Continue, then (a preview) A every second
+     * once the battle runs */
     snprintf(input, sizeof input, "%s\\preview_in.txt", tmp);
     if ((f = fopen(input, "w")) != NULL) {
         fprintf(f, "1000 press START 4\n1100 press A 4\n1400 press A 4\n");
-        for (frame = 2400; frame < 400000; frame += 60) {
+        for (frame = 2400; !play && frame < 400000; frame += 60) {
             fprintf(f, "%d press A 4\n", frame);
         }
         fclose(f);
@@ -3208,7 +3214,7 @@ static void preview_in_game(void)
     snprintf(v, sizeof v, "%d", A.species[1]);
     _putenv_s("EIDOS_DEBUG_PARTY", v);
     _putenv_s("EIDOS_DEBUG_LEVEL", "50");
-    if (A.scene >= 3) {
+    if (A.scene >= 3 && !play) {
         snprintf(v, sizeof v, "0:%d:0", A.scene - 2);
         _putenv_s("EIDOS_DEBUG_MOVES", v);
     }
@@ -3223,7 +3229,8 @@ static void preview_in_game(void)
     if (_spawnl(_P_NOWAIT, exe, "\"eidos_boot.exe\"", "--layout", "one", "--window", "--input", input, NULL) < 0) {
         say("Could not start %s", exe);
     } else {
-        say("Starting the game: the battle shows in about 20 seconds");
+        say(play ? "Starting the game: the battle is yours in about 20 seconds"
+                 : "Starting the game: the battle shows in about 20 seconds");
     }
     /* this program's own environment as it was */
     _putenv_s("EIDOS_DEBUG_BATTLE", "");

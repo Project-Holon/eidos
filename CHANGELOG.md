@@ -5,6 +5,9 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Spot editor: "Play battle" starts the game straight into the battle at
+  this place and leaves it to you (keys, pad or mouse), on a copy of your
+  save. "Preview in game" still plays it by itself.
 - One-screen layout: the wild encounter effects fill the window (the swirl
   into the grass showed boxed at the DS size for a few frames), and the
   white flash before a battle fills it too.
