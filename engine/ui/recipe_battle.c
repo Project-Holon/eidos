@@ -1646,6 +1646,99 @@ static int column_step(const int *order, int n, const int *enabled, int cur)
     return -1;
 }
 
+/* ------------------------------------------------------------------ */
+/* Corners on the Pokemon themselves (double and triple battles)       */
+/* ------------------------------------------------------------------ */
+
+/* sdk/battle_view.c: where a Pokemon was drawn (linked into the game only) */
+extern int bw_battle_view_mon_box(int pos, float box[4]) __attribute__((weak));
+
+/* The canvas box of the Pokemon at view position vp, or 0. */
+static int mon_rect(EidosUiCtx *c, int vp, EidosUiRect *r)
+{
+    float box[4];
+    int cw = c->canvas->w, ch = c->canvas->h;
+
+    if (bw_battle_view_mon_box == NULL || !bw_battle_view_mon_box(vp, box)) {
+        return 0;
+    }
+    r->x = (int)(box[0] * (float)cw) - 2;
+    r->y = (int)(box[1] * (float)ch) - 2;
+    r->w = (int)(box[2] * (float)cw) + 2 - r->x;
+    r->h = (int)(box[3] * (float)ch) + 2 - r->y;
+    return r->w > 4 && r->h > 4;
+}
+
+/* The view position of the Pokemon choosing now, or -1. */
+static int chooser_vp(const Bt *b)
+{
+    u8 *poke = rdp(b->core, 0xBC);
+    int vp;
+
+    for (vp = 2; gptr_ok(poke) && vp <= 7; vp += 2) {
+        if (poke_at_view(b, vp) == poke) {
+            return vp;
+        }
+    }
+    return -1;
+}
+
+/* Several Pokemon on a side: the one choosing has corners (drawn first, so
+ * the interface stays over them). */
+static void chooser_corners(EidosUiCtx *c, const Bt *b)
+{
+    EidosUiRect r;
+    int vp = b->rule == 1 || b->rule == 2 ? chooser_vp(b) : -1;
+
+    if (vp >= 0 && mon_rect(c, vp, &r)) {
+        ui_cursor_corners(c, r.x, r.y, r.w, r.h, UI_CYAN);
+    }
+}
+
+/* The arrows among boxes on screen: the nearest enabled one in the arrow's
+ * direction (centres compared), first among those mostly that way (within
+ * about 63 degrees of it), else in the whole half the arrow points to; -1
+ * when there is none. */
+static int spatial_step(const EidosUiRect *r, const int *en, int n, int cur, u32 k)
+{
+    int i, best = -1, pass;
+    long bestd = 0;
+    int cx, cy;
+
+    k &= BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT;
+    if (cur < 0 || cur >= n || k == 0) {
+        return -1;
+    }
+    cx = r[cur].x + r[cur].w / 2;
+    cy = r[cur].y + r[cur].h / 2;
+    for (pass = 0; pass < 2 && best < 0; pass++) {
+        for (i = 0; i < n; i++) {
+            int dx = r[i].x + r[i].w / 2 - cx, dy = r[i].y + r[i].h / 2 - cy;
+            int horiz = (k & (BW_KEY_LEFT | BW_KEY_RIGHT)) != 0;
+            int along = horiz ? abs(dx) : abs(dy), across = horiz ? abs(dy) : abs(dx);
+            long d;
+
+            if (i == cur || !en[i]) {
+                continue;
+            }
+            if (((k & BW_KEY_LEFT) && dx >= 0) || ((k & BW_KEY_RIGHT) && dx <= 0) ||
+                ((k & BW_KEY_UP) && dy >= 0) || ((k & BW_KEY_DOWN) && dy <= 0)) {
+                continue;
+            }
+            if (pass == 0 && 2 * along < across) {
+                continue;
+            }
+            /* along the arrow counts once, across it twice */
+            d = (long)along + 2L * (long)across;
+            if (best < 0 || d < bestd) {
+                best = i;
+                bestd = d;
+            }
+        }
+    }
+    return best;
+}
+
 static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static const char *const hints[] = { "A", "Select", "B", "Back" };
@@ -1669,6 +1762,7 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->mode = EIDOS_VIEW_WORLD;
     view->hide_2d = 1;
     shell_layout(c, &b, &sh);
+    chooser_corners(c, &b);
     keys_live(&b);
     cur = input_cursor(&b);
     note_key_choice(&b, cur);
@@ -1807,6 +1901,7 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (!gptr_ok(poke)) {
         return;
     }
+    chooser_corners(c, &b);
     keys_live(&b);
     cur = input_cursor(&b);
     note_key_choice(&b, cur);
@@ -1914,7 +2009,7 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static const int t_y[6] = { 108, 60, 108, 60, 108, 60 };
     Bt b;
     Shell sh;
-    int cw, x, y, i, rows = 0, back_y, hovered = -1, cur;
+    int cw, x, y, i, rows = 0, back_y, hovered = -1, cur, corner, group;
     int vp_list[6], legal[6];
     char prompt_buf[96];
     const u8 *targets;
@@ -1932,7 +2027,6 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     cur = input_cursor(&b);
     targets = b.aux + 0x80;
     count = targets[0];
-    /* (the arrows: below, once the list is known) */
     /* foes first, then the own side */
     {
         int vp;
@@ -1948,20 +2042,127 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             }
         }
     }
+    /* BtlvTargetSet: count, altCount, altKind, slots[6]; a move that hits
+     * several at once (Earthquake, Surf) lists them as the alternate set,
+     * one choice for all of them */
+    group = count == 0 && targets[1] != 0;
     for (i = 0; i < rows; i++) {
-        int slot = view_slot(&b, vp_list[i]), j;
+        int slot = view_slot(&b, vp_list[i]), j, n = group ? targets[1] : count;
 
         legal[i] = 0;
-        for (j = 0; j < count && j < 6; j++) {
+        for (j = 0; j < n && j < 6; j++) {
             if (targets[3 + j] == slot) {
                 legal[i] = 1;
             }
         }
     }
-    /* The game lays the targets out as two rows (foes over the own side);
-     * the interface shows one column, so up and down walk the column and
-     * the game's cursor follows them. */
+    /* Every legal target drawn this frame: corners on the Pokemon
+     * themselves stand for the list, the arrows go by where they stand and
+     * a click on one picks it.  Drawn first, under the interface. */
     {
+        EidosUiRect mr[6];
+        int first = -1;
+
+        corner = rows > 0;
+        for (i = 0; i < rows; i++) {
+            if (!mon_rect(c, vp_list[i], &mr[i])) {
+                memset(&mr[i], 0, sizeof mr[i]);
+                corner = legal[i] ? 0 : corner;
+            }
+            if (legal[i] && first < 0) {
+                first = i;
+            }
+        }
+        corner = corner && first >= 0;
+        if (corner) {
+            /* the target lit is the interface's own while the screen is up;
+             * it starts on the game's choice, or on the first foe */
+            static int sel_vp = -1;
+            static u32 seen;
+            int ci = -1, hov = -1, to, pick = -1;
+            u32 k = eidos_ui_keys_pressed();
+
+            if (in->frame - seen > 30u) {
+                /* a new choice: the game's pick, a foe first */
+                sel_vp = cur + 2;
+                for (i = 0; (sel_vp & 1) == 0 && i < rows; i++) {
+                    if (legal[i] && (vp_list[i] & 1) != 0) {
+                        sel_vp = -1;
+                    }
+                }
+            }
+            seen = in->frame;
+            for (i = 0; i < rows; i++) {
+                if (legal[i] && vp_list[i] == sel_vp) {
+                    ci = i;
+                }
+            }
+            if (ci < 0) {
+                ci = first;
+                sel_vp = vp_list[ci];
+            }
+            /* the arrows move among the targets as they stand; A takes the
+             * one lit, as a touch on it, so the game's own cursor is not
+             * used */
+            to = spatial_step(mr, legal, rows, ci, k);
+            eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_A);
+            if (to >= 0) {
+                eidos_ui_sound(0x552);     /* BTLV_INPUT_PlayCursorSe */
+                sel_vp = vp_list[to];
+                ci = to;
+            }
+            if (k & BW_KEY_A) {
+                pick = ci;
+            }
+            /* the mouse: of the targets under it, the one whose centre is
+             * nearest; hovering one selects it */
+            {
+                int mx = -1, my = -1, clicked = 0;
+                long best = 0;
+
+                (void)eidos_ui_mouse_pos(&mx, &my);
+                for (i = 0; i < rows; i++) {
+                    int st;
+                    long dx, dy;
+
+                    if (!legal[i]) {
+                        continue;
+                    }
+                    st = hit(c, mr[i].x, mr[i].y, mr[i].w, mr[i].h);
+                    clicked |= (st & EIDOS_UI_CLICK) != 0;
+                    if ((st & EIDOS_UI_HOVER) == 0) {
+                        continue;
+                    }
+                    dx = (long)(mr[i].x + mr[i].w / 2 - mx);
+                    dy = (long)(mr[i].y + mr[i].h / 2 - my);
+                    if (hov < 0 || dx * dx + dy * dy < best) {
+                        hov = i;
+                        best = dx * dx + dy * dy;
+                    }
+                }
+                if (hov >= 0 && !eidos_ui_keys_lit() && hov != ci) {
+                    sel_vp = vp_list[hov];
+                    ci = hov;
+                }
+                if (clicked && hov >= 0) {
+                    pick = hov;
+                }
+            }
+            if (pick >= 0) {
+                int vp = vp_list[pick];
+
+                tap_request(b.rule == 2 ? t_x[vp - 2] : d_x[vp - 2],
+                            b.rule == 2 ? t_y[vp - 2] : d_y[vp - 2], bt_sig(&b, 3), in->frame);
+            }
+            /* one lit at a time, a move that hits several too (taking any
+             * of them takes the move) */
+            ui_cursor_corners(c, mr[ci].x, mr[ci].y, mr[ci].w, mr[ci].h, UI_CYAN);
+        }
+    }
+    /* The game lays the targets out as two rows (foes over the own side);
+     * the list shows one column, so up and down walk the column and the
+     * game's cursor follows them. */
+    if (!corner) {
         int order[6], en[8] = { 0 };
         int to;
 
@@ -1992,7 +2193,7 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* the targets stand on the plates, BACK nearest them */
     back_y = sh.top - 20;
     y = back_y - 3 - rows * 25;
-    for (i = 0; i < rows; i++) {
+    for (i = 0; !corner && i < rows; i++) {
         int ry = y + i * 25;
         int st = hit(c, x, ry, cw, 22);
         int vp = vp_list[i];

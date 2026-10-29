@@ -5,6 +5,11 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Remaster battles, double and triple: the Pokemon choosing has corners
+  around it on the field. Picking a target puts the corners on the Pokemon
+  themselves instead of a list: the arrows move between them as they
+  stand, the mouse picks the one under it, and A or a click takes it. A
+  move that hits several (Earthquake, Surf) takes them all from any one.
 - One-screen PC: a new layout with the party on the left, the box in the
   middle and the selected Pokemon's details on the right. Moving a Pokemon
   takes effect at once with the keyboard, a pad or the mouse (click or

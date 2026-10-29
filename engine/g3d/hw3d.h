@@ -228,6 +228,11 @@ void g3d_hw_gpu_features(u32 snap_mask);
 void g3d_hw_skip_raster(int on);
 void g3d_hw_snapshot_enable(int on);
 const G3dSnapshot *g3d_hw_snapshot(void);
+/* Called on the game's thread when a snapshot is complete (after the
+ * backdrop hook): a reader of the frame's polygons, such as the one-screen
+ * battle finding where each Pokemon's sprite is.  NULL (the default): none. */
+typedef void (*G3dSnapshotHook)(const G3dSnapshot *s);
+void g3d_hw_set_snapshot_hook(G3dSnapshotHook hook);
 u32       g3d_hw_unsupported(void);
 
 /* GXSTAT as the hardware holds it, bit 15 (the matrix stack error) included;

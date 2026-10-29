@@ -66,6 +66,8 @@ void __real_G3D_SYSTEM_DrawObject(void *obj, void *status);
 #define MCSS_COUNT   14u
 #define MSPR_POS     0x48u
 #define MCSSW_POS    0xE0u
+#define MCSSW_TEX    0x9Cu          /* texImage.vramAddr[0]                 */
+#define MCSSW_PLTT   0xC8u          /* plttProxy.vramAddr[0]                */
 /* BtlvCamera */
 #define CAM_G3D     0x04u           /* the G3D camera object                */
 /* the G3D camera object: a G3dProjection, then three vectors            */
@@ -166,6 +168,23 @@ typedef struct BvFrame {
 } BvFrame;
 
 static BvFrame g_frame;
+
+/*
+ * Where each Pokemon was drawn (bw_battle_view_mon_box): the frame's
+ * polygons that carry a sprite's own texture and palette (its shadow has
+ * the shadow palette), their extent in the 3D picture.  The sprites are
+ * listed at the field draw (capture) and measured when the snapshot is
+ * complete (snapshot_hook), both on the game's thread; the boxes are read
+ * by the interface, a frame late at worst.
+ */
+typedef struct BvSprite {
+    uint32_t pos, tex, pltt;
+} BvSprite;
+
+static BvSprite g_sprites[8];
+static uint32_t g_n_sprites;
+static float g_box[8][4];
+static uint32_t g_box_frame[8];
 static int g_cam_on;                /* the battle camera is known (G3D_CAMERA_Reset) */
 static void pin_point(const float in[3], float out[3]);
 static BvJob *g_job;                /* running or just finished            */
@@ -226,6 +245,125 @@ int bw_battle_view_active(void)
 {
     return g_in_battle && bw_input_frame_number() - g_last_frame <= 8u
            && real_map();
+}
+
+/*
+ * The part of a sprite polygon its texture fills (alpha above 0), on screen
+ * (NDC): the texels' box in s, t, carried to the screen by the affine map
+ * the polygon's first three corners give (a sprite cell is a parallelogram,
+ * so the map is exact).  0 when the polygon shows no texel.
+ */
+static int poly_opaque(const G3dSnapshot *s, uint32_t pi, float *x0, float *y0, float *x1, float *y1)
+{
+    const G3dPoly *p = &s->polys[pi];
+    const G3dVertex *v[4];
+    const G3dSnapTex *t;
+    float px[3], py[3], ps[3], pt[3], det, ax, bx, ay, by;
+    int smin, smax, tmin, tmax, os0 = 1 << 30, os1 = -1, ot0 = 1 << 30, ot1 = -1, x, y, k;
+    uint32_t j;
+
+    if (p->count < 3 || s->poly_tex == NULL || s->poly_tex[pi] < 0) {
+        return 0;
+    }
+    t = &s->tex[s->poly_tex[pi]];
+    for (j = 0; j < p->count && j < 4u; j++) {
+        v[j] = &s->verts[s->idx[p->first + j]];
+        if (v[j]->w <= 0) {
+            return 0;
+        }
+    }
+    for (k = 0; k < 3; k++) {
+        px[k] = (float)v[k]->x / (float)v[k]->w;
+        py[k] = (float)v[k]->y / (float)v[k]->w;
+        ps[k] = (float)v[k]->s / 16.0f;
+        pt[k] = (float)v[k]->t / 16.0f;
+    }
+    det = (ps[1] - ps[0]) * (pt[2] - pt[0]) - (ps[2] - ps[0]) * (pt[1] - pt[0]);
+    if (det > -1e-6f && det < 1e-6f) {
+        return 0;
+    }
+    smin = smax = (int)ps[0];
+    tmin = tmax = (int)pt[0];
+    for (j = 0; j < p->count && j < 4u; j++) {
+        int sv = v[j]->s / 16, tv = v[j]->t / 16;
+
+        smin = sv < smin ? sv : smin;
+        smax = sv > smax ? sv : smax;
+        tmin = tv < tmin ? tv : tmin;
+        tmax = tv > tmax ? tv : tmax;
+    }
+    if (smin < 0 || tmin < 0 || smax > (int)t->w || tmax > (int)t->h || t->rgba == NULL) {
+        return 0;
+    }
+    for (y = tmin; y < tmax; y++) {
+        for (x = smin; x < smax; x++) {
+            if (t->rgba[((size_t)y * t->w + (size_t)x) * 4u + 3u] != 0) {
+                os0 = x < os0 ? x : os0;
+                os1 = x > os1 ? x : os1;
+                ot0 = y < ot0 ? y : ot0;
+                ot1 = y > ot1 ? y : ot1;
+            }
+        }
+    }
+    if (os1 < 0) {
+        return 0;
+    }
+    /* screen = P0 + a (s - s0) + b (t - t0), per axis */
+    ax = ((px[1] - px[0]) * (pt[2] - pt[0]) - (px[2] - px[0]) * (pt[1] - pt[0])) / det;
+    bx = ((ps[1] - ps[0]) * (px[2] - px[0]) - (ps[2] - ps[0]) * (px[1] - px[0])) / det;
+    ay = ((py[1] - py[0]) * (pt[2] - pt[0]) - (py[2] - py[0]) * (pt[1] - pt[0])) / det;
+    by = ((ps[1] - ps[0]) * (py[2] - py[0]) - (ps[2] - ps[0]) * (py[1] - py[0])) / det;
+    for (k = 0; k < 4; k++) {
+        float cs = (float)((k & 1) ? os1 + 1 : os0) - ps[0], ct = (float)((k & 2) ? ot1 + 1 : ot0) - pt[0];
+        float sx = px[0] + ax * cs + bx * ct, sy = py[0] + ay * cs + by * ct;
+
+        *x0 = sx < *x0 ? sx : *x0;
+        *x1 = sx > *x1 ? sx : *x1;
+        *y0 = sy < *y0 ? sy : *y0;
+        *y1 = sy > *y1 ? sy : *y1;
+    }
+    return 1;
+}
+
+static void snapshot_hook(const G3dSnapshot *s)
+{
+    uint32_t k, i, now = bw_input_frame_number();
+
+    for (k = 0; k < g_n_sprites; k++) {
+        const BvSprite *sp = &g_sprites[k];
+        uint32_t tex = (sp->tex >> 3) & 0xFFFFu;
+        float x0 = 2.0f, y0 = 2.0f, x1 = -2.0f, y1 = -2.0f;
+
+        if (sp->tex == 0xFFFFFFFFu) {
+            continue;
+        }
+        for (i = 0; i < s->n_polys; i++) {
+            const G3dPoly *p = &s->polys[i];
+
+            if ((p->teximage & 0xFFFFu) != tex ||
+                (p->pltt_base != (sp->pltt >> 4) && p->pltt_base != (sp->pltt >> 3))) {
+                continue;
+            }
+            (void)poly_opaque(s, i, &x0, &y0, &x1, &y1);
+        }
+        if (x1 > x0 && y1 > y0) {
+            g_box[sp->pos][0] = (x0 + 1.0f) * 0.5f;
+            g_box[sp->pos][1] = (1.0f - y1) * 0.5f;
+            g_box[sp->pos][2] = (x1 + 1.0f) * 0.5f;
+            g_box[sp->pos][3] = (1.0f - y0) * 0.5f;
+            g_box_frame[sp->pos] = now;
+        }
+    }
+}
+
+int bw_battle_view_mon_box(int pos, float box[4])
+{
+    if (pos < 0 || pos > 7 || !bw_battle_view_active() ||
+        bw_input_frame_number() - g_box_frame[pos] > 4u) {
+        return 0;
+    }
+    memcpy(box, g_box[pos], sizeof g_box[pos]);
+    return 1;
 }
 
 /* The renderer's side: the frame's camera and the scene. */
@@ -683,6 +821,7 @@ static void capture(uintptr_t eff)
     g_frame.znear = rdfx(gc, G3C_NEAR);
     g_frame.zfar = rdfx(gc, G3C_FAR);
     g_frame.n_poke = 0;
+    g_n_sprites = 0;
     {
         uintptr_t mw = rd32(eff, EFF_MCSS);
 
@@ -704,6 +843,12 @@ static void capture(uintptr_t eff)
              * where it is drawn, and a shield (a negative height): nothing is
              * drawn over it */
             g_frame.poke[g_frame.n_poke][3] = pos <= 7u ? 12.0f : 18.0f;
+            if (pos <= 7u && g_n_sprites < 8u) {
+                g_sprites[g_n_sprites].pos = pos;
+                g_sprites[g_n_sprites].tex = rd32(mc, MCSSW_TEX);
+                g_sprites[g_n_sprites].pltt = rd32(mc, MCSSW_PLTT);
+                g_n_sprites++;
+            }
             if (pos >= 8u && (pos & 1u) == 0u && g_cam_on) {
                 float in[3];
 
@@ -1136,6 +1281,7 @@ void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
 
         if (!g_hooked) {
             g3d_hw_set_backdrop_hook(backdrop_hook);
+            g3d_hw_set_snapshot_hook(snapshot_hook);
             g_hooked = 1;
         }
         if (!g_in_battle || now - g_last_frame > 8u) {

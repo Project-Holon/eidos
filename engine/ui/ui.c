@@ -630,7 +630,8 @@ static void debug_warp(void)
 }
 
 /* EIDOS_DEBUG_BATTLE="wild SPECIES LEVEL" or "trainer ID" (the spot
- * editor's Preview in game, tools/spot-editor): starts that battle through
+ * editor's Preview in game, tools/spot-editor; EIDOS_DEBUG_FOES replaces
+ * the trainer's team, as EIDOS_DEBUG_PARTY the player's): starts that battle through
  * the game's own functions once the field has run 90 frames with no event
  * (after EIDOS_DEBUG_WARP's arrival when both are set). */
 extern void *ov021_FIELDMAP_GetEncount(void *fieldMap) __attribute__((weak));
@@ -676,6 +677,26 @@ static void debug_battle(void)
         int dbl = ov010_EVENT_TRAINER_IsDoubleBattle != NULL && ov010_EVENT_TRAINER_IsDoubleBattle((int)a1);
 
         ov021_FIELD_ENCOUNT_SetupTrainerBattle(enc, bs, dbl ? 1u : 0u, 0, a1, 0, 4);
+        /* EIDOS_DEBUG_FOES="species,species,...": the trainer's team becomes
+         * fresh Pokemon of those species (BattleSetupParam.party[1], +0x28) */
+        if (getenv("EIDOS_DEBUG_FOES") != NULL && POKE_TOOL_SetupPartyParam != NULL &&
+            POKEPARTY_GetMember != NULL && POKEPARTY_GetCount != NULL) {
+            const char *list = getenv("EIDOS_DEBUG_FOES");
+            void *party = *(void **)((u8 *)bs + 0x28);
+            u16 lv = (u16)(getenv("EIDOS_DEBUG_LEVEL") ? atoi(getenv("EIDOS_DEBUG_LEVEL")) : 50);
+            u32 i, n = party != NULL ? POKEPARTY_GetCount(party) : 0;
+
+            for (i = 0; i < n && *list != '\0'; i++) {
+                u16 sp = (u16)strtoul(list, (char **)&list, 10);
+
+                if (sp != 0) {
+                    POKE_TOOL_SetupPartyParam(POKEPARTY_GetMember(party, i), sp, lv, 0);
+                }
+                while (*list == ',' || *list == ' ') {
+                    list++;
+                }
+            }
+        }
         ev = ov010_EVENT_BATTLE_CreateScriptedBattle(gs, fm, bs, 0, 0);
     }
     if (ev != NULL) {

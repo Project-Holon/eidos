@@ -880,6 +880,13 @@ void g3d_hw_set_backdrop_hook(G3dBackdropHook hook)
     g_backdrop_hook = hook;
 }
 
+static G3dSnapshotHook g_snapshot_hook;
+
+void g3d_hw_set_snapshot_hook(G3dSnapshotHook hook)
+{
+    g_snapshot_hook = hook;
+}
+
 void g3d_hw_gpu_features(u32 snap_mask)
 {
     g_gpu_features = snap_mask;
@@ -1090,6 +1097,9 @@ static void build_snapshot(u32 d3, u32 cc, u32 cd, const G3dTarget *t,
     memset(&s->backdrop, 0, sizeof(s->backdrop));
     if (g_backdrop_hook != NULL) {
         g_backdrop_hook(&s->backdrop);
+    }
+    if (g_snapshot_hook != NULL) {
+        g_snapshot_hook(s);
     }
     g_snap_valid = 1;
 }
