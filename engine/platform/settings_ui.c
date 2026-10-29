@@ -114,6 +114,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "own battle scenery." },
     [EIDOS_OPT_BATTLE_PLATFORMS]    = { "The game's own stages",
                                         "under the Pokemon." },
+    [EIDOS_OPT_MOVE_COLOURS]        = { "Move names in battle messages",
+                                        "show their type colour." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -219,6 +221,7 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_EXTRAS_INSTANT_TEXT] = "Instant text",
     [EIDOS_OPT_BATTLE_BACKDROP]     = "Battle backdrop",
     [EIDOS_OPT_BATTLE_PLATFORMS]    = "Battle platforms",
+    [EIDOS_OPT_MOVE_COLOURS]        = "Move colours",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -239,6 +242,8 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_BATTLE_BACKDROP,     1, "Original" },
     { EIDOS_OPT_BATTLE_PLATFORMS,    0, "Off" },
     { EIDOS_OPT_BATTLE_PLATFORMS,    1, "On" },
+    { EIDOS_OPT_MOVE_COLOURS,        0, "Off" },
+    { EIDOS_OPT_MOVE_COLOURS,        1, "On" },
 };
 
 /* Short names for the side-by-side choices (a choice has about 48 pixels). */
@@ -710,6 +715,7 @@ static void build_rows(void)
             /* the battle backdrop is the one-screen layout's own */
             add_row(ROW_OPTION, EIDOS_OPT_BATTLE_BACKDROP, 0);
             add_row(ROW_OPTION, EIDOS_OPT_BATTLE_PLATFORMS, 0);
+            add_row(ROW_OPTION, EIDOS_OPT_MOVE_COLOURS, 0);
         }
         break;
     case TAB_MODS:

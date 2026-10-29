@@ -48,6 +48,8 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "assets.h"
+#include "settings.h"
 #include "dsmem.h"
 #include "input.h"
 #include "overlay.h"
@@ -777,12 +779,125 @@ static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s);
 static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt,
                        int own);
 
+/*
+ * Coloured move names.  The scene unit keeps the text it printed in a string
+ * buffer (BtlvScu.textBuf, +0x034).  A move name in it is looked for in the
+ * bitmap: the name set in the game's own font gives the exact letter pixels,
+ * and where they all sit on ink pixels the name is found.  Only a name typed
+ * so far (three letters or more) is coloured.
+ */
+#define MV_MAX   700
+#define MV_NAME  20
+#define MV_FONT  UI_FONT_LARGE
+#define MV_FILL  1      /* the letters' colour in the window (GF_FONT_SetTextColor 1, 9, 12) */
+
+static char g_mv_name[MV_MAX][MV_NAME];
+static int g_mv_ready;
+
+static int strbuf_text(const u8 *sb, char *out, int cap);
+
+static void mv_names_load(void)
+{
+    int id, n = 0;
+
+    if (g_mv_ready) {
+        return;
+    }
+    for (id = 1; id < MV_MAX; id++) {
+        g_mv_name[id][0] = '\0';
+        if (msg_line(MSG_MOVE, (u32)id, g_mv_name[id], MV_NAME) && strlen(g_mv_name[id]) >= 3) {
+            n++;
+        } else {
+            g_mv_name[id][0] = '\0';
+        }
+    }
+    g_mv_ready = n > 100;
+}
+
+/* The longest move name inside the message text, as a move id (0: none). */
+static int mv_find(const char *text)
+{
+    int id, best = 0;
+    size_t bl = 0;
+
+    for (id = 1; id < MV_MAX; id++) {
+        size_t l = strlen(g_mv_name[id]);
+
+        if (l > bl && strstr(text, g_mv_name[id]) != NULL) {
+            best = id;
+            bl = l;
+        }
+    }
+    return best;
+}
+
+/* Does the name's first n letters, set in the game's font with the pen at
+ * (ox, oy), sit on ink pixels?  Fills the letters' end x on a hit. */
+static int mv_fit(const u8 *px, int bw, int bh, int ink, const UiGlyph *g, int n, int ox, int oy,
+                  int *end)
+{
+    int i, pen = 0, gx, gy;
+
+    for (i = 0; i < n; i++) {
+        for (gy = 0; gy < g[i].cell_h; gy++) {
+            for (gx = 0; gx < g[i].cell_w; gx++) {
+                int k = gy * g[i].cell_w + gx;
+                int v = (g[i].bitmap[k >> 2] >> (6 - 2 * (k & 3))) & 3;
+                int bx = ox + pen + g[i].bearing + gx, by = oy + gy;
+
+                if (v == 1 && (bx < 0 || bx >= bw || by >= bh || msg_px(px, bw, bx, by) != ink)) {
+                    return 0;
+                }
+            }
+        }
+        pen += g[i].adv;
+    }
+    *end = ox + pen;
+    return 1;
+}
+
+/* Find the move name (or its typed start) in the bitmap and mark the pixels
+ * of its box in hit[]: 1 for the letter colour, 2 for the rest.  Returns
+ * whether a name was found. */
+static int mv_mark(const u8 *px, int bw, int bh, int ground, int ink, const char *name,
+                   u8 (*hit)[256])
+{
+    UiGlyph g[MV_NAME];
+    int n = 0, k, ox, oy, end, x, y;
+
+    for (; name[n] != '\0' && n < MV_NAME; n++) {
+        if ((u8)name[n] >= 0x80 || !ui_font_glyph(MV_FONT, (u32)(u8)name[n], &g[n])
+            || g[n].bitmap == NULL) {
+            return 0;
+        }
+    }
+    for (k = n; k >= 3; k--) {
+        for (oy = 0; oy + g[0].cell_h <= bh; oy++) {
+            for (ox = -2; ox < bw; ox++) {
+                if (mv_fit(px, bw, bh, ink, g, k, ox, oy, &end)) {
+                    for (y = oy; y < oy + g[0].cell_h && y < bh; y++) {
+                        for (x = ox < 0 ? 0 : ox; x <= end && x < bw; x++) {
+                            int v = msg_px(px, bw, x, y);
+
+                            hit[y][x] = v == ink ? 1 : v != ground ? 2 : 0;
+                        }
+                    }
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, int h)
 {
     const u8 *scu = rdp(b->core, 0x17C);
     const u8 *bmp = scu != NULL ? rdp(scu, 0x004) : NULL;
     const u8 *px;
     int bw, bh, cnt[16] = { 0 }, ground = 0, ink = -1, i, yy, xx, any = 0;
+    u8 hit[64][256];
+    u32 mcol = 0, mdark = 0;
 
     if (bmp == NULL || (px = rdp(bmp, 0x00)) == NULL) {
         return 0;
@@ -810,6 +925,27 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
     if (ink < 0) {
         return 0;
     }
+    memset(hit, 0, sizeof(hit));
+    if (eidos_settings_get(EIDOS_OPT_MOVE_COLOURS) != 0) {
+        /* the text lives in the scene unit's own buffer (entry messages) or
+         * in the core's (the battle's messages) */
+        const u8 *src[2] = { rdp(scu, 0x034), rdp(b->core, 0x0AC) };
+        char text[128];
+
+        mv_names_load();
+        for (i = 0; i < 2; i++) {
+            int id = strbuf_text(src[i], text, sizeof(text)) ? mv_find(text) : 0;
+
+            if (id != 0 && mv_mark(px, bw, bh, ground, MV_FILL, g_mv_name[id], hit)) {
+                int type = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)id, 0) : 0;
+
+                mcol = ui_type_color(type);
+                mdark = ((mcol >> 17) & 0x7F) << 16 | ((mcol >> 9) & 0x7F) << 8
+                        | ((mcol >> 1) & 0x7F);
+                break;
+            }
+        }
+    }
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
     for (yy = 0; yy < bh && yy + 4 < h; yy++) {
         for (xx = 0; xx < bw && xx + 10 < w; xx++) {
@@ -818,7 +954,9 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
             if (v == ground) {
                 continue;
             }
-            ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1, v == ink ? UI_WHITE : UI_GREY,
+            ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1,
+                    hit[yy][xx] == 1 ? mcol : hit[yy][xx] == 2 ? mdark
+                                                               : v == ink ? UI_WHITE : UI_GREY,
                     255);
             any = 1;
         }

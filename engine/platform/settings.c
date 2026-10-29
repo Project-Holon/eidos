@@ -71,6 +71,8 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, 1, 0, k_backdrops, "", 0, NULL },
     { "Extras", "battle_platforms", "Battle platforms", EIDOS_OPTKIND_CHOICE,
       0, 1, 1, 0, k_offon, "", 0, NULL },
+    { "Extras", "move_colours", "Move colours", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
+      1, k_offon, "", 0, NULL },
 };
 
 static const EidosButtonInfo k_buttons[NBTN] = {

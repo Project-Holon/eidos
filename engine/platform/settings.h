@@ -90,6 +90,8 @@ enum {
     EIDOS_OPT_BATTLE_BACKDROP,      /* 0 real map, 1 original: the one-screen
                                        battle scenery (sdk/battle_view.c)  */
     EIDOS_OPT_BATTLE_PLATFORMS,     /* 0 off, 1 on: the game's two stages  */
+    EIDOS_OPT_MOVE_COLOURS,         /* 0 off, 1 on: move names in battle
+                                       messages take their type colour     */
     EIDOS_OPT_COUNT
 };
 

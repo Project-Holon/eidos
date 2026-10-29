@@ -5,6 +5,9 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Remaster battles: move names in battle messages take their type's colour
+  ("Tepig used Ember!" with Ember in fire red). Extras has a "Move colours"
+  setting to turn it off.
 - Controls: setting a key no longer also acts as that button. Setting A
   no longer gets stuck, setting B no longer leaves the screen, and setting
   L, R or a D-Pad direction no longer changes the section or moves the
