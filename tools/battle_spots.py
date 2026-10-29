@@ -408,7 +408,7 @@ def analyse(rom):
                     n['walked'] = bool(mv)
                     storied.append(n)
         has_enc = info['encount'] != 0xFFFF
-        if not trainers and not has_enc and not storied:
+        if not trainers and not has_enc and not storied and not rom.story_battles(z):
             continue
         tiles = rom.tiles(z)
         if not tiles:
@@ -491,6 +491,62 @@ def analyse(rom):
                                  label=label, tid=tid, tn=tn,
                                  tx=n['gx'], tz=n['gz'], dir=n['dir'], range=0,
                                  px=px, pz=pz, pf=pf, mode='auto'))
+        # every other fight a script of the zone starts (a guard by a door, a
+        # scene's grunt, an Elite Four rematch, a gym trainer the leader's
+        # script calls): a row of its own, at the character that runs the
+        # script, else where the player comes in.  Fights of one script with
+        # the same trainer class and consecutive ids are the versions of one
+        # fight (the starter picks one): they share the row.
+        covered = {int(r['tid']) + k for r in rows if str(r.get('tid', '-')).isdigit()
+                   for k in range(int(r.get('tn', 1)) if str(r.get('tn', 1)).isdigit() else 1)}
+        entry = min(dist, key=lambda t: (dist[t], t)) if dist else None
+        if entry is None:
+            # no way in found (the walk found no entrance): the walkable tile
+            # nearest the middle of the zone's walkable ground
+            walk = [t for t in tiles if walk_cost(tiles.get(t)) is not None]
+            if walk:
+                mx = sum(t[0] for t in walk) / len(walk)
+                mz = sum(t[1] for t in walk) / len(walk)
+                entry = min(walk, key=lambda t: ((t[0] - mx) ** 2 + (t[1] - mz) ** 2, t))
+        nx = 0
+        for sn, fl in sorted(rom.story_battles(z).items()):
+            fights = sorted((w for w in fl if w['kind'] == 'T' and
+                             not any(w['tid'] + k in covered for k in range(w['tn']))), key=lambda w: w['tid'])
+            merged = []
+            for w in fights:
+                last = merged[-1] if merged else None
+                if (last is not None and w['tid'] == last['tid'] + last['tn'] and
+                        rom.trainer_class(w['tid']) == rom.trainer_class(last['tid'])):
+                    last['tn'] += w['tn']
+                else:
+                    merged.append(dict(w))
+            runner = next((n for n in npcs if n['script'] == sn), None)
+            for w in merged:
+                if runner is not None:
+                    vx, vz = DIRV.get(runner['dir'], (0, 1))
+                    near = [(runner['gx'] + vx, runner['gz'] + vz)] + \
+                           [(runner['gx'] + dx, runner['gz'] + dz) for dx, dz in DIRV.values()]
+                    near = [t for t in near if walk_cost(tiles.get(t)) is not None] or \
+                           [(runner['gx'] + vx, runner['gz'] + vz)]
+                    best = min(near, key=lambda t: dist.get(t, 1 << 30))
+                    fx, fz = runner['gx'] - best[0], runner['gz'] - best[1]
+                    pf = facing_deg(fx, fz) if (fx, fz) in DIRV.values() else facing_deg(-vx, -vz)
+                    tx, tz, d, rid = runner['gx'], runner['gz'], runner['dir'], 'T%d.s%d' % (z, sn)
+                elif entry is not None:
+                    best, pf = entry, 0
+                    s0 = step.get(entry)
+                    pf = facing_deg(*s0) if s0 else 0
+                    tx, tz, d, rid = entry[0], entry[1], 1, 'T%d.s%d' % (z, sn)
+                else:
+                    continue
+                nx += 1
+                rid += '' if len(merged) == 1 else 'abcdefgh'[merged.index(w)]
+                px, pz = tile_center(best)
+                rows.append(dict(id=rid, kind='T', zone=z,
+                                 label='%s: %s (story)' % (name, rom.trainer_class(w['tid'])),
+                                 tid=w['tid'], tn=w['tn'], tx=tx, tz=tz, dir=d, range=0,
+                                 px=px, pz=pz, pf=pf, mode='auto'))
+                covered.update(range(w['tid'], w['tid'] + w['tn']))
         if has_enc:
             np = 0
             for water, comp in sorted(patches(tiles), key=lambda p: (min(p[1])[1], min(p[1])[0])):

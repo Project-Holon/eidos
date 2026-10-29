@@ -3218,7 +3218,9 @@ static void preview_in_game(int play)
         snprintf(v, sizeof v, "0:%d:0", A.scene - 2);
         _putenv_s("EIDOS_DEBUG_MOVES", v);
     }
-    _putenv_s("EIDOS_FAST_UNTIL_BATTLE", "1");
+    /* a preview skips to the battle; a battle to play shows its encounter
+     * from the start */
+    _putenv_s("EIDOS_FAST_UNTIL_BATTLE", play ? "start" : "1");
     _putenv_s("BW_SAVE_DIR", tmp);
     /* eidos_boot beside this program */
     {

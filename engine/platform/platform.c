@@ -380,6 +380,10 @@ static EidosPadBinding pad_binding_for(const EidosPlatform *p, const EidosPadBin
     return r;
 }
 
+/* engine/ui/ui.c: EIDOS_DEBUG_BATTLE has started its battle (absent from
+ * builds without the interface) */
+extern int eidos_ui_debug_battle_started(void) __attribute__((weak));
+
 int eidos_platform_face_swap(const EidosPlatform *p)
 {
     return p != NULL && p->face_default && pad_bottom_confirms(p->pad_type);
@@ -609,15 +613,20 @@ int eidos_platform_fast_forward(const EidosPlatform *p)
                                          : EIDOS_FAST_FORWARD;
     }
     /* EIDOS_FAST_UNTIL_BATTLE (the spot editor's Preview in game): as fast
-     * as possible until the first battle shows, then the normal speed. */
+     * as possible until the first battle shows, then the normal speed; =start
+     * (its Play battle) only until EIDOS_DEBUG_BATTLE starts the battle, so
+     * the encounter's own transition plays at its speed. */
     {
         static int until = -1, seen;
 
         if (until < 0) {
-            until = getenv("EIDOS_FAST_UNTIL_BATTLE") != NULL;
+            const char *v = getenv("EIDOS_FAST_UNTIL_BATTLE");
+
+            until = v == NULL || *v == '\0' ? 0 : strcmp(v, "start") == 0 ? 2 : 1;
         }
         if (until && !seen) {
-            if (bw_battle_view_active != NULL && bw_battle_view_active()) {
+            if (until == 2 ? (eidos_ui_debug_battle_started != NULL && eidos_ui_debug_battle_started())
+                           : (bw_battle_view_active != NULL && bw_battle_view_active())) {
                 seen = 1;
             } else {
                 return EIDOS_FAST_FORWARD_MAX;

@@ -642,6 +642,16 @@ extern void *BTL_SETUP_Create(u32 heapId) __attribute__((weak));
 extern void *ov010_EVENT_BATTLE_CreateScriptedBattle(void *gsys, void *fieldMap, void *btlSetup, int returnImmediately,
                                                      int effectId) __attribute__((weak));
 extern int ov010_EVENT_TRAINER_IsDoubleBattle(int trainerId) __attribute__((weak));
+extern void *ov010_EVENT_BATTLE_CreateEncounterTask(void *gsys, void *fieldMap, int rule, int partnerId,
+                                                    int trainerId1, int trainerId2, int options)
+    __attribute__((weak));
+
+static int g_debug_battle_started;
+
+int eidos_ui_debug_battle_started(void)
+{
+    return g_debug_battle_started;
+}
 
 static void debug_battle(void)
 {
@@ -671,6 +681,13 @@ static void debug_battle(void)
     }
     if (sscanf(what, "wild %u %u", &a1, &a2) >= 1 && ov021_FIELD_ENCOUNT_StartScriptedWild != NULL) {
         ev = ov021_FIELD_ENCOUNT_StartScriptedWild(enc, (u16)a1, (u8)a2, 0);
+    } else if (sscanf(what, "trainer %u", &a1) == 1 && getenv("EIDOS_DEBUG_FOES") == NULL &&
+               ov010_EVENT_BATTLE_CreateEncounterTask != NULL) {
+        /* as a trainer's own battle: the trainer's encounter effect and
+         * music (EVENT_BATTLE_CreateEncounterTask) */
+        int dbl = ov010_EVENT_TRAINER_IsDoubleBattle != NULL && ov010_EVENT_TRAINER_IsDoubleBattle((int)a1);
+
+        ev = ov010_EVENT_BATTLE_CreateEncounterTask(gs, fm, dbl ? 1 : 0, 0, (int)a1, 0, 0);
     } else if (sscanf(what, "trainer %u", &a1) == 1 && BTL_SETUP_Create != NULL
                && ov021_FIELD_ENCOUNT_SetupTrainerBattle != NULL && ov010_EVENT_BATTLE_CreateScriptedBattle != NULL) {
         void *bs = BTL_SETUP_Create(4);
@@ -701,6 +718,7 @@ static void debug_battle(void)
     }
     if (ev != NULL) {
         GAMESYSTEM_SetEvent(gs, ev);
+        g_debug_battle_started = 1;
         fprintf(stderr, "eidos: debug battle: %s\n", what);
     }
 }

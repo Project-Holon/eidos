@@ -5,9 +5,15 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Battle spots: every trainer the game can battle has a place in the table
+  (433 of the 436 the scripts start; 26 new rows: Team Plasma grunts,
+  gym trainers a leader's script calls, Cheren and Bianca on the routes,
+  the Champion, The Riches and more), a fight's versions sharing a row.
 - Spot editor: "Play battle" starts the game straight into the battle at
   this place and leaves it to you (keys, pad or mouse), on a copy of your
-  save. "Preview in game" still plays it by itself.
+  save, from the encounter itself: the flash and the transition play at
+  their own speed, and a trainer brings their own effect and music.
+  "Preview in game" still skips to the battle and plays it by itself.
 - One-screen layout: the wild encounter effects fill the window (the swirl
   into the grass showed boxed at the DS size for a few frames), and the
   white flash before a battle fills it too.
