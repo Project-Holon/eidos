@@ -16,6 +16,16 @@
 # Columns: name  DS-address  DS-size (hex, or - if unknown)  owner
 # The size is the object's extent on the DS, not on the host.
 
+# Native SDK callback storage (the four-byte ROM cell cannot hold an LP64 function).
+MATHi_SHA1ProcessMessageBlockFunc 0x020A8688 0x4 sdk/boot/math.c
+cardi_common 0x02150200 0x520 sdk/boot/card_state.c
+g_ProcSys 0x02146990 0x4 sdk/game_globals.c
+svsys 0x02146994 0x4 sdk/game_globals.c
+_pOverlayTables 0x021469B8 0x4 sdk/game_globals.c
+gUiState 0x021469BC 0x8 sdk/game_globals.c
+_pTouchPanelWork 0x021469C4 0x4 sdk/game_globals.c
+_GflUse 0x020AA194 0x18 sdk/game_globals.c
+
 # sdk/fs.c: the ROM archive object (FSArchive, 0x5C bytes).
 d_02150DA8                 0x02150DA8  0x5C   sdk/fs.c
 

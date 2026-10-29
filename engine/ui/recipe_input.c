@@ -56,10 +56,13 @@ static u16 rd16(const void *p, u32 off)
 
 static void *rdp(const void *p, u32 off)
 {
-    void *v;
+    /* These offsets describe DS records, including four-byte pointers. */
+    u32 address = rd32(p, off);
+    void *host = address != 0 ? bw_ds_try_ptr(address) : NULL;
 
-    memcpy(&v, (const Byte *)p + off, sizeof(v));
-    return v;
+    if (host != NULL || sizeof(void *) > 4) return host;
+    /* On ILP32 a game heap pointer can also lie outside the DS windows. */
+    return (void *)(uintptr_t)address;
 }
 
 /* Proc: data 0x00, overlayId 0x04, seq 0x08, work 0x14.  ProcSys: current 0x08. */
@@ -92,7 +95,7 @@ static void *game_proc_top(void)
     if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL) {
         return NULL;
     }
-    gs = rdp(bw_dsref__GameSystemGlobal, 0);
+    memcpy(&gs, bw_dsref__GameSystemGlobal, sizeof(gs));
     return gs != NULL ? procsys_top(rdp(gs, 0x08)) : NULL;
 }
 
@@ -104,7 +107,8 @@ static void *intro_proc_top(void)
     if (&bw_dsref_g_ProcSys == NULL || bw_dsref_g_ProcSys == NULL) {
         return NULL;
     }
-    root = procsys_top(rdp(bw_dsref_g_ProcSys, 0));
+    memcpy(&root, bw_dsref_g_ProcSys, sizeof(root));
+    root = procsys_top(root);
     work = proc_work(root, OV_START);
     if (work == NULL) {
         return NULL;

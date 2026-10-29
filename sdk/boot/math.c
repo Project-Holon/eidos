@@ -30,6 +30,16 @@ typedef struct BwSha1Context {
 
 typedef void (*BwSha1BlockFn)(BwSha1Context *context);
 
+void func_02081E7C(void *context);
+static void sha1_default_block(BwSha1Context *context)
+{
+    func_02081E7C(context);
+}
+
+/* A host function pointer cannot live in the ROM's four-byte cell. The
+ * SDK's mode setter and both padding/update paths share this native cell. */
+BwSha1BlockFn MATHi_SHA1ProcessMessageBlockFunc = sha1_default_block;
+
 void MI_CpuFill8(void *dstp, u8 data, u32 size);
 void MATHi_SHA1Fill(BwSha1Context *context, u8 input, u32 length);
 
@@ -45,9 +55,7 @@ void MATHi_SHA1Fill(BwSha1Context *context, u8 input, u32 length)
         length -= rest;
         context->pool += rest;
         if (context->pool >= MATH_SHA1_BLOCK_SIZE) {
-            BwSha1BlockFn fn = *(BwSha1BlockFn *)bw_ds_ptr(SHA1_BLOCK_FUNC_PTR);
-
-            fn(context);
+            MATHi_SHA1ProcessMessageBlockFunc(context);
             context->pool = 0;
             ++context->blocks_low;
             if (context->blocks_low == 0) {

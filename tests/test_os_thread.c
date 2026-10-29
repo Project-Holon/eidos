@@ -16,8 +16,15 @@
  *   - the switch callback sees every switch.
  */
 
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdio.h>
 #include <string.h>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #include "os_test.h"
 #include "port_test.h"
@@ -213,6 +220,45 @@ static int test_token(void)
     return 0;
 }
 
+/* Stack arrays must survive another worker using the shared wasm instance.
+ * Scalar loop counters alone can stay in wasm locals and miss a bad swap. */
+static int g_stack_failures;
+static void stack_proc(void *arg)
+{
+    volatile u32 words[1024];
+    u32 seed = *(u32 *)arg;
+    unsigned i, turn;
+    for (i = 0; i < 1024; ++i) words[i] = seed ^ i;
+    for (turn = 0; turn < 32; ++turn) {
+        OS_YieldThread();
+        for (i = 0; i < 1024; ++i) if (words[i] != (seed ^ i)) g_stack_failures++;
+    }
+}
+
+static int test_stack_handoff(void)
+{
+    static OSThread a, b;
+    static u32 sa[STACK_WORDS], sb[STACK_WORDS];
+    static u32 seeds[] = { 0x13579BDFu, 0x2468ACE0u };
+    unsigned round;
+    os_test_boot();
+    g_stack_failures = 0;
+    /* Repeated exit/recreate also exercises shadow-stack reclamation and
+     * restoration of wasm2c's call-depth counter after native unwinding. */
+    for (round = 0; round < 16; ++round) {
+        (void)OS_DisableScheduler();
+        OS_CreateThread(&a, stack_proc, &seeds[0], sa + STACK_WORDS, sizeof(sa), 12);
+        OS_CreateThread(&b, stack_proc, &seeds[1], sb + STACK_WORDS, sizeof(sb), 12);
+        OS_WakeupThreadDirect(&a);
+        OS_WakeupThreadDirect(&b);
+        (void)OS_EnableScheduler();
+        OS_JoinThread(&a);
+        OS_JoinThread(&b);
+    }
+    BW_CHECK_EQ("stack arrays survive 1024 handoffs", g_stack_failures, 0);
+    return 0;
+}
+
 /* ---- kill: the destructor runs on the killed thread ---------------- */
 
 static OSThread *g_dtor_ran_on;
@@ -305,19 +351,65 @@ static int test_os_sleep(void)
     return 0;
 }
 
-int main(void)
+#ifndef _WIN32
+/* Optional synthetic save I/O in a caller-supplied scratch directory. The
+ * same guest executable exercises the host's WASI files, not a mock VFS. */
+static int test_host_files(const char *directory)
+{
+    char path[1024], renamed[1024], child[1024];
+    const char bytes[] = "eidos synthetic save\n";
+    char restored[sizeof(bytes)];
+    FILE *f;
+    struct stat st;
+    snprintf(child, sizeof(child), "%s/files", directory);
+    snprintf(path, sizeof(path), "%s/files/save.tmp", directory);
+    snprintf(renamed, sizeof(renamed), "%s/files/save.dat", directory);
+    BW_CHECK_EQ("host mkdir", mkdir(child, 0700), 0);
+    f = fopen(path, "wb+");
+    BW_REQUIRE("host opens a save", f != NULL);
+    BW_CHECK_EQ("host writes save bytes", fwrite(bytes, 1, sizeof(bytes), f), sizeof(bytes));
+    BW_CHECK_EQ("host flush", fflush(f), 0);
+    BW_CHECK_EQ("host sync", fsync(fileno(f)), 0);
+    BW_CHECK_EQ("host tell", ftell(f), sizeof(bytes));
+    BW_CHECK_EQ("host seek", fseek(f, 0, SEEK_SET), 0);
+    BW_CHECK_EQ("host reads save bytes", fread(restored, 1, sizeof(restored), f), sizeof(restored));
+    BW_CHECK_EQ("host bytes match", memcmp(bytes, restored, sizeof(bytes)), 0);
+    BW_CHECK_EQ("host close", fclose(f), 0);
+    BW_CHECK_EQ("host rename", rename(path, renamed), 0);
+    BW_CHECK_EQ("host stat", stat(renamed, &st), 0);
+    BW_CHECK_EQ("host file size", st.st_size, sizeof(bytes));
+    f = fopen(renamed, "rb");
+    BW_REQUIRE("host reopens renamed save", f != NULL);
+    memset(restored, 0, sizeof(restored));
+    BW_CHECK_EQ("host reload", fread(restored, 1, sizeof(restored), f), sizeof(restored));
+    BW_CHECK_EQ("host reload matches", memcmp(bytes, restored, sizeof(bytes)), 0);
+    BW_CHECK_EQ("host closes reload", fclose(f), 0);
+    BW_CHECK_EQ("host removes save", remove(renamed), 0);
+    BW_CHECK_EQ("host removes directory", rmdir(child), 0);
+    return 0;
+}
+#endif
+
+int main(int argc, char **argv)
 {
     int fail = 0;
 
     fail |= test_priority();
     fail |= test_sleep_wakeup();
     fail |= test_token();
+    fail |= test_stack_handoff();
     fail |= test_kill();
     fail |= test_os_sleep();
 
     /* A reset stops every game thread's host thread. */
     bw_os_reset();
     BW_CHECK_EQ("reset leaves no host threads", bw_os_host_threads(), 0);
+#ifndef _WIN32
+    if (argc > 1) fail |= test_host_files(argv[1]);
+#else
+    (void)argc;
+    (void)argv;
+#endif
 
     (void)fail;
     BW_REPORT("test_os_thread");

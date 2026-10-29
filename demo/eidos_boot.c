@@ -74,6 +74,10 @@
  * not in main().
  */
 
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "mod_frame.h"
 #include "mod_handoff.h"
 #include "mod_hooks.h"
@@ -2122,6 +2126,8 @@ static void boot_game_thread(void *arg)
  */
 static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
 {
+    extern void bw_boot_card_state_reset(void);
+    bw_boot_card_state_reset();
     bw_input_reset();
     if (boot_load_input_script() != 0) {
         return -1;
@@ -2146,15 +2152,19 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     bw_mod_handoff_set_reload(boot_reload);
     /* The port's own confirmation for a save that arrives: the player is
      * asked before anything is installed. */
+#if EIDOS_BOOT_SDL
     eidos_mod_handoff_install_confirm();
+#endif
     /* The network service's own settings: the relay the sessions reach, the
      * port the external control listens on, and the name the player is
      * known by.  Without a transport the sessions answer "no relay", and a
      * control port of 0 is the control off (engine/platform/settings.h). */
     bw_mod_net_set_transport(bw_mod_net_tcp_transport());
+#if EIDOS_BOOT_SDL
     bw_mod_net_set_relay(eidos_settings_net_relay_in_use(),
                          (u16)eidos_settings_net_relay_port());
     bw_mod_net_set_name(eidos_settings_net_name());
+#endif
     {
         /* The session tokens, one per code, next to the save. */
         char tokens[512];
@@ -2168,7 +2178,9 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     if (bw_mp_state() == BW_MP_OFF || bw_mp_state() == BW_MP_ENDED) {
         bw_slots_apply();
     }
+#if EIDOS_BOOT_SDL
     bw_mod_net_control_set_port(eidos_settings_net_control_port());
+#endif
     /* The player's own mod list: the menu's record restores the roots the
      * player chose, before the loader reads them (sdk/mod_menu.h). */
     if (g_only_mod != NULL) {
@@ -2235,7 +2247,7 @@ static void boot_run_restart(void)
     fflush(stdout);
     /* The image is in place before the reset, which copies it into main
      * RAM, binds the names and relocates the pointers. */
-    bw_data_install(&bw_arm9_data, 0);
+    bw_data_install(&bw_arm9_data, sizeof(void *) > 4 ? BW_DATA_ALLOW_UNRELOCATED : 0);
     /* The port's own restart: the old game's threads stop (the caller's own
      * thread is left alone, and this is the frame thread), and the machine
      * goes back to power-on (sdk/port_reset.c). */
@@ -2263,11 +2275,11 @@ static int run_boot(u64 frames, int window, unsigned watchdog)
 
     /* The image is installed before the first reset, which copies it into
      * main RAM, binds the names and relocates the pointers. */
-    bw_data_install(&bw_arm9_data, 0);
+    bw_data_install(&bw_arm9_data, sizeof(void *) > 4 ? BW_DATA_ALLOW_UNRELOCATED : 0);
 #if EIDOS_OVERLAYS
     /* The overlays load through FS_LoadOverlay like the game's own:
      * copied into their windows, bound and relocated at each load. */
-    bw_ovl_install(&bw_ovl_set_boot, 0);
+    bw_ovl_install(&bw_ovl_set_boot, sizeof(void *) > 4 ? BW_DATA_ALLOW_UNRELOCATED : 0);
 #endif
     bw_port_reset();
     bw_plat_crash_context(boot_report_context);

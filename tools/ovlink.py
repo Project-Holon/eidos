@@ -1793,6 +1793,11 @@ class Link:
                 continue
             path = os.path.join(d, fname)
             text = read_text(path)
+            if getattr(self.args, "no_platform_ui", False) and re.search(
+                    r"\beidos_(?:settings_|sui_|opt_proc_)", text):
+                # Keep the game's own menu functions when this build has
+                # no platform settings model. Other gameplay fixes stay.
+                continue
             m = re.search(r"^\s*\*\s*patches:\s*(\S+)\s+(.+)$", text[:4096], re.M)
             if not m:
                 raise SystemExit("ovlink.py: %s names no unit and functions it patches" % path)
@@ -3618,6 +3623,8 @@ def main(argv=None):
                     help="port stand-ins for unmatched overlay functions, "
                          "ovNNN_<name>.c")
     ap.add_argument("--summary", action="store_true")
+    ap.add_argument("--no-platform-ui", action="store_true",
+                    help="keep original game menus instead of platform settings patches")
     ap.add_argument("--cut-list",
                     help="src/game: the boot's cut list (tools/bootlink.py "
                          "plan_game, `path<TAB>name,...`); the link sources are "

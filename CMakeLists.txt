@@ -98,6 +98,28 @@ file(TO_CMAKE_PATH "${BW_DATA_ROOT_ABS}" BW_DATA_ROOT_ABS)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "WASI" AND EIDOS_SOURCE_TREE STREQUAL "game")
+    set(_wasm_layout_dir "${CMAKE_BINARY_DIR}/wasm32-layout")
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/wasm32_layout.py"
+        --aletheia-root "${ALETHEIA_ROOT}" --out "${_wasm_layout_dir}"
+        RESULT_VARIABLE _wasm_layout_result)
+    if(NOT _wasm_layout_result EQUAL 0)
+        message(FATAL_ERROR "WASI packet layout generation failed")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/wasm32_layout.py"
+        "${ALETHEIA_ROOT}/src/game/ov125/gds_rap_types.h")
+    add_compile_options("-ivfsoverlay${_wasm_layout_dir}/headers.json")
+endif()
+
+if(APPLE)
+    # Apple ld needs an explicit -U for optional symbols with no provider.
+    # Apply to executable links only; libraries retain their weak imports.
+    set(CMAKE_C_LINK_EXECUTABLE
+        "\"${Python3_EXECUTABLE}\" \"${CMAKE_CURRENT_SOURCE_DIR}/tools/macos_link.py\" --nm \"${CMAKE_NM}\" -- ${CMAKE_C_LINK_EXECUTABLE}")
+endif()
+
 # src/game names many functions otherwise than src/matched did; the port's
 # own C keeps the old spellings and is compiled with a header of #defines to
 # the src/game names (tools/gamespell.py).  The header follows the tree's
@@ -132,7 +154,12 @@ if(EIDOS_SOURCE_TREE STREQUAL "game")
         # inputs say now.
         file(READ ${EIDOS_GAMESPELL_H} _gs_head)
         string(REGEX MATCH "/\\* inputs: ([0-9a-f]+) \\*/" _gs_match "${_gs_head}")
-        if(NOT "${CMAKE_MATCH_1}" STREQUAL "${_gs_stamp}")
+        set(_gs_saved_stamp "${CMAKE_MATCH_1}")
+        if(EXISTS "${EIDOS_GAMESPELL_H}.inputs")
+            file(READ "${EIDOS_GAMESPELL_H}.inputs" _gs_saved_stamp)
+            string(STRIP "${_gs_saved_stamp}" _gs_saved_stamp)
+        endif()
+        if(NOT "${_gs_saved_stamp}" STREQUAL "${_gs_stamp}")
             set(_gs_rewrite TRUE)
         endif()
         if(${CMAKE_CURRENT_SOURCE_DIR}/tools/gamespell_extra.txt IS_NEWER_THAN ${EIDOS_GAMESPELL_H})
@@ -233,6 +260,11 @@ endif()
 option(EIDOS_TCBL_MATCHED
        "Compile the nine pointer-width-dependent tcbl sources as written (needs 32-bit pointers)"
        ${_eidos_tcbl_matched_default})
+set(_native_tcbl_default OFF)
+if(EIDOS_SOURCE_TREE STREQUAL "game" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(_native_tcbl_default ON)
+endif()
+option(EIDOS_NATIVE_TCBL "Use the pointer-typed src/game scheduler" ${_native_tcbl_default})
 if(EIDOS_TCBL_MATCHED AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
     message(FATAL_ERROR
         "EIDOS_TCBL_MATCHED=ON needs a target with 32-bit pointers; "
@@ -729,7 +761,13 @@ set(BW_TCBL_REIMPL
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_0203115C.c  # destroy every node
 )
 
-if(EIDOS_TCBL_MATCHED)
+if(EIDOS_NATIVE_TCBL)
+    list(REMOVE_ITEM BW_MATCHED_SOURCES
+        ${ALETHEIA_ROOT}/src/matched/arm9/sub_0203101C.c
+        ${ALETHEIA_ROOT}/src/matched/arm9/sub_02030FC8.c
+        ${ALETHEIA_ROOT}/src/matched/arm9/sub_020310C4.c)
+    list(APPEND BW_MATCHED_SOURCES ${ALETHEIA_ROOT}/src/game/arm9/tcbl.c)
+elseif(EIDOS_TCBL_MATCHED)
     list(APPEND BW_MATCHED_SOURCES ${BW_TCBL_MATCHED})
 else()
     list(APPEND BW_STUB_SOURCES ${BW_TCBL_REIMPL})
@@ -947,10 +985,13 @@ endif()
 # sdk/aliases.c and sdk/tcbl.c decide a handful of callee spellings by whether
 # the nine pointer-width-dependent tcbl sources are the matched ones
 # (EIDOS_TCBL_MATCHED=1) or the stubs/reimpl_ stand-ins (0).
-if(EIDOS_TCBL_MATCHED)
+if(EIDOS_TCBL_MATCHED OR EIDOS_NATIVE_TCBL)
     target_compile_definitions(eidos PUBLIC EIDOS_TCBL_MATCHED=1)
 else()
     target_compile_definitions(eidos PUBLIC EIDOS_TCBL_MATCHED=0)
+endif()
+if(EIDOS_NATIVE_TCBL)
+    target_compile_definitions(eidos PUBLIC EIDOS_NATIVE_TCBL=1)
 endif()
 target_include_directories(eidos PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk
@@ -1723,6 +1764,17 @@ foreach(t test_affine test_bg_affine test_window test_frame test_tcbl test_heap 
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
 
+if(EIDOS_SOURCE_TREE STREQUAL "game" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    foreach(t test_arena_native test_dma_native test_heap_records_native test_wire_address test_globals_native)
+        add_executable(${t} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${t}.c)
+        target_include_directories(${t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+        target_link_libraries(${t} PRIVATE eidos)
+        add_test(NAME ${t} COMMAND ${t})
+    endforeach()
+endif()
+add_test(NAME test_native_port_tools COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_macos_port_tools.py)
+
 # The mod layer's own tests need neither game data nor an oracle either.
 # test_mod_surface hashes the frozen ABI surface out of the headers and
 # compares it with the number stored beside the version in sdk/mod_api.h
@@ -1757,6 +1809,12 @@ foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_m
     target_link_libraries(${t} PRIVATE eidos)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
+
+# Isolate the restart test's backup-chip double from the real ARM7 chip.
+# Apple ld can pull that archive member to satisfy other weak references.
+target_sources(test_mod_restart PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_restart.c)
+target_compile_definitions(test_mod_restart PRIVATE
+    bw_arm7_backup_set_path=test_restart_backup_set_path)
 
 # test_mod_panel drives the run-status panel's model and its picture.  The
 # picture and the arrangement it is placed in are the platform layer's own
@@ -2386,6 +2444,14 @@ add_test(NAME test_ovlink_none COMMAND ${CMAKE_COMMAND}
 # metadata is always there); without the extract it reports itself skipped.
 set(BW_OVL_LIBRARY_SOURCES
     ${BW_MATCHED_ORIGINALS} ${BW_SDK_SOURCES} ${BW_STUB_SOURCES} ${BW_ENGINE_SOURCES})
+set(_real_overlay_default ON)
+if(EIDOS_SOURCE_TREE STREQUAL "game" AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+    # startmenu_types.h asserts DS pointer layouts. Keep the real overlay
+    # test available explicitly, but do not build it as a native LP64 test.
+    set(_real_overlay_default OFF)
+endif()
+option(EIDOS_REAL_OVERLAY_TESTS "Build the real title overlay tests" ${_real_overlay_default})
+if(EIDOS_REAL_OVERLAY_TESTS)
 add_executable(test_ovlink_real ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ovlink_real.c)
 target_include_directories(test_ovlink_real PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(test_ovlink_real PRIVATE eidos)
@@ -2402,6 +2468,20 @@ add_test(NAME test_ovlink_real_stub COMMAND ${CMAKE_COMMAND}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/expect_panic.cmake)
 if(NOT EIDOS_DATA_TESTS)
     set_tests_properties(test_ovlink_real_stub PROPERTIES DISABLED TRUE)
+endif()
+else()
+    add_test(NAME test_ovlink_real COMMAND ${CMAKE_COMMAND} -E false)
+    add_test(NAME test_ovlink_real_stub COMMAND ${CMAKE_COMMAND} -E false)
+    set_tests_properties(test_ovlink_real test_ovlink_real_stub PROPERTIES DISABLED TRUE)
+endif()
+
+if(APPLE)
+    add_test(NAME test_macos_link COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_macos_link.py)
+    add_test(NAME test_host_wasi COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_host_wasi.py)
+    add_test(NAME test_host_fiber COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_host_fiber.py)
 endif()
 
 # --- the ARM9 image's data (sdk/armdata.c, tools/armdata.py) ----------------
@@ -2707,6 +2787,7 @@ option(EIDOS_BOOT
        "Link the game's own boot (NitroMain and its closure) into eidos_boot" OFF)
 
 add_executable(eidos_boot ${CMAKE_CURRENT_SOURCE_DIR}/demo/eidos_boot.c)
+target_include_directories(eidos_boot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform)
 target_link_libraries(eidos_boot PRIVATE eidos)
 # A release build (docs/release.md) compiles in no data root: the build
 # machine's path means nothing to a player, so the game looks in the user
@@ -2769,11 +2850,14 @@ endif()
 # A linker map, so a crash report's `exe+0x...` names its function.  The
 # boot's crash filter (sdk/plat_crash.c) reports the executable offset; the
 # map is what turns it into a symbol (a crash log without one names no
-# function).  GNU ld writes it with -Wl,-Map,<file>, MSVC with /MAP:<file>.
+# function).  GNU ld uses -Map, Apple ld uses -map, MSVC uses /MAP:.
 # It lands at <build>/eidos_boot.map.
 if(MSVC)
     target_link_options(eidos_boot PRIVATE
         "/MAP:${CMAKE_BINARY_DIR}/eidos_boot.map")
+elseif(APPLE)
+    target_link_options(eidos_boot PRIVATE
+        "-Wl,-map,${CMAKE_BINARY_DIR}/eidos_boot.map")
 else()
     target_link_options(eidos_boot PRIVATE
         "-Wl,-Map,${CMAKE_BINARY_DIR}/eidos_boot.map")
@@ -2783,7 +2867,9 @@ endif()
 # question (engine/platform/mod_options_proc.c, "The keyboard's
 # question"): the message read goes through the port first.  GNU ld only;
 # elsewhere the keyboard keeps the game's question.
-if(NOT MSVC AND TARGET eidos_platform)
+# Apple ld has no --wrap support. Keep all four GNU-only hooks below out
+# of Mach-O builds, including their __real_* references.
+if(NOT MSVC AND NOT APPLE AND TARGET eidos_platform)
     target_link_options(eidos_boot PRIVATE "-Wl,--wrap=MSGDATA_ReadString")
     target_compile_definitions(eidos_platform PRIVATE EIDOS_WRAP_MSGDATA=1)
 endif()
@@ -2793,7 +2879,7 @@ endif()
 # (GFL_USE_UpdateFrameSubsystems, right after the sound update), and the
 # interface's queued sounds go through it first (engine/ui/ui.c,
 # eidos_ui_game_frame).  GNU ld only, and only with the game's boot.
-if(NOT MSVC AND EIDOS_BOOT AND TARGET eidos_platform)
+if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
     target_link_options(eidos_boot PRIVATE "-Wl,--wrap=PM_VOICE_StopFinished")
     target_compile_definitions(eidos_platform PRIVATE EIDOS_WRAP_PMVOICE=1)
 endif()
@@ -2801,7 +2887,7 @@ endif()
 # Instant text (Extras): the game's text streams start, and change speed,
 # through the port first (engine/platform/text_instant.c).  GNU ld only, and
 # only with the game's boot and the settings in the link.
-if(NOT MSVC AND EIDOS_BOOT AND TARGET eidos_platform)
+if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
     target_sources(eidos_boot PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/text_instant.c)
     target_include_directories(eidos_boot PRIVATE
@@ -2816,7 +2902,7 @@ endif()
 # game's scenery draws are wrapped (sdk/battle_view.c) and the real map is
 # built and placed beside them (engine/world).  GNU ld only, with the game's boot
 # and the settings in the link.
-if(NOT MSVC AND EIDOS_BOOT AND TARGET eidos_platform)
+if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
     target_sources(eidos_boot PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_view.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_place.c

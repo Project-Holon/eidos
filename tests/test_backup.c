@@ -44,8 +44,8 @@
 #define CHIP     0x80000u
 
 /* Matched ARM9 SDK code, declared as the matched files do.                 */
-typedef void (*Arm9Cb)(int tag, unsigned long data, BOOL err);
-extern int  PXI_SendWordByFifo(int fifotag, unsigned long data, BOOL err);
+typedef void (*Arm9Cb)(int tag, u32 data, BOOL err);
+extern int  PXI_SendWordByFifo(int fifotag, u32 data, BOOL err);
 extern void PXI_SetFifoRecvCallback(int fifotag, Arm9Cb callback);
 extern BOOL func_020885EC(int fifotag, int proc);      /* PXI_IsCallbackReady */
 extern void func_02088498(void);                        /* PXI_Init           */
@@ -64,24 +64,24 @@ struct NvramBss { u32 nvramInitialized; u8 pad_4[0x1C]; u32 nvramTemp[8]; };
 extern struct NvramBss nvramBss;
 extern void CARDi_InitCommand(void);                        /* CARDi_InitCommand  */
 extern BOOL CARD_IdentifyBackup(int type);                    /* CARD_IdentifyBackup */
-extern BOOL CARDi_RequestStreamCommand(unsigned long src, unsigned long dst,
-                          unsigned long len, void (*cb)(void *), void *arg,
+extern BOOL CARDi_RequestStreamCommand(u32 src, u32 dst,
+                          u32 len, void (*cb)(void *), void *arg,
                           BOOL async, int req_type, int req_retry,
                           int req_mode);        /* CARDi_RequestStreamCommand */
 typedef void (*NvCb)(int result, void *arg);
 extern void NVRAMi_Init(void);                        /* NVRAMi_Init        */
 extern int  NVRAMi_IsInitialized(void);                 /* backup_doubles.c   */
-extern int  NVRAMi_ReadAsync(unsigned long a, unsigned long n, void *p, NvCb cb,
+extern int  NVRAMi_ReadAsync(u32 a, u32 n, void *p, NvCb cb,
                           void *arg);                   /* NVRAMi_ReadAsync   */
-extern int  NVRAMi_WriteAsync(unsigned long a, unsigned long n, void *p, NvCb cb,
+extern int  NVRAMi_WriteAsync(u32 a, u32 n, void *p, NvCb cb,
                           void *arg);                   /* NVRAMi_WriteAsync  */
-extern int  NVRAMi_VerifyAsync(unsigned long a, unsigned long n, void *p, NvCb cb,
+extern int  NVRAMi_VerifyAsync(u32 a, u32 n, void *p, NvCb cb,
                           void *arg);                   /* NVRAMi_VerifyAsync */
 typedef struct {
     int type;
     void *buffer;
-    unsigned long size;
-    unsigned long rate;
+    u32 size;
+    u32 rate;
     BOOL loop_enable;
     void (*full_callback)(int result, void *arg);
     void *full_arg;
@@ -90,7 +90,7 @@ extern void MIC_Init(void);                        /* MIC_Init           */
 extern int  MIC_StartAutoSamplingAsync(const MicAutoParam *param,
                           void (*cb)(int result, void *arg), void *arg);
 extern int  MIC_StopAutoSamplingAsync(void (*cb)(int result, void *arg), void *arg);
-extern int  WmInitCore(void *buf, u16 dma, unsigned long size); /* WmInitCore */
+extern int  WmInitCore(void *buf, u16 dma, u32 size); /* WmInitCore */
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -98,10 +98,10 @@ extern int  WmInitCore(void *buf, u16 dma, unsigned long size); /* WmInitCore */
 /* ------------------------------------------------------------------ */
 
 #define REC_MAX 64
-static struct { int tag; unsigned long data; int err; } g_rec[REC_MAX];
+static struct { int tag; u32 data; int err; } g_rec[REC_MAX];
 static int g_nrec;
 
-static void recorder(int tag, unsigned long data, BOOL err)
+static void recorder(int tag, u32 data, BOOL err)
 {
     if (g_nrec < REC_MAX) {
         g_rec[g_nrec].tag = tag;
@@ -165,7 +165,7 @@ static u32 card_request(int req)
 {
     g_nrec = 0;
     cmd_set(0x00, 0xEEEEEEEEu);
-    (void)PXI_SendWordByFifo(BW_PXI_TAG_FS, (unsigned long)req, 1);
+    (void)PXI_SendWordByFifo(BW_PXI_TAG_FS, (u32)req, 1);
     return cmd_get(0x00);
 }
 
@@ -369,7 +369,7 @@ static union { u8 b[32]; u64 align; } g_temp;
 #define SPI_START 0x02000000u
 #define SPI_END   0x01000000u
 
-static unsigned long spi_reply(int tag)
+static u32 spi_reply(int tag)
 {
     int i;
 

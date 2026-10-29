@@ -194,7 +194,7 @@ extern void POKE_TOOL_SetPartyValue(struct PokemonParam *mon, u32 paramId,
                                     u32 value) BW_PORT_WEAK;
 extern void POKE_TOOL_SetMoveSlot(struct PokemonParam *mon, u16 move, u32 slot)
     BW_PORT_WEAK;
-extern void POKEPARTY_RemoveMember(struct Party *party, s32 pos) BW_PORT_WEAK;
+extern u32 POKEPARTY_RemoveMember(struct Party *party, s32 pos) BW_PORT_WEAK;
 
 /* The battle view's messages. */
 extern void BTLV_SCU_InitMessage(struct BtlvMessage *msg, int kind, int id)

@@ -60,7 +60,7 @@
 #include "stubs.h"
 #include "../sdk/tcbl.h"
 
-extern void sub_020307B0(void *block);
+extern void func_020307B0(void *block);
 extern void sub_02030F34(void *list, void *node);
 
 void sub_02030F70(void *node)
@@ -71,7 +71,7 @@ void sub_02030F70(void *node)
     if (n->work != 0u) {
         /* The original does not clear the field afterwards: every path that
          * hands the node out again writes +0x10 first. */
-        sub_020307B0((void *)(uintptr_t)n->work);
+        func_020307B0((void *)(uintptr_t)n->work);
     }
 
     n->prev->next = n->next;

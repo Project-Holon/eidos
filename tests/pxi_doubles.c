@@ -49,7 +49,7 @@ TestObj g_02151428;                    /* external.o (RTC) .bss            */
 TestObj cardi_common[8];               /* CARDiCommon, 0x560+ bytes        */
 
 void PMi_ProceedToExit(int factor) { (void)factor; }
-unsigned long RTCEXi_CommonCallback(void) { return 4; }
+u32 RTCEXi_CommonCallback(void) { return 4; }
 int OS_IsRunOnTwl(void) { return 0; }
 void CTRDGi_InitCommon(void) { }
 
@@ -61,15 +61,15 @@ void CTRDGi_InitCommon(void) { }
 extern void func_020884A4(void);                    /* PXI_InitFifo, sdk/pxi.c */
 void PXI_InitFifo(void) { func_020884A4(); }
 
-extern int PXI_SendWordByFifo(int fifotag, unsigned long data, BOOL err);
-int func_02088610(int fifotag, unsigned long data, BOOL err)
+extern int PXI_SendWordByFifo(int fifotag, u32 data, BOOL err);
+int func_02088610(int fifotag, u32 data, BOOL err)
 {
     return PXI_SendWordByFifo(fifotag, data, err);
 }
 
 /* RtcSendPxiCommand (0x02088F2C) is the matched file's own name since
  * aletheia's wave 19; this file only calls it. */
-extern BOOL RtcSendPxiCommand(unsigned long command);
+extern BOOL RtcSendPxiCommand(u32 command);
 
 /* RTCi_ReadRawDateTimeAsync is a three-instruction asm veneer in aletheia:
  * `mov r0, #0x10` and a tail call of RtcSendPxiCommand.                    */
@@ -79,7 +79,7 @@ BOOL RTCi_ReadRawDateTimeAsync(void)
 }
 
 extern void MSL_C_LIB_EmptyStub(void);
-void CTRDGi_DummyCallback(int tag, unsigned long data, BOOL err)
+void CTRDGi_DummyCallback(int tag, u32 data, BOOL err)
 {
     (void)tag;
     (void)data;

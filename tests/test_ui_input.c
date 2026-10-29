@@ -21,6 +21,7 @@
 #include "ui.h"
 #include "port.h"
 #include "port_test.h"
+#include "ds_fixture.h"
 
 extern const EidosUiRecipe *const ui_recipes_input[];
 extern const u32 ui_recipes_input_count;
@@ -38,11 +39,17 @@ void *bw_dsref_g_ProcSys;
 static int g_mx = -1, g_my = -1, g_click;
 static int g_tap_n, g_tap_x, g_tap_y;
 static u32 g_press;
+static EidosUiRect g_hit_rects[256];
+static int g_hit_count, g_collect_hits;
+static unsigned g_fixture_generation;
 
 int eidos_ui_hit(EidosUiRect r)
 {
     int s = 0;
 
+    if (g_collect_hits && r.w > 0 && r.h > 0 && g_hit_count < 256) {
+        g_hit_rects[g_hit_count++] = r;
+    }
     if (g_mx >= r.x && g_my >= r.y && g_mx < r.x + r.w && g_my < r.y + r.h) {
         s |= EIDOS_UI_HOVER;
         if (g_click) {
@@ -90,13 +97,13 @@ void eidos_ui_press(u32 keys, u32 frames)
 
 static void w32(void *b, u32 off, u32 v) { memcpy((unsigned char *)b + off, &v, 4); }
 static void w16(void *b, u32 off, u32 v) { u16 x = (u16)v; memcpy((unsigned char *)b + off, &x, 2); }
-static void wp(void *b, u32 off, void *p) { memcpy((unsigned char *)b + off, &p, sizeof(p)); }
 
 static unsigned char g_gs[0x34], g_procsys[0x20], g_proc[0x20];
 
 /* The game system with one app proc on its stack. */
 static void game_set(int overlay, void *work)
 {
+    ++g_fixture_generation;
     memset(g_gs, 0, sizeof(g_gs));
     memset(g_procsys, 0, sizeof(g_procsys));
     memset(g_proc, 0, sizeof(g_proc));
@@ -112,7 +119,7 @@ static void game_set(int overlay, void *work)
 static unsigned char g_nw[0x2D4], g_args[0x2C];
 static unsigned char g_m0[4 + 13 * 5 * 2], g_m1[4 + 13 * 5 * 2], g_m2[4 + 13 * 5 * 2];
 static unsigned char g_m3[4 + 10 * 3 * 2], g_m4[4 + 10 * 3 * 2];
-static void *g_members[5];
+static u32 g_members[5];
 
 static void grid_fill(unsigned char *m, int w, int h, const u16 *cells)
 {
@@ -173,8 +180,8 @@ static void name_build(int kind, int species, int page, int shift)
         }
         grid_fill(p == 0 ? g_m3 : g_m4, 10, 3, q);
     }
-    g_members[0] = g_m0; g_members[1] = g_m1; g_members[2] = g_m2;
-    g_members[3] = g_m3; g_members[4] = g_m4;
+    wp(g_members, 0, g_m0); wp(g_members, 4, g_m1); wp(g_members, 8, g_m2);
+    wp(g_members, 12, g_m3); wp(g_members, 16, g_m4);
 
     memset(g_nw, 0, sizeof(g_nw));
     memset(g_args, 0, sizeof(g_args));
@@ -300,7 +307,9 @@ static int run_recipe(int idx, int w, int h, int k, const char *out, EidosUiCanv
 
 static int g_fail;
 
-#define CHECK(cond, msg) do { if (!(cond)) { printf("FAIL: %s (line %d)\n", msg, __LINE__); g_fail = 1; } } while (0)
+#define CHECK(cond, msg) do { bw_checks++; if (!(cond)) { \
+    printf("FAIL: %s (line %d)\n", msg, __LINE__); \
+    bw_failures++; g_fail = 1; } } while (0)
 
 static int click_at(int idx, int w, int h, int k, int x, int y)
 {
@@ -318,21 +327,38 @@ static int click_at(int idx, int w, int h, int k, int x, int y)
     return rc;
 }
 
-/* Find the key a click should hit: scan the canvas for the cell centre by
- * trying a grid of points and keeping the taps they produce. */
+/* Exercise each exposed control once per fixture and retain its DS tap.
+ * Expected tap coordinates still come from the game's documented layout. */
 static int taps_seen(int idx, int w, int h, int k, int tx, int ty)
 {
-    int x, y, found = 0;
+    static unsigned generation;
+    static int last_idx = -1, last_w, last_h, last_k, count;
+    static int tap_x[256], tap_y[256];
+    int i;
 
-    for (y = 20; y < h - 17 && !found; y += 5) {
-        for (x = 6; x < w - 6 && !found; x += 5) {
-            click_at(idx, w, h, k, x, y);
-            if (g_tap_n > 0 && g_tap_x == tx && g_tap_y == ty) {
-                found = 1;
+    if (generation != g_fixture_generation || last_idx != idx ||
+        last_w != w || last_h != h || last_k != k) {
+        EidosUiCanvas cv;
+
+        generation = g_fixture_generation;
+        last_idx = idx; last_w = w; last_h = h; last_k = k;
+        count = g_hit_count = 0;
+        g_collect_hits = 1;
+        run_recipe(idx, w, h, k, NULL, &cv);
+        g_collect_hits = 0;
+        free(cv.rgba);
+        for (i = 0; i < g_hit_count; ++i) {
+            EidosUiRect r = g_hit_rects[i];
+            click_at(idx, w, h, k, r.x + r.w / 2, r.y + r.h / 2);
+            if (g_tap_n > 0) {
+                tap_x[count] = g_tap_x;
+                tap_y[count++] = g_tap_y;
             }
         }
     }
-    return found;
+    for (i = 0; i < count; ++i)
+        if (tap_x[i] == tx && tap_y[i] == ty) return 1;
+    return 0;
 }
 
 static int test_name(const char *outdir)
@@ -420,6 +446,7 @@ int main(int argc, char **argv)
     int rc = 0;
 
     BW_TEST_SETUP(argc, argv);
+    bw_ds_reset();
     rc |= test_name(out);
     rc |= test_xtrans(out);
     if (rc == 0) {

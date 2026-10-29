@@ -369,6 +369,7 @@ list(APPEND EIDOS_BOOT_PORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/boot/gx.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/boot/math.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/boot/card.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/boot/card_state.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/boot/rtc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/boot/os.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/boot/dwc_memfunc.c
@@ -398,7 +399,10 @@ if(EIDOS_SOURCE_TREE STREQUAL "game")
         ${CMAKE_CURRENT_SOURCE_DIR}/stubs/unit_members.c
         ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_02050DB8.c)
 endif()
-if(NOT EIDOS_TCBL_MATCHED)
+if(EIDOS_NATIVE_TCBL)
+    # The whole pointer-typed scheduler is already compiled into eidos.
+    list(APPEND EIDOS_BOOT_SHIM_REPLACED src/game/arm9/tcbl.c)
+elseif(NOT EIDOS_TCBL_MATCHED)
     # stubs/reimpl_ for the nine tcbl files (CMakeLists.txt, "Pointer
     # width"): the overlays' ARM9 callees reach the matched ones.
     foreach(_tcbl ${BW_TCBL_MATCHED})
@@ -712,6 +716,23 @@ target_include_directories(eidos_boot_game PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs)
 target_compile_definitions(eidos_boot_game PRIVATE
     $<TARGET_PROPERTY:eidos,INTERFACE_COMPILE_DEFINITIONS>)
+if(EIDOS_SOURCE_TREE STREQUAL "game")
+    target_compile_definitions(eidos_boot_game PRIVATE EIDOS_NATIVE_CARD_STATE=1)
+    target_include_directories(eidos_boot_game PRIVATE ${ALETHEIA_ROOT}/src/game/arm9)
+    add_executable(test_tcb_native ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tcb_native.c
+        ${CMAKE_BINARY_DIR}/dsaddr/game/arm9/tcb_list.c)
+    add_executable(test_card_state_native
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_card_state_native.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/sdk/boot/card_state.c)
+    target_compile_definitions(test_card_state_native PRIVATE EIDOS_NATIVE_CARD_STATE=1)
+    foreach(t test_tcb_native test_card_state_native)
+        add_dependencies(${t} eidos_boot_copies)
+        target_include_directories(${t} PRIVATE
+            ${CMAKE_BINARY_DIR}/dsaddr/game/arm9
+            ${ALETHEIA_ROOT}/src/game/arm9 ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+        add_test(NAME ${t} COMMAND ${t})
+    endforeach()
+endif()
 
 # The matched files keep the warning exemptions the eidos library gives
 # them (CMakeLists.txt), plus the ones the boot's 1100 files raise under

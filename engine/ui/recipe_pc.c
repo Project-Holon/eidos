@@ -132,7 +132,7 @@ static u8 *pc_gs_cell(void) { return g_pc_test_gs_cell; }
 static int pc_identity(void) { return 1; }
 static u8 *gptr(u32 v)
 {
-    return v < 0x1000u ? NULL : (u8 *)(PcPtr)v;
+    return v != 0 ? (u8 *)bw_ds_try_ptr(v) : NULL;
 }
 #else
 static u8 *pc_gs_cell(void) { return (u8 *)bw_ds_try_ptr(GS_ADDR_PTR); }

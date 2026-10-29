@@ -38,42 +38,42 @@ u32  OS_EnableInterrupts(void);
 u32  OS_ResetRequestIrqMask(u32 intr);    /* sdk/os_interrupt.c */
 
 /* Matched ARM9 SDK code under test, declared as the matched files do.      */
-typedef void (*Arm9Cb)(int tag, unsigned long data, BOOL err);
-extern int  PXI_SendWordByFifo(int fifotag, unsigned long data, BOOL err);
+typedef void (*Arm9Cb)(int tag, u32 data, BOOL err);
+extern int  PXI_SendWordByFifo(int fifotag, u32 data, BOOL err);
 extern void PXI_SetFifoRecvCallback(int fifotag, Arm9Cb callback);
 extern BOOL PXI_IsCallbackReady(int fifotag, int proc);
 extern void PXIi_HandlerRecvFifoNotEmpty(void);
 extern void OS_InitReset(void);                /* OS: PXI init + tag 12   */
 extern void OSi_SendToPxi(u16 data);
 extern void OS_InitLock(void);                /* OS_InitLock             */
-extern void PMi_SendPxiData(unsigned long data);
-extern unsigned long PM_SendUtilityCommandAsync(unsigned long number,
+extern void PMi_SendPxiData(u32 data);
+extern u32 PM_SendUtilityCommandAsync(u32 number,
         u16 parameter, u16 *retValue,
-        void (*callback)(unsigned long, void *), void *arg);
-extern void PMi_CallCallbackAndUnlock(unsigned long result);
+        void (*callback)(u32, void *), void *arg);
+extern void PMi_CallCallbackAndUnlock(u32 result);
 #if BW_TEST_PM_MATCHED
 extern void PM_Init(void);                /* PM_Init                 */
-extern unsigned long PM_SendUtilityCommand(unsigned long number,
+extern u32 PM_SendUtilityCommand(u32 number,
         u16 parameter, u16 *retValue);
-extern unsigned long PM_GetAmp(int *swBuf);
+extern u32 PM_GetAmp(int *swBuf);
 #endif
 extern void RTC_Init(void);                /* RTC_Init                */
 extern int  RTCi_WriteRawStatus2Async(void);
-extern BOOL RtcSendPxiCommand(unsigned long command);
-typedef struct { unsigned long year, month, day; int week; } RTCDate;
-typedef struct { unsigned long hour, minute, second; } RTCTime;
+extern BOOL RtcSendPxiCommand(u32 command);
+typedef struct { u32 year, month, day; int week; } RTCDate;
+typedef struct { u32 hour, minute, second; } RTCTime;
 extern int RTC_GetDateTimeAsync(RTCDate *date, RTCTime *time,
                          void (*cb)(int result, void *arg), void *arg);
 extern void CTRDG_DummyInit(void);                /* CTRDG_DummyInit         */
-extern void CARDi_OnFifoRecv(int tag, unsigned long data, BOOL err);
+extern void CARDi_OnFifoRecv(int tag, u32 data, BOOL err);
 extern void RequestCommandProc(void);                /* SND RequestCommandProc  */
 
 /* A recording ARM9 callback.                                              */
 #define REC_MAX 32
-static struct { int tag; unsigned long data; int err; } g_rec[REC_MAX];
+static struct { int tag; u32 data; int err; } g_rec[REC_MAX];
 static int g_nrec;
 
-static void recorder(int tag, unsigned long data, BOOL err)
+static void recorder(int tag, u32 data, BOOL err)
 {
     if (g_nrec < REC_MAX) {
         g_rec[g_nrec].tag = tag;
@@ -211,9 +211,9 @@ static void test_os_sync(void)
 }
 
 static int g_pm_result_calls;
-static unsigned long g_pm_result;
+static u32 g_pm_result;
 
-static void pm_done(unsigned long result, void *arg)
+static void pm_done(u32 result, void *arg)
 {
     (void)arg;
     g_pm_result_calls++;
@@ -221,7 +221,7 @@ static void pm_done(unsigned long result, void *arg)
 }
 
 #if !BW_TEST_PM_MATCHED
-static void pm_unlock(int tag, unsigned long data, BOOL err)
+static void pm_unlock(int tag, u32 data, BOOL err)
 {
     recorder(tag, data, err);
     PMi_CallCallbackAndUnlock(0);
@@ -328,15 +328,15 @@ static void test_ctrdg(void)
 
 /*
  * CARDiCommon as src/matched/arm9_sdk/CARDi_OnFifoRecv.c declares it, for the
- * offset of the thread CARDi_OnFifoRecv wakes (its `u32` is unsigned long).
+ * offset of the thread CARDi_OnFifoRecv wakes. DS scalars stay 32 bits.
  */
 typedef struct {
     void *cmd;
-    unsigned long flag;
-    unsigned long priority;
-    unsigned long flush_threshold_ic;
-    unsigned long flush_threshold_dc;
-    long lock_owner;
+    u32 flag;
+    u32 priority;
+    u32 flush_threshold_ic;
+    u32 flush_threshold_dc;
+    s32 lock_owner;
     int lock_ref;
     OSThreadQueue lock_queue[1];
     int lock_target;
@@ -345,7 +345,7 @@ typedef struct {
     void (*callback)(void *);
     void *callback_arg;
     OSThreadQueue busy_q[1];
-    unsigned long src, dst, len, dma;
+    u32 src, dst, len, dma;
     void *DmaCall;
     int req_type, req_retry, req_mode;
     OSThread *current_thread_9;
@@ -423,7 +423,7 @@ static void test_unserved_and_depth(void)
     (void)OS_EnableInterrupts();
     BW_CHECK_EQ("depth: all delivered", g_nrec, 20);
     for (i = 0; i < 20 && i < REC_MAX; i++)
-        if (g_rec[i].data != (unsigned long)i)
+        if (g_rec[i].data != (u32)i)
             ordered = 0;
     BW_CHECK_EQ("depth: in order", ordered, 1);
     BW_CHECK_EQ("depth: receive FIFO empty",

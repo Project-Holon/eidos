@@ -148,7 +148,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#else
+#elif !defined(__wasi__)
 #include <dlfcn.h>
 #endif
 
@@ -463,7 +463,12 @@ typedef void *BwModLibrary;
  */
 static BwModLibrary library_open(const char *path)
 {
-#ifdef _WIN32
+#ifdef __wasi__
+    /* A host dylib cannot exchange game pointers or callbacks with wasm32.
+     * Data-only mods still work; executable mods need the mod wasm runtime. */
+    fprintf(stderr, "eidos: native mod libraries are unavailable in the wasm32 game (%s)\n", path);
+    return NULL;
+#elif defined(_WIN32)
     wchar_t wide[BW_MOD_LOADER_PATH_MAX];
 
     if (MultiByteToWideChar(CP_UTF8, 0, path, -1, wide,
@@ -490,7 +495,9 @@ static void library_close(BwModLibrary library)
     if (library == NULL) {
         return;
     }
-#ifdef _WIN32
+#ifdef __wasi__
+    (void)library;
+#elif defined(_WIN32)
     FreeLibrary((HMODULE)library);
 #else
     dlclose(library);
@@ -504,7 +511,11 @@ static void library_close(BwModLibrary library)
  */
 static void *library_symbol(BwModLibrary library, const char *name)
 {
-#ifdef _WIN32
+#ifdef __wasi__
+    (void)library;
+    (void)name;
+    return NULL;
+#elif defined(_WIN32)
     return (void *)GetProcAddress((HMODULE)library, name);
 #else
     return dlsym(library, name);

@@ -325,7 +325,7 @@ static void load_bank(void)
     g_bank.bank_size = make_sbnk(g_bank.bank);
     g_bank.wave_size = make_swar(g_bank.wave);
     /* SND_AssignWaveArc's effect on the bank: waveArcLink[0].waveArc. */
-    wr32(g_bank.bank + 0x18, (u32)ptr_arg(g_bank.wave, DS_WAVE));
+    wr32(g_bank.bank + 0x18, DS_WAVE);
 }
 
 /* Write an SSEQ around `body` in player `player`'s slot.  Returns the DS
@@ -1243,7 +1243,7 @@ static int load_real(const BwSdat *sd, u32 seq, Loaded *l)
         arc = load_file(sd, file_id, at, &size);
         if (arc == NULL)
             continue;
-        wr32(l->bank + 0x18 + 8 * i, (u32)ptr_arg(arc, at));
+        wr32(l->bank + 0x18 + 8 * i, at);
         at += (size + 0xFFFu) & ~0xFFFu;
     }
     return 0;

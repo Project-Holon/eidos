@@ -1040,6 +1040,17 @@ static long host_offset(uintptr_t h, const void *base, size_t size)
     return -1;
 }
 
+u32 bw_ds_wire_addr(uintptr_t value)
+{
+    u32 address;
+    if (value <= UINT32_MAX)
+        return (u32)value;
+    address = bw_ds_addr_of((const void *)value);
+    if (!address)
+        bw_panic("bw_ds_wire_addr", 0, "native pointer has no DS address");
+    return address;
+}
+
 u32 bw_ds_addr_of(const void *host)
 {
     uintptr_t h = (uintptr_t)host;

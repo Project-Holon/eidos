@@ -21,9 +21,8 @@
  *   anything else: unsupported (the type reverts to NOT_USE and the
  *     command's result is CARD_RESULT_UNSUPPORTED).
  *
- * cardi_common (0x02150200) is ARM9 data; its first word is the command
- * block's address, read here through bw_ds_ptr (a host pointer on the
- * 32-bit reference host after relocation, docs/armdata.md).
+ * cardi_common's first field is the native command pointer. Its storage
+ * lives in card_state.c; the shared command itself keeps its DS wire layout.
  */
 
 #include <string.h>
@@ -87,7 +86,7 @@ void CARDi_IdentifyBackupCore2(u32 type);
 
 static BwCardCommandArg *card_cmd(void)
 {
-    return (BwCardCommandArg *)(uintptr_t)*(volatile u32 *)bw_ds_ptr(CARDI_COMMON);
+    return *(BwCardCommandArg **)bw_ds_ptr(CARDI_COMMON);
 }
 
 static int eeprom(BwCardBackupSpec *s, u32 size)

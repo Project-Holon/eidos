@@ -307,6 +307,16 @@ class SourceFile:
         self._symbols(text)
         code = strip_c(text)
         self._scan(code)
+        # src/game now shares extern object declarations through headers.
+        # A referenced data symbol in the unit's address manifest still
+        # needs a binding when its declaration is no longer in this file.
+        self.extern_objects.update(
+            name for name, row in self.symbols.items()
+            if row[1] == "data" and name in self.identifiers
+            and name not in self.defined_objects
+            and name not in self.defined_functions
+            and name not in self.extern_functions
+            and name not in self.shadowed)
         # A function declared `static` anywhere in the file is internal even
         # when its definition omits the keyword (C keeps the first linkage):
         # src/game/arm9/game_beacon.c's GAME_BEACON_WriteItemUse.

@@ -127,28 +127,44 @@ static volatile u32 *bw_arena_slot(u32 table, u32 id)
     return (volatile u32 *)bw_ds_ptr(table + (id << 2));
 }
 
+/* The shared table is DS data: keep DS addresses in its 32-bit slots,
+ * translating at the API boundary rather than truncating host pointers. */
+static void *bw_arena_host(u32 address)
+{
+    return address != 0 ? bw_ds_ptr(address) : NULL;
+}
+
+static u32 bw_arena_address(const void *host)
+{
+    u32 address;
+    if (host == NULL) return 0;
+    address = bw_ds_addr_of(host);
+    if (address != 0) return address;
+    return bw_ds_wire_addr((uintptr_t)host); /* Accept numeric SDK linker constants. */
+}
+
 /* OS_GetArenaHi at 0x0208656C. */
 void *OS_GetArenaHi(u32 id)
 {
-    return (void *)(uintptr_t)*bw_arena_slot(BW_ARENA_HI_TABLE, id);
+    return bw_arena_host(*bw_arena_slot(BW_ARENA_HI_TABLE, id));
 }
 
 /* OS_GetArenaLo at 0x02086580. */
 void *OS_GetArenaLo(u32 id)
 {
-    return (void *)(uintptr_t)*bw_arena_slot(BW_ARENA_LO_TABLE, id);
+    return bw_arena_host(*bw_arena_slot(BW_ARENA_LO_TABLE, id));
 }
 
 /* OS_SetArenaHi at 0x02086760. */
 void OS_SetArenaHi(u32 id, void *hi)
 {
-    *bw_arena_slot(BW_ARENA_HI_TABLE, id) = (u32)(uintptr_t)hi;
+    *bw_arena_slot(BW_ARENA_HI_TABLE, id) = bw_arena_address(hi);
 }
 
 /* OS_SetArenaLo at 0x02086774. */
 void OS_SetArenaLo(u32 id, void *lo)
 {
-    *bw_arena_slot(BW_ARENA_LO_TABLE, id) = (u32)(uintptr_t)lo;
+    *bw_arena_slot(BW_ARENA_LO_TABLE, id) = bw_arena_address(lo);
 }
 
 /*
@@ -158,16 +174,17 @@ void OS_SetArenaLo(u32 id, void *lo)
  */
 void *bw_os_alloc_from_arena_lo(u32 id, u32 size, u32 align)
 {
-    u32 lo = (u32)(uintptr_t)OS_GetArenaLo(id);
-    u32 start;
-    u32 end;
+    uintptr_t lo = (uintptr_t)OS_GetArenaLo(id);
+    uintptr_t start;
+    uintptr_t end;
+    uintptr_t mask = (uintptr_t)align - 1u;
 
     if (lo == 0) {
         return NULL;
     }
-    start = (lo + align - 1u) & ~(align - 1u);
-    end = (start + size + align - 1u) & ~(align - 1u);
-    if (end > (u32)(uintptr_t)OS_GetArenaHi(id)) {
+    start = (lo + mask) & ~mask;
+    end = (start + size + mask) & ~mask;
+    if (end > (uintptr_t)OS_GetArenaHi(id)) {
         return NULL;
     }
     OS_SetArenaLo(id, (void *)(uintptr_t)end);

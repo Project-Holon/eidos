@@ -35,12 +35,17 @@ extern int            NNSi_FndRecycleRegion(struct MBlockList *list, int *info);
 
 void NNS_FndFreeToExpHeap(struct ExpHeap *heap, void *block)
 {
+#if !EIDOS_HEAP_MATCHED
+    (void)heap;
+    bw_block_free(block);
+#else
     struct MBlock *hdr = (struct MBlock *)((u8 *)block - 0x10);
     int            region[2];
 
     NNSi_FndGetMBlockRegion(region, hdr);
     NNSi_FndRemoveMBlock(&heap->usedList, hdr);
     NNSi_FndRecycleRegion(&heap->freeList, region);
+#endif
 }
 
 /*

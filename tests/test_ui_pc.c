@@ -31,6 +31,7 @@
 #define BW_PC_TEST 1
 #include "recipe_pc.c"
 #include "port_test.h"
+#include "ds_fixture.h"
 
 u8 *g_pc_test_gs_cell;
 const u8 *g_pc_test_lists[6];
@@ -164,7 +165,6 @@ void BGWINFRM_GetPos(void *wk, u32 idx, s8 *x, s8 *y)
 }
 
 static void w32(void *b, u32 off, u32 v) { memcpy((unsigned char *)b + off, &v, 4); }
-static void wp(void *b, u32 off, void *p) { memcpy((unsigned char *)b + off, &p, sizeof(p)); }
 
 static unsigned char g_gs[0x34], g_procsys[0x20], g_proc[0x20], g_task[0x30], g_params[0x40];
 static unsigned char g_nested[0x20], g_work[0xA200], g_winmgr[16], g_gd[16], g_partyobj[16];
@@ -199,9 +199,9 @@ static void game_set(int overlay, int mode, int state)
     g_pc_test_gs_cell = (u8 *)g_gs;
     /* the gs cell is a pointer to the game system */
     {
-        static void *cell;
+        static u32 cell;
 
-        cell = g_gs;
+        cell = fixture_address(g_gs);
         g_pc_test_gs_cell = (u8 *)&cell;
     }
 }
@@ -834,6 +834,7 @@ int main(int argc, char **argv)
     const char *out = getenv("UI_PC_OUT");
 
     BW_TEST_SETUP(argc, argv);
+    bw_ds_reset();
     drag_env_set();
     test_scene();
     test_layout();

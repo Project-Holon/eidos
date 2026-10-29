@@ -116,16 +116,28 @@ def plan(log, nm, objmap):
     defines = {}
     adapters = {}
     for sym, sides in parse_log(log):
-        paths = [objmap.get(o) for _, o in sides]
-        if None in paths:
-            continue
-        defs = [sym in defined_symbols(nm, p) for p in paths]
+        defs = []
+        paths = []
+        for sig, obj in sides:
+            if re.search(r"\.a\([^)]+\)$", obj):
+                # Archive member: defines sym (that is why wasm-ld extracted it),
+                # but cannot be recompiled with -D defines.
+                defs.append(True)
+                paths.append(None)
+            else:
+                p = objmap.get(obj)
+                paths.append(p)
+                defs.append(sym in defined_symbols(nm, p) if p else False)
         if defs.count(True) != 1:
-            continue                    # both undefined: nothing to adapt to
-        callee = sides[defs.index(True)][0]
-        caller_sig = sides[defs.index(False)][0]
-        caller_obj = paths[defs.index(False)]
-        name, text = adapter(sym, caller_sig, callee)
+            continue                    # not exactly one defined: cannot adapt
+        callee_idx = defs.index(True)
+        caller_idx = defs.index(False)
+        caller_obj = paths[caller_idx]
+        if not caller_obj:
+            continue                    # caller not in objmap: cannot recompile
+        callee_sig = sides[callee_idx][0]
+        caller_sig = sides[caller_idx][0]
+        name, text = adapter(sym, caller_sig, callee_sig)
         adapters[name] = text
         defines.setdefault(caller_obj, {})[sym] = name
     return defines, adapters

@@ -45,6 +45,26 @@
 #include "dsmem_ext.h"
 #include "armdata.h"
 
+/* Pointer-bearing boot singletons need independent host storage: adjacent
+ * four-byte DS pointer cells cannot each hold an eight-byte host pointer.
+ * Each registration below retains only its original DS address extent. */
+void *g_ProcSys;
+void *svsys;
+void *_pOverlayTables;
+void *_pTouchPanelWork;
+struct BwUiState {
+    void *context;
+    int (*bounds)(void *lower, void *upper);
+} gUiState;
+struct BwGflUseState {
+    void *vblank_arg;
+    u32 extra_heap;
+    void (*vblank_hook)(void *);
+    u32 frame_count;
+    void *runtime;
+    void *extra_heap_block;
+} _GflUse;
+
 /* ------------------------------------------------------------------ */
 /* g_Sink -- the assertion sink src/matched/sub_02034734.c dispatches to */
 /* ------------------------------------------------------------------ */
@@ -242,8 +262,8 @@ int bw_load_nature_table(void)
 
 struct BwEnvEntry {
     void *ptr00;     /* the heap handle */
-    u32   field04;   /* a child heap's parent id (func_0202FED8) */
-    u32   field08;   /* a child heap's region (func_0202FED8) */
+    void *field04;   /* parent heap handle */
+    void *field08;   /* child heap's region */
     u16   field0c;   /* live allocations; sub_02030098 increments it */
     u8    field0e;
 };
@@ -578,6 +598,19 @@ void bw_game_globals_register(void)
      * below owns resolves to that object.  Both are no-ops otherwise.
      */
     bw_data_reset_load();
+
+    g_ProcSys = NULL;
+    svsys = NULL;
+    _pOverlayTables = NULL;
+    _pTouchPanelWork = NULL;
+    memset(&gUiState, 0, sizeof(gUiState));
+    memset(&_GflUse, 0, sizeof(_GflUse));
+    BW_REG(0x02146990u, g_ProcSys, 4u);
+    BW_REG(0x02146994u, svsys, 4u);
+    BW_REG(0x021469B8u, _pOverlayTables, 4u);
+    BW_REG(0x021469BCu, gUiState, 8u);
+    BW_REG(0x021469C4u, _pTouchPanelWork, 4u);
+    BW_REG(0x020AA194u, _GflUse, 0x18u);
 
     BW_REG(0x0214699Cu, g_Sink, 0x10u);
     BW_REG(0x020A7EE0u, func_02048DDC_File, (u32)sizeof(func_02048DDC_File));

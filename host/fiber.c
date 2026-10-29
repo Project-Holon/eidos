@@ -56,6 +56,10 @@ typedef struct {
 static HostFiber g_fib[FIBERS_MAX];
 static int g_cur;
 
+#if defined(__APPLE__) && defined(__aarch64__)
+/* Referenced by the assembly entry below. */
+__attribute__((used, noinline))
+#endif
 static void fiber_run(int id)
 {
     w2c_game_bw_fiber_main(&g_game, (u32)id);
@@ -89,10 +93,23 @@ static void native_free(NativeFiber f) { DeleteFiber(f); }
 
 #else
 
+#if defined(__APPLE__) && defined(__aarch64__)
+/* Darwin's makecontext leaves a frame chain into _ctx_start above the
+ * fiber stack. Metal takes a backtrace during context creation, and its
+ * walker follows that chain outside the allocation. Give this independent
+ * stack a terminating frame pointer before entering any compiled C code.
+ * Tail-branch so the C prologue saves the zero frame pointer. */
+__attribute__((naked)) static void fiber_proc(int id)
+{
+    __asm__("mov x29, xzr\n"
+            "b _fiber_run");
+}
+#else
 static void fiber_proc(int id)
 {
     fiber_run(id);
 }
+#endif
 
 static struct { ucontext_t uc; void *stack; } g_main_fiber;
 

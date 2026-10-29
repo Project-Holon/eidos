@@ -32,6 +32,13 @@ set(EIDOS_OVLINK_TOOL ${CMAKE_CURRENT_LIST_DIR}/../tools/ovlink.py)
 get_filename_component(EIDOS_OVLINK_TOOL "${EIDOS_OVLINK_TOOL}" ABSOLUTE)
 get_filename_component(_eidos_ovl_tools "${EIDOS_OVLINK_TOOL}" DIRECTORY)
 
+set(EIDOS_OVLINK_PLATFORM_ARGS)
+if(CMAKE_SYSTEM_NAME STREQUAL "WASI" AND DEFINED EIDOS_SDL AND NOT EIDOS_SDL)
+    # Headless diagnostic modules have no platform settings UI. The shared
+    # SDL host supports the regular settings patches in full-game builds.
+    list(APPEND EIDOS_OVLINK_PLATFORM_ARGS --no-platform-ui)
+endif()
+
 # The warnings a matched overlay source raises under GCC 14 and Clang that
 # only an edit of the source could silence (the same set cmake/boot.cmake
 # gives the boot's matched files, plus the ones the overlays add): each is
@@ -135,6 +142,7 @@ function(eidos_overlays_seeds var)
     endif()
     execute_process(
         COMMAND ${Python3_EXECUTABLE} ${EIDOS_OVLINK_TOOL}
+                ${EIDOS_OVLINK_PLATFORM_ARGS}
                 --aletheia-root ${A_ROOT} --overlays ${ids_arg}
                 --link-sources ${dir}/link_sources.txt
                 --define EIDOS_HEAP_MATCHED=${heap}
@@ -192,6 +200,7 @@ function(eidos_overlays name)
     endif()
     execute_process(
         COMMAND ${Python3_EXECUTABLE} ${EIDOS_OVLINK_TOOL}
+                ${EIDOS_OVLINK_PLATFORM_ARGS}
                 --aletheia-root ${A_ROOT}
                 --overlays ${ids_arg}
                 --link-sources ${dir}/link_sources.txt

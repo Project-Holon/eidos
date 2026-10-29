@@ -198,16 +198,13 @@ static void *default_resolve(u64 value, size_t *avail)
     *avail = 0;
     if (value == 0)
         return NULL;
-    if (sizeof(unsigned long) >= sizeof(void *)) {
-        if ((u64)(uintptr_t)value != value)
+    /* A wire record always stores DS addresses, even when command arguments
+     * can carry full native pointers on LP64. Resolve those addresses first. */
+    h = value <= UINT32_MAX ? bw_ds_try_ptr((u32)value) : NULL;
+    if (h == NULL) {
+        if (sizeof(unsigned long) < sizeof(void *) || (u64)(uintptr_t)value != value)
             return NULL;
         h = (u8 *)(uintptr_t)value;
-    } else {
-        if (value > 0xFFFFFFFFu)
-            return NULL;
-        h = (u8 *)bw_ds_try_ptr((u32)value);
-        if (h == NULL)
-            return NULL;
     }
     ds = bw_ds_addr_of(h);
     if (ds != 0)

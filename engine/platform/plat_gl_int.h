@@ -128,7 +128,8 @@ struct EidosGl {
     GLuint pfog;                   /* the fog pass (0: unavailable)          */
     GLint uf_col, uf_id, uf_dep, uf_fog, uf_table, uf_offset, uf_step,
           uf_aonly, uf_clear;
-    GlFb fb[2];                    /* 0: the display size, 1: DS size (readback) */
+    GlFb fb[3];                    /* display, DS readback, AA fallback */
+    GLint integer_samples;
     unsigned read_serial;          /* snapshot serial last read back         */
     GLuint pbo;                    /* async readback target                  */
     int pbo_pending;               /* a readback is in flight in the pbo     */

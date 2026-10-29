@@ -27,7 +27,9 @@ is the type uint32_t names on every target eidos builds for;
 tests/test_dsaddr.py compiles the prelude next to sdk/dsmem.h to prove the
 two declarations agree on the compiler in use.
 
-A file with nothing to rewrite is copied byte for byte.
+The address rewrite leaves files without address uses unchanged. Generated
+host copies also retain the DS widths of recovered u32/s32 typedefs and
+shared RTC records, and adapt selected declarations at native pointer boundaries.
 
 The same rewrite applies where a name provably stands for a DS address
 (see "Names that stand for DS addresses" below): a file-local constant
@@ -1021,9 +1023,9 @@ def _write(path: str, text: str) -> None:
     try:
         with open(path, "rb") as f:
             if f.read() == data:
-                # Unchanged: keep the timestamp moving so a build tool that
-                # compares it with the input's does not rerun us forever.
-                os.utime(path, None)
+                # Ninja's restat records the completed generator. Preserve
+                # identical outputs so changing the rewriter does not force
+                # every game translation unit to compile again.
                 return
     except OSError:
         pass
@@ -1547,6 +1549,41 @@ def build_report(root: str) -> str:
     return "\n".join(out)
 
 
+def _need(source: str, old: str, new: str) -> str:
+    """A patch of aletheia's text that must find that text.  Without it the
+    copy keeps the DS layout silently, so a change in aletheia stops the
+    build here instead."""
+    if old not in source:
+        raise SystemExit("dsaddr.py: the text to patch is gone; review the "
+                         "patch against aletheia: %r" % old)
+    return source.replace(old, new)
+
+
+def _need_re(pattern, repl, source: str, flags: int = 0) -> str:
+    """_need for a pattern."""
+    out, count = re.subn(pattern, repl, source, flags=flags)
+    if count == 0:
+        raise SystemExit("dsaddr.py: the text to patch is gone; review the "
+                         "patch against aletheia: %r" % pattern)
+    return out
+
+
+def native_matched_types(source: str, path: str) -> str:
+    """Keep recovered DS scalar names fixed-width in generated host copies."""
+    source = re.sub(
+        r"(?m)^([ \t]*typedef[ \t]+(?:volatile[ \t]+)?(?:unsigned[ \t]+|signed[ \t]+)?)"
+        r"long([ \t]+(?:u32|s32|vu32|vs32)[ \t]*;)", r"\1int\2", source)
+    # convert.o spells these shared SDK fields directly rather than as u32.
+    source = re.sub(r"typedef struct (RTCDate|RTCTime)\b.*?\} \1;",
+                    lambda m: re.sub(r"\bunsigned\s+long\b(?!\s+long)",
+                                     "unsigned int", m.group()), source, flags=re.S)
+    if path.replace("\\", "/").endswith("/src/matched/arm9/func_02035F38.c"):
+        # KEY_MainSys's getter returns the native Key object, not an integer.
+        source = _need(source, "extern u32 func_0203521C(u32 *p);",
+                                "extern void *func_0203521C(u32 *p);")
+    return source
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("inputs", nargs="*")
@@ -1594,6 +1631,62 @@ def main(argv=None) -> int:
     src_path = a.inputs[0]
     name = a.name or os.path.abspath(src_path)
     source = _read(src_path)
+    if "/src/matched/" in os.path.abspath(src_path).replace("\\", "/"):
+        source = native_matched_types(source, src_path)
+    if src_path.replace("\\", "/").endswith("/src/game/arm9/tcb_list.c"):
+        source = "#include <stddef.h>\n" + source
+        source = _need(source, "return (idx << 5) + 0x38;",
+                                "return offsetof(struct TcbSystem, freeStackStorage) + "
+                                "idx * (sizeof(struct TcbTask *) + sizeof(struct TcbTask));")
+    if src_path.replace("\\", "/").endswith("/src/game/arm9/card_backup.c"):
+        # ARM7 consumes the original 32-bit command protocol. Native buffer
+        # pointers must cross that boundary as registered DS addresses.
+        source = "#include <stdint.h>\nextern unsigned int bw_ds_wire_addr(uintptr_t);\n" + source
+        source = _need(source, "const u32 arg = (uptr)p->cmd;",
+                                "const u32 arg = bw_ds_wire_addr((uintptr_t)p->cmd);")
+        source = _need_re(r"(p->cmd->(?:src|dst)\s*=\s*)([^;]+);",
+                        r"\1bw_ds_wire_addr((uintptr_t)(\2));", source)
+    if 'include/G_EnvModule.h"' in source and "struct EnvEntry {" in source:
+        # The heap manager and its readers must agree with src/game's
+        # pointer-typed HeapRecord at every host pointer width.
+        source = _need_re(r"\bu32\s+field04;", "void *field04;", source)
+        source = _need_re(r"\bu32\s+field08;", "void *field08;", source)
+        source = source.replace("u32 GFL_HEAP_GetParentHeap(", "void *GFL_HEAP_GetParentHeap(")
+        source = source.replace("u32 GFL_HEAP_GetBlock(", "void *GFL_HEAP_GetBlock(")
+    if src_path.replace("\\", "/").endswith("/src/game/arm9/nns_fnd_expheap.c"):
+        # The native common header grows with its link and child-list
+        # pointers. Its recovered aliases must use those same offsets.
+        source = "#include <stddef.h>\n" + source
+        source = _need(source, "pad_00[0x18]", "pad_00[offsetof(NNSiFndHeapHead, heapStart)]")
+        source = _need(source, "pad00[0x0c]", "pad00[offsetof(NNSiFndHeapHead, childList)]")
+        source = _need(source, "u32 min_val;", "uptr min_val;")
+        source = _need(source, "u32 max_val;", "uptr max_val;")
+        source = _need(source, "struct DList *list, u32 val", "struct DList *list, uptr val")
+        source = _need(source, "NNSi_FndFindListContainHeap(u32 a)", "NNSi_FndFindListContainHeap(uptr a)")
+        source = _need(source, "NNSi_FndInitMBlock(int *p", "NNSi_FndInitMBlock(sptr *p")
+        source = _need(source, "int  pair[2];", "sptr pair[2];")
+        source = _need(source, "(u8 *)heap + 0x38", "(u8 *)heap + sizeof(struct ExpHeap)")
+        source = _need(source, "(char *)q + 0x10", "(char *)q + sizeof(struct MBlock)")
+        source = _need(source, "NNS_FndInitList(&pHeapHd->childList, 4)",
+                                "NNS_FndInitList(&pHeapHd->childList, offsetof(NNSiFndHeapHead, link))")
+        source = _need(source, "NNS_FndInitList(&sRootList, 4)",
+                                "NNS_FndInitList(&sRootList, offsetof(NNSiFndHeapHead, link))")
+    if src_path.replace("\\", "/").endswith("/src/game/arm9/os_arena.c"):
+        # The recovered host form widened the arena pointer but left its
+        # unsigned alignment mask at 32 bits, clearing the high address.
+        source = _need(source, "u32 inv;", "uptr inv;")
+        source = _need(source, "u32 mask;", "uptr mask;")
+        source = _need(source, "(u32)(n)", "(uptr)(n)")
+    if src_path.replace("\\", "/").endswith("/src/game/arm9/tcbl.c"):
+        # src/game has real pointers, but these two row-stride literals
+        # still count DS header bytes. Adapt only the generated host copy.
+        source = _need(source, "tcbl->workSize + 0x18",
+                                "tcbl->workSize + sizeof(struct TcblTask)")
+        source = _need(source, "(((workSize + 3) & ~3) + 0x18)",
+                                "(((workSize + sizeof(void *) - 1) & ~(sizeof(void *) - 1)) + sizeof(struct TcblTask))")
+        source = _need(source, "tcbl->workSize = workSize;",
+                                "tcbl->workSize = (workSize + sizeof(void *) - 1) & ~(sizeof(void *) - 1);")
+        source = "#define tcbl_File sub_0203101C_File\n" + source
     if a.cut_list or a.cut_asm:
         import gamecut
         drop = set()
@@ -1626,6 +1719,19 @@ def main(argv=None) -> int:
             # mwcc's hand-written va_start/va_arg (gamecut.fix_va_macros)
             source = gamecut.fix_va_macros(source)
             _rewrite_local_headers(src_path, a.output, set())
+            # Make a newly introduced host header a visible source change.
+            # Otherwise Ninja's old depfile still names the original header,
+            # and an unchanged .c can keep an object built with its old ABI.
+            out_dir = os.path.dirname(os.path.abspath(a.output))
+
+            def _host_include(m):
+                header = os.path.normpath(os.path.join(out_dir, m.group(1)))
+                if os.path.isfile(header):
+                    return m.group(0).replace('"%s"' % m.group(1),
+                                              '"%s"' % header.replace("\\", "/"))
+                return m.group(0)
+
+            source = _LOCAL_INCLUDE_RE.sub(_host_include, source)
             text = _rewrite_with_defines(source, name, src_path)
             _write(a.output, text)
             return 0
@@ -1635,6 +1741,9 @@ def main(argv=None) -> int:
 
 
 _NUM_DEFINE_RE = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+[A-Za-z_]\w*[ \t]+\(?\s*0[xX][0-9A-Fa-f]+[uUlL]*\s*\)?[ \t]*$")
+_IOREG_DEFINE_RE = re.compile(
+    r"(?m)^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)[ \t]+"
+    r"IOREG_ADDR\([ \t]*(0[xX][0-9A-Fa-f]+[uUlL]*)[ \t]*\)[ \t]*$")
 _PREFIX_BEGIN = "/* tools/dsaddr.py: address constants of the included headers */\n"
 _PREFIX_END = "/* tools/dsaddr.py: end of the included constants */\n"
 
@@ -1653,6 +1762,10 @@ def _header_defines(path, seen):
         seen.add(hp)
         text = _IOREG_ADDR_RE.sub(r"\1", _read(hp))
         out.extend(m.group(0) for m in _NUM_DEFINE_RE.finditer(text))
+        # Aletheia's pointer-sized address wrapper still denotes the same
+        # DS register. Feed its numeric value to the address rewriter.
+        out.extend("#define %s %s" % m.groups()
+                   for m in _IOREG_DEFINE_RE.finditer(text))
         out.extend(_header_defines(hp, seen))
     return out
 
@@ -1695,6 +1808,13 @@ def _rewrite_local_headers(src_path, out_path, seen):
         oh = os.path.normpath(os.path.join(out_dir, inc))
         own = _read(hp)
         text = _rewrite_with_defines(own, hp, hp)
+        if hp.replace("\\", "/").endswith("/src/game/arm9/card_common.h"):
+            # Only the shared command is wire data. CARDiCommon's working
+            # pointers remain pointer-sized on the host.
+            text = _need_re(r"(typedef struct CARDiCommandArg\b.*?} CARDiCommandArg;)",
+                          lambda m: m.group(0).replace("uptr src;", "u32 src;")
+                                                   .replace("uptr dst;", "u32 dst;"),
+                          text, flags=re.S)
         rewrites = text != own
         nested = _rewrite_local_headers(hp, oh, seen)
         if rewrites or nested:

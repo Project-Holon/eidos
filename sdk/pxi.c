@@ -51,11 +51,10 @@
 #include "pxi.h"
 
 /*
- * pxi_fifo.o's .bss (0x021513A4, 0x021513A8).  The callback's data
- * parameter is `unsigned long`, as pxi_fifo.o's DWARF and every matched
- * callback declare it.
+ * pxi_fifo.o's .bss (0x021513A4, 0x021513A8). The FIFO payload and its
+ * callback parameter stay 32 bits, including on LP64 hosts.
  */
-typedef void (*BwPxiArm9Callback)(int tag, unsigned long data, BOOL err);
+typedef void (*BwPxiArm9Callback)(int tag, u32 data, BOOL err);
 u16 FifoCtrlInit;
 BwPxiArm9Callback FifoRecvCallbackTable[BW_PXI_TAGS];
 

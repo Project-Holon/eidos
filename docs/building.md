@@ -119,6 +119,37 @@ does not search Homebrew's prefix (`/opt/homebrew` on Apple silicon),
 configure with `-DCMAKE_PREFIX_PATH=$(brew --prefix)`. Only 64-bit builds
 exist on current macOS, so the ILP32 configuration is not available there.
 
+For the native core, SDL platform layer, Cocoa ROM picker and synthetic
+tests on Apple silicon:
+
+```
+cmake -S . -B build-macos -G Ninja \
+    -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+    -DALETHEIA_ROOT=../aletheia -DEIDOS_BOOT=OFF
+cmake --build build-macos --parallel 4
+ctest --test-dir build-macos --output-on-failure --parallel 4
+```
+
+The `macOS core` workflow checks this configuration without a ROM. The
+real title-overlay tests are disabled by default for the `game` source tree
+with 64-bit pointers: the pinned `startmenu_types.h` asserts DS structure
+sizes. `-DEIDOS_REAL_OVERLAY_TESTS=ON` explicitly requests those tests;
+synthetic overlay tests remain enabled at both pointer widths.
+
+The Mach-O executable link helper (`tools/macos_link.py`) reads optional
+weak references from the object files and static archives and passes them
+to Apple ld with per-symbol `-U` options. Ordinary missing symbols still
+fail the link. This lets core tools run without the game's optional entry
+points, just as they do with ELF weak references.
+
+This configuration is separate from the full game release, which remains gated by
+`EIDOS_BUILD_64BIT` in the release workflow. The game's 64-bit pointer
+layout work is still required for reliable gameplay (see
+`docs/pointer-width.md`). Apple ld uses `-map` for the boot map and does
+not implement GNU ld's `--wrap`: the custom keyboard prompt, queued UI
+sound hook, instant text override and battle backdrop wrappers are disabled
+on macOS, as they are on MSVC. The underlying game routines remain linked.
+
 **The source fallback**, on any host with CMake and a C compiler:
 configure eidos with `-DEIDOS_SDL_FETCH=ON`. The script downloads the
 source release, verifies it, and builds it with the compiler, C flags,

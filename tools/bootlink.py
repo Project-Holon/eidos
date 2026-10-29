@@ -830,7 +830,7 @@ def plan_game(args, idx, sources, seeds, unlisted, library, shims, shim_addrs, s
         drop = []
         for name, _hs, _bo, _be, is_asm in gamecut.functions(text):
             addr = defined_addr(idx, source, name)
-            port = name in shims.defines or name in lib_names \
+            port = name in shims.defines or name in lib_names or name in LIBC_FUNCS \
                 or (addr is not None and (addr in shim_addrs
                                           or "func_%08X" % addr in shims.defines))
             if port:
@@ -904,6 +904,11 @@ MWCC_BUILTINS = {
     "__memcpy": ("bw_mwcc_memcpy",
                  "void *bw_mwcc_memcpy(void *dst, const void *src, unsigned int size);"),
 }
+
+# Standard C library functions provided by the platform libc (-lm).
+# In CodeWarrior runtime.a, routines like sqrt were hand-written asm bodies
+# in cw_runtime.c. On modern host/WASI targets, libc provides them.
+LIBC_FUNCS = {"sqrt"}
 
 
 PARAM_LIST = re.compile(r"\(([^()]*)\)")
@@ -1079,6 +1084,8 @@ def generate(args):
     shims = Shims(idx, read_list(args.shim_sources)
                   + read_list(os.path.join(pdir, "library_matched.txt")))
     defined = dict(shims.defines)
+    for name in LIBC_FUNCS:
+        defined[name] = "<libc>"
     # The data generator's host objects are definitions like any other.
     for name in data_objects:
         defined.setdefault(name, args.armdata_header)

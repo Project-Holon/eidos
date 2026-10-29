@@ -1,0 +1,45 @@
+name: macOS core
+
+# Runs with the releases (a v* tag) or by hand, like release.yml.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read aletheia pin
+        id: pin
+        run: |
+          pin=$(sed -n 's/.*set(EIDOS_ALETHEIA_PIN "\([0-9a-f]*\)").*/\1/p' cmake/aletheia_pin.cmake)
+          test -n "$pin"
+          echo "revision=$pin" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: Project-Holon/aletheia
+          ref: ${{ steps.pin.outputs.revision }}
+          token: ${{ secrets.ALETHEIA_TOKEN || github.token }}
+          path: aletheia
+      - name: Install dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install ninja sdl3
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+            -DALETHEIA_ROOT="$PWD/aletheia" \
+            -DEIDOS_BOOT=OFF -DEIDOS_WASM=OFF -DEIDOS_TLS=OFF
+      - name: Build
+        run: |
+          cmake --build build --target eidos_platform --parallel 4
+          cmake --build build --parallel 4
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --parallel 4

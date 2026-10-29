@@ -97,11 +97,11 @@ TpBss g_02152FA4;
 /* Spellings the matched files call each other by                      */
 /* ------------------------------------------------------------------ */
 
-typedef void (*Arm9Cb)(int tag, unsigned long data, BOOL err);
+typedef void (*Arm9Cb)(int tag, u32 data, BOOL err);
 extern void PXI_Init(void);
 extern BOOL PXI_IsCallbackReady(int fifotag, int proc);
 extern void func_020884A4(void);                    /* PXI_InitFifo, sdk/pxi.c */
-extern int  PXI_SendWordByFifo(int fifotag, unsigned long data, BOOL err);
+extern int  PXI_SendWordByFifo(int fifotag, u32 data, BOOL err);
 extern void PXI_SetFifoRecvCallback(int fifotag, Arm9Cb callback);
 
 /* PXI_Init's matched callee, which sdk/pxi.c defines under its address name. */
@@ -113,7 +113,7 @@ void PXI_InitFifo(void)
 
 extern BOOL TP_GetUserInfo(TPCalibrateParam *calibrate);   /* TP_GetUserInfo */
 extern void TP_SetCalibrateParam(const TPCalibrateParam *param); /* 0208AA2C */
-extern unsigned long TP_CalcCalibrateParam(TPCalibrateParam *calibrate,
+extern u32 TP_CalcCalibrateParam(TPCalibrateParam *calibrate,
                                            u16 x1, u16 y1, u16 dx1, u16 dy1,
                                            u16 x2, u16 y2, u16 dx2, u16 dy2);
 extern void TP_GetCalibratedPoint(TPData *disp, const TPData *raw);
@@ -122,7 +122,7 @@ extern void TP_GetCalibratedPoint(TPData *disp, const TPData *raw);
 #if BW_TEST_TP_MATCHED
 extern void TP_Init(void);                          /* TP_Init      */
 extern void TP_RequestSamplingAsync(void);                    /* RequestSampling    */
-extern unsigned long TP_WaitRawResult(TPData *result); /* WaitRawResult      */
+extern u32 TP_WaitRawResult(TPData *result); /* WaitRawResult      */
 extern void TP_RequestAutoSamplingStartAsync(u16 vcount, u16 frequence,
                           TPData bufs[], u16 bufSize); /* TP_RequestAutoSamplingStartAsync   */
 extern void TP_RequestAutoSamplingStopAsync(void);  /* TP_RequestAutoSamplingStopAsync      */
@@ -130,7 +130,7 @@ extern void TP_GetLatestRawPointInAuto(TPData *result);          /* LatestRawPoi
 extern u16  TP_GetLatestIndexInAuto(void);          /* TP_GetLatestIndexInAuto      */
 extern void TP_WaitBusy(unsigned int command_flgs); /* TP_WaitBusy      */
 extern unsigned int TP_CheckError(unsigned int command_flgs); /* 0208B238  */
-extern void TPi_TpCallback(int tag, unsigned long data, BOOL err);
+extern void TPi_TpCallback(int tag, u32 data, BOOL err);
 
 /* The game's touch pass and its work-object resolver's double.             */
 struct TouchCtx {
@@ -160,10 +160,10 @@ int TOUCHPANEL_GetWork(void)
 
 #define TP_TAG 6
 
-static struct { unsigned long data; int err; } g_rec[64];
+static struct { u32 data; int err; } g_rec[64];
 static int g_nrec;
 
-static void recorder(int tag, unsigned long data, BOOL err)
+static void recorder(int tag, u32 data, BOOL err)
 {
     (void)tag;
     if (g_nrec < 64) {

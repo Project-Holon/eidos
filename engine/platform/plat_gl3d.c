@@ -1147,6 +1147,8 @@ int eidos_gl3d_init(EidosGl *g)
     (void)backdrop_init(g);
     g->glGenFramebuffers(1, &g->fb[0].fbo);
     g->glGenFramebuffers(1, &g->fb[1].fbo);
+    g->glGenFramebuffers(1, &g->fb[2].fbo);
+    glGetIntegerv(GL_MAX_INTEGER_SAMPLES, &g->integer_samples);
     g->glGenVertexArrays(1, &g->vao3);
     g->glGenBuffers(1, &g->vbo3);
     g->have3d = 1;
@@ -1162,7 +1164,7 @@ void eidos_gl3d_destroy(EidosGl *g)
 {
     unsigned i;
 
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < 3; i++) {
         GlFb *f = &g->fb[i];
 
         if (f->fbo != 0) {
@@ -1649,7 +1651,8 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
      * not carry; at a large size the resolution smooths the edges anyway. */
     edges = (s->disp3dcnt & 0x20u) != 0 && g->pedge != 0;
     fog = (s->disp3dcnt & 0x80u) != 0 && g->pfog != 0;
-    use_ms = (s->disp3dcnt & 0x10u) != 0 && msaa_target(g, fb, w, h);
+    use_ms = g->integer_samples >= MSAA_SAMPLES &&
+             (s->disp3dcnt & 0x10u) != 0 && msaa_target(g, fb, w, h);
     if (!use_ms) {
         g->glBindFramebuffer(GL_FRAMEBUFFER, fb->fbo);
     }
@@ -1865,9 +1868,40 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
     return glGetError() == GL_NO_ERROR ? 0 : -1;
 }
 
+static int render_with_aa(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
+{
+    if (g != NULL && s != NULL && w > 0 && h > 0 &&
+        g->integer_samples < MSAA_SAMPLES && (s->disp3dcnt & 0x10u) != 0 &&
+        (long)w * h <= MSAA_MAX_PIXELS) {
+        /* Some GL implementations (including Apple's) cannot multisample
+         * integer attachments. Render the complete scene and postprocesses
+         * at 2x instead, then average only the normalized colour target. */
+        G3dSnapshot sample = *s;
+        static const GLenum color[1] = { GL_COLOR_ATTACHMENT0 };
+        static const GLenum both[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+
+        sample.disp3dcnt &= ~0x10u;
+        if (render_into(g, &g->fb[2], &sample, w * 2, h * 2) != 0 ||
+            fbo_resize(g, fb, w, h) != 0) {
+            return -1;
+        }
+        g->glBindFramebuffer(GL_READ_FRAMEBUFFER, g->fb[2].fbo);
+        g->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->fbo);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        g->glDrawBuffers(1, color);
+        g->glBlitFramebuffer(0, 0, w * 2, h * 2, 0, 0, w, h,
+                             GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        g->glDrawBuffers(2, both);
+        g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return glGetError() == GL_NO_ERROR ? 0 : -1;
+    }
+    return render_into(g, fb, s, w, h);
+}
+
 int eidos_gl_render3d(EidosGl *g, const G3dSnapshot *s, int w, int h)
 {
-    return render_into(g, &g->fb[0], s, w, h);
+    if (g == NULL) return -1;
+    return render_with_aa(g, &g->fb[0], s, w, h);
 }
 
 static void unpremultiply(const unsigned char *raw, unsigned char *out,
@@ -1992,7 +2026,7 @@ int eidos_gl_read3d_1x(EidosGl *g, const G3dSnapshot *s, unsigned char *out,
     if (g->read_valid && s->serial == g->read_serial) {
         return 1;
     }
-    if (render_into(g, &g->fb[1], s, 256, 192) != 0) {
+    if (render_with_aa(g, &g->fb[1], s, 256, 192) != 0) {
         g->read_valid = 0;
         return -1;
     }

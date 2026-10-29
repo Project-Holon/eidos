@@ -52,8 +52,8 @@ typedef void (*BwMiDmaCallback)(void *arg);
 
 u32  OS_DisableInterrupts(void);
 u32  OS_RestoreInterrupts(u32 state);
-void MIi_DmaSetParameters(u32 dmaNo, u32 src, u32 dest, u32 ctrl, u32 mode);
-void func_01FF8020(u32 dmaNo, u32 src, u32 dest, u32 ctrl, u32 mode);
+void MIi_DmaSetParameters(u32 dmaNo, uintptr_t src, uintptr_t dest, u32 ctrl, u32 mode);
+void func_01FF8020(u32 dmaNo, uintptr_t src, uintptr_t dest, u32 ctrl, u32 mode);
 void MIi_DmaFill32(u32 dmaNo, void *dest, u32 data, u32 size, int dmaEnable);
 void MIi_DmaCopy32(u32 dmaNo, const void *src, void *dest, u32 size, int dmaEnable);
 void MIi_DmaCopy16(u32 dmaNo, const void *src, void *dest, u32 size, int dmaEnable);
@@ -102,7 +102,7 @@ static void bw_dma_wait(u32 dmaNo)
  * trainer card's 3D palette load (ov111 VIEWER_ACTOR_LoadTexture) reaches
  * the palette bank through the mirror at +2 MiB.
  */
-static u32 bw_dma_lcdc_fold(u32 a)
+static uintptr_t bw_dma_lcdc_fold(uintptr_t a)
 {
     if (a >= 0x06900000u && a < 0x07000000u) {
         return 0x06800000u + ((a - 0x06800000u) & 0xFFFFFu);
@@ -110,20 +110,31 @@ static u32 bw_dma_lcdc_fold(u32 a)
     return a;
 }
 
-static void bw_dma_run(u32 src, u32 dest, u32 ctrl)
+static void *bw_dma_pointer(uintptr_t address)
+{
+    address = bw_dma_lcdc_fold(address);
+    if (address >= 0x01000000u && address < 0x0E000000u) {
+        return bw_ds_ptr((u32)address);
+    }
+    return (void *)address;
+}
+
+static void bw_dma_run(uintptr_t src, uintptr_t dest, u32 ctrl)
 {
     u32 unit = (ctrl & BW_DMA_32BIT) ? 4u : 2u;
     u32 count = ctrl & BW_DMA_COUNT;
     intptr_t ds = bw_dma_step(ctrl >> 21, unit);
     intptr_t ss = bw_dma_step(ctrl >> 23, unit);
-    u8 *d = (u8 *)(uintptr_t)bw_dma_lcdc_fold(dest);
-    const u8 *s = (const u8 *)(uintptr_t)bw_dma_lcdc_fold(src);
+    u8 *d;
+    const u8 *s;
     u32 i;
 
     /* The addresses are raw: a VRAMCNT store since the last translation
      * (GX_BeginLoadTexPltt maps a bank to LCDC just before its DMA) must
      * have taken effect before the first byte moves. */
     bw_io_sync();
+    d = (u8 *)bw_dma_pointer(dest);
+    s = (const u8 *)bw_dma_pointer(src);
 
     if (count == 0) {
         count = 0x200000u;          /* 0 means the maximum */
@@ -138,7 +149,7 @@ static void bw_dma_run(u32 src, u32 dest, u32 ctrl)
 /* MIi_DmaSetParameters at 0x01FF8020 (ITCM).  mode: bit 0 interrupts
  * already off, bit 1 wait and reset channel 0 afterwards (bit 2 skips the
  * reset), bit 4 a 32-bit fill value in src, bit 5 a 16-bit one. */
-void MIi_DmaSetParameters(u32 dmaNo, u32 src, u32 dest, u32 ctrl, u32 mode)
+void MIi_DmaSetParameters(u32 dmaNo, uintptr_t src, uintptr_t dest, u32 ctrl, u32 mode)
 {
     volatile u32 *p = bw_dma_regs(dmaNo);
     u32 enabled = 0;
@@ -154,7 +165,7 @@ void MIi_DmaSetParameters(u32 dmaNo, u32 src, u32 dest, u32 ctrl, u32 mode)
         } else {
             *(volatile u16 *)fill = (u16)src;
         }
-        src = (u32)(uintptr_t)fill;
+        src = (uintptr_t)fill;
     }
     p[0] = src;
     p[1] = dest;
@@ -173,7 +184,7 @@ void MIi_DmaSetParameters(u32 dmaNo, u32 src, u32 dest, u32 ctrl, u32 mode)
     }
 }
 
-void func_01FF8020(u32 dmaNo, u32 src, u32 dest, u32 ctrl, u32 mode)
+void func_01FF8020(u32 dmaNo, uintptr_t src, uintptr_t dest, u32 ctrl, u32 mode)
 {
     MIi_DmaSetParameters(dmaNo, src, dest, ctrl, mode);
 }
@@ -187,7 +198,7 @@ void MIi_DmaFill32(u32 dmaNo, void *dest, u32 data, u32 size, int dmaEnable)
         return;
     }
     bw_dma_wait(dmaNo);
-    MIi_DmaSetParameters(dmaNo, data, (u32)(uintptr_t)dest,
+    MIi_DmaSetParameters(dmaNo, data, (uintptr_t)dest,
                          (dmaEnable ? 0x85000000u : 0x05000000u) | (size / 4u),
                          dmaEnable ? 0x12u : 0x16u);
 }
@@ -199,7 +210,7 @@ void MIi_DmaCopy32(u32 dmaNo, const void *src, void *dest, u32 size, int dmaEnab
         return;
     }
     bw_dma_wait(dmaNo);
-    MIi_DmaSetParameters(dmaNo, (u32)(uintptr_t)src, (u32)(uintptr_t)dest,
+    MIi_DmaSetParameters(dmaNo, (uintptr_t)src, (uintptr_t)dest,
                          (dmaEnable ? 0x84000000u : 0x04000000u) | (size / 4u),
                          dmaEnable ? 0x2u : 0x6u);
 }
@@ -211,7 +222,7 @@ void MIi_DmaCopy16(u32 dmaNo, const void *src, void *dest, u32 size, int dmaEnab
         return;
     }
     bw_dma_wait(dmaNo);
-    MIi_DmaSetParameters(dmaNo, (u32)(uintptr_t)src, (u32)(uintptr_t)dest,
+    MIi_DmaSetParameters(dmaNo, (uintptr_t)src, (uintptr_t)dest,
                          (dmaEnable ? 0x80000000u : 0x00000000u) | (size / 2u),
                          dmaEnable ? 0x2u : 0x6u);
 }

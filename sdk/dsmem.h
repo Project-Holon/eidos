@@ -12,6 +12,7 @@
 #define BW_PORT_DSMEM_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "types.h"
 
@@ -59,6 +60,10 @@ void *bw_ds_try_ptr(u32 addr);
  * a backed region or a registered object, or 0 if it does not.
  */
 u32 bw_ds_addr_of(const void *host);
+
+/* Encode a pointer or an already numeric offset for a 32-bit DS protocol.
+ * A native pointer must name backed or registered memory; never truncate it. */
+u32 bw_ds_wire_addr(uintptr_t value);
 
 /*
  * Register a host object as the backing of DS range [addr, addr + size).

@@ -146,7 +146,11 @@ typedef struct EidosTcblNode {
     struct EidosTcblNode *prev;
     struct EidosTcblNode *next;
     u32                   key;
+#if EIDOS_NATIVE_TCBL
+    void                 *work;
+#else
     u32                   work;   /* 0 on an LP64 host; see above */
+#endif
     void                (*func)(struct EidosTcblNode *node, void *work);
 } EidosTcblNode;
 
@@ -170,8 +174,12 @@ typedef struct EidosTcblList {
 /* What the same header costs on this host, and the difference the port adds
  * to a caller's work size so that the matched arithmetic still fits. */
 #define EIDOS_TCBL_NODE_HEADER    ((u32)sizeof(EidosTcblNode))
+#if EIDOS_NATIVE_TCBL
+#define EIDOS_TCBL_HEADER_BIAS 0u
+#else
 #define EIDOS_TCBL_HEADER_BIAS \
     (EIDOS_TCBL_NODE_HEADER - EIDOS_TCBL_DS_NODE_HEADER)
+#endif
 
 /* ------------------------------------------------------------------ */
 /* The port's helper                                                   */

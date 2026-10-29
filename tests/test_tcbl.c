@@ -177,10 +177,16 @@ int main(void)
         BW_CHECK_EQ("no header bias to pay on an ILP32 target",
                     EIDOS_TCBL_HEADER_BIAS, 0);
     } else {
+#if EIDOS_NATIVE_TCBL
+        BW_CHECK_EQ("manager size (native pointers)", sizeof(EidosTcblList), 96);
+        BW_CHECK_EQ("node size (native pointers)", EIDOS_TCBL_NODE_HEADER, 48);
+        BW_CHECK_EQ("native scheduler sizes its own rows", EIDOS_TCBL_HEADER_BIAS, 0);
+#else
         BW_CHECK_EQ("manager size", sizeof(EidosTcblList), 88);
         BW_CHECK_EQ("node size", EIDOS_TCBL_NODE_HEADER, 40);
         BW_CHECK_EQ("header bias the port pays on an LP64 target",
                     EIDOS_TCBL_HEADER_BIAS, 40 - EIDOS_TCBL_DS_NODE_HEADER);
+#endif
     }
 
     bw_heap_init(BW_HEAP_COUNT);
