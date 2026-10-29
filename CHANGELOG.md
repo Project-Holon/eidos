@@ -5,6 +5,10 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- 3D outlines: off by default, as most players prefer. Settings > Display
+  has "3D outlines" (Off or Thin). Thin draws the edge one screen pixel
+  wide at any size, so it no longer makes spikes and combs at high
+  resolution.
 - Controller icons: hints show the controller's own buttons when a pad was
   used last: Xbox 360, Xbox One / Series, PS3, PS4, PS5, Switch, GameCube
   and Steam Deck, drawn for eidos (no maker's logos). Settings > Controls

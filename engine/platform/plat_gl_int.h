@@ -99,6 +99,7 @@ struct EidosGl {
     GLint u3_rect, u3_tex, u3_behind, u3_g3d, u3_texsize, u3_dstsize,
           u3_bmode, u3_bfac, u3_dil, u3_zero, u3_hasz, u3_sent;
     int s3d;                       /* screen index, -1 none                */
+    int edge_mode;                 /* outlines: 0 off, 1 thin, 2 DS pixel  */
     GLuint behind_tex;
     GLuint zero_tex;               /* the screen with a black 3D layer, or 0 */
     int has_zero;                  /* zero_tex holds this frame's          */
@@ -124,7 +125,7 @@ struct EidosGl {
           u_toon, u_highlight, u_toontab, u_front, u_back, u_wbuf, u_pass,
           u_id;
     GLuint pedge;                  /* the edge-marking pass (0: unavailable) */
-    GLint ue_col, ue_id, ue_dep, ue_step, ue_cid, ue_cdep, ue_edge;
+    GLint ue_col, ue_id, ue_dep, ue_step, ue_cid, ue_cdep, ue_edge, ue_variant;
     GLuint pfog;                   /* the fog pass (0: unavailable)          */
     GLint uf_col, uf_id, uf_dep, uf_fog, uf_table, uf_offset, uf_step,
           uf_aonly, uf_clear;

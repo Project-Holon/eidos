@@ -417,6 +417,68 @@ static void test_sort(void)
     BW_CHECK_EQ("sort manual 4", polys[4].first / 3u, 4);
 }
 
+/* Edge marking at a scale.  The outlines are off unless the setting asks
+ * for them; thin, they are one window pixel wide at every scale (melonDS's
+ * rule: a pixel touching a farther pixel of another ID), so a sliver seen
+ * edge-on is a thin line, not a wedge. */
+static int count_green(const u8 *out, int ew, int y, int x0, int x1)
+{
+    int x, n = 0;
+
+    for (x = x0; x < x1; x++) {
+        const u8 *px = out + ((size_t)y * (size_t)ew + (size_t)x) * 4u;
+
+        n += px[0] < 40 && px[1] > 200 && px[2] < 40;
+    }
+    return n;
+}
+
+static void test_edge_marking(EidosGl *gl)
+{
+    enum { SC = 4, EW = W * SC, EH = H * SC };
+    static u8 out[EW * EH * 4];
+    G3dVertex q[4];
+    G3dSnapshot s;
+    int mode;
+
+    scene_reset();
+    q[0] = mkv(-2000, -2000, 0, 4096, 0, 0, 0, 0, 255);
+    q[1] = mkv(2000, -2000, 0, 4096, 0, 0, 0, 0, 255);
+    q[2] = mkv(2000, 2000, 0, 4096, 0, 0, 0, 0, 255);
+    q[3] = mkv(-2000, 2000, 0, 4096, 0, 0, 0, 0, 255);
+    add_poly(q, 4, ATTR(31, 1, 1, 1), 0, -1);
+    q[0] = mkv(0, -1500, -2000, 4096, 0, 0, 255, 0, 0);
+    q[1] = mkv(10, -1500, -2000, 4096, 0, 0, 255, 0, 0);
+    q[2] = mkv(10, 1500, -2000, 4096, 0, 0, 255, 0, 0);
+    q[3] = mkv(0, 1500, -2000, 4096, 0, 0, 255, 0, 0);
+    add_poly(q, 4, ATTR(31, 2, 1, 1), 0, -1);
+    s = make_snap();
+    s.disp3dcnt |= 0x20u;
+    s.edge[0] = 0x03E0u;                    /* green */
+    for (mode = 0; mode < 2; mode++) {
+        int y = EH / 2, left, total;
+
+        eidos_gl_set_edges(gl, mode);
+        if (eidos_gl_render3d(gl, &s, EW, EH) != 0
+            || eidos_gl_read3d(gl, out, EW, EH) != 0) {
+            BW_CHECK_EQ("edge marking: render", 0, 1);
+            return;
+        }
+        left = count_green(out, EW, y, 0, EW / 2 - 12);
+        total = count_green(out, EW, y, 0, EW);
+        printf("  edge marking %s at %dx: %d outline pixels on the left, %d on the row\n",
+               mode ? "thin" : "off", SC, left, total);
+        if (mode == 0) {
+            BW_CHECK_EQ("edge marking off: no outline", total, 0);
+        } else {
+            BW_CHECK_EQ("edge marking thin: the quad is outlined", left >= 1, 1);
+            BW_CHECK_EQ("edge marking thin: one window pixel wide", left <= 2, 1);
+            BW_CHECK_EQ("edge marking thin: the sliver is a line, not a wedge", total <= 8, 1);
+        }
+    }
+    eidos_gl_set_edges(gl, 0);
+}
+
 int main(void)
 {
     SDL_Window *win;
@@ -699,6 +761,8 @@ int main(void)
     add_poly(tri, 3, ATTR(14, 5, 1, 1), 0, -1);
     s = make_snap();
     check_composite("composite: translucent over opaque", &s, gl, win);
+
+    test_edge_marking(gl);
 
     free(checker);
     free(half);

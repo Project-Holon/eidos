@@ -19,7 +19,13 @@
  *   - where: a pixel is in the outline when the first pixel of another ID
  *     in one of the four directions is at most one DS pixel away (the
  *     scale, in framebuffer pixels), so the outline is one DS pixel wide
- *     and follows the polygon's own edge at the higher resolution;
+ *     and follows the polygon's own edge at the higher resolution.  The
+ *     nearest such boundary decides alone: asked in all four directions, a
+ *     pixel beside a stair step of the boundary got different answers and
+ *     dashed a one-pixel black line along the edge.  A shape narrower than
+ *     one DS pixel across (other IDs on both sides within the scale) is
+ *     left unmarked: the DS hits such a sliver with a pixel here and there,
+ *     and filled whole it became a long thin black spike;
  *   - whether: that boundary is an edge when the hardware's test passes
  *     for two points one DS pixel apart across it, half a DS pixel inside
  *     and half a DS pixel outside, as the DS compares the centres of two
@@ -155,52 +161,126 @@ static const char *k_vse =
     "    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
     "}\n";
 
+/*
+ * The outline variants (EIDOS_EDGE=n at start, for comparing them; the
+ * setting picks 0 or 1, eidos_gl_set_edges 2 picks 3):
+ *   0  none
+ *   1  thin: a pixel touching a farther pixel of another ID, one window
+ *      pixel wide (melonDS's rule at its scale 1)
+ *   2  thin behind: the farther pixel of the pair, in the nearer one's
+ *      colour (DeSmuME's rule)
+ *   3  one DS pixel: variant 1's pixels widened by a disc inside their own
+ *      polygon, as thick at every angle
+ *   4  the first rule: four rays of one DS pixel (the spikes and combs)
+ *   5  half a DS pixel: variant 3 at half the width
+ *   6  one DS pixel behind: variant 2 widened outward by a disc
+ *   7  thin, half strength (melonDS with anti-aliasing on)
+ * EIDOS_EDGE_WIDTH=n sets the disc's radius in window pixels instead.
+ */
 static const char *k_fse =
     "#version 330 core\n"
     "uniform sampler2D u_col;\n"
     "uniform usampler2D u_id;\n"
     "uniform sampler2D u_dep;\n"
     "uniform int u_step;\n"
+    "uniform int u_variant;\n"
     "uniform uint u_cid;\n"
     "uniform float u_cdep;\n"
     "uniform vec3 u_edge[8];\n"
     "out vec4 o;\n"
+    "ivec2 sz;\n"
+    "uint idat(ivec2 q) {\n"
+    "    if (q.x >= 0 && q.y >= 0 && q.x < sz.x && q.y < sz.y) {\n"
+    "        return texelFetch(u_id, q, 0).r & 0x3Fu;\n"
+    "    }\n"
+    "    return u_cid;\n"
+    "}\n"
+    "float ddat(ivec2 q) {\n"
+    "    if (q.x >= 0 && q.y >= 0 && q.x < sz.x && q.y < sz.y) {\n"
+    "        return texelFetch(u_dep, q, 0).r;\n"
+    "    }\n"
+    "    return u_cdep;\n"
+    "}\n"
+    "bool opaque(ivec2 q) {\n"
+    "    return q.x >= 0 && q.y >= 0 && q.x < sz.x && q.y < sz.y\n"
+    "           && (texelFetch(u_id, q, 0).r & 0x80u) != 0u;\n"
+    "}\n"
+    "const ivec2 N4[4] = ivec2[4](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));\n"
+    /* q (ID qid) touches a farther pixel of another ID */
+    "bool front(ivec2 q, uint qid) {\n"
+    "    float qd = ddat(q);\n"
+    "    for (int k = 0; k < 4; k++) {\n"
+    "        if (idat(q + N4[k]) != qid && qd < ddat(q + N4[k])) { return true; }\n"
+    "    }\n"
+    "    return false;\n"
+    "}\n"
+    /* q touches a nearer opaque pixel of another ID: that ID, else 64 */
+    "uint behind(ivec2 q) {\n"
+    "    uint qid = idat(q);\n"
+    "    float qd = ddat(q);\n"
+    "    for (int k = 0; k < 4; k++) {\n"
+    "        ivec2 n = q + N4[k];\n"
+    "        if (opaque(n) && idat(n) != qid && ddat(n) < qd) { return idat(n); }\n"
+    "    }\n"
+    "    return 64u;\n"
+    "}\n"
+    "bool near_other(ivec2 p, uint id, int r) {\n"
+    "    for (int i = 0; i < 16; i++) {\n"
+    "        vec2 d = vec2(cos(0.39269908 * float(i)), sin(0.39269908 * float(i)));\n"
+    "        if (idat(p + ivec2(round(d * float(r + 1)))) != id\n"
+    "            || idat(p + ivec2(round(d * 0.5 * float(r + 1)))) != id) { return true; }\n"
+    "    }\n"
+    "    return false;\n"
+    "}\n"
+    "void mark(uint id, float a) {\n"
+    "    o = vec4(mix(o.rgb, u_edge[id >> 3], a), max(o.a, a));\n"
+    "}\n"
     "void main() {\n"
     "    ivec2 p = ivec2(gl_FragCoord.xy);\n"
-    "    ivec2 sz = textureSize(u_col, 0);\n"
-    "    vec4 c = texelFetch(u_col, p, 0);\n"
-    "    uint id = texelFetch(u_id, p, 0).r;\n"
-    "    o = c;\n"
-    "    if ((id & 0x80u) == 0u) { return; }\n"
-    "    id &= 0x3Fu;\n"
-    "    int half_ = u_step / 2;\n"
-    "    ivec2 k[4] = ivec2[4](ivec2(-1, 0), ivec2(1, 0), ivec2(0, -1), ivec2(0, 1));\n"
-    "    for (int i = 0; i < 4; i++) {\n"
-    "        int j = 1;\n"
-    "        bool found = false;\n"
-    "        for (; j <= u_step; j++) {\n"
-    "            ivec2 q = p + k[i] * j;\n"
-    "            uint qid = u_cid;\n"
-    "            if (q.x >= 0 && q.y >= 0 && q.x < sz.x && q.y < sz.y) {\n"
-    "                qid = texelFetch(u_id, q, 0).r & 0x3Fu;\n"
+    "    sz = textureSize(u_col, 0);\n"
+    "    o = texelFetch(u_col, p, 0);\n"
+    "    uint raw = texelFetch(u_id, p, 0).r;\n"
+    "    uint id = raw & 0x3Fu;\n"
+    "    int r = u_step - 1;\n"
+    "    if (u_variant == 2 || u_variant == 6) {\n"
+    "        uint f = behind(p);\n"
+    "        if (f < 64u) { mark(f, 1.0); return; }\n"
+    "        if (u_variant == 2 || r <= 0 || !near_other(p, id, r)) { return; }\n"
+    "        for (int dy = -r; dy <= r; dy++) {\n"
+    "            for (int dx = -r; dx <= r; dx++) {\n"
+    "                ivec2 q = p + ivec2(dx, dy);\n"
+    "                if (dx * dx + dy * dy > r * r || idat(q) != id) { continue; }\n"
+    "                f = behind(q);\n"
+    "                if (f < 64u) { mark(f, 1.0); return; }\n"
     "            }\n"
-    "            if (qid != id) { found = true; break; }\n"
     "        }\n"
-    "        if (!found) { continue; }\n"
-    "        ivec2 bi = p + k[i] * (j - 1);\n"
-    "        ivec2 a = clamp(bi - k[i] * half_, ivec2(0), sz - 1);\n"
-    "        if ((texelFetch(u_id, a, 0).r & 0x3Fu) != id) { a = bi; }\n"
-    "        float d = texelFetch(u_dep, a, 0).r;\n"
-    "        ivec2 b = bi + k[i] * (u_step - half_);\n"
-    "        uint nid = u_cid;\n"
-    "        float nd = u_cdep;\n"
-    "        if (b.x >= 0 && b.y >= 0 && b.x < sz.x && b.y < sz.y) {\n"
-    "            nid = texelFetch(u_id, b, 0).r & 0x3Fu;\n"
-    "            nd = texelFetch(u_dep, b, 0).r;\n"
+    "        return;\n"
+    "    }\n"
+    "    if ((raw & 0x80u) == 0u) { return; }\n"
+    "    if (u_variant == 4) {\n"
+    "        int half_ = u_step / 2;\n"
+    "        for (int i = 0; i < 4; i++) {\n"
+    "            int j = 1;\n"
+    "            bool found = false;\n"
+    "            for (; j <= u_step; j++) {\n"
+    "                if (idat(p + N4[i] * j) != id) { found = true; break; }\n"
+    "            }\n"
+    "            if (!found) { continue; }\n"
+    "            ivec2 bi = p + N4[i] * (j - 1);\n"
+    "            ivec2 a = clamp(bi - N4[i] * half_, ivec2(0), sz - 1);\n"
+    "            if (idat(a) != id) { a = bi; }\n"
+    "            ivec2 b = bi + N4[i] * (u_step - half_);\n"
+    "            if (idat(b) != id && ddat(a) < ddat(b)) { mark(id, 1.0); return; }\n"
     "        }\n"
-    "        if (nid != id && d < nd) {\n"
-    "            o = vec4(u_edge[id >> 3], 1.0);\n"
-    "            return;\n"
+    "        return;\n"
+    "    }\n"
+    "    if (front(p, id)) { mark(id, u_variant == 7 ? 0.5 : 1.0); return; }\n"
+    "    if (u_variant == 1 || u_variant == 7 || r <= 0 || !near_other(p, id, r)) { return; }\n"
+    "    for (int dy = -r; dy <= r; dy++) {\n"
+    "        for (int dx = -r; dx <= r; dx++) {\n"
+    "            ivec2 q = p + ivec2(dx, dy);\n"
+    "            if (dx * dx + dy * dy > r * r || idat(q) != id) { continue; }\n"
+    "            if (front(q, id)) { mark(id, 1.0); return; }\n"
     "        }\n"
     "    }\n"
     "}\n";
@@ -1124,6 +1204,7 @@ int eidos_gl3d_init(EidosGl *g)
         g->ue_id = g->glGetUniformLocation(g->pedge, "u_id");
         g->ue_dep = g->glGetUniformLocation(g->pedge, "u_dep");
         g->ue_step = g->glGetUniformLocation(g->pedge, "u_step");
+        g->ue_variant = g->glGetUniformLocation(g->pedge, "u_variant");
         g->ue_cid = g->glGetUniformLocation(g->pedge, "u_cid");
         g->ue_cdep = g->glGetUniformLocation(g->pedge, "u_cdep");
         g->ue_edge = g->glGetUniformLocation(g->pedge, "u_edge");
@@ -1293,7 +1374,22 @@ static void edge_pass(EidosGl *g, GlFb *f, const G3dSnapshot *s, int w,
 {
     GLfloat edge[24];
     GLuint t;
-    int k, step = w / 256;
+    int k, step = w / 256, variant = g->edge_mode == 1 ? 1 : 3;
+
+    {
+        /* EIDOS_EDGE / EIDOS_EDGE_WIDTH: the variants side by side (above) */
+        const char *e = getenv("EIDOS_EDGE"), *ew = getenv("EIDOS_EDGE_WIDTH");
+
+        if (e != NULL && e[0] >= '0' && e[0] <= '7') {
+            variant = e[0] - '0';
+        }
+        if (variant == 5) {
+            step = (step + 1) / 2;
+        }
+        if (ew != NULL && atoi(ew) > 0) {
+            step = atoi(ew) + 1;
+        }
+    }
 
     for (k = 0; k < 8; k++) {
         u32 c = s->edge[k];
@@ -1315,6 +1411,7 @@ static void edge_pass(EidosGl *g, GlFb *f, const G3dSnapshot *s, int w,
     g->glUniform1i(g->ue_id, 1);
     g->glUniform1i(g->ue_dep, 2);
     g->glUniform1i(g->ue_step, step < 1 ? 1 : step);
+    g->glUniform1i(g->ue_variant, variant);
     g->glUniform1ui(g->ue_cid, (GLuint)((s->clear_color >> 24) & 0x3Fu));
     g->glUniform1f(g->ue_cdep, (GLfloat)clear_depth);
     g->glUniform3fv(g->ue_edge, 8, edge);
@@ -1649,7 +1746,8 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
 
     /* Edge marking needs the ID buffer, which the multisampled target does
      * not carry; at a large size the resolution smooths the edges anyway. */
-    edges = (s->disp3dcnt & 0x20u) != 0 && g->pedge != 0;
+    edges = (s->disp3dcnt & 0x20u) != 0 && g->pedge != 0 && g->edge_mode != 0 &&
+            !(getenv("EIDOS_EDGE") != NULL && getenv("EIDOS_EDGE")[0] == '0');
     fog = (s->disp3dcnt & 0x80u) != 0 && g->pfog != 0;
     use_ms = g->integer_samples >= MSAA_SAMPLES &&
              (s->disp3dcnt & 0x10u) != 0 && msaa_target(g, fb, w, h);
@@ -1896,6 +1994,13 @@ static int render_with_aa(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int
         return glGetError() == GL_NO_ERROR ? 0 : -1;
     }
     return render_into(g, fb, s, w, h);
+}
+
+void eidos_gl_set_edges(EidosGl *g, int mode)
+{
+    if (g != NULL) {
+        g->edge_mode = mode < 0 ? 0 : mode > 2 ? 2 : mode;
+    }
 }
 
 int eidos_gl_render3d(EidosGl *g, const G3dSnapshot *s, int w, int h)

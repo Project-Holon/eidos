@@ -69,6 +69,9 @@ int eidos_gl_capture(EidosGl *gl, const unsigned char *a2d,
 void eidos_gl_show_capture(EidosGl *gl, int screen, int bmode, float bfac);
 /* Draw the snapshot at w x h; 0 on success. */
 int eidos_gl_render3d(EidosGl *gl, const struct G3dSnapshot *snap, int w, int h);
+/* The outlines the edge-marking pass draws: 0 none (the default), 1 one
+ * window pixel wide, 2 one DS pixel wide. */
+void eidos_gl_set_edges(EidosGl *gl, int mode);
 /* Make screen `screen` (0 top, 1 bottom) show the last rendered 3D frame over
  * `behind`, the screen at DS resolution with its 3D layer off; bmode 0/1/2 and
  * bfac 0..1 are the engine's master brightness.  screen < 0 turns it off. */

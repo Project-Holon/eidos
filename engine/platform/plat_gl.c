@@ -493,6 +493,7 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     }
     g->window = window;
     g->s3d = -1;
+    g->edge_mode = 0;           /* no outlines until the setting asks */
     g->ctx = SDL_GL_CreateContext(window);
     if (g->ctx == NULL) {
         free(g);

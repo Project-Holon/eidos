@@ -41,6 +41,7 @@ static const char *const k_modes[] = { "windowed", "fullscreen", "borderless" };
 static const char *const k_arrangements[] = { "vertical", "horizontal", "one" };
 static const char *const k_offon[] = { "off", "on" };
 static const char *const k_backdrops[] = { "real map", "original" };
+static const char *const k_outlines[] = { "off", "thin" };
 static const char *const k_pad_icons[] = {
     "auto", "xbox360", "xboxone", "ps3", "ps4", "ps5", "switch", "gamecube", "steamdeck"
 };
@@ -78,6 +79,8 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, k_offon, "", 0, NULL },
     { "Controls", "button_icons", "Button icons", EIDOS_OPTKIND_CHOICE, 0, 8, 1,
       0, k_pad_icons, "", 0, NULL },
+    { "Display", "outlines", "3D outlines", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
+      0, k_outlines, "", 0, NULL },
 };
 
 static const EidosButtonInfo k_buttons[NBTN] = {
@@ -342,6 +345,11 @@ static void apply_pixel_scale(void)
     eidos_platform_set_pixel_scale(g_plat, g_cur.v[EIDOS_OPT_DISPLAY_PIXEL_SCALE]);
 }
 
+static void apply_outlines(void)
+{
+    eidos_platform_set_outlines(g_plat, g_cur.v[EIDOS_OPT_OUTLINES]);
+}
+
 /*
  * The run-status panel: the port's own text panel beside the two screens,
  * which the mods fill (docs/mod-services.md, "Run-status panel").  The
@@ -416,6 +424,9 @@ static int apply_option_group(int id)
     case EIDOS_OPT_SOUND_VOLUME:
         apply_volume();
         return 0;
+    case EIDOS_OPT_OUTLINES:
+        apply_outlines();
+        return 0;
     default:
         return 0;
     }
@@ -433,6 +444,7 @@ static void apply_all(void)
     }
     apply_volume();
     apply_pixel_scale();
+    apply_outlines();
     (void)apply_bindings();
 }
 

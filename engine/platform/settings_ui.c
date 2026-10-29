@@ -118,6 +118,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "show their type colour." },
     [EIDOS_OPT_PAD_ICONS]           = { "The controller's buttons in hints.",
                                         "Auto follows the controller." },
+    [EIDOS_OPT_OUTLINES]            = { "Dark edges on 3D objects,",
+                                        "one screen pixel wide." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -225,6 +227,7 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_BATTLE_PLATFORMS]    = "Battle platforms",
     [EIDOS_OPT_MOVE_COLOURS]        = "Move colours",
     [EIDOS_OPT_PAD_ICONS]           = "Button icons",
+    [EIDOS_OPT_OUTLINES]            = "3D outlines",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -256,6 +259,8 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_PAD_ICONS,           6, "Switch" },
     { EIDOS_OPT_PAD_ICONS,           7, "GameCube" },
     { EIDOS_OPT_PAD_ICONS,           8, "Steam Deck" },
+    { EIDOS_OPT_OUTLINES,            0, "Off" },
+    { EIDOS_OPT_OUTLINES,            1, "Thin" },
 };
 
 /* Short names for the side-by-side choices (a choice has about 48 pixels). */
@@ -707,6 +712,7 @@ static void build_rows(void)
         add_row(ROW_OPTION, EIDOS_OPT_DISPLAY_MODE, 0);
         add_row(ROW_OPTION, EIDOS_OPT_DISPLAY_PIXEL_SCALE, 0);
         add_row(ROW_OPTION, EIDOS_OPT_DISPLAY_RESOLUTION, 0);
+        add_row(ROW_OPTION, EIDOS_OPT_OUTLINES, 0);
         break;
     case 1:
         add_row(ROW_OPTION, EIDOS_OPT_LAYOUT_ARRANGEMENT, 0);

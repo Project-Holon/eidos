@@ -686,6 +686,13 @@ void eidos_platform_set_pixel_scale(EidosPlatform *p, int scale)
     }
 }
 
+void eidos_platform_set_outlines(EidosPlatform *p, int mode)
+{
+    if (p != NULL && p->gl != NULL) {
+        eidos_gl_set_edges(p->gl, mode);
+    }
+}
+
 void eidos_platform_set_volume(EidosPlatform *p, int percent)
 {
     if (p != NULL) {

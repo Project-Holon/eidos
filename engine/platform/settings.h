@@ -94,6 +94,8 @@ enum {
                                        messages take their type colour     */
     EIDOS_OPT_PAD_ICONS,            /* the gamepad's button icons: 0 the pad
                                        in use, else ui_pad family + 1    */
+    EIDOS_OPT_OUTLINES,             /* the 3D's outlines: 0 off (the
+                                       default), 1 thin (one window pixel) */
     EIDOS_OPT_COUNT
 };
 
