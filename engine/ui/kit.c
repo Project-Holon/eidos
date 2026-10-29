@@ -54,6 +54,7 @@
 
 #include "assets.h"
 #include "kit.h"
+#include "padglyph.h"
 
 /* ------------------------------------------------------------------ */
 /* Themes                                                              */
@@ -720,10 +721,52 @@ const char *ui_key_label(const char *ds)
     return ds;                  /* arrows and anything else stay as written */
 }
 
+/*
+ * A gamepad's control in a key name: UI_PAD_TOKEN and then 'A' plus the
+ * control (padglyph.h), drawn as that control's glyph in the family the
+ * interface layer set (ui_set_pad_family).  "L R" becomes two of them.
+ */
+static int g_pad_family;
+
+void ui_set_pad_family(int family)
+{
+    g_pad_family = family;
+}
+
+int ui_pad_family(void)
+{
+    return g_pad_family;
+}
+
+/* The glyphs of a run of tokens: their width, and drawn when c is set. */
+static int pad_tokens(EidosUiCtx *c, int x, int y, const char *s)
+{
+    int w = 0;
+
+    for (; *s != '\0'; s++) {
+        if (*s == UI_PAD_TOKEN && s[1] != '\0') {
+            int ctl = s[1] - 'A';
+
+            if (w > 0) {
+                w += 2;
+            }
+            w += c != NULL ? ui_pad_glyph(c, x + w, y, g_pad_family, ctl)
+                           : ui_pad_glyph_w(g_pad_family, ctl);
+            s++;
+        }
+    }
+    return w;
+}
+
 int ui_keycap_w(const char *label)
 {
-    int tw = ui_text_w(ui_key_label(label), UI_FONT_SMALL);
+    int tw;
 
+    label = ui_key_label(label);
+    if (label[0] == UI_PAD_TOKEN) {
+        return pad_tokens(NULL, 0, 0, label);
+    }
+    tw = ui_text_w(label, UI_FONT_SMALL);
     return tw + 8 > 13 ? tw + 8 : 13;
 }
 
@@ -732,11 +775,14 @@ int ui_keycap(EidosUiCtx *c, int x, int y, const char *label)
     int tw;
 
     label = ui_key_label(label);
+    if (label[0] == UI_PAD_TOKEN) {
+        return pad_tokens(c, x, y, label);
+    }
     tw = ui_text_w(label, UI_FONT_SMALL);
     int w = tw + 8 > 13 ? tw + 8 : 13;
 
     ui_panel(c, x, y, w, 13, CUT_DEF, 2, UI_BODY, UI_EDGE2, 255);
-    ui_text(c, x + (w - tw) / 2, y + ui_text_y(13, UI_FONT_SMALL), label, UI_WHITE,
+    ui_text(c, x + (w - tw) / 2, y + ui_text_y(13, UI_FONT_SMALL) + 1, label, UI_WHITE,
             UI_EDGE, UI_FONT_SMALL, 1);
     return w;
 }
@@ -771,7 +817,8 @@ int ui_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n,
         }
         ui_keycap(c, x, y + 2, key);
         x += kw + 4;
-        x = ui_text(c, x, y + 2 + ui_text_y(13, UI_FONT_SMALL), what, UI_LIGHT,
+        /* the small font's letters sit a pixel above its cell's middle */
+        x = ui_text(c, x, y + 3 + ui_text_y(13, UI_FONT_SMALL), what, UI_LIGHT,
                     UI_EDGE, UI_FONT_SMALL, 1) + 10;
     }
     return 17;

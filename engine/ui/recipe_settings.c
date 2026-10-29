@@ -18,6 +18,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "padglyph.h"
 #include "input.h"
 #include "settings_ui.h"
 
@@ -181,7 +182,8 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     for (i = 1; i < n; i++) {
         int sel = i == cur && eidos_ui_keys_lit(), ry = top + (i - 1) * (rowh + 2), rw = mw - 16 - 8;
         int is_back = eidos_sui_has_back() && i == n - 1;
-        int active = 0, nch, st;
+        int active = 0, nch, st, pctl;
+        char keyname[48];
         char names[3][20];
         EidosUiRect r;
 
@@ -224,6 +226,16 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
                     target_choice = j - active;
                 }
             }
+        } else if ((pctl = eidos_sui_row_pad(i, keyname, sizeof(keyname))) >= 0) {
+            /* a binding with a pad control: the key, then the control's icon
+             * in the pad's own look */
+            int gw = ui_pad_glyph_w(ui_pad_family(), pctl), right = mx + 8 + rw - 8;
+            char kv[64];
+
+            snprintf(kv, sizeof(kv), "%s  /", keyname[0] != '\0' ? keyname : "-");
+            ui_pad_glyph(c, right - gw, ry + (rowh - 13) / 2, ui_pad_family(), pctl);
+            ui_text(c, right - gw - 5 - ui_text_w(kv, UI_FONT_LARGE),
+                    ry + ui_text_y(rowh, UI_FONT_LARGE), kv, UI_LIGHT, UI_EDGE, UI_FONT_LARGE, 1);
         } else if (value[0] != '\0') {
             /* from the right: the right arrow, the value, the left arrow;
              * the value at most half the row (a long one is shortened) */

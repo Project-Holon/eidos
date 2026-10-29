@@ -41,6 +41,9 @@ static const char *const k_modes[] = { "windowed", "fullscreen", "borderless" };
 static const char *const k_arrangements[] = { "vertical", "horizontal", "one" };
 static const char *const k_offon[] = { "off", "on" };
 static const char *const k_backdrops[] = { "real map", "original" };
+static const char *const k_pad_icons[] = {
+    "auto", "xbox360", "xboxone", "ps3", "ps4", "ps5", "switch", "gamecube", "steamdeck"
+};
 
 static const EidosOption k_options[EIDOS_OPT_COUNT] = {
     { "Display", "mode", "Display mode", EIDOS_OPTKIND_CHOICE, 0, 2, 1,
@@ -73,6 +76,8 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       0, 1, 1, 0, k_offon, "", 0, NULL },
     { "Extras", "move_colours", "Move colours", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       1, k_offon, "", 0, NULL },
+    { "Controls", "button_icons", "Button icons", EIDOS_OPTKIND_CHOICE, 0, 8, 1,
+      0, k_pad_icons, "", 0, NULL },
 };
 
 static const EidosButtonInfo k_buttons[NBTN] = {

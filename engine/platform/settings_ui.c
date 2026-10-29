@@ -116,6 +116,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "under the Pokemon." },
     [EIDOS_OPT_MOVE_COLOURS]        = { "Move names in battle messages",
                                         "show their type colour." },
+    [EIDOS_OPT_PAD_ICONS]           = { "The controller's buttons in hints.",
+                                        "Auto follows the controller." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -222,6 +224,7 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_BATTLE_BACKDROP]     = "Battle backdrop",
     [EIDOS_OPT_BATTLE_PLATFORMS]    = "Battle platforms",
     [EIDOS_OPT_MOVE_COLOURS]        = "Move colours",
+    [EIDOS_OPT_PAD_ICONS]           = "Button icons",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -244,6 +247,15 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_BATTLE_PLATFORMS,    1, "On" },
     { EIDOS_OPT_MOVE_COLOURS,        0, "Off" },
     { EIDOS_OPT_MOVE_COLOURS,        1, "On" },
+    { EIDOS_OPT_PAD_ICONS,           0, "Auto" },
+    { EIDOS_OPT_PAD_ICONS,           1, "Xbox 360" },
+    { EIDOS_OPT_PAD_ICONS,           2, "Xbox One" },
+    { EIDOS_OPT_PAD_ICONS,           3, "PS3" },
+    { EIDOS_OPT_PAD_ICONS,           4, "PS4" },
+    { EIDOS_OPT_PAD_ICONS,           5, "PS5" },
+    { EIDOS_OPT_PAD_ICONS,           6, "Switch" },
+    { EIDOS_OPT_PAD_ICONS,           7, "GameCube" },
+    { EIDOS_OPT_PAD_ICONS,           8, "Steam Deck" },
 };
 
 /* Short names for the side-by-side choices (a choice has about 48 pixels). */
@@ -702,6 +714,7 @@ static void build_rows(void)
         add_row(ROW_OPTION, EIDOS_OPT_LAYOUT_GAP, 0);
         break;
     case 2:
+        add_row(ROW_OPTION, EIDOS_OPT_PAD_ICONS, 0);
         for (i = 0; i < eidos_settings_button_count(); i++) {
             add_row(ROW_BIND, i, 0);
         }
@@ -1809,6 +1822,53 @@ int eidos_sui_cursor_row(void)
 }
 
 /* 1 when left and right change the row's value (an option row). */
+/* A pad control (EIDOS_PADBIND_*) as its icon's number: SDL's button order,
+ * then the triggers and the left stick's four directions (padglyph.h). */
+static int pad_icon(int kind, int index)
+{
+    if (kind == EIDOS_PADBIND_BUTTON) {
+        return index >= 0 && index <= 14 ? index : -1;
+    }
+    switch (index) {
+    case 4:  return kind == EIDOS_PADBIND_AXIS_POS ? 15 : -1;     /* LT */
+    case 5:  return kind == EIDOS_PADBIND_AXIS_POS ? 16 : -1;     /* RT */
+    case 1:  return kind == EIDOS_PADBIND_AXIS_NEG ? 17 : 18;     /* stick up, down */
+    case 0:  return kind == EIDOS_PADBIND_AXIS_NEG ? 19 : 20;     /* stick left, right */
+    default: return -1;
+    }
+}
+
+int eidos_sui_row_pad(int row, char *key, int nk)
+{
+    const Row *r;
+    int slot, kind, index;
+
+    if (key != NULL && nk > 0) {
+        key[0] = '\0';
+    }
+    if (row < 1 || g.scroll + row - 1 >= g.nrows) {
+        return -1;
+    }
+    r = &g.rows[g.scroll + row - 1];
+    if (r->type != ROW_BIND || g.capturing == r->arg + 1) {
+        return -1;
+    }
+    for (slot = 0; slot < EIDOS_BIND_SLOTS; slot++) {
+        int sc = eidos_settings_get_key(r->arg, slot);
+
+        if (sc != 0 && key != NULL && nk > 0) {
+            eidos_scancode_name(sc, key, (size_t)nk);
+            break;
+        }
+    }
+    for (slot = 0; slot < EIDOS_BIND_SLOTS; slot++) {
+        if (eidos_settings_get_pad(r->arg, slot, &kind, &index) == 0 && kind >= 0) {
+            return pad_icon(kind, index);
+        }
+    }
+    return -1;
+}
+
 int eidos_sui_row_adjustable(int row)
 {
     const Row *r;

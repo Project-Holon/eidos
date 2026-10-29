@@ -126,20 +126,24 @@ int main(void)
     press(LEFT);
     BW_CHECK_EQ("volume -5", eidos_settings_get(EIDOS_OPT_SOUND_VOLUME), 45);
 
-    /* Controls: 12 buttons and the defaults, six shown, a scrollbar. */
+    /* Controls: the button icons, 12 buttons and the defaults, six shown,
+     * a scrollbar. */
     press(L);
     BW_CHECK_EQ("controls tab", eidos_sui_tab(), 2);
     BW_CHECK_EQ("controls rows shown", eidos_sui_row_count(), 1 + 6);
     eidos_sui_scroll(&first, &shown, &total);
     BW_CHECK_EQ("the scroll starts at the top", first, 0);
     BW_CHECK_EQ("six shown", shown, 6);
-    BW_CHECK_EQ("thirteen in all", total, 13);
+    BW_CHECK_EQ("fourteen in all", total, 14);
     press(UP);                                /* wraps to the last row */
     row(eidos_sui_cursor_row());
     BW_CHECK_EQ("last row", strcmp(g_label, "Restore defaults"), 0);
     eidos_sui_scroll(&first, &shown, &total);
-    BW_CHECK_EQ("scrolled to the bottom", first, 13 - 6);
+    BW_CHECK_EQ("scrolled to the bottom", first, 14 - 6);
     press(DOWN);                              /* wraps to the first row */
+    row(eidos_sui_cursor_row());
+    BW_CHECK_EQ("the button icons first", strcmp(g_label, "Button icons"), 0);
+    press(DOWN);
     for (i = 0; i < 12; i++) {
         row(eidos_sui_cursor_row());
         BW_CHECK_EQ("bind label short", (int)strlen(g_label) <= 6, 1);
@@ -147,6 +151,7 @@ int main(void)
         press(DOWN);
     }
     press(DOWN);                              /* back to the first row */
+    press(DOWN);                              /* past the button icons */
     row(eidos_sui_cursor_row());
     BW_CHECK_EQ("first button", strcmp(g_label, "A"), 0);
 

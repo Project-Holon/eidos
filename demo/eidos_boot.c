@@ -1167,6 +1167,12 @@ static void boot_ui_frame(BootRun *run)
 
         eidos_platform_key_names(run->plat, names);
         ui_set_key_names(names);
+        /* the pad's icons: the player's choice, or the pad's own kind */
+        {
+            int icons = eidos_settings_get(EIDOS_OPT_PAD_ICONS);
+
+            ui_set_pad_family(icons > 0 ? icons - 1 : eidos_platform_pad_family(run->plat));
+        }
     }
     {
         /* EIDOS_UI_TIME: the interface's cost, the mean over 300 frames */

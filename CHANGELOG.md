@@ -5,6 +5,15 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Controller icons: hints show the controller's own buttons when a pad was
+  used last: Xbox 360, Xbox One / Series, PS3, PS4, PS5, Switch, GameCube
+  and Steam Deck, drawn for eidos (no maker's logos). Settings > Controls
+  has "Button icons" (Auto follows the controller), and the Controls rows
+  show the pad's icon next to the key.
+- Hint bars: the text sits level with its key or button.
+- Battle spots: every scripted story fight has its own row (Nuvema Town's
+  second fight among them), and a fight's versions (one per starter) share
+  it.
 - Remaster battles: a battle place can hold several views. The battle
   takes the one nearest where the player stands, or the one closest to the
   way they face. Each view sets its own command camera (zoom, turn, height,

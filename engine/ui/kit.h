@@ -132,6 +132,12 @@ void ui_image(EidosUiCtx *c, int x, int y, const UiImage *im, int k);
  * names[i] for BW_KEY bit i, NULL keeps the DS name). ui_keycap shows the
  * translated name; ui_keycap_w is its width. */
 void ui_set_key_names(const char *const names[12]);
+/* A key name may name a gamepad control instead: UI_PAD_TOKEN, then 'A'
+ * plus the control (engine/ui/padglyph.h); the key cap is then that
+ * control's glyph in the family set here (UI_PAD_*). */
+#define UI_PAD_TOKEN '\x1F'
+void ui_set_pad_family(int family);
+int  ui_pad_family(void);
 const char *ui_key_label(const char *ds);
 int  ui_keycap_w(const char *label);
 

@@ -533,6 +533,7 @@ void w2c_env_SDL_CloseGamepad(struct w2c_env *e, u32 g)
 }
 
 u32 w2c_env_SDL_GetGamepadID(struct w2c_env *e, u32 g) { (void)e; return SDL_GetGamepadID((SDL_Gamepad *)handle_ptr(g)); }
+u32 w2c_env_SDL_GetGamepadTypeForID(struct w2c_env *e, u32 id) { (void)e; return (u32)SDL_GetGamepadTypeForID(id); }
 
 u32 w2c_env_SDL_GetGamepadButton(struct w2c_env *e, u32 g, u32 b)
 {

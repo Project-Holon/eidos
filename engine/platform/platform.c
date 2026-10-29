@@ -92,6 +92,7 @@ struct EidosPlatform {
      * the keyboard's letters are text, not buttons; the arrows still move */
     int text_mode;
     int pad_last;                   /* the last input came from a pad      */
+    int pad_type;                   /* that pad's SDL_GamepadType          */
     char text[128];
     int text_len;
     int cap_state;                  /* EIDOS_CAPTURE_*                       */
@@ -1732,6 +1733,7 @@ int eidos_platform_pump(EidosPlatform *p)
             break;
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
             p->pad_last = 1;
+            p->pad_type = (int)SDL_GetGamepadTypeForID(ev.gbutton.which);
             if (p->cap_state == EIDOS_CAPTURE_PENDING) {
                 p->cap.pad_kind = EIDOS_PADBIND_BUTTON;
                 p->cap.pad_index = ev.gbutton.button;
@@ -2128,12 +2130,28 @@ static const char *key_short_name(int sc)
     }
 }
 
+/* A pad control (EIDOS_PADBIND_*) as its glyph's number (engine/ui/
+ * padglyph.h: SDL's button order, then the triggers and the left stick's
+ * directions); -1 for a control with no glyph. */
+static int pad_control(int kind, int index)
+{
+    if (kind == EIDOS_PADBIND_BUTTON) {
+        return index >= 0 && index <= SDL_GAMEPAD_BUTTON_DPAD_RIGHT ? index : -1;
+    }
+    switch (index) {
+    case SDL_GAMEPAD_AXIS_LEFT_TRIGGER:  return kind == EIDOS_PADBIND_AXIS_POS ? 15 : -1;
+    case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER: return kind == EIDOS_PADBIND_AXIS_POS ? 16 : -1;
+    case SDL_GAMEPAD_AXIS_LEFTY:         return kind == EIDOS_PADBIND_AXIS_NEG ? 17 : 18;
+    case SDL_GAMEPAD_AXIS_LEFTX:         return kind == EIDOS_PADBIND_AXIS_NEG ? 19 : 20;
+    default:                             return -1;
+    }
+}
+
 void eidos_platform_key_names(const EidosPlatform *p, const char *names[12])
 {
-    /* the pad: the DS's own names are the face buttons' names */
-    static const char *const pad[12] = {
-        "A", "B", "Select", "Start", NULL, NULL, NULL, NULL, "R", "L", "X", "Y"
-    };
+    /* the pad: each DS button's first bound control, as a glyph token
+     * (kit.h UI_PAD_TOKEN) */
+    static char tok[12][3];
     u32 b, i;
 
     for (b = 0; b < 12; b++) {
@@ -2142,7 +2160,17 @@ void eidos_platform_key_names(const EidosPlatform *p, const char *names[12])
             continue;
         }
         if (p->pad_last) {
-            names[b] = pad[b];
+            for (i = 0; i < p->padmap_count; i++) {
+                int ctl = pad_control(p->padmap[i].kind, p->padmap[i].index);
+
+                if (p->padmap[i].button == (1u << b) && ctl >= 0) {
+                    tok[b][0] = '\x1F';
+                    tok[b][1] = (char)('A' + ctl);
+                    tok[b][2] = '\0';
+                    names[b] = tok[b];
+                    break;
+                }
+            }
             continue;
         }
         for (i = 0; i < p->keymap_count; i++) {
@@ -2151,6 +2179,25 @@ void eidos_platform_key_names(const EidosPlatform *p, const char *names[12])
                 break;
             }
         }
+    }
+}
+
+/* The family of icons for the pad in use (engine/ui/padglyph.h UI_PAD_*),
+ * from the type SDL reports; Xbox One for a pad SDL cannot place. */
+int eidos_platform_pad_family(const EidosPlatform *p)
+{
+    switch (p != NULL ? p->pad_type : SDL_GAMEPAD_TYPE_UNKNOWN) {
+    case SDL_GAMEPAD_TYPE_XBOX360:                    return 0;
+    case SDL_GAMEPAD_TYPE_PS3:                        return 2;
+    case SDL_GAMEPAD_TYPE_PS4:                        return 3;
+    case SDL_GAMEPAD_TYPE_PS5:                        return 4;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return 5;
+    case SDL_GAMEPAD_TYPE_GAMECUBE:                   return 6;
+    case SDL_GAMEPAD_TYPE_STEAM:                      return 7;
+    default:                                          return 1;
     }
 }
 

@@ -65,6 +65,10 @@ const char *eidos_sui_tab_name(int i);
  * there are (for the scrollbar). */
 int  eidos_sui_scroll(int *first, int *shown, int *total);
 int  eidos_sui_row_adjustable(int row);     /* left and right change its value */
+/* A binding row's gamepad control as its icon's number (engine/ui/
+ * padglyph.h), -1 when the row binds none; *key gets the keyboard part of
+ * its value ("" when no key). */
+int  eidos_sui_row_pad(int row, char *key, int nk);
 
 /* The stylus: see eidos_sui_touch in settings_ui.c. */
 #define EIDOS_SUI_ZONE_ROW (-1)

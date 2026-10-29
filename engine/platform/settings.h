@@ -92,6 +92,8 @@ enum {
     EIDOS_OPT_BATTLE_PLATFORMS,     /* 0 off, 1 on: the game's two stages  */
     EIDOS_OPT_MOVE_COLOURS,         /* 0 off, 1 on: move names in battle
                                        messages take their type colour     */
+    EIDOS_OPT_PAD_ICONS,            /* the gamepad's button icons: 0 the pad
+                                       in use, else ui_pad family + 1    */
     EIDOS_OPT_COUNT
 };
 

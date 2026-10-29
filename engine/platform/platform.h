@@ -475,6 +475,9 @@ void eidos_platform_text_mode(EidosPlatform *p, int on);
  * the names of the game's twelve buttons on it (names[i] for bit i: the
  * bound keyboard keys, or the pad's labels; NULL when none). */
 int  eidos_platform_pad_last(const EidosPlatform *p);
+/* The icon family for the pad in use (engine/ui/padglyph.h UI_PAD_*), from
+ * the type SDL reports for the pad pressed last. */
+int  eidos_platform_pad_family(const EidosPlatform *p);
 void eidos_platform_key_names(const EidosPlatform *p, const char *names[12]);
 int  eidos_platform_take_text(EidosPlatform *p, char *out, int cap);
 
