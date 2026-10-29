@@ -28,13 +28,17 @@ static const char *k_vs =
  * sc the output pixels per texel: sample at seam + clamp((t - seam) * sc, -0.5,
  * 0.5).  Linear filtering at a seam is an even mix of the two texels, at half a
  * texel from it the pure texel.  At a whole-number scale every output pixel
- * centre is exactly half an output pixel from a seam, so it is pure nearest.
- * Below 1:1 it is plain linear.
+ * centre is exactly half an output pixel from a seam, so it is pure nearest;
+ * there the texel is read directly, because a GPU with low-precision
+ * interpolation (macOS's virtual GPU) lands a hair off the centre and mixes
+ * in the neighbour.  Below 1:1 it is plain linear.
  */
 #define SHARP_FN \
     "vec3 sharp(sampler2D s, vec2 uv, vec2 texsize, vec2 dstsize) {\n" \
     "    vec2 t = uv * texsize;\n" \
     "    vec2 sc = dstsize / texsize;\n" \
+    "    if (sc.x >= 1.0 && all(equal(sc, floor(sc))) && sc.x == sc.y)\n" \
+    "        return texelFetch(s, ivec2(clamp(floor(t), vec2(0.0), texsize - 1.0)), 0).rgb;\n" \
     "    vec2 seam = floor(t + 0.5);\n" \
     "    vec2 p = seam + clamp((t - seam) * sc, -0.5, 0.5);\n" \
     "    p = mix(t, p, step(vec2(1.0), sc));\n" \
