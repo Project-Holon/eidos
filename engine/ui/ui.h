@@ -109,6 +109,11 @@ typedef struct EidosUiView {
                                screen to black, 0..16 (filled by
                                eidos_ui_frame): the kept picture fades with
                                it                                           */
+    int stretch;            /* non-zero: the 3D is the DS's own view, not
+                               widened, stretched to the window: an effect
+                               the game draws from a picture of the DS
+                               screen (which holds the wide view, squeezed)
+                               fills the window as the view it was taken of */
     int cap_mix;            /* 0..16: how much of the game's screen capture
                                (the old picture a door blends out over the
                                new world) covers the world; the kept wide

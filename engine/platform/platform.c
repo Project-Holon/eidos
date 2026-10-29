@@ -2131,7 +2131,7 @@ void eidos_platform_view_scale(const EidosPlatform *p, s32 *kx, s32 *ky)
     int ow = 0, oh = 0;
 
     wg.kx = wg.ky = 4096;
-    if (world_active(p) && !p->ui_view.ds_only) {
+    if (world_active(p) && !p->ui_view.ds_only && !p->ui_view.stretch) {
         out_size(p, &ow, &oh);
         eidos_world_geometry(ow, oh, p->ui_view.zoom, &wg);
     }

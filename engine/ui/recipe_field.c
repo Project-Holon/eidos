@@ -1087,6 +1087,20 @@ static int capture_mix(void)
     return eva > 16u ? 16 : (int)eva;
 }
 
+/* The field's draw mode (FIELDMAP_GetDrawMode): 2 while an encounter
+ * effect draws its model over a capture of the screen (ov076
+ * ENCEFF_ModelSceneEventMain, ov075's screen texture). */
+extern int ov021_FIELDMAP_GetDrawMode(void *fieldMap) __attribute__((weak));
+
+static int encounter_effect(void)
+{
+    void *gs = (&bw_dsref__GameSystemGlobal != NULL && bw_dsref__GameSystemGlobal != NULL)
+               ? *(void **)bw_dsref__GameSystemGlobal : NULL;
+    void *fm = gs != NULL ? *(void **)((u8 *)gs + 0x20) : NULL;
+
+    return fm != NULL && ov021_FIELDMAP_GetDrawMode != NULL && ov021_FIELDMAP_GetDrawMode(fm) == 2;
+}
+
 static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     FieldNow f;
@@ -1116,6 +1130,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->keep_world = 1;
         view->hide_2d = capture_bg_shown();
         view->cap_mix = capture_mix();
+        view->stretch = encounter_effect();
         return;
     }
     if (g_show_cgear && f.mode != 0 && f.mode != 8) {
@@ -1140,6 +1155,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->keep_world = 1;
     view->hide_2d = capture_bg_shown();
     view->cap_mix = capture_mix();
+    view->stretch = encounter_effect();
 
     /* While the game's place-name banner shows (it names the same place)
      * or an event runs, the bar slides up out of the way and comes back

@@ -5,6 +5,9 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- One-screen layout: the wild encounter effects fill the window (the swirl
+  into the grass showed boxed at the DS size for a few frames), and the
+  white flash before a battle fills it too.
 - Controllers: on Xbox and PlayStation pads the bottom button now confirms
   and the right one goes back (A and B on Xbox, cross and circle on
   PlayStation); Nintendo pads keep the DS layout. Controls you set

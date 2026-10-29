@@ -923,6 +923,32 @@ static void keep_prev(const EidosUiCanvas *cv)
 
 /* Which DS screen shows the main engine, the one that carries the 3D:
  * POWCNT1 bit 15 set puts it on the top (engine/g2d/hwcompose.c). */
+/* A DS screen of one colour (the game's fade to white, say): that colour
+ * as 0xRRGGBB, or -1.  Nine points are enough to tell. */
+static long flat_screen(const u8 *px)
+{
+    static const int xs[3] = { 8, 128, 247 }, ys[3] = { 8, 96, 183 };
+    long first = -1;
+    int i, j;
+
+    if (px == NULL) {
+        return -1;
+    }
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            const u8 *p = px + ((size_t)ys[j] * 256 + (size_t)xs[i]) * 4;
+            long c = ((long)p[0] << 16) | ((long)p[1] << 8) | p[2];
+
+            if (first < 0) {
+                first = c;
+            } else if (c != first) {
+                return -1;
+            }
+        }
+    }
+    return first;
+}
+
 static int screen_with_3d(void)
 {
     return (bw_io_read16(0x04000304u) & 0x8000u) != 0 ? 0 : 1;
@@ -1235,6 +1261,14 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
              * show the game's own DS screen under it for those frames */
             if (g_prev != NULL && g_prev_w == g_canvas.w && g_prev_h == g_canvas.h) {
                 memcpy(g_canvas.rgba, g_prev, (size_t)g_prev_w * (size_t)g_prev_h * 4);
+            }
+            /* the game faded its screen to white (the flash before a
+             * battle): the whole window takes it, not a DS-sized box of it
+             * (a fade to black keeps the held picture: an app opening
+             * over the world does not take the game's fades) */
+            if (flat_screen(in->screen_rgba[view->world_screen & 1]) == 0xFFFFFFL) {
+                ui_fill(&g_ctx, 0, 0, g_canvas.w, g_canvas.h, 0xFFFFFFu, 255);
+                g_fade_left = 0;        /* nothing to blend from: it is all white */
             }
             /* an app closed (its proc is ending or gone, its recipe let
              * go): the scene it goes back to (the menu) shows at once, and
