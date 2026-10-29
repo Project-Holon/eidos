@@ -429,10 +429,33 @@ u32 w2c_env_SDL_GL_SetAttribute(struct w2c_env *e, u32 attr, u32 v)
     return SDL_GL_SetAttribute((SDL_GLAttr)attr, (int)v);
 }
 
+/* The OpenGL driver on stderr, for reports of a slow game: Mesa's llvmpipe
+ * and softpipe draw on the CPU. */
+static void report_gl(void)
+{
+    typedef const unsigned char *(SDLCALL *GetString)(unsigned name);
+    GetString get = (GetString)SDL_GL_GetProcAddress("glGetString");
+    const char *r = get != NULL ? (const char *)get(0x1F01u) : NULL;   /* GL_RENDERER */
+    const char *v = get != NULL ? (const char *)get(0x1F02u) : NULL;   /* GL_VERSION */
+
+    fprintf(stderr, "eidos: OpenGL %s (%s)\n", r != NULL ? r : "?", v != NULL ? v : "?");
+    if (r != NULL && (strstr(r, "llvmpipe") != NULL || strstr(r, "softpipe") != NULL ||
+                      strstr(r, "Software") != NULL)) {
+        fprintf(stderr, "eidos: this OpenGL draws on the CPU, so the game runs slowly; "
+                "install the graphics card's driver\n");
+    }
+}
+
 u32 w2c_env_SDL_GL_CreateContext(struct w2c_env *e, u32 w)
 {
+    SDL_GLContext c;
+
     (void)e;
-    return handle_of(SDL_GL_CreateContext((SDL_Window *)handle_ptr(w)));
+    c = SDL_GL_CreateContext((SDL_Window *)handle_ptr(w));
+    if (c != NULL) {
+        report_gl();
+    }
+    return handle_of(c);
 }
 
 u32 w2c_env_SDL_GL_DestroyContext(struct w2c_env *e, u32 c)
