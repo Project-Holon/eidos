@@ -8,11 +8,17 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `515b939e9bde05118592f7b8fe11684902b9facc`
-- Date: 2026-10-28 11:22:17 +0100
-- Subject: Two more callbacks return their real values (GTS category input, wifi battle report)
+- Revision: `6c2aae879f123bcbc028cf6a8b7f8df614402ac8`
+- Date: 2026-10-29 14:38:15 +0100
+- Subject: Move cursor actors read their animation from the right slot on the PC build
 
-The step from `177e37c797`: functions the DS returned a value from but the C
+The step from `515b939e9b`: BTLV_INPUT_CreateWazaCursorActors' host branch read
+the move cursors' animation sequence 0x20 bytes past the right slot, a
+leftover byte that crashed the 32-bit build at a trainer battle's second
+action menu (the 64-bit build read a harmless value by luck); the DS bytes
+are unchanged.
+
+The step before, from `177e37c797`: functions the DS returned a value from but the C
 typed void (the sprite renderer's OAM entry callbacks, the dex skin tile
 getter, the screen wipes' pattern handlers, the GTS category input and the
 online battle reports) return it, which the 64-bit
