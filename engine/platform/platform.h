@@ -478,6 +478,10 @@ int  eidos_platform_pad_last(const EidosPlatform *p);
 /* The icon family for the pad in use (engine/ui/padglyph.h UI_PAD_*), from
  * the type SDL reports for the pad pressed last. */
 int  eidos_platform_pad_family(const EidosPlatform *p);
+/* Non-zero while A, B, X, Y are bound as shipped and the pad in use confirms
+ * with its bottom button (Xbox, PlayStation): the shipped bindings then
+ * read as A south, B east, X west, Y north. */
+int  eidos_platform_face_swap(const EidosPlatform *p);
 /* The 3D's outlines (EIDOS_OPT_OUTLINES: 0 off, 1 thin). */
 void eidos_platform_set_outlines(EidosPlatform *p, int mode);
 void eidos_platform_key_names(const EidosPlatform *p, const char *names[12]);

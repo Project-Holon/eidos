@@ -93,6 +93,7 @@ struct EidosPlatform {
     int text_mode;
     int pad_last;                   /* the last input came from a pad      */
     int pad_type;                   /* that pad's SDL_GamepadType          */
+    int face_default;               /* A, B, X, Y are on the shipped buttons */
     char text[128];
     int text_len;
     int cap_state;                  /* EIDOS_CAPTURE_*                       */
@@ -323,6 +324,67 @@ static int pad_binding_held(SDL_Gamepad *gc, const EidosPadBinding *b)
     return 0;
 }
 
+/*
+ * The shipped face buttons sit where the DS has them (A east, B south), as
+ * on Nintendo's pads.  On a pad whose bottom button confirms (Xbox's A,
+ * PlayStation's cross) the shipped binding turns to that pad's habit: A
+ * south, B east, X west, Y north.  A binding the player made stands as set.
+ */
+static int pad_bottom_confirms(int type)
+{
+    switch (type) {
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+    case SDL_GAMEPAD_TYPE_GAMECUBE:
+        return 0;
+    default:
+        return 1;
+    }
+}
+
+/* Whether A, B, X and Y are bound exactly as shipped (k_default_padmap). */
+static void note_face_default(EidosPlatform *p)
+{
+    static const u32 face[4] = { EIDOS_PAD_A, EIDOS_PAD_B, EIDOS_PAD_X, EIDOS_PAD_Y };
+    static const int want[4] = { SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_SOUTH,
+                                 SDL_GAMEPAD_BUTTON_NORTH, SDL_GAMEPAD_BUTTON_WEST };
+    int f, seen[4] = { 0, 0, 0, 0 };
+    u32 i;
+
+    p->face_default = 0;
+    for (i = 0; i < p->padmap_count; i++) {
+        for (f = 0; f < 4; f++) {
+            if (p->padmap[i].button != face[f]) {
+                continue;
+            }
+            if (p->padmap[i].kind != EIDOS_PADBIND_BUTTON || p->padmap[i].index != want[f] || seen[f]) {
+                return;
+            }
+            seen[f] = 1;
+        }
+    }
+    p->face_default = seen[0] && seen[1] && seen[2] && seen[3];
+}
+
+/* A binding as it reads on a pad of `type`. */
+static EidosPadBinding pad_binding_for(const EidosPlatform *p, const EidosPadBinding *b, int type)
+{
+    EidosPadBinding r = *b;
+
+    if (p->face_default && pad_bottom_confirms(type) && r.kind == EIDOS_PADBIND_BUTTON &&
+        r.index >= SDL_GAMEPAD_BUTTON_SOUTH && r.index <= SDL_GAMEPAD_BUTTON_NORTH) {
+        r.index ^= 1;           /* south <-> east, west <-> north */
+    }
+    return r;
+}
+
+int eidos_platform_face_swap(const EidosPlatform *p)
+{
+    return p != NULL && p->face_default && pad_bottom_confirms(p->pad_type);
+}
+
 /* Rebuilt from the whole table on every pump, as the keyboard is.         */
 static u32 read_pads(const EidosPlatform *p)
 {
@@ -331,11 +393,16 @@ static u32 read_pads(const EidosPlatform *p)
     int k;
 
     for (k = 0; k < MAX_PADS; k++) {
+        int type;
+
         if (p->pads[k] == NULL) {
             continue;
         }
+        type = (int)SDL_GetGamepadTypeForID(pad_id(p->pads[k]));
         for (i = 0; i < p->padmap_count; i++) {
-            if (pad_binding_held(p->pads[k], &p->padmap[i])) {
+            EidosPadBinding b = pad_binding_for(p, &p->padmap[i], type);
+
+            if (pad_binding_held(p->pads[k], &b)) {
                 word |= p->padmap[i].button;
             }
         }
@@ -1389,6 +1456,7 @@ int eidos_platform_set_bindings(EidosPlatform *p, const EidosKeyBinding *keys,
     p->keymap_count = nkeys;
     p->padmap = g;
     p->padmap_count = npads;
+    note_face_default(p);
     return 0;
 }
 
@@ -1434,6 +1502,7 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
     } else {
         p->padmap = eidos_default_padmap(&p->padmap_count);
     }
+    note_face_default(p);
 
     SDL_SetMainReady();
     /*
@@ -2168,7 +2237,8 @@ void eidos_platform_key_names(const EidosPlatform *p, const char *names[12])
         }
         if (p->pad_last) {
             for (i = 0; i < p->padmap_count; i++) {
-                int ctl = pad_control(p->padmap[i].kind, p->padmap[i].index);
+                EidosPadBinding pb = pad_binding_for(p, &p->padmap[i], p->pad_type);
+                int ctl = pad_control(pb.kind, pb.index);
 
                 if (p->padmap[i].button == (1u << b) && ctl >= 0) {
                     tok[b][0] = '\x1F';

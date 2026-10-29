@@ -5,6 +5,10 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Controllers: on Xbox and PlayStation pads the bottom button now confirms
+  and the right one goes back (A and B on Xbox, cross and circle on
+  PlayStation); Nintendo pads keep the DS layout. Controls you set
+  yourself stay as set.
 - One-screen PC: the game's own sounds for moving the cursor, picking up,
   putting down, putting back and a refused move. After a key press, a
   mouse resting over a slot no longer takes the selection back until it

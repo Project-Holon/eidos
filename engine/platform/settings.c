@@ -1567,6 +1567,11 @@ int eidos_settings_get_pad(int button, int slot, int *kind, int *index)
     }
     if (index != NULL) {
         *index = g_cur.pad[button][slot].index;
+        /* as the pad in use reads it (eidos_platform_face_swap) */
+        if (g_plat != NULL && eidos_platform_face_swap(g_plat) &&
+            g_cur.pad[button][slot].kind == EIDOS_PADBIND_BUTTON && *index >= 0 && *index < 4) {
+            *index ^= 1;
+        }
     }
     return 0;
 }
@@ -1582,6 +1587,18 @@ int eidos_settings_set_pad(int button, int slot, int kind, int index)
     slot = pick_slot(button, slot, 1);
     if (slot < 0) {
         return -1;
+    }
+    if (g_plat != NULL && eidos_platform_face_swap(g_plat)) {
+        /* the shipped face buttons as the pad in use reads them become the
+         * bindings, so the ones not set now stay where the player saw them */
+        for (b = 0; b < NBTN; b++) {
+            for (s = 0; s < EIDOS_BIND_SLOTS; s++) {
+                if (g_cur.pad[b][s].kind == EIDOS_PADBIND_BUTTON && g_cur.pad[b][s].index >= 0 &&
+                    g_cur.pad[b][s].index < 4) {
+                    g_cur.pad[b][s].index ^= 1;
+                }
+            }
+        }
     }
     if (kind >= 0) {
         if (kind > EIDOS_PADBIND_AXIS_NEG || index < 0) {
