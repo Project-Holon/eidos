@@ -162,6 +162,12 @@ int main(void)
     BW_CHECK_EQ("still on the tab", eidos_sui_tab(), 2);
     eidos_sui_help_line(0, help, sizeof help);
     BW_CHECK_EQ("bind help", help[0] != 0, 1);
+    /* The press that ends a capture acts on nothing: the game sees the host's
+     * buttons a frame late, so two quiet frames must pass first. */
+    eidos_sui_input(0, 0);
+    r = eidos_sui_input(B, B);
+    BW_CHECK_EQ("B right after a capture does nothing", r & EIDOS_SUI_EXIT, 0);
+    eidos_sui_input(0, 0);
 
     /* B leaves; the title menu's MULTIPLAYER opens its own screen: your
      * name, Host and Join.  The name and the code are typed on the game's

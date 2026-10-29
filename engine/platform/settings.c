@@ -1689,6 +1689,11 @@ int eidos_settings_capture_poll(EidosCaptured *out)
     return eidos_platform_capture_poll(g_plat, out);
 }
 
+u32 eidos_settings_host_buttons(void)
+{
+    return eidos_platform_buttons(g_plat);
+}
+
 /* ------------------------------------------------------------------ */
 /* The file                                                            */
 /* ------------------------------------------------------------------ */

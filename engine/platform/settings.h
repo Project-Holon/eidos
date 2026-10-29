@@ -266,6 +266,10 @@ void eidos_settings_capture_begin(void);
 void eidos_settings_capture_cancel(void);
 int  eidos_settings_capture_poll(EidosCaptured *out);
 
+/* The buttons the platform's keyboard and pads hold now (0 without a
+ * platform).  The game sees them a frame later. */
+u32  eidos_settings_host_buttons(void);
+
 /* ------------------------------------------------------------------ */
 /* Start-up and the platform                                           */
 /* ------------------------------------------------------------------ */

@@ -3,6 +3,13 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## Unreleased
+
+- Controls: setting a key no longer also acts as that button. Setting A
+  no longer gets stuck, setting B no longer leaves the screen, and setting
+  L, R or a D-Pad direction no longer changes the section or moves the
+  cursor.
+
 ## 0.1.7
 
 - macOS: 3D scenes draw again. The title screen's Reshiram, the new

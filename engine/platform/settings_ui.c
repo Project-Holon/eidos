@@ -1513,9 +1513,16 @@ static int sui_input(unsigned pressed, unsigned held)
     }
 
     if (g.wait_release) {
-        /* the press that set a key must not also act as that button */
-        if ((pressed | held) == 0u) {
-            g.wait_release = 0;
+        /* The press that set a key must not also act as that button.  The
+         * buttons given here are the game's, a frame behind the host's (and
+         * `held` is the game's repeat, empty between repeats), so the host's
+         * own buttons must also be up, for two frames running. */
+        if ((pressed | held) == 0u && eidos_settings_host_buttons() == 0u) {
+            if (++g.wait_release > 2) {
+                g.wait_release = 0;
+            }
+        } else {
+            g.wait_release = 1;
         }
         return 0;
     }
