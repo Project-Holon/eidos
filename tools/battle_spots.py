@@ -46,7 +46,7 @@ INC = os.path.join(HERE, '..', 'engine', 'world', 'battle_spots_tsv.inc')
 COLUMNS = ['id', 'kind', 'zone', 'label', 'tx', 'tz', 'dir', 'range',
            'rx0', 'rz0', 'rx1', 'rz1', 'px', 'pz', 'pf',
            'mode', 'sx', 'sz', 'angle', 'ax0', 'az0', 'ax1', 'az1', 'ok', 'fl', 'fd', 'iz', 'tid', 'iy', 'ih', 'is', 'it', 'ia',
-           'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vw', 'vm']
+           'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vw', 'vm', 'tn']
 PLACEMENT = ['mode', 'sx', 'sz', 'angle', 'ax0', 'az0', 'ax1', 'az1', 'ok', 'fl', 'fd', 'iz', 'iy', 'ih', 'is', 'it', 'ia',
              'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vm']
 
@@ -54,6 +54,7 @@ WATER = {0x14, 0x17, 0x1C, 0x3D, 0x3E, 0x3F, 0x42, 0x43}
 GYMS = {7: 'Striaton Gym', 18: 'Nacrene Gym', 19: 'Nacrene Gym', 29: 'Castelia Gym',
         63: 'Nimbasa Gym', 97: 'Driftveil Gym', 108: 'Mistralton Gym',
         114: 'Icirrus Gym', 121: 'Opelucid Gym'}
+STRAY_TRAINERS = {30}
 LEADER_CODES = {85, 86, 87, 88, 89, 90, 91, 162, 178, 179}
 # NPC dir codes: 0 up (-z), 1 down (+z), 2 left (-x), 3 right (+x)
 DIRV = {0: (0, -1), 1: (0, 1), 2: (-1, 0), 3: (1, 0)}
@@ -200,13 +201,20 @@ class Rom:
         return npcs, warps
 
     def story_battles(self, z):
-        """{script number: first trainer id} of the zone's scripts that
-        start a trainer battle (command 0x85 StartTrainerBattle: u16 trainer,
-        u16 second, u16 third).  The script file begins with u32 offsets
-        (each from the end of its own field) ended by u16 0xFD13; the
-        commands are u16 numbers with their arguments.  A byte scan: the
-        three arguments must be trainer ids or 0, so a stray 0x85 in the
-        data is rare and costs at most a row to check by eye."""
+        """{script number: [fight, ...]} of the zone's scripts that start a
+        battle, a fight being a dict (kind 'T' with tid and tn, or 'W' with
+        species and level).  The commands: 0x85 StartTrainerBattle (u16
+        trainer, second, third), 0x86 StartMultiTrainerBattle (ally, then
+        two opponents), 0x94 StartTrainerBattleWithMon, 0x178
+        StartScriptedWildBattle (species, level, flags).  The script file
+        begins with u32 offsets (each from the end of its own field) ended by
+        u16 0xFD13; the commands are u16 numbers with their arguments.  A byte
+        scan: the arguments must be trainer ids or 0, so a stray number in the
+        data is rare and costs at most a row to check by eye (trainer 30 starts a run of
+        stray words in Castelia City: its 0x86 and 0x94 are skipped, its
+        0x85 stays as the table had it).  Commands less than 100 bytes apart
+        are the versions of one fight (the opponent depends on the player's
+        starter); the ids of a fight are consecutive, first and tn of them."""
         sid = struct.unpack_from('<H', self.zh, z * 48 + 6)[0]
         if sid >= len(self.scripts):
             return {}
@@ -216,24 +224,57 @@ class Rom:
             ents.append(o + 4 + struct.unpack_from('<i', f, o)[0])
             o += 4
         ntr = len(self.trdata)
-        out = {}
-        for o in range(0, len(f) - 7):
+        hits = collections.defaultdict(list)        # script -> [(offset, what)]
+        for o in range(0, len(f) - 9):
             cmd = struct.unpack_from('<H', f, o)[0]
-            a, b, c = struct.unpack_from('<HHH', f, o + 2)
-            if cmd == 0x85:
-                if not 1 <= a < ntr or not (b == 0 or b < ntr) or not (c == 0 or c < ntr):
+            if cmd in (0x85, 0x86, 0x94):
+                n = 3 if cmd == 0x85 else 4
+                args = struct.unpack_from('<%dH' % n, f, o + 2)
+                if not all(a == 0 or a < ntr for a in args) or args[0] == 0:
                     continue
-                what = ('T', a)
+                tids = [t for t in (args[1:3] if cmd == 0x86 else args[:1]) if t]
+                if not tids or (cmd != 0x85 and args[0] in STRAY_TRAINERS):
+                    continue
+                what = ('T', tuple(tids))
             elif cmd == 0x178:
                 # StartScriptedWildBattle: u16 species, u16 level, u16 flags
+                a, b, _c = struct.unpack_from('<HHH', f, o + 2)
                 if not 1 <= a <= 649 or not 1 <= b <= 100:
                     continue
                 what = ('W', a, b)
             else:
                 continue
             sn = max((i + 1 for i, e in enumerate(ents) if e <= o), default=0)
-            if sn and sn not in out:
-                out[sn] = what
+            if sn:
+                hits[sn].append((o, what))
+        out = {}
+        for sn, hs in hits.items():
+            clusters, last = [], None
+            for o, what in hs:
+                if last is None or o - last > 100 or what[0] != clusters[-1][0][1][0]:
+                    clusters.append([])
+                clusters[-1].append((o, what))
+                last = o
+            fights, seen = [], set()
+            for cl in clusters:
+                if cl[0][1][0] == 'W':
+                    # the versions of one fight (Reshiram or Zekrom): the first
+                    w = cl[0][1]
+                    if w not in seen:
+                        seen.add(w)
+                        fights.append(dict(kind='W', species=w[1], level=w[2]))
+                    continue
+                ids = sorted({t for _o, w in cl for t in w[1]})
+                run = [ids[0]]
+                for t in ids[1:] + [None]:
+                    if t is not None and t == run[-1] + 1:
+                        run.append(t)
+                        continue
+                    if tuple(run) not in seen:
+                        seen.add(tuple(run))
+                        fights.append(dict(kind='T', tid=run[0], tn=len(run)))
+                    run = [t]
+            out[sn] = fights
         return out
 
     def script_movers(self, z, sn):
@@ -397,40 +438,59 @@ def analyse(rom):
                              tx=n['gx'], tz=n['gz'], dir=n['dir'], range=rng,
                              px=px, pz=pz, pf=facing_deg(-vx, -vz), mode='auto'))
         # a gym leader's battle is the leader row's (the leader's own talk
-        # script jumps to it): its trainer goes there, no second row
-        for sn, what in list(story.items()):
-            if what[0] == 'T' and z in GYMS and rom.trainer_class(what[1]) == 'Leader':
+        # script jumps to it): its trainers go there, no second row.  The
+        # leaders of one gym (the starter picks one) are one range.
+        if z in GYMS:
+            lead = [w for fl in story.values() for w in fl
+                    if w['kind'] == 'T' and rom.trainer_class(w['tid']) == 'Leader']
+            if lead:
+                lo = min(w['tid'] for w in lead)
+                hi = max(w['tid'] + w['tn'] - 1 for w in lead)
+                tid, tn = (lo, hi - lo + 1) if hi - lo < 4 else (lead[0]['tid'], lead[0]['tn'])
                 for r in rows:
                     if r['zone'] == z and r['label'].endswith(': leader') and r.get('tid', '-') == '-':
-                        r['tid'] = what[1]
-                storied = [n for n in storied if n['script'] != sn]
+                        r['tid'], r['tn'] = tid, tn
+            for sn in list(story):
+                if any(w in lead for w in story[sn]):
+                    del story[sn]           # a leader's script: its other fights are the gym's
+            storied = [n for n in storied if story.get(n['script'])]
         # a character that starts off the walkable map (a script hides it
         # there and walks it in: Tubeline Bridge's bikers) has no place yet
         storied = [n for n in storied if not n.get('walked') or walk_cost(tiles.get((n['gx'], n['gz']))) is not None
                    or any(walk_cost(tiles.get((n['gx'] + dx, n['gz'] + dz))) is not None for dx, dz in DIRV.values())]
+        # the trainers that already have a row (the gym trainers of a
+        # leader's script are the sight-line ones)
+        covered = {int(r['tid']) + k for r in rows if str(r.get('tid', '-')).isdigit()
+                   for k in range(int(r.get('tn', 1)) if str(r.get('tn', 1)).isdigit() else 1)}
         for n in storied:
             # a story battle: the character stands where its header puts it
             # (the script may walk it up first), the player faces it
             vx, vz = DIRV.get(n['dir'], (0, 1))
-            what = story[n['script']]
             near = [(n['gx'] + vx, n['gz'] + vz)] + [(n['gx'] + dx, n['gz'] + dz) for dx, dz in DIRV.values()]
             near = [t for t in near if walk_cost(tiles.get(t)) is not None] or [(n['gx'] + vx, n['gz'] + vz)]
             best = min(near, key=lambda t: dist.get(t, 1 << 30))
             px, pz = tile_center(best)
             fx, fz = n['gx'] - best[0], n['gz'] - best[1]
             pf = facing_deg(fx, fz) if (fx, fz) in DIRV.values() else facing_deg(-vx, -vz)
-            if what[0] == 'T':
-                label, tid = '%s: %s (story)' % (name, rom.trainer_class(what[1])), what[1]
-            else:
-                # a legendary (or another one-off Pokemon): the trainer column
-                # holds 100000 + level * 1000 + species (the editor's preview
-                # starts a wild battle with it)
-                sp = rom.species[what[1]] if what[1] < len(rom.species) else '#%d' % what[1]
-                label, tid = '%s: %s (legendary)' % (name, sp), 100000 + what[2] * 1000 + what[1]
-            rows.append(dict(id='T%d.%d' % (z, n['obj']), kind='T', zone=z,
-                             label=label, tid=tid,
-                             tx=n['gx'], tz=n['gz'], dir=n['dir'], range=0,
-                             px=px, pz=pz, pf=pf, mode='auto'))
+            fights = [w for w in story[n['script']]
+                      if w['kind'] == 'W' or not any(w['tid'] + k in covered for k in range(w['tn']))]
+            for k, what in enumerate(fights):
+                # the first fight of the character's script keeps the plain id;
+                # the next ones get b, c and so on
+                rid = 'T%d.%d%s' % (z, n['obj'], 'bcdefgh'[k - 1] if k else '')
+                tn = 1
+                if what['kind'] == 'T':
+                    label, tid, tn = '%s: %s (story)' % (name, rom.trainer_class(what['tid'])), what['tid'], what['tn']
+                else:
+                    # a legendary (or another one-off Pokemon): the trainer column
+                    # holds 100000 + level * 1000 + species (the editor's preview
+                    # starts a wild battle with it)
+                    sp = rom.species[what['species']] if what['species'] < len(rom.species) else '#%d' % what['species']
+                    label, tid = '%s: %s (legendary)' % (name, sp), 100000 + what['level'] * 1000 + what['species']
+                rows.append(dict(id=rid, kind='T', zone=z,
+                                 label=label, tid=tid, tn=tn,
+                                 tx=n['gx'], tz=n['gz'], dir=n['dir'], range=0,
+                                 px=px, pz=pz, pf=pf, mode='auto'))
         if has_enc:
             np = 0
             for water, comp in sorted(patches(tiles), key=lambda p: (min(p[1])[1], min(p[1])[0])):

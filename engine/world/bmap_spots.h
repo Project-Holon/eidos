@@ -54,6 +54,8 @@ typedef struct BmapSpot {
     int view;               /* 0 the row's first view; 1 and on its others (rows
                                of the same id: each has its own spot, angle,
                                cameras and trainer offsets); -1 deleted         */
+    int trainer_n;          /* T: how many numbers from trainer_id on are the same fight
+                               (the versions by the player's starter), 1 when one   */
     int pick_angle;         /* view 0: the view is chosen by the angle first
                                (else by the spot, the angle breaking a tie)     */
 } BmapSpot;

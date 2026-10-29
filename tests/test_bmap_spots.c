@@ -179,6 +179,19 @@ int main(void)
     BW_CHECK_EQ("the angle first", bmap_spots_pick_view(waiter, 100.0f, 100.0f, 0x4000u), v1);
     r->pick_angle = 0;
 
+    /* a story fight has one row for all the versions by the player's starter */
+    {
+        int a = bmap_spots_find_trainer(391, 59, tile_centre(5), tile_centre(9));
+        int b = bmap_spots_find_trainer(391, 53, tile_centre(5), tile_centre(9));
+
+        BW_REQUIRE("Nuvema's two fights have rows", a >= 0 && b >= 0 && a != b);
+        BW_CHECK_EQ("fight 1: second version", bmap_spots_find_trainer(391, 60, tile_centre(5), tile_centre(9)), a);
+        BW_CHECK_EQ("fight 1: third version", bmap_spots_find_trainer(391, 61, tile_centre(5), tile_centre(9)), a);
+        BW_CHECK_EQ("fight 2: second version", bmap_spots_find_trainer(391, 54, tile_centre(5), tile_centre(9)), b);
+        BW_CHECK_EQ("fight 2: third version", bmap_spots_find_trainer(391, 55, tile_centre(5), tile_centre(9)), b);
+        BW_CHECK_EQ("no row for a number beside the range", bmap_spots_find_trainer(391, 62, tile_centre(5), tile_centre(9)), -1);
+    }
+
     /* saving: the user's file has the changed rows, the default stays */
     bmap_spots_spec(NULL, 10.0f, 20.0f, 0x8000u, &sp);
     BW_CHECK_EQ("no row: facing", sp.facing, 0x8000);

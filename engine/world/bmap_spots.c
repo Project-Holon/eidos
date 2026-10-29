@@ -62,7 +62,7 @@ static int parse_row(char *line, BmapSpot *r)
     if (line[0] == '#' || line[0] == '\0') {
         return -1;
     }
-    while (n < 48) {
+    while (n < 49) {
         f[n++] = p;
         p = strchr(p, '\t');
         if (p == NULL) {
@@ -125,6 +125,7 @@ static int parse_row(char *line, BmapSpot *r)
     }
     r->view = n > 45 ? field_int(f[45], 0) : 0;
     r->pick_angle = n > 46 ? field_int(f[46], 0) : 0;
+    r->trainer_n = n > 47 ? field_int(f[47], 1) : 0;    /* 0: a file from before the column */
     return 0;
 }
 
@@ -197,6 +198,16 @@ static void load_text(char *text, int user)
             if (at >= 0) {
                 if (r.trainer_id < 0) {
                     r.trainer_id = g_rows[at].trainer_id;   /* a file from before the column */
+                }
+                if (r.trainer_n <= 0) {                     /* a file from before the fight's range */
+                    const BmapSpot *b = &g_rows[at];
+
+                    if (r.trainer_id >= b->trainer_id && r.trainer_id < b->trainer_id + (b->trainer_n > 0 ? b->trainer_n : 1)) {
+                        r.trainer_id = b->trainer_id;       /* one of the fight's numbers */
+                        r.trainer_n = b->trainer_n > 0 ? b->trainer_n : 1;
+                    } else {
+                        r.trainer_n = 1;
+                    }
                 }
                 g_rows[at] = r;
             } else if ((at = new_slot()) >= 0) {
@@ -315,7 +326,8 @@ int bmap_spots_find_trainer(unsigned zone, int trainer_id, float px, float pz)
         dx = px - ((float)r->tx * 16.0f + 8.0f);
         dz = pz - ((float)r->tz * 16.0f + 8.0f);
         d = dx * dx + dz * dz;
-        if (trainer_id > 0 && r->trainer_id == trainer_id && d < bd) {
+        if (trainer_id > 0 && r->trainer_id > 0 && trainer_id >= r->trainer_id &&
+            trainer_id < r->trainer_id + (r->trainer_n > 0 ? r->trainer_n : 1) && d < bd) {
             bd = d;
             best = i;
         }
@@ -608,7 +620,8 @@ static void save_row(FILE *f, const BmapSpot *r)
             (double)r->cam.side, (double)r->cam.tilt, (double)r->cam.aim);
     fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%d\n", (double)r->trainer_foe[0], (double)r->trainer_foe[1],
             (double)r->trainer_foe[2], (double)r->trainer_own[0], (double)r->trainer_own[1],
-            (double)r->trainer_own[2], r->view, r->pick_angle);
+            (double)r->trainer_own[2], r->view, r->pick_angle,
+            r->trainer_n > 0 ? r->trainer_n : 1);
 }
 
 int bmap_spots_save(void)
