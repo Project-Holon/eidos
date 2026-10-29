@@ -1131,7 +1131,7 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     draw_hint_strip(c, 0, w, hints, 1, keys);
 }
 
-static const EidosUiRecipe recipe_plain = { "battle_plain", plain_match, plain_run, NULL };
+static const EidosUiRecipe recipe_plain = { "battle_plain", plain_match, plain_run, NULL, 0 };
 
 /*
  * The game's own gauge of a view position (BtlvEff.gauge +0x1A4, BtlvGaugeWork
@@ -1722,7 +1722,7 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     draw_hint_strip(c, 0, c->canvas->w, hints, can_back ? 2 : 1, keys);
 }
 
-static const EidosUiRecipe recipe_action = { "battle_action", action_match, action_run, NULL };
+static const EidosUiRecipe recipe_action = { "battle_action", action_match, action_run, NULL, 0 };
 
 
 /* ------------------------------------------------------------------ */
@@ -1889,7 +1889,7 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
 }
 
-static const EidosUiRecipe recipe_move = { "battle_move", move_match, move_run, NULL };
+static const EidosUiRecipe recipe_move = { "battle_move", move_match, move_run, NULL, 0 };
 
 /* ------------------------------------------------------------------ */
 /* Target menu (double and triple battles)                             */
@@ -1932,6 +1932,7 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     cur = input_cursor(&b);
     targets = b.aux + 0x80;
     count = targets[0];
+    /* (the arrows: below, once the list is known) */
     /* foes first, then the own side */
     {
         int vp;
@@ -1955,6 +1956,37 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             if (targets[3 + j] == slot) {
                 legal[i] = 1;
             }
+        }
+    }
+    /* The game lays the targets out as two rows (foes over the own side);
+     * the interface shows one column, so up and down walk the column and
+     * the game's cursor follows them. */
+    {
+        int order[6], en[8] = { 0 };
+        int to;
+
+        for (i = 0; i < rows; i++) {
+            order[i] = vp_list[i] - 2;
+            en[vp_list[i] - 2] = legal[i];
+        }
+        /* the game's cursor starts hidden, on no legal target: the first
+         * arrow lands on the first one of the column */
+        if (cur < 0 || cur > 7 || !en[cur]) {
+            u32 k = eidos_ui_keys_pressed() & (BW_KEY_UP | BW_KEY_DOWN);
+
+            to = -1;
+            for (i = 0; k != 0 && i < rows && to < 0; i++) {
+                if (legal[i]) {
+                    to = order[i];
+                }
+            }
+            eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT);
+        } else {
+            to = column_step(order, rows, en, cur);
+        }
+        if (to >= 0) {
+            set_input_cursor(&b, to);
+            cur = to;
         }
     }
     /* the targets stand on the plates, BACK nearest them */
@@ -2023,7 +2055,7 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
 }
 
-static const EidosUiRecipe recipe_target = { "battle_target", target_match, target_run, NULL };
+static const EidosUiRecipe recipe_target = { "battle_target", target_match, target_run, NULL, 0 };
 
 /* ------------------------------------------------------------------ */
 /* The modal frame shared by the Bag and the party list                */
@@ -2206,6 +2238,7 @@ static u32 bag_sig(const BagV *v)
            ((u32)(v->p[0x530]) & 0xFFu);
 }
 
+
 static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static const char *const h0[] = { "A", "Select", "B", "Back" };
@@ -2279,7 +2312,8 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         last_h = ih - (last_y - iy);
         {
             /* LAST ITEM USED: everything that is left, the item's icon centred */
-            int st = hit(c, ix, last_y, iw, last_h);
+            int lw = iw - 60;
+            int st = hit(c, ix, last_y, lw, last_h);
             int sel = (st & EIDOS_UI_HOVER) ? 1 : (v.cursor == 4 && eidos_ui_keys_lit());
             const UiImage *icon = v.key_item != 0 ? ui_item_icon((u16)v.key_item) : NULL;
             char name[48];
@@ -2288,8 +2322,8 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             if (usable && (st & EIDOS_UI_CLICK)) {
                 tap_request(107, 171, sig, in->frame);
             }
-            ui_panel(c, ix, last_y, iw, last_h, UI_CUT_TL | UI_CUT_BR, 6, sel && usable ? UI_PINK2 : 0x3C0A1Au,
-                     sel && usable ? UI_WHITE : UI_RED, 255);
+            ui_panel(c, ix, last_y, lw, last_h, UI_CUT_TL | UI_CUT_BR, 6, sel && usable ? UI_PINK2 : 0x3C0A1Au,
+                     sel ? UI_WHITE : UI_RED, 255);
             ui_text(c, ix + 10, last_y + 4,
                     label(MSG_BAG_UI, 8, "LAST USED ITEM", buf, sizeof(buf)), UI_PINK, UI_RED2,
                     UI_FONT_SMALL, 1);
@@ -2302,17 +2336,17 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 snprintf(q, sizeof(q), "\xC3\x97%d", bag_qty_of(&v, v.key_slot, v.key_item));
                 tw = ui_text_w(name, UI_FONT_LARGE);
                 total = icon->w * scale + 10 + tw;
-                gx = ix + (iw - total) / 2;
+                gx = ix + (lw - total) / 2;
                 ty = last_y + 14 + (room - 15) / 2;
                 ui_image(c, gx, last_y + 14 + (room - icon->h * scale) / 2, icon, scale);
                 ui_text(c, gx + icon->w * scale + 10, ty, name, UI_WHITE, UI_RED2, UI_FONT_LARGE, 1);
-                ui_text(c, ix + iw - 12 - ui_text_w(q, UI_FONT_LARGE), ty, q, UI_WHITE, UI_RED2,
+                ui_text(c, ix + lw - 12 - ui_text_w(q, UI_FONT_LARGE), ty, q, UI_WHITE, UI_RED2,
                         UI_FONT_LARGE, 1);
             } else {
                 /* no item used yet in this battle: say so, centred */
                 const char *none = "No item used yet";
 
-                ui_text(c, ix + (iw - ui_text_w(none, UI_FONT_LARGE)) / 2,
+                ui_text(c, ix + (lw - ui_text_w(none, UI_FONT_LARGE)) / 2,
                         last_y + 14 + ui_text_y(last_h - 18, UI_FONT_LARGE), none, UI_GREY,
                         UI_RED2, UI_FONT_LARGE, 1);
             }
@@ -2446,13 +2480,16 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     ui_pop(c, m.x, m.y, &saved);
     if (v.page != 2) {
-        /* BACK: in the header on the pocket page, in the footer on the list */
+        /* BACK: bottom right, where the game has it, so the arrows reach it
+         * from the same side (the game's cursor: 5 on the pockets, 6 on the
+         * list) */
         int bx = m.x + m.w - 6 - 54;
-        int by = v.page == 0 ? m.y + 5 : m.y + m.h - 6 - 18;
-        int bh = v.page == 0 ? 16 : 18;
+        int by = m.y + m.h - 6 - 18;
+        int bh = 18;
         int st = hit(c, bx, by, 54, bh);
+        int keyed = eidos_ui_keys_lit() && v.cursor == (v.page == 0 ? 5 : 6);
 
-        ui_cmd_button(c, bx, by, 54, bh, "BACK", UI_GREY, (st & EIDOS_UI_HOVER) != 0);
+        ui_cmd_button(c, bx, by, 54, bh, "BACK", UI_GREY, (st & EIDOS_UI_HOVER) != 0 || keyed);
         if (st & EIDOS_UI_CLICK) {
             tap_request(235, 171, sig, in->frame);
         }
@@ -2462,7 +2499,7 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     draw_hint_strip(c, 0, c->canvas->w, v.page == 2 ? h2 : h0, 2, keys);
 }
 
-static const EidosUiRecipe recipe_bag = { "battle_bag", bag_match, bag_run, NULL };
+static const EidosUiRecipe recipe_bag = { "battle_bag", bag_match, bag_run, NULL, 0 };
 
 /* ------------------------------------------------------------------ */
 /* Battle party list (ov198)                                           */
@@ -2731,6 +2768,10 @@ static void pl_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             if (st & EIDOS_UI_CLICK) {
                 tap_request(235, 171, sig, in->frame);
             }
+            /* the game's cursor 6 is BACK */
+            if (!menu_open && v.cursor == 6 && (st & EIDOS_UI_HOVER) == 0 && eidos_ui_keys_lit()) {
+                ui_cursor_corners(c, ix + iw - 54, iy + ih - 18, 54, 18, UI_WHITE);
+            }
         }
         if (menu_open) {
             /* the Pokemon menu: SHIFT (or why not), SUMMARY, CHECK MOVES, BACK */
@@ -2791,7 +2832,7 @@ static void pl_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     draw_hint_strip(c, 0, c->canvas->w, h0, 2, keys);
 }
 
-static const EidosUiRecipe recipe_party = { "battle_party", pl_match, pl_run, NULL };
+static const EidosUiRecipe recipe_party = { "battle_party", pl_match, pl_run, NULL, 0 };
 
 /* ------------------------------------------------------------------ */
 /* Yes / no choice (screen 4: the shift prompt, the move-learn prompt) */
@@ -2883,7 +2924,7 @@ static void choice_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
 }
 
-static const EidosUiRecipe recipe_choice = { "battle_choice", choice_match, choice_run, NULL };
+static const EidosUiRecipe recipe_choice = { "battle_choice", choice_match, choice_run, NULL, 0 };
 
 /* ------------------------------------------------------------------ */
 /* The group                                                           */

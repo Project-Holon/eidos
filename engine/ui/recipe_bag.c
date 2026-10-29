@@ -1269,7 +1269,7 @@ static void reset_bag(void)
     caches_clear();
 }
 
-static const EidosUiRecipe recipe_bag = { "bag", match_bag, run_bag, reset_bag };
+static const EidosUiRecipe recipe_bag = { "bag", match_bag, run_bag, reset_bag, 0 };
 
 const EidosUiRecipe *const ui_recipes_bag[] = { &recipe_bag };
 const u32 ui_recipes_bag_count = 1;

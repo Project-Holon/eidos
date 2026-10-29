@@ -521,7 +521,7 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 }
 
 static const EidosUiRecipe recipe_title = {
-    "title", title_match, title_run, title_reset
+    "title", title_match, title_run, title_reset, 0
 };
 
 /* ------------------------------------------------------------------ */
@@ -1293,7 +1293,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 }
 
 static const EidosUiRecipe recipe_menu = {
-    "title_menu", menu_match, menu_run, menu_reset
+    "title_menu", menu_match, menu_run, menu_reset, 0
 };
 
 /* ------------------------------------------------------------------ */
@@ -1394,7 +1394,7 @@ static void boot_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 }
 
-static const EidosUiRecipe recipe_boot = { "boot", boot_match, boot_run, NULL };
+static const EidosUiRecipe recipe_boot = { "boot", boot_match, boot_run, NULL, 0 };
 
 const EidosUiRecipe *const ui_recipes_title[] = { &recipe_title, &recipe_menu };
 const u32 ui_recipes_title_count = 2;

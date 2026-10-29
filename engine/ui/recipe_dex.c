@@ -1071,7 +1071,7 @@ void ui_species_types(int species, int *t1, int *t2)
     species_types(species, t1, t2);
 }
 
-static const EidosUiRecipe recipe_dex = { "pokedex", dex_match, dex_run, dex_reset };
+static const EidosUiRecipe recipe_dex = { "pokedex", dex_match, dex_run, dex_reset, 0 };
 
 const EidosUiRecipe *const ui_recipes_dex[] = { &recipe_dex };
 const u32 ui_recipes_dex_count = 1;

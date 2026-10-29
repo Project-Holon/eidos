@@ -737,7 +737,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 }
 
-static const EidosUiRecipe recipe_name = { "name entry", name_match, name_run, NULL };
+static const EidosUiRecipe recipe_name = { "name entry", name_match, name_run, NULL, 0 };
 
 /* ------------------------------------------------------------------ */
 /* Xtransceiver: the call list (ov172, screen CTVT_SCREEN_CALL)        */
@@ -915,7 +915,7 @@ static void xt_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 }
 
-static const EidosUiRecipe recipe_xtrans = { "xtransceiver", xt_match, xt_run, NULL };
+static const EidosUiRecipe recipe_xtrans = { "xtransceiver", xt_match, xt_run, NULL, 0 };
 
 /* ------------------------------------------------------------------ */
 /* The recipes                                                         */

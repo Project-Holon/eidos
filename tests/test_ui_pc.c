@@ -7,21 +7,27 @@
  * test names and any address for a pointer), builds stand-ins for the game's
  * structs and functions in memory (a game system with a proc stack, a box
  * task, a party, two boxes of Pokemon, the window frame manager, the bottom
- * screen's pixels), and runs the recipe at several canvas sizes.  It checks
+ * screen's pixels, and the three functions that check and apply a drop), and
+ * runs the recipe at several canvas sizes.  It checks
  *
  *   - the scene test (the modes it draws, the ones it leaves to the DS
  *     screens, a sub screen on top);
- *   - the layout (the party's six rows, the grid and the details fit, at
- *     every size, and do not overlap);
- *   - the slot under a canvas position, and the stylus position of a slot;
- *   - what a click makes: a tap at the rectangle the game tests (a box
- *     slot, a party row with the tray open and closed, the action list's
- *     buttons, YES and NO, the box arrows, the wheel);
- *   - a drag: the stylus follows the slot under the mouse;
+ *   - the layout (the party's six rows, the grid, the details and the chips
+ *     fit at every size and do not overlap);
+ *   - the slot under a canvas position;
+ *   - the mouse alone: click to pick up and click to put down, a drag, a
+ *     drop that is refused (the last Pokemon able to battle), putting back
+ *     with the right button and by letting go off a target, the box arrows,
+ *     the wheel, the box list;
+ *   - the keys alone: A, the arrows, B, L and R, SELECT, X and its menu,
+ *     the chips, the marking panel;
+ *   - what the game is asked to do for the summary: the script of keys;
+ *   - the game's own list and YES / NO, drawn as buttons that tap;
  *   - the text decoder (the message archive's cipher and control codes).
  *
- * The interface layer's hooks (hit regions, taps, presses) are the test's own.
- * UI_PC_OUT names a directory for the pictures (BMP files).
+ * The interface layer's hooks (hit regions, taps, presses, the keys it
+ * takes, the game-thread queue) are the test's own.  UI_PC_OUT names a
+ * directory for the pictures (BMP files).
  */
 
 #include <stdio.h>
@@ -40,9 +46,14 @@ const u8 *g_pc_test_lists[6];
 /* The interface layer's hooks                                         */
 /* ------------------------------------------------------------------ */
 
-static int g_mx = -1, g_my = -1, g_click, g_wheel;
+static int g_mx = -1, g_my = -1, g_click;
 static int g_tap_n, g_tap_x[64], g_tap_y[64];
-static u32 g_press;
+static u32 g_press_log[64];
+static int g_press_n;
+static u32 g_keys_in;           /* the keys the player pressed this frame   */
+static u32 g_taken;
+static int g_right_click;
+static int g_keys_lit = 1;
 
 int eidos_ui_hit(EidosUiRect r)
 {
@@ -59,10 +70,15 @@ int eidos_ui_hit(EidosUiRect r)
 
 int eidos_ui_wheel(EidosUiRect r)
 {
-    if (g_mx >= r.x && g_my >= r.y && g_mx < r.x + r.w && g_my < r.y + r.h) {
-        return g_wheel;
-    }
+    (void)r;
     return 0;
+}
+
+int eidos_ui_mouse_pos(int *x, int *y)
+{
+    *x = g_mx;
+    *y = g_my;
+    return g_mx >= 0;
 }
 
 void eidos_ui_tap(int x, int y, u32 frames)
@@ -75,8 +91,6 @@ void eidos_ui_tap(int x, int y, u32 frames)
     g_tap_n++;
 }
 
-static int g_right_click;
-
 int eidos_ui_right_click(void)
 {
     return g_right_click;
@@ -84,7 +98,7 @@ int eidos_ui_right_click(void)
 
 int eidos_ui_keys_lit(void)
 {
-    return 1;
+    return g_keys_lit;
 }
 
 void eidos_ui_want_text(int on)
@@ -95,7 +109,27 @@ void eidos_ui_want_text(int on)
 void eidos_ui_press(u32 keys, u32 frames)
 {
     (void)frames;
-    g_press |= keys;
+    if (g_press_n < 64) {
+        g_press_log[g_press_n] = keys;
+    }
+    g_press_n++;
+}
+
+void eidos_ui_take_keys(u32 mask)
+{
+    g_taken |= mask;
+}
+
+u32 eidos_ui_keys_pressed(void)
+{
+    return g_keys_in;
+}
+
+/* The game thread is the test's own: a call runs at once. */
+int eidos_ui_game_call(void (*fn)(void *arg), void *arg)
+{
+    fn(arg);
+    return 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -103,7 +137,7 @@ void eidos_ui_press(u32 keys, u32 frames)
 /* ------------------------------------------------------------------ */
 
 typedef struct FakeMon {
-    int exists, egg, species, form, gender, level, item, ability;
+    int exists, egg, species, form, gender, level, item, ability, mark;
     int moves[4], type1, type2, hp, maxhp;
     u16 nick[12];
 } FakeMon;
@@ -113,6 +147,7 @@ static FakeMon g_party[6];
 static int g_party_n;
 static u8 g_header[0x3E0];
 static s8 g_frame_x[12], g_frame_y[12];
+static int g_applied;           /* UpdateBoxSlots calls                     */
 
 u32 POKE_TOOL_GetBoxValue(void *boxMon, u32 paramId, PcPtr arg)
 {
@@ -126,6 +161,7 @@ u32 POKE_TOOL_GetBoxValue(void *boxMon, u32 paramId, PcPtr arg)
     case 0x6E: return (u32)m->gender;
     case 0x9E: return (u32)m->level;
     case 0x06: return (u32)m->item;
+    case 0x0B: return (u32)m->mark;
     case 0x0A: return (u32)m->ability;
     case 0x36: case 0x37: case 0x38: case 0x39: return (u32)m->moves[paramId - 0x36];
     case 0xAE: return (u32)m->type1;
@@ -134,6 +170,15 @@ u32 POKE_TOOL_GetBoxValue(void *boxMon, u32 paramId, PcPtr arg)
         memcpy((void *)arg, m->nick, sizeof(m->nick));
         return 0;
     default: return 0;
+    }
+}
+
+void POKE_TOOL_SetBoxValue(void *boxMon, u32 paramId, PcPtr value)
+{
+    if (paramId == 0x0B) {
+        ((FakeMon *)boxMon)->mark = (int)value;
+    } else if (paramId == 0x06) {
+        ((FakeMon *)boxMon)->item = (int)value;
     }
 }
 
@@ -157,6 +202,17 @@ void *BOX_SAVEDATA_GetPokemon(void *gameData, u32 box, u32 slot)
 
 void *BOX_SAVEDATA_GetHeader(void *gameData) { (void)gameData; return g_header; }
 
+int BOX_SAVEDATA_CountPokemonInBox(void *gameData, u32 box)
+{
+    int i, n = 0;
+
+    (void)gameData;
+    for (i = 0; i < 30; i++) {
+        n += g_box[box & 1][i].exists;
+    }
+    return n;
+}
+
 void BGWINFRM_GetPos(void *wk, u32 idx, s8 *x, s8 *y)
 {
     (void)wk;
@@ -164,10 +220,97 @@ void BGWINFRM_GetPos(void *wk, u32 idx, s8 *x, s8 *y)
     *y = g_frame_y[idx];
 }
 
+static unsigned char g_task[0x30];
+static unsigned char g_work[0xA200];
+static int g_pend_a, g_pend_b;
+
+static FakeMon *slot_mon(int slot, int box)
+{
+    return slot >= SLOT_PARTY0 ? &g_party[slot - SLOT_PARTY0] : &g_box[box & 1][slot];
+}
+
+/* The game's rules, as far as the test needs them: a full box, the last
+ * Pokemon able to battle. */
+int ov170_BOX2_MAIN_HandleMonPickup(void *task, u32 a, u32 b)
+{
+    u8 *t = (u8 *)task;
+
+    g_work[BW_RESULT] = 0;
+    if (b >= 36) {
+        u32 n = (b - 36 + t[0x19]) % t[0x15];
+
+        if (n == t[BT_CURBOX] || BOX_SAVEDATA_CountPokemonInBox(NULL, n) == 30) {
+            g_work[BW_RESULT] = 1;
+            return 0;
+        }
+    }
+    if (a >= SLOT_PARTY0 && g_party_n == 1 && (b < SLOT_PARTY0 ? !slot_mon((int)b, t[BT_CURBOX])->exists : b >= 36)) {
+        g_work[BW_RESULT] = 3;
+        return 0;
+    }
+    return 1;
+}
+
+int ov170_BOX2_MAIN_MoveCursorWithMon(void *task, u32 a, u32 b)
+{
+    if (ov170_BOX2_MAIN_HandleMonPickup(task, a, b) == 0) {
+        g_pend_a = 0xFF;
+        return 0;
+    }
+    g_pend_a = (int)a;
+    g_pend_b = (int)b;
+    return 1;
+}
+
+static void party_compact(void)
+{
+    int i, n = 0;
+
+    for (i = 0; i < 6; i++) {
+        if (g_party[i].exists) {
+            g_party[n++] = g_party[i];
+        }
+    }
+    for (i = n; i < 6; i++) {
+        memset(&g_party[i], 0, sizeof(g_party[i]));
+    }
+    g_party_n = n;
+}
+
+void ov170_BOX2_MAIN_UpdateBoxSlots(void *task)
+{
+    u8 *t = (u8 *)task;
+    FakeMon tmp;
+    int a = g_pend_a, b = g_pend_b;
+
+    g_applied++;
+    if (b >= 36) {
+        int n = (b - 36 + t[0x19]) % t[0x15], i;
+        FakeMon *src = slot_mon(a, t[BT_HELD]);
+
+        for (i = 0; i < 30; i++) {
+            if (!g_box[n & 1][i].exists) {
+                g_box[n & 1][i] = *src;
+                memset(src, 0, sizeof(*src));
+                break;
+            }
+        }
+        party_compact();
+        return;
+    }
+    if (b >= SLOT_PARTY0 && b - SLOT_PARTY0 >= g_party_n) {
+        b = SLOT_PARTY0 + g_party_n;            /* an empty row: the end of the party */
+    }
+    tmp = *slot_mon(b, t[BT_CURBOX]);
+    *slot_mon(b, t[BT_CURBOX]) = *slot_mon(a, t[BT_HELD]);
+    *slot_mon(a, t[BT_HELD]) = tmp;
+    party_compact();
+}
+
 static void w32(void *b, u32 off, u32 v) { memcpy((unsigned char *)b + off, &v, 4); }
 
-static unsigned char g_gs[0x34], g_procsys[0x20], g_proc[0x20], g_task[0x30], g_params[0x40];
-static unsigned char g_nested[0x20], g_work[0xA200], g_winmgr[16], g_gd[16], g_partyobj[16];
+static unsigned char g_gs[0x34], g_procsys[0x20], g_proc[0x20], g_params[0x40];
+static unsigned char g_nested[0x20], g_winmgr[16], g_gd[16], g_partyobj[16];
 static unsigned char g_bottom_px[256 * 192 * 4];
 
 /* The game system with the box app on its stack. */
@@ -179,12 +322,13 @@ static void game_set(int overlay, int mode, int state)
     memset(g_task, 0, sizeof(g_task));
     memset(g_params, 0, sizeof(g_params));
     memset(g_nested, 0, sizeof(g_nested));
+    memset(g_work, 0, sizeof(g_work));
     wp(g_task, 0x00, g_params);
     wp(g_task, 0x04, g_nested);
     g_task[0x14] = 0;               /* box 1 */
     g_task[0x15] = 8;
     g_task[0x16] = 0;               /* cursor on slot 0 */
-    g_task[0x17] = 0xFF;
+    g_task[0x17] = 0;
     w32(g_task, 0x28, (u32)state);
     wp(g_task, 0x2C, g_work);
     wp(g_params, 0x04, g_gd);
@@ -196,8 +340,6 @@ static void game_set(int overlay, int mode, int state)
     wp(g_proc, 0x14, g_task);
     wp(g_procsys, 0x08, g_proc);
     wp(g_gs, 0x08, g_procsys);
-    g_pc_test_gs_cell = (u8 *)g_gs;
-    /* the gs cell is a pointer to the game system */
     {
         static u32 cell;
 
@@ -255,6 +397,7 @@ static void world_build(void)
         g_header[4 + i * 40 + 10] = 0xFF;
         g_header[4 + i * 40 + 11] = 0xFF;
     }
+    g_applied = 0;
 }
 
 /* The windows the frame manager reports: the action list shown or not, the
@@ -339,35 +482,53 @@ static int g_fail;
 static EidosUiCanvas g_cv;
 static EidosUiCtx g_ctx;
 static u32 g_frame;
+static int g_win_w = 1920, g_win_h = 1080, g_win_k = 4;
 
-static void run_frame(int w, int h, int k, int mx, int my, int click, int wheel)
+static void run_frame(int mx, int my, int click, int down, int pressed, u32 keys)
 {
     EidosUiFrame in;
     EidosUiView view;
 
     memset(&in, 0, sizeof(in));
-    in.win_w = w;
-    in.win_h = h;
+    in.win_w = g_win_w;
+    in.win_h = g_win_h;
     in.frame = ++g_frame;
     in.screen_rgba[1] = g_bottom_px;
-    in.mouse.x = mx * k;
-    in.mouse.y = my * k;
+    in.mouse.x = mx < 0 ? -1 : mx * g_win_k;
+    in.mouse.y = my < 0 ? -1 : my * g_win_k;
+    in.mouse.down = down;
+    in.mouse.pressed = pressed;
+    in.mouse.released = click;
     g_mx = mx;
     g_my = my;
     g_click = click;
-    g_wheel = wheel;
+    g_keys_in = keys;
+    g_taken = 0;
     memset(&view, 0, sizeof(view));
-    ui_begin(&g_ctx, &g_cv, w / k, h / k, k);
+    ui_begin(&g_ctx, &g_cv, g_win_w / g_win_k, g_win_h / g_win_k, g_win_k);
     if (recipe_pc.match()) {
         recipe_pc.run(&g_ctx, &view, &in);
     }
+    g_right_click = 0;
 }
 
-/* A frame with a click, then what the click queued is sent. */
-static void run_click(int w, int h, int k, int mx, int my)
+static void idle(int n)
 {
-    run_frame(w, h, k, mx, my, 1, 0);
-    pc_queue_run();
+    while (n-- > 0) {
+        run_frame(-1, -1, 0, 0, 0, 0);
+    }
+}
+
+static void click_at(int x, int y)
+{
+    run_frame(x, y, 1, 0, 0, 0);
+    idle(1);
+}
+
+static void key(u32 k)
+{
+    run_frame(-1, -1, 0, 0, 0, k);
+    idle(2);
 }
 
 static void bmp_write(const char *path, const EidosUiCanvas *cv)
@@ -409,13 +570,46 @@ static void bmp_write(const char *path, const EidosUiCanvas *cv)
     fclose(f);
 }
 
+static void set_size(int w, int h, int k)
+{
+    g_win_w = w;
+    g_win_h = h;
+    g_win_k = k;
+}
+
+static void scene_start(int mode)
+{
+    world_build();
+    game_set(170, mode, 11);
+    frames_set(0, 0);
+    screen_clear();
+    pc_reset();
+    g_press_n = 0;
+    g_tap_n = 0;
+    g_frame += 50;
+    idle(6);
+}
+
+static void slot_center(const PcLay *l, int slot, int *x, int *y)
+{
+    if (slot >= SLOT_PARTY0) {
+        *x = l->px + l->pw / 2;
+        *y = pc_row_y(l, slot - SLOT_PARTY0) + l->row_h / 2;
+    } else {
+        *x = l->gx + (slot % 6) * l->pitch + l->pitch / 2;
+        *y = l->gy + (slot / 6) * l->pitch + l->pitch / 2;
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* The checks                                                          */
 /* ------------------------------------------------------------------ */
 
 static const int k_sizes[][3] = {
-    { 1280, 720, 3 }, { 1920, 1080, 4 }, { 1280, 800, 3 }, { 1024, 768, 3 },
-    { 2560, 1080, 4 }, { 960, 540, 2 }, { 800, 600, 2 },
+    /* the interface's own scale: the window's height over 270 */
+    /* (the PC rounds: 720p is drawn at 3, recipe_pc's round_scale) */
+    { 1280, 720, 3 }, { 1920, 1080, 4 }, { 2560, 1440, 5 }, { 1280, 800, 3 },
+    { 1024, 768, 3 }, { 2560, 1080, 4 }, { 960, 540, 2 }, { 800, 600, 2 },
 };
 
 static void test_scene(void)
@@ -425,14 +619,16 @@ static void test_scene(void)
     CHECK(recipe_pc.match() == 1, "deposit mode is drawn");
     game_set(170, 1, 11);
     CHECK(recipe_pc.match() == 1, "withdraw mode is drawn");
-    game_set(170, 2, 21);
+    game_set(170, 2, 11);
     CHECK(recipe_pc.match() == 1, "move mode is drawn");
-    game_set(170, 5, 11);
-    CHECK(recipe_pc.match() == 0, "the item mode is left to the DS screens");
     game_set(170, 4, 11);
-    CHECK(recipe_pc.match() == 0, "the battle box is left to the DS screens");
+    CHECK(recipe_pc.match() == 1, "the battle box is drawn");
+    game_set(170, 3, 11);
+    CHECK(recipe_pc.match() == 1, "the item mode is drawn");
+    game_set(170, 5, 11);
+    CHECK(recipe_pc.match() == 0, "tuck in is left to the DS screens");
     game_set(170, 0, 85);
-    CHECK(recipe_pc.match() == 0, "the marking panel is left to the DS screens");
+    CHECK(recipe_pc.match() == 0, "the game's marking panel is left to the DS screens");
     game_set(91, 0, 11);
     CHECK(recipe_pc.match() == 0, "another overlay is not the PC");
     game_set(170, 0, 11);
@@ -446,62 +642,43 @@ static void test_layout(void)
 
     for (s = 0; s < sizeof(k_sizes) / sizeof(k_sizes[0]); s++) {
         PcLay l;
-        int cw = k_sizes[s][0] / k_sizes[s][2], ch = k_sizes[s][1] / k_sizes[s][2], i, slot;
+        int cw = k_sizes[s][0] / k_sizes[s][2], ch = k_sizes[s][1] / k_sizes[s][2], i, slot, ci;
 
         pc_layout(&l, cw, ch);
-        CHECK(l.pitch >= 22 && l.pitch <= 36, "the grid cell is a sane size");
-        CHECK(l.party.x + l.party.w <= l.box.x, "the party column ends before the box");
-        if (!l.narrow) {
-            CHECK(l.box.x + l.box.w <= l.det.x, "the box ends before the details");
-            CHECK(l.det.x + l.det.w <= cw, "the details stay in the canvas");
-            CHECK(l.det.w >= 100, "the details are wide enough");
-        } else {
-            CHECK(l.det.x >= l.box.x && l.det.x + l.det.w <= l.box.x + l.box.w,
-                  "the details are inside the box panel");
-            CHECK(l.det.y >= l.gy + 5 * l.pitch && l.det.h >= 44, "the details are under the grid, 44 high or more");
-        }
-        CHECK(l.box.x + l.box.w <= cw, "the box stays in the canvas");
-        CHECK(l.gx + 6 * l.pitch <= l.box.x + l.box.w, "the grid fits the box panel");
-        CHECK(l.gy + 5 * l.pitch <= l.box.y + l.box.h, "the grid fits the box panel (height)");
-        CHECK(l.row_y[5] + l.row_h <= l.hint_y, "the sixth party row is above the hints");
-        CHECK(l.row_y[0] >= l.top, "the first party row is below the title");
+        CHECK(l.pitch >= 20 && l.pitch <= 48, "the grid cell is a sane size");
+        CHECK(l.px + l.pw <= l.bx, "the party column ends before the box");
+        CHECK(l.bx + l.bw <= l.dx, "the box ends before the details");
+        CHECK(l.dx + l.dw <= cw, "the details stay in the canvas");
+        CHECK(l.dw >= 80, "the details are wide enough");
+        CHECK(l.gx + 6 * l.pitch <= l.bx + l.bw, "the grid fits the box panel");
+        CHECK(l.gy + 5 * l.pitch <= l.by + l.bh, "the grid fits the box panel (height)");
+        CHECK(pc_row_y(&l, 5) + l.row_h <= l.hint_y, "the sixth party row is above the hints");
+        CHECK(pc_row_y(&l, 0) >= 26, "the first party row is below the title");
         for (i = 1; i < 6; i++) {
-            CHECK(l.row_y[i] >= l.row_y[i - 1] + l.row_h, "the party rows do not overlap");
+            CHECK(pc_row_y(&l, i) >= pc_row_y(&l, i - 1) + l.row_h, "the party rows do not overlap");
+        }
+        CHECK(l.chip_y + 30 <= l.hint_y, "the chips are above the hints");
+        CHECK(l.chip_y >= l.y0 + 60, "the details keep room");
+        for (ci = 0; ci < ACT_COUNT; ci++) {
+            int x, y, w, h = chip_geom(&l, ci, &x, &y, &w);
+
+            CHECK(x >= l.dx && x + w <= l.dx + l.dw && y >= l.y0 && y + h <= l.hint_y, "a chip is in the details column");
         }
         for (slot = 0; slot < 30; slot++) {
-            int cx = l.gx + (slot % 6) * l.pitch + l.pitch / 2;
-            int cy = l.gy + (slot / 6) * l.pitch + l.pitch / 2;
+            int cx, cy;
 
+            slot_center(&l, slot, &cx, &cy);
             CHECK(pc_slot_at(&l, cx, cy) == slot, "the middle of a cell is its slot");
         }
-        for (slot = 0; slot < 6; slot++) {
-            CHECK(pc_slot_at(&l, l.party.x + 4, l.row_y[slot] + 4) == SLOT_PARTY0 + slot,
-                  "a party row is its slot");
+        for (slot = 30; slot < 36; slot++) {
+            int cx, cy;
+
+            slot_center(&l, slot, &cx, &cy);
+            CHECK(pc_slot_at(&l, cx, cy) == slot, "a party row is its slot");
         }
         CHECK(pc_slot_at(&l, -1, -1) == -1, "outside is no slot");
-        CHECK(pc_slot_at(&l, l.det.x + 3, l.det.y + 3) == -1 || l.narrow, "the details are no slot");
+        CHECK(pc_slot_at(&l, l.dx + 3, l.y0 + 3) == -1, "the details are no slot");
     }
-}
-
-static void test_stylus(void)
-{
-    int x, y, slot;
-
-    for (slot = 0; slot < 30; slot++) {
-        CHECK(slot_stylus(0, slot, &x, &y) == 1, "a box slot always has a control");
-        /* the game's grid: column ranges 12-35, 36-59 ..., rows 40-63, 64-87 ... */
-        CHECK(x >= 12 + 24 * (slot % 6) && x <= 35 + 24 * (slot % 6), "x is in the game's column");
-        CHECK(y >= 40 + 24 * (slot / 6) && y <= 63 + 24 * (slot / 6), "y is in the game's row");
-    }
-    CHECK(slot_stylus(1, 0, &x, &y) == 0 && slot_stylus(1, 3, &x, &y) == 0,
-          "the box slots under the open tray (columns 0 to 3) have no control");
-    CHECK(slot_stylus(1, 4, &x, &y) == 1 && slot_stylus(1, 5, &x, &y) == 1,
-          "the box slots beside the open tray (columns 4 and 5) do");
-    CHECK(slot_stylus(0, SLOT_PARTY0, &x, &y) == 0, "a party slot has no control while the tray is closed");
-    CHECK(slot_stylus(1, SLOT_PARTY0 + 1, &x, &y) == 1 && x >= 66 && x <= 89 && y >= 64 && y <= 87,
-          "party slot 2 is the second tray slot (66-89, 64-87)");
-    CHECK(slot_stylus(1, SLOT_PARTY0 + 4, &x, &y) == 1 && x >= 30 && x <= 53 && y >= 120 && y <= 143,
-          "party slot 5 is the fifth tray slot (30-53, 120-143)");
 }
 
 static void test_text(void)
@@ -522,18 +699,18 @@ static void test_text(void)
     bank[2] = 4;
     bank[12] = 16;
     for (i = 0; i < 4; i++) {
-        u16 key = (u16)((i + 3u) * 0x2983u);
+        u16 key_ = (u16)((i + 3u) * 0x2983u);
         u8 *e = bank + 16 + 4 + 8 * i;
 
         e[0] = (u8)off;
         e[1] = (u8)(off >> 8);
         e[4] = (u8)lens[i];
         for (j = 0; j < lens[i]; j++) {
-            u16 u = (u16)(plain[i][j] ^ key);
+            u16 u = (u16)(plain[i][j] ^ key_);
 
             bank[16 + off + 2 * j] = (u8)u;
             bank[16 + off + 2 * j + 1] = (u8)(u >> 8);
-            key = rotl3(key);
+            key_ = rotl3(key_);
         }
         off += 2 * lens[i];
     }
@@ -553,125 +730,431 @@ static void test_text(void)
     g_bank[TXT_SPECIES].tried = 1;      /* the data root is not read in this test */
 }
 
-static int taps_have(int x, int y)
+/* ------------------------------------------------------------------ */
+/* The mouse alone                                                      */
+/* ------------------------------------------------------------------ */
+
+static void test_mouse(const char *outdir)
 {
-    int i;
-
-    for (i = 0; i < g_tap_n && i < 64; i++) {
-        if (g_tap_x[i] == x && g_tap_y[i] == y) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static void run_plain(int w, int h, int k, int n)
-{
-    while (n-- > 0) {
-        run_frame(w, h, k, -1, -1, 0, 0);
-    }
-}
-
-static void flush_queue(void)
-{
-    int i;
-
-    for (i = 0; i < 80; i++) {
-        g_now++;
-        pc_queue_run();
-    }
-}
-
-static void test_clicks(const char *outdir)
-{
-    int w = 1920, h = 1080, k = 4;
     PcLay l;
+    int x7, y7, x20, y20, xp, yp, xa, ya;
     char path[512];
-    int slot_x, slot_y, gx, gy;
 
-    world_build();
-    game_set(170, 2, 21);
-    frames_set(0, 0);
-    screen_clear();
-    pc_layout(&l, w / k, h / k);
+    set_size(1920, 1080, 4);
+    scene_start(2);
+    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k);
+    slot_center(&l, 7, &x7, &y7);
+    slot_center(&l, 20, &x20, &y20);
+    slot_center(&l, SLOT_PARTY0 + 1, &xp, &yp);
 
-    /* a plain frame taps nothing */
+    /* nothing is sent to the game by looking */
     g_tap_n = 0;
-    run_frame(w, h, k, -1, -1, 0, 0);
-    CHECK(g_tap_n == 0, "no click, no tap");
+    idle(3);
+    run_frame(x7, y7, 0, 0, 0, 0);
+    CHECK(g_tap_n == 0 && g_press_n == 0, "hovering sends nothing to the game");
+    CHECK((g_taken & BW_KEY_GAME) == BW_KEY_GAME, "the recipe takes the player's keys while it owns the screen");
     if (outdir != NULL) {
-        snprintf(path, sizeof(path), "%s/pc_move_%dx%d.bmp", outdir, w, h);
+        snprintf(path, sizeof(path), "%s/pc_hover_%dx%d.bmp", outdir, g_win_w, g_win_h);
         bmp_write(path, &g_cv);
     }
 
-    /* a click on box slot 7 taps the game's cell */
-    slot_x = l.gx + 1 * l.pitch + l.pitch / 2;
-    slot_y = l.gy + 1 * l.pitch + l.pitch / 2;
-    g_tap_n = 0;
-    run_frame(w, h, k, slot_x, slot_y, 1, 0);
-    flush_queue();
-    grid_pos(7, &gx, &gy);
-    CHECK(g_tap_n == 1 && taps_have(gx, gy), "a click on box slot 7 taps (47, 75)");
+    /* click to pick up, click to put down: Pika from slot 7 to slot 20 */
+    click_at(x7, y7);
+    CHECK(g_hand == 7, "a click on a Pokemon picks it up");
+    CHECK(g_tap_n == 0, "picking up sends no tap to the game");
+    run_frame(x20, y20, 0, 0, 0, 0);
+    if (outdir != NULL) {
+        snprintf(path, sizeof(path), "%s/pc_carry_%dx%d.bmp", outdir, g_win_w, g_win_h);
+        bmp_write(path, &g_cv);
+    }
+    idle(2);
+    click_at(x20, y20);
+    idle(2);
+    CHECK(g_hand < 0, "the Pokemon is out of the hand after the drop");
+    CHECK(g_box[0][20].exists && g_box[0][20].species == 25 && !g_box[0][7].exists,
+          "the game moved Pika from slot 7 to slot 20");
+    CHECK(g_applied == 1, "the move was applied through the game's own function once");
+    CHECK(g_tap_n == 0, "the drop sends no tap to the game");
 
-    /* a click on the party's second row with the tray closed: the PARTY button, then the tray slot */
-    g_tap_n = 0;
-    run_click(w, h, k, l.party.x + 10, l.row_y[1] + 10);
-    run_plain(w, h, k, 24);
-    CHECK(taps_have(PARTY_BTN_X, PARTY_BTN_Y), "the PARTY PKMN button is tapped first");
-    CHECK(!taps_have(77, 75), "the tray slot is not tapped before the tray is open");
-    frames_set(0, 1);                                   /* the tray opens */
-    run_plain(w, h, k, 24);
-    CHECK(taps_have(77, 75), "the tray slot is tapped after the tray has opened");
+    /* click on an empty slot with nothing in the hand does nothing */
+    click_at(x7, y7);
+    CHECK(g_hand < 0, "an empty slot is not picked up");
 
-    /* with the tray open it is one tap */
-    frames_set(0, 1);
-    g_tap_n = 0;
-    run_frame(w, h, k, l.party.x + 10, l.row_y[0] + 10, 1, 0);
-    flush_queue();
-    CHECK(g_tap_n == 1 && taps_have(41, 67), "an open tray: one tap on tray slot 1 (41, 67)");
+    /* a drag from the box onto the party's second row swaps the two */
+    g_box[0][7] = g_box[0][20];
+    memset(&g_box[0][20], 0, sizeof(g_box[0][20]));
+    run_frame(x7, y7, 0, 1, 1, 0);
+    run_frame(x7 + 6, y7, 0, 1, 0, 0);
+    CHECK(g_hand == 7, "pressing and moving picks the Pokemon up");
+    run_frame(xp, yp, 0, 1, 0, 0);
+    idle(0);
+    run_frame(xp, yp, 1, 0, 0, 0);
+    idle(2);
+    CHECK(g_hand < 0 && g_box[0][7].species == 504 && g_party[1].species == 25,
+          "a drag onto party row 2 swaps Pika with Dom");
 
-    /* a box slot under the open tray: the move mode closes the tray first, the deposit mode ignores it */
-    frames_set(0, 1);
-    g_tap_n = 0;
-    run_plain(w, h, k, 24);                                    /* settled */
-    g_tap_n = 0;
-    run_click(w, h, k, l.gx + 3, l.gy + 3);                    /* slot 0 */
-    run_plain(w, h, k, 24);
-    CHECK(taps_have(PARTY_BTN_X, PARTY_BTN_Y) && !taps_have(23, 51), "slot 0 under the tray: the button first");
-    frames_set(0, 0);                                   /* the tray closes */
-    run_plain(w, h, k, 24);
-    CHECK(taps_have(23, 51), "slot 0 under the tray: then the slot");
-    game_set(170, 0, 11);
-    frames_set(0, 1);
-    g_tap_n = 0;
-    run_click(w, h, k, l.gx + 3, l.gy + 3);
-    flush_queue();
-    CHECK(g_tap_n == 0, "slot 0 under the deposit mode's tray: no tap");
-    game_set(170, 2, 21);
+    /* a drag released off every target puts it back */
+    slot_center(&l, 7, &xa, &ya);
+    run_frame(xa, ya, 0, 1, 1, 0);
+    run_frame(xa + 6, ya, 0, 1, 0, 0);
+    run_frame(l.dx + 5, l.y0 + 5, 0, 1, 0, 0);
+    run_frame(l.dx + 5, l.y0 + 5, 1, 0, 0, 0);
+    idle(2);
+    CHECK(g_hand < 0 && g_box[0][7].species == 504, "letting go off a target puts it back");
 
-    /* the box arrows and the wheel */
-    frames_set(0, 0);
-    g_tap_n = 0;
-    run_frame(w, h, k, l.box.x + 6 + 8, l.box.y + 5 + 7, 1, 0);
-    flush_queue();
-    CHECK(g_tap_n == 1 && taps_have(16, 28), "the left arrow taps (16, 28)");
-    g_tap_n = 0;
-    run_frame(w, h, k, l.box.x + l.box.w - 6 - 8, l.box.y + 5 + 7, 1, 0);
-    flush_queue();
-    CHECK(g_tap_n == 1 && taps_have(151, 28), "the right arrow taps (151, 28)");
-    g_frame += 100;
-    g_wheel_at = 0;
-    g_tap_n = 0;
-    run_frame(w, h, k, slot_x, slot_y, 0, -1);
-    flush_queue();
-    CHECK(g_tap_n == 1 && taps_have(151, 28), "the wheel down is the next box");
-    g_frame += 100;
-    g_tap_n = 0;
-    run_frame(w, h, k, slot_x, slot_y, 0, 1);
-    flush_queue();
-    CHECK(g_tap_n == 1 && taps_have(16, 28), "the wheel up is the previous box");
+    /* right button puts it back */
+    click_at(xa, ya);
+    CHECK(g_hand == 7, "picked up again");
+    g_right_click = 1;
+    run_frame(xa, ya, 0, 0, 0, 0);
+    CHECK(g_hand < 0, "the right button puts it back");
 
-    /* the action list: six buttons, the second one (SUMMARY) is at y 124 - 24 * 3 = 52 + ... */
+    /* the last Pokemon able to battle cannot leave: the game refuses */
+    g_party_n = 1;
+    memset(&g_party[1], 0, sizeof(g_party[1]) * 5);
+    g_party[0].exists = 1;
+    {
+        int xe, ye;
+
+        slot_center(&l, 12, &xe, &ye);
+        click_at(xp - 0, l.py + l.row_h / 2);
+        CHECK(g_hand == SLOT_PARTY0, "the only party member is picked up");
+        run_frame(xe, ye, 0, 0, 0, 0);
+        idle(3);
+        if (outdir != NULL) {
+            snprintf(path, sizeof(path), "%s/pc_refused_%dx%d.bmp", outdir, g_win_w, g_win_h);
+            bmp_write(path, &g_cv);
+        }
+        CHECK(g_probe_have && !g_probe_ok && g_probe_code == 3, "the game's check says no before the drop");
+        click_at(xe, ye);
+        idle(2);
+        CHECK(g_hand == SLOT_PARTY0 && g_party_n == 1 && !g_box[0][12].exists,
+              "a refused drop leaves the Pokemon in the hand and the data alone");
+        pc_putback();
+    }
+}
+
+static void test_boxes(const char *outdir)
+{
+    PcLay l;
+    char path[512];
+    int x7, y7;
+
+    set_size(1920, 1080, 4);
+    scene_start(2);
+    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k);
+    slot_center(&l, 7, &x7, &y7);
+
+    /* the arrows tap the game's arrows */
+    g_tap_n = 0;
+    click_at(l.bx + 6 + 8, l.head_y + 9);
+    CHECK(g_tap_n == 1 && g_tap_x[0] == BOX_ARROW_L && g_tap_y[0] == BOX_ARROW_Y, "the left arrow taps the game's");
+    idle(20);
+    g_tap_n = 0;
+    click_at(l.bx + l.bw - 6 - 8, l.head_y + 9);
+    CHECK(g_tap_n == 1 && g_tap_x[0] == BOX_ARROW_R, "the right arrow taps the game's");
+    idle(20);
+
+    /* the wheel is a box step, at most one in 24 frames */
+    g_tap_n = 0;
+    {
+        EidosUiFrame in;
+        EidosUiView view;
+
+        memset(&in, 0, sizeof(in));
+        in.win_w = g_win_w;
+        in.win_h = g_win_h;
+        in.frame = ++g_frame;
+        in.screen_rgba[1] = g_bottom_px;
+        in.mouse.x = x7 * g_win_k;
+        in.mouse.y = y7 * g_win_k;
+        in.mouse.wheel = -1;
+        g_mx = x7;
+        g_my = y7;
+        g_click = 0;
+        g_keys_in = 0;
+        ui_begin(&g_ctx, &g_cv, g_win_w / g_win_k, g_win_h / g_win_k, g_win_k);
+        recipe_pc.match();
+        recipe_pc.run(&g_ctx, &view, &in);
+    }
+    CHECK(g_tap_n == 1 && g_tap_x[0] == BOX_ARROW_R, "the wheel down is the next box");
+    idle(30);
+
+    /* the box list: click the name, click a tile = go to that box (stepped) */
+    click_at(l.bx + l.bw / 2, l.head_y + 9);
+    CHECK(g_ov == OV_BOXES, "the box name opens the box list");
+    run_frame(-1, -1, 0, 0, 0, 0);
+    if (outdir != NULL) {
+        snprintf(path, sizeof(path), "%s/pc_boxlist_%dx%d.bmp", outdir, g_win_w, g_win_h);
+        bmp_write(path, &g_cv);
+    }
+    {
+        int bx, by, bw, bh, cols, mw, mh;
+
+        boxes_geom(&l, 24, &bx, &by, &bw, &bh, &cols, &mw, &mh);
+        g_tap_n = 0;
+        click_at(bx + 8 + 2 * (mw + 4) + 3, by + 26 + 3);          /* box 3 */
+        CHECK(g_ov == OV_NONE && g_goto == 2, "a tile of the list is a trip to that box");
+        idle(20);
+        CHECK(g_tap_n >= 1 && g_tap_x[0] == BOX_ARROW_R, "the trip steps toward it with the game's arrow");
+        g_task[0x14] = 1;
+        idle(20);
+        g_task[0x14] = 2;
+        idle(20);
+        CHECK(g_goto < 0, "the trip ends on the box");
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* The keys alone                                                       */
+/* ------------------------------------------------------------------ */
+
+static void test_keys(const char *outdir)
+{
+    char path[512];
+
+    set_size(1920, 1080, 4);
+    scene_start(2);
+    g_keys_lit = 1;
+    g_focus = 7;
+
+    /* A picks Pika up, the arrows move the focus, A puts it down */
+    key(BW_KEY_A);
+    CHECK(g_hand == 7, "A picks the focused Pokemon up");
+    key(BW_KEY_RIGHT);
+    key(BW_KEY_DOWN);
+    CHECK(g_focus == 14, "the arrows move the focus");
+    if (outdir != NULL) {
+        run_frame(-1, -1, 0, 0, 0, 0);
+        snprintf(path, sizeof(path), "%s/pc_keys_carry_%dx%d.bmp", outdir, g_win_w, g_win_h);
+        bmp_write(path, &g_cv);
+    }
+    key(BW_KEY_A);
+    idle(3);
+    CHECK(g_hand < 0 && g_box[0][14].species == 25 && !g_box[0][7].exists, "A puts it down on the focused slot");
+
+    /* B puts it back; B with an empty hand is the game's B (it leaves) */
+    g_focus = 14;
+    key(BW_KEY_A);
+    CHECK(g_hand == 14, "picked up");
+    key(BW_KEY_B);
+    CHECK(g_hand < 0 && g_press_n == 0, "B with a Pokemon in the hand puts it back");
+    key(BW_KEY_B);
+    CHECK(g_press_n == 1 && g_press_log[0] == BW_KEY_B, "B with an empty hand is the game's B");
+
+    /* Left from the first column enters the party, Right goes back */
+    g_focus = 12;
+    key(BW_KEY_LEFT);
+    CHECK(g_focus == SLOT_PARTY0 + 2, "Left from column 0 enters the party row of that grid row");
+    key(BW_KEY_RIGHT);
+    CHECK(g_focus == 12, "Right from the party returns to the grid");
+    g_focus = 5;
+    key(BW_KEY_UP);
+    CHECK(g_focus == FOC_BOX_NEXT, "Up from the top row enters the box header");
+    key(BW_KEY_LEFT);
+    CHECK(g_focus == FOC_BOX_NAME, "Left moves along the header");
+    key(BW_KEY_DOWN);
+    CHECK(g_focus == 2, "Down from the name returns to the grid");
+
+    /* L and R step the box */
+    g_tap_n = 0;
+    key(BW_KEY_R);
+    CHECK(g_tap_n == 1 && g_tap_x[0] == BOX_ARROW_R, "R is the next box");
+    idle(20);
+    g_tap_n = 0;
+    key(BW_KEY_L);
+    CHECK(g_tap_n == 1 && g_tap_x[0] == BOX_ARROW_L, "L is the previous box");
+    idle(20);
+
+    /* a Pokemon to the party by keys: carry from the grid, Left into the party, A */
+    g_focus = 14;
+    key(BW_KEY_A);
+    key(BW_KEY_LEFT);
+    key(BW_KEY_LEFT);
+    key(BW_KEY_LEFT);
+    key(BW_KEY_LEFT);
+    key(BW_KEY_LEFT);
+    key(BW_KEY_LEFT);
+    CHECK(g_focus == SLOT_PARTY0 + 2, "the focus is on a party row");
+    key(BW_KEY_DOWN);
+    key(BW_KEY_DOWN);
+    CHECK(g_focus == SLOT_PARTY0 + 4, "the party rows can be reached, empty ones too");
+    key(BW_KEY_A);
+    idle(3);
+    CHECK(g_hand < 0 && g_party_n == 4 && g_party[3].species == 25, "dropping on an empty party row adds it to the party");
+
+    /* X opens the action menu, Down and A: SELECT opens the box list */
+    g_focus = 7 + 0;
+    g_box[0][7].exists = 1;
+    g_box[0][7].species = 25;
+    key(BW_KEY_X);
+    CHECK(g_ov == OV_MENU && g_ov_slot == 7, "X opens the action menu on the focused Pokemon");
+    run_frame(-1, -1, 0, 0, 0, 0);
+    if (outdir != NULL) {
+        snprintf(path, sizeof(path), "%s/pc_menu_%dx%d.bmp", outdir, g_win_w, g_win_h);
+        bmp_write(path, &g_cv);
+    }
+    key(BW_KEY_DOWN);
+    key(BW_KEY_DOWN);
+    key(BW_KEY_A);
+    CHECK(g_ov == OV_MARK && g_ov_slot == 7, "the menu's third entry is the marking panel");
+    key(BW_KEY_RIGHT);
+    key(BW_KEY_RIGHT);
+    key(BW_KEY_A);
+    idle(2);
+    CHECK(g_box[0][7].mark == 4, "A on the third mark sets it through the game");
+    run_frame(-1, -1, 0, 0, 0, 0);
+    if (outdir != NULL) {
+        snprintf(path, sizeof(path), "%s/pc_mark_%dx%d.bmp", outdir, g_win_w, g_win_h);
+        bmp_write(path, &g_cv);
+    }
+    key(BW_KEY_B);
+    CHECK(g_ov == OV_NONE, "B closes the marking panel");
+    key(BW_KEY_SELECT);
+    CHECK(g_ov == OV_BOXES, "SELECT opens the box list");
+    key(BW_KEY_B);
+    CHECK(g_ov == OV_NONE, "B closes the box list");
+
+    /* the chips by keys: Right from the grid's last column, Down, A (MARK) */
+    g_focus = 11;
+    key(BW_KEY_RIGHT);
+    CHECK(g_focus == FOC_CHIP0, "Right from the last column enters the chips");
+    key(BW_KEY_DOWN);
+    CHECK(g_focus == FOC_CHIP0 + 2, "Down moves to the second row of chips");
+    g_sel = 7;
+    key(BW_KEY_A);
+    CHECK(g_ov == OV_MARK, "the MARK chip opens the marking panel");
+    key(BW_KEY_B);
+    key(BW_KEY_LEFT);
+    CHECK(g_focus >= 0 && g_focus < 30, "Left from the chips returns to the grid");
+}
+
+/* The item mode: the hand carries an item, a drop trades two items. */
+static void test_items(const char *outdir)
+{
+    char path[512];
+
+    set_size(1920, 1080, 4);
+    scene_start(3);
+    g_keys_lit = 1;
+    g_box[0][7].item = 155;                     /* Pika holds an Oran Berry */
+    g_party[1].item = 234;                      /* Dom holds Leftovers      */
+
+    g_focus = 8;
+    key(BW_KEY_A);
+    CHECK(g_hand < 0, "an empty slot gives no item");
+    g_focus = SLOT_PARTY0;
+    key(BW_KEY_A);
+    CHECK(g_hand < 0, "a Pokemon holding nothing gives no item");
+    g_focus = 7;
+    key(BW_KEY_A);
+    CHECK(g_hand == 7, "A takes the item of the focused Pokemon");
+    CHECK(g_box[0][7].item == 155, "taking it changes nothing yet");
+    g_focus = 0;
+    key(BW_KEY_A);
+    idle(2);
+    CHECK(g_hand == 7 && g_box[0][7].item == 155, "an Egg takes no item");
+
+    /* give it to Saili (holds nothing) */
+    g_focus = SLOT_PARTY0;
+    run_frame(-1, -1, 0, 0, 0, 0);
+    if (outdir != NULL) {
+        snprintf(path, sizeof(path), "%s/pc_items_%dx%d.bmp", outdir, g_win_w, g_win_h);
+        bmp_write(path, &g_cv);
+    }
+    key(BW_KEY_A);
+    idle(3);
+    CHECK(g_hand < 0 && g_party[0].item == 155 && g_box[0][7].item == 0, "a drop on a Pokemon gives it the item");
+
+    /* swap: Saili's berry onto Dom, who holds Leftovers */
+    g_focus = SLOT_PARTY0;
+    key(BW_KEY_A);
+    g_focus = SLOT_PARTY0 + 1;
+    key(BW_KEY_A);
+    idle(3);
+    CHECK(g_party[1].item == 155 && g_party[0].item == 234, "a drop on a holder trades the two items");
+
+    /* Mail stays */
+    g_party[2].item = 137;
+    g_focus = SLOT_PARTY0 + 2;
+    key(BW_KEY_A);
+    CHECK(g_hand < 0, "Mail can't be taken");
+    g_focus = SLOT_PARTY0;
+    key(BW_KEY_A);
+    g_focus = SLOT_PARTY0 + 2;
+    key(BW_KEY_A);
+    idle(3);
+    CHECK(g_party[2].item == 137 && g_party[0].item == 234, "nor swapped away");
+    key(BW_KEY_B);
+    CHECK(g_hand < 0, "B puts the item back");
+
+    /* only the marks of the actions */
+    CHECK(act_enabled(&g_g, ACT_SUMMARY, 7) == 0 && act_enabled(&g_g, ACT_ITEM, 7) == 0 &&
+          act_enabled(&g_g, ACT_RELEASE, 7) == 0 && act_enabled(&g_g, ACT_MARK, 7) == 1,
+          "the item mode keeps the marks only");
+}
+
+/* ------------------------------------------------------------------ */
+/* What the game does                                                   */
+/* ------------------------------------------------------------------ */
+
+static void test_script(void)
+{
+    int i, a_pressed = 0, down_pressed = 0;
+
+    set_size(1920, 1080, 4);
+    scene_start(2);
+    g_focus = 7;
+    g_sel = 7;
+    g_press_n = 0;
+    {
+        PcLay l;
+        int x, y, w, h;
+
+        pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k);
+        h = chip_geom(&l, ACT_SUMMARY, &x, &y, &w);
+        click_at(x + w / 2, y + h / 2);
+    }
+    CHECK(pc_script_busy(), "the SUMMARY chip starts a script on the game");
+    /* the game's list shows once the script has pressed A; the script
+     * waits for the game to settle after each key (about 50 frames in all) */
+    for (i = 0; i < 70; i++) {
+        run_frame(-1, -1, 0, 0, 0, 0);
+        if (i == 12) {
+            frames_set(1, 0);
+            screen_list(6);
+        }
+    }
+    for (i = 0; i < g_press_n && i < 64; i++) {
+        a_pressed += g_press_log[i] == BW_KEY_A;
+        down_pressed += g_press_log[i] == BW_KEY_DOWN;
+    }
+    CHECK(a_pressed == 2 && down_pressed == 1, "the script presses A, DOWN once (SUMMARY is the second entry), A");
+    CHECK(!pc_script_busy(), "the script is over");
+
+    /* a Pokemon of the party: the tray opens first */
+    scene_start(2);
+    g_sel = SLOT_PARTY0;
+    g_press_n = 0;
+    pc_act(&g_g, &g_w, ACT_SUMMARY, SLOT_PARTY0, g_frame);
+    CHECK(pc_script_busy() && g_sc[0].kind == SC_CUR && g_sc[0].a == 33, "a party Pokemon: the script starts on the party button");
+}
+
+/* ------------------------------------------------------------------ */
+/* The game's own windows                                               */
+/* ------------------------------------------------------------------ */
+
+static void test_popups(const char *outdir)
+{
+    PcLay l;
+    char path[512];
+    int found, px_, py_;
+
+    set_size(1920, 1080, 4);
+    scene_start(2);
+    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k);
+
+    /* the game's list: six buttons, the second one taps the game's second */
     frames_set(1, 0);
     screen_clear();
     screen_list(6);
@@ -686,56 +1169,41 @@ static void test_clicks(const char *outdir)
             t6[4 * i + 1] = (u8)(ids[i] >> 8);
         }
         g_pc_test_lists[2] = t6;
-        g_tap_n = 0;
-        run_frame(w, h, k, -1, -1, 0, 0);
-        CHECK(g_w.list_shown == 1 && g_w.list_n == 6, "six list buttons are counted from the pixels");
-        CHECK(g_w.list_ids[0] == 81 && g_w.list_ids[5] == 80, "the move mode's list ids come from the game's table");
-        if (outdir != NULL) {
-            snprintf(path, sizeof(path), "%s/pc_list_%dx%d.bmp", outdir, w, h);
-            bmp_write(path, &g_cv);
-        }
-        /* click the second button: find it by sweeping the canvas for the click */
-        {
-            int found = 0, px_, py_;
-
-            for (py_ = 0; py_ < h / k && !found; py_ += 2) {
-                for (px_ = l.box.x; px_ < l.box.x + l.box.w && !found; px_ += 2) {
-                    g_tap_n = 0;
-                    run_click(w, h, k, px_, py_);
-                    if (g_tap_n == 1 && g_tap_x[0] == 212 && g_tap_y[0] == 148 - 24 * 4) {
-                        found = 1;
-                    }
-                }
+    }
+    idle(2);
+    CHECK(g_w.list_shown == 1 && g_w.list_n == 6, "six list buttons are counted from the pixels");
+    CHECK(g_w.list_ids[0] == 81 && g_w.list_ids[5] == 80, "the list ids come from the game's table");
+    if (outdir != NULL) {
+        snprintf(path, sizeof(path), "%s/pc_list_%dx%d.bmp", outdir, g_win_w, g_win_h);
+        bmp_write(path, &g_cv);
+    }
+    CHECK((g_taken & BW_KEY_GAME) == 0, "the game's list gets the player's keys");
+    found = 0;
+    for (py_ = l.by; py_ < l.by + l.bh && !found; py_ += 5) {
+        for (px_ = l.bx; px_ < l.bx + l.bw && !found; px_ += 5) {
+            g_tap_n = 0;
+            click_at(px_, py_);
+            if (g_tap_n == 1 && g_tap_x[0] == 212 && g_tap_y[0] == 148 - 24 * 4) {
+                found = 1;
             }
-            if (!found) {
-                int lx = l.box.x + l.box.w - 78 - 6, ly = l.box.y + l.box.h - 8 - 6 * 20;
-
-                if (ly + 6 * 20 > l.bar.y - 6) {
-                    ly = l.bar.y - 6 - 6 * 20;
-                }
-                g_tap_n = 0;
-                run_click(w, h, k, lx + 10, ly + 25);
-                printf("  list probe at (%d,%d): taps %d first (%d,%d) list_shown %d n %d%c", lx + 10, ly + 25,
-                       g_tap_n, g_tap_x[0], g_tap_y[0], g_w.list_shown, g_w.list_n, 10);
-            }
-            CHECK(found, "the second list button taps (212, 52)");
         }
     }
+    CHECK(found, "the second list button taps (212, 52)");
 
     /* YES and NO */
     frames_set(0, 0);
     screen_clear();
     screen_msg(252);
     screen_yesno();
-    run_frame(w, h, k, -1, -1, 0, 0);
+    idle(2);
     CHECK(g_w.yesno == 1, "the two-choice menu is found (the cursor's button is lighter)");
     {
-        int found_yes = 0, found_no = 0, px_, py_;
+        int found_yes = 0, found_no = 0;
 
-        for (py_ = l.box.y; py_ < l.box.y + l.box.h; py_ += 2) {
-            for (px_ = l.box.x; px_ < l.box.x + l.box.w; px_ += 2) {
+        for (py_ = l.by; py_ < l.by + l.bh; py_ += 5) {
+            for (px_ = l.bx; px_ < l.bx + l.bw; px_ += 5) {
                 g_tap_n = 0;
-                run_click(w, h, k, px_, py_);
+                click_at(px_, py_);
                 if (g_tap_n == 1 && g_tap_x[0] == YESNO_X && g_tap_y[0] == YES_Y) {
                     found_yes = 1;
                 }
@@ -747,8 +1215,8 @@ static void test_clicks(const char *outdir)
         CHECK(found_yes && found_no, "YES taps (222, 109) and NO taps (222, 133)");
     }
     if (outdir != NULL) {
-        run_frame(w, h, k, -1, -1, 0, 0);
-        snprintf(path, sizeof(path), "%s/pc_yesno_%dx%d.bmp", outdir, w, h);
+        run_frame(-1, -1, 0, 0, 0, 0);
+        snprintf(path, sizeof(path), "%s/pc_yesno_%dx%d.bmp", outdir, g_win_w, g_win_h);
         bmp_write(path, &g_cv);
     }
 }
@@ -758,75 +1226,21 @@ static void test_draw(const char *outdir)
     size_t s;
     char path[512];
 
-    world_build();
     for (s = 0; s < sizeof(k_sizes) / sizeof(k_sizes[0]); s++) {
         int mode;
 
-        for (mode = 0; mode < 3; mode++) {
-            game_set(170, mode, 11);
-            frames_set(0, mode == 0);
-            screen_clear();
-            g_tap_n = 0;
-            g_task[0x16] = 7;                   /* the cursor on Pika */
-            run_frame(k_sizes[s][0], k_sizes[s][1], k_sizes[s][2], -1, -1, 0, 0);
-            CHECK(g_cv.w == k_sizes[s][0] / k_sizes[s][2], "the canvas is the window over k");
+        set_size(k_sizes[s][0], k_sizes[s][1], k_sizes[s][2]);
+        for (mode = 0; mode < 5; mode++) {
+            scene_start(mode);
+            g_focus = 7;
+            run_frame(-1, -1, 0, 0, 0, 0);
+            CHECK(g_cv.w == g_win_w / g_win_k, "the canvas is the window over k");
             if (outdir != NULL && mode == 2) {
-                snprintf(path, sizeof(path), "%s/pc_%dx%d.bmp", outdir, k_sizes[s][0], k_sizes[s][1]);
+                snprintf(path, sizeof(path), "%s/pc_%dx%d.bmp", outdir, g_win_w, g_win_h);
                 bmp_write(path, &g_cv);
             }
         }
     }
-}
-
-static char g_drag_env[96];
-
-/* The drag script (EIDOS_PC_DRAG) must be in the environment before the first
- * frame of the recipe: it starts over box slot 7 and ends over slot 20. */
-static void drag_env_set(void)
-{
-    const int w = 1920, h = 1080, k = 4;
-    PcLay l;
-
-    pc_layout(&l, w / k, h / k);
-    snprintf(g_drag_env, sizeof(g_drag_env), "EIDOS_PC_DRAG=100000:%d:%d:%d:%d:20",
-             (l.gx + l.pitch + l.pitch / 2) * k, (l.gy + l.pitch + l.pitch / 2) * k,
-             (l.gx + 2 * l.pitch + l.pitch / 2) * k, (l.gy + 3 * l.pitch + l.pitch / 2) * k);
-    putenv(g_drag_env);
-}
-
-static void test_drag(void)
-{
-    int w = 1920, h = 1080, k = 4, f, x7, y7, x20, y20, after;
-
-    world_build();
-    game_set(170, 2, 21);
-    frames_set(0, 0);
-    screen_clear();
-    g_frame = 99990;
-    g_tap_n = 0;
-    for (f = 0; f < 440; f++) {     /* the pick-up waits up to 400 frames */
-        run_frame(w, h, k, -1, -1, 0, 0);
-        if (g_frame == 100022) {
-            after = g_tap_n;
-            (void)after;
-        }
-    }
-    grid_pos(7, &x7, &y7);
-    grid_pos(20, &x20, &y20);
-    /* the move mode drags through the game's hand: a tap that picks the
-     * Pokemon up, a tap that puts it down */
-    /* (the test's game never puts it in the hand: the pick-up tap is sent
-     * again a few times, then the drop goes) */
-    CHECK(g_tap_n >= 2 && g_tap_n <= 4, "a move-mode drag is a pick-up tap and a drop tap");
-    CHECK(g_tap_x[0] == x7 && g_tap_y[0] == y7, "the first tap is on the slot the drag began on");
-    CHECK(g_tap_x[g_tap_n - 1] == x20 && g_tap_y[g_tap_n - 1] == y20,
-          "the last tap is on the slot the drag ended on");
-    /* the frames after the release add nothing */
-    g_tap_n = 0;
-    for (f = 0; f < 10; f++) {
-        run_frame(w, h, k, -1, -1, 0, 0);
-    }
-    CHECK(g_tap_n == 0, "no stylus after the button went up");
 }
 
 int main(int argc, char **argv)
@@ -835,14 +1249,16 @@ int main(int argc, char **argv)
 
     BW_TEST_SETUP(argc, argv);
     bw_ds_reset();
-    drag_env_set();
     test_scene();
     test_layout();
-    test_stylus();
     test_text();
-    test_clicks(out);
+    test_mouse(out);
+    test_boxes(out);
+    test_keys(out);
+    test_items(out);
+    test_script();
+    test_popups(out);
     test_draw(out);
-    test_drag();
     bw_failures += g_fail;
     BW_REPORT("test_ui_pc");
 }

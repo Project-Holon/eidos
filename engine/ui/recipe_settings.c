@@ -335,7 +335,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
 }
 
 static const EidosUiRecipe recipe_settings = { "settings", settings_match, settings_run,
-                                               settings_reset };
+                                               settings_reset, 0 };
 
 const EidosUiRecipe *const ui_recipes_settings[] = { &recipe_settings };
 const u32 ui_recipes_settings_count = 1;

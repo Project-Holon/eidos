@@ -953,7 +953,7 @@ static void menu_reset(void)
 }
 
 static const EidosUiRecipe recipe_menu = {
-    "field-menu", menu_match, menu_run, menu_reset
+    "field-menu", menu_match, menu_run, menu_reset, 0
 };
 
 /* ------------------------------------------------------------------ */
@@ -1289,7 +1289,7 @@ static void field_reset(void)
 }
 
 static const EidosUiRecipe recipe_field = {
-    "field", field_match, field_run, field_reset
+    "field", field_match, field_run, field_reset, 0
 };
 
 const EidosUiRecipe *const ui_recipes_field[] = { &recipe_menu, &recipe_field };

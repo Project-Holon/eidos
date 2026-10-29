@@ -285,6 +285,12 @@ void eidos_ui_own_reveal(void);
  * thread at its next frame. */
 void eidos_ui_cry(u32 species);
 void eidos_ui_game_frame(void);
+/* Run fn(arg) on the game's thread at the start of its next frame, in the
+ * order queued (a recipe that applies a change through the game's own
+ * functions: they allocate and draw, so only the game's thread may call
+ * them).  Returns 0 when the queue (16 calls) is full.  arg must stay valid
+ * until the call runs: pass a value, not a pointer to a stack object. */
+int eidos_ui_game_call(void (*fn)(void *arg), void *arg);
 
 typedef struct EidosUiRecipe {
     const char *name;
@@ -294,6 +300,10 @@ typedef struct EidosUiRecipe {
     void (*run)(EidosUiCtx *ctx, EidosUiView *view, const EidosUiFrame *in);
     /* Forget the recipe's state (optional). */
     void (*reset)(void);
+    /* Non-zero: the canvas scale is the window's height over 270 rounded,
+     * not rounded down: a full-screen app drawn for about 240 rows (the
+     * PC) keeps the same size against the window at 720p as at 1080p. */
+    int round_scale;
 } EidosUiRecipe;
 
 /*

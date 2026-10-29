@@ -5,6 +5,20 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- One-screen PC: a new layout with the party on the left, the box in the
+  middle and the selected Pokemon's details on the right. Moving a Pokemon
+  takes effect at once with the keyboard, a pad or the mouse (click or
+  drag), and the arrows follow the layout on screen. Summary opens straight
+  from its button, each box shows how full it is, the game's message
+  window no longer shows through, and sprites keep their size at 720p.
+- One-screen PC: Move Items has its own screen. Take an item from a
+  Pokemon and drop it on another to give it, or to swap the two items.
+- One-screen PC: after leaving and coming back to the PC, the keys move
+  the new layout again instead of the game's old cursor.
+- Remaster battles: on the target list of double and triple battles, up
+  and down walk the list as shown. In the Bag, BACK sits at the bottom
+  right as on the DS, and BACK in the Bag and the party list lights up when
+  the keys reach it.
 - Source builds on Windows: SDL3.dll is copied next to eidos_boot.exe, so it
   starts without it on the PATH (reported by raspberryzombie).
 - 3D outlines: off by default, as most players prefer. Settings > Display

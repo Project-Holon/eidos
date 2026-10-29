@@ -520,7 +520,7 @@ static void starter_reset(void)
     g_pic_species = -1;
 }
 
-static const EidosUiRecipe recipe_starter = { "starter", starter_match, starter_run, starter_reset };
+static const EidosUiRecipe recipe_starter = { "starter", starter_match, starter_run, starter_reset, 0 };
 
 const EidosUiRecipe *const ui_recipes_starter[] = { &recipe_starter };
 const u32 ui_recipes_starter_count = 1;

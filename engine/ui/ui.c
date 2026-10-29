@@ -684,10 +684,35 @@ static void debug_battle(void)
     }
 }
 
+/* The game-thread calls: one producer (the frame thread), one consumer (the
+ * game's thread), so two indexes are enough. */
+#define GAME_CALLS 16
+static struct { void (*fn)(void *); void *arg; } g_calls[GAME_CALLS];
+static volatile u32 g_call_head, g_call_tail;
+
+int eidos_ui_game_call(void (*fn)(void *arg), void *arg)
+{
+    u32 t = g_call_tail;
+
+    if (fn == NULL || t - g_call_head >= GAME_CALLS) {
+        return 0;
+    }
+    g_calls[t % GAME_CALLS].fn = fn;
+    g_calls[t % GAME_CALLS].arg = arg;
+    g_call_tail = t + 1;
+    return 1;
+}
+
 void eidos_ui_game_frame(void)
 {
     int i, n = g_sound_n;
 
+    while (g_call_head != g_call_tail) {
+        u32 h = g_call_head;
+
+        g_calls[h % GAME_CALLS].fn(g_calls[h % GAME_CALLS].arg);
+        g_call_head = h + 1;
+    }
     debug_party();
     debug_warp();
     debug_battle();
@@ -733,6 +758,33 @@ static int g_hide_tail;          /* frames the game's 2D stays hidden after */
 u32 eidos_ui_scene_age(void)
 {
     return g_scene_frames;
+}
+
+/* A kept picture resampled to w x h (nearest): the same window area at
+ * another canvas scale. */
+static void refit(u8 **px, int *pw, int *ph, int w, int h)
+{
+    u8 *n;
+    int x, y;
+
+    if (*px == NULL || *pw <= 0 || *ph <= 0 || (*pw == w && *ph == h)) {
+        return;
+    }
+    n = (u8 *)malloc((size_t)w * (size_t)h * 4);
+    if (n == NULL) {
+        return;
+    }
+    for (y = 0; y < h; y++) {
+        int sy = y * *ph / h;
+
+        for (x = 0; x < w; x++) {
+            memcpy(n + ((size_t)y * w + x) * 4, *px + ((size_t)sy * *pw + x * *pw / w) * 4, 4);
+        }
+    }
+    free(*px);
+    *px = n;
+    *pw = w;
+    *ph = h;
 }
 
 static void fade_start(void)
@@ -1039,6 +1091,22 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             }
         }
     }
+    if (r != NULL && r->round_scale) {
+        int k = (in->win_h + 135) / 270;
+
+        if (k > g_k) {
+            g_k = k;
+            w = (in->win_w + g_k - 1) / g_k;
+            h = (in->win_h + g_k - 1) / g_k;
+            ui_begin(&g_ctx, &g_canvas, w, h, g_k);
+            read_mouse(in);
+        }
+    }
+    /* the pictures kept from earlier frames, at this canvas's size (the
+     * scale changed with the scene): the crossfades still find them */
+    refit(&g_prev, &g_prev_w, &g_prev_h, w, h);
+    refit(&g_before, &g_before_w, &g_before_h, w, h);
+    refit(&g_fade_from, &g_fade_w, &g_fade_h, w, h);
     if (r != NULL && r != g_shown) {
         /* keep the scene before this one: an app closing goes back to it,
          * and shows it at once while the game fades and loads */

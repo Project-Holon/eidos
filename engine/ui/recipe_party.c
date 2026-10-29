@@ -868,7 +868,7 @@ static void party_reset(void)
 }
 
 static const EidosUiRecipe recipe_party_list = {
-    "party list", party_match, party_run, party_reset
+    "party list", party_match, party_run, party_reset, 0
 };
 
 /* ================================================================== */
@@ -1594,7 +1594,7 @@ static void summary_reset(void)
 }
 
 static const EidosUiRecipe recipe_summary = {
-    "pokemon summary", summary_match, summary_run, summary_reset
+    "pokemon summary", summary_match, summary_run, summary_reset, 0
 };
 
 /* ------------------------------------------------------------------ */

@@ -1186,7 +1186,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 }
 
 static const EidosUiRecipe recipe_options = {
-    "options", options_match, options_run, options_reset
+    "options", options_match, options_run, options_reset, 0
 };
 
 /* ------------------------------------------------------------------ */
@@ -1560,7 +1560,7 @@ static void save_reset(void)
 }
 
 static const EidosUiRecipe recipe_save = {
-    "save", save_match, save_run, save_reset
+    "save", save_match, save_run, save_reset, 0
 };
 
 /* ------------------------------------------------------------------ */
@@ -2347,7 +2347,7 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 }
 
-static const EidosUiRecipe recipe_card = { "card", card_match, card_run, card_reset };
+static const EidosUiRecipe recipe_card = { "card", card_match, card_run, card_reset, 0 };
 
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card };
 const u32 ui_recipes_menus_count = 3;

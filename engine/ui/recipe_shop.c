@@ -948,7 +948,7 @@ static void reset_shop(void)
     caches_clear();
 }
 
-static const EidosUiRecipe recipe_shop = { "shop", match_shop, run_shop, reset_shop };
+static const EidosUiRecipe recipe_shop = { "shop", match_shop, run_shop, reset_shop, 0 };
 
 const EidosUiRecipe *const ui_recipes_shop[] = { &recipe_shop };
 const u32 ui_recipes_shop_count = 1;
