@@ -2791,6 +2791,13 @@ option(EIDOS_BOOT
 add_executable(eidos_boot ${CMAKE_CURRENT_SOURCE_DIR}/demo/eidos_boot.c)
 target_include_directories(eidos_boot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform)
 target_link_libraries(eidos_boot PRIVATE eidos)
+# SDL3.dll has to sit next to the program on Windows (as for eidos_view)
+if(EIDOS_SDL_RUNTIME)
+    add_custom_command(TARGET eidos_boot POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${EIDOS_SDL_RUNTIME}" "$<TARGET_FILE_DIR:eidos_boot>"
+        COMMENT "Copying SDL3.dll next to eidos_boot")
+endif()
 # A release build (docs/release.md) compiles in no data root: the build
 # machine's path means nothing to a player, so the game looks in the user
 # folder (docs/installer.md) and asks for the ROM when there is none.

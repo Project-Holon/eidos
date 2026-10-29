@@ -5,6 +5,8 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Source builds on Windows: SDL3.dll is copied next to eidos_boot.exe, so it
+  starts without it on the PATH (reported by raspberryzombie).
 - 3D outlines: off by default, as most players prefer. Settings > Display
   has "3D outlines" (Off or Thin). Thin draws the edge one screen pixel
   wide at any size, so it no longer makes spikes and combs at high
