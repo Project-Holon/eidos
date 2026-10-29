@@ -845,6 +845,19 @@ static V3 slot_position(int pos)
     return (V3){ 0, 0, 0 };
 }
 
+int bcam_sim_slot(int pos, float out[3])
+{
+    V3 v;
+
+    if (pos < 0 || pos > 13 || (!g_ovl && tables_load() != 0))
+        return -1;
+    v = slot_position(pos);
+    out[0] = v.x / 4096.0f;
+    out[1] = v.y / 4096.0f;
+    out[2] = v.z / 4096.0f;
+    return 0;
+}
+
 static void sprite_add(int pos)
 {
     if (pos < 0 || pos > 13)
@@ -2322,6 +2335,14 @@ static void frame_record(void)
             f->poke[i][1] = S.pos[i].y / 4096.0f;
             f->poke[i][2] = S.pos[i].z / 4096.0f;
             f->poke_mask |= 1u << i;
+        }
+    }
+    for (i = 0; i < 6; i++) {
+        if (S.loaded[8 + i]) {
+            f->trainer[i][0] = S.pos[8 + i].x / 4096.0f;
+            f->trainer[i][1] = S.pos[8 + i].y / 4096.0f;
+            f->trainer[i][2] = S.pos[8 + i].z / 4096.0f;
+            f->trainer_mask |= 1u << i;
         }
     }
 }

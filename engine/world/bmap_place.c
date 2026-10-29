@@ -682,8 +682,9 @@ int bmap_copy(BmapScene *dst, const BmapScene *src)
     return 0;
 }
 
-/* the command camera's eye (where the battle settles) */
+/* the command camera's eye (where the battle settles) and target */
 static const float k_cmd_eye[3] = { 6.7f, 6.7f, 17.3f };
+static const float k_cmd_target[3] = { 0.0f, 2.6f, 0.0f };
 
 int bmap_intro_none(const BmapIntro *in)
 {
@@ -723,42 +724,28 @@ float bmap_cmd_depth(const float p[3])
     return d;
 }
 
-void bmap_camera_intro(float eye[3], float target[3], const BmapIntro *in)
+/* A camera moved by the settings `in`, in the part `w` (0 to 1).  The zoom
+ * moves the eye by (1 - 1 / zoom) of `toward`, a vector chosen by the
+ * caller; the camera then turns about the upright line through the
+ * battle's centre, rises, slides to its right and turns its look. */
+static void camera_shift(float eye[3], float target[3], const BmapIntro *in, float w, const float toward[3])
 {
     const double pi = 3.14159265358979323846;
-    float w, ca, sa, x, zoom, yaw;
+    float ca, sa, x, zoom = in->zoom > 0.0f ? in->zoom : 1.0f;
     int i;
 
-    if (bmap_intro_none(in)) {
-        return;
-    }
-    zoom = in->zoom > 0.0f ? in->zoom : 1.0f;
-    yaw = in->yaw;
-    /* how far the camera is on the way from the command camera's eye to the
-     * intro's (bmap_intro_progress).  The game's intro pulls the camera
-     * back along that line, so the place's change grows with the pull and
-     * the camera moves one way only. */
-    w = bmap_intro_progress(eye);
-    if (w <= 0.0f) {
-        return;
-    }
-    /* closer: the eye moves the intro's eye's way to its target, by the
-     * part `w` of what the full zoom moves the intro's eye.  The same move
-     * for every camera, not one toward each camera's own target: the
-     * target travels out with the eye during the pull, and a move toward it
-     * would take the eye in front of the command camera and back. */
     if (zoom != 1.0f) {
         float k = w * (1.0f - 1.0f / zoom);     /* below 1: further out */
 
         for (i = 0; i < 3; i++) {
-            eye[i] += k * (k_intro_target[i] - k_intro_eye[i]);
+            eye[i] += k * toward[i];
         }
     }
     /* turned about the upright line through the battle's centre, eye and
      * target together, and raised */
-    if (yaw != 0.0f) {
-        ca = (float)cos(yaw * w * pi / 180.0);
-        sa = (float)sin(yaw * w * pi / 180.0);
+    if (in->yaw != 0.0f) {
+        ca = (float)cos(in->yaw * w * pi / 180.0);
+        sa = (float)sin(in->yaw * w * pi / 180.0);
         x = eye[0];
         eye[0] = x * ca + eye[2] * sa;
         eye[2] = eye[2] * ca - x * sa;
@@ -799,6 +786,49 @@ void bmap_camera_intro(float eye[3], float target[3], const BmapIntro *in)
         target[1] = eye[1] + L * sinf(pitch);
         target[2] = eye[2] + L * cosf(pitch) * cosf(head);
     }
+}
+
+/* The intro's change on a camera at progress w along the intro's line.
+ * Closer: the eye moves the intro's eye's way to its target, by the part
+ * `w` of what the full zoom moves the intro's eye.  The same move for every
+ * camera, not one toward each camera's own target: the target travels out
+ * with the eye during the pull, and a move toward it would take the eye in
+ * front of the command camera and back. */
+static void intro_shift(float eye[3], float target[3], const BmapIntro *in, float w)
+{
+    float toward[3];
+    int i;
+
+    if (bmap_intro_none(in) || w <= 0.0f) {
+        return;
+    }
+    for (i = 0; i < 3; i++) {
+        toward[i] = k_intro_target[i] - k_intro_eye[i];
+    }
+    camera_shift(eye, target, in, w, toward);
+}
+
+void bmap_camera_view(float eye[3], float target[3], const BmapIntro *cam, float w)
+{
+    float toward[3];
+    int i;
+
+    if (bmap_intro_none(cam) || w <= 0.0f) {
+        return;
+    }
+    for (i = 0; i < 3; i++) {
+        toward[i] = target[i] - eye[i];
+    }
+    camera_shift(eye, target, cam, w, toward);
+}
+
+/* how far the camera is on the way from the command camera's eye to the
+ * intro's (bmap_intro_progress).  The game's intro pulls the camera back
+ * along that line, so the place's change grows with the pull and the
+ * camera moves one way only. */
+void bmap_camera_intro(float eye[3], float target[3], const BmapIntro *in)
+{
+    intro_shift(eye, target, in, bmap_intro_progress(eye));
 }
 
 /* The foe brought in or pushed back by dz: the foe's side (z < 0) is
@@ -850,14 +880,46 @@ void bmap_battle_unwarp(float p[3], float dy, float dz)
     p[1] -= dy * fminf(t, 1.0f);
 }
 
+void bmap_place_view_live(BmapScene *s, const BmapIntro *cam, const float trainer_foe[3],
+                          const float trainer_own[3])
+{
+    if (s != NULL && s->view_set) {
+        s->cam = *cam;
+        memcpy(s->trainer_foe, trainer_foe, sizeof s->trainer_foe);
+        memcpy(s->trainer_own, trainer_own, sizeof s->trainer_own);
+    }
+}
+
+int bmap_place_view_set(const BmapScene *s)
+{
+    int i;
+
+    if (s == NULL || !s->view_set) {
+        return 0;
+    }
+    for (i = 0; i < 3; i++) {
+        if (s->trainer_foe[i] != 0.0f || s->trainer_own[i] != 0.0f) {
+            return 1;
+        }
+    }
+    return !bmap_intro_none(&s->cam);
+}
+
 void bmap_battle_camera(float eye[3], float target[3], const BmapScene *s)
 {
+    float w;
+
     if (s == NULL) {
         return;
     }
+
     bmap_battle_warp(eye, s->foe_dy, s->foe_dz);
     bmap_battle_warp(target, s->foe_dy, s->foe_dz);
-    bmap_camera_intro(eye, target, &s->intro);
+    w = bmap_intro_progress(eye);               /* before the command camera's change */
+    if (s->view_set) {
+        bmap_camera_view(eye, target, &s->cam, 1.0f - w);   /* the intro's camera is its own */
+    }
+    intro_shift(eye, target, &s->intro, w);
 }
 
 void bmap_place(BmapScene *s, float px, float pz, unsigned facing)
@@ -1668,7 +1730,16 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     /* the intro camera as this place turns, raises and zooms it */
     memcpy(k_eyes[1][0], k_intro_eye, sizeof k_intro_eye);
     memcpy(k_eyes[1][1], k_intro_target, sizeof k_intro_target);
+    memcpy(k_eyes[0][0], k_cmd_eye, sizeof k_cmd_eye);
+    memcpy(k_eyes[0][1], k_cmd_target, sizeof k_cmd_target);
+    bmap_camera_view(k_eyes[0][0], k_eyes[0][1], &sp->cam, 1.0f);
     bmap_camera_intro(k_eyes[1][0], k_eyes[1][1], &sp->intro);
+    s->view_set = !sp->field;
+    if (s->view_set) {
+        s->cam = sp->cam;
+        memcpy(s->trainer_foe, sp->trainer_foe, sizeof s->trainer_foe);
+        memcpy(s->trainer_own, sp->trainer_own, sizeof s->trainer_own);
+    }
     s->intro = sp->intro;
     if (s->intro.zoom <= 0.0f) {
         s->intro.zoom = 1.0f;

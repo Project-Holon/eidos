@@ -55,14 +55,14 @@ static int mode_of(const char *f)
 /* One line of the table into r; returns 0 when it is a row. */
 static int parse_row(char *line, BmapSpot *r)
 {
-    char *f[33];
-    int n = 0;
+    char *f[48];
+    int n = 0, i;
     char *p = line;
 
     if (line[0] == '#' || line[0] == '\0') {
         return -1;
     }
-    while (n < 33) {
+    while (n < 48) {
         f[n++] = p;
         p = strchr(p, '\t');
         if (p == NULL) {
@@ -110,24 +110,65 @@ static int parse_row(char *line, BmapSpot *r)
     if (r->intro.zoom <= 0.0f) {
         r->intro.zoom = 1.0f;
     }
+    r->cam.zoom = n > 33 ? field_float(f[33], 1.0f) : 1.0f;
+    r->cam.yaw = n > 34 ? field_float(f[34], 0.0f) : 0.0f;
+    r->cam.lift = n > 35 ? field_float(f[35], 0.0f) : 0.0f;
+    r->cam.side = n > 36 ? field_float(f[36], 0.0f) : 0.0f;
+    r->cam.tilt = n > 37 ? field_float(f[37], 0.0f) : 0.0f;
+    r->cam.aim = n > 38 ? field_float(f[38], 0.0f) : 0.0f;
+    if (r->cam.zoom <= 0.0f) {
+        r->cam.zoom = 1.0f;
+    }
+    for (i = 0; i < 3; i++) {
+        r->trainer_foe[i] = n > 39 + i ? field_float(f[39 + i], 0.0f) : 0.0f;
+        r->trainer_own[i] = n > 42 + i ? field_float(f[42 + i], 0.0f) : 0.0f;
+    }
+    r->view = n > 45 ? field_int(f[45], 0) : 0;
+    r->pick_angle = n > 46 ? field_int(f[46], 0) : 0;
     return 0;
 }
 
-static int find_id(const char *id)
+/* The row of an id and view (a deleted view is none). */
+static int find_id(const char *id, int view)
 {
     int i;
 
     for (i = 0; i < g_n; i++) {
-        if (strcmp(g_rows[i].id, id) == 0) {
+        if (g_rows[i].view == view && strcmp(g_rows[i].id, id) == 0) {
             return i;
         }
     }
     return -1;
 }
 
-/* Every row of text into the table; a row with an id already there
- * replaces it. */
-static void load_text(char *text)
+/* A slot for a new row: a deleted view's, else the end of the table. */
+static int new_slot(void)
+{
+    int i;
+
+    for (i = 0; i < g_n; i++) {
+        if (g_rows[i].view < 0) {
+            return i;
+        }
+    }
+    if (g_n == g_cap) {
+        int cap = g_cap > 0 ? g_cap * 2 : 1024;
+        BmapSpot *m = (BmapSpot *)realloc(g_rows, (size_t)cap * sizeof *m);
+
+        if (m == NULL) {
+            return -1;
+        }
+        g_rows = m;
+        g_cap = cap;
+    }
+    return g_n++;
+}
+
+/* Every row of text into the table; a row with an id and view already there
+ * replaces it.  From the user's file (`user`) a row of view 0 also deletes
+ * the other views the table has of its id: the file holds the whole table,
+ * so a view it lacks was deleted. */
+static void load_text(char *text, int user)
 {
     char *line = text;
 
@@ -143,24 +184,25 @@ static void load_text(char *text)
             next[-2] = '\0';
         }
         if (parse_row(line, &r) == 0) {
-            at = find_id(r.id);
+            if (user && r.view == 0) {
+                int k;
+
+                for (k = 0; k < g_n; k++) {
+                    if (g_rows[k].view > 0 && strcmp(g_rows[k].id, r.id) == 0) {
+                        g_rows[k].view = -1;
+                    }
+                }
+            }
+            at = find_id(r.id, r.view);
             if (at >= 0) {
                 if (r.trainer_id < 0) {
                     r.trainer_id = g_rows[at].trainer_id;   /* a file from before the column */
                 }
                 g_rows[at] = r;
+            } else if ((at = new_slot()) >= 0) {
+                g_rows[at] = r;
             } else {
-                if (g_n == g_cap) {
-                    int cap = g_cap > 0 ? g_cap * 2 : 1024;
-                    BmapSpot *m = (BmapSpot *)realloc(g_rows, (size_t)cap * sizeof *m);
-
-                    if (m == NULL) {
-                        return;
-                    }
-                    g_rows = m;
-                    g_cap = cap;
-                }
-                g_rows[g_n++] = r;
+                return;
             }
         }
         line = next;
@@ -179,7 +221,7 @@ static void load(void)
     text = (char *)malloc(sizeof k_builtin);
     if (text != NULL) {
         memcpy(text, k_builtin, sizeof k_builtin);
-        load_text(text);
+        load_text(text, 0);
         free(text);
     }
     if (bmap_spots_user_path()[0] != '\0' && (f = fopen(bmap_spots_user_path(), "rb")) != NULL) {
@@ -191,7 +233,7 @@ static void load(void)
         text = n > 0 ? (char *)malloc((size_t)n + 1u) : NULL;
         if (text != NULL && fread(text, 1, (size_t)n, f) == (size_t)n) {
             text[n] = '\0';
-            load_text(text);
+            load_text(text, 1);
         }
         free(text);
         fclose(f);
@@ -201,6 +243,8 @@ static void load(void)
 void bmap_spots_set_user_path(const char *path)
 {
     snprintf(g_user, sizeof g_user, "%s", path != NULL ? path : "");
+    g_loaded = 0;                       /* the table is read again, over the built-in rows */
+    g_n = 0;
 }
 
 const char *bmap_spots_user_path(void)
@@ -227,7 +271,7 @@ int bmap_spots_default(const char *id, BmapSpot *out)
         if (next != NULL) {
             *next++ = '\0';
         }
-        if (parse_row(line, &r) == 0 && strcmp(r.id, id) == 0) {
+        if (parse_row(line, &r) == 0 && r.view == 0 && strcmp(r.id, id) == 0) {
             *out = r;
             found = 0;
         }
@@ -265,7 +309,7 @@ int bmap_spots_find_trainer(unsigned zone, int trainer_id, float px, float pz)
         const BmapSpot *r = &g_rows[i];
         float dx, dz, d;
 
-        if (r->zone != zone || r->kind != 'T') {
+        if (r->zone != zone || r->kind != 'T' || r->view != 0) {
             continue;
         }
         dx = px - ((float)r->tx * 16.0f + 8.0f);
@@ -294,7 +338,7 @@ int bmap_spots_find(unsigned zone, int trainer, float px, float pz)
         const BmapSpot *r = &g_rows[i];
         float d;
 
-        if (r->zone != zone || r->kind != (trainer ? 'T' : 'A')) {
+        if (r->zone != zone || r->kind != (trainer ? 'T' : 'A') || r->view != 0) {
             continue;
         }
         if (trainer) {
@@ -327,6 +371,145 @@ int bmap_spots_find(unsigned zone, int trainer, float px, float pz)
     return best;
 }
 
+int bmap_spots_view_count(int i)
+{
+    int k, n = 0;
+
+    load();
+    if (i < 0 || i >= g_n || g_rows[i].view < 0) {
+        return 0;
+    }
+    for (k = 0; k < g_n; k++) {
+        n += g_rows[k].view >= 0 && strcmp(g_rows[k].id, g_rows[i].id) == 0;
+    }
+    return n;
+}
+
+/* The table index of the row's view v, v counted in the order of the view
+ * numbers (a deleted number leaves no gap). */
+int bmap_spots_view_at(int i, int v)
+{
+    int k, best = -1, last = -1, c;
+
+    load();
+    if (i < 0 || i >= g_n || v < 0) {
+        return -1;
+    }
+    for (c = 0; c <= v; c++) {
+        best = -1;
+        for (k = 0; k < g_n; k++) {
+            const BmapSpot *r = &g_rows[k];
+
+            if (r->view > last && strcmp(r->id, g_rows[i].id) == 0 && (best < 0 || r->view < g_rows[best].view)) {
+                best = k;
+            }
+        }
+        if (best < 0) {
+            return -1;
+        }
+        last = g_rows[best].view;
+    }
+    return best;
+}
+
+/* Where a view stands, for the choice between views (map units). */
+static void view_place(const BmapSpot *r, float *x, float *z)
+{
+    if (r->mode == BMAP_SPOT_FIXED) {
+        *x = r->sx;
+        *z = r->sz;
+    } else if (r->mode == BMAP_SPOT_ZONE) {
+        *x = ((float)r->ax0 + (float)r->ax1) * 8.0f + 8.0f;     /* the rectangle's middle */
+        *z = ((float)r->az0 + (float)r->az1) * 8.0f + 8.0f;
+    } else {
+        *x = r->px;
+        *z = r->pz;
+    }
+}
+
+int bmap_spots_pick_view(int i, float px, float pz, unsigned facing)
+{
+    int n = bmap_spots_view_count(i), v, best = i, base;
+    float best_d = 1e30f, best_a = 1e30f;
+    float face = (float)(facing & 0xFFFFu) * 360.0f / 65536.0f;
+
+    if (n <= 1) {
+        return n == 1 ? bmap_spots_view_at(i, 0) : i;
+    }
+    base = bmap_spots_view_at(i, 0);
+    for (v = 0; v < n; v++) {
+        int k = bmap_spots_view_at(i, v);
+        const BmapSpot *r = &g_rows[k];
+        float x, z, d, a = 0.0f;
+
+        view_place(r, &x, &z);
+        d = sqrtf((px - x) * (px - x) + (pz - z) * (pz - z));
+        if (r->mode != BMAP_SPOT_AUTO && r->angle >= 0.0f) {
+            a = fabsf(fmodf(r->angle - face + 540.0f, 360.0f) - 180.0f);    /* 0 to 180 */
+        }
+        {
+            int by_angle = g_rows[base].pick_angle;
+            int better = by_angle ? (a < best_a - 0.5f || (a < best_a + 0.5f && d < best_d))
+                                  : (d < best_d - 16.0f || (d < best_d + 16.0f && a < best_a));
+
+            if (v == 0 || better) {
+                best = k;
+                best_d = d;
+                best_a = a;
+            }
+        }
+    }
+    return best;
+}
+
+int bmap_spots_view_add(int i, int from)
+{
+    int k, at, top = 0;
+    BmapSpot r;
+
+    load();
+    if (bmap_spots_view_count(i) >= BMAP_VIEWS_MAX || (k = bmap_spots_view_at(i, from)) < 0) {
+        return -1;
+    }
+    for (at = 0; at < g_n; at++) {
+        if (g_rows[at].view > top && strcmp(g_rows[at].id, g_rows[i].id) == 0) {
+            top = g_rows[at].view;
+        }
+    }
+    r = g_rows[k];
+    r.view = top + 1;
+    r.ok = 0;
+    if ((at = new_slot()) < 0) {
+        return -1;
+    }
+    g_rows[at] = r;
+    return at;
+}
+
+int bmap_spots_view_delete(int i, int v)
+{
+    int k;
+
+    load();
+    if (bmap_spots_view_count(i) <= 1 || (k = bmap_spots_view_at(i, v)) < 0) {
+        return -1;
+    }
+    if (g_rows[k].view == 0) {
+        /* the first view goes: the next one takes its place as view 0 */
+        int nx = bmap_spots_view_at(i, 1);
+        BmapSpot keep = g_rows[nx];
+
+        keep.view = 0;
+        keep.ok = g_rows[k].ok;
+        keep.pick_angle = g_rows[k].pick_angle;
+        g_rows[k] = keep;
+        g_rows[nx].view = -1;
+        return 0;
+    }
+    g_rows[k].view = -1;
+    return 0;
+}
+
 static unsigned deg_to_facing(float deg)
 {
     double d = fmod((double)deg, 360.0);
@@ -352,6 +535,9 @@ void bmap_spots_spec(const BmapSpot *e, float px, float pz, unsigned facing, Bma
     out->foe_level = e->foe_level;
     out->foe_dz = e->foe_dz;
     out->intro = e->intro;
+    out->cam = e->cam;
+    memcpy(out->trainer_foe, e->trainer_foe, sizeof out->trainer_foe);
+    memcpy(out->trainer_own, e->trainer_own, sizeof out->trainer_own);
     if (e->kind == 'T') {
         /* the player faces the trainer, wherever the game left the facing */
         float vx = (float)e->tx * 16.0f + 8.0f - px, vz = (float)e->tz * 16.0f + 8.0f - pz;
@@ -398,10 +584,37 @@ static const char *mode_name(int m)
     return m == BMAP_SPOT_FIXED ? "fixed" : m == BMAP_SPOT_ZONE ? "zone" : "auto";
 }
 
+static void save_row(FILE *f, const BmapSpot *r)
+{
+    if (r->kind == 'T') {
+        fprintf(f, "%s\tT\t%u\t%s\t%d\t%d\t%d\t%d\t-\t-\t-\t-", r->id, r->zone, r->label, r->tx, r->tz,
+                r->dir, r->range);
+    } else {
+        fprintf(f, "%s\tA\t%u\t%s\t-\t-\t-\t-\t%d\t%d\t%d\t%d", r->id, r->zone, r->label, r->rx0, r->rz0,
+                r->rx1, r->rz1);
+    }
+    fprintf(f, "\t%g\t%g\t%d\t%s", (double)r->px, (double)r->pz, r->pf, mode_name(r->mode));
+    if (r->mode == BMAP_SPOT_FIXED) {
+        fprintf(f, "\t%g\t%g\t%g\t-\t-\t-\t-", (double)r->sx, (double)r->sz, (double)r->angle);
+    } else if (r->mode == BMAP_SPOT_ZONE) {
+        fprintf(f, "\t-\t-\t%g\t%d\t%d\t%d\t%d", (double)r->angle, r->ax0, r->az0, r->ax1, r->az1);
+    } else {
+        fprintf(f, "\t-\t-\t-\t-\t-\t-\t-");
+    }
+    fprintf(f, "\t%d\t%d\t%g\t%g\t%d\t%g\t%g\t%g\t%g\t%g", r->ok, r->foe_level, (double)r->foe_dz,
+            (double)r->intro.zoom, r->trainer_id, (double)r->intro.yaw, (double)r->intro.lift,
+            (double)r->intro.side, (double)r->intro.tilt, (double)r->intro.aim);
+    fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g", (double)r->cam.zoom, (double)r->cam.yaw, (double)r->cam.lift,
+            (double)r->cam.side, (double)r->cam.tilt, (double)r->cam.aim);
+    fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%d\n", (double)r->trainer_foe[0], (double)r->trainer_foe[1],
+            (double)r->trainer_foe[2], (double)r->trainer_own[0], (double)r->trainer_own[1],
+            (double)r->trainer_own[2], r->view, r->pick_angle);
+}
+
 int bmap_spots_save(void)
 {
     FILE *f;
-    int i;
+    int i, v;
 
     load();
     if (bmap_spots_user_path()[0] == '\0' || (f = fopen(bmap_spots_user_path(), "wb")) == NULL) {
@@ -409,26 +622,13 @@ int bmap_spots_save(void)
     }
     fprintf(f, "# battle spots written by the spot editor: tools/battle_spots.py merge\n");
     for (i = 0; i < g_n; i++) {
-        const BmapSpot *r = &g_rows[i];
-
-        if (r->kind == 'T') {
-            fprintf(f, "%s\tT\t%u\t%s\t%d\t%d\t%d\t%d\t-\t-\t-\t-", r->id, r->zone, r->label, r->tx, r->tz,
-                    r->dir, r->range);
-        } else {
-            fprintf(f, "%s\tA\t%u\t%s\t-\t-\t-\t-\t%d\t%d\t%d\t%d", r->id, r->zone, r->label, r->rx0, r->rz0,
-                    r->rx1, r->rz1);
+        if (g_rows[i].view != 0) {
+            continue;
         }
-        fprintf(f, "\t%g\t%g\t%d\t%s", (double)r->px, (double)r->pz, r->pf, mode_name(r->mode));
-        if (r->mode == BMAP_SPOT_FIXED) {
-            fprintf(f, "\t%g\t%g\t%g\t-\t-\t-\t-", (double)r->sx, (double)r->sz, (double)r->angle);
-        } else if (r->mode == BMAP_SPOT_ZONE) {
-            fprintf(f, "\t-\t-\t%g\t%d\t%d\t%d\t%d", (double)r->angle, r->ax0, r->az0, r->ax1, r->az1);
-        } else {
-            fprintf(f, "\t-\t-\t-\t-\t-\t-\t-");
+        save_row(f, &g_rows[i]);                /* a row, then its other views */
+        for (v = 1; v < bmap_spots_view_count(i); v++) {
+            save_row(f, &g_rows[bmap_spots_view_at(i, v)]);
         }
-        fprintf(f, "\t%d\t%d\t%g\t%g\t%d\t%g\t%g\t%g\t%g\t%g\n", r->ok, r->foe_level, (double)r->foe_dz,
-                (double)r->intro.zoom, r->trainer_id, (double)r->intro.yaw, (double)r->intro.lift,
-                (double)r->intro.side, (double)r->intro.tilt, (double)r->intro.aim);
     }
     return fclose(f) == 0 ? 0 : -1;
 }

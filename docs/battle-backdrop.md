@@ -90,6 +90,55 @@ along one line.
 The camera object keeps the game's own eye; only the view the game draws
 with and the backdrop's camera change.
 
+## The command camera
+
+A row can also change the battle camera itself: the command menu's camera
+and the close-ups, which move with it. The intro's and the send-out's
+camera keep their own settings. Six settings, the same as the intro's (column
+`cz` zoom, `cy` turn, `ch` height, `cs` slide, `ct` tilt, `ca` aim; a missing
+column or zoom 1 and zeros is no change):
+
+- zoom (above 0): the eye comes closer to what the camera itself looks at;
+  below 1 it goes further out;
+- turn, height, slide, aim and tilt: as the intro's (`bmap_camera_view`).
+
+A camera gets the part of them that its eye is from the intro's end of the
+line the intro pulls back along (all at the command camera, none at the
+intro's eye), the opposite of the intro's own part. So the two sets of
+settings do not meet, and the intro keeps sliding into the command camera
+along one line.
+The flat sprites follow the new camera (`sdk/battle_view.c` sizes them by
+their distance to the game's own command camera against the camera drawn
+with), so a closer camera shows bigger Pokemon.
+
+`BmapScene` has no room for these settings (`engine/world/bmap.h`), so
+`bmap_place_spec` keeps what it was given for the last eight scenes it
+placed (`bmap_place_view`).
+
+## The trainers' sprites
+
+The game puts its trainers' sprites in the same slot tables as the Pokemon
+(positions 8 to 13: even the player's side, odd the foe's). A row can move
+the foe trainer and the player's own trainer (columns `tfx tfy tfz` for the
+foe's, `tux tuy tuz` for yours): right, up and back, in battle units.
+`slot_shift` in `sdk/battle_view.c` adds them to the trainers' slots with
+the foe's height and distance, and to the trainer sprites already standing.
+The scripts that walk a trainer in or out of the picture move it from the
+changed slot.
+
+## Views
+
+A row can have several views, each with its own spot, angle, cameras and
+trainer offsets. A view is a row of the table with the same id and a view
+number (column `vw`: missing or 0 for the first, 1 and on for the others;
+`tools/battle_spots.py` keys them `id#N`, and the editor writes a row's
+views after it). At a battle's start `bmap_spots_pick_view` takes the view
+whose spot is nearest to where the player stands (a fixed view's spot, a safe
+area's middle, else the row's usual player place); two spots less than a
+tile apart are a tie, and the view whose angle is nearest the player's
+facing wins it. The first view's column `vm` set to 1 puts the angle first.
+The `ok` mark of the first view counts for the row; the others' is not used.
+
 ## The spot table
 
 `engine/world/battle_spots.tsv` has one row for each trainer and each patch
@@ -154,6 +203,17 @@ The right column:
   raises it, a right drag slides and tilts it, the wheel zooms; Play runs a recorded battle camera in the
   left view (the intro, idle, moves), with the Pokemon where the recording
   has them;
+- under the two views, the settings of the place: Views (a button for each
+  view, Add view copies the one on show and makes it a fixed spot, Delete,
+  By spot or By angle, and which view the game takes for the white player
+  dot), the command camera (zoom, turn, height, slide, tilt, aim; a drag on
+  the left view turns and raises it, a right drag slides and tilts it, the
+  wheel zooms, as on the intro view) and the two trainers' places (right, up,
+  back). Show trainers puts the trainers' pictures where the game stands them, each in
+  place of its side's Pokemon; the trainer intro (Play) shows the foe
+  trainer where the game's script puts it. On the map, a click on another
+  view's ring picks that view, and Ctrl+drag moves the player dot in a fixed
+  view;
 - the overworld: the zone's map with its NPCs (`engine/world/bmap_npc.c`)
   and the player, from the zone's field camera; drag to move, right drag to
   turn, the wheel to zoom, Field camera to go back; the season and the time

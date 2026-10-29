@@ -5,6 +5,14 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Remaster battles: a battle place can hold several views. The battle
+  takes the one nearest where the player stands, or the one closest to the
+  way they face. Each view sets its own command camera (zoom, turn, height,
+  slide, tilt, aim) and moves the foe's and your trainer.
+- Spot editor: Pokemon at their in-game size, trainer sprites drawn as the
+  game draws them (no stray second head), your trainer as the boy or the
+  girl (taken from your save), and controls for views, the camera and the
+  trainers.
 - Remaster battles: move names in battle messages take their type's colour
   ("Tepig used Ember!" with Ember in fire red). Extras has a "Move colours"
   setting to turn it off.

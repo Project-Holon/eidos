@@ -115,6 +115,7 @@ static const struct {
     { 0x0220A110u, 6u },            /* the trainers: 8 to 13                */
 };
 #define SLOT_TABLES (sizeof k_slot_tables / sizeof k_slot_tables[0])
+#define SLOT_TRAINERS 4u            /* the trainers' table above */
 #define SLOT_ENTRIES 24u
 
 enum { OBJ_OTHER, OBJ_STAGE, OBJ_FIELD };
@@ -378,20 +379,55 @@ static void placed_free(BvPlaced *p)
     }
 }
 
+/* The move of one slot from the game's (fx32 x, y, z): the foe's side
+ * (odd positions) up by dy and back by dz, and a trainer's slot (positions 8
+ * to 13, the table `trainers`) by its side's own offset, right, up and back. */
+typedef struct SlotMove {
+    float dy, dz, foe[3], own[3];
+} SlotMove;
+
+static void slot_delta(const SlotMove *m, int trainers, uint32_t i, int32_t out[3])
+{
+    out[0] = out[1] = out[2] = 0;
+    if ((i & 1u) == 1u) {
+        out[1] += (int32_t)(m->dy * 4096.0f);
+        out[2] -= (int32_t)(m->dz * 4096.0f);
+    }
+    if (trainers) {
+        const float *t = (i & 1u) == 1u ? m->foe : m->own;
+
+        out[0] += (int32_t)(t[0] * 4096.0f);
+        out[1] += (int32_t)(t[1] * 4096.0f);
+        out[2] -= (int32_t)(t[2] * 4096.0f);
+    }
+}
+
+/* The place's slot move: the foe's height and distance, the trainers' offsets. */
+static void slot_move_of(const BmapScene *s, SlotMove *m)
+{
+    memset(m, 0, sizeof *m);
+    m->dy = s->foe_dy;
+    m->dz = s->foe_dz;
+    if (s->view_set) {
+        memcpy(m->foe, s->trainer_foe, sizeof m->foe);
+        memcpy(m->own, s->trainer_own, sizeof m->own);
+    }
+}
+
 /* Move the foe's slots by (dy, dz) battle units from the game's: up, and
- * back (away from the player).  The tables keep the game's values while the
- * overlay stays loaded; a fresh load brings them back, which shows as values
- * other than the ones written last.  Sprites already standing move by the
- * change, so one in the middle of a move keeps its motion. */
-static void slot_shift(float dy, float dz)
+ * back (away from the player), and the trainers' by the place's offsets.
+ * The tables keep the game's values while the overlay stays loaded; a fresh
+ * load brings them back, which shows as values other than the ones written
+ * last.  Sprites already standing move by the change, so one in the middle
+ * of a move keeps its motion. */
+static void slot_shift(const SlotMove *now)
 {
     static int32_t base[SLOT_ENTRIES][3], written[SLOT_ENTRIES][3];
-    static float cur_dy, cur_dz;
+    static SlotMove cur;
     static int have;
-    int32_t ody = (int32_t)(cur_dy * 4096.0f), odz = (int32_t)(cur_dz * 4096.0f);
-    int32_t ndy = (int32_t)(dy * 4096.0f), ndz = (int32_t)(dz * 4096.0f);
     uint32_t t, i, e = 0;
     int fresh = !have;
+    SlotMove old = cur;
 
     for (t = 0; t < SLOT_TABLES && !fresh; t++) {
         int32_t *tab = (int32_t *)bw_ds_try_ptr(k_slot_tables[t].addr);
@@ -403,14 +439,15 @@ static void slot_shift(float dy, float dz)
         }
     }
     if (fresh) {
-        ody = 0;
-        odz = 0;
+        memset(&old, 0, sizeof old);
     }
     e = 0;
     for (t = 0; t < SLOT_TABLES; t++) {
         int32_t *tab = (int32_t *)bw_ds_try_ptr(k_slot_tables[t].addr);
 
         for (i = 0; i < k_slot_tables[t].count; i++, e++) {
+            int32_t d[3];
+
             if (tab == NULL) {
                 continue;
             }
@@ -418,18 +455,17 @@ static void slot_shift(float dy, float dz)
                 memcpy(base[e], &tab[i * 3], sizeof base[e]);
             }
             memcpy(&tab[i * 3], base[e], sizeof base[e]);
-            if ((i & 1u) == 1u) {       /* the foe's side */
-                tab[i * 3 + 1] += ndy;
-                tab[i * 3 + 2] -= ndz;
-            }
+            slot_delta(now, t == SLOT_TRAINERS, i, d);
+            tab[i * 3] += d[0];
+            tab[i * 3 + 1] += d[1];
+            tab[i * 3 + 2] += d[2];
             memcpy(written[e], &tab[i * 3], sizeof written[e]);
         }
     }
     have = 1;
-    cur_dy = dy;
-    cur_dz = dz;
+    cur = *now;
     {
-        /* the sprites on the foe's side, by the change */
+        /* the sprites standing, by the change */
         uintptr_t eff, mw;
         uint32_t *slot = (uint32_t *)bw_ds_try_ptr(DS_GBTLVEFF);
 
@@ -439,17 +475,19 @@ static void slot_shift(float dy, float dz)
             uintptr_t sp = mw + MCSS_SPRITES + MCSS_STRIDE * i;
             uintptr_t mc = rd32(sp, 0);
             uint32_t pos = rd32(sp, MSPR_POS);
-            int32_t v;
+            int32_t dn[3], dold[3], v;
+            int k;
 
-            if (!gptr_ok(mc) || pos > 13u || (pos & 1u) == 0u) {
+            if (!gptr_ok(mc) || pos > 13u) {
                 continue;
             }
-            memcpy(&v, (const void *)(mc + MCSSW_POS + 4u), 4);
-            v += ndy - ody;
-            memcpy((void *)(mc + MCSSW_POS + 4u), &v, 4);
-            memcpy(&v, (const void *)(mc + MCSSW_POS + 8u), 4);
-            v -= ndz - odz;
-            memcpy((void *)(mc + MCSSW_POS + 8u), &v, 4);
+            slot_delta(now, pos >= 8u, pos >= 8u ? pos - 8u : pos, dn);
+            slot_delta(&old, pos >= 8u, pos >= 8u ? pos - 8u : pos, dold);
+            for (k = 0; k < 3; k++) {
+                memcpy(&v, (const void *)(mc + MCSSW_POS + 4u * (uint32_t)k), 4);
+                v += dn[k] - dold[k];
+                memcpy((void *)(mc + MCSSW_POS + 4u * (uint32_t)k), &v, 4);
+            }
         }
     }
 }
@@ -485,6 +523,7 @@ static void camera_recommit(void)
 static void job_finish(void)
 {
     BvJob *j = g_job;
+    SlotMove mv;
 
     bw_thread_join(j->thread);
     g_job = NULL;
@@ -502,7 +541,8 @@ static void job_finish(void)
         }
         g_cur = j->placed;
         g_gen++;
-        slot_shift(g_cur->s.foe_dy, g_cur->s.foe_dz);
+        slot_move_of(&g_cur->s, &mv);
+        slot_shift(&mv);
         camera_recommit();
     }
     free(j);
@@ -553,6 +593,9 @@ static void battle_begin(uintptr_t eff)
     }
     if (j->reach == 0 && row < 0 && getenv("EIDOS_DEBUG_BMAP_AT") != NULL) {
         row = bmap_spots_find(j->zone, !j->trainer, j->px, j->pz);  /* the previewed place */
+    }
+    if (row >= 0) {                     /* the row's view nearest the player */
+        row = bmap_spots_pick_view(row, j->px, j->pz, j->facing);
     }
     bmap_spots_spec(bmap_spots_get(row), j->px, j->pz, j->facing, &j->spec);
     if (j->reach != 0) {                /* EIDOS_DEBUG_BMAP_AT's own reach (tests) */
@@ -799,7 +842,8 @@ void __wrap_G3D_CAMERA_Reset(void *camera)
     uintptr_t gc = (uintptr_t)camera;
 
     if (g_cur != NULL && gptr_ok(gc) && bw_battle_view_active() && gc == battle_camera()
-        && (!bmap_intro_none(&g_cur->s.intro) || g_cur->s.foe_dy != 0.0f || g_cur->s.foe_dz != 0.0f)) {
+        && (!bmap_intro_none(&g_cur->s.intro) || g_cur->s.foe_dy != 0.0f || g_cur->s.foe_dz != 0.0f
+            || bmap_place_view_set(&g_cur->s))) {
         int32_t keep[6], v;
         float eye[3], target[3];
         uint32_t i;

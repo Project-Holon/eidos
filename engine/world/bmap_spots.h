@@ -46,7 +46,18 @@ typedef struct BmapSpot {
                                camera (bmap_camera_intro; zoom 1 none)         */
     int trainer_id;         /* T: the trainer's number (its script - 3000), -1 when
                                it has none (a leader's scripted battle)        */
+    BmapIntro cam;          /* the command camera's own settings (zoom 1 none;
+                               bmap_camera_view)                               */
+    float trainer_foe[3];   /* the foe trainer's sprite moved: right, up, back
+                               (battle units)                                  */
+    float trainer_own[3];   /* the player's own trainer sprite, the same        */
+    int view;               /* 0 the row's first view; 1 and on its others (rows
+                               of the same id: each has its own spot, angle,
+                               cameras and trainer offsets); -1 deleted         */
+    int pick_angle;         /* view 0: the view is chosen by the angle first
+                               (else by the spot, the angle breaking a tie)     */
 } BmapSpot;
+#define BMAP_VIEWS_MAX 8    /* views of a row */
 
 /* The table: the one built in (battle_spots.tsv), then the rows of the
  * user's file over it (the spot editor writes it).  Loaded on first use. */
@@ -59,6 +70,21 @@ BmapSpot *bmap_spots_get(int i);
  * wild area row whose box holds them.  -1 when none. */
 int       bmap_spots_find(unsigned zone, int trainer, float px, float pz);
 int       bmap_spots_find_trainer(unsigned zone, int trainer_id, float px, float pz);
+/* The views of the row at index i (any of its views): their count, the
+ * table index of view v (0 is the first; -1 when there is none), and the one
+ * a battle with the player at (px, pz) facing the game's 16-bit angle takes:
+ * the view whose spot (a fixed spot, a safe area's middle, else the player's
+ * usual place) is nearest, the one whose angle is nearest the facing when two
+ * are about as near (less than a tile apart) or when the row asks for the angle
+ * first.  Returns the table index of that view. */
+int       bmap_spots_view_count(int i);
+int       bmap_spots_view_at(int i, int v);
+int       bmap_spots_pick_view(int i, float px, float pz, unsigned facing);
+/* A new view of row i, a copy of view `from`; returns its table index, or
+ * -1 when the row has BMAP_VIEWS_MAX.  The table keeps every index. */
+int       bmap_spots_view_add(int i, int from);
+/* Delete view v of the row (the last one stays); returns 0 when done. */
+int       bmap_spots_view_delete(int i, int v);
 /* The placement for row e (NULL: none) and the player at (px, pz), facing
  * the game's 16-bit angle. */
 void      bmap_spots_spec(const BmapSpot *e, float px, float pz, unsigned facing,

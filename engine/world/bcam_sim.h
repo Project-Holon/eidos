@@ -24,6 +24,8 @@ typedef struct BcamFrame {
     float eye[3], target[3];
     float poke[8][3];       /* battle units, slot 0..7 (0 the player's, 1 the foe's) */
     unsigned poke_mask;     /* bit n set: poke[n] is valid (the slot is on the field) */
+    float trainer[6][3];    /* the trainers, slots 8..13 (9 the foe's, 8 the player's) */
+    unsigned trainer_mask;  /* bit n set: trainer[n] is on the field */
 } BcamFrame;
 
 enum {
@@ -47,6 +49,10 @@ int bcam_sim_run(int kind, int id, int attacker, int defender, BcamFrame **frame
  * Some scripts shake the camera harder for a heavy Pokemon.
  */
 void bcam_sim_set_weight(int slot, int weight);
+
+/* The game's place of battle slot `pos` (0..13) in a single or double battle,
+ * battle units, into out.  Returns 0, or -1 when the tables cannot be read. */
+int bcam_sim_slot(int pos, float out[3]);
 
 /* The name of move `id` from the game's text, or NULL when it cannot be read. */
 const char *bcam_sim_move_name(int id);

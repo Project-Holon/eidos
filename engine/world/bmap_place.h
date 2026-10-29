@@ -55,6 +55,12 @@ typedef struct BmapPlaceSpec {
     int foe_level;          /* 1: the ground levelled between the two (the foe
                                keeps the game's height); 0: each Pokemon on its
                                own ground, the foe's slot raised or lowered    */
+    BmapIntro cam;          /* the command camera's own settings, the same for
+                               every battle camera (zoom 0 counts as 1;
+                               bmap_camera_view)                              */
+    float trainer_foe[3];   /* the foe trainer's sprite moved: right, up, back
+                               (battle units)                                  */
+    float trainer_own[3];   /* the same for the player's own trainer sprite     */
 } BmapPlaceSpec;
 void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp);
 /* The height of a wild area's grass (its leafy sheets over the encounter
@@ -73,6 +79,12 @@ int bmap_wild_height(const BmapScene *s, float x0, float z0, float x1, float z1,
  * close-ups are not changed, and the intro slides into the command camera
  * along one line, without a jump or a dip. */
 void bmap_camera_intro(float eye[3], float target[3], const BmapIntro *in);
+/* The command camera's settings (BmapPlaceSpec.cam) on a camera, in the part
+ * `w` (0 to 1): the command camera and the close-ups get all of them (w 1),
+ * the intro's camera none (w 0), a camera between the two the part of the
+ * way it is from the intro's.  zoom comes closer to what the camera itself
+ * looks at; the rest as bmap_camera_intro. */
+void bmap_camera_view(float eye[3], float target[3], const BmapIntro *cam, float w);
 /* How far a battle camera's eye is on the way from the command camera's
  * eye to the intro's: 0 at the command camera, 1 at the intro's and beyond
  * (the eye projected on the line between the two). */
@@ -92,6 +104,13 @@ void bmap_battle_unwarp(float p[3], float dy, float dz);
 /* The place's camera: the game's eye and target warped, then the intro
  * zoom (what the game draws with and what the backdrop uses). */
 void bmap_battle_camera(float eye[3], float target[3], const BmapScene *s);
+/* Change the command camera and the trainer offsets of an already placed
+ * scene (the spot editor, while a drag goes on).  bmap_place_spec keeps what
+ * it was given in the scene (BmapScene.cam, trainer_foe, trainer_own). */
+void bmap_place_view_live(BmapScene *s, const BmapIntro *cam, const float trainer_foe[3],
+                          const float trainer_own[3]);
+/* True when the place changes the command camera or moves a trainer. */
+int bmap_place_view_set(const BmapScene *s);
 
 #ifdef __cplusplus
 }

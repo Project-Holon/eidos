@@ -79,7 +79,19 @@
 #define OWN_Z     7.0f
 #define FOE_X     0.3f
 #define FOE_Z     (-10.0f)
-#define SPRITE_U  (1.0f / 23.0f)    /* battle units per sprite pixel       */
+#define SPRITE_U  (1.0f / 13.5f)    /* battle units per sprite pixel at scale 1 */
+/* The scale each battle position draws its sprite at (ov094's slot scale
+ * tables, gBtlvMcssSlotScale*): positions 0 and 1 a single battle's two
+ * Pokemon, 2 to 5 a double's, 8 to 13 the trainers. */
+static float slot_scale(int pos)
+{
+    static const float k_single[2] = { 1.0117f, 1.1091f };
+    static const float k_double[4] = { 1.1074f, 1.0972f, 0.9009f, 1.1953f };
+    static const float k_trainer[6] = { 1.0117f, 1.1875f, 0.9375f, 1.1875f, 0.8125f, 1.1875f };
+
+    return pos >= 0 && pos <= 1 ? k_single[pos] : pos >= 2 && pos <= 5 ? k_double[pos - 2]
+           : pos >= 8 && pos <= 13 ? k_trainer[pos - 8] : 1.0f;
+}
 static const float k_cam[2][2][3] = {
     { { 6.7f, 6.7f, 17.3f }, { 0.0f, 2.6f, 0.0f } },        /* command menu */
     { { 16.7f, 7.7f, 33.3f }, { 6.0f, 4.6f, 16.0f } },      /* intro, send-out */
@@ -107,8 +119,8 @@ typedef struct Sprite {
 typedef struct ClipFrame {
     float eye[3], at[3];
     int np;
-    int slot[8];
-    float pos[8][3];
+    int slot[14];                   /* 0..7 the Pokemon, 8..13 the trainers */
+    float pos[14][3];
 } ClipFrame;
 
 typedef struct View3d {
@@ -160,6 +172,11 @@ typedef struct App {
     View3d battle[2], over;         /* the command camera's, the intro's   */
     int cam, season, hour;
     Sprite foe, own;
+    Sprite tr_foe, tr_own;          /* the trainers' pictures (trainer_load)  */
+    int tr_foe_id;                  /* the trainer tr_foe shows, -2 none yet   */
+    int show_tr;                    /* the trainers shown in the battle views */
+    int gender;                     /* your trainer: 0 the boy, 1 the girl (spot_editor.ini), -1 not read yet */
+    int tr_own_gender;              /* the one tr_own shows, -2 none yet       */
     int species[2];                 /* the sprites shown: foe, yours         */
     /* the battle camera played (engine/world/bcam_sim.c): the scene chosen
      * (0 the wild intro, 1 the trainer intro, 2 idle, 3 and on the moves
@@ -288,7 +305,10 @@ static int changed_row(const BmapSpot *r)
     }
     return r->mode != d.mode || r->sx != d.sx || r->sz != d.sz || r->angle != d.angle || r->ax0 != d.ax0
            || r->az0 != d.az0 || r->ax1 != d.ax1 || r->az1 != d.az1 || r->foe_level != d.foe_level
-           || r->foe_dz != d.foe_dz || memcmp(&r->intro, &d.intro, sizeof r->intro) != 0;
+           || r->foe_dz != d.foe_dz || memcmp(&r->intro, &d.intro, sizeof r->intro) != 0
+           || memcmp(&r->cam, &d.cam, sizeof r->cam) != 0 || memcmp(r->trainer_foe, d.trainer_foe, sizeof d.trainer_foe) != 0
+           || memcmp(r->trainer_own, d.trainer_own, sizeof d.trainer_own) != 0
+           || r->pick_angle != d.pick_angle;
 }
 
 static int ci_contains(const char *hay, const char *needle)
@@ -318,7 +338,7 @@ static void refilter(void)
     A.nvis = 0;
     for (i = 0; A.vis != NULL && i < n; i++) {
         const BmapSpot *r = bmap_spots_get(i);
-        int keep = 1;
+        int keep = r->view == 0;
 
         switch (A.filter) {
         case F_TRAINERS: keep = r->kind == 'T' && strstr(r->label, "(story)") == NULL && r->trainer_id < 100000; break;
@@ -326,7 +346,7 @@ static void refilter(void)
         case F_STORY: keep = strstr(r->label, "(story)") != NULL; break;
         case F_WILD: keep = r->kind == 'A'; break;
         case F_TODO: keep = !r->ok; break;
-        case F_CHANGED: keep = changed_row(r); break;
+        case F_CHANGED: keep = changed_row(r) || bmap_spots_view_count(i) > 1; break;
         default: break;
         }
         if (keep && A.search[0] != '\0') {
@@ -338,10 +358,32 @@ static void refilter(void)
     }
 }
 
+/* The row's first view (the list holds those). */
+static int first_view(int row)
+{
+    int b = bmap_spots_view_at(row, 0);
+
+    return b >= 0 ? b : row;
+}
+
+/* The place of row `row` in the view list: 0 for its first view. */
+static int view_no(int row)
+{
+    int v, n = bmap_spots_view_count(row);
+
+    for (v = 0; v < n; v++) {
+        if (bmap_spots_view_at(row, v) == row) {
+            return v;
+        }
+    }
+    return 0;
+}
+
 static int vis_pos(int row)
 {
     int i;
 
+    row = first_view(row);
     for (i = 0; i < A.nvis; i++) {
         if (A.vis[i] == row) {
             return i;
@@ -367,6 +409,8 @@ static void select_row(int row)
     A.follow = 1;
     A.need_place = 1;
     A.ow_reset = 1;
+    A.show_tr = 0;
+    A.tr_foe_id = -2;
     if (r->trainer_id >= 100000 && A.species[0] != r->trainer_id % 1000) {
         A.species[0] = r->trainer_id % 1000;    /* a legendary: the foe is it */
         free(A.foe.rgba);
@@ -795,13 +839,137 @@ static int project(const View3d *v, const float p[3], float *sx, float *sy, floa
     return 1;
 }
 
+/* A trainer's first pose, as the game's cell animation shows it: each node of
+ * the first multi-cell group names one cell by its animation's first frame,
+ * and only that cell's pieces are drawn.  A trainer's picture is one bitmap in
+ * its sheet; a cell's pieces are cut from it where they lie in the cell (the
+ * sheet position of the piece at the cell's top left, the others by their
+ * offsets from it), not by their tile numbers (g2d_compose_pose reads those
+ * as tile numbers of a 2D sheet and so draws a second head from other
+ * pixels).  Canvas as g2d_compose_pose's: two pixels of margin. */
+static int trainer_compose(const G2dRig *rig, G2dPose *out)
+{
+    enum { MAXU = 64, CANVAS = 320, ORG = 160 };
+    const G2dMcGroup *grp = &rig->nmcr.groups[0];
+    const G2dNcgr *cg = &rig->ncgr;
+    struct { const G2dOam *oam; int ax, ay, sx, sy; } un[MAXU];
+    int n = 0, minx = 1 << 20, miny = 1 << 20, maxx = -(1 << 20), maxy = -(1 << 20), pr, k, i;
+    u8 *cv;
+
+    memset(out, 0, sizeof *out);
+    if (!rig->has_nanr || cg->pixels == NULL || cg->tile_num_x == 0 || cg->tile_num_x == G2D_NCGR_DIM_SENTINEL) {
+        return -1;
+    }
+    for (i = 0; i < grp->num_nodes; i++) {
+        const G2dMcNode *nd = &grp->nodes[i];
+        const G2dCell *cell;
+        const G2dOam *top = NULL;
+        G2dFrame fr;
+        u32 j;
+
+        if (g2d_nanr_frame_data(&rig->nanr, nd->anim_seq_idx, 0, &fr) != 0 || fr.cell_idx >= rig->ncer.num_cells) {
+            continue;
+        }
+        cell = &rig->ncer.cells[fr.cell_idx];
+        for (j = 0; j < cell->num_oam; j++) {
+            const G2dOam *o = &cell->oams[j];
+
+            if (top == NULL || o->y < top->y || (o->y == top->y && o->x < top->x)) {
+                top = o;
+            }
+        }
+        for (j = 0; j < cell->num_oam && n < MAXU; j++) {
+            const G2dOam *o = &cell->oams[j];
+
+            un[n].oam = o;
+            un[n].ax = nd->x + fr.px + o->x;
+            un[n].ay = nd->y + fr.py + o->y;
+            un[n].sx = (int)(top->tile_idx % cg->tile_num_x) * 8 + o->x - top->x;
+            un[n].sy = (int)(top->tile_idx / cg->tile_num_x) * 8 + o->y - top->y;
+            minx = un[n].ax < minx ? un[n].ax : minx;
+            miny = un[n].ay < miny ? un[n].ay : miny;
+            maxx = un[n].ax + (int)o->w > maxx ? un[n].ax + (int)o->w : maxx;
+            maxy = un[n].ay + (int)o->h > maxy ? un[n].ay + (int)o->h : maxy;
+            n++;
+        }
+    }
+    if (n == 0 || maxx - minx > CANVAS - 8 || maxy - miny > CANVAS - 8) {
+        return -1;
+    }
+    cv = (u8 *)calloc((size_t)CANVAS * CANVAS, 1);
+    if (cv == NULL) {
+        return -1;
+    }
+    for (pr = 3; pr >= 0; pr--) {                   /* the front pieces last, the first emitted on top */
+        for (k = n - 1; k >= 0; k--) {
+            const G2dOam *o = un[k].oam;
+            u32 lx, ly, off;
+
+            if (o->priority != (u16)pr) {
+                continue;
+            }
+            off = o->pal * 16u + 16u <= rig->palette.count ? (u32)o->pal * 16u : 0u;
+            for (ly = 0; ly < o->h; ly++) {
+                for (lx = 0; lx < o->w; lx++) {
+                    u32 fx = o->hflip ? o->w - 1u - lx : lx, fy = o->vflip ? o->h - 1u - ly : ly;
+                    int sx = un[k].sx + (int)fx, sy = un[k].sy + (int)fy;
+                    u8 v;
+
+                    if (sx < 0 || sy < 0 || sx >= (int)cg->width || sy >= (int)cg->height) {
+                        continue;
+                    }
+                    v = cg->pixels[(u32)sy * cg->width + (u32)sx];
+                    if (v != 0) {
+                        cv[(un[k].ay - miny + 2 + (int)ly) * CANVAS + (un[k].ax - minx + 2 + (int)lx)] = (u8)(v + off);
+                    }
+                }
+            }
+        }
+    }
+    out->width = (u32)(maxx - minx) + 4u;
+    out->height = (u32)(maxy - miny) + 4u;
+    out->ox = 2 - minx;
+    out->oy = 2 - miny;
+    out->indices = (u8 *)malloc((size_t)out->width * out->height);
+    if (out->indices == NULL) {
+        free(cv);
+        return -1;
+    }
+    for (i = 0; i < (int)out->height; i++) {
+        memcpy(out->indices + (size_t)i * out->width, cv + (size_t)i * CANVAS, out->width);
+    }
+    free(cv);
+    return 0;
+}
+
+/* The first pose of a loaded rig as a picture. */
+static void pose_sprite(Sprite *sp, G2dRig *rig, int trainer)
+{
+    G2dPose pose;
+    u32 i;
+
+    if (rig->nmcr.num_multi_cell > 0
+        && (trainer ? trainer_compose(rig, &pose)
+                    : g2d_compose_pose(&rig->ncgr, &rig->ncer, rig->has_nanr ? &rig->nanr : NULL, &rig->nmcr.groups[0], 0,
+                                       rig->palette.count, &pose)) == 0) {
+        sp->w = (int)pose.width;
+        sp->h = (int)pose.height;
+        sp->rgba = (u8 *)malloc((size_t)sp->w * (size_t)sp->h * 4u);
+        if (sp->rgba != NULL) {
+            g2d_pose_to_rgba(&pose, &rig->palette, sp->rgba);
+            for (i = 0; i < (u32)(sp->w * sp->h); i++) {
+                sp->rgba[i * 4 + 3] = pose.indices[i] == 0 ? 0 : 255;
+            }
+        }
+        g2d_pose_free(&pose);
+    }
+}
+
 static void sprite_load(Sprite *sp, int species, int back)
 {
     BwArcFile arc;
     G2dRig rig;
-    G2dPose pose;
     u32 start = (u32)species * 20u + (back ? 9u : 0u);     /* front set, back set, palettes */
-    u32 i;
 
     memset(sp, 0, sizeof *sp);
     if (bw_arc_open(&arc, "a/0/0/4") != 0) {
@@ -809,23 +977,135 @@ static void sprite_load(Sprite *sp, int species, int back)
     }
     if (g2d_rig_load(&rig, &arc, start, 9) == 0) {
         (void)g2d_rig_load_palette(&rig, &arc, (u32)species * 20u + 18u);
-        if (rig.nmcr.num_multi_cell > 0
-            && g2d_compose_pose(&rig.ncgr, &rig.ncer, rig.has_nanr ? &rig.nanr : NULL, &rig.nmcr.groups[0], 0,
-                                rig.palette.count, &pose) == 0) {
-            sp->w = (int)pose.width;
-            sp->h = (int)pose.height;
-            sp->rgba = (u8 *)malloc((size_t)sp->w * (size_t)sp->h * 4u);
-            if (sp->rgba != NULL) {
-                g2d_pose_to_rgba(&pose, &rig.palette, sp->rgba);
-                for (i = 0; i < (u32)(sp->w * sp->h); i++) {
-                    sp->rgba[i * 4 + 3] = pose.indices[i] == 0 ? 0 : 255;
-                }
-            }
-            g2d_pose_free(&pose);
-        }
+        pose_sprite(sp, &rig, 0);
         g2d_rig_free(&rig);
     }
     bw_arc_close(&arc);
+}
+
+/* A trainer's class: byte 1 of its record in a/0/9/2.  -1 when unknown. */
+static int trainer_class(int tid)
+{
+    BwArcFile arc;
+    u8 *rec;
+    long n;
+    int cls = -1;
+
+    if (tid < 0 || bw_arc_open(&arc, "a/0/9/2") != 0) {
+        return -1;
+    }
+    n = bw_arc_member_size(&arc, (u32)tid);
+    rec = n >= 2 ? (u8 *)malloc((size_t)n) : NULL;
+    if (rec != NULL && bw_arc_read_member(&arc, (u32)tid, rec, (u32)n) >= 2) {
+        cls = rec[1];
+    }
+    free(rec);
+    bw_arc_close(&arc);
+    return cls;
+}
+
+/* A trainer's battle picture: the foe's front (a/0/7/2) by its class, through
+ * the ARM9's graphics index table (the identity when it cannot be read), or
+ * the player's own back (a/0/7/3; tid is its set: 0 the boy, 1 the girl).  Eight files a set; the last is
+ * the palette. */
+static void trainer_load(Sprite *sp, int tid, int back)
+{
+    BwArcFile arc;
+    G2dRig rig;
+    int cls = back ? tid : trainer_class(tid), set;
+    const u8 *tab = (const u8 *)bw_arm9_rodata(0x020A023Cu, 0x6Au);
+
+    memset(sp, 0, sizeof *sp);
+    if (cls < 0) {
+        return;
+    }
+    set = back ? cls : cls > 0x69 ? 0 : tab != NULL ? tab[cls] : cls;
+    if (bw_arc_open(&arc, back ? "a/0/7/3" : "a/0/7/2") != 0) {
+        return;
+    }
+    if (g2d_rig_load(&rig, &arc, (u32)set * 8u, 8) == 0) {
+        pose_sprite(sp, &rig, 1);
+        g2d_rig_free(&rig);
+    }
+    bw_arc_close(&arc);
+}
+
+static void dir_of(const char *path, char *out, size_t n);
+
+/* The player's gender for your trainer: the editor's own settings file beside
+ * the game's (spot_editor.ini, "player=0|1"), else the player's save (the
+ * trainer card's gender byte), else the boy. */
+static void gender_path(char *out, size_t n)
+{
+    char dir[600];
+
+    dir_of(eidos_settings_path(), dir, sizeof dir);
+    snprintf(out, n, "%s/spot_editor.ini", dir);
+}
+
+static int gender_read(void)
+{
+    char path[700];
+    const char *saves = getenv("BW_SAVE_DIR"), *app = getenv("APPDATA");
+    FILE *f;
+    int g = -1, c;
+
+    gender_path(path, sizeof path);
+    f = fopen(path, "r");
+    if (f != NULL) {
+        if (fscanf(f, "player=%d", &g) != 1 || (g != 0 && g != 1)) {
+            g = -1;
+        }
+        fclose(f);
+    }
+    if (g < 0) {
+        if (saves != NULL && saves[0] != '\0') {
+            snprintf(path, sizeof path, "%s/pokeblack.sav", saves);
+        } else {
+            snprintf(path, sizeof path, "%s/eidos/saves/pokeblack.sav", app != NULL ? app : ".");
+        }
+        f = fopen(path, "rb");
+        if (f != NULL) {
+            c = fseek(f, 0x19421L, SEEK_SET) == 0 ? fgetc(f) : -1;     /* the trainer card's gender byte */
+            g = c == 1 ? 1 : 0;
+            fclose(f);
+        }
+    }
+    return g == 1 ? 1 : 0;
+}
+
+static void gender_write(void)
+{
+    char path[700];
+    FILE *f;
+
+    gender_path(path, sizeof path);
+    f = fopen(path, "w");
+    if (f != NULL) {
+        fprintf(f, "player=%d\n", A.gender);
+        fclose(f);
+    }
+}
+
+/* The trainers' pictures for the row on show. */
+static void trainer_refresh(void)
+{
+    const BmapSpot *r = cur();
+    int tid = r != NULL && r->kind == 'T' ? r->trainer_id : -1;
+
+    if (A.gender < 0) {
+        A.gender = gender_read();
+    }
+    if (A.tr_foe_id != tid) {
+        free(A.tr_foe.rgba);
+        trainer_load(&A.tr_foe, tid, 0);
+        A.tr_foe_id = tid;
+    }
+    if (A.tr_own_gender != A.gender) {
+        free(A.tr_own.rgba);
+        trainer_load(&A.tr_own, A.gender, 1);
+        A.tr_own_gender = A.gender;
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1163,6 +1443,33 @@ static void draw_map(void)
         ring(fx, fy, 9.0f, C_FOE);
     }
     {
+        /* the row's other views: where each puts your Pokemon, and its angle
+         * (a click on one picks it) */
+        int nv = bmap_spots_view_count(A.row), v;
+
+        for (v = 0; nv > 1 && v < nv; v++) {
+            int k = bmap_spots_view_at(A.row, v);
+            const BmapSpot *q = bmap_spots_get(k);
+            float qx, qy;
+
+            if (q->mode != BMAP_SPOT_FIXED || k == A.row) {
+                continue;
+            }
+            map_to_px(q->sx, q->sz, &qx, &qy);
+            ring(qx, qy, 9.0f, 0x7C94C8u);
+            text((int)qx + 12, (int)qy - 8, 0xA9BBE0u, "%d", v + 1);
+            if (q->angle >= 0.0f) {
+                arrow(qx, qy, (int)q->angle, 18.0f, 0x7C94C8u);
+            }
+        }
+        if (nv > 1) {
+            float qx, qy;
+
+            map_to_px(r->mode == BMAP_SPOT_FIXED ? r->sx : A.tx, r->mode == BMAP_SPOT_FIXED ? r->sz : A.tz, &qx, &qy);
+            text((int)qx + 12, (int)qy - 22, C_OWN, "%d", view_no(A.row) + 1);
+        }
+    }
+    {
         float ox, oy;
 
         map_to_px(A.tx, A.tz, &ox, &oy);
@@ -1190,6 +1497,24 @@ static void map_input(void)
         A.zoom = clampf(A.zoom * (A.wheel > 0 ? 1.25f : 0.8f), 3.0f, 40.0f);
     }
     if (inside && A.pressed && A.drag == 0) {
+        int nv = bmap_spots_view_count(A.row), v, hit = -1;
+
+        for (v = 0; v < nv; v++) {
+            int k = bmap_spots_view_at(A.row, v);
+            const BmapSpot *q = bmap_spots_get(k);
+            float qx, qy;
+
+            map_to_px(q->sx, q->sz, &qx, &qy);
+            if (k != A.row && q->mode == BMAP_SPOT_FIXED && fabsf(qx - (float)A.mx) < 11.0f
+                && fabsf(qy - (float)A.my) < 11.0f) {
+                hit = k;
+            }
+        }
+        if (hit >= 0) {
+            select_row(hit);
+            A.follow = 0;
+            return;
+        }
         if (A.shift) {
             A.drag = 3;
             A.drag_x = mx;
@@ -1216,7 +1541,7 @@ static void map_input(void)
         if (A.down) {
             float qx = floorf(mx / 4.0f) * 4.0f + 2.0f, qz = floorf(mz / 4.0f) * 4.0f + 2.0f;
 
-            if (r->mode == BMAP_SPOT_FIXED) {
+            if (r->mode == BMAP_SPOT_FIXED && !A.ctrl) {
                 if (r->sx != qx || r->sz != qz) {
                     r->sx = qx;
                     r->sz = qz;
@@ -1229,7 +1554,7 @@ static void map_input(void)
             }
         } else {
             A.drag = 0;
-            if (r->mode == BMAP_SPOT_FIXED) {
+            if (r->mode == BMAP_SPOT_FIXED && !A.ctrl) {
                 save_now();
             }
         }
@@ -1293,50 +1618,54 @@ static void intro_live(const BmapSpot *r)
 {
     if (A.have_placed) {
         A.placed.intro = r->intro;
+        bmap_place_view_live(&A.placed, &r->cam, r->trainer_foe, r->trainer_own);
         A.battle[0].dirty = 1;
         A.battle[1].dirty = 1;
     }
 }
 
-/* The intro view: a drag turns the intro camera (across) and raises it
- * (up and down), a right drag slides it (across) and tilts it, the wheel
- * zooms; Ctrl for fine moves. */
-static void intro_input(void)
+/* A camera view: a drag turns the camera (across) and raises it (up and
+ * down), a right drag slides it (across) and tilts it, the wheel zooms;
+ * Ctrl for fine moves.  vi 1 is the intro camera's view (its settings), 0
+ * the command camera's (the camera, for every battle camera). */
+static void view_input(int vi)
 {
-    View3d *v = &A.battle[1];
+    View3d *v = &A.battle[vi];
     BmapSpot *r = cur();
-    int inside = hover(v->x, v->y, v->w, v->h);
+    BmapIntro *in;
+    int inside = hover(v->x, v->y, v->w, v->h), id = vi == 1 ? 8 : 10;
     float k = A.ctrl ? 0.2f : 1.0f;
 
-    if (r == NULL) {
+    if (r == NULL || (vi == 0 && A.play)) {
         return;
     }
+    in = vi == 1 ? &r->intro : &r->cam;
     if (inside && A.wheel != 0) {
         remember();
-        r->intro.zoom = clampf(r->intro.zoom * powf(A.ctrl ? 1.01f : 1.06f, (float)A.wheel), 0.05f, 50.0f);
+        in->zoom = clampf(in->zoom * powf(A.ctrl ? 1.01f : 1.06f, (float)A.wheel), 0.05f, 50.0f);
         save_now();
     }
     if (inside && A.drag == 0 && (A.pressed || A.rpressed)) {
         remember();
-        A.drag = A.pressed ? 8 : 9;
+        A.drag = A.pressed ? id : id + 1;
         A.drag_mx = A.mx;
         A.drag_my = A.my;
-        A.drag_x = A.pressed ? r->intro.yaw : r->intro.side;
-        A.drag_z = A.pressed ? r->intro.lift : r->intro.tilt;
+        A.drag_x = A.pressed ? in->yaw : in->side;
+        A.drag_z = A.pressed ? in->lift : in->tilt;
     }
-    if (A.drag == 8) {
+    if (A.drag == id) {
         if (A.down) {
-            r->intro.yaw = wrap_deg(A.drag_x + (float)(A.mx - A.drag_mx) * 0.25f * k);
-            r->intro.lift = A.drag_z - (float)(A.my - A.drag_my) * 0.03f * k;
+            in->yaw = wrap_deg(A.drag_x + (float)(A.mx - A.drag_mx) * 0.25f * k);
+            in->lift = A.drag_z - (float)(A.my - A.drag_my) * 0.03f * k;
             intro_live(r);
         } else {
             A.drag = 0;
             save_now();
         }
-    } else if (A.drag == 9) {
+    } else if (A.drag == id + 1) {
         if (A.rdown) {
-            r->intro.side = A.drag_x + (float)(A.mx - A.drag_mx) * 0.03f * k;
-            r->intro.tilt = clampf(A.drag_z - (float)(A.my - A.drag_my) * 0.15f * k, -85.0f, 85.0f);
+            in->side = A.drag_x + (float)(A.mx - A.drag_mx) * 0.03f * k;
+            in->tilt = clampf(A.drag_z - (float)(A.my - A.drag_my) * 0.15f * k, -85.0f, 85.0f);
             intro_live(r);
         } else {
             A.drag = 0;
@@ -1428,13 +1757,16 @@ static void reverse_battle(void)
 static void draw_left(int L)
 {
     BmapSpot *r = cur();
-    int x = 16, y = 14, w = L - 32, i, done = 0, n = bmap_spots_count();
+    int x = 16, y = 14, w = L - 32, i, done = 0, n = 0;
     int rows, list_y, list_h, row_h = 26;
 
     ui_fill(&C, 0, 0, L, A.H, C_PANEL, 255);
     ui_fill(&C, L - 1, 0, 1, A.H, C_LINE, 255);
-    for (i = 0; i < n; i++) {
-        done += bmap_spots_get(i)->ok;
+    for (i = 0; i < bmap_spots_count(); i++) {
+        const BmapSpot *q = bmap_spots_get(i);
+
+        n += q->view == 0;
+        done += q->view == 0 && q->ok;
     }
     /* the place */
     if (r != NULL) {
@@ -1463,8 +1795,11 @@ static void draw_left(int L)
             select_row(A.vis[0]);
         }
     }
-    if (r != NULL && button(x + w - 150, y, 150, 30, r->ok ? "Checked" : "Mark checked", r->ok)) {
-        r->ok = !r->ok;
+    if (r != NULL && button(x + w - 150, y, 150, 30, bmap_spots_get(first_view(A.row))->ok ? "Checked" : "Mark checked",
+                            bmap_spots_get(first_view(A.row))->ok)) {
+        BmapSpot *b = bmap_spots_get(first_view(A.row));
+
+        b->ok = !b->ok;
         save_now();
         refilter();
     }
@@ -1517,7 +1852,7 @@ static void draw_left(int L)
     for (i = 0; i < rows && A.scroll + i < A.nvis; i++) {
         int ri = A.vis[A.scroll + i], ry = list_y + i * row_h;
         const BmapSpot *q = bmap_spots_get(ri);
-        int sel = ri == A.row, hv = hover(x, ry, w, row_h);
+        int sel = ri == first_view(A.row), hv = hover(x, ry, w, row_h);
         u32 dot = q->ok ? C_GOOD : changed_row(q) ? C_ACCENT : 0x4A4F5Bu;
         char lab[96];
 
@@ -1712,6 +2047,10 @@ static void draw_left(int L)
         r->foe_dz = 0.0f;
         memset(&r->intro, 0, sizeof r->intro);
         r->intro.zoom = 1.0f;
+        memset(&r->cam, 0, sizeof r->cam);
+        r->cam.zoom = 1.0f;
+        memset(r->trainer_foe, 0, sizeof r->trainer_foe);
+        memset(r->trainer_own, 0, sizeof r->trainer_own);
         save_now();
         say("Back to auto");
     }
@@ -1721,6 +2060,7 @@ static void draw_left(int L)
         if (bmap_spots_default(r->id, &d) == 0) {
             remember();
             d.ok = r->ok;
+            d.view = r->view;
             *r = d;
             save_now();
             say("Back to the default");
@@ -1788,11 +2128,6 @@ static void fit_view(View3d *v, int x, int y, int w, int h)
  * units tall. */
 static void draw_standing(const View3d *v, const u8 *rgba, int w, int h, const float p[3], float bh);
 
-static void draw_sprite(const View3d *v, const Sprite *s, const float p[3])
-{
-    draw_standing(v, s->rgba, s->w, s->h, p, (float)s->h * SPRITE_U);
-}
-
 static void draw_standing(const View3d *v, const u8 *rgba, int w, int h, const float p[3], float bh)
 {
     float sx, sy, unit;
@@ -1846,11 +2181,139 @@ static void draw_standing(const View3d *v, const u8 *rgba, int w, int h, const f
     }
 }
 
-static void draw_right(int L)
+/* The place's offset of the foe's trainer, or of yours: right, up, back. */
+static const float *view_offsets(int foe)
 {
-    int RW = A.W - L, half = A.H / 2, hx = L, head = 40, i;
     const BmapSpot *r = cur();
 
+    return foe ? r->trainer_foe : r->trainer_own;
+}
+
+#define STRIP_ROWS 5                /* the rows of settings under the two battle views */
+
+/* The views of the place, the command camera and the trainers' places: rows
+ * of buttons and steppers at (x, y), RW wide. */
+static void draw_strip(int x, int y, int RW)
+{
+    BmapSpot *r = cur();
+    int nv, vn, v, bx = x, i, col;
+    float *tr;
+
+    if (r == NULL) {
+        return;
+    }
+    /* the views of the place: the game takes the one nearest the player */
+    nv = bmap_spots_view_count(A.row);
+    vn = view_no(A.row);
+    text(bx, y + 5, C_MUTED, "Views");
+    bx += 110;
+    for (v = 0; v < nv; v++) {
+        char num[16];
+
+        snprintf(num, sizeof num, "%d", v + 1);
+        if (button(bx, y, 34, 28, num, v == vn) && v != vn) {
+            select_row(bmap_spots_view_at(A.row, v));
+        }
+        bx += 38;
+    }
+    if (nv < BMAP_VIEWS_MAX && button(bx, y, 100, 28, "Add view", 0)) {
+        int nr = bmap_spots_view_add(A.row, vn);
+
+        if (nr >= 0) {
+            A.nundo = 0;
+            select_row(nr);
+            if (cur()->mode != BMAP_SPOT_FIXED) {
+                set_mode(BMAP_SPOT_FIXED);
+            }
+            save_now();
+            say("View %d added: drag the spot and turn it", nv + 1);
+        }
+    }
+    bx += 108;
+    if (nv > 1 && button(bx, y, 90, 28, "Delete", 0)) {
+        int first = first_view(A.row);
+
+        if (bmap_spots_view_delete(first, vn) == 0) {
+            A.nundo = 0;
+            select_row(bmap_spots_view_at(first, vn > 0 ? vn - 1 : 0));
+            save_now();
+            say("View deleted");
+        }
+    }
+    bx += 98;
+    if (nv > 1) {
+        BmapSpot *b = bmap_spots_get(first_view(A.row));
+        int pick = bmap_spots_pick_view(A.row, A.tx, A.tz, deg_to_facing((float)A.tf));
+
+        if (button(bx, y, 150, 28, b->pick_angle ? "By angle" : "By spot", 0)) {
+            remember();
+            b->pick_angle = !b->pick_angle;
+            save_now();
+        }
+        bx += 160;
+        text(bx, y + 5, pick == A.row ? C_GOOD : C_MUTED, "Game takes view %d for the player", view_no(pick) + 1);
+    } else {
+        text(bx, y + 5, C_MUTED, "One view: add more to switch by where the player stands");
+    }
+    y += 34;
+    /* the command camera */
+    text(x, y + 5, C_MUTED, "Camera");
+    bx = x + 110;
+    col = 14;
+    bx += stepper(20, bx, y, "zoom", "%.2f", &r->cam.zoom, 0.1f, 0.01f, 0.5f, 0.05f, 50.0f, 0) + col;
+    bx += stepper(21, bx, y, "turn", "%+.0f", &r->cam.yaw, 5.0f, 1.0f, 30.0f, 0.0f, 0.0f, 1) + col;
+    bx += stepper(22, bx, y, "height", "%+.1f", &r->cam.lift, 0.5f, 0.1f, 2.0f, 0.0f, 0.0f, 0) + col;
+    stepper(23, bx, y, "slide", "%+.1f", &r->cam.side, 0.5f, 0.1f, 2.0f, 0.0f, 0.0f, 0);
+    y += 34;
+    bx = x + 110;
+    bx += stepper(24, bx, y, "tilt", "%+.0f", &r->cam.tilt, 2.0f, 0.5f, 10.0f, -85.0f, 85.0f, 0) + col;
+    bx += stepper(25, bx, y, "aim", "%+.0f", &r->cam.aim, 2.0f, 0.5f, 10.0f, 0.0f, 0.0f, 1) + col;
+    if (button(bx, y, 100, 28, "Reset", 0) && !bmap_intro_none(&r->cam)) {
+        remember();
+        memset(&r->cam, 0, sizeof r->cam);
+        r->cam.zoom = 1.0f;
+        save_now();
+        say("Camera reset");
+    }
+    text(bx + 112, y + 5, C_MUTED, "Drag a view: turn, height. Right drag: slide, tilt. Wheel: zoom");
+    y += 34;
+    /* the trainers' places (a change shows the trainers) */
+    for (i = 1; i >= 0; i--) {
+        float before;
+
+        tr = i ? r->trainer_foe : r->trainer_own;
+        before = tr[0] + 3.0f * tr[1] + 7.0f * tr[2];
+        text(x, y + 5, C_MUTED, i ? "Foe trainer" : "Your trainer");
+        bx = x + 110;
+        bx += stepper(26 + 3 * i, bx, y, "right", "%+.1f", &tr[0], 0.5f, 0.1f, 2.0f, -40.0f, 40.0f, 0) + col;
+        bx += stepper(27 + 3 * i, bx, y, "up", "%+.1f", &tr[1], 0.5f, 0.1f, 2.0f, -40.0f, 40.0f, 0) + col;
+        bx += stepper(28 + 3 * i, bx, y, "back", "%+.1f", &tr[2], 0.5f, 0.1f, 2.0f, -40.0f, 40.0f, 0) + col;
+        if (before != tr[0] + 3.0f * tr[1] + 7.0f * tr[2]) {
+            A.show_tr = 1;
+        }
+        if (i == 1 && button(bx, y, 190, 28, "Show trainers", A.show_tr)) {
+            A.show_tr = !A.show_tr;
+            A.battle[0].dirty = A.battle[1].dirty = 1;
+        }
+        if (i == 0) {                       /* the player's own picture: boy or girl */
+            if (button(bx, y, 74, 28, "Boy", A.gender == 0) || button(bx + 80, y, 74, 28, "Girl", A.gender == 1)) {
+                A.gender = hover(bx, y, 74, 28) ? 0 : 1;
+                gender_write();
+                A.show_tr = 1;
+                A.battle[0].dirty = A.battle[1].dirty = 1;
+            }
+        }
+        y += 34;
+    }
+    (void)RW;
+}
+
+static void draw_right(int L)
+{
+    int RW = A.W - L, half = A.H * 58 / 100, hx = L, head = 40, i;
+    const BmapSpot *r = cur();
+
+    trainer_refresh();
     ui_fill(&C, L, 0, RW, A.H, C_BG, 255);
     /* the battle */
     {
@@ -1893,8 +2356,11 @@ static void draw_right(int L)
             }
         }
         text(hx + 16 + cw + 8, 10, C_TEXT, "Intro camera");
-        fit_view(&A.battle[0], hx + 8, head, cw, half - head - 80);
-        fit_view(&A.battle[1], hx + 16 + cw, head, cw, half - head - 80);
+        int vh = half - head - 80 - 34 * STRIP_ROWS - 6;
+
+        fit_view(&A.battle[0], hx + 8, head, cw, vh);
+        fit_view(&A.battle[1], hx + 16 + cw, head, cw, vh);
+        draw_strip(hx + 16, half - 76 - 34 * STRIP_ROWS, RW - 32);
         {
             /* the battle camera, played in the left view: the scene chosen
              * with the arrows (Shift: ten moves), looping until Stop */
@@ -1974,20 +2440,25 @@ static void draw_right(int L)
          * place's foe side (bmap_battle_warp) */
         static const float dbl[4][3] = { { -1.69f, 0.4f, 6.38f }, { 2.5f, 0.4f, 7.62f },
                                          { 2.43f, 0.4f, -10.38f }, { -2.2f, 0.4f, -11.56f } };
-        float p[4][3], d[4];
-        const Sprite *sp[4];
+        float p[16][3], d[16], sc[16];
+        const Sprite *sp[16];
+        int kind[16];                   /* 0 a Pokemon, 1 your trainer, 2 the foe's */
         int n = 0, a, b;
 
         if (cf != NULL) {
             memcpy(v->eye, cf->eye, sizeof v->eye);
             memcpy(v->at, cf->at, sizeof v->at);
             v->dirty = 1;
-            for (a = 0; a < cf->np && n < 4; a++) {
-                if (cf->slot[a] > 7) {
+            for (a = 0; a < cf->np && n < 16; a++) {
+                int tr = cf->slot[a] > 7;
+
+                if (tr && (cf->slot[a] > 13 || (cf->slot[a] & 1 ? A.tr_foe.rgba : A.tr_own.rgba) == NULL)) {
                     continue;
                 }
                 memcpy(p[n], cf->pos[a], sizeof p[n]);
-                sp[n++] = (cf->slot[a] & 1) ? &A.foe : &A.own;
+                kind[n] = tr ? 1 + (cf->slot[a] & 1) : 0;
+                sc[n] = slot_scale(cf->slot[a]);
+                sp[n++] = tr ? ((cf->slot[a] & 1) ? &A.tr_foe : &A.tr_own) : (cf->slot[a] & 1) ? &A.foe : &A.own;
             }
         } else {
             memcpy(v->eye, k_cam[i][0], sizeof v->eye);
@@ -2004,20 +2475,63 @@ static void draw_right(int L)
                 sp[1] = &A.own;
                 n = 2;
             }
+            for (a = 0; a < n; a++) {
+                kind[a] = 0;
+                /* a double's four stand in the order of its slots 2 to 5 */
+                sc[a] = A.doubles ? slot_scale(a == 0 ? 2 : a == 1 ? 4 : a == 2 ? 3 : 5) : slot_scale(a == 0 ? 1 : 0);
+            }
+            if (A.show_tr) {
+                /* a trainer stands where its side's Pokemon would: the trainer
+                 * comes first in the battle (slot 8 yours, slot 9 the foe's) */
+                for (a = 1; a >= 0; a--) {
+                    const Sprite *t = a ? &A.tr_foe : &A.tr_own;
+                    const Sprite *mon = a ? &A.foe : &A.own;
+                    int m, at = n;
+
+                    if (t->rgba == NULL || bcam_sim_slot(8 + a, p[n]) != 0) {
+                        continue;
+                    }
+                    for (m = 0; m < n; m++) {
+                        if (sp[m] == mon) {
+                            memmove(&p[m], &p[m + 1], (size_t)(n - m - 1) * sizeof p[0]);
+                            memmove(&sp[m], &sp[m + 1], (size_t)(n - m - 1) * sizeof sp[0]);
+                            memmove(&kind[m], &kind[m + 1], (size_t)(n - m - 1) * sizeof kind[0]);
+                            memmove(&sc[m], &sc[m + 1], (size_t)(n - m - 1) * sizeof sc[0]);
+                            n--;
+                            m--;
+                            at = n;
+                        }
+                    }
+                    if (bcam_sim_slot(8 + a, p[at]) == 0) {
+                        sp[at] = t;
+                        kind[at] = 1 + a;
+                        sc[at] = slot_scale(8 + a);
+                        n = at + 1;
+                    }
+                }
+            }
         }
         for (a = 0; a < n; a++) {
             bmap_battle_warp(p[a], A.placed.foe_dy, A.placed.foe_dz);
+            if (kind[a] != 0) {
+                /* the place's offset for this trainer: right, up, back */
+                const float *o = view_offsets(kind[a] == 2);
+
+                p[a][0] += o[0];
+                p[a][1] += o[1];
+                p[a][2] -= o[2];
+            }
         }
         bmap_battle_camera(v->eye, v->at, &A.placed);      /* as the game draws it */
         v->fsin = BATTLE_FOV_SIN;
         v->fcos = BATTLE_FOV_COS;
         if (v->dirty) {
-            float p4[8][4];
+            float p4[16][4];
             int a4;
 
-            for (a4 = 0; a4 < n && a4 < 8; a4++) {
+            for (a4 = 0; a4 < n && a4 < 16; a4++) {
                 memcpy(p4[a4], p[a4], 3 * sizeof(float));
-                p4[a4][3] = 6.0f;               /* a Pokemon's box */
+                p4[a4][3] = kind[a4] == 0 ? 6.0f : (float)sp[a4]->h * SPRITE_U * sc[a4];   /* a Pokemon's box */
             }
             render_view(v, &A.placed, A.battle_gen, (const float (*)[4])p4, n);
         }
@@ -2038,7 +2552,7 @@ static void draw_right(int L)
                     far = b;
                 }
             }
-            draw_sprite(v, sp[far], p[far]);
+            draw_standing(v, sp[far]->rgba, sp[far]->w, sp[far]->h, p[far], (float)sp[far]->h * SPRITE_U * sc[far]);
             d[far] = -1.0f;
         }
         /* the map standing in front of them, over the sprites (the game's
@@ -2046,7 +2560,7 @@ static void draw_right(int L)
         if (v->front != NULL && n > 0) {
             blit_rgba(v->x, v->y, v->front, v->rw, v->rh, v->w, v->h);
         }
-        if (i == 1) {
+        if (i == 1 || (i == 0 && cf == NULL)) {
             text(v->x + 10, v->y + v->h - 26, 0xFFFFFFu, "Drag: turn, height   Right: slide, tilt   Wheel: zoom");
         }
         outline(v->x, v->y, v->w, v->h, C_LINE);
@@ -2268,9 +2782,11 @@ static void on_key(const SDL_KeyboardEvent *k)
         break;
     case SDLK_RETURN:
         if (r != NULL) {
-            r->ok = !r->ok;
+            BmapSpot *b = bmap_spots_get(first_view(A.row));
+
+            b->ok = !b->ok;
             save_now();
-            if (r->ok && A.filter == F_TODO) {
+            if (b->ok && A.filter == F_TODO) {
                 refilter();
                 if (A.nvis > 0) {
                     select_row(A.vis[p >= 0 && p < A.nvis ? p : 0]);
@@ -2367,7 +2883,8 @@ static void frame(void)
     ui_begin(&C, &A.canvas, A.W, A.H, 1);
     map_input();
     ow_input();
-    intro_input();
+    view_input(0);
+    view_input(1);
     draw_right(L);
     draw_left(L);
     dst = SDL_GetWindowSurface(A.win);
@@ -2575,6 +3092,13 @@ static const ClipFrame *play_frame(void)
             cf.np++;
         }
     }
+    for (k = 0; k < 6; k++) {
+        if (b->trainer_mask & (1u << k)) {
+            cf.slot[cf.np] = 8 + k;
+            memcpy(cf.pos[cf.np], b->trainer[k], sizeof cf.pos[0]);
+            cf.np++;
+        }
+    }
     return &cf;
 }
 
@@ -2736,7 +3260,7 @@ static int floors_report(void)
         const BmapSpot *r = bmap_spots_get(i);
         float x, z, y, g_ref, g_low;
 
-        if (r->kind != 'T') {
+        if (r->kind != 'T' || r->view != 0) {
             continue;
         }
         x = (float)r->tx * 16.0f + 8.0f;
@@ -2788,7 +3312,7 @@ static int area_report(void)
         float y, ox, oz, fx, fz;
         int in_o, in_f;
 
-        if (r->kind == 'T' || r->mode != BMAP_SPOT_AUTO) {
+        if (r->kind == 'T' || r->mode != BMAP_SPOT_AUTO || r->view != 0) {
             continue;
         }
         A.row = i;
@@ -2921,6 +3445,9 @@ int main(int argc, char **argv)
     A.hour = 1;
     A.species[0] = SPECIES_FOE;
     A.species[1] = SPECIES_OWN;
+    A.tr_foe_id = -2;
+    A.tr_own_gender = -2;
+    A.gender = -1;
     sprite_load(&A.foe, SPECIES_FOE, 0);
     sprite_load(&A.own, SPECIES_OWN, 1);
     for (i = 0; i < 4; i++) {
@@ -2939,7 +3466,7 @@ int main(int argc, char **argv)
     select_row(0);
     if (place != NULL) {
         for (i = 0; i < bmap_spots_count(); i++) {
-            if (strcmp(bmap_spots_get(i)->id, place) == 0) {
+            if (strcmp(bmap_spots_get(i)->id, place) == 0 && bmap_spots_get(i)->view == 0) {
                 select_row(i);
             }
         }

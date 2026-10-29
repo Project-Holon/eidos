@@ -91,6 +91,10 @@ typedef struct BmapScene {
                                game's (battle units: up, back)                */
     BmapIntro intro;        /* bmap_place: the far cameras' own settings
                                (bmap_camera_intro)                             */
+    BmapIntro cam;          /* bmap_place: the command camera's settings and ... */
+    float trainer_foe[3], trainer_own[3]; /* ... the trainers' offsets (battle
+                               units: right, up, back)                         */
+    int view_set;           /* bmap_place: cam and the offsets are a battle's  */
     BmapUvAnim *uva; unsigned nuva; /* the texture-coordinate animations     */
     int shared;             /* a copy (bmap_copy): textures, the animations and
                                the ground index belong to the original, which
