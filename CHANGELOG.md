@@ -8,7 +8,8 @@ Each release's notes on GitHub start with its section here
 - Fixed the Poke Ball disappearing while it shakes after a throw (one-screen
   real-map battles): it lies on the ground where the Pokemon stood, and the
   grass in front of it covers it as it covers the Pokemon. The other effect
-  sprites the battle draws in 2D show the same way.
+  sprites the battle draws in 2D show the same way, with the real map or
+  the original backdrop.
 - Fixed the move details in battle (one-screen): in the Pokemon list,
   Check Moves now opens a move's page with its power, accuracy, category
   and description, by click or with A.

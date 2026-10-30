@@ -193,6 +193,9 @@ static uint32_t g_gen;
 static uint32_t g_last_frame;       /* the last frame a battle draw was seen */
 static int g_in_battle;
 static int g_hooked;
+/* the one-screen battle on the game's own backdrop: no map, only the
+ * effects' 2D sprites go into the 3D (effect_sprites) */
+static int g_sprites_only;
 static int g_log = -1;
 
 static int gptr_ok(uintptr_t a)
@@ -517,6 +520,10 @@ static void backdrop_hook(G3dBackdrop *out)
         return;
     }
     g_frame.valid = 0;
+    if (g_sprites_only) {
+        effect_sprites();               /* the game's own backdrop: no scene */
+        return;
+    }
     out->valid = 1;
     memcpy(out->eye, g_frame.eye, sizeof(out->eye));
     memcpy(out->up, g_frame.up, sizeof(out->up));
@@ -1035,7 +1042,7 @@ static void record_camera(uintptr_t eff, uintptr_t gc)
     fflush(f);
 }
 
-static void capture(uintptr_t eff)
+static void capture(uintptr_t eff, int warp)
 {
     uintptr_t cam = rd32(eff, EFF_CAMERA), gc;
     uint32_t i;
@@ -1053,7 +1060,7 @@ static void capture(uintptr_t eff)
         g_frame.target[i] = rdfx(gc, G3C_TARGET + 4u * i);
     }
     record_camera(eff, gc);
-    if (g_cur != NULL) {
+    if (warp && g_cur != NULL) {
         bmap_battle_camera(g_frame.eye, g_frame.target, &g_cur->s);     /* as the game drew */
     }
     g_frame.fsin = rdfx(gc, G3C_SIN);
@@ -1509,12 +1516,24 @@ void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
             job_finish();
         }
         if (kind == OBJ_FIELD) {
-            capture(eff);
+            g_sprites_only = 0;
+            capture(eff, 1);
             return;
         }
         if (eidos_settings_get(EIDOS_OPT_BATTLE_PLATFORMS) == 0) {
             return;
         }
+    } else if (kind == OBJ_FIELD && eidos_ui_active()) {
+        /* the one-screen battle on the game's own backdrop: the backdrop
+         * is the game's, but its 2D is not shown either, so the frame's
+         * camera is kept for the effects' sprites */
+        if (!g_hooked) {
+            g3d_hw_set_backdrop_hook(backdrop_hook);
+            g3d_hw_set_snapshot_hook(snapshot_hook);
+            g_hooked = 1;
+        }
+        g_sprites_only = 1;
+        capture(eff, 0);
     }
     __real_G3D_SYSTEM_DrawObject(obj, status);
 }

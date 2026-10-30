@@ -8,11 +8,17 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `b7ce63a8cef91065a690b58ecbf2be1d628973ac`
-- Date: 2026-10-30 19:24:58 +0100
-- Subject: scrcmd_gimmick: symbols row for the ov046 button event the door command calls
+- Revision: `bceb69de2ddb634a16f5b0fd7ecd1ca7d6702f62`
+- Date: 2026-10-30 22:02:00 +0100
+- Subject: Japanese Black and White build byte-identical
 
-The step from `1ba33fb137`: issue #6.  `BTL_CLIENT_HasMonParamDropped`
+The step from `b7ce63a8ce`: all twelve cartridges build byte-identical,
+Japanese included.  `BTLV_SCU_Create` takes its stack arguments as one
+struct on the DS only (the host keeps the eight parameters); a
+Japanese-only panic print gains an argument.  The English port is
+unchanged.
+
+The step before, from `1ba33fb137`: issue #6.  `BTL_CLIENT_HasMonParamDropped`
 (ov093) picks the recall message from how much HP the foe lost, divided by
 the foe's HP; switching after the foe's Pokemon fainted divided by zero.
 The DS divide (`_u32_div_f`) returns the dividend for a zero divisor, so the
