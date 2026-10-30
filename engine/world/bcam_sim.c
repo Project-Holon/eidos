@@ -2075,6 +2075,8 @@ static int vm_exec(int op)
 
         t.x = vm_arg(); t.y = vm_arg(); t.z = vm_arg();
         frames = vm_arg(); wait = vm_arg(); rep = vm_arg();
+        if (g_trace)
+            fprintf(stderr, "  set pos %d kind %d to %d %d %d in %d\n", pos, kind, t.x, t.y, t.z, frames);
         if (pos >= 8 && pos < 14 && is_loaded(pos))
             pos_tween(pos, kind, t, frames, wait, rep);
         return S.result;
@@ -2453,6 +2455,13 @@ static const EntryStep k_trainer[] = {
     { 3, NO_POKE, (1u << 1) | (1u << 0) },
 };
 
+/* a trainer's message mid-battle (btl_client.c): the trainer slides in
+ * (effect 63), speaks, slides out (64); both Pokemon stay on the field */
+static const EntryStep k_mid[] = {
+    { 63, NO_POKE, (1u << 1) | (1u << 0) },
+    { 64, NO_POKE, (1u << 1) | (1u << 0) | (1u << 9) },
+};
+
 /* gBtlvIntroPickTableB: the six camera moves of the command wait (BTLV_EFFECT_UpdateIntroInput) */
 #define IDLE_TABLE_B 0x0220AC78u
 #define IDLE_MOVES   6
@@ -2523,6 +2532,9 @@ int bcam_sim_run(int kind, int id, int attacker, int defender, BcamFrame **frame
         break;
     case BCAM_TRAINER_INTRO:
         rc = play_entry(k_trainer, (int)(sizeof(k_trainer) / sizeof(k_trainer[0])), id);
+        break;
+    case BCAM_TRAINER_MID:
+        rc = play_entry(k_mid, (int)(sizeof(k_mid) / sizeof(k_mid[0])), id);
         break;
     case BCAM_IDLE:
         for (i = 0; i < IDLE_MOVES && rc == 0; i++) {

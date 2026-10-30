@@ -540,6 +540,9 @@ static void slot_delta(const SlotMove *m, int trainers, uint32_t i, int32_t out[
     }
 }
 
+/* sdk/battle_fixed.c: the move for an effect script's fixed points */
+void eidos_bv_fixed_move_set(void (*move)(int pos, int *xyz));
+
 /* The place's slot move: the foe's height and distance, the trainers' offsets. */
 static void slot_move_of(const BmapScene *s, SlotMove *m)
 {
@@ -558,9 +561,42 @@ static void slot_move_of(const BmapScene *s, SlotMove *m)
  * load brings them back, which shows as values other than the ones written
  * last.  Sprites already standing move by the change, so one in the middle
  * of a move keeps its motion. */
+/* An effect script's fixed point (fx32, battle position `pos`) moved for
+ * the place: the warp the draw takes back off (bmap_battle_warp; a flat
+ * move of the slots' size would size the sprite as if it stood elsewhere),
+ * and a trainer's offset for its side. */
+static void fixed_point_move(int pos, int *xyz)
+{
+    float p[3];
+    int k;
+
+    if (g_cur == NULL) {
+        return;
+    }
+    for (k = 0; k < 3; k++) {
+        p[k] = (float)xyz[k] / 4096.0f;
+    }
+    bmap_battle_warp(p, g_cur->s.foe_dy, g_cur->s.foe_dz);
+    if (pos >= 8 && g_cur->s.view_set) {
+        const float *t = (pos & 1) ? g_cur->s.trainer_foe : g_cur->s.trainer_own;
+
+        p[0] += t[0];
+        p[1] += t[1];
+        p[2] -= t[2];
+    }
+    for (k = 0; k < 3; k++) {
+        xyz[k] = (int)(p[k] * 4096.0f);
+    }
+}
+
+/* the game's own slot tables, as slot_shift last found them fresh */
+static int32_t g_slot_base[SLOT_ENTRIES][3];
+static int g_slot_base_have;
+
 static void slot_shift(const SlotMove *now)
 {
-    static int32_t base[SLOT_ENTRIES][3], written[SLOT_ENTRIES][3];
+    static int32_t written[SLOT_ENTRIES][3];
+    int32_t (*base)[3] = g_slot_base;
     static SlotMove cur;
     static int have;
     uint32_t t, i, e = 0;
@@ -601,7 +637,9 @@ static void slot_shift(const SlotMove *now)
         }
     }
     have = 1;
+    g_slot_base_have = 1;
     cur = *now;
+    eidos_bv_fixed_move_set(fixed_point_move);     /* the points the effect scripts give */
     {
         /* the sprites standing, by the change */
         uintptr_t eff, mw;
@@ -1238,15 +1276,34 @@ void __wrap_MCSS_Draw(void *sys)
         memcpy(q, p, sizeof q);
         bmap_battle_unwarp(q, g_cur->s.foe_dy, g_cur->s.foe_dz);   /* where the game's battle has it */
         dg = bmap_cmd_depth(q);
+        {
+            /* a foe's trainer is as tall as at its own slot (the game's,
+             * before the place's move) wherever a script puts it: the game
+             * draws it one size anywhere, so at the point a trainer comes
+             * back to mid-battle (closer than its slot) the distance would
+             * make it a third shorter than in the intro */
+            int pos = sprite_pos(w);
+
+            if (pos >= 9 && pos <= 13 && (pos & 1) && g_slot_base_have) {
+                const int32_t *b = g_slot_base[SLOT_ENTRIES - 6u + (uint32_t)(pos - 8)];
+                float slot[3];
+
+                slot[0] = (float)b[0] / 4096.0f;
+                slot[1] = (float)b[1] / 4096.0f;
+                slot[2] = (float)b[2] / 4096.0f;
+                dg = bmap_cmd_depth(slot) * (g_cur->s.trainer_size > 0.0f ? g_cur->s.trainer_size : 1.0f);
+            }
+        }
         dd = view_depth((const float(*)[3])g_cam_drawn, p);
         if (dg < 0.5f || dd < 0.5f) {
             continue;
         }
         f = fminf(fmaxf(dg / (dd * (g_rest[i] > 0.05f ? g_rest[i] : 1.0f)), 0.25f), 6.0f);
         if (log_on()) {
-            fprintf(stderr, "battle_view: frame %u sprite %d at (%.2f %.2f %.2f) command depth %.2f drawn %.2f scale x%.2f size %.3f rest %.3f\n",
-                    (unsigned)bw_input_frame_number(), (int)i, (double)p[0], (double)p[1], (double)p[2], (double)dg,
-                    (double)dd, (double)f, (double)rdfx(w, MCSSW_SHADOWSCALE), (double)g_rest[i]);
+            fprintf(stderr, "battle_view: frame %u sprite %d pos %d at (%.2f %.2f %.2f) command depth %.2f drawn %.2f scale x%.2f size %.3f rest %.3f game scale %.3f\n",
+                    (unsigned)bw_input_frame_number(), (int)i, sprite_pos(w), (double)p[0], (double)p[1], (double)p[2],
+                    (double)dg, (double)dd, (double)f, (double)rdfx(w, MCSSW_SHADOWSCALE), (double)g_rest[i],
+                    (double)rdfx(w, MCSSW_SCALE));
         }
         keep[i][0] = (int32_t)rd32(w, MCSSW_SCALE);
         keep[i][1] = (int32_t)rd32(w, MCSSW_SCALE + 4u);
@@ -1285,6 +1342,7 @@ void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
             g_hooked = 1;
         }
         if (!g_in_battle || now - g_last_frame > 8u) {
+            eidos_bv_fixed_move_set(NULL);  /* the last battle's move is not this one's */
             battle_begin(eff);
         }
         g_in_battle = 1;

@@ -5,6 +5,40 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Real-map battles: a trainer who comes back mid-battle to speak (a rival
+  or a leader on their last Pokemon) and at the end of the battle now
+  stands where the place puts the foe's side, beside their Pokemon, and as
+  tall as in the intro. Before, at a place with a changed foe distance,
+  they could show huge and cut off at the edge of the screen. The original
+  backdrop is unchanged.
+- Spot editor: a "Size" for the foe's trainer under Trainers, Outdoor (the
+  base), Indoor (a little taller, where a room's furniture makes the base
+  look short) or Custom (any height, by slider or typed). The game uses it
+  in the intro and whenever the trainer comes back. A place that never set
+  it stays Outdoor.
+- Spot editor: Preview plays the battle inside the editor. The game runs in
+  the middle view at its size, from the encounter, with your keys and
+  mouse, until "Stop preview" (the separate Play battle button is gone).
+- Spot editor: a trainer who comes back mid-battle to speak shows there as
+  well, beside their Pokemon, at the place the game puts them.
+- Builds: a game file copy no longer loses a header copy another file's
+  copy needs (the header rewrite decided by the order it met the includes,
+  so two files could disagree and one removed the other's copy).
+- Spot editor: a trainer place shows its trainers and its trainer's own
+  first Pokemon from the start; the Trainers and Pokemon buttons hide
+  either. The map in front of a far Pokemon no longer cuts into a nearer
+  one where the two overlap on screen.
+- Battle spots: a spot table row with every column filled no longer
+  writes past the end of the reader's column list.
+- Spot editor: a new layout. The places on the left; one view at a time in
+  the middle (Command camera, Intro camera, Overworld) with a play bar
+  under the battle views: the intro, a trainer back mid-battle, the idle
+  drift or a move, Play and a timeline to drag. The settings are sliders on
+  the right, with the map from above. At 1440p and up everything is a third
+  larger and the right side shows without scrolling.
+- Test runs with a hidden window stay hidden: switching to a window after
+  start-up showed it.
+
 - Battle spots: every trainer the game can battle has a place in the table
   (433 of the 436 the scripts start; 26 new rows: Team Plasma grunts,
   gym trainers a leader's script calls, Cheren and Bianca on the routes,

@@ -32,7 +32,9 @@ enum {
     BCAM_MOVE,              /* id = move number */
     BCAM_WILD_INTRO,        /* the wild battle entry (id unused) */
     BCAM_TRAINER_INTRO,     /* the trainer battle entry (id unused) */
-    BCAM_IDLE               /* the idle drift: id 0..5 one of the six camera moves, -1 all in turn */
+    BCAM_IDLE,              /* the idle drift: id 0..5 one of the six camera moves, -1 all in turn */
+    BCAM_TRAINER_MID        /* a trainer coming back mid-battle to speak (a leader's last
+                               Pokemon): its slide in and out (id unused) */
 };
 
 /*

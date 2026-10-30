@@ -575,6 +575,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_loader.c     # the loader: the library, the host table, the handlers
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_wasm.c       # code mods built for wasm (WAMR, docs/mod-code-wasm.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_title.c     # title menu hook state (docs/hooks.md)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_fixed.c  # the place's move for an effect script's fixed points
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_text.c           # the port's text path: the sink that shows a queued message
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_script.c         # the script command hooks: the field VM and the battle effect VM
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_rule.c           # the rule interpreter (docs/mod-rules-language.md)
@@ -1081,6 +1082,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3.cmake)
 if(EIDOS_SDL_FOUND)
     add_library(eidos_platform STATIC
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/platform.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_embed.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/geometry.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/font.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/settings.c
@@ -2618,6 +2620,7 @@ if(EIDOS_SDL_FOUND)
     # A tool for working on eidos, not part of the game: not built by default
     # and not packaged (build it with `ninja eidos_spots.exe`).
     add_executable(eidos_spots EXCLUDE_FROM_ALL ${CMAKE_CURRENT_SOURCE_DIR}/tools/spot-editor/eidos_spots.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/spot-editor/spots_embed.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_place.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_spots.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_gimmick.c

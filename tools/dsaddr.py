@@ -1788,6 +1788,48 @@ def _rewrite_with_defines(text, name, path):
 _LOCAL_INCLUDE_RE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*"([^"]+)"', re.M)
 
 
+def _header_text(hp):
+    """The header at hp as its copy holds it (the fixed addresses rewritten),
+    and whether that differs from the header."""
+    own = _read(hp)
+    text = _rewrite_with_defines(own, hp, hp)
+    if hp.replace("\\", "/").endswith("/src/game/arm9/card_common.h"):
+        # Only the shared command is wire data. CARDiCommon's working
+        # pointers remain pointer-sized on the host.
+        text = _need_re(r"(typedef struct CARDiCommandArg\b.*?} CARDiCommandArg;)",
+                        lambda m: m.group(0).replace("uptr src;", "u32 src;")
+                                                 .replace("uptr dst;", "u32 dst;"),
+                        text, flags=re.S)
+    return text, text != own
+
+
+_NEEDS_COPY = {}
+
+
+def _needs_copy(hp, stack=None):
+    """Whether the header at hp needs a copy in the copy tree: it holds a
+    fixed address itself, or a header it includes needs one.  The answer
+    depends on the header alone (cached), never on the order a unit's
+    includes reach it: every dsaddr.py run then agrees on every copy, and
+    no run removes a copy another needs (a unit reaching a header through
+    an include already walked once took it for one without a copy)."""
+    if hp in _NEEDS_COPY:
+        return _NEEDS_COPY[hp]
+    stack = set() if stack is None else stack
+    if hp in stack:
+        return False                    # an include cycle: decided further up
+    stack.add(hp)
+    need = _header_text(hp)[1]
+    hdir = os.path.dirname(hp)
+    for inc in _LOCAL_INCLUDE_RE.findall(_read(hp)):
+        cp = os.path.normpath(os.path.join(hdir, inc))
+        if os.path.isfile(cp) and _needs_copy(cp, stack):
+            need = True
+    stack.discard(hp)
+    _NEEDS_COPY[hp] = need
+    return need
+
+
 def _rewrite_local_headers(src_path, out_path, seen):
     """Rewrite the quoted headers of a src/game unit that hold fixed DS
     addresses (nns_g3d_sbc_types.h's GXFIFO, `*(volatile u32 *)0x04000400`)
@@ -1795,43 +1837,38 @@ def _rewrite_local_headers(src_path, out_path, seen):
     A quoted include looks in the including file's directory first, so the
     copy compiles against them and the hardware writes reach bw_ds_ptr;
     otherwise they land in plain memory and the 3D engine never sees them.
-    A header on the way to one is copied too.  Returns True when the header
-    at out_path was written."""
+    A header on the way to one is copied too (_needs_copy).  Returns True
+    when a header src_path includes has a copy."""
     src_dir = os.path.dirname(os.path.abspath(src_path))
     out_dir = os.path.dirname(os.path.abspath(out_path))
     wrote_any = False
     for inc in _LOCAL_INCLUDE_RE.findall(_read(src_path)):
         hp = os.path.normpath(os.path.join(src_dir, inc))
-        if hp in seen or not os.path.isfile(hp):
+        if not os.path.isfile(hp):
+            continue
+        oh = os.path.normpath(os.path.join(out_dir, inc))
+        need = _needs_copy(hp)
+        wrote_any = wrote_any or need
+        if hp in seen:
             continue
         seen.add(hp)
-        oh = os.path.normpath(os.path.join(out_dir, inc))
-        own = _read(hp)
-        text = _rewrite_with_defines(own, hp, hp)
-        if hp.replace("\\", "/").endswith("/src/game/arm9/card_common.h"):
-            # Only the shared command is wire data. CARDiCommon's working
-            # pointers remain pointer-sized on the host.
-            text = _need_re(r"(typedef struct CARDiCommandArg\b.*?} CARDiCommandArg;)",
-                          lambda m: m.group(0).replace("uptr src;", "u32 src;")
-                                                   .replace("uptr dst;", "u32 dst;"),
-                          text, flags=re.S)
-        rewrites = text != own
-        nested = _rewrite_local_headers(hp, oh, seen)
-        if rewrites or nested:
+        _rewrite_local_headers(hp, oh, seen)    # its own copies first
+        if need:
             # The copy's own quoted includes: one the copy tree holds now
             # resolves next to it; any other names the original by its full
             # path, which the copy's directory would not find
             # (sdk_ioreg_reg.h's "sdk_ioreg.h").
+            text = _header_text(hp)[0]
             hdir, odir = os.path.dirname(hp), os.path.dirname(oh)
 
             def _abs(m):
-                if os.path.isfile(os.path.join(odir, m.group(1))):
+                cp = os.path.normpath(os.path.join(hdir, m.group(1)))
+                if os.path.isfile(cp) and _needs_copy(cp):
                     return m.group(0)
-                full = os.path.normpath(os.path.join(hdir, m.group(1))).replace("\\", "/")
+                full = cp.replace("\\", "/")
                 return m.group(0).replace('"%s"' % m.group(1), '"%s"' % full)
             text = _LOCAL_INCLUDE_RE.sub(_abs, text)
             _write_atomic(oh, text)
-            wrote_any = True
         elif os.path.isfile(oh) and os.path.normcase(oh) != os.path.normcase(hp):
             # A copy an earlier aletheia revision needed (the header held an
             # address then, ov102/irc_screen_types.h): it would shadow the

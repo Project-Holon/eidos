@@ -92,6 +92,7 @@ typedef struct BmapScene {
     BmapIntro intro;        /* bmap_place: the far cameras' own settings
                                (bmap_camera_intro)                             */
     BmapIntro cam;          /* bmap_place: the command camera's settings and ... */
+    float trainer_size;     /* the foe trainer's height (1 the base; BmapSpot.trainer_size) */
     float trainer_foe[3], trainer_own[3]; /* ... the trainers' offsets (battle
                                units: right, up, back)                         */
     int view_set;           /* bmap_place: cam and the offsets are a battle's  */

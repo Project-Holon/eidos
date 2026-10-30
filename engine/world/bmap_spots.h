@@ -58,7 +58,11 @@ typedef struct BmapSpot {
                                (the versions by the player's starter), 1 when one   */
     int pick_angle;         /* view 0: the view is chosen by the angle first
                                (else by the spot, the angle breaking a tie)     */
+    float trainer_size;     /* the foe trainer's height: 1 the base, BMAP_TRAINER_INDOOR
+                               the spot editor's "Indoor" (a room's furniture
+                               makes the base look short)                      */
 } BmapSpot;
+#define BMAP_TRAINER_INDOOR 1.15f
 #define BMAP_VIEWS_MAX 8    /* views of a row */
 
 /* The table: the one built in (battle_spots.tsv), then the rows of the

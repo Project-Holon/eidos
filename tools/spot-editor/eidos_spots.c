@@ -50,6 +50,7 @@
 #include "port.h"
 #include "settings.h"
 #include "setup.h"
+#include "spots_embed.h"
 #include "wizard.h"
 
 /* ------------------------------------------------------------------ */
@@ -71,7 +72,10 @@
 #define C_CAM     0xFFE45Cu
 
 #define FONT      UI_FONT_SMALL
-#define FK        2                 /* text at twice the game font's size  */
+static int g_fk = 2;               /* text at twice the game font's size (3 on a big window) */
+#define FK        g_fk
+static int g_u = 4;                /* layout sizes in quarters: 4 normal, 5 on a big window */
+#define U(n)      ((n) * g_u / 4)  /* a layout size, scaled with the window */
 #define LINE_H    22
 
 /* the battle: slots (battle units), the scale, the cameras */
@@ -128,6 +132,8 @@ typedef struct View3d {
     int rw, rh;                     /* its render size                     */
     u8 *rgba;
     u8 *front;                      /* the map in front of the Pokemon (rgba, 0 alpha elsewhere) */
+    u8 *fronts[16];                 /* or the map in front of each one, apart (render_view's `each`) */
+    int nfronts;
     int dirty;
     float eye[3], at[3], fsin, fcos;
 } View3d;
@@ -175,6 +181,7 @@ typedef struct App {
     Sprite tr_foe, tr_own;          /* the trainers' pictures (trainer_load)  */
     int tr_foe_id;                  /* the trainer tr_foe shows, -2 none yet   */
     int show_tr;                    /* the trainers shown in the battle views */
+    int hide_mon;                   /* the Pokemon hidden in them (the trainers alone) */
     int gender;                     /* your trainer: 0 the boy, 1 the girl (spot_editor.ini), -1 not read yet */
     int tr_own_gender;              /* the one tr_own shows, -2 none yet       */
     int species[2];                 /* the sprites shown: foe, yours         */
@@ -199,7 +206,19 @@ typedef struct App {
     /* a number typed in (num_field): the field, its text, Enter pressed */
     int edit, edit_done;
     char edit_buf[24];
-    int drag;                       /* 1 move, 2 turn, 3 area, 4 pan, 5 list scroll */
+    int drag;                       /* 1 move, 2 turn, 3 area, 4 pan, 5 list scroll, 6-11 the views, 20 a slider */
+    int drag_id, drag_undo, drag_dirty;   /* the slider dragged, kept for Undo, changed (saved on release) */
+    int tab;                        /* the view on show: TAB_COMMAND, TAB_INTRO, TAB_FIELD */
+    int last_move;                  /* the move scene played last */
+    int insp_scroll, insp_h;        /* the inspector: scrolled by, its height */
+    int size_custom;                /* the trainer's Size shows its slider (Custom) */
+    /* Preview: the game itself, played inside the middle view (spots_embed.c) */
+    EidosEmbedShm *emb;             /* the shared picture and input, NULL when none */
+    intptr_t emb_proc;              /* the game's process                    */
+    u8 *emb_rgba;                   /* its last picture, for blit_rgba        */
+    int emb_w, emb_h;
+    uint32_t emb_frame;
+    int map_left;                   /* the map under the list, not in the inspector */
     float drag_x, drag_z;
     int drag_mx, drag_my;
     float drag_vx, drag_vz;
@@ -215,10 +234,13 @@ static App A;
 
 static void field_camera(unsigned zone, float *dist, float *pitch, float *yaw, float *fov, float *lift);
 static void preview_in_game(int play);
+static void preview_stop(void);
+static void draw_embed(int x, int y, int w, int h);
 static const char *scene_name(int sc);
 static void scene_frames(void);
 #define SCENE_MOVES 559             /* Black's moves */
 #define SCENE_COUNT (3 + SCENE_MOVES)
+#define SCENE_MID   SCENE_COUNT     /* a trainer back mid-battle to speak */
 static const ClipFrame *play_frame(void);
 
 /* The interface layer's two hooks the kit calls (engine/ui/ui.c is the
@@ -393,6 +415,7 @@ static int vis_pos(int row)
 }
 
 static void sprite_load(Sprite *sp, int species, int back);
+static int trainer_lead(int tid);
 
 static void select_row(int row)
 {
@@ -409,8 +432,19 @@ static void select_row(int row)
     A.follow = 1;
     A.need_place = 1;
     A.ow_reset = 1;
-    A.show_tr = 0;
+    A.show_tr = r->kind == 'T';
+    A.hide_mon = 0;
+    A.size_custom = 0;
     A.tr_foe_id = -2;
+    if (r->kind == 'T' && r->trainer_id >= 0 && r->trainer_id < 100000) {
+        int lead = trainer_lead(r->trainer_id);
+
+        if (lead > 0 && lead != A.species[0]) {
+            A.species[0] = lead;            /* the trainer's own first Pokemon */
+            free(A.foe.rgba);
+            sprite_load(&A.foe, A.species[0], 0);
+        }
+    }
     if (r->trainer_id >= 100000 && A.species[0] != r->trainer_id % 1000) {
         A.species[0] = r->trainer_id % 1000;    /* a legendary: the foe is it */
         free(A.foe.rgba);
@@ -754,7 +788,11 @@ static void field_camera(unsigned zone, float *dist, float *pitch, float *yaw, f
     }
 }
 
-static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*poke)[4], int npoke)
+/* The view's picture, and the map that stands in front of the sprites at
+ * `poke` (where, and the height of each one's box): all in one picture, or
+ * with `each` one picture a sprite, so that a sprite drawn later (nearer)
+ * covers the map in front of a farther one and not the other way round. */
+static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*poke)[4], int npoke, int each)
 {
     G3dSnapshot snap;
     size_t need = (size_t)v->rw * (size_t)v->rh * 4u;
@@ -788,7 +826,27 @@ static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*po
      * over the sprites, as the game's second pass draws it over its own */
     free(v->front);
     v->front = NULL;
-    if (poke != NULL && npoke > 0 && (v->front = (u8 *)malloc(need)) != NULL) {
+    for (i = 0; i < v->nfronts; i++) {
+        free(v->fronts[i]);
+        v->fronts[i] = NULL;
+    }
+    v->nfronts = 0;
+    if (each && poke != NULL) {
+        for (i = 0; i < npoke && i < 16; i++) {
+            u8 *fr = (u8 *)malloc(need);
+
+            memcpy(snap.backdrop.poke[0], poke[i], 4 * sizeof(float));
+            snap.backdrop.n_poke = 1;
+            snap.backdrop.front_only = 1;
+            if (fr != NULL && (eidos_gl_render3d(A.gl, &snap, v->rw, v->rh) != 0
+                               || eidos_gl_read3d(A.gl, fr, v->rw, v->rh) != 0)) {
+                free(fr);
+                fr = NULL;
+            }
+            v->fronts[i] = fr;
+        }
+        v->nfronts = i;
+    } else if (poke != NULL && npoke > 0 && (v->front = (u8 *)malloc(need)) != NULL) {
         for (i = 0; i < npoke && i < G3D_BACKDROP_SPRITES; i++) {
             memcpy(snap.backdrop.poke[i], poke[i], 4 * sizeof(float));    /* where, and its box's height */
         }
@@ -1004,6 +1062,68 @@ static int trainer_class(int tid)
     return cls;
 }
 
+/* A trainer's first Pokemon's species (the party file a/0/9/3: a member is
+ * u8 the strength, u8 the gender and ability, u16 the level, u16 the
+ * species, u16 the form, then an item and four moves when the trainer's
+ * record says so), or 0. */
+static int trainer_lead(int tid)
+{
+    BwArcFile arc;
+    u8 *rec;
+    long n;
+    int species = 0;
+
+    if (tid < 0 || bw_arc_open(&arc, "a/0/9/3") != 0) {
+        return 0;
+    }
+    /* the whole member: a read asks for all of it */
+    n = bw_arc_member_size(&arc, (u32)tid);
+    rec = n >= 8 ? (u8 *)malloc((size_t)n) : NULL;
+    if (rec != NULL && bw_arc_read_member(&arc, (u32)tid, rec, (u32)n) >= 8) {
+        species = (rec[4] | rec[5] << 8) & 0x3FF;
+    }
+    free(rec);
+    bw_arc_close(&arc);
+    return species >= 1 && species <= 649 ? species : 0;
+}
+
+/* Whether a trainer has a line mid-battle (the trainer messages' table
+ * a/0/9/0: u16 trainer, u16 kind; kinds 17 to 24 are the battle's own: its
+ * last Pokemon, a Pokemon low, the first hit), so comes back on the field to
+ * say it (effect 63).  Cached for the last trainer asked. */
+static int trainer_speaks_mid(int tid)
+{
+    static int last = -1, answer;
+    BwArcFile arc;
+    long n;
+    u8 *t;
+    long i;
+
+    if (tid == last) {
+        return answer;
+    }
+    last = tid;
+    answer = 0;
+    if (tid < 0 || bw_arc_open(&arc, "a/0/9/0") != 0) {
+        return 0;
+    }
+    n = bw_arc_member_size(&arc, 0);
+    t = n >= 4 ? (u8 *)malloc((size_t)n) : NULL;
+    if (t != NULL && bw_arc_read_member(&arc, 0, t, (u32)n) >= 4) {
+        for (i = 0; i + 4 <= n; i += 4) {
+            int who = t[i] | t[i + 1] << 8, kind = t[i + 2] | t[i + 3] << 8;
+
+            if (who == tid && kind >= 17 && kind <= 24) {
+                answer = 1;
+                break;
+            }
+        }
+    }
+    free(t);
+    bw_arc_close(&arc);
+    return answer;
+}
+
 /* A trainer's battle picture: the foe's front (a/0/7/2) by its class, through
  * the ARM9's graphics index table (the identity when it cannot be read), or
  * the player's own back (a/0/7/3; tid is its set: 0 the boy, 1 the girl).  Eight files a set; the last is
@@ -1155,12 +1275,6 @@ static int button(int x, int y, int w, int h, const char *label, int on)
     return hv && A.released && A.drag == 0;
 }
 
-/* A stepper's step: Ctrl the fine one, Shift the coarse one. */
-static float step_of(float normal, float fine, float coarse)
-{
-    return A.ctrl ? fine : A.shift ? coarse : normal;
-}
-
 /* A number shown at (x, y) that a click lets the user type over: `label`
  * before it, `shown` the number as text.  Returns 1 with the number typed
  * in `out` once Enter is pressed (or the user clicks elsewhere); Esc
@@ -1170,17 +1284,17 @@ static int num_field(int id, int x, int y, const char *label, const char *shown,
     int lw = label[0] != '\0' ? text_w(label) + 8 : 0, w = text_w(shown) + 10;
 
     if (A.edit == id) {
-        int bw = text_w(A.edit_buf) + 20 > 70 ? text_w(A.edit_buf) + 20 : 70;
+        int bw = text_w(A.edit_buf) + U(20) > U(70) ? text_w(A.edit_buf) + U(20) : U(70);
         char *end = NULL;
         double v;
 
         if (lw > 0) {
             text(x, y, C_MUTED, "%s", label);
         }
-        ui_fill(&C, x + lw - 4, y - 4, bw, 26, 0x111318u, 255);
-        outline(x + lw - 4, y - 4, bw, 26, C_ACCENT);
+        ui_fill(&C, x + lw - 4, y - 4, bw, 10 * FK + 6, 0x111318u, 255);
+        outline(x + lw - 4, y - 4, bw, 10 * FK + 6, C_ACCENT);
         text(x + lw, y, C_TEXT, "%s_", A.edit_buf);
-        if (A.edit_done || (A.released && !hover(x + lw - 4, y - 4, bw, 26))) {
+        if (A.edit_done || (A.released && !hover(x + lw - 4, y - 4, bw, 10 * FK + 6))) {
             A.edit = 0;
             A.edit_done = 0;
             v = strtod(A.edit_buf, &end);
@@ -1192,8 +1306,8 @@ static int num_field(int id, int x, int y, const char *label, const char *shown,
         return 0;
     }
     text(x, y, C_TEXT, "%s%s%s", label, lw > 0 ? " " : "", shown);
-    if (hover(x + lw - 4, y - 4, w, 26)) {
-        outline(x + lw - 4, y - 4, w, 26, C_LINE);
+    if (hover(x + lw - 4, y - 4, w, 10 * FK + 6)) {
+        outline(x + lw - 4, y - 4, w, 10 * FK + 6, C_LINE);
         if (A.released && A.drag == 0) {
             A.edit = id;
             A.edit_done = 0;
@@ -1203,56 +1317,8 @@ static int num_field(int id, int x, int y, const char *label, const char *shown,
     return 0;
 }
 
-/* the width num_field takes for `label` and `shown` */
-static int num_field_w(const char *label, const char *shown)
-{
-    return text_w(label) + 8 + text_w(shown);
-}
-
 static void remember(void);
 static void save_now(void);
-
-/* - [label value] + for a setting of the place: steps of `step` (Ctrl
- * `fine`, Shift `coarse`), the value typed in on a click.  `lo` < `hi`
- * keeps it in [lo, hi]; `wrap` keeps degrees in -180 .. 180.  Returns the
- * width it took. */
-static int stepper(int id, int x, int y, const char *label, const char *fmt, float *v, float step, float fine,
-                   float coarse, float lo, float hi, int wrap)
-{
-    char shown[24];
-    float typed, d = step_of(step, fine, coarse), nv = *v;
-    int w, changed = 0;
-
-    snprintf(shown, sizeof shown, fmt, (double)*v);
-    w = num_field_w(label, shown);
-    if (button(x, y, 30, 28, "-", 0)) {
-        nv = *v - d;
-        changed = 1;
-    }
-    if (num_field(id, x + 38, y + 4, label, shown, &typed)) {
-        nv = typed;
-        changed = 1;
-    }
-    if (button(x + 46 + w, y, 30, 28, "+", 0)) {
-        nv = *v + d;
-        changed = 1;
-    }
-    if (changed) {
-        if (wrap) {
-            nv = fmodf(nv, 360.0f);
-            nv = nv > 180.0f ? nv - 360.0f : nv <= -180.0f ? nv + 360.0f : nv;
-        }
-        if (lo < hi) {
-            nv = nv < lo ? lo : nv > hi ? hi : nv;
-        }
-        if (nv != *v) {
-            remember();
-            *v = nv;
-            save_now();
-        }
-    }
-    return 46 + w + 30;
-}
 
 static void blit_rgba(int dx, int dy, const u8 *src, int sw, int sh, int dw, int dh)
 {
@@ -1751,358 +1817,7 @@ static void reverse_battle(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* The left column                                                     */
-/* ------------------------------------------------------------------ */
-
-static void draw_left(int L)
-{
-    BmapSpot *r = cur();
-    int x = 16, y = 14, w = L - 32, i, done = 0, n = 0;
-    int rows, list_y, list_h, row_h = 26;
-
-    ui_fill(&C, 0, 0, L, A.H, C_PANEL, 255);
-    ui_fill(&C, L - 1, 0, 1, A.H, C_LINE, 255);
-    for (i = 0; i < bmap_spots_count(); i++) {
-        const BmapSpot *q = bmap_spots_get(i);
-
-        n += q->view == 0;
-        done += q->view == 0 && q->ok;
-    }
-    /* the place */
-    if (r != NULL) {
-        char kind[64];
-
-        ui_text(&C, x, y, r->label, C_TEXT, -1, UI_FONT_LARGE, 2);
-        y += 36;
-        snprintf(kind, sizeof kind, "%s  %s  zone %u", r->kind == 'T' ? "Trainer" : "Wild area", r->id, r->zone);
-        text(x, y, C_MUTED, "%s", kind);
-        text(L - 16 - text_w("000 / 000 checked"), y, C_MUTED, "%d / %d checked", done, n);
-        y += 30;
-    }
-    if (button(x, y, 90, 30, "< Prev", 0)) {
-        int p = vis_pos(A.row);
-
-        if (p > 0) {
-            select_row(A.vis[p - 1]);
-        }
-    }
-    if (button(x + 98, y, 90, 30, "Next >", 0)) {
-        int p = vis_pos(A.row);
-
-        if (p >= 0 && p + 1 < A.nvis) {
-            select_row(A.vis[p + 1]);
-        } else if (A.nvis > 0) {
-            select_row(A.vis[0]);
-        }
-    }
-    if (r != NULL && button(x + w - 150, y, 150, 30, bmap_spots_get(first_view(A.row))->ok ? "Checked" : "Mark checked",
-                            bmap_spots_get(first_view(A.row))->ok)) {
-        BmapSpot *b = bmap_spots_get(first_view(A.row));
-
-        b->ok = !b->ok;
-        save_now();
-        refilter();
-    }
-    y += 42;
-    /* the filters and the search */
-    {
-        int fx = x;
-
-        for (i = 0; i < F_COUNT; i++) {
-            int bw = text_w(k_filters[i]) + 14;
-
-            if (button(fx, y, bw, 28, k_filters[i], A.filter == i)) {
-                A.filter = i;
-                A.scroll = 0;
-                refilter();
-            }
-            fx += bw + 4;
-        }
-        y += 36;
-        ui_fill(&C, x, y, w, 30, 0x111318u, 255);
-        outline(x, y, w, 30, A.search[0] != '\0' ? C_ACCENT : C_LINE);
-        if (A.search[0] != '\0') {
-            text(x + 8, y + 5, C_TEXT, "%s_", A.search);
-        } else {
-            text(x + 8, y + 5, C_MUTED, "Type to search places (Esc clears)");
-        }
-        text(x + w - 8 - text_w("000 places"), y + 5, C_MUTED, "%d places", A.nvis);
-        y += 36;
-    }
-    /* the list */
-    list_y = y;
-    rows = (int)((A.H - list_y - 374 - (A.H - list_y - 374) * 6 / 10) / row_h);   /* 374: the controls under the map */
-    if (rows < 4) {
-        rows = 4;
-    }
-    if (rows > 14) {
-        rows = 14;
-    }
-    list_h = rows * row_h;
-    if (hover(x, list_y, w, list_h) && A.wheel != 0) {
-        A.scroll -= A.wheel * 3;
-    }
-    if (A.scroll > A.nvis - rows) {
-        A.scroll = A.nvis - rows;
-    }
-    if (A.scroll < 0) {
-        A.scroll = 0;
-    }
-    ui_fill(&C, x, list_y, w, list_h, 0x16181Du, 255);
-    for (i = 0; i < rows && A.scroll + i < A.nvis; i++) {
-        int ri = A.vis[A.scroll + i], ry = list_y + i * row_h;
-        const BmapSpot *q = bmap_spots_get(ri);
-        int sel = ri == first_view(A.row), hv = hover(x, ry, w, row_h);
-        u32 dot = q->ok ? C_GOOD : changed_row(q) ? C_ACCENT : 0x4A4F5Bu;
-        char lab[96];
-
-        if (sel || hv) {
-            ui_fill(&C, x, ry, w, row_h, sel ? 0x2C3A55u : 0x22262Eu, 255);
-        }
-        ui_ellipse(&C, x + 8, ry + 9, 9, 9, dot, UI_NONE, 255);
-        snprintf(lab, sizeof lab, "%s", q->label);
-        while (text_w(lab) > w - 40 && strlen(lab) > 4) {
-            lab[strlen(lab) - 4] = '\0';
-            strcat(lab, "...");
-        }
-        text(x + 26, ry + 3, sel ? C_TEXT : 0xC9CDD5u, "%s", lab);
-        if (hv && A.released && A.drag == 0) {
-            select_row(ri);
-        }
-    }
-    if (A.nvis > rows) {
-        int bh = list_h * rows / A.nvis, by = list_y + (list_h - bh) * A.scroll / (A.nvis - rows);
-
-        ui_fill(&C, x + w - 4, by, 4, bh, C_LINE, 255);
-    }
-    y = list_y + list_h + 12;
-    /* the map */
-    A.map_x = x;
-    A.map_y = y;
-    A.map_s = A.H - y - 366;
-    if (A.map_s > w - 150) {
-        A.map_s = w - 150;
-    }
-    if (A.map_s < 160) {
-        A.map_s = 160;
-    }
-    draw_map();
-    if (!A.follow && button(x + A.map_s - 92, y + 6, 86, 26, "Center", 0)) {
-        A.follow = 1;
-    }
-    {
-        /* the legend and the mouse, beside the map */
-        int lx = x + A.map_s + 14, ly = y + 4;
-
-        if (lx + 140 < x + w) {
-            ring((float)lx + 8.0f, (float)ly + 10.0f, 7.0f, C_OWN);
-            text(lx + 22, ly, C_MUTED, "Yours");
-            ring((float)lx + 8.0f, (float)ly + 34.0f, 7.0f, C_FOE);
-            text(lx + 22, ly + 24, C_MUTED, "Foe");
-            ui_ellipse(&C, lx + 3, ly + 52, 11, 11, C_CAM, UI_INK, 255);
-            text(lx + 22, ly + 48, C_MUTED, "Camera");
-            ui_ellipse(&C, lx + 3, ly + 76, 11, 11, C_TEXT, UI_INK, 255);
-            text(lx + 22, ly + 72, C_MUTED, "Player");
-            ui_fill(&C, lx + 3, ly + 100, 11, 11, C_FOE, 255);
-            text(lx + 22, ly + 96, C_MUTED, "Trainer");
-            ui_fill(&C, lx + 3, ly + 124, 11, 11, 0x5C9A4Eu, 255);
-            text(lx + 22, ly + 120, C_MUTED, "Grass");
-            ly += 156;
-            {
-                static const char *help[5][2] = { { "Drag", "move" }, { "Right drag", "turn" },
-                                                  { "Shift drag", "safe area" }, { "Wheel", "zoom" },
-                                                  { "Middle drag", "pan" } };
-                int hi;
-
-                for (hi = 0; hi < 5 && ly + 40 <= y + A.map_s; hi++, ly += 44) {
-                    text(lx, ly, C_MUTED, "%s", help[hi][0]);
-                    text(lx, ly + 19, C_TEXT, "%s", help[hi][1]);
-                }
-            }
-        }
-    }
-    y += A.map_s + 12;
-    /* the controls */
-    if (r == NULL) {
-        return;
-    }
-    text(x, y + 6, C_MUTED, "Place");
-    {
-        int bx = x + 110, bw = (w - 110 - 12) / 3;
-
-        if (button(bx, y, bw, 30, "Auto", r->mode == BMAP_SPOT_AUTO)) set_mode(BMAP_SPOT_AUTO);
-        if (button(bx + bw + 6, y, bw, 30, "Fixed spot", r->mode == BMAP_SPOT_FIXED)) set_mode(BMAP_SPOT_FIXED);
-        if (button(bx + 2 * (bw + 6), y, bw, 30, "Safe area", r->mode == BMAP_SPOT_ZONE)) set_mode(BMAP_SPOT_ZONE);
-    }
-    y += 38;
-    text(x, y + 6, C_MUTED, "Angle");
-    {
-        int bx = x + 110;
-        int ang = r->mode == BMAP_SPOT_AUTO || r->angle < 0.0f ? A.tf : (int)r->angle;
-        const char *who = r->mode == BMAP_SPOT_AUTO || r->angle < 0.0f ? "player faces" : "fixed";
-
-        int minus = button(bx, y, 40, 30, "-", 0), plus = button(bx + 46, y, 40, 30, "+", 0);
-        char as[16];
-        float typed;
-
-        snprintf(as, sizeof as, "%d", ang);
-        if (num_field(1, bx + 96, y + 5, "", as, &typed)) {
-            if (r->mode == BMAP_SPOT_AUTO || r->angle < 0.0f) {
-                A.tf = norm_deg(typed);
-                A.need_place = 1;
-            } else {
-                remember();
-                r->angle = (float)norm_deg(typed);
-                save_now();
-            }
-        }
-        int quick = 0, qx = bx, q;
-        static const int k_quick[4] = { 180, 90, -90, -180 };
-        static const char *k_quick_label[4] = { "-180", "-90", "+90", "+180" };
-
-        /* quarter and half turns, either way, on a row of their own */
-        for (q = 0; q < 4; q++) {
-            if (button(qx, y + 34, 64, 28, k_quick_label[q], 0)) {
-                quick = k_quick[q];
-            }
-            qx += 70;
-        }
-        if (minus || plus || quick != 0) {
-            int d = quick != 0 ? quick : (int)step_of(5.0f, 1.0f, 45.0f) * (minus ? 1 : -1);    /* minus turns left: north to west */
-
-            if (r->mode == BMAP_SPOT_AUTO || r->angle < 0.0f) {
-                A.tf = norm_deg((float)(A.tf + d));
-                A.need_place = 1;
-            } else {
-                remember();
-                r->angle = (float)norm_deg(r->angle + (float)d);
-                save_now();
-            }
-        }
-        text(bx + 96 + text_w(as) + 12, y + 5, C_TEXT, "%s (%s)", dir_name(ang), who);
-        if (r->mode == BMAP_SPOT_ZONE && r->angle >= 0.0f && button(x + w - 150, y, 150, 30, "Follow player", 0)) {
-            remember();
-            r->angle = -1.0f;
-            save_now();
-        }
-    }
-    y += 72;
-    text(x, y + 6, C_MUTED, "Foe");
-    {
-        int bx = x + 110;
-        char d[48];
-
-        text(bx, y + 5, C_MUTED, "on its ground");
-        if (button(bx + 128, y, 40, 30, "-", 0)) {
-            remember();
-            r->foe_dz = clampf(r->foe_dz - step_of(0.5f, 0.1f, 2.0f), -12.0f, 12.0f);   /* 5 to 29 apart */
-            save_now();
-        }
-        snprintf(d, sizeof d, "%.1f", (double)(17.0f + r->foe_dz));
-        {
-            float typed;
-
-            if (num_field(2, bx + 176, y + 5, "", d, &typed)) {
-                remember();
-                r->foe_dz = clampf(typed - 17.0f, -12.0f, 12.0f);
-                save_now();
-            }
-        }
-        if (button(bx + 182 + text_w(d), y, 40, 30, "+", 0)) {
-            remember();
-            r->foe_dz = clampf(r->foe_dz + step_of(0.5f, 0.1f, 2.0f), -12.0f, 12.0f);
-            save_now();
-        }
-        text(bx + 230 + text_w(d), y + 5, C_MUTED, "apart");
-    }
-    y += 38;
-    /* the intro camera, apart from the command camera (the intro view
-     * shows it; dragging that view changes it too) */
-    text(x, y + 6, C_MUTED, "Intro");
-    {
-        int bx = x + 110, col = (w - 110) / 2;
-        BmapIntro *in = &r->intro;
-
-        stepper(10, bx, y, "zoom", "%.2f", &in->zoom, 0.1f, 0.01f, 0.5f, 0.05f, 50.0f, 0);
-        stepper(11, bx + col, y, "turn", "%+.0f", &in->yaw, 5.0f, 1.0f, 30.0f, 0.0f, 0.0f, 1);
-        y += 34;
-        stepper(12, bx, y, "height", "%+.1f", &in->lift, 0.5f, 0.1f, 2.0f, 0.0f, 0.0f, 0);
-        stepper(13, bx + col, y, "slide", "%+.1f", &in->side, 0.5f, 0.1f, 2.0f, 0.0f, 0.0f, 0);
-        y += 34;
-        stepper(14, bx, y, "tilt", "%+.0f", &in->tilt, 2.0f, 0.5f, 10.0f, -85.0f, 85.0f, 0);
-        stepper(15, bx + col, y, "aim", "%+.0f", &in->aim, 2.0f, 0.5f, 10.0f, 0.0f, 0.0f, 1);
-        if (button(x, y - 34, 90, 28, "Reset", 0) && !bmap_intro_none(in)) {
-            remember();
-            memset(in, 0, sizeof *in);
-            in->zoom = 1.0f;
-            save_now();
-            say("Intro camera reset");
-        }
-    }
-    y += 38;
-    if (button(x, y, 150, 30, "Back to auto", 0)) {
-        remember();
-        r->mode = BMAP_SPOT_AUTO;
-        r->foe_level = 1;
-        r->foe_dz = 0.0f;
-        memset(&r->intro, 0, sizeof r->intro);
-        r->intro.zoom = 1.0f;
-        memset(&r->cam, 0, sizeof r->cam);
-        r->cam.zoom = 1.0f;
-        memset(r->trainer_foe, 0, sizeof r->trainer_foe);
-        memset(r->trainer_own, 0, sizeof r->trainer_own);
-        save_now();
-        say("Back to auto");
-    }
-    if (button(x + 158, y, 120, 30, "Default", 0)) {
-        BmapSpot d;
-
-        if (bmap_spots_default(r->id, &d) == 0) {
-            remember();
-            d.ok = r->ok;
-            d.view = r->view;
-            *r = d;
-            save_now();
-            say("Back to the default");
-        }
-    }
-    if (button(x + 286, y, 90, 30, "Undo", 0)) {
-        undo();
-    }
-    if (button(x + 384, y, 110, 30, "Reverse", 0)) {
-        reverse_battle();
-    }
-    /* the warnings and the save state */
-    y += 40;
-    if (A.have_placed && A.have_base) {
-        float step = fabsf(A.placed.place_g[1] - A.placed.place_g[0]) / 16.0f, fx, fz;
-        int to, tf;
-
-        battle_point_map(FOE_X, FOE_Z - A.placed.foe_dz, &fx, &fz);
-        to = bmap_tile(&A.base, A.placed.place_x, A.placed.place_z);
-        tf = bmap_tile(&A.base, fx, fz);
-        if (to == BMAP_TILE_BLOCKED || to == BMAP_TILE_NONE) {
-            text(x, y, C_BAD, "Your Pokemon stands on a wall or outside the map");
-        } else if (tf == BMAP_TILE_BLOCKED || tf == BMAP_TILE_NONE) {
-            text(x, y, C_BAD, "The foe stands on a wall or outside the map");
-        } else {
-            text(x, y, C_MUTED, "Ground step %.1f tiles", (double)step);
-        }
-    }
-    if (A.status[0] != '\0' && SDL_GetTicks() - A.status_at < 4000) {
-        text(x, y + 24, C_GOOD, "%s", A.status);
-    } else if (r->mode == BMAP_SPOT_ZONE) {
-        /* how a safe area places a battle */
-        text(x, y + 24, C_MUTED, "Yours: where the battle starts (drag the player), kept in the box");
-    } else if (r->mode == BMAP_SPOT_AUTO) {
-        text(x, y + 24, C_MUTED, "Yours: where the battle starts (drag the player), moved to a clear spot");
-    } else {
-        text(x, y + 24, C_MUTED, "Every battle here uses this spot and angle");
-    }
-}
-
-/* ------------------------------------------------------------------ */
-/* The right column                                                    */
+/* The views                                                           */
 /* ------------------------------------------------------------------ */
 
 static void fit_view(View3d *v, int x, int y, int w, int h)
@@ -2126,8 +1841,6 @@ static void fit_view(View3d *v, int x, int y, int w, int h)
 
 /* A picture standing at p (its bottom centre) through the view, `bh` battle
  * units tall. */
-static void draw_standing(const View3d *v, const u8 *rgba, int w, int h, const float p[3], float bh);
-
 static void draw_standing(const View3d *v, const u8 *rgba, int w, int h, const float p[3], float bh)
 {
     float sx, sy, unit;
@@ -2189,284 +1902,44 @@ static const float *view_offsets(int foe)
     return foe ? r->trainer_foe : r->trainer_own;
 }
 
-#define STRIP_ROWS 5                /* the rows of settings under the two battle views */
-
-/* The views of the place, the command camera and the trainers' places: rows
- * of buttons and steppers at (x, y), RW wide. */
-static void draw_strip(int x, int y, int RW)
+/* A battle view: 0 the command camera's, 1 the intro camera's.  A scene
+ * that plays moves its camera and its Pokemon. */
+static void draw_battle_view(int i)
 {
-    BmapSpot *r = cur();
-    int nv, vn, v, bx = x, i, col;
-    float *tr;
+    View3d *v = &A.battle[i];
+    const ClipFrame *cf = play_frame();
+    /* the Pokemon: the single battle's two, the double's four (ov094's slot
+     * tables) or where a played camera has them, all on the place's foe
+     * side (bmap_battle_warp) */
+    static const float dbl[4][3] = { { -1.69f, 0.4f, 6.38f }, { 2.5f, 0.4f, 7.62f },
+                                     { 2.43f, 0.4f, -10.38f }, { -2.2f, 0.4f, -11.56f } };
+    float p[16][3], d[16], sc[16];
+    const Sprite *sp[16];
+    int kind[16];                   /* 0 a Pokemon, 1 your trainer, 2 the foe's */
+    int n = 0, a, b;
 
-    if (r == NULL) {
+    if (!A.have_placed) {
         return;
     }
-    /* the views of the place: the game takes the one nearest the player */
-    nv = bmap_spots_view_count(A.row);
-    vn = view_no(A.row);
-    text(bx, y + 5, C_MUTED, "Views");
-    bx += 110;
-    for (v = 0; v < nv; v++) {
-        char num[16];
+    if (cf != NULL) {
+        memcpy(v->eye, cf->eye, sizeof v->eye);
+        memcpy(v->at, cf->at, sizeof v->at);
+        v->dirty = 1;
+        for (a = 0; a < cf->np && n < 16; a++) {
+            int tr = cf->slot[a] > 7;
 
-        snprintf(num, sizeof num, "%d", v + 1);
-        if (button(bx, y, 34, 28, num, v == vn) && v != vn) {
-            select_row(bmap_spots_view_at(A.row, v));
-        }
-        bx += 38;
-    }
-    if (nv < BMAP_VIEWS_MAX && button(bx, y, 100, 28, "Add view", 0)) {
-        int nr = bmap_spots_view_add(A.row, vn);
-
-        if (nr >= 0) {
-            A.nundo = 0;
-            select_row(nr);
-            if (cur()->mode != BMAP_SPOT_FIXED) {
-                set_mode(BMAP_SPOT_FIXED);
+            if (tr && (cf->slot[a] > 13 || (cf->slot[a] & 1 ? A.tr_foe.rgba : A.tr_own.rgba) == NULL)) {
+                continue;
             }
-            save_now();
-            say("View %d added: drag the spot and turn it", nv + 1);
+            memcpy(p[n], cf->pos[a], sizeof p[n]);
+            kind[n] = tr ? 1 + (cf->slot[a] & 1) : 0;
+            sc[n] = slot_scale(cf->slot[a]);
+            sp[n++] = tr ? ((cf->slot[a] & 1) ? &A.tr_foe : &A.tr_own) : (cf->slot[a] & 1) ? &A.foe : &A.own;
         }
-    }
-    bx += 108;
-    if (nv > 1 && button(bx, y, 90, 28, "Delete", 0)) {
-        int first = first_view(A.row);
-
-        if (bmap_spots_view_delete(first, vn) == 0) {
-            A.nundo = 0;
-            select_row(bmap_spots_view_at(first, vn > 0 ? vn - 1 : 0));
-            save_now();
-            say("View deleted");
-        }
-    }
-    bx += 98;
-    if (nv > 1) {
-        BmapSpot *b = bmap_spots_get(first_view(A.row));
-        int pick = bmap_spots_pick_view(A.row, A.tx, A.tz, deg_to_facing((float)A.tf));
-
-        if (button(bx, y, 150, 28, b->pick_angle ? "By angle" : "By spot", 0)) {
-            remember();
-            b->pick_angle = !b->pick_angle;
-            save_now();
-        }
-        bx += 160;
-        text(bx, y + 5, pick == A.row ? C_GOOD : C_MUTED, "Game takes view %d for the player", view_no(pick) + 1);
     } else {
-        text(bx, y + 5, C_MUTED, "One view: add more to switch by where the player stands");
-    }
-    y += 34;
-    /* the command camera */
-    text(x, y + 5, C_MUTED, "Camera");
-    bx = x + 110;
-    col = 14;
-    bx += stepper(20, bx, y, "zoom", "%.2f", &r->cam.zoom, 0.1f, 0.01f, 0.5f, 0.05f, 50.0f, 0) + col;
-    bx += stepper(21, bx, y, "turn", "%+.0f", &r->cam.yaw, 5.0f, 1.0f, 30.0f, 0.0f, 0.0f, 1) + col;
-    bx += stepper(22, bx, y, "height", "%+.1f", &r->cam.lift, 0.5f, 0.1f, 2.0f, 0.0f, 0.0f, 0) + col;
-    stepper(23, bx, y, "slide", "%+.1f", &r->cam.side, 0.5f, 0.1f, 2.0f, 0.0f, 0.0f, 0);
-    y += 34;
-    bx = x + 110;
-    bx += stepper(24, bx, y, "tilt", "%+.0f", &r->cam.tilt, 2.0f, 0.5f, 10.0f, -85.0f, 85.0f, 0) + col;
-    bx += stepper(25, bx, y, "aim", "%+.0f", &r->cam.aim, 2.0f, 0.5f, 10.0f, 0.0f, 0.0f, 1) + col;
-    if (button(bx, y, 100, 28, "Reset", 0) && !bmap_intro_none(&r->cam)) {
-        remember();
-        memset(&r->cam, 0, sizeof r->cam);
-        r->cam.zoom = 1.0f;
-        save_now();
-        say("Camera reset");
-    }
-    text(bx + 112, y + 5, C_MUTED, "Drag a view: turn, height. Right drag: slide, tilt. Wheel: zoom");
-    y += 34;
-    /* the trainers' places (a change shows the trainers) */
-    for (i = 1; i >= 0; i--) {
-        float before;
-
-        tr = i ? r->trainer_foe : r->trainer_own;
-        before = tr[0] + 3.0f * tr[1] + 7.0f * tr[2];
-        text(x, y + 5, C_MUTED, i ? "Foe trainer" : "Your trainer");
-        bx = x + 110;
-        bx += stepper(26 + 3 * i, bx, y, "right", "%+.1f", &tr[0], 0.5f, 0.1f, 2.0f, -40.0f, 40.0f, 0) + col;
-        bx += stepper(27 + 3 * i, bx, y, "up", "%+.1f", &tr[1], 0.5f, 0.1f, 2.0f, -40.0f, 40.0f, 0) + col;
-        bx += stepper(28 + 3 * i, bx, y, "back", "%+.1f", &tr[2], 0.5f, 0.1f, 2.0f, -40.0f, 40.0f, 0) + col;
-        if (before != tr[0] + 3.0f * tr[1] + 7.0f * tr[2]) {
-            A.show_tr = 1;
-        }
-        if (i == 1 && button(bx, y, 190, 28, "Show trainers", A.show_tr)) {
-            A.show_tr = !A.show_tr;
-            A.battle[0].dirty = A.battle[1].dirty = 1;
-        }
-        if (i == 0) {                       /* the player's own picture: boy or girl */
-            if (button(bx, y, 74, 28, "Boy", A.gender == 0) || button(bx + 80, y, 74, 28, "Girl", A.gender == 1)) {
-                A.gender = hover(bx, y, 74, 28) ? 0 : 1;
-                gender_write();
-                A.show_tr = 1;
-                A.battle[0].dirty = A.battle[1].dirty = 1;
-            }
-        }
-        y += 34;
-    }
-    (void)RW;
-}
-
-static void draw_right(int L)
-{
-    int RW = A.W - L, half = A.H * 58 / 100, hx = L, head = 40, i;
-    const BmapSpot *r = cur();
-
-    trainer_refresh();
-    ui_fill(&C, L, 0, RW, A.H, C_BG, 255);
-    /* the battle */
-    {
-        /* the two cameras side by side: the command menu's, the intro's */
-        int cw = (RW - 24) / 2;
-
-
-        text(hx + 16, 10, C_TEXT, "Command camera");
-        {
-            /* the sprites shown, and single or double */
-            int sx0 = hx + 16, side, ry = half - 36;   /* a row under the two views */
-            static const char *who[2] = { "Foe", "Yours" };
-
-            if (button(sx0, ry, 90, 28, A.doubles ? "Double" : "Single", A.doubles)) {
-                A.doubles = !A.doubles;
-            }
-            sx0 += 100;
-            for (side = 0; side < 2; side++) {
-                char num[16];
-                int step = A.shift ? 10 : 1, ch = 0;
-
-                snprintf(num, sizeof num, "#%d", A.species[side]);
-                sx0 = text(sx0, ry + 4, C_MUTED, "%s", who[side]) + 6;
-                if (button(sx0, ry, 28, 28, "-", 0)) {
-                    A.species[side] = A.species[side] - step < 1 ? 649 : A.species[side] - step;
-                    ch = 1;
-                }
-                sx0 = text(sx0 + 34, ry + 4, C_TEXT, "%s", num) + 6;
-                if (button(sx0, ry, 28, 28, "+", 0)) {
-                    A.species[side] = A.species[side] + step > 649 ? 1 : A.species[side] + step;
-                    ch = 1;
-                }
-                sx0 += 40;
-                if (ch) {
-                    Sprite *s = side == 0 ? &A.foe : &A.own;
-
-                    free(s->rgba);
-                    sprite_load(s, A.species[side], side == 1);
-                }
-            }
-        }
-        text(hx + 16 + cw + 8, 10, C_TEXT, "Intro camera");
-        int vh = half - head - 80 - 34 * STRIP_ROWS - 6;
-
-        fit_view(&A.battle[0], hx + 8, head, cw, vh);
-        fit_view(&A.battle[1], hx + 16 + cw, head, cw, vh);
-        draw_strip(hx + 16, half - 76 - 34 * STRIP_ROWS, RW - 32);
-        {
-            /* the battle camera, played in the left view: the scene chosen
-             * with the arrows (Shift: ten moves), looping until Stop */
-            int px = hx + 16, py = half - 72, nw = 230, step = A.shift ? 10 : 1;
-            const char *nm = scene_name(A.scene);
-
-            px = text(px, py + 4, C_MUTED, "Play") + 10;
-            if (button(px, py, 30, 28, "<", 0)) {
-                A.scene = (A.scene - step + SCENE_COUNT) % SCENE_COUNT;
-                A.play_t0 = SDL_GetTicks();
-            }
-            ui_fill(&C, px + 36, py, nw, 28, 0x111318u, 255);
-            outline(px + 36, py, nw, 28, C_LINE);
-            text(px + 36 + (nw - text_w(nm)) / 2, py + 4, C_TEXT, "%s", nm);
-            if (button(px + 42 + nw, py, 30, 28, ">", 0)) {
-                A.scene = (A.scene + step) % SCENE_COUNT;
-                A.play_t0 = SDL_GetTicks();
-            }
-            px += 84 + nw;
-            if (button(px, py, 80, 28, A.play ? "Stop" : "Play", A.play)) {
-                A.play = !A.play;
-                A.play_t0 = SDL_GetTicks();
-                A.battle[0].dirty = 1;
-            }
-            px += 88;
-            if (A.scene >= 3 && button(px, py, 130, 28, A.foe_attacks ? "Foe attacks" : "Yours attacks", 0)) {
-                A.foe_attacks = !A.foe_attacks;
-                A.play_t0 = SDL_GetTicks();
-            }
-            px += 138;
-            if (button(px, py, 170, 28, "Preview in game", 0)) {
-                preview_in_game(0);
-            }
-            px += 178;
-            if (button(px, py, 130, 28, "Play battle", 0)) {
-                preview_in_game(1);
-            }
-        }
-    }
-    /* the field */
-    text(hx + 16, half + 10, C_TEXT, "Overworld");
-    {
-        int bx = hx + 150;
-
-        for (i = 0; i < 4; i++) {
-            int bw = text_w(k_seasons[i]) + 16;
-
-            if (button(bx, half + 6, bw, 28, k_seasons[i], A.season == i)) {
-                A.season = i;
-                A.need_place = 1;
-            }
-            bx += bw + 4;
-        }
-        bx += 12;
-        for (i = 0; i < 4; i++) {
-            int bw = text_w(k_hour_names[i]) + 16;
-
-            if (button(bx, half + 6, bw, 28, k_hour_names[i], A.hour == i)) {
-                A.hour = i;
-                A.need_place = 1;
-            }
-            bx += bw + 4;
-        }
-    }
-    fit_view(&A.over, hx + 8, half + head, RW - 16, A.H - half - head - 8);
-    if (button(hx + RW - 190, half + 6, 174, 28, "Field camera", 0)) {
-        A.ow_reset = 1;
-        A.need_place = 1;
-    }
-    ui_fill(&C, L, half, RW, 1, C_LINE, 255);
-
-    if (A.need_place && r != NULL) {
-        place_all();
-    }
-    /* the battle picture */
-    for (i = 0; A.have_placed && i < 2; i++) {
-        View3d *v = &A.battle[i];
-        const ClipFrame *cf = i == 0 ? play_frame() : NULL;
-        /* the Pokemon: the single battle's two, the double's four (ov094's
-         * slot tables) or where a played camera has them, all on the
-         * place's foe side (bmap_battle_warp) */
-        static const float dbl[4][3] = { { -1.69f, 0.4f, 6.38f }, { 2.5f, 0.4f, 7.62f },
-                                         { 2.43f, 0.4f, -10.38f }, { -2.2f, 0.4f, -11.56f } };
-        float p[16][3], d[16], sc[16];
-        const Sprite *sp[16];
-        int kind[16];                   /* 0 a Pokemon, 1 your trainer, 2 the foe's */
-        int n = 0, a, b;
-
-        if (cf != NULL) {
-            memcpy(v->eye, cf->eye, sizeof v->eye);
-            memcpy(v->at, cf->at, sizeof v->at);
-            v->dirty = 1;
-            for (a = 0; a < cf->np && n < 16; a++) {
-                int tr = cf->slot[a] > 7;
-
-                if (tr && (cf->slot[a] > 13 || (cf->slot[a] & 1 ? A.tr_foe.rgba : A.tr_own.rgba) == NULL)) {
-                    continue;
-                }
-                memcpy(p[n], cf->pos[a], sizeof p[n]);
-                kind[n] = tr ? 1 + (cf->slot[a] & 1) : 0;
-                sc[n] = slot_scale(cf->slot[a]);
-                sp[n++] = tr ? ((cf->slot[a] & 1) ? &A.tr_foe : &A.tr_own) : (cf->slot[a] & 1) ? &A.foe : &A.own;
-            }
-        } else {
-            memcpy(v->eye, k_cam[i][0], sizeof v->eye);
-            memcpy(v->at, k_cam[i][1], sizeof v->at);
+        memcpy(v->eye, k_cam[i][0], sizeof v->eye);
+        memcpy(v->at, k_cam[i][1], sizeof v->at);
+        if (!A.hide_mon) {
             if (A.doubles) {
                 for (a = 0; a < 4; a++) {
                     memcpy(p[n], dbl[a], sizeof p[n]);
@@ -2484,238 +1957,1130 @@ static void draw_right(int L)
                 /* a double's four stand in the order of its slots 2 to 5 */
                 sc[a] = A.doubles ? slot_scale(a == 0 ? 2 : a == 1 ? 4 : a == 2 ? 3 : 5) : slot_scale(a == 0 ? 1 : 0);
             }
-            if (A.show_tr) {
-                /* a trainer stands where its side's Pokemon would: the trainer
-                 * comes first in the battle (slot 8 yours, slot 9 the foe's) */
-                for (a = 1; a >= 0; a--) {
-                    const Sprite *t = a ? &A.tr_foe : &A.tr_own;
-                    const Sprite *mon = a ? &A.foe : &A.own;
-                    int m, at = n;
+        }
+        if (A.show_tr) {
+            /* the trainers at their own slots (8 yours, 9 the foe's), with
+             * the Pokemon unless those are hidden */
+            for (a = 1; a >= 0; a--) {
+                const Sprite *t = a ? &A.tr_foe : &A.tr_own;
 
-                    if (t->rgba == NULL || bcam_sim_slot(8 + a, p[n]) != 0) {
-                        continue;
-                    }
-                    for (m = 0; m < n; m++) {
-                        if (sp[m] == mon) {
-                            memmove(&p[m], &p[m + 1], (size_t)(n - m - 1) * sizeof p[0]);
-                            memmove(&sp[m], &sp[m + 1], (size_t)(n - m - 1) * sizeof sp[0]);
-                            memmove(&kind[m], &kind[m + 1], (size_t)(n - m - 1) * sizeof kind[0]);
-                            memmove(&sc[m], &sc[m + 1], (size_t)(n - m - 1) * sizeof sc[0]);
-                            n--;
-                            m--;
-                            at = n;
-                        }
-                    }
-                    if (bcam_sim_slot(8 + a, p[at]) == 0) {
-                        sp[at] = t;
-                        kind[at] = 1 + a;
-                        sc[at] = slot_scale(8 + a);
-                        n = at + 1;
-                    }
+                if (t->rgba != NULL && n < 16 && bcam_sim_slot(8 + a, p[n]) == 0) {
+                    sp[n] = t;
+                    kind[n] = 1 + a;
+                    sc[n] = slot_scale(8 + a);
+                    n++;
+                }
+            }
+            {
+                /* and where it comes back to mid-battle, when it has a line
+                 * there: effect 63's point (0.74, 0.4, -9) and its slide in
+                 * (to 4.24), the game's own numbers */
+                const BmapSpot *rr = cur();
+
+                if (rr != NULL && rr->kind == 'T' && A.tr_foe.rgba != NULL && n < 16
+                    && trainer_speaks_mid(rr->trainer_id)) {
+                    p[n][0] = 3021.0f / 4096.0f + 22528.0f / 4096.0f - 8192.0f / 4096.0f;
+                    p[n][1] = 1638.0f / 4096.0f;
+                    p[n][2] = -36864.0f / 4096.0f;
+                    sp[n] = &A.tr_foe;
+                    kind[n] = 2;
+                    sc[n] = slot_scale(9);
+                    n++;
                 }
             }
         }
-        for (a = 0; a < n; a++) {
-            bmap_battle_warp(p[a], A.placed.foe_dy, A.placed.foe_dz);
-            if (kind[a] != 0) {
-                /* the place's offset for this trainer: right, up, back */
-                const float *o = view_offsets(kind[a] == 2);
-
-                p[a][0] += o[0];
-                p[a][1] += o[1];
-                p[a][2] -= o[2];
-            }
-        }
-        bmap_battle_camera(v->eye, v->at, &A.placed);      /* as the game draws it */
-        v->fsin = BATTLE_FOV_SIN;
-        v->fcos = BATTLE_FOV_COS;
-        if (v->dirty) {
-            float p4[16][4];
-            int a4;
-
-            for (a4 = 0; a4 < n && a4 < 16; a4++) {
-                memcpy(p4[a4], p[a4], 3 * sizeof(float));
-                p4[a4][3] = kind[a4] == 0 ? 6.0f : (float)sp[a4]->h * SPRITE_U * sc[a4];   /* a Pokemon's box */
-            }
-            render_view(v, &A.placed, A.battle_gen, (const float (*)[4])p4, n);
-        }
-        if (v->rgba != NULL) {
-            blit_rgba(v->x, v->y, v->rgba, v->rw, v->rh, v->w, v->h);
-        }
-        /* the sprites, the farthest from the camera first */
-        for (a = 0; a < n; a++) {
-            float dx = p[a][0] - v->eye[0], dz = p[a][2] - v->eye[2];
-
-            d[a] = dx * dx + dz * dz;
-        }
-        for (a = 0; a < n; a++) {
-            int far = -1;
-
-            for (b = 0; b < n; b++) {
-                if (d[b] >= 0.0f && (far < 0 || d[b] > d[far])) {
-                    far = b;
-                }
-            }
-            draw_standing(v, sp[far]->rgba, sp[far]->w, sp[far]->h, p[far], (float)sp[far]->h * SPRITE_U * sc[far]);
-            d[far] = -1.0f;
-        }
-        /* the map standing in front of them, over the sprites (the game's
-         * second backdrop pass, plat_gl3d.c) */
-        if (v->front != NULL && n > 0) {
-            blit_rgba(v->x, v->y, v->front, v->rw, v->rh, v->w, v->h);
-        }
-        if (i == 1 || (i == 0 && cf == NULL)) {
-            text(v->x + 10, v->y + v->h - 26, 0xFFFFFFu, "Drag: turn, height   Right: slide, tilt   Wheel: zoom");
-        }
-        outline(v->x, v->y, v->w, v->h, C_LINE);
     }
-    /* the field picture: the overworld camera, moved freely */
+    for (a = 0; a < n; a++) {
+        bmap_battle_warp(p[a], A.placed.foe_dy, A.placed.foe_dz);
+        if (kind[a] != 0) {
+            /* the place's offset for this trainer: right, up, back */
+            const float *o = view_offsets(kind[a] == 2);
+
+            p[a][0] += o[0];
+            p[a][1] += o[1];
+            p[a][2] -= o[2];
+            if (kind[a] == 2 && cur()->trainer_size > 0.0f) {
+                sc[a] *= cur()->trainer_size;      /* "Indoor": the game's trainer height */
+            }
+        }
+    }
+    bmap_battle_camera(v->eye, v->at, &A.placed);      /* as the game draws it */
+    v->fsin = BATTLE_FOV_SIN;
+    v->fcos = BATTLE_FOV_COS;
+    if (v->dirty) {
+        float p4[16][4];
+        int a4;
+
+        for (a4 = 0; a4 < n && a4 < 16; a4++) {
+            memcpy(p4[a4], p[a4], 3 * sizeof(float));
+            p4[a4][3] = kind[a4] == 0 ? 6.0f : (float)sp[a4]->h * SPRITE_U * sc[a4];   /* a Pokemon's box */
+        }
+        render_view(v, &A.placed, A.battle_gen, (const float (*)[4])p4, n, 1);
+    }
+    if (v->rgba != NULL) {
+        blit_rgba(v->x, v->y, v->rgba, v->rw, v->rh, v->w, v->h);
+    }
+    /* the sprites, the farthest from the camera first */
+    for (a = 0; a < n; a++) {
+        float dx = p[a][0] - v->eye[0], dz = p[a][2] - v->eye[2];
+
+        d[a] = dx * dx + dz * dz;
+    }
+    for (a = 0; a < n; a++) {
+        int far = -1;
+
+        for (b = 0; b < n; b++) {
+            if (d[b] >= 0.0f && (far < 0 || d[b] > d[far])) {
+                far = b;
+            }
+        }
+        draw_standing(v, sp[far]->rgba, sp[far]->w, sp[far]->h, p[far], (float)sp[far]->h * SPRITE_U * sc[far]);
+        /* the map standing in front of this one, before the nearer ones
+         * (the game's second backdrop pass, plat_gl3d.c) */
+        if (far < v->nfronts && v->fronts[far] != NULL) {
+            blit_rgba(v->x, v->y, v->fronts[far], v->rw, v->rh, v->w, v->h);
+        }
+        d[far] = -1.0f;
+    }
+    if (cf == NULL) {
+        text(v->x + U(10), v->y + v->h - U(26), 0xFFFFFFu, "Drag: turn, height   Right: slide, tilt   Wheel: zoom");
+    }
+    outline(v->x, v->y, v->w, v->h, C_LINE);
+}
+
+/* The overworld view: the field camera, moved freely, the zone's
+ * characters, the player and the battle's two places. */
+static void draw_field_view(void)
+{
+    const BmapSpot *r = cur();
+    View3d *v = &A.over;
+    float p, yw, at[3], eye[3], sx, sy, unit, pt[3];
+
     if (A.ow_build) {
         build_field();
     }
-    if (A.have_field && r != NULL) {
-        View3d *v = &A.over;
-        float p = A.ow_pitch * 3.14159265f / 180.0f, yw = A.ow_yaw * 3.14159265f / 180.0f;
-        float at[3], eye[3];
-        float sx, sy, unit, pt[3];
+    if (!A.have_field || r == NULL) {
+        return;
+    }
+    p = A.ow_pitch * 3.14159265f / 180.0f;
+    yw = A.ow_yaw * 3.14159265f / 180.0f;
+    at[0] = A.ow_tx;
+    at[2] = A.ow_tz;
+    at[1] = bmap_ground_y(&A.obase, A.ow_tx, A.ow_tz) + A.ow_lift;
+    eye[0] = at[0] + A.ow_dist * cosf(p) * sinf(yw);
+    eye[1] = at[1] + A.ow_dist * sinf(p);
+    eye[2] = at[2] + A.ow_dist * cosf(p) * cosf(yw);
+    map_to_battle(&A.field, at[0], at[1], at[2], v->at);
+    map_to_battle(&A.field, eye[0], eye[1], eye[2], v->eye);
+    v->fsin = sinf(A.ow_fov * 3.14159265f / 180.0f);
+    v->fcos = cosf(A.ow_fov * 3.14159265f / 180.0f);
+    if (v->dirty) {
+        /* the characters standing in the view (the nearest the camera
+         * first): the map in front of each is drawn again over it, as in
+         * the battle views */
+        static float all[257][4], dd[257];
+        float sp[G3D_BACKDROP_SPRITES][4];
+        int na = 0, ns, a2, b2;
 
-        at[0] = A.ow_tx;
-        at[2] = A.ow_tz;
-        at[1] = bmap_ground_y(&A.obase, A.ow_tx, A.ow_tz) + A.ow_lift;
-        eye[0] = at[0] + A.ow_dist * cosf(p) * sinf(yw);
-        eye[1] = at[1] + A.ow_dist * sinf(p);
-        eye[2] = at[2] + A.ow_dist * cosf(p) * cosf(yw);
-        map_to_battle(&A.field, at[0], at[1], at[2], v->at);
-        map_to_battle(&A.field, eye[0], eye[1], eye[2], v->eye);
-        v->fsin = sinf(A.ow_fov * 3.14159265f / 180.0f);
-        v->fcos = cosf(A.ow_fov * 3.14159265f / 180.0f);
-        if (v->dirty) {
-            /* the characters standing in the view (the nearest the camera
-             * first): the map in front of each is drawn again over it, as
-             * in the battle views */
-            static float all[257][4], dd[257];
-            float sp[G3D_BACKDROP_SPRITES][4];
-            int na = 0, ns, a2, b2;
+        for (a2 = -1; a2 < A.nnpc && na < 257; a2++) {
+            float q[4], d0, d1, d2;
 
-            for (a2 = -1; a2 < A.nnpc && na < 257; a2++) {
-                float q[4], d0, d1, d2;
+            if (a2 < 0) {
+                map_to_battle(&A.field, A.tx, bmap_ground_y(&A.obase, A.tx, A.tz), A.tz, q);
+                q[3] = A.hero_h * A.field.place_k;
+            } else {
+                if (A.npc_zone != r->zone || A.npcs[a2].rgba == NULL) {
+                    continue;
+                }
+                map_to_battle(&A.field, A.npcs[a2].x, A.npcs[a2].y, A.npcs[a2].z, q);
+                q[3] = A.npcs[a2].world_h * A.field.place_k;
+            }
+            if (q[3] <= 0.0f) {
+                continue;
+            }
+            d0 = q[0] - v->eye[0];
+            d1 = q[1] - v->eye[1];
+            d2 = q[2] - v->eye[2];
+            memcpy(all[na], q, sizeof q);
+            dd[na++] = d0 * d0 + d1 * d1 + d2 * d2;
+        }
+        for (a2 = 1; a2 < na; a2++) {               /* nearest first */
+            for (b2 = a2; b2 > 0 && dd[b2] < dd[b2 - 1]; b2--) {
+                float tq[4], td = dd[b2];
 
-                if (a2 < 0) {
-                    map_to_battle(&A.field, A.tx, bmap_ground_y(&A.obase, A.tx, A.tz), A.tz, q);
-                    q[3] = A.hero_h * A.field.place_k;
+                memcpy(tq, all[b2], sizeof tq);
+                memcpy(all[b2], all[b2 - 1], sizeof tq);
+                memcpy(all[b2 - 1], tq, sizeof tq);
+                dd[b2] = dd[b2 - 1];
+                dd[b2 - 1] = td;
+            }
+        }
+        ns = na < G3D_BACKDROP_SPRITES ? na : G3D_BACKDROP_SPRITES;
+        memcpy(sp, all, (size_t)ns * sizeof sp[0]);
+        render_view(v, &A.field, A.field_gen, (const float (*)[4])sp, ns, 0);
+    }
+    if (v->rgba != NULL) {
+        blit_rgba(v->x, v->y, v->rgba, v->rw, v->rh, v->w, v->h);
+    }
+    /* the zone's NPCs, the farthest first, as the field draws them */
+    if (A.nnpc > 0 && A.npc_zone == r->zone) {
+        int order[256], n = 0, a, b;
+        float dist[256];
+
+        for (a = 0; a < A.nnpc && n < 256; a++) {
+            float d0, d1;
+
+            if (A.npcs[a].rgba == NULL) {
+                continue;
+            }
+            map_to_battle(&A.field, A.npcs[a].x, A.npcs[a].y, A.npcs[a].z, pt);
+            d0 = pt[0] - v->eye[0];
+            d1 = pt[2] - v->eye[2];
+            dist[n] = d0 * d0 + d1 * d1;
+            order[n++] = a;
+        }
+        for (a = 1; a < n; a++) {           /* farthest first */
+            for (b = a; b > 0 && dist[b] > dist[b - 1]; b--) {
+                float td = dist[b];
+                int to = order[b];
+
+                dist[b] = dist[b - 1];
+                order[b] = order[b - 1];
+                dist[b - 1] = td;
+                order[b - 1] = to;
+            }
+        }
+        for (a = 0; a < n; a++) {
+            const BmapNpc *np = &A.npcs[order[a]];
+
+            map_to_battle(&A.field, np->x, np->y, np->z, pt);
+            draw_standing(v, np->rgba, np->w, np->h, pt, np->world_h * A.field.place_k);
+        }
+    }
+    /* the player, the trainer, the battle's two places */
+    map_to_battle(&A.field, A.tx, bmap_ground_y(&A.obase, A.tx, A.tz), A.tz, pt);
+    {
+        /* the player, facing the way the test player faces */
+        int f = ((A.tf % 360 + 360) % 360 + 45) / 90 % 4;      /* 0 north, 1 west, 2 south, 3 east */
+        static const int to_dir[4] = { 0, 2, 1, 3 };          /* up, left, down, right */
+        const Sprite *h = &A.hero[to_dir[f]];
+
+        if (h->rgba != NULL) {
+            draw_standing(v, h->rgba, h->w, h->h, pt, A.hero_h * A.field.place_k);
+        } else if (project(v, pt, &sx, &sy, &unit)) {
+            ring(sx, sy, 8.0f, C_TEXT);
+        }
+    }
+    if (v->front != NULL) {
+        blit_rgba(v->x, v->y, v->front, v->rw, v->rh, v->w, v->h);    /* the map in front of them */
+    }
+    if (r->kind == 'T') {
+        map_to_battle(&A.field, (float)r->tx * 16.0f + 8.0f,
+                      bmap_ground_y(&A.obase, (float)r->tx * 16.0f + 8.0f, (float)r->tz * 16.0f + 8.0f),
+                      (float)r->tz * 16.0f + 8.0f, pt);
+        if (project(v, pt, &sx, &sy, &unit)) {
+            ring(sx, sy, 8.0f, C_FOE);
+        }
+    }
+    if (A.have_placed) {
+        float ax, az;
+
+        battle_point_map(OWN_X, OWN_Z, &ax, &az);
+        map_to_battle(&A.field, ax, A.placed.place_g[0], az, pt);
+        if (project(v, pt, &sx, &sy, &unit)) {
+            ring(sx, sy, 6.0f, C_OWN);
+        }
+        battle_point_map(FOE_X, FOE_Z - A.placed.foe_dz, &ax, &az);
+        map_to_battle(&A.field, ax, A.placed.place_g[1], az, pt);
+        if (project(v, pt, &sx, &sy, &unit)) {
+            ring(sx, sy, 6.0f, C_FOE);
+        }
+    }
+    outline(v->x, v->y, v->w, v->h, C_LINE);
+    text(v->x + U(10), v->y + v->h - U(26), 0xFFFFFFu, "Drag: move   Right drag: turn   Wheel: zoom");
+}
+
+/* ------------------------------------------------------------------ */
+/* The layout                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The window:
+ *
+ *   top      the place, Single / Double, what happened last, Checked, Undo,
+ *            Preview, Play battle
+ *   left     the places: search, filters, how far the checking is, the list
+ *   centre   one view at a time (Command camera, Intro camera, Overworld);
+ *            under a battle view the play bar: the scene (Intro, Mid-battle,
+ *            Idle, a move), Play and a timeline
+ *   right    the inspector, scrolled by the wheel: Placement, Camera (of the
+ *            view on show), Views, Trainers, Pokemon shown, More, the map
+ *            from above
+ */
+
+enum { TAB_COMMAND, TAB_INTRO, TAB_FIELD };
+static const char *k_tabs[3] = { "Command camera", "Intro camera", "Overworld" };
+
+#define TOP_H     U(60)
+#define SL_ROW    U(52)               /* a slider's height: its label line and track */
+#define DRAG_SLIDER 20              /* A.drag while a slider is dragged (A.drag_id which) */
+
+static int chip_w(const char *label)
+{
+    return text_w(label) + U(22);
+}
+
+/* A button sized to its label. */
+static int chip(int x, int y, const char *label, int on)
+{
+    return button(x, y, chip_w(label), U(30), label, on);
+}
+
+/* `s` cut to `w` pixels, "..." marking the cut. */
+static void clip_label(char *s, int w)
+{
+    while (text_w(s) > w && strlen(s) > 4) {
+        s[strlen(s) - 4] = '\0';
+        strcat(s, "...");
+    }
+}
+
+/* A section heading across the inspector; returns the y under it. */
+static int section(int x, int y, int w, const char *title)
+{
+    text(x, y, C_ACCENT, "%s", title);
+    ui_fill(&C, x, y + U(24), w, 1, C_LINE, 255);
+    return y + U(36);
+}
+
+/*
+ * A setting as a slider: the label, the value (a click types it) and a
+ * track from lo to hi under them.  A press on the track sets it there and a
+ * drag moves it, in steps of `step`; a typed value may pass the ends.
+ * `wrap` keeps degrees in -180 .. 180.  Returns 1 when *v changed.
+ */
+static int slider(int id, int x, int y, int w, const char *label, const char *fmt, float *v, float lo, float hi,
+                  float step, int wrap)
+{
+    char shown[24];
+    float typed, nv = *v, frac;
+    int changed = 0, ty = y + U(32), kx, on = A.drag == DRAG_SLIDER && A.drag_id == id;
+
+    snprintf(shown, sizeof shown, fmt, (double)*v);
+    text(x, y, C_MUTED, "%s", label);
+    if (num_field(id, x + w - text_w(shown) - U(4), y, "", shown, &typed)) {
+        nv = typed;
+        changed = 1;
+    }
+    frac = hi > lo ? (clampf(*v, lo, hi) - lo) / (hi - lo) : 0.0f;
+    kx = x + (int)(frac * (float)w);
+    ui_fill(&C, x, ty, w, U(4), C_PANEL2, 255);
+    ui_fill(&C, x, ty, kx - x, U(4), C_ACCENT, 255);
+    ui_ellipse(&C, kx - U(7), ty - U(5), U(14), U(14), on || hover(x - U(6), ty - U(10), w + U(12), U(24)) ? C_ACCENT : 0xC9CDD5u, UI_NONE,
+               255);
+    if (A.drag == 0 && A.pressed && hover(x - U(6), ty - U(10), w + U(12), U(24))) {
+        A.drag = DRAG_SLIDER;
+        A.drag_id = id;
+        A.drag_undo = 0;
+        on = 1;
+    }
+    if (on && A.down) {
+        nv = lo + clampf((float)(A.mx - x) / (float)(w > 0 ? w : 1), 0.0f, 1.0f) * (hi - lo);
+        nv = roundf(nv / step) * step;
+        changed = 1;
+    }
+    if (!changed) {
+        return 0;
+    }
+    if (wrap) {
+        nv = fmodf(nv, 360.0f);
+        nv = nv > 180.0f ? nv - 360.0f : nv <= -180.0f ? nv + 360.0f : nv;
+    }
+    if (nv == *v) {
+        return 0;
+    }
+    *v = nv;
+    return 1;
+}
+
+/* A change from a slider to the place: kept for Undo once a drag, saved
+ * when the drag ends (slider_release), else at once. */
+static void slider_changed(void)
+{
+    if (A.drag == DRAG_SLIDER) {
+        if (!A.drag_undo) {
+            remember();
+            A.drag_undo = 1;
+        }
+        A.drag_dirty = 1;
+    }
+}
+
+static void slider_release(void)
+{
+    if (A.drag == DRAG_SLIDER && !A.down) {
+        A.drag = 0;
+        if (A.drag_dirty) {
+            A.drag_dirty = 0;
+            save_now();
+        }
+    }
+}
+
+/* A slider for a camera or trainer setting of the place; the views follow
+ * it live while it is dragged. */
+static void setting(int id, int x, int y, int w, const char *label, const char *fmt, float *v, float lo, float hi,
+                    float step, int wrap)
+{
+    float nv = *v;
+
+    if (!slider(id, x, y, w, label, fmt, &nv, lo, hi, step, wrap)) {
+        return;
+    }
+    if (A.drag == DRAG_SLIDER) {
+        slider_changed();
+        *v = nv;
+        intro_live(cur());
+    } else {
+        remember();
+        *v = nv;
+        save_now();
+    }
+}
+
+/* ---- the top bar ---- */
+
+static void draw_top(int LW, int IW)
+{
+    BmapSpot *r = cur();
+    int rx = A.W - U(16), x = LW, i;
+
+    ui_fill(&C, 0, 0, A.W, TOP_H, C_PANEL, 255);
+    ui_fill(&C, 0, TOP_H - 1, A.W, 1, C_LINE, 255);
+    if (r != NULL) {
+        char lab[96], kind[64];
+
+        snprintf(lab, sizeof lab, "%s", r->label);
+        clip_label(lab, LW - U(32));
+        text(U(16), U(7), C_TEXT, "%s", lab);
+        snprintf(kind, sizeof kind, "%s %s, zone %u", r->kind == 'T' ? "Trainer" : "Wild", r->id, r->zone);
+        clip_label(kind, LW - U(32));
+        text(U(16), U(31), C_MUTED, "%s", kind);
+    }
+    /* the battle shown: one Pokemon a side, or two */
+    if (button(x, U(15), U(100), U(30), "Single", !A.doubles)) {
+        A.doubles = 0;
+        A.battle[0].dirty = A.battle[1].dirty = 1;
+    }
+    if (button(x + U(104), U(15), U(100), U(30), "Double", A.doubles)) {
+        A.doubles = 1;
+        A.battle[0].dirty = A.battle[1].dirty = 1;
+    }
+    x += U(224);
+    /* the actions, from the right */
+    rx -= chip_w("Stop preview");
+    if (A.emb != NULL) {
+        if (chip(rx, U(15), "Stop preview", 1)) {
+            preview_stop();
+        }
+    } else if (r != NULL && button(rx, U(15), chip_w("Stop preview"), U(30), "Preview", 0)) {
+        preview_in_game(1);
+    }
+    rx -= chip_w("Undo") + U(8);
+    if (chip(rx, U(15), "Undo", 0)) {
+        undo();
+    }
+    if (r != NULL) {
+        BmapSpot *b = bmap_spots_get(first_view(A.row));
+        const char *lab = b->ok ? "Checked" : "Mark checked";
+
+        rx -= chip_w("Mark checked") + U(8);
+        if (button(rx, U(15), chip_w("Mark checked"), U(30), lab, b->ok)) {
+            b->ok = !b->ok;
+            save_now();
+            refilter();
+        }
+    }
+    /* what happened last */
+    if (A.status[0] != '\0' && SDL_GetTicks() - A.status_at < 4000) {
+        char st[160];
+
+        snprintf(st, sizeof st, "%s", A.status);
+        clip_label(st, rx - U(20) - x);
+        if (rx - U(20) - x > U(60)) {
+            text(x, U(19), C_GOOD, "%s", st);
+        }
+    }
+    (void)IW;
+    (void)i;
+}
+
+/* ---- the map from above ---- */
+
+/* The map at (x, y), w across, as tall as `room` lets it (hidden under 160
+ * pixels: scroll to it), with its key under it.  Returns the y under all. */
+static int top_view(int x, int y, int w, int room)
+{
+    int kx = x;
+
+    A.map_x = x;
+    A.map_y = y;
+    A.map_s = room < w ? room : w;
+    if (A.map_s < 160 || A.map_y < TOP_H) {
+        A.map_s = 0;
+    } else {
+        draw_map();
+        if (!A.follow && button(x + A.map_s - U(92), y + U(6), U(86), U(26), "Center", 0)) {
+            A.follow = 1;
+        }
+    }
+    y += w + U(10);
+    /* the key, and the mouse on the map */
+    ring((float)kx + 7.0f, (float)y + 10.0f, 6.0f, C_OWN);
+    kx = text(kx + U(18), y, C_MUTED, "Yours") + U(14);
+    ring((float)kx + 7.0f, (float)y + 10.0f, 6.0f, C_FOE);
+    kx = text(kx + U(18), y, C_MUTED, "Foe") + U(14);
+    ui_ellipse(&C, kx + 1, y + U(4), U(11), U(11), C_CAM, UI_INK, 255);
+    kx = text(kx + U(18), y, C_MUTED, "Camera") + U(14);
+    ui_ellipse(&C, kx + 1, y + U(4), U(11), U(11), C_TEXT, UI_INK, 255);
+    text(kx + U(18), y, C_MUTED, "Player");
+    y += U(26);
+    text(x, y, C_MUTED, "Drag: move  Right: turn");
+    y += U(26);
+    text(x, y, C_MUTED, "Shift drag: safe area");
+    y += U(26);
+    text(x, y, C_MUTED, "Wheel: zoom  Middle: pan");
+    return y + U(30);
+}
+
+/* the height top_view takes, w across */
+static int top_view_h(int w)
+{
+    return w + U(10) + 3 * U(26) + U(30);
+}
+
+/* ---- the places ---- */
+
+static void draw_places(int x0, int y0, int w0, int h0)
+{
+    int x = x0 + U(12), y = y0 + U(12), w = w0 - U(24), i, rows, list_y, list_h, row_h = U(30), done = 0, n = 0;
+
+    ui_fill(&C, x0, y0, w0, h0, C_PANEL, 255);
+    ui_fill(&C, x0 + w0 - 1, y0, 1, h0, C_LINE, 255);
+    for (i = 0; i < bmap_spots_count(); i++) {
+        const BmapSpot *q = bmap_spots_get(i);
+
+        n += q->view == 0;
+        done += q->view == 0 && q->ok;
+    }
+    /* the search: typing anywhere goes to it, Esc clears it */
+    ui_fill(&C, x, y, w, U(34), 0x111318u, 255);
+    outline(x, y, w, U(34), A.search[0] != '\0' ? C_ACCENT : C_LINE);
+    if (A.search[0] != '\0') {
+        text(x + U(10), y + U(7), C_TEXT, "%s_", A.search);
+    } else {
+        text(x + U(10), y + U(7), C_MUTED, "Type to search");
+    }
+    text(x + w - U(10) - text_w("000"), y + U(7), C_MUTED, "%d", A.nvis);
+    y += U(44);
+    /* the filters, wrapping */
+    {
+        int fx = x;
+
+        for (i = 0; i < F_COUNT; i++) {
+            int bw = chip_w(k_filters[i]);
+
+            if (fx + bw > x + w) {
+                fx = x;
+                y += U(36);
+            }
+            if (chip(fx, y, k_filters[i], A.filter == i)) {
+                A.filter = i;
+                A.scroll = 0;
+                refilter();
+            }
+            fx += bw + U(6);
+        }
+        y += U(44);
+    }
+    /* how far the checking is */
+    text(x, y, C_MUTED, "%d of %d checked", done, n);
+    y += U(26);
+    ui_fill(&C, x, y, w, U(4), C_PANEL2, 255);
+    ui_fill(&C, x, y, n > 0 ? w * done / n : 0, U(4), C_GOOD, 255);
+    y += U(14);
+    /* the list, to the bottom (or to the map, on a big window) */
+    list_y = y;
+    rows = (y0 + h0 - U(8) - (A.map_left ? top_view_h(w) + U(12) : 0) - list_y) / row_h;
+    if (rows < 3) {
+        rows = 3;
+    }
+    list_h = rows * row_h;
+    if (hover(x, list_y, w, list_h) && A.wheel != 0) {
+        A.scroll -= A.wheel * 3;
+    }
+    if (A.scroll > A.nvis - rows) {
+        A.scroll = A.nvis - rows;
+    }
+    if (A.scroll < 0) {
+        A.scroll = 0;
+    }
+    for (i = 0; i < rows && A.scroll + i < A.nvis; i++) {
+        int ri = A.vis[A.scroll + i], ry = list_y + i * row_h;
+        const BmapSpot *q = bmap_spots_get(ri);
+        int sel = ri == first_view(A.row), hv = hover(x, ry, w, row_h);
+        u32 dot = q->ok ? C_GOOD : changed_row(q) ? C_ACCENT : 0x4A4F5Bu;
+        char lab[96];
+
+        if (sel || hv) {
+            ui_fill(&C, x - U(4), ry, w + U(8), row_h - 2, sel ? 0x2C3A55u : 0x22262Eu, 255);
+        }
+        ui_ellipse(&C, x + U(4), ry + U(10), U(9), U(9), dot, UI_NONE, 255);
+        snprintf(lab, sizeof lab, "%s", q->label);
+        clip_label(lab, w - U(30));
+        text(x + U(22), ry + U(4), sel ? C_TEXT : 0xC9CDD5u, "%s", lab);
+        if (hv && A.released && A.drag == 0) {
+            select_row(ri);
+        }
+    }
+    if (A.nvis > rows) {
+        int bh = list_h * rows / A.nvis, by = list_y + (list_h - bh) * A.scroll / (A.nvis - rows);
+
+        ui_fill(&C, x + w + U(6), by, U(3), bh, C_LINE, 255);
+    }
+    if (A.map_left) {
+        top_view(x, y0 + h0 - top_view_h(w), w, w);
+    }
+}
+
+/* ---- the centre: the view and the play bar ---- */
+
+/* The play bar's height: two rows, three when the move picker needs its own. */
+static int play_h(int w0)
+{
+    return w0 >= U(900) ? U(104) : U(144);
+}
+
+/* The scene buttons, Play and the timeline under a battle view. */
+static void draw_play_bar(int x0, int y0, int w0)
+{
+    static const char *k_kinds[4] = { "Intro", "Mid-battle", "Idle", "Move" };
+    int x = x0 + U(14), y = y0 + U(12), kind, k, step = A.shift ? 10 : 1;
+
+    ui_fill(&C, x0, y0, w0, play_h(w0), C_PANEL, 255);
+    /* the scene: the place's intro (wild or trainer), a trainer back mid-
+     * battle, the idle drift or a move */
+    kind = A.scene <= 1 ? 0 : A.scene == SCENE_MID ? 1 : A.scene == 2 ? 2 : 3;
+    for (k = 0; k < 4; k++) {
+        if (chip(x, y, k_kinds[k], kind == k)) {
+            const BmapSpot *r = cur();
+
+            A.scene = k == 0 ? (r != NULL && r->kind == 'T' ? 1 : 0) : k == 1 ? SCENE_MID : k == 2 ? 2
+                    : A.last_move >= 3 && A.last_move < SCENE_COUNT ? A.last_move : 3;
+            A.play = 1;
+            A.play_t0 = SDL_GetTicks();
+            A.battle[0].dirty = A.battle[1].dirty = 1;
+            kind = k;
+        }
+        x += chip_w(k_kinds[k]) + U(6);
+    }
+    if (play_h(w0) > U(104)) {
+        x = x0 + U(14);
+        y += U(40);
+    } else {
+        x += U(18);
+    }
+    if (kind == 3) {
+        /* the move: the arrows (Shift: ten moves), who uses it */
+        const char *nm = scene_name(A.scene);
+        int nw = U(240);
+
+        if (button(x, y, U(30), U(30), "<", 0)) {
+            A.scene = A.scene - step < 3 ? SCENE_COUNT - 1 : A.scene - step;
+            A.last_move = A.scene;
+            A.play_t0 = SDL_GetTicks();
+        }
+        ui_fill(&C, x + U(34), y, nw, U(30), 0x111318u, 255);
+        outline(x + U(34), y, nw, U(30), C_LINE);
+        text(x + U(34) + (nw - text_w(nm)) / 2, y + U(5), C_TEXT, "%s", nm);
+        if (button(x + U(38) + nw, y, U(30), U(30), ">", 0)) {
+            A.scene = A.scene + step >= SCENE_COUNT ? 3 : A.scene + step;
+            A.last_move = A.scene;
+            A.play_t0 = SDL_GetTicks();
+        }
+        x += U(80) + nw;
+        if (button(x, y, chip_w("Yours attacks"), U(30), A.foe_attacks ? "Foe attacks" : "Yours attacks", 0)) {
+            A.foe_attacks = !A.foe_attacks;
+            A.play_t0 = SDL_GetTicks();
+        }
+    }
+    /* Play, the timeline */
+    y = y0 + play_h(w0) - U(52);
+    if (button(x0 + U(14), y, U(80), U(40), A.play ? "Stop" : "Play", A.play)) {
+        A.play = !A.play;
+        A.play_t0 = SDL_GetTicks();
+        A.battle[0].dirty = A.battle[1].dirty = 1;
+    }
+    {
+        int tx0 = x0 + U(112), tx1 = x0 + w0 - U(24) - text_w("000 / 000"), at = 0, n = 0;
+
+        if (A.play) {
+            scene_frames();
+            n = A.nsim;
+        }
+        if (n > 0) {
+            at = A.play_at >= 0 ? A.play_at % n : (int)((SDL_GetTicks() - A.play_t0) * 60u / 1000u) % n;
+        }
+        ui_fill(&C, tx0, y + U(18), tx1 - tx0, U(4), C_PANEL2, 255);
+        if (n > 1) {
+            int kx = tx0 + (tx1 - tx0) * at / (n - 1);
+
+            ui_fill(&C, tx0, y + U(18), kx - tx0, U(4), C_ACCENT, 255);
+            ui_ellipse(&C, kx - U(7), y + U(13), U(14), U(14), C_ACCENT, UI_NONE, 255);
+        }
+        /* a press or a drag on the timeline: play on from that frame */
+        if (n > 1 && A.down && A.drag == 0 && A.play_at < 0 && hover(tx0 - U(6), y, tx1 - tx0 + U(12), U(40))) {
+            int f = (int)((float)(A.mx - tx0) / (float)(tx1 - tx0) * (float)(n - 1) + 0.5f);
+
+            f = f < 0 ? 0 : f >= n ? n - 1 : f;
+            A.play_t0 = SDL_GetTicks() - (Uint32)f * 1000u / 60u;
+        }
+        if (n > 0) {
+            text(tx1 + U(12), y + U(9), C_MUTED, "%d / %d", at + 1, n);
+        } else {
+            text(tx1 + U(12), y + U(9), C_MUTED, "%s", A.play ? "none" : "");
+        }
+    }
+}
+
+static void draw_centre(int x0, int y0, int w0, int h0)
+{
+    int x = x0 + U(14), y = y0 + U(12), i, ph = play_h(w0);
+
+    trainer_refresh();
+    ui_fill(&C, x0, y0, w0, h0, C_BG, 255);
+    for (i = 0; i < 3; i++) {
+        if (chip(x, y, k_tabs[i], A.tab == i)) {
+            A.tab = i;
+            A.battle[0].dirty = A.battle[1].dirty = A.over.dirty = 1;
+        }
+        x += chip_w(k_tabs[i]) + U(6);
+    }
+    if (A.tab == TAB_FIELD) {
+        /* the season and the time of day it shows, while they fit */
+        x += U(12);
+        for (i = 0; i < 8; i++) {
+            const char *lab = i < 4 ? k_seasons[i] : k_hour_names[i - 4];
+            int on = i < 4 ? A.season == i : A.hour == i - 4;
+
+            if (x + chip_w(lab) > x0 + w0 - U(14)) {
+                break;
+            }
+            if (chip(x, y, lab, on)) {
+                if (i < 4) {
+                    A.season = i;
                 } else {
-                    if (A.npc_zone != r->zone || A.npcs[a2].rgba == NULL) {
-                        continue;
-                    }
-                    map_to_battle(&A.field, A.npcs[a2].x, A.npcs[a2].y, A.npcs[a2].z, q);
-                    q[3] = A.npcs[a2].world_h * A.field.place_k;
+                    A.hour = i - 4;
                 }
-                if (q[3] <= 0.0f) {
-                    continue;
-                }
-                d0 = q[0] - v->eye[0];
-                d1 = q[1] - v->eye[1];
-                d2 = q[2] - v->eye[2];
-                memcpy(all[na], q, sizeof q);
-                dd[na++] = d0 * d0 + d1 * d1 + d2 * d2;
+                A.need_place = 1;
             }
-            for (a2 = 1; a2 < na; a2++) {               /* nearest first */
-                for (b2 = a2; b2 > 0 && dd[b2] < dd[b2 - 1]; b2--) {
-                    float tq[4], td = dd[b2];
-
-                    memcpy(tq, all[b2], sizeof tq);
-                    memcpy(all[b2], all[b2 - 1], sizeof tq);
-                    memcpy(all[b2 - 1], tq, sizeof tq);
-                    dd[b2] = dd[b2 - 1];
-                    dd[b2 - 1] = td;
-                }
-            }
-            ns = na < G3D_BACKDROP_SPRITES ? na : G3D_BACKDROP_SPRITES;
-            memcpy(sp, all, (size_t)ns * sizeof sp[0]);
-            render_view(v, &A.field, A.field_gen, (const float (*)[4])sp, ns);
+            x += chip_w(lab) + (i == 3 ? U(16) : U(4));
         }
-        if (v->rgba != NULL) {
-            blit_rgba(v->x, v->y, v->rgba, v->rw, v->rh, v->w, v->h);
+    }
+    y += U(42);
+    /* only the view on show takes the mouse: the others have no place */
+    for (i = 0; i < 2; i++) {
+        if (A.tab != i) {
+            A.battle[i].w = A.battle[i].h = 0;
         }
-        /* the zone's NPCs, the farthest first, as the field draws them */
-        if (A.nnpc > 0 && A.npc_zone == r->zone) {
-            int order[256], n = 0, a, b;
-            float dist[256];
-
-            for (a = 0; a < A.nnpc && n < 256; a++) {
-                float d0, d1;
-
-                if (A.npcs[a].rgba == NULL) {
-                    continue;
-                }
-                map_to_battle(&A.field, A.npcs[a].x, A.npcs[a].y, A.npcs[a].z, pt);
-                d0 = pt[0] - v->eye[0];
-                d1 = pt[2] - v->eye[2];
-                dist[n] = d0 * d0 + d1 * d1;
-                order[n++] = a;
-            }
-            for (a = 1; a < n; a++) {           /* farthest first */
-                for (b = a; b > 0 && dist[b] > dist[b - 1]; b--) {
-                    float td = dist[b];
-                    int to = order[b];
-
-                    dist[b] = dist[b - 1];
-                    order[b] = order[b - 1];
-                    dist[b - 1] = td;
-                    order[b - 1] = to;
-                }
-            }
-            for (a = 0; a < n; a++) {
-                const BmapNpc *np = &A.npcs[order[a]];
-
-                map_to_battle(&A.field, np->x, np->y, np->z, pt);
-                draw_standing(v, np->rgba, np->w, np->h, pt, np->world_h * A.field.place_k);
-            }
+    }
+    if (A.tab != TAB_FIELD) {
+        A.over.w = A.over.h = 0;
+        fit_view(&A.battle[A.tab], x0 + U(14), y, w0 - U(28), y0 + h0 - ph - U(12) - y);
+    } else {
+        fit_view(&A.over, x0 + U(14), y, w0 - U(28), y0 + h0 - U(56) - y);
+    }
+    if (A.need_place && cur() != NULL) {
+        place_all();
+    }
+    if (A.emb != NULL) {
+        /* the game, played here: the whole middle under the tabs */
+        A.battle[0].w = A.battle[0].h = A.battle[1].w = A.battle[1].h = A.over.w = A.over.h = 0;
+        draw_embed(x0 + U(14), y, w0 - U(28), y0 + h0 - U(12) - y);
+    } else if (A.tab == TAB_FIELD) {
+        draw_field_view();
+        if (button(x0 + U(14), y0 + h0 - U(44), chip_w("Field camera"), U(30), "Field camera", 0)) {
+            A.ow_reset = 1;
+            A.need_place = 1;
         }
-        /* the player, the trainer, the battle's two places */
-        map_to_battle(&A.field, A.tx, bmap_ground_y(&A.obase, A.tx, A.tz), A.tz, pt);
-        {
-            /* the player, facing the way the test player faces */
-            int f = ((A.tf % 360 + 360) % 360 + 45) / 90 % 4;      /* 0 north, 1 west, 2 south, 3 east */
-            static const int to_dir[4] = { 0, 2, 1, 3 };          /* up, left, down, right */
-            const Sprite *h = &A.hero[to_dir[f]];
-
-            if (h->rgba != NULL) {
-                draw_standing(v, h->rgba, h->w, h->h, pt, A.hero_h * A.field.place_k);
-            } else if (project(v, pt, &sx, &sy, &unit)) {
-                ring(sx, sy, 8.0f, C_TEXT);
-            }
-        }
-        if (v->front != NULL) {
-            blit_rgba(v->x, v->y, v->front, v->rw, v->rh, v->w, v->h);    /* the map in front of them */
-        }
-        if (r->kind == 'T') {
-            map_to_battle(&A.field, (float)r->tx * 16.0f + 8.0f,
-                          bmap_ground_y(&A.obase, (float)r->tx * 16.0f + 8.0f, (float)r->tz * 16.0f + 8.0f),
-                          (float)r->tz * 16.0f + 8.0f, pt);
-            if (project(v, pt, &sx, &sy, &unit)) {
-                ring(sx, sy, 8.0f, C_FOE);
-            }
-        }
-        if (A.have_placed) {
-            float ax, az;
-
-            battle_point_map(OWN_X, OWN_Z, &ax, &az);
-            map_to_battle(&A.field, ax, A.placed.place_g[0], az, pt);
-            if (project(v, pt, &sx, &sy, &unit)) {
-                ring(sx, sy, 6.0f, C_OWN);
-            }
-            battle_point_map(FOE_X, FOE_Z - A.placed.foe_dz, &ax, &az);
-            map_to_battle(&A.field, ax, A.placed.place_g[1], az, pt);
-            if (project(v, pt, &sx, &sy, &unit)) {
-                ring(sx, sy, 6.0f, C_FOE);
-            }
-        }
-        outline(v->x, v->y, v->w, v->h, C_LINE);
-        text(v->x + 10, v->y + v->h - 26, 0xFFFFFFu, "Drag: move   Right drag: turn   Wheel: zoom");
+    } else {
+        draw_battle_view(A.tab);
+        draw_play_bar(x0, y0 + h0 - ph, w0);
     }
     if (!A.have_base) {
-        text(hx + 24, head + 24, C_MUTED, "Loading...");
+        text(x0 + U(24), y + U(24), C_MUTED, "Loading...");
+    }
+}
+
+/* ---- the inspector ---- */
+
+static void draw_inspector(int x0, int y0, int w0, int h0)
+{
+    BmapSpot *r = cur();
+    int x = x0 + U(18), w = w0 - U(44), half = (w - U(20)) / 2, third = (w - U(32)) / 3, i, y, top, keep_mx = A.mx;
+
+    ui_fill(&C, x0, y0, w0, h0, C_PANEL, 255);
+    ui_fill(&C, x0, y0, 1, h0, C_LINE, 255);
+    if (r == NULL) {
+        return;
+    }
+    /* the wheel scrolls it (not over the map, where it zooms) */
+    if (A.wheel != 0 && A.drag == 0 && hover(x0, y0, w0, h0) && !hover(A.map_x, A.map_y, A.map_s, A.map_s)) {
+        A.insp_scroll -= A.wheel * U(60);
+    }
+    if (A.insp_scroll > A.insp_h - h0) {
+        A.insp_scroll = A.insp_h - h0;
+    }
+    if (A.insp_scroll < 0) {
+        A.insp_scroll = 0;
+    }
+    /* scrolled under the top bar, its controls take no clicks */
+    if (A.drag == 0 && !hover(x0, y0, w0, h0)) {
+        A.mx = -10000;
+    }
+    top = y0 + U(16) - A.insp_scroll;
+    y = top;
+    /* Placement */
+    y = section(x, y, w, "PLACEMENT");
+    {
+        int bw = (w - U(12)) / 3;
+
+        if (button(x, y, bw, U(30), "Auto", r->mode == BMAP_SPOT_AUTO)) set_mode(BMAP_SPOT_AUTO);
+        if (button(x + bw + U(6), y, bw, U(30), "Fixed spot", r->mode == BMAP_SPOT_FIXED)) set_mode(BMAP_SPOT_FIXED);
+        if (button(x + 2 * (bw + U(6)), y, bw, U(30), "Safe area", r->mode == BMAP_SPOT_ZONE)) set_mode(BMAP_SPOT_ZONE);
+        y += U(42);
+    }
+    {
+        /* the angle: the player's facing in auto (or a safe area that
+         * follows the player), else the place's own */
+        int follows = r->mode == BMAP_SPOT_AUTO || r->angle < 0.0f, q, qx = x;
+        float ang = (float)(follows ? A.tf : (int)r->angle), was = ang;
+        char lab[48];
+        static const int k_quick[3] = { -90, 90, 180 };
+        static const char *k_quick_label[3] = { "-90", "+90", "180" };
+
+        snprintf(lab, sizeof lab, "Facing %s%s", dir_name((int)ang), follows ? ", the player's" : "");
+        slider(1, x, y, w, lab, "%.0f", &ang, 0.0f, 355.0f, 5.0f, 0);
+        y += SL_ROW;
+        for (q = 0; q < 3; q++) {
+            if (button(qx, y, U(60), U(28), k_quick_label[q], 0)) {
+                ang += (float)k_quick[q];
+            }
+            qx += U(66);
+        }
+        ang = (float)norm_deg(ang);
+        if (r->mode == BMAP_SPOT_ZONE && r->angle >= 0.0f && button(qx + U(6), y, chip_w("Follow player"), U(28),
+                                                                     "Follow player", 0)) {
+            remember();
+            r->angle = -1.0f;
+            save_now();
+        } else if (ang != was) {
+            if (follows) {
+                A.tf = (int)ang;
+                A.need_place = 1;
+            } else if (A.drag == DRAG_SLIDER) {
+                slider_changed();
+                r->angle = ang;
+                A.need_place = 1;
+            } else {
+                remember();
+                r->angle = ang;
+                save_now();
+            }
+        }
+        y += U(42);
+    }
+    {
+        float apart = 17.0f + r->foe_dz;
+
+        if (slider(2, x, y, w, "Foe distance", "%.1f", &apart, 5.0f, 29.0f, 0.5f, 0)) {
+            if (A.drag == DRAG_SLIDER) {
+                slider_changed();
+                r->foe_dz = clampf(apart - 17.0f, -12.0f, 12.0f);
+                A.need_place = 1;
+            } else {
+                remember();
+                r->foe_dz = clampf(apart - 17.0f, -12.0f, 12.0f);
+                save_now();
+            }
+        }
+        y += SL_ROW + U(8);
+    }
+    /* Camera: the one of the view on show (the command camera turns every
+     * battle camera; the overworld tab edits it too) */
+    {
+        BmapIntro *in = A.tab == TAB_INTRO ? &r->intro : &r->cam;
+        int id = A.tab == TAB_INTRO ? 10 : 20;
+
+        y = section(x, y, w, A.tab == TAB_INTRO ? "INTRO CAMERA" : "COMMAND CAMERA");
+        setting(id + 0, x, y, half, "Zoom", "%.2f", &in->zoom, 0.25f, 4.0f, 0.05f, 0);
+        setting(id + 1, x + half + U(20), y, half, "Turn", "%+.0f", &in->yaw, -180.0f, 180.0f, 1.0f, 1);
+        y += SL_ROW;
+        setting(id + 2, x, y, half, "Height", "%+.1f", &in->lift, -20.0f, 20.0f, 0.1f, 0);
+        setting(id + 3, x + half + U(20), y, half, "Slide", "%+.1f", &in->side, -20.0f, 20.0f, 0.1f, 0);
+        y += SL_ROW;
+        setting(id + 4, x, y, half, "Tilt", "%+.0f", &in->tilt, -85.0f, 85.0f, 1.0f, 0);
+        setting(id + 5, x + half + U(20), y, half, "Aim", "%+.0f", &in->aim, -180.0f, 180.0f, 1.0f, 1);
+        y += SL_ROW;
+        if (chip(x, y, "Reset camera", 0) && !bmap_intro_none(in)) {
+            remember();
+            memset(in, 0, sizeof *in);
+            in->zoom = 1.0f;
+            save_now();
+            say(A.tab == TAB_INTRO ? "Intro camera reset" : "Camera reset");
+        }
+        y += U(46);
+    }
+    /* Views: the game takes the one nearest the player */
+    {
+        int nv = bmap_spots_view_count(A.row), vn = view_no(A.row), v, bx = x;
+
+        y = section(x, y, w, "VIEWS");
+        for (v = 0; v < nv; v++) {
+            char num[16];
+
+            snprintf(num, sizeof num, "%d", v + 1);
+            if (button(bx, y, U(34), U(30), num, v == vn) && v != vn) {
+                select_row(bmap_spots_view_at(A.row, v));
+                r = cur();
+            }
+            bx += U(40);
+        }
+        if (nv < BMAP_VIEWS_MAX && chip(bx, y, "Add", 0)) {
+            int nr = bmap_spots_view_add(A.row, vn);
+
+            if (nr >= 0) {
+                A.nundo = 0;
+                select_row(nr);
+                if (cur()->mode != BMAP_SPOT_FIXED) {
+                    set_mode(BMAP_SPOT_FIXED);
+                }
+                save_now();
+                say("View %d added: drag the spot and turn it", nv + 1);
+            }
+            r = cur();
+        }
+        bx += chip_w("Add") + U(6);
+        if (nv > 1 && chip(bx, y, "Delete", 0)) {
+            int first = first_view(A.row);
+
+            if (bmap_spots_view_delete(first, vn) == 0) {
+                A.nundo = 0;
+                select_row(bmap_spots_view_at(first, vn > 0 ? vn - 1 : 0));
+                save_now();
+                say("View deleted");
+            }
+            r = cur();
+        }
+        y += U(40);
+        if (nv > 1) {
+            BmapSpot *b = bmap_spots_get(first_view(A.row));
+            int pick = bmap_spots_pick_view(A.row, A.tx, A.tz, deg_to_facing((float)A.tf));
+
+            if (button(x, y, chip_w("Picks by angle"), U(30), b->pick_angle ? "Picks by angle" : "Picks by spot", 0)) {
+                remember();
+                b->pick_angle = !b->pick_angle;
+                save_now();
+            }
+            text(x + chip_w("Picks by angle") + U(12), y + U(5), pick == A.row ? C_GOOD : C_MUTED, "Game takes %d",
+                 view_no(pick) + 1);
+            y += U(40);
+        }
+        y += U(6);
+    }
+    /* Trainers: their places (a change shows them) */
+    y = section(x, y, w, "TRAINERS");
+    {
+        int bx = x + chip_w("Trainers") + chip_w("Pokemon") + U(22);
+
+        if (chip(x, y, "Trainers", A.show_tr)) {
+            A.show_tr = !A.show_tr;
+            A.battle[0].dirty = A.battle[1].dirty = 1;
+        }
+        if (chip(x + chip_w("Trainers") + U(6), y, "Pokemon", !A.hide_mon)) {
+            A.hide_mon = !A.hide_mon;
+            A.battle[0].dirty = A.battle[1].dirty = 1;
+        }
+        for (i = 0; i < 2; i++) {
+            const char *lab = i ? "Girl" : "Boy";
+
+            if (chip(bx, y, lab, A.gender == i) && A.gender != i) {
+                A.gender = i;
+                gender_write();
+                A.show_tr = 1;
+                A.battle[0].dirty = A.battle[1].dirty = 1;
+            }
+            bx += chip_w(lab) + U(6);
+        }
+        y += U(42);
+    }
+    {
+        /* the foe trainer's height: the base, or a little taller where a
+         * room's furniture makes the base look short */
+        float sz = r->trainer_size > 0.0f ? r->trainer_size : 1.0f;
+        int custom = A.size_custom || (fabsf(sz - 1.0f) > 0.001f && fabsf(sz - BMAP_TRAINER_INDOOR) > 0.001f);
+        int indoor = !custom && sz > 1.0f, bx = x;
+
+        text(x, y + U(5), C_MUTED, "Size");
+        bx += text_w("Size") + U(16);
+        if (chip(bx, y, "Outdoor", !custom && !indoor) && (custom || indoor)) {
+            remember();
+            r->trainer_size = 1.0f;
+            A.size_custom = 0;
+            A.show_tr = 1;
+            save_now();
+        }
+        bx += chip_w("Outdoor") + U(6);
+        if (chip(bx, y, "Indoor", indoor) && !indoor) {
+            remember();
+            r->trainer_size = BMAP_TRAINER_INDOOR;
+            A.size_custom = 0;
+            A.show_tr = 1;
+            save_now();
+        }
+        bx += chip_w("Indoor") + U(6);
+        if (chip(bx, y, "Custom", custom) && !custom) {
+            A.size_custom = 1;          /* the slider, from the size it has */
+        }
+        y += U(42);
+        if (custom) {
+            /* any height: a click on the number types it */
+            float before = r->trainer_size;
+
+            r->trainer_size = sz;
+            setting(36, x, y, w, "Height", "%.2f", &r->trainer_size, 0.8f, 1.5f, 0.01f, 0);
+            if (r->trainer_size <= 0.0f) {
+                r->trainer_size = before > 0.0f ? before : 1.0f;
+            }
+            if (r->trainer_size != sz) {
+                A.show_tr = 1;
+                A.battle[0].dirty = A.battle[1].dirty = 1;
+            }
+            y += SL_ROW;
+        }
+    }
+    for (i = 1; i >= 0; i--) {
+        float *tr = i ? r->trainer_foe : r->trainer_own, before = tr[0] + 3.0f * tr[1] + 7.0f * tr[2];
+
+        text(x, y, C_TEXT, "%s", i ? "Foe trainer" : "Your trainer");
+        y += U(28);
+        setting(30 + 3 * i, x, y, third, "Right", "%+.1f", &tr[0], -10.0f, 10.0f, 0.1f, 0);
+        setting(31 + 3 * i, x + third + U(16), y, third, "Up", "%+.1f", &tr[1], -10.0f, 10.0f, 0.1f, 0);
+        setting(32 + 3 * i, x + 2 * (third + U(16)), y, third, "Back", "%+.1f", &tr[2], -10.0f, 10.0f, 0.1f, 0);
+        if (before != tr[0] + 3.0f * tr[1] + 7.0f * tr[2]) {
+            A.show_tr = 1;
+        }
+        y += SL_ROW + U(4);
+    }
+    /* the Pokemon shown in the views (Shift: ten at a time) */
+    y = section(x, y + U(4), w, "POKEMON SHOWN");
+    for (i = 0; i < 2; i++) {
+        static const char *who[2] = { "Foe", "Yours" };
+        int step = A.shift ? 10 : 1, ch = 0, bx = x + half + U(20);
+        char num[16];
+
+        snprintf(num, sizeof num, "#%d", A.species[i]);
+        text(x, y + U(5), C_MUTED, "%s", who[i]);
+        if (button(bx, y, U(30), U(30), "-", 0)) {
+            A.species[i] = A.species[i] - step < 1 ? 649 : A.species[i] - step;
+            ch = 1;
+        }
+        text(bx + U(30) + (half - U(60) - text_w(num)) / 2, y + U(5), C_TEXT, "%s", num);
+        if (button(bx + half - U(30), y, U(30), U(30), "+", 0)) {
+            A.species[i] = A.species[i] + step > 649 ? 1 : A.species[i] + step;
+            ch = 1;
+        }
+        if (ch) {
+            Sprite *s = i == 0 ? &A.foe : &A.own;
+
+            free(s->rgba);
+            sprite_load(s, A.species[i], i == 1);
+            A.battle[0].dirty = A.battle[1].dirty = 1;
+        }
+        y += U(38);
+    }
+    /* More */
+    y = section(x, y + U(8), w, "MORE");
+    {
+        int bx = x;
+
+        if (chip(bx, y, "Back to auto", 0)) {
+            remember();
+            r->mode = BMAP_SPOT_AUTO;
+            r->foe_level = 1;
+            r->foe_dz = 0.0f;
+            memset(&r->intro, 0, sizeof r->intro);
+            r->intro.zoom = 1.0f;
+            memset(&r->cam, 0, sizeof r->cam);
+            r->cam.zoom = 1.0f;
+            memset(r->trainer_foe, 0, sizeof r->trainer_foe);
+            memset(r->trainer_own, 0, sizeof r->trainer_own);
+            r->trainer_size = 1.0f;
+            save_now();
+            say("Back to auto");
+        }
+        bx += chip_w("Back to auto") + U(6);
+        if (chip(bx, y, "Default", 0)) {
+            BmapSpot d;
+
+            if (bmap_spots_default(r->id, &d) == 0) {
+                remember();
+                d.ok = r->ok;
+                d.view = r->view;
+                *r = d;
+                save_now();
+                say("Back to the default");
+            }
+        }
+        bx += chip_w("Default") + U(6);
+        if (chip(bx, y, "Reverse", 0)) {
+            reverse_battle();
+        }
+        y += U(42);
+    }
+    /* what to know about the place: a Pokemon on a wall, the ground step */
+    if (A.have_placed && A.have_base) {
+        float step = fabsf(A.placed.place_g[1] - A.placed.place_g[0]) / 16.0f, fx, fz;
+        int to, tf;
+
+        battle_point_map(FOE_X, FOE_Z - A.placed.foe_dz, &fx, &fz);
+        to = bmap_tile(&A.base, A.placed.place_x, A.placed.place_z);
+        tf = bmap_tile(&A.base, fx, fz);
+        if (to == BMAP_TILE_BLOCKED || to == BMAP_TILE_NONE) {
+            text(x, y, C_BAD, "Yours stands on a wall or off the map");
+        } else if (tf == BMAP_TILE_BLOCKED || tf == BMAP_TILE_NONE) {
+            text(x, y, C_BAD, "The foe stands on a wall or off the map");
+        } else {
+            text(x, y, C_MUTED, "Ground step %.1f tiles", (double)step);
+        }
+        y += U(26);
+    }
+    text(x, y, C_MUTED, "%s", r->mode == BMAP_SPOT_ZONE ? "Kept in the box where it starts"
+                              : r->mode == BMAP_SPOT_AUTO ? "Moved to a clear spot where it starts"
+                              : "Every battle here uses this spot");
+    y += U(36);
+    /* the map from above, unless it is under the list */
+    if (!A.map_left) {
+        y = section(x, y, w, "TOP VIEW");
+        y = top_view(x, y, w, y0 + h0 - U(12) - y);
+    }
+    A.insp_h = y - top;
+    A.mx = keep_mx;
+    /* the scroll bar */
+    if (A.insp_h > h0) {
+        int bh = h0 * h0 / A.insp_h, by = y0 + (h0 - bh) * A.insp_scroll / (A.insp_h - h0);
+
+        ui_fill(&C, x0 + w0 - U(8), by, U(3), bh, C_LINE, 255);
     }
 }
 
@@ -2745,6 +3110,9 @@ static void on_key(const SDL_KeyboardEvent *k)
     float step = (k->mod & SDL_KMOD_SHIFT) ? 16.0f : 4.0f;
     int p = vis_pos(A.row);
 
+    if (A.emb != NULL) {
+        return;                         /* the game's keys (draw_embed) */
+    }
     if (A.edit != 0) {
         /* typing a number: Enter takes it, Esc gives up */
         if (k->key == SDLK_RETURN || k->key == SDLK_KP_ENTER) {
@@ -2849,6 +3217,9 @@ static void pump(void)
             A.wheel += ev.wheel.integer_y;
             break;
         case SDL_EVENT_TEXT_INPUT:
+            if (A.emb != NULL) {
+                break;                  /* the game's keys */
+            }
             if (A.edit != 0) {
                 if (strlen(A.edit_buf) + strlen(ev.text.text) < sizeof A.edit_buf - 1) {
                     strcat(A.edit_buf, ev.text.text);
@@ -2876,21 +3247,30 @@ static void pump(void)
 
 static void frame(void)
 {
-    int L;
+    int LW, IW;
     SDL_Surface *src, *dst;
 
     SDL_GetWindowSize(A.win, &A.W, &A.H);
-    L = A.W * 36 / 100;
-    if (L < 560) {
-        L = 560;
-    }
+    /* 1440p and up: the text a half bigger, the room between a quarter
+     * (all of the inspector shows), the map under the list */
+    g_fk = A.H >= 1300 ? 3 : 2;
+    g_u = g_fk == 3 ? 5 : 4;
+    A.map_left = g_fk == 3;
+    LW = A.W * 20 / 100;
+    LW = LW < U(300) ? U(300) : LW > U(420) ? U(420) : LW;
+    IW = A.W * 25 / 100;
+    IW = IW < U(400) ? U(400) : IW > U(500) ? U(500) : IW;
     ui_begin(&C, &A.canvas, A.W, A.H, 1);
     map_input();
     ow_input();
     view_input(0);
     view_input(1);
-    draw_right(L);
-    draw_left(L);
+    /* the top bar last: the inspector scrolls under it */
+    draw_centre(LW, TOP_H, A.W - LW - IW, A.H - TOP_H);
+    draw_places(0, TOP_H, LW, A.H - TOP_H);
+    draw_inspector(A.W - IW, TOP_H, IW, A.H - TOP_H);
+    draw_top(LW, IW);
+    slider_release();
     dst = SDL_GetWindowSurface(A.win);
     src = SDL_CreateSurfaceFrom(A.W, A.H, SDL_PIXELFORMAT_RGBA32, A.canvas.rgba, A.W * 4);
     if (dst != NULL && src != NULL) {
@@ -3042,6 +3422,9 @@ static const char *scene_name(int sc)
     if (sc == 2) {
         return "Idle";
     }
+    if (sc == SCENE_MID) {
+        return "Mid-battle";
+    }
     n = bcam_sim_move_name(sc - 2);
     snprintf(buf, sizeof buf, "%d %s", sc - 2, n != NULL ? n : "");
     return buf;
@@ -3059,8 +3442,9 @@ static void scene_frames(void)
     free(A.sim);
     A.sim = NULL;
     A.nsim = 0;
-    kind = A.scene == 0 ? BCAM_WILD_INTRO : A.scene == 1 ? BCAM_TRAINER_INTRO : A.scene == 2 ? BCAM_IDLE : BCAM_MOVE;
-    id = A.scene == 2 ? -1 : A.scene >= 3 ? A.scene - 2 : -1;
+    kind = A.scene == 0 ? BCAM_WILD_INTRO : A.scene == 1 ? BCAM_TRAINER_INTRO : A.scene == 2 ? BCAM_IDLE
+         : A.scene == SCENE_MID ? BCAM_TRAINER_MID : BCAM_MOVE;
+    id = A.scene >= 3 && A.scene < SCENE_COUNT ? A.scene - 2 : -1;
     if (bcam_sim_run(kind, id, att, !att, &A.sim, &A.nsim) != 0) {
         A.sim = NULL;
         A.nsim = 0;
@@ -3222,18 +3606,32 @@ static void preview_in_game(int play)
      * from the start */
     _putenv_s("EIDOS_FAST_UNTIL_BATTLE", play ? "start" : "1");
     _putenv_s("BW_SAVE_DIR", tmp);
+    {
+        /* shown in the middle view, not a window of its own */
+        char name[96];
+
+        preview_stop();
+        A.emb = spots_embed_open(name, sizeof name);
+        if (A.emb != NULL) {
+            _putenv_s("EIDOS_EMBED", name);
+        }
+    }
     /* eidos_boot beside this program */
     {
         const char *self = SDL_GetBasePath();   /* this program's folder, with its slash */
 
         snprintf(exe, sizeof exe, "%seidos_boot.exe", self != NULL ? self : "");
     }
-    if (_spawnl(_P_NOWAIT, exe, "\"eidos_boot.exe\"", "--layout", "one", "--window", "--input", input, NULL) < 0) {
+    A.emb_proc = _spawnl(_P_NOWAIT, exe, "\"eidos_boot.exe\"", "--layout", "one", "--window", "--input", input, NULL);
+    if (A.emb_proc <= 0) {
+        A.emb_proc = 0;
+        preview_stop();
         say("Could not start %s", exe);
     } else {
         say(play ? "Starting the game: the battle is yours in about 20 seconds"
                  : "Starting the game: the battle shows in about 20 seconds");
     }
+    _putenv_s("EIDOS_EMBED", "");
     /* this program's own environment as it was */
     _putenv_s("EIDOS_DEBUG_BATTLE", "");
     _putenv_s("EIDOS_DEBUG_BMAP_AT", "");
@@ -3252,6 +3650,117 @@ static void preview_in_game(int play)
 #else
     say("Preview in game runs on Windows for now");
 #endif
+}
+
+/* The game played here ends: asked to, then ended if it lingers. */
+static void preview_stop(void)
+{
+    if (A.emb != NULL) {
+        A.emb->quit = 1;
+    }
+    if (A.emb_proc > 0) {
+        spots_embed_kill(A.emb_proc);
+        A.emb_proc = 0;
+    }
+    if (A.emb != NULL) {
+        spots_embed_close(A.emb);
+        A.emb = NULL;
+    }
+    free(A.emb_rgba);
+    A.emb_rgba = NULL;
+    A.emb_w = A.emb_h = 0;
+    A.emb_frame = 0;
+}
+
+/* The game at (x, y), w x h: it renders at this size, its picture shows
+ * here, and the keyboard and the mouse (over the picture) go to it. */
+static void draw_embed(int x, int y, int w, int h)
+{
+    EidosEmbedShm *s = A.emb;
+    int i;
+
+    if (s == NULL) {
+        return;
+    }
+    if (!spots_embed_alive(A.emb_proc)) {
+        preview_stop();
+        say("The game ended");
+        return;
+    }
+    s->beat++;
+    s->want_w = (uint32_t)(w > EIDOS_EMBED_MAX_W ? EIDOS_EMBED_MAX_W : w);
+    s->want_h = (uint32_t)(h > EIDOS_EMBED_MAX_H ? EIDOS_EMBED_MAX_H : h);
+    /* the keyboard, while this window has it */
+    {
+        const bool *keys = SDL_GetKeyboardState(NULL);
+        int focus = SDL_GetKeyboardFocus() == A.win;
+
+        for (i = 0; i < 16; i++) {
+            uint32_t word = 0;
+            int b;
+
+            for (b = 0; b < 32; b++) {
+                int sc = i * 32 + b;
+
+                if (focus && keys != NULL && sc < SDL_SCANCODE_COUNT && keys[sc]) {
+                    word |= 1u << b;
+                }
+            }
+            s->keys[i] = word;
+        }
+    }
+    /* the newest picture */
+    if (s->frame != A.emb_frame && s->w > 0 && s->h > 0) {
+        int pw = (int)s->w, ph = (int)s->h;
+        size_t px = (size_t)pw * (size_t)ph;
+
+        if (pw != A.emb_w || ph != A.emb_h) {
+            free(A.emb_rgba);
+            A.emb_rgba = (u8 *)malloc(px * 4u);
+            A.emb_w = pw;
+            A.emb_h = ph;
+        }
+        if (A.emb_rgba != NULL) {
+            const u8 *src = s->pixels;
+            size_t k;
+
+            for (k = 0; k < px; k++) {
+                A.emb_rgba[k * 4u] = src[k * 3u];
+                A.emb_rgba[k * 4u + 1u] = src[k * 3u + 1u];
+                A.emb_rgba[k * 4u + 2u] = src[k * 3u + 2u];
+                A.emb_rgba[k * 4u + 3u] = 255;
+            }
+        }
+        A.emb_frame = s->frame;
+    }
+    ui_fill(&C, x, y, w, h, 0x000000u, 255);
+    if (A.emb_rgba != NULL) {
+        /* as large as fits, its own shape kept */
+        int dw = w, dh = A.emb_h * w / A.emb_w;
+
+        if (dh > h) {
+            dh = h;
+            dw = A.emb_w * h / A.emb_h;
+        }
+        blit_rgba(x + (w - dw) / 2, y + (h - dh) / 2, A.emb_rgba, A.emb_w, A.emb_h, dw, dh);
+        /* the mouse over the picture, in its pixels */
+        {
+            int px0 = x + (w - dw) / 2, py0 = y + (h - dh) / 2;
+
+            if (hover(px0, py0, dw, dh)) {
+                s->mx = (A.mx - px0) * A.emb_w / dw;
+                s->my = (A.my - py0) * A.emb_h / dh;
+                s->buttons = (A.down ? 1u : 0u) | (A.mdown ? 2u : 0u) | (A.rdown ? 4u : 0u);
+                s->wheel += A.wheel;
+            } else {
+                s->mx = s->my = -1;
+                s->buttons = 0;
+            }
+        }
+    } else {
+        text(x + U(24), y + U(24), C_MUTED, "Starting the game...");
+    }
+    outline(x, y, w, h, C_LINE);
 }
 
 /* --check-floors (tests): every trainer whose ground has another floor
@@ -3379,7 +3888,7 @@ int main(int argc, char **argv)
     char data_root[BW_SETUP_PATH_MAX];
     int check_floors = 0;
     const char *place = NULL, *shot = NULL, *script = NULL;
-    int status = 0, i;
+    int status = 0, i, win_w, win_h;
 
     eidos_settings_load();
     memset(&setup, 0, sizeof setup);
@@ -3442,7 +3951,16 @@ int main(int argc, char **argv)
         fprintf(stderr, "eidos_spots: no OpenGL 3.3: %s\n", SDL_GetError());
         return 1;
     }
-    A.win = SDL_CreateWindow("eidos battle spots", 1680, 960,
+    {
+        /* EIDOS_SPOTS_SIZE=WxH (tests): the window's size */
+        const char *sz = getenv("EIDOS_SPOTS_SIZE");
+
+        if (sz == NULL || sscanf(sz, "%dx%d", &win_w, &win_h) != 2) {
+            win_w = 1680;
+            win_h = 960;
+        }
+    }
+    A.win = SDL_CreateWindow("eidos battle spots", win_w, win_h,
                              SDL_WINDOW_RESIZABLE | (shot != NULL ? SDL_WINDOW_HIDDEN : SDL_WINDOW_MAXIMIZED));
     if (A.win == NULL) {
         fprintf(stderr, "eidos_spots: %s\n", SDL_GetError());
@@ -3496,11 +4014,12 @@ int main(int argc, char **argv)
     while (!A.quit) {
         SDL_Event ev;
 
-        if (SDL_WaitEventTimeout(&ev, A.play ? 1 : 50)) {
+        if (SDL_WaitEventTimeout(&ev, A.play || A.emb != NULL ? 1 : 50)) {
             SDL_PushEvent(&ev);
         }
         pump();
         frame();
     }
+    preview_stop();
     return 0;
 }

@@ -22,6 +22,7 @@
 #include "input.h"
 #include "mod_panel_draw.h"
 #include "platform.h"
+#include "plat_embed.h"
 #include "plat_gl.h"
 #include "plat_thread.h"
 #include "settings.h"
@@ -198,7 +199,7 @@ static u32 read_keyboard(const EidosPlatform *p)
             sc != SDL_SCANCODE_LEFT && sc != SDL_SCANCODE_RIGHT) {
             continue;               /* typing: the letters are text */
         }
-        if (sc > 0 && sc < SDL_SCANCODE_COUNT && keys[sc]) {
+        if (sc > 0 && sc < SDL_SCANCODE_COUNT && (keys[sc] || eidos_embed_key(sc))) {
             word |= p->keymap[i].button;
         }
     }
@@ -504,7 +505,8 @@ static int world_active(const EidosPlatform *p)
 static void read_stylus(EidosPlatform *p)
 {
     float fx = 0.0f, fy = 0.0f;
-    SDL_MouseButtonFlags buttons = SDL_GetMouseState(&fx, &fy);
+    SDL_MouseButtonFlags buttons = eidos_embed_on() ? (SDL_MouseButtonFlags)eidos_embed_mouse(&fx, &fy)
+                                                    : SDL_GetMouseState(&fx, &fy);
     int mx = (int)fx, my = (int)fy, ww = 0, wh = 0, x = 0, y = 0, inside;
 
     if (!(buttons & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) || p->window == NULL ||
@@ -1206,6 +1208,15 @@ static void render(EidosPlatform *p)
             rects[i].w = vp.screen[i].w;
             rects[i].h = vp.screen[i].h;
         }
+        if (eidos_embed_on()) {
+            /* shown inside another program: the picture goes to it */
+            unsigned char *px = eidos_embed_pixels(ow, oh);
+
+            if (px != NULL && eidos_gl_grab(p->gl, ow, oh, rects, px) == 0) {
+                eidos_embed_publish(ow, oh);
+            }
+            return;
+        }
         if (have_panel && view.dst.w > 0 && view.dst.h > 0) {
             prect.x = view.dst.x;
             prect.y = view.dst.y;
@@ -1359,6 +1370,9 @@ static int set_display_now(EidosPlatform *p, int mode, int win_w,
             SDL_SetWindowPosition(p->window, p->win_x, p->win_y);
         }
         p->display_mode = EIDOS_DISPLAY_WINDOWED;
+    }
+    if (getenv("EIDOS_WINDOW_HIDDEN") != NULL || eidos_embed_on()) {
+        SDL_HideWindow(p->window);      /* a mode change shows the window on Windows */
     }
     if (p->presented) {
         render(p);
@@ -1569,9 +1583,10 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
                                 SDL_WINDOW_HIGH_PIXEL_DENSITY;
         const char *title = cfg->title != NULL ? cfg->title : "eidos";
 
-        if (getenv("EIDOS_WINDOW_HIDDEN") != NULL) {
-            /* For unattended checks: a real window system and GPU, no window
-             * on the desktop. */
+        if (getenv("EIDOS_WINDOW_HIDDEN") != NULL || eidos_embed_on()) {
+            /* For unattended checks, or shown inside another program
+             * (plat_embed.c): a real window system and GPU, no window on
+             * the desktop. */
             flags |= SDL_WINDOW_HIDDEN;
         } else if (cfg->maximized
                    && cfg->display_mode == EIDOS_DISPLAY_WINDOWED) {
@@ -1738,6 +1753,21 @@ int eidos_platform_pump(EidosPlatform *p)
         (void)set_layout_now(p, p->pl_layout, p->pl_swap, p->pl_gap);
     }
     p->m_pressed = p->m_released = p->m_rpressed = p->m_wheel = 0;
+    if (eidos_embed_on()) {
+        /* shown inside another program: its mouse, its size, its end */
+        int ew, eh, cw = 0, ch = 0;
+
+        eidos_embed_edges(&p->m_pressed, &p->m_released, &p->m_rpressed, &p->m_wheel);
+        if (eidos_embed_want_size(&ew, &eh)) {
+            SDL_GetWindowSize(p->window, &cw, &ch);
+            if (cw != ew || ch != eh) {
+                SDL_SetWindowSize(p->window, ew, eh);
+            }
+        }
+        if (eidos_embed_quit()) {
+            p->quit = 1;
+        }
+    }
     while (SDL_PollEvent(&ev)) {
         switch (ev.type) {
         case SDL_EVENT_QUIT:
@@ -2170,11 +2200,11 @@ int eidos_platform_mouse(const EidosPlatform *p, struct EidosUiMouse *m)
     m->released = p->m_released;
     m->right_pressed = p->m_rpressed;
     m->wheel = p->m_wheel;
-    buttons = SDL_GetMouseState(&fx, &fy);
+    buttons = eidos_embed_on() ? (SDL_MouseButtonFlags)eidos_embed_mouse(&fx, &fy) : SDL_GetMouseState(&fx, &fy);
     mx = (int)fx;
     my = (int)fy;
     m->down = (buttons & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) != 0;
-    if (SDL_GetMouseFocus() != p->window) {
+    if (!eidos_embed_on() && SDL_GetMouseFocus() != p->window) {
         return 0;
     }
     SDL_GetWindowSize(p->window, &ww, &wh);
