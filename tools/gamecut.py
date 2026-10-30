@@ -109,20 +109,58 @@ def header_renames(text, pair=False):
     return "\n".join(lines)
 
 
+# The cartridge language the port builds (src/game/version.h: LANGUAGE is
+# LANGUAGE_ENGLISH unless the build says otherwise) and the values of the
+# names an `#if LANGUAGE ...` line compares it with.
+_LANGUAGES = {"LANGUAGE_JAPANESE": 1, "LANGUAGE_ENGLISH": 2, "LANGUAGE_FRENCH": 3,
+              "LANGUAGE_ITALIAN": 4, "LANGUAGE_GERMAN": 5, "LANGUAGE_SPANISH": 7}
+_BUILD_LANGUAGE = "LANGUAGE_ENGLISH"
+
+
+def _language_condition(rest):
+    """The value of an `#if`/`#elif` condition made only of LANGUAGE
+    comparisons (`LANGUAGE == LANGUAGE_JAPANESE || ...`), or None for any
+    other condition."""
+    if "LANGUAGE" not in rest:
+        return None
+    tokens = re.findall(r"\w+|==|!=|\|\||&&|[()!]|\S", rest)
+    py = []
+    for t in tokens:
+        if t == "LANGUAGE":
+            py.append(str(_LANGUAGES[_BUILD_LANGUAGE]))
+        elif t in _LANGUAGES:
+            py.append(str(_LANGUAGES[t]))
+        elif t in ("==", "!=", "(", ")"):
+            py.append(t)
+        elif t == "||":
+            py.append(" or ")
+        elif t == "&&":
+            py.append(" and ")
+        elif t == "!":
+            py.append(" not ")
+        else:
+            return None
+    return bool(eval("".join(py), {"__builtins__": {}}))
+
+
 def host_branches(text):
     """`text` with the mwcc-only branches of `#ifdef __MWERKS__` and
     `#ifndef __MWERKS__` blocks blanked (same length, so positions in it are positions in `text`), as
     the host compiler sees it.  aletheia writes host forms beside the DS
     ones this way (btlv_core.c gives one `if (...) {` per branch), and a
-    reader that keeps both branches miscounts the braces.
+    reader that keeps both branches miscounts the braces.  The branches of
+    another cartridge language go the same way (`#if LANGUAGE ==
+    LANGUAGE_JAPANESE`, btlv_core.c's BTLV_CORE_StepOpeningDemo gives one
+    `if (...) {` per language).
 
     The tree's per-file header pairs go too (`header_renames`): the name a
     unit renames the header's declaration of is not a macro of the unit, and
     the port renames that name itself."""
-    if "__MWERKS__" not in text:
+    if "__MWERKS__" not in text and "LANGUAGE" not in text:
         return header_renames(text)
     lines = text.split("\n")
-    # A stack of [is_mwerks_block, keep_current_branch, keep_outer]
+    # A stack of [kind, keep_current_branch, keep_outer, a_branch_taken]:
+    # kind "mw" for __MWERKS__, "lang" for LANGUAGE, None for the rest
     stack = []
     keep = True
     for i, line in enumerate(lines):
@@ -131,16 +169,34 @@ def host_branches(text):
             d, rest = m.group(1), m.group(2).strip()
             if d in ("ifdef", "ifndef", "if"):
                 mw = d in ("ifdef", "ifndef") and rest.split()[:1] == ["__MWERKS__"]
+                lang = _language_condition(rest) if d == "if" else None
                 if mw:
                     branch = d == "ifndef"
-                    stack.append([True, branch, keep])
+                    stack.append(["mw", branch, keep, branch])
                     keep = keep and branch
                     lines[i] = " " * len(line)
                     continue
-                stack.append([False, True, keep])
-            elif d in ("else", "elif") and stack and stack[-1][0]:
+                if lang is not None:
+                    stack.append(["lang", lang, keep, lang])
+                    keep = keep and lang
+                    lines[i] = " " * len(line)
+                    continue
+                stack.append([None, True, keep, True])
+            elif d in ("else", "elif") and stack and stack[-1][0] == "mw":
                 stack[-1][1] = not stack[-1][1]
                 keep = stack[-1][2] and stack[-1][1]
+                lines[i] = " " * len(line)
+                continue
+            elif d in ("else", "elif") and stack and stack[-1][0] == "lang":
+                top = stack[-1]
+                if d == "else":
+                    branch = not top[3]
+                else:
+                    cond = _language_condition(rest)
+                    branch = not top[3] and bool(cond)
+                top[1] = branch
+                top[3] = top[3] or branch
+                keep = top[2] and branch
                 lines[i] = " " * len(line)
                 continue
             elif d == "endif" and stack:
@@ -290,13 +346,16 @@ def rename_defs(text, renames):
     return "".join(pieces)
 
 
-def cut(text, drop, cut_asm, drop_decls=False):
+def cut(text, drop, cut_asm, drop_decls=False, keep_decls=()):
     """`text` with the chosen definitions replaced by prototypes.
 
     With `drop_decls` the functions in `drop` leave no declaration at all:
     the definition and every file-scope prototype of the name go, so the
     port's definition (a patch with another type, tools/ovlink.py) is the
-    only one the unit sees, through its overlay header."""
+    only one the unit sees, through its overlay header.  The names in
+    `keep_decls` are the exception: a patch that keeps the game's own
+    signature (` * keeps declarations`) leaves them their prototypes, for a
+    unit that names one before its definition."""
     pieces = []
     last = 0
     cut_names = []
@@ -308,7 +367,7 @@ def cut(text, drop, cut_asm, drop_decls=False):
         # The port defines the cut function in another unit, so it cannot
         # stay static here.
         proto = re.sub(r"^static\s+", "", re.sub(r"\s+", " ", proto)) + ";"
-        if drop_decls and name in drop:
+        if drop_decls and name in drop and name not in keep_decls:
             proto = ""
         body_lines = text.count("\n", hs, be) - proto.count("\n")
         pieces.append(text[last:hs])
@@ -339,6 +398,8 @@ def cut(text, drop, cut_asm, drop_decls=False):
                 break           # positions moved: scan again
     if drop_decls:
         for name in drop:
+            if name in keep_decls:
+                continue
             # File-scope prototypes start in column 0; a statement calling
             # the function is indented and has no type in front.
             out = re.sub(r"(?m)^(?:extern[ 	]+)?(?:static[ 	]+)?[A-Za-z_][\w 	\*]*%s"

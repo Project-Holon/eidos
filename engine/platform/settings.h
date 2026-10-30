@@ -96,6 +96,9 @@ enum {
                                        in use, else ui_pad family + 1    */
     EIDOS_OPT_OUTLINES,             /* the 3D's outlines: 0 off (the
                                        default), 1 thin (one window pixel) */
+    EIDOS_OPT_TRANSITIONS,          /* doors and map changes: 0 the game's
+                                       own, 1 fast, 2 seamless
+                                       (sdk/field_fade.c)                  */
     EIDOS_OPT_COUNT
 };
 

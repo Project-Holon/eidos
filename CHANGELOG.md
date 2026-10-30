@@ -5,6 +5,22 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Fixed a crash when switching Pokemon after the foe's Pokemon fainted (the
+  "Will you switch your Pokemon?" prompt, for example against Cheren at the
+  Trainers' School). The game worked out the "come back" message by
+  dividing by the fainted Pokemon's HP, which the DS tolerates and a PC
+  does not (issue #6).
+- Map transitions (Extras): Original, Fast or Seamless. Fast keeps the
+  game's door and stair animations but drops the waiting: the new map is
+  built in one frame instead of one step a frame, the player no longer
+  stands at the door before walking in, the camera is not waited for
+  behind a black screen, and the door's cross-fade takes a quarter of the
+  time. Walking into a building takes about a second less, and leaving
+  a building shows about a fifth of a second of black instead of almost a
+  second. Seamless is Fast where leaving a building or taking stairs
+  cross-fades like a door instead of going black. Original is the game's
+  own timing.
+
 - Real-map battles: a place's "Your trainer" offsets (right, up, back) now
   move your trainer during the send-out; they had no effect there.
 - Spot editor: the views now match the game (sprite sizes and positions

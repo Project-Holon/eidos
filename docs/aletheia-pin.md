@@ -8,11 +8,23 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `1ba33fb1376f0ca9ef0045edca6d2b965b527a17`
-- Date: 2026-10-30 00:17:36 +0100
-- Subject: Build the French, German, Italian and Spanish cartridges from the same source
+- Revision: `b7ce63a8cef91065a690b58ecbf2be1d628973ac`
+- Date: 2026-10-30 19:24:58 +0100
+- Subject: scrcmd_gimmick: symbols row for the ov046 button event the door command calls
 
-The step from `6c2aae879f`: the same `src/game` builds the French, German,
+The step from `1ba33fb137`: issue #6.  `BTL_CLIENT_HasMonParamDropped`
+(ov093) picks the recall message from how much HP the foe lost, divided by
+the foe's HP; switching after the foe's Pokemon fainted divided by zero.
+The DS divide (`_u32_div_f`) returns the dividend for a zero divisor, so the
+host build now returns that too; the DS line is unchanged.  The step also
+takes aletheia's Japanese sites (`#if LANGUAGE == LANGUAGE_JAPANESE`, the
+English bytes unchanged): tools/gamecut.py now resolves those conditions for
+the English build, as it did `__MWERKS__`, because btlv_core.c gives one
+`if (...) {` per language.  scrcmd_gimmick.c's door command names its real
+ov046 callee (`FIELD_GIMMICK_ROTATING_ROOM_StartButtonEvent`, the same
+English address).
+
+The step before, from `6c2aae879f`: the same `src/game` builds the French, German,
 Italian and Spanish cartridges. `version.h` gains `LANGUAGE` (English by
 default, so an unchanged build is the English game), `PM_LANG_ID`,
 `PM_LANG_MONTH_AS_NAME` and `PM_LANG_VERSION_KEY`; about 140 `#if LANGUAGE`

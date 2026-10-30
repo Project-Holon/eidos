@@ -42,6 +42,7 @@ static const char *const k_arrangements[] = { "vertical", "horizontal", "one" };
 static const char *const k_offon[] = { "off", "on" };
 static const char *const k_backdrops[] = { "real map", "original" };
 static const char *const k_outlines[] = { "off", "thin" };
+static const char *const k_transitions[] = { "original", "fast", "seamless" };
 static const char *const k_pad_icons[] = {
     "auto", "xbox360", "xboxone", "ps3", "ps4", "ps5", "switch", "gamecube", "steamdeck"
 };
@@ -81,7 +82,12 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       0, k_pad_icons, "", 0, NULL },
     { "Display", "outlines", "3D outlines", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       0, k_outlines, "", 0, NULL },
+    { "Extras", "transitions", "Map transitions", EIDOS_OPTKIND_CHOICE, 0, 2,
+      1, 0, k_transitions, "", 0, NULL },
 };
+
+/* sdk/field_fade.c reads this option by number */
+_Static_assert(EIDOS_OPT_TRANSITIONS == 16, "sdk/field_fade.c's OPT_TRANSITIONS");
 
 static const EidosButtonInfo k_buttons[NBTN] = {
     { EIDOS_PAD_A,      "a",      "A" },

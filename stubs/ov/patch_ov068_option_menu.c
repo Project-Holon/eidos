@@ -271,6 +271,7 @@ extern int eidos_settings_commit(void);
 #define OPT_LAYOUT_SWAP         7
 #define OPT_SOUND_VOLUME        9
 #define OPT_EXTRAS_INSTANT_TEXT 10
+#define OPT_TRANSITIONS         16
 
 /* ------------------------------------------------------------------ */
 /* The pages                                                           */
@@ -325,6 +326,9 @@ static const PortRow k_sound_rows[] = {
 static const PortRow k_extras_rows[] = {
     { "INSTANT TEXT", "Show each page of a message at\nonce, whatever the text speed.",
       OPT_EXTRAS_INSTANT_TEXT, ROW_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 },
+      0, 0, 0, 0, 0 },
+    { "TRANSITIONS", "Doors and map changes.\nSeamless never goes black.",
+      OPT_TRANSITIONS, ROW_CHOICE, 3, { "ORIGINAL", "FAST", "SEAMLESS" }, { 0, 1, 2 },
       0, 0, 0, 0, 0 },
 };
 

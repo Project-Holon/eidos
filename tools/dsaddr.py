@@ -1690,6 +1690,7 @@ def main(argv=None) -> int:
     if a.cut_list or a.cut_asm:
         import gamecut
         drop = set()
+        keep = set()
         renames = {}
         if a.cut_list and os.path.exists(a.cut_list):
             key = os.path.normcase(os.path.abspath(src_path)).replace("\\", "/")
@@ -1706,7 +1707,10 @@ def main(argv=None) -> int:
                             old, _, new = pair.partition("=")
                             if old and new:
                                 renames[old] = new
-        source, _cut = gamecut.cut(source, drop, a.cut_asm, a.cut_decls)
+                        # the fourth: cut names whose prototypes stay (a
+                        # patch that keeps the game's signature)
+                        keep.update(n for n in (cols[3] if len(cols) > 3 else "").split(",") if n)
+        source, _cut = gamecut.cut(source, drop, a.cut_asm, a.cut_decls, keep)
         if renames:
             source = gamecut.rename_defs(source, renames)
         spath = os.path.abspath(src_path).replace("\\", "/")

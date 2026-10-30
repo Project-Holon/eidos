@@ -734,6 +734,8 @@ static const OptRow k_sound[] = {
 static const OptRow k_extras[] = {
     { "INSTANT TEXT", "Show each page of a message at once, whatever the text speed.",
       EIDOS_OPT_EXTRAS_INSTANT_TEXT, OPT_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 }, 0, 0, 0, 0, 0 },
+    { "TRANSITIONS", "Doors and map changes. Seamless never goes black.",
+      EIDOS_OPT_TRANSITIONS, OPT_CHOICE, 3, { "ORIGINAL", "FAST", "SEAMLESS" }, { 0, 1, 2 }, 0, 0, 0, 0, 0 },
 };
 
 static const char *const k_page_name[PAGE_COUNT] = { "GAME", "DISPLAY", "SOUND", "EXTRAS" };

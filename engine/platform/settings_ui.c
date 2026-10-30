@@ -120,6 +120,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "Auto follows the controller." },
     [EIDOS_OPT_OUTLINES]            = { "Dark edges on 3D objects,",
                                         "one screen pixel wide." },
+    [EIDOS_OPT_TRANSITIONS]         = { "Doors and map changes. Seamless",
+                                        "never goes black." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -228,6 +230,7 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_MOVE_COLOURS]        = "Move colours",
     [EIDOS_OPT_PAD_ICONS]           = "Button icons",
     [EIDOS_OPT_OUTLINES]            = "3D outlines",
+    [EIDOS_OPT_TRANSITIONS]         = "Map transitions",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -261,6 +264,9 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_PAD_ICONS,           8, "Steam Deck" },
     { EIDOS_OPT_OUTLINES,            0, "Off" },
     { EIDOS_OPT_OUTLINES,            1, "Thin" },
+    { EIDOS_OPT_TRANSITIONS,         0, "Original" },
+    { EIDOS_OPT_TRANSITIONS,         1, "Fast" },
+    { EIDOS_OPT_TRANSITIONS,         2, "Seamless" },
 };
 
 /* Short names for the side-by-side choices (a choice has about 48 pixels). */
@@ -730,6 +736,7 @@ static void build_rows(void)
         break;
     case TAB_EXTRAS:
         add_row(ROW_OPTION, EIDOS_OPT_EXTRAS_INSTANT_TEXT, 0);
+        add_row(ROW_OPTION, EIDOS_OPT_TRANSITIONS, 0);
         if (eidos_settings_get(EIDOS_OPT_LAYOUT_ARRANGEMENT) == EIDOS_LAYOUT_ONE) {
             /* the battle backdrop is the one-screen layout's own */
             add_row(ROW_OPTION, EIDOS_OPT_BATTLE_BACKDROP, 0);

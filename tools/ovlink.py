@@ -1810,7 +1810,14 @@ class Link:
                 continue
             import gamecut
             unit.cuts |= names
-            cut_text, cut = gamecut.cut(read_text(unit.path), unit.cuts, True, True)
+            # A patch that keeps the game's own signatures may say so
+            # (` * keeps declarations`): the unit's prototypes of the cut
+            # functions stay, for a unit that names one before its
+            # definition (a creator passing its event's step function).
+            if re.search(r"^\s*\*\s*keeps declarations\s*$", text[:4096], re.M):
+                unit.keep_decls = getattr(unit, "keep_decls", set()) | names
+            cut_text, cut = gamecut.cut(read_text(unit.path), unit.cuts, True, True,
+                                        getattr(unit, "keep_decls", ()))
             missing = sorted(names - set(cut))
             if missing:
                 self.notes.append("port patch %s: %s not defined in %s"
@@ -3661,9 +3668,10 @@ def main(argv=None):
             routed = sorted(n for n in u.self_calls if n in st.slot_names)
             if u.cuts or routed:
                 cut = os.path.join(inc, "tu", flat_name(u.rel) + ".cut")
-                write_if_changed(cut, "%s\t%s\t%s\n" % (
+                write_if_changed(cut, "%s\t%s\t%s\t%s\n" % (
                     u.path.replace("\\", "/"), ",".join(sorted(u.cuts)),
-                    ",".join("%s=%s" % (n, link.own(st, n)) for n in routed)))
+                    ",".join("%s=%s" % (n, link.own(st, n)) for n in routed),
+                    ",".join(sorted(getattr(u, "keep_decls", ())))))
                 cut = "|" + cut.replace("\\", "/")
             units.append("%d|%s|%s%s" % (oid, u.path.replace("\\", "/"),
                                           u.header.replace("\\", "/"), cut))
