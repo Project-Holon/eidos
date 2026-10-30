@@ -8,11 +8,22 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `6c2aae879f123bcbc028cf6a8b7f8df614402ac8`
-- Date: 2026-10-29 14:38:15 +0100
-- Subject: Move cursor actors read their animation from the right slot on the PC build
+- Revision: `1ba33fb1376f0ca9ef0045edca6d2b965b527a17`
+- Date: 2026-10-30 00:17:36 +0100
+- Subject: Build the French, German, Italian and Spanish cartridges from the same source
 
-The step from `515b939e9b`: BTLV_INPUT_CreateWazaCursorActors' host branch read
+The step from `6c2aae879f`: the same `src/game` builds the French, German,
+Italian and Spanish cartridges. `version.h` gains `LANGUAGE` (English by
+default, so an unchanged build is the English game), `PM_LANG_ID`,
+`PM_LANG_MONTH_AS_NAME` and `PM_LANG_VERSION_KEY`; about 140 `#if LANGUAGE`
+sites keep the English code in their `#else`. For the host:
+`WORDSET_SetSlotFromMsg119` takes a u16 (ov021's
+`SCRCMD_BufferSpeciesEntryName` has a host u32 wrapper, as
+`SCRCMD_BufferSpeciesName` does); ov218's `UN_SELECT_DrawFrameListRow` has
+one typed definition; ov125's GdsRap client field `protocolVersion` is
+`language`. The port builds the English game as before.
+
+The step before, from `515b939e9b`: BTLV_INPUT_CreateWazaCursorActors' host branch read
 the move cursors' animation sequence 0x20 bytes past the right slot, a
 leftover byte that crashed the 32-bit build at a trainer battle's second
 action menu (the 64-bit build read a harmless value by luck); the DS bytes
