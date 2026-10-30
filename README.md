@@ -34,18 +34,29 @@ in aletheia or here. Graphical issues and inconsistencies are to be
 expected, and multiplayer beyond syncing positions along with hosting and
 lobbies is still experimental.
 
+- One screen: the game in a single widescreen window, with its own
+  interface for the field, menus and apps, or the two DS screens as on
+  the console
+- Remaster battles: battles take place on the real map where you are,
+  with the camera placed and checked by hand at about 150 places, and
+  redrawn battle menus
 - 3D drawn on the GPU at a higher internal resolution, with fog, edge
   marking and anti-aliasing
-- Fast forward: Tab for 2x, left Shift+Tab for as fast as the computer can
-- Keyboard and gamepad, remappable, and a settings screen in the game
-- A mod loader (`docs/modding.md`)
+- Instant text, and fast forward: Tab for 2x, left Shift+Tab for as fast
+  as the computer can
+- Keyboard and gamepad, remappable, and the port's settings inside the
+  game's Options screen
+- 64-bit builds for Windows, macOS (Apple silicon) and Linux, and a
+  launcher that installs, updates itself and manages your ROMs
+- A mod loader (`docs/modding.md`) and a spot editor for battle places
+  (`tools/spot-editor`)
 
 ## Milestones
 
 - [x] **Milestone 1**: Portability
   - [x] One 32-bit reference build, warning-free on GCC, Clang and MSVC
   - [x] A 64-bit build (needs the 64-bit-ready source from aletheia)
-- [x] **Milestone 2**: Platform layer (SDL2)
+- [x] **Milestone 2**: Platform layer (SDL3)
   - [x] Window, keyboard, gamepads, touch screen with the mouse
   - [x] Audio output and frame pacing at the DS's 59.83 Hz
   - [x] The game's own boot and scheduler run every frame
@@ -70,9 +81,10 @@ lobbies is still experimental.
 - [ ] **Milestone 8**: Modding and enhancements
   - [x] Higher internal resolution
   - [x] Settings screen
+  - [x] One-screen widescreen layout and Remaster battles
   - [ ] Stable mod API and documented data formats
 - [ ] **Milestone 9**: Packaging
-  - [ ] Windows, macOS and Linux builds
+  - [x] Windows, macOS and Linux builds, with a launcher
   - [ ] Android and iOS
 - [ ] **Milestone 10**: Pokémon White
 
@@ -83,6 +95,7 @@ lobbies is still experimental.
 - Your own dump of Pokémon Black (USA/Europe)
 - CMake 3.16 or later, Ninja, Python 3.11 or later
 - A 32-bit compiler: MinGW-w64 GCC (`i686-w64-mingw32-gcc`) or MSVC x86
+  (the 64-bit build needs more: `docs/building.md`)
 - SDL3 (`python tools/fetch_sdl.py` downloads it on Windows)
 
 ## Building
