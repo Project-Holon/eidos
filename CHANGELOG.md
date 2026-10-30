@@ -13,7 +13,16 @@ Each release's notes on GitHub start with its section here
   game's own FORGET or GIVE UP. Using an Ether or a PP Up in battle shows
   the moves too.
 - The evolution scene fills the window in the one-screen layout instead
-  of sitting at the DS size in a corner.
+  of sitting at the DS size in a corner. Its messages ("What? Oshawott
+  is evolving!") show in the one-screen message box at the bottom, and
+  the box hides while the animation plays.
+- Learning a move with a Rare Candy outside battle (one-screen): the long
+  "forget a move" prompts wrap in the party list's message box, the party
+  list stays one-screen while the move is chosen, and going from the list
+  to the move page and back crossfades without the start menu showing
+  through.
+- The battle move page (one-screen) keeps a gap between the move's
+  details and the buttons under them.
 
 - Fixed the Poke Ball disappearing while it shakes after a throw (one-screen
   real-map battles): it lies on the ground where the Pokemon stood, and the

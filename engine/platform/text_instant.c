@@ -43,6 +43,20 @@ struct TextPrinter *__real_PRINTSYS_PrintStreamCallBack(
     uint32_t heap, uint16_t fillColor, PrintCallback callback);
 void __real_PRINTSYS_PrintStreamSetSpeed(struct TextPrinter *printer, int32_t wait);
 
+/* The window the game printed a message stream into last, and how many it
+ * has printed: the one-screen evolution page reads the game's message from
+ * that window (engine/ui/recipe_party.c). */
+static struct BmpWin *g_last_window;
+static uint32_t g_print_count;
+
+struct BmpWin *eidos_text_last_window(uint32_t *count)
+{
+    if (count != NULL) {
+        *count = g_print_count;
+    }
+    return g_last_window;
+}
+
 static int32_t instant(int32_t wait)
 {
     return eidos_settings_get(EIDOS_OPT_EXTRAS_INSTANT_TEXT) ? INSTANT_WAIT : wait;
@@ -53,6 +67,8 @@ struct TextPrinter *__wrap_PRINTSYS_PrintStream(
     struct GfFont *font, int32_t wait, struct Tcbl *tcbl, uint32_t priority,
     uint16_t heap, uint16_t fillColor)
 {
+    g_last_window = win;
+    g_print_count++;
     return __real_PRINTSYS_PrintStream(win, x, y, str, font, instant(wait), tcbl,
                                        priority, heap, fillColor);
 }
@@ -62,6 +78,8 @@ struct TextPrinter *__wrap_PRINTSYS_PrintStreamCallBack(
     struct GfFont *font, int32_t wait, struct Tcbl *tcbl, uint32_t priority,
     uint32_t heap, uint16_t fillColor, PrintCallback callback)
 {
+    g_last_window = win;
+    g_print_count++;
     return __real_PRINTSYS_PrintStreamCallBack(win, x, y, str, font, instant(wait),
                                                tcbl, priority, heap, fillColor,
                                                callback);

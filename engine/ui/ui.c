@@ -308,6 +308,36 @@ static u32 game_darkness(void)
  * crossfades from it: the window never goes empty in between.
  */
 static int g_leaving;
+/* An app that closes may open the next at once (the party list, the
+ * summary to forget a move, the list again): for the first frames of a
+ * close its own last picture stays, and the scene it goes back to (the
+ * menu) shows only once that long has passed with no new app. */
+static u32 g_leave_frame;
+static int g_before_shown;          /* the scene before is on show */
+#define LEAVE_OWN_FRAMES 30u
+
+static void fade_start(void);
+void eidos_ui_hold_canvas(void);
+
+/* While an app closes: its own last picture for the first frames, then the
+ * scene it goes back to (crossfading to it once).  Returns whether the
+ * scene before is the one on show. */
+static int leave_picture(EidosUiView *view)
+{
+    if (bw_input_frame_number() - g_leave_frame >= LEAVE_OWN_FRAMES && g_before != NULL
+        && g_before_w == g_canvas.w && g_before_h == g_canvas.h) {
+        if (!g_before_shown) {
+            g_before_shown = 1;
+            fade_start();
+        }
+        memcpy(g_canvas.rgba, g_before, (size_t)g_canvas.w * (size_t)g_canvas.h * 4);
+        view->blur = 0;
+        return 1;
+    }
+    eidos_ui_hold_canvas();
+    view->blur = 1;
+    return 0;
+}
 static u32 g_dark_prev;
 static int g_holding;            /* an app's picture held through its fade */
 
@@ -408,9 +438,8 @@ static void leave_check(EidosUiView *view)
 
     if (view->blur && !g_leaving && app_ending()) {
         g_leaving = 1;
-        if (g_before != NULL && g_before_w == g_canvas.w && g_before_h == g_canvas.h) {
-            fade_start();               /* from the app to the scene before */
-        }
+        g_leave_frame = bw_input_frame_number();
+        g_before_shown = 0;
     } else if (g_leaving && dark < g_dark_prev && !app_ending()) {
         g_leaving = 0;                  /* it fades back in: the same app */
         fade_start();
@@ -420,15 +449,9 @@ static void leave_check(EidosUiView *view)
         /* the modal's last picture stays, over the blurred world, until the
          * next scene is up and crossfades from it: no empty frames while
          * the game fades and loads */
-        if (g_before != NULL && g_before_w == g_canvas.w && g_before_h == g_canvas.h) {
-            /* the scene the app goes back to (the menu), at once, over the
-             * world as it was: the blur eases out under it */
-            memcpy(g_canvas.rgba, g_before, (size_t)g_canvas.w * (size_t)g_canvas.h * 4);
-            view->blur = 0;
-        } else {
-            eidos_ui_hold_canvas();
-            view->blur = 1;
-        }
+        /* the scene the app goes back to (the menu), over the world as it
+         * was, once no next app has opened (leave_picture) */
+        (void)leave_picture(view);
         g_take = 0;
         view->hide_2d = 1;
         view->no_fade = 1;
@@ -1537,10 +1560,10 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
                 g_before_w == g_canvas.w && g_before_h == g_canvas.h) {
                 if (!g_leaving) {
                     g_leaving = 1;
-                    fade_start();
+                    g_leave_frame = bw_input_frame_number();
+                    g_before_shown = 0;
                 }
-                memcpy(g_canvas.rgba, g_before, (size_t)g_canvas.w * (size_t)g_canvas.h * 4);
-                view->blur = 0;
+                (void)leave_picture(view);
                 view->hold_world = 1;
                 view->hide_2d = 1;
                 view->no_fade = 1;

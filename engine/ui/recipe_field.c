@@ -604,7 +604,9 @@ static int g_menu_leaving;          /* the menu is closing or opening an app */
 static int g_menu_shown;            /* its panels are on show                */
 static u32 g_menu_last_frame;       /* the last frame it ran                 */
 static int g_menu_closing;          /* closing to the field (not to an app)  */
-static int g_scrim;                 /* the world's dimming behind it, 0..90  */
+static int g_scrim;
+static u32 g_menu_back_frame;       /* the frame the menu came back from an app */
+#define MENU_BACK_HOLD 20u                 /* the world's dimming behind it, 0..90  */
 
 static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
@@ -679,8 +681,20 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             g_menu_leaving = 1;
             return;
         }
+        if (g_menu_leaving && !g_menu_closing) {
+            g_menu_back_frame = in->frame;  /* back from an app */
+        }
         g_menu_leaving = 0;
         g_menu_closing = 0;
+        /* Back from an app: one app may open the next at once (the party
+         * list, then the summary to forget a move, then the list again),
+         * passing through the menu for a few frames.  The app's last
+         * picture stands that long, so the menu does not flash in between;
+         * a menu the player came back to shows after. */
+        if (in->frame - g_menu_back_frame < MENU_BACK_HOLD) {
+            eidos_ui_hold_canvas();
+            return;
+        }
     }
     {
         /* the world steps back a little while the menu is up, easing in

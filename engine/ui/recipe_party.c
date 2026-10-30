@@ -520,13 +520,14 @@ static int party_match(void)
     }
     /* The plain list and the use-an-item list; the list that teaches a
      * move, the battle order list and the like keep the DS screens. */
-    if (v.mode != 0 && v.mode != 5) {
+    if (v.mode != 0 && v.mode != 5 && v.mode != 8 && rds32(v.work, PL_RESTORE18) == 0) {
         return 0;
     }
-    if (rds32(v.work, PL_RESTORE18) != 0) {
-        return 0;
-    }
-    return v.phase != 9;
+    /* mode 8: the list back from the summary's "forget a move" after an
+     * item taught one (a Rare Candy's level), with the game's message
+     * ("... did not learn ...", "... forgot ..."); PL_RESTORE18 the same
+     * on the way through mode 3 */
+    return 1;
 }
 
 /* The mon of plate i (the plate follows the swap animation), or NULL. */
@@ -559,7 +560,7 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
 
     out[0] = '\0';
     if (mw != NULL && rd32(mw, MS_KIND) < 4 && rdp(mw, MS_STREAM) != NULL &&
-        (v->phase == 7 || v->phase == 10 || v->phase == 11)) {
+        (v->phase == 7 || v->phase == 9 || v->phase == 10 || v->phase == 11)) {
         (void)strbuf_text(rdp(mw, MS_STREAMTEXT), tmp, (int)sizeof tmp, 0);
         snprintf(out, (size_t)cap, "%s", tmp);
         return;
@@ -600,6 +601,9 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
 
 static int g_party_hover = -1;
 
+static void draw_wrapped(EidosUiCtx *c, int x, int y, int width, int lh, int max,
+                         const char *text, int font, u32 color, s32 shadow);
+
 static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     PartyView v;
@@ -627,7 +631,9 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     draw_modal(c, mx, my, mw, mh);
 
     phase_pick = v.phase == 2 || v.phase == 3;
-    menu_open = v.phase == 6;
+    /* phase 9: a menu opened with a callback (POKELIST_OpenMenuWithCallback:
+     * the question after a Rare Candy, "forget a move?"), under its message */
+    menu_open = v.phase == 6 || v.phase == 9;
     msg_open = v.phase == 7;
     if (menu_open) {
         menu = rdp(v.work, PL_MENU);
@@ -751,14 +757,22 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         if (prompt[0] != '\0' && bh >= 18) {
             int lines, ty;
             EidosUiRect rr;
-            int mh2 = bh < 30 ? bh : 30;
+            int longmsg = ui_text_w(prompt, UI_FONT_LARGE) > msgw - 16;
+            int mh2 = bh < (longmsg ? 44 : 30) ? bh : (longmsg ? 44 : 30);
 
             (void)lines;
             ui_panel(c, mx + 8, my + mh - 6 - mh2, msgw, mh2, UI_CUT_TL | UI_CUT_BR, 5,
                      UI_BODY, UI_EDGE, 235);
-            ty = ui_text_y(mh2, UI_FONT_LARGE);
-            ui_text(c, mx + 8 + 8, my + mh - 6 - mh2 + ty, prompt, UI_WHITE, UI_GREY,
-                    UI_FONT_LARGE, 1);
+            if (!longmsg) {
+                ty = ui_text_y(mh2, UI_FONT_LARGE);
+                ui_text(c, mx + 8 + 8, my + mh - 6 - mh2 + ty, prompt, UI_WHITE, UI_GREY,
+                        UI_FONT_LARGE, 1);
+            } else {
+                /* a long message (a move to learn): two lines of the
+                 * smaller font, as many as the box holds */
+                draw_wrapped(c, mx + 8 + 8, my + mh - 6 - mh2 + 4, msgw - 16, 12, (mh2 - 6) / 12, prompt,
+                             UI_FONT_MEDIUM, UI_WHITE, UI_GREY);
+            }
             rr.x = mx + 8; rr.y = my + mh - 6 - mh2; rr.w = msgw; rr.h = mh2;
             if (msg_open && (eidos_ui_hit(rr) & EIDOS_UI_CLICK)) {
                 eidos_ui_press(BW_KEY_A, 3);
@@ -1631,6 +1645,108 @@ static int evolution_match(void)
     return bw_overlay_is_loaded(195);
 }
 
+/* engine/platform/text_instant.c: the window the game printed into last */
+struct BmpWin;
+struct BmpWin *eidos_text_last_window(u32 *count);
+extern void *BMP_WIN_GetBmp(void *win) __attribute__((weak));
+extern u8 BMP_WIN_GetPosY(void *win) __attribute__((weak));
+extern u8 BMP_WIN_GetHeight(void *win) __attribute__((weak));
+extern u8 BMP_WIN_GetBgLayer(void *win) __attribute__((weak));
+
+/* A pixel of a 4-bit tiled message bitmap. */
+static int evo_px(const u8 *px, int bw, int x, int y)
+{
+    u8 v = px[((y >> 3) * (bw >> 3) + (x >> 3)) * 32 + (y & 7) * 4 + ((x & 7) >> 1)];
+
+    return (x & 1) != 0 ? v >> 4 : v & 15;
+}
+
+/* The game's message, in the interface's own box over the game's: the
+ * window the scene printed into (only one printed since the scene began),
+ * its text pixels drawn at the DS size, centred. */
+static void evolution_message(EidosUiCtx *c, u32 since)
+{
+    u32 count;
+    void *win = eidos_text_last_window(&count);
+    const u8 *bmp, *px;
+    int bw, bh, cnt[16] = { 0 }, ground = 0, ink = -1, x, y, i, any = 0;
+    int ch = c->canvas->h, cw = c->canvas->w, s0, dsw, x0, top, bot, py;
+
+    if (win == NULL || count == since || BMP_WIN_GetBmp == NULL || BMP_WIN_GetPosY == NULL
+        || BMP_WIN_GetHeight == NULL || BMP_WIN_GetBgLayer == NULL) {
+        return;
+    }
+    {
+        /* the game shows its box only while its BG is on (DISPCNT bits 8
+         * to 11 of the screen the window is on): the text stays in the
+         * window's bitmap after the box is hidden */
+        u32 layer = BMP_WIN_GetBgLayer(win);
+        u32 dispcnt = bw_io_read32(layer < 4u ? 0x04000000u : 0x04001000u);
+
+        if ((dispcnt & (0x100u << (layer & 3u))) == 0) {
+            return;
+        }
+    }
+    bmp = (const u8 *)BMP_WIN_GetBmp(win);
+    if (bmp == NULL || (px = rdp(bmp, 0x00)) == NULL) {
+        return;
+    }
+    bw = (int)rd16(bmp, 0x04);
+    bh = (int)rd16(bmp, 0x06);
+    if (bw <= 0 || bh <= 0 || bw > 256 || bh > 64) {
+        return;
+    }
+    for (y = 0; y < bh; y++) {
+        for (x = 0; x < bw; x++) {
+            cnt[evo_px(px, bw, x, y)]++;
+        }
+    }
+    for (i = 1; i < 16; i++) {
+        if (cnt[i] > cnt[ground]) {
+            ground = i;
+        }
+    }
+    for (i = 0; i < 16; i++) {
+        if (i != ground && cnt[i] > 0 && (ink < 0 || cnt[i] > cnt[ink])) {
+            ink = i;                    /* the letters; the rest is their shadow */
+        }
+    }
+    any = ink >= 0;
+    if (!any) {
+        return;                         /* no message on show */
+    }
+    /* the game's box, a tile above and below its window, on the DS frame
+     * that the view fits to the canvas's height */
+    dsw = 256 * ch / 192;
+    x0 = (cw - dsw) / 2;
+    top = ((int)BMP_WIN_GetPosY(win) - 1) * 8 * ch / 192;
+    bot = ((int)BMP_WIN_GetPosY(win) + (int)BMP_WIN_GetHeight(win) + 1) * 8 * ch / 192;
+    if (bot > ch) {
+        bot = ch;
+    }
+    s0 = bot - top;
+    ui_fill(c, x0, top, dsw, s0, UI_INK, 255);
+    ui_panel(c, x0 + 6, top + 4, dsw - 12, s0 - 8, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 255);
+    py = top + (s0 - bh) / 2;
+    for (y = 0; y < bh; y++) {
+        for (x = 0; x < bw && x + 16 < dsw; x++) {
+            int v = evo_px(px, bw, x, y);
+
+            if (v != ground) {
+                ui_fill(c, x0 + 16 + x, py + y, 1, 1, v == ink ? UI_WHITE : UI_GREY, 255);
+            }
+        }
+    }
+}
+
+static u32 g_evo_since;
+static int g_evo_seen;
+
+static void evolution_reset(void)
+{
+    g_evo_seen = 0;
+}
+
 static void evolution_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     EidosUiRect all;
@@ -1645,6 +1761,11 @@ static void evolution_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
     view->mode = EIDOS_VIEW_WORLD;
     view->world_screen = 0;
     view->ds_only = 1;
+    if (!g_evo_seen) {
+        (void)eidos_text_last_window(&g_evo_since);  /* printed before the scene: not its */
+        g_evo_seen = 1;
+    }
+    evolution_message(c, g_evo_since);
     all.x = 0;
     all.y = 0;
     all.w = c->canvas->w;
@@ -1658,7 +1779,7 @@ static void evolution_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
 }
 
 static const EidosUiRecipe recipe_evolution = {
-    "evolution", evolution_match, evolution_run, NULL, 0
+    "evolution", evolution_match, evolution_run, evolution_reset, 0
 };
 
 /* ------------------------------------------------------------------ */

@@ -2895,7 +2895,8 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
                 sel = (mst & EIDOS_UI_HOVER) || i == shown || (v->cursor == i && eidos_ui_keys_lit());
                 ui_move_row(c, mx2, my2, mw2, m.type, name, m.pp, m.maxpp, sel);
                 if (i == 4) {
-                    ui_text(c, mx2 + mw2 - 80 - ui_text_w("NEW", UI_FONT_SMALL), my2 + ui_text_y(22, UI_FONT_SMALL),
+                    /* beside the row: inside it the name runs under it */
+                    ui_text(c, mx2 + mw2 + 8, my2 + ui_text_y(22, UI_FONT_SMALL),
                             "NEW", UI_CYAN, UI_NAVY, UI_FONT_SMALL, 1);
                 }
                 if ((mst & EIDOS_UI_CLICK) && i != shown) {
@@ -2905,7 +2906,9 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
             }
             if (shown >= 0 && shown < rows) {
                 PlMove m;
-                int dy = iy + 34 + ((rows + 1) / 2) * 26, dh = nav_y - 4 - dy;
+                /* inset in the blue panel (which ends at nav_y - 4) as on its
+                 * sides: 8 pixels */
+                int dy = iy + 34 + ((rows + 1) / 2) * 26, dh = nav_y - 4 - 8 - dy;
                 char lab[24], info[64], desc[300];
 
                 pl_move(s, shown, new_id, &m);
