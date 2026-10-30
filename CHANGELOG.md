@@ -5,6 +5,10 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Real-map battles: a place with a strong intro zoom no longer jumps as the
+  camera pulls back after the foe's send-out (the view now looks where the
+  game's camera looks while the zoom brings it closer). Where the pull
+  ends, the shot is as before.
 - Real-map battles: a trainer who comes back mid-battle to speak (a rival
   or a leader on their last Pokemon) and at the end of the battle now
   stands where the place puts the foe's side, beside their Pokemon, and as

@@ -728,7 +728,8 @@ float bmap_cmd_depth(const float p[3])
  * moves the eye by (1 - 1 / zoom) of `toward`, a vector chosen by the
  * caller; the camera then turns about the upright line through the
  * battle's centre, rises, slides to its right and turns its look. */
-static void camera_shift(float eye[3], float target[3], const BmapIntro *in, float w, const float toward[3])
+static void camera_shift(float eye[3], float target[3], const BmapIntro *in, float w, const float toward[3],
+                         int keep_look)
 {
     const double pi = 3.14159265358979323846;
     float ca, sa, x, zoom = in->zoom > 0.0f ? in->zoom : 1.0f;
@@ -738,7 +739,14 @@ static void camera_shift(float eye[3], float target[3], const BmapIntro *in, flo
         float k = w * (1.0f - 1.0f / zoom);     /* below 1: further out */
 
         for (i = 0; i < 3; i++) {
+            float look = target[i] - eye[i];
+
             eye[i] += k * toward[i];
+            if (keep_look) {
+                /* the eye's own way still: a target that moves while the
+                 * eye is near it (a strong zoom) would swing the view */
+                target[i] = eye[i] + look;
+            }
         }
     }
     /* turned about the upright line through the battle's centre, eye and
@@ -793,7 +801,10 @@ static void camera_shift(float eye[3], float target[3], const BmapIntro *in, flo
  * `w` of what the full zoom moves the intro's eye.  The same move for every
  * camera, not one toward each camera's own target: the target travels out
  * with the eye during the pull, and a move toward it would take the eye in
- * front of the command camera and back. */
+ * front of the command camera and back.  The camera keeps looking the way
+ * the game's does: with a strong zoom the eye ends near the intro's target,
+ * and the game's target still moving there swung the view (a jump where
+ * the pull ends). */
 static void intro_shift(float eye[3], float target[3], const BmapIntro *in, float w)
 {
     float toward[3];
@@ -805,7 +816,7 @@ static void intro_shift(float eye[3], float target[3], const BmapIntro *in, floa
     for (i = 0; i < 3; i++) {
         toward[i] = k_intro_target[i] - k_intro_eye[i];
     }
-    camera_shift(eye, target, in, w, toward);
+    camera_shift(eye, target, in, w, toward, 1);
 }
 
 void bmap_camera_view(float eye[3], float target[3], const BmapIntro *cam, float w)
@@ -819,7 +830,7 @@ void bmap_camera_view(float eye[3], float target[3], const BmapIntro *cam, float
     for (i = 0; i < 3; i++) {
         toward[i] = target[i] - eye[i];
     }
-    camera_shift(eye, target, cam, w, toward);
+    camera_shift(eye, target, cam, w, toward, 0);
 }
 
 /* how far the camera is on the way from the command camera's eye to the
