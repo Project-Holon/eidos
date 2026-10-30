@@ -492,7 +492,11 @@ void eidos_ui_cry(u32 species)
 /* The spot editor's Preview in game (and tests): EIDOS_DEBUG_PARTY="species,species,..." and
  * EIDOS_DEBUG_LEVEL replace the party's members, once the field runs, with
  * fresh Pokemon of those species (the player's own trainer ID), on the
- * game's thread through the game's own functions. */
+ * game's thread through the game's own functions.  A member may name its
+ * own level and its experience: "species:level" or "species:level:-N",
+ * N experience points short of the next level (-1: the next point levels
+ * it up).  Members past the party's count are added.
+ * EIDOS_DEBUG_ITEMS="item:count,..." puts items in the bag. */
 extern void *GAME_DATA_GetMyParty(const void *gd) __attribute__((weak));
 extern void *GAME_DATA_GetMyStatus(void *gd) __attribute__((weak));
 extern u32 MYSTATUS_GetId(const void *ms) __attribute__((weak));
@@ -505,6 +509,15 @@ extern void MISC_SetBadge(void *misc, u32 bit) __attribute__((weak));
 extern void *GAME_DATA_GetMiscSave(void *gd) __attribute__((weak));
 extern void *GAME_DATA_GetEventWork(const void *gd) __attribute__((weak));
 extern void ZONEDATA_SetEventFlag(void *ev, int flagId) __attribute__((weak));
+extern u32 POKE_TOOL_GetExpForLevel(u16 species, u16 form, u16 level) __attribute__((weak));
+extern void POKE_TOOL_SetPartyValue(void *pp, u32 paramId, uintptr_t value) __attribute__((weak));
+extern void POKE_TOOL_CalcParam(void *pp) __attribute__((weak));
+extern void *POKE_TOOL_Create(u16 species, u16 level, u64 otId, u16 heapId) __attribute__((weak));
+extern u32 POKEPARTY_Add(void *party, const void *member) __attribute__((weak));
+extern void *GAME_DATA_GetMyItem(const void *gd) __attribute__((weak));
+extern u32 MYITEM_SAVEDATA_AddItem(void *bag, u16 itemId, u16 quantity, u16 heapId) __attribute__((weak));
+#define DEBUG_PARAM_EXP 0x08u           /* POKE_TOOL_PARAM_EXP                  */
+#define DEBUG_FIELD_HEAP 0x15u          /* the field's heap                     */
 
 static void debug_party(void)
 {
@@ -515,6 +528,9 @@ static void debug_party(void)
     u32 n, i, id;
     u16 lv;
 
+    if (list == NULL && getenv("EIDOS_DEBUG_ITEMS") != NULL) {
+        list = "";                      /* items alone */
+    }
     if (done || list == NULL || &bw_dsref__GameSystemGlobal == NULL || GAME_DATA_GetMyParty == NULL
         || POKE_TOOL_SetupPartyParam == NULL || POKEPARTY_GetMember == NULL) {
         return;
@@ -532,15 +548,54 @@ static void debug_party(void)
     id = GAME_DATA_GetMyStatus != NULL && MYSTATUS_GetId != NULL ? MYSTATUS_GetId(GAME_DATA_GetMyStatus(gd)) : 0;
     lv = (u16)(getenv("EIDOS_DEBUG_LEVEL") ? atoi(getenv("EIDOS_DEBUG_LEVEL")) : 50);
     n = POKEPARTY_GetCount(party);
-    for (i = 0; i < n && *list != '\0'; i++) {
-        u16 sp = (u16)strtoul(list, (char **)&list, 10);
+    for (i = 0; i < 6 && *list != '\0'; i++) {
+        u16 sp = (u16)strtoul(list, (char **)&list, 10), mlv = lv;
+        long short_by = 0;
+        void *pp;
 
+        if (*list == ':') {
+            mlv = (u16)strtoul(list + 1, (char **)&list, 10);
+            if (*list == ':') {
+                short_by = -strtol(list + 1, (char **)&list, 10);   /* "-N" */
+            }
+        }
         if (sp != 0) {
-            POKE_TOOL_SetupPartyParam(POKEPARTY_GetMember(party, i), sp, lv, id);
-            fprintf(stderr, "eidos: debug party slot %u = species %u lv %u\n", (unsigned)i, (unsigned)sp, (unsigned)lv);
+            if (i >= n) {
+                if (POKE_TOOL_Create == NULL || POKEPARTY_Add == NULL) {
+                    break;
+                }
+                (void)POKEPARTY_Add(party, POKE_TOOL_Create(sp, mlv, id, DEBUG_FIELD_HEAP));
+                n = POKEPARTY_GetCount(party);
+            }
+            pp = POKEPARTY_GetMember(party, i);
+            POKE_TOOL_SetupPartyParam(pp, sp, mlv, id);
+            if (short_by > 0 && POKE_TOOL_GetExpForLevel != NULL && POKE_TOOL_SetPartyValue != NULL
+                && POKE_TOOL_CalcParam != NULL && mlv < 100) {
+                u32 next = POKE_TOOL_GetExpForLevel(sp, 0, (u16)(mlv + 1));
+
+                POKE_TOOL_SetPartyValue(pp, DEBUG_PARAM_EXP, (uintptr_t)(next - (u32)short_by));
+                POKE_TOOL_CalcParam(pp);
+            }
+            fprintf(stderr, "eidos: debug party slot %u = species %u lv %u%s\n", (unsigned)i, (unsigned)sp,
+                    (unsigned)mlv, short_by > 0 ? " (short of the next level)" : "");
         }
         while (*list == ',' || *list == ' ') {
             list++;
+        }
+    }
+    /* EIDOS_DEBUG_ITEMS="item:count,...": into the bag */
+    if (getenv("EIDOS_DEBUG_ITEMS") != NULL && GAME_DATA_GetMyItem != NULL && MYITEM_SAVEDATA_AddItem != NULL) {
+        const char *m = getenv("EIDOS_DEBUG_ITEMS");
+        unsigned item, count;
+        int used;
+
+        while (sscanf(m, "%u:%u%n", &item, &count, &used) == 2) {
+            u32 ok = MYITEM_SAVEDATA_AddItem(GAME_DATA_GetMyItem(gd), (u16)item, (u16)count, DEBUG_FIELD_HEAP);
+
+            fprintf(stderr, "eidos: debug item %u x%u %s\n", item, count, ok ? "added" : "refused");
+            m += used;
+            if (*m != ',') break;
+            m++;
         }
     }
     /* EIDOS_DEBUG_MOVES="member:move:slot,...": teach moves */
