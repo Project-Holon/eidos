@@ -703,7 +703,7 @@ static void six_of(const u8 out[3], int is3d, u8 o6[3])
  * colour or a 2D effect's 5-bit result: which of the two six_of needs.
  */
 static int blend_pixel(const G2dFrameDesc *desc, const G2dFrameSample *stack,
-                       u32 n, const u8 top[3], u32 top_bit, u32 allowed,
+                       u32 n, const u8 top[3], u32 top_bit, u32 x, u32 y,
                        u8 *out)
 {
     int top3d = (n > 0 && stack[0].is_3d) ? 1 : 0;
@@ -716,7 +716,8 @@ static int blend_pixel(const G2dFrameDesc *desc, const G2dFrameSample *stack,
      * the first target set, and for alpha the pixel directly beneath it
      * must belong to the second target set.  Nothing else blends.
      */
-    if ((allowed & G2D_LAYER_EFFECT) == 0) {
+    if ((win_mask(desc->windows, (s32)x, (s32)y)
+         & G2D_LAYER_EFFECT) == 0) {
         return top3d;
     }
     /*
@@ -865,23 +866,15 @@ static void put_sample(G2dFrameSample *o, const G2dPalette *pal, u32 ci,
 }
 
 /* g2d_frame_stack over a plan: the same samples, in the same order. */
-/* Where a walk stopped: the next step, the group already answered and the
- * window's mask at the pixel, so a walk for one more layer goes on from
- * there (the layers above are not walked and sampled again). */
-typedef struct WalkPos {
-    u32 k, allowed;
-    int done_key;
-} WalkPos;
-
 static u32 plan_stack(const G2dFrameDesc *desc, const PlanStep *plan, u32 np,
                       s32 x, s32 y, const u8 *src3, G2dFrameSample *out,
-                      u32 count, u32 max, WalkPos *pos)
+                      u32 max)
 {
-    u32 k = pos->k;
-    u32 allowed = pos->allowed;
-    int done_key = pos->done_key;
+    u32 count = 0, k;
+    u32 allowed = win_mask(desc->windows, x, y);
+    int done_key = -1;
 
-    for (; k < np && count < max; k++) {
+    for (k = 0; k < np && count < max; k++) {
         const PlanStep *st = &plan[k];
         u8 index;
         u32 ci;
@@ -961,8 +954,6 @@ static u32 plan_stack(const G2dFrameDesc *desc, const PlanStep *plan, u32 np,
         }
         }
     }
-    pos->k = k;
-    pos->done_key = done_key;
     return count;
 }
 
@@ -998,18 +989,14 @@ static void compose_px(const G2dFrameDesc *desc, const PlanStep *plan,
     u8 top[3];
     u32 top_bit, n;
     int is3d;
-    WalkPos pos;
 
     /*
      * The pixel beneath the top one is read only by the 3D blend, a
      * semi-transparent OBJ and alpha blending (blend_pixel), so the walk
-     * stops at the first layer unless one of those can apply, and goes on
-     * from there when one can; the answer is the same either way.
+     * stops at the first layer unless one of those can apply; the answer
+     * is the same either way.
      */
-    pos.k = 0;
-    pos.done_key = -1;
-    pos.allowed = win_mask(desc->windows, (s32)x, (s32)y);
-    n = plan_stack(desc, plan, np, (s32)x, (s32)y, src3, stack, 0, 1, &pos);
+    n = plan_stack(desc, plan, np, (s32)x, (s32)y, src3, stack, 1);
     if (n == 1 && desc->blend != NULL
         && (stack[0].is_3d
             || (stack[0].is_obj && stack[0].layer < desc->n_objs
@@ -1017,7 +1004,7 @@ static void compose_px(const G2dFrameDesc *desc, const PlanStep *plan,
             || (desc->blend->effect == G2D_BLEND_ALPHA
                 && (g2d_frame_sample_bit(&stack[0])
                     & desc->blend->first) != 0))) {
-        n = plan_stack(desc, plan, np, (s32)x, (s32)y, src3, stack, n, 2, &pos);
+        n = plan_stack(desc, plan, np, (s32)x, (s32)y, src3, stack, 2);
     }
     stack_color(desc, stack, n, 0, top, &top_bit);
 
@@ -1028,7 +1015,7 @@ static void compose_px(const G2dFrameDesc *desc, const PlanStep *plan,
 
     is3d = (n > 0 && stack[0].is_3d) ? 1 : 0;
     if (desc->blend != NULL) {
-        is3d = blend_pixel(desc, stack, n, top, top_bit, pos.allowed, out);
+        is3d = blend_pixel(desc, stack, n, top, top_bit, x, y, out);
     }
     if (out6 != NULL) {
         six_of(out, is3d, out6);
