@@ -935,6 +935,59 @@ static int snap_grow(void **p, u32 *cap, u32 need, size_t elem)
 static G3dSnapTex *g_snap_pool;
 static u32 g_snap_n_pool, g_snap_cap_pool;
 
+int g3d_hw_snapshot_add_quad(const s32 clip[4][4], const u8 *rgba, u32 w, u32 h)
+{
+    G3dSnapshot *s = &g_snap;
+    u32 v0 = s->n_verts, k;
+    G3dPoly *p;
+    G3dSnapTex *tx;
+
+    if (rgba == NULL || w == 0 || h == 0
+        || snap_grow((void **)&s->verts, &s->cap_verts, s->n_verts + 4u, sizeof(*s->verts)) != 0
+        || snap_grow((void **)&s->idx, &s->cap_idx, s->n_idx + 4u, sizeof(*s->idx)) != 0
+        || snap_grow((void **)&s->polys, &s->cap_polys, s->n_polys + 1u, sizeof(*s->polys)) != 0
+        || snap_grow((void **)&s->poly_tex, &g_snap_cap_ptex, s->n_polys + 1u, sizeof(*s->poly_tex)) != 0
+        || snap_grow((void **)&s->tex, &s->cap_tex, s->n_tex + 1u, sizeof(*s->tex)) != 0) {
+        return -1;
+    }
+    tx = &s->tex[s->n_tex];
+    tx->rgba = (u8 *)malloc((size_t)w * h * 4u);
+    if (tx->rgba == NULL) {
+        return -1;
+    }
+    memcpy(tx->rgba, rgba, (size_t)w * h * 4u);
+    tx->w = w;
+    tx->h = h;
+    tx->partial = 0;
+    tx->content = 0;
+    for (k = 0; k < 4u; k++) {
+        G3dVertex *v = &s->verts[v0 + k];
+
+        memset(v, 0, sizeof(*v));
+        v->x = clip[k][0];
+        v->y = clip[k][1];
+        v->z = clip[k][2];
+        v->w = clip[k][3];
+        v->s = (k == 1u || k == 2u) ? (s32)(w << 4) : 0;   /* s16.4 texels */
+        v->t = (k >= 2u) ? (s32)(h << 4) : 0;
+        v->r = v->g = v->b = 255;                         /* the texture as it is */
+        s->idx[s->n_idx + k] = v0 + k;
+    }
+    p = &s->polys[s->n_polys];
+    p->first = s->n_idx;
+    p->count = 4;
+    /* opaque, both faces, modulate: what the texture's alpha leaves */
+    p->attr = (31u << 16) | (1u << 7) | (1u << 6);
+    p->teximage = 0;                    /* clamped, not flipped */
+    p->pltt_base = 0;
+    s->poly_tex[s->n_polys] = (s32)s->n_tex;
+    s->n_verts += 4u;
+    s->n_idx += 4u;
+    s->n_polys++;
+    s->n_tex++;
+    return 0;
+}
+
 static void build_snapshot(u32 d3, u32 cc, u32 cd, const G3dTarget *t,
                            u32 unsup)
 {

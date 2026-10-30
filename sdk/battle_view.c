@@ -365,6 +365,151 @@ int bw_battle_view_mon_box(int pos, float box[4])
     return 1;
 }
 
+/*
+ * The effects' 2D sprites (BTLV_CLACT: the ball that shakes on the ground
+ * after a throw, a few moves' sprites).  The game draws them as OBJs at the
+ * screen point it projects from a Pokemon's place; the one-screen battle
+ * does not show the game's 2D (it draws the plates and the message itself),
+ * so each one goes into the 3D instead, as a quad at its screen point and at
+ * the depth of the Pokemon it stands by: it sits where the game puts it, and
+ * the map in front of that Pokemon covers it as it covers the Pokemon.
+ */
+#define EFF_CLACT          0x1A0u   /* BtlvEffect.clact: BtlvClact *          */
+#define CLACT_SLOT0        0x08u    /* BtlvClact.slot[7], the ClactActor first */
+#define CLACT_SLOT_STRIDE  0x10u
+#define CLACT_SLOT_COUNT   7u
+#define EFFECT_SPRITE_BOX  32       /* the part of the OBJs taken around one  */
+
+typedef struct BvPt16 { int16_t x, y; } BvPt16;
+extern void CLACT_GetActorPos(const void *actor, BvPt16 *out) __attribute__((weak));
+/* engine/g2d/hwcompose.c: a screen's OBJs alone, 256 x 192 RGBA */
+int g2d_hw_objs_dsmem(int screen, uint8_t *out);
+
+/* A point's clip coordinates under the frame's camera (the game's own
+ * projection, the view's widening on x and y). */
+static void project_clip(const float p[3], float kx, float ky, float out[4])
+{
+    float f[3], sd[3], u[3], d[3], l, cot, xv, yv, zf, n = g_frame.znear, fr = g_frame.zfar;
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        f[i] = g_frame.target[i] - g_frame.eye[i];
+        d[i] = p[i] - g_frame.eye[i];
+    }
+    l = sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+    for (i = 0; i < 3; i++) {
+        f[i] /= l > 1e-6f ? l : 1.0f;
+    }
+    sd[0] = f[1] * g_frame.up[2] - f[2] * g_frame.up[1];
+    sd[1] = f[2] * g_frame.up[0] - f[0] * g_frame.up[2];
+    sd[2] = f[0] * g_frame.up[1] - f[1] * g_frame.up[0];
+    l = sqrtf(sd[0] * sd[0] + sd[1] * sd[1] + sd[2] * sd[2]);
+    for (i = 0; i < 3; i++) {
+        sd[i] /= l > 1e-6f ? l : 1.0f;
+    }
+    u[0] = sd[1] * f[2] - sd[2] * f[1];
+    u[1] = sd[2] * f[0] - sd[0] * f[2];
+    u[2] = sd[0] * f[1] - sd[1] * f[0];
+    xv = d[0] * sd[0] + d[1] * sd[1] + d[2] * sd[2];
+    yv = d[0] * u[0] + d[1] * u[1] + d[2] * u[2];
+    zf = d[0] * f[0] + d[1] * f[1] + d[2] * f[2];
+    cot = g_frame.fcos / g_frame.fsin;
+    out[0] = cot / g_frame.aspect * xv * kx;
+    out[1] = cot * yv * ky;
+    out[2] = (fr + n) / (fr - n) * zf - 2.0f * fr * n / (fr - n);
+    out[3] = zf;
+}
+
+static void effect_sprites(void)
+{
+    static uint8_t objs[256 * 192 * 4], img[EFFECT_SPRITE_BOX * EFFECT_SPRITE_BOX * 4];
+    uint32_t *eslot = (uint32_t *)bw_ds_try_ptr(DS_GBTLVEFF);
+    uintptr_t eff = eslot != NULL ? *eslot : 0, cl;
+    s32 kxf, kyf;
+    float kx, ky;
+    int have = 0;
+    uint32_t i;
+
+    if (!gptr_ok(eff) || CLACT_GetActorPos == NULL || g_frame.n_poke == 0) {
+        return;
+    }
+    cl = rd32(eff, EFF_CLACT);
+    if (!gptr_ok(cl)) {
+        return;
+    }
+    g3d_hw_view_scale(&kxf, &kyf);
+    kx = (float)kxf / 4096.0f;
+    ky = (float)kyf / 4096.0f;
+    for (i = 0; i < CLACT_SLOT_COUNT; i++) {
+        uintptr_t actor = rd32(cl, CLACT_SLOT0 + CLACT_SLOT_STRIDE * i);
+        BvPt16 pt;
+        float sx, sy, best = 1e30f, at[4] = { 0, 0, 0, 1 };
+        int x, y, any = 0, x0, y0;
+        uint32_t k;
+        s32 q[4][4];
+
+        if (!gptr_ok(actor)) {
+            continue;
+        }
+        if (!have) {
+            if (g2d_hw_objs_dsmem(0, objs) != 0) {
+                return;
+            }
+            have = 1;
+        }
+        CLACT_GetActorPos((const void *)actor, &pt);
+        x0 = pt.x - EFFECT_SPRITE_BOX / 2;
+        y0 = pt.y - EFFECT_SPRITE_BOX / 2;
+        for (y = 0; y < EFFECT_SPRITE_BOX; y++) {
+            for (x = 0; x < EFFECT_SPRITE_BOX; x++) {
+                uint8_t *o = img + (y * EFFECT_SPRITE_BOX + x) * 4;
+                int X = x0 + x, Y = y0 + y;
+
+                if (X < 0 || Y < 0 || X >= 256 || Y >= 192 || objs[(Y * 256 + X) * 4 + 3] == 0) {
+                    memset(o, 0, 4);
+                    continue;
+                }
+                memcpy(o, objs + (Y * 256 + X) * 4, 4);
+                o[3] = 255;
+                any = 1;
+            }
+        }
+        if (!any) {
+            continue;
+        }
+        /* the depth: the Pokemon whose place is nearest on screen */
+        sx = ((float)pt.x - 128.0f) / 128.0f * kx;
+        sy = (96.0f - (float)pt.y) / 96.0f * ky;
+        for (k = 0; k < g_frame.n_poke; k++) {
+            float c[4], dx, dy;
+
+            project_clip(g_frame.poke[k], kx, ky, c);
+            if (c[3] <= 0.05f) {
+                continue;
+            }
+            dx = c[0] / c[3] - sx;
+            dy = c[1] / c[3] - sy;
+            if (dx * dx + dy * dy < best) {
+                best = dx * dx + dy * dy;
+                memcpy(at, c, sizeof at);
+            }
+        }
+        if (best >= 1e30f) {
+            continue;
+        }
+        for (k = 0; k < 4; k++) {
+            float nx = ((float)(x0 + ((k == 1 || k == 2) ? EFFECT_SPRITE_BOX : 0)) - 128.0f) / 128.0f * kx;
+            float ny = (96.0f - (float)(y0 + (k >= 2 ? EFFECT_SPRITE_BOX : 0))) / 96.0f * ky;
+
+            q[k][0] = (s32)(nx * at[3] * 4096.0f);
+            q[k][1] = (s32)(ny * at[3] * 4096.0f);
+            q[k][2] = (s32)(at[2] * 4096.0f);
+            q[k][3] = (s32)(at[3] * 4096.0f);
+        }
+        (void)g3d_hw_snapshot_add_quad(q, img, EFFECT_SPRITE_BOX, EFFECT_SPRITE_BOX);
+    }
+}
+
 /* The renderer's side: the frame's camera and the scene. */
 static void backdrop_hook(G3dBackdrop *out)
 {
@@ -388,6 +533,7 @@ static void backdrop_hook(G3dBackdrop *out)
     if (g_cur != NULL) {
         memcpy(out->sky, g_cur->s.clear, sizeof(out->sky));
     }
+    effect_sprites();
 }
 
 static void base_release(BvBase *b)

@@ -950,8 +950,12 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             xq -= 3 + w_ok;
             hr.x = xq; hr.w = w_ok;
             st = prompt ? 0 : eidos_ui_hit(hr);
-            pill(c, xq, tabs_y, w_ok, 14, l_ok, (st & EIDOS_UI_HOVER) ? 2 : 0, UI_CYAN, UI_CYAN2,
-                 UI_FONT_SMALL);
+            /* the game's cursor goes on from the last row to CONFIRM (the
+             * pages' cursor value 5, read as -1 here): lit like a hover so
+             * a pad sees where it is */
+            pill(c, xq, tabs_y, w_ok, 14, l_ok,
+                 ((st & EIDOS_UI_HOVER) || (cursor < 0 && !prompt && eidos_ui_keys_lit())) ? 2 : 0,
+                 UI_CYAN, UI_CYAN2, UI_FONT_SMALL);
             if (st & EIDOS_UI_CLICK) {
                 tap(148, 180);
             }
@@ -1133,7 +1137,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 
     /* the footer: a click is the key */
     pairs[0] = "A";  pairs[1] = "Confirm";
-    pairs[2] = "B";  pairs[3] = "Back";
+    pairs[2] = "B";  pairs[3] = prompt ? "Back" : "Quit";   /* B is the game's QUIT */
     pairs[4] = "L R"; pairs[5] = "Tab";
     pairs[6] = "\xE2\x86\x90\xE2\x86\x92"; pairs[7] = "Change";
     i = hint_bar(c, in, pairs, 4);

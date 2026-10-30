@@ -186,6 +186,13 @@ typedef struct G3dBackdrop {
  * (already zeroed).  NULL (the default) means no backdrop. */
 typedef void (*G3dBackdropHook)(G3dBackdrop *out);
 void g3d_hw_set_backdrop_hook(G3dBackdropHook hook);
+/* From a backdrop hook only (the snapshot is being built): one more
+ * polygon after the game's, a quad with an image of its own, drawn like
+ * the game's (so the map in front of a Pokemon's box covers it too).  The
+ * corners are clip coordinates as the game's vertices carry them (fx32 x,
+ * y, z, w), top left, top right, bottom right, bottom left; the RGBA image
+ * (w x h, alpha 0 or 255) is copied.  0 when added. */
+int g3d_hw_snapshot_add_quad(const s32 clip[4][4], const u8 *rgba, u32 w, u32 h);
 
 typedef struct G3dSnapshot {
     u32 serial;             /* g3d_hw_frame_count() when it was taken     */

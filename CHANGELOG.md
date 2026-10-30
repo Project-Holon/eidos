@@ -5,6 +5,16 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Fixed the Poke Ball disappearing while it shakes after a throw (one-screen
+  real-map battles): it lies on the ground where the Pokemon stood, and the
+  grass in front of it covers it as it covers the Pokemon. The other effect
+  sprites the battle draws in 2D show the same way.
+- Fixed the move details in battle (one-screen): in the Pokemon list,
+  Check Moves now opens a move's page with its power, accuracy, category
+  and description, by click or with A.
+- Fixed CONFIRM in the one-screen Options not lighting up when the
+  controller's cursor reaches it; the hint bar shows B as Quit.
+
 - Fixed a crash when switching Pokemon after the foe's Pokemon fainted (the
   "Will you switch your Pokemon?" prompt, for example against Cheren at the
   Trainers' School). The game worked out the "come back" message by
