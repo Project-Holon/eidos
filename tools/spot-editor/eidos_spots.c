@@ -83,7 +83,10 @@ static int g_u = 4;                /* layout sizes in quarters: 4 normal, 5 on a
 #define OWN_Z     7.0f
 #define FOE_X     0.3f
 #define FOE_Z     (-10.0f)
-#define SPRITE_U  (1.0f / 13.5f)    /* battle units per sprite pixel at scale 1 */
+/* battle units per sprite pixel at scale 1 (draw_battle_view sets each
+ * sprite's scale from the game's own sizing: its spot's depth before the
+ * command camera, sdk/battle_view.c) */
+#define SPRITE_U  (1.0f / 16.2f)
 /* The scale each battle position draws its sprite at (ov094's slot scale
  * tables, gBtlvMcssSlotScale*): positions 0 and 1 a single battle's two
  * Pokemon, 2 to 5 a double's, 8 to 13 the trainers. */
@@ -1916,6 +1919,7 @@ static void draw_battle_view(int i)
     float p[16][3], d[16], sc[16];
     const Sprite *sp[16];
     int kind[16];                   /* 0 a Pokemon, 1 your trainer, 2 the foe's */
+    int fixed[16] = { 0 };          /* a trainer at an effect script's own point (moved by the warp) */
     int n = 0, a, b;
 
     if (!A.have_placed) {
@@ -1932,6 +1936,25 @@ static void draw_battle_view(int i)
                 continue;
             }
             memcpy(p[n], cf->pos[a], sizeof p[n]);
+            if (tr && !(cf->slot[a] & 1)) {
+                /* the player's trainer away from its slot (the send-out's
+                 * own point, -15 -11 0): the same move from its slot, as
+                 * the game does (sdk/battle_view.c, own_trainer_point) */
+                float slot[3], dd = 0.0f, e;
+                int k;
+
+                if (bcam_sim_slot(cf->slot[a], slot) == 0) {
+                    for (k = 0; k < 3; k++) {
+                        e = p[n][k] - slot[k];
+                        dd += e * e;
+                    }
+                    if (dd > 0.25f) {
+                        p[n][0] = slot[0] + p[n][0] + 15.0f;
+                        p[n][1] = slot[1] + p[n][1] + 11.0f;
+                        p[n][2] = slot[2] + p[n][2];
+                    }
+                }
+            }
             kind[n] = tr ? 1 + (cf->slot[a] & 1) : 0;
             sc[n] = slot_scale(cf->slot[a]);
             sp[n++] = tr ? ((cf->slot[a] & 1) ? &A.tr_foe : &A.tr_own) : (cf->slot[a] & 1) ? &A.foe : &A.own;
@@ -1964,6 +1987,10 @@ static void draw_battle_view(int i)
             for (a = 1; a >= 0; a--) {
                 const Sprite *t = a ? &A.tr_foe : &A.tr_own;
 
+                /* the player's own trainer at its slot in the room, as the
+                 * game draws it (sdk/battle_view.c, own_trainer_point): the
+                 * spot its Pokemon is sent out to (the Pokemon button hides
+                 * that) */
                 if (t->rgba != NULL && n < 16 && bcam_sim_slot(8 + a, p[n]) == 0) {
                     sp[n] = t;
                     kind[n] = 1 + a;
@@ -1984,6 +2011,7 @@ static void draw_battle_view(int i)
                     p[n][2] = -36864.0f / 4096.0f;
                     sp[n] = &A.tr_foe;
                     kind[n] = 2;
+                    fixed[n] = 1;
                     sc[n] = slot_scale(9);
                     n++;
                 }
@@ -1991,7 +2019,33 @@ static void draw_battle_view(int i)
         }
     }
     for (a = 0; a < n; a++) {
-        bmap_battle_warp(p[a], A.placed.foe_dy, A.placed.foe_dz);
+        /* its height as the game draws it (sdk/battle_view.c, MCSS_Draw):
+         * the game's size, a pixel of its scale two of the DS's 192 lines
+         * (a Pokemon's back twice its front), at its spot's depth before
+         * the game's command camera (a trainer's slot's, wherever a script
+         * puts it), then the room's perspective */
+        float slot[3];
+        const float *at = p[a];
+
+        if (kind[a] != 0 && bcam_sim_slot(kind[a] == 2 ? 9 : 8, slot) == 0) {
+            at = slot;
+        }
+        sc[a] = (sp[a] == &A.own ? 2.0f : 1.0f) * bmap_cmd_depth(at)
+                * (2.0f * BATTLE_FOV_SIN / BATTLE_FOV_COS / 192.0f) / SPRITE_U;
+    }
+    for (a = 0; a < n; a++) {
+        if (kind[a] != 0 && !fixed[a]) {
+            /* a trainer at its slot: the game moves the slot tables flat
+             * (sdk/battle_view.c, slot_delta), the foe's side up by dy and
+             * back by dz; the warp below is for the Pokemon (equal at the
+             * foe's slot) and for an effect's own points */
+            if (kind[a] == 2) {
+                p[a][1] += A.placed.foe_dy;
+                p[a][2] -= A.placed.foe_dz;
+            }
+        } else {
+            bmap_battle_warp(p[a], A.placed.foe_dy, A.placed.foe_dz);
+        }
         if (kind[a] != 0) {
             /* the place's offset for this trainer: right, up, back */
             const float *o = view_offsets(kind[a] == 2);
@@ -2704,9 +2758,14 @@ static void draw_centre(int x0, int y0, int w0, int h0)
         place_all();
     }
     if (A.emb != NULL) {
-        /* the game, played here: the whole middle under the tabs */
+        /* the game, played here: in the battle views' own frame (their
+         * 16:9 and their place), the play bar's room left empty */
+        View3d frame;
+
+        memset(&frame, 0, sizeof frame);
+        fit_view(&frame, x0 + U(14), y, w0 - U(28), y0 + h0 - ph - U(12) - y);
         A.battle[0].w = A.battle[0].h = A.battle[1].w = A.battle[1].h = A.over.w = A.over.h = 0;
-        draw_embed(x0 + U(14), y, w0 - U(28), y0 + h0 - U(12) - y);
+        draw_embed(frame.x, frame.y, frame.w, frame.h);
     } else if (A.tab == TAB_FIELD) {
         draw_field_view();
         if (button(x0 + U(14), y0 + h0 - U(44), chip_w("Field camera"), U(30), "Field camera", 0)) {

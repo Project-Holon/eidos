@@ -186,7 +186,6 @@ static uint32_t g_n_sprites;
 static float g_box[8][4];
 static uint32_t g_box_frame[8];
 static int g_cam_on;                /* the battle camera is known (G3D_CAMERA_Reset) */
-static void pin_point(const float in[3], float out[3]);
 static BvJob *g_job;                /* running or just finished            */
 static BvPlaced *g_cur, *g_old;     /* placed scenes: current, the one before */
 static BvBase *g_base;              /* the newest base                     */
@@ -670,6 +669,62 @@ static void slot_shift(const SlotMove *now)
     }
 }
 
+/* The player's own trainer (positions 8, 10, 12) in the room: at its slot
+ * (the place's offsets on it), as the foe's.  The send-out puts it at a
+ * point of its own before the camera (-15, -11, 0, framed bottom left on
+ * the DS); a point away from its slot is taken as a move from that one, so
+ * the trainer stays where the place puts it and moves as the script moves
+ * it.  Returns 1 when `out` differs from `raw`. */
+static int own_trainer_point(int pos, const float raw[3], float out[3])
+{
+    static const float k_sendout[3] = { -15.0f, -11.0f, 0.0f };
+    const int32_t *b;
+    float spot[3], d = 0.0f, e;
+    int k;
+
+    memcpy(out, raw, 3 * sizeof(float));
+    if (pos < 8 || pos > 12 || (pos & 1) || !g_slot_base_have || g_cur == NULL) {
+        return 0;
+    }
+    b = g_slot_base[SLOT_ENTRIES - 6u + (uint32_t)(pos - 8)];
+    for (k = 0; k < 3; k++) {
+        spot[k] = (float)b[k] / 4096.0f;
+    }
+    if (g_cur->s.view_set) {
+        spot[0] += g_cur->s.trainer_own[0];
+        spot[1] += g_cur->s.trainer_own[1];
+        spot[2] -= g_cur->s.trainer_own[2];
+    }
+    for (k = 0; k < 3; k++) {
+        e = raw[k] - spot[k];
+        d += e * e;
+    }
+    if (d <= 0.25f) {
+        return 0;                       /* at its slot already */
+    }
+    {
+        /* the move from the send-out's point: the point as the script gave
+         * it, or with the place's offsets on it (when it came through
+         * eidos_bv_fixed_point), whichever the trainer is at */
+        float plain = 0.0f, offset = 0.0f;
+
+        for (k = 0; k < 3; k++) {
+            float o = spot[k] - (float)b[k] / 4096.0f;
+
+            e = raw[k] - k_sendout[k];
+            plain += e * e;
+            e = raw[k] - (k_sendout[k] + o);
+            offset += e * e;
+        }
+        for (k = 0; k < 3; k++) {
+            float anchor = k_sendout[k] + (offset < plain ? spot[k] - (float)b[k] / 4096.0f : 0.0f);
+
+            out[k] = spot[k] + raw[k] - anchor;
+        }
+    }
+    return 1;
+}
+
 /* The scene on show goes to "the one before"; the one before is freed. */
 static void retire(void)
 {
@@ -879,9 +934,8 @@ static void capture(uintptr_t eff)
             /* how far around a sprite the map in front of it is drawn again:
              * only over the game's own pixels (plat_gl3d.c's stencil), so the
              * box may be loose: twice a Pokemon's size, a trainer taller.
-             * The player's own trainer is pinned to the camera (MCSS_Draw):
-             * where it is drawn, and a shield (a negative height): nothing is
-             * drawn over it */
+             * The player's own trainer where it is drawn (MCSS_Draw,
+             * own_trainer_point) */
             g_frame.poke[g_frame.n_poke][3] = pos <= 7u ? 12.0f : 18.0f;
             if (pos <= 7u && g_n_sprites < 8u) {
                 g_sprites[g_n_sprites].pos = pos;
@@ -889,12 +943,11 @@ static void capture(uintptr_t eff)
                 g_sprites[g_n_sprites].pltt = rd32(mc, MCSSW_PLTT);
                 g_n_sprites++;
             }
-            if (pos >= 8u && (pos & 1u) == 0u && g_cam_on) {
+            {
                 float in[3];
 
                 memcpy(in, g_frame.poke[g_frame.n_poke], sizeof in);
-                pin_point(in, g_frame.poke[g_frame.n_poke]);
-                g_frame.poke[g_frame.n_poke][3] = -18.0f;
+                (void)own_trainer_point((int)pos, in, g_frame.poke[g_frame.n_poke]);
             }
             g_frame.n_poke++;
         }
@@ -1103,50 +1156,6 @@ static float view_depth(const float cam[2][3], const float p[3])
 
 void __real_MCSS_Draw(void *sys);
 
-/* A camera's own frame: f the way it looks, r its right, u its up. */
-static void cam_frame(const float cam[2][3], float f[3], float r[3], float u[3])
-{
-    float len;
-    int k;
-
-    for (k = 0; k < 3; k++) {
-        f[k] = cam[1][k] - cam[0][k];
-    }
-    len = sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
-    for (k = 0; k < 3; k++) {
-        f[k] /= len > 1e-6f ? len : 1.0f;
-    }
-    r[0] = -f[2];
-    r[1] = 0.0f;
-    r[2] = f[0];
-    len = sqrtf(r[0] * r[0] + r[2] * r[2]);
-    r[0] /= len > 1e-6f ? len : 1.0f;
-    r[2] /= len > 1e-6f ? len : 1.0f;
-    u[0] = r[1] * f[2] - r[2] * f[1];
-    u[1] = r[2] * f[0] - r[0] * f[2];
-    u[2] = r[0] * f[1] - r[1] * f[0];
-}
-
-/* A point before the game's camera carried to the same place before the
- * camera drawn with (the player's own trainer, see MCSS_Draw). */
-static void pin_point(const float in[3], float out[3])
-{
-    float fg[3], rg[3], ug[3], fd[3], rd[3], ud[3], o[3], c[3];
-    int k;
-
-    cam_frame((const float(*)[3])g_cam_game, fg, rg, ug);
-    cam_frame((const float(*)[3])g_cam_drawn, fd, rd, ud);
-    for (k = 0; k < 3; k++) {
-        o[k] = in[k] - g_cam_game[0][k];
-    }
-    c[0] = o[0] * rg[0] + o[1] * rg[1] + o[2] * rg[2];
-    c[1] = o[0] * ug[0] + o[1] * ug[1] + o[2] * ug[2];
-    c[2] = o[0] * fg[0] + o[1] * fg[1] + o[2] * fg[2];
-    for (k = 0; k < 3; k++) {
-        out[k] = g_cam_drawn[0][k] + c[0] * rd[k] + c[1] * ud[k] + c[2] * fd[k];
-    }
-}
-
 /* The battle position of the McssWork `w` (BtlvMcssWork's sprites), or -1. */
 static int sprite_pos(uintptr_t w)
 {
@@ -1229,28 +1238,26 @@ void __wrap_MCSS_Draw(void *sys)
             continue;
         }
         {
-            /* the player's own trainer (positions 8, 10: the player's side)
-             * is framed by the camera (the send-out's throw, bottom left):
-             * it keeps the place and the size it has before the game's
-             * camera, before the camera drawn with, whatever the place's
-             * zoom, turn or slide (else a near intro camera passes it) */
+            /* the player's own trainer (positions 8, 10, 12) stands in the
+             * room at its slot (the place's offsets on it), as the foe's
+             * does.  The send-out puts it at a point of its own before the
+             * camera (-15, -11, 0, framed bottom left on the DS); that point
+             * is taken as a move from its slot, so it stays where the place
+             * puts it and moves as the script moves it. */
             int pos = sprite_pos(w);
+            float raw[3], at[3];
+            int kk;
 
-            if (pos >= 8 && (pos & 1) == 0) {
-                float o[3], c[3];
-                int kk;
-
+            for (kk = 0; kk < 3; kk++) {
+                raw[kk] = rdfx(w, MCSSW_POS + 4u * (uint32_t)kk);
+            }
+            if (own_trainer_point(pos, raw, at)) {
                 for (kk = 0; kk < 3; kk++) {
                     keep_pos[i][kk] = (int32_t)rd32(w, MCSSW_POS + 4u * (uint32_t)kk);
-                    o[kk] = rdfx(w, MCSSW_POS + 4u * (uint32_t)kk);
-                }
-                pin_point(o, c);
-                for (kk = 0; kk < 3; kk++) {
-                    v = (int32_t)(c[kk] * 4096.0f);
+                    v = (int32_t)(at[kk] * 4096.0f);
                     memcpy((void *)(w + MCSSW_POS + 4u * (uint32_t)kk), &v, 4);
                 }
-                pinned[i] = 1;
-                continue;               /* its own size, as the game frames it */
+                pinned[i] = 1;          /* put back after the draw */
             }
         }
         {
@@ -1279,21 +1286,24 @@ void __wrap_MCSS_Draw(void *sys)
         bmap_battle_unwarp(q, g_cur->s.foe_dy, g_cur->s.foe_dz);   /* where the game's battle has it */
         dg = bmap_cmd_depth(q);
         {
-            /* a foe's trainer is as tall as at its own slot (the game's,
-             * before the place's move) wherever a script puts it: the game
-             * draws it one size anywhere, so at the point a trainer comes
-             * back to mid-battle (closer than its slot) the distance would
-             * make it a third shorter than in the intro */
+            /* a trainer is as tall as at its own slot (the game's, before
+             * the place's move) wherever a script puts it: the game draws it
+             * one size anywhere, so at the point a trainer comes back to
+             * mid-battle (closer than its slot) the distance would make it a
+             * third shorter than in the intro */
             int pos = sprite_pos(w);
 
-            if (pos >= 9 && pos <= 13 && (pos & 1) && g_slot_base_have) {
+            if (pos >= 8 && pos <= 13 && g_slot_base_have) {
                 const int32_t *b = g_slot_base[SLOT_ENTRIES - 6u + (uint32_t)(pos - 8)];
                 float slot[3];
 
                 slot[0] = (float)b[0] / 4096.0f;
                 slot[1] = (float)b[1] / 4096.0f;
                 slot[2] = (float)b[2] / 4096.0f;
-                dg = bmap_cmd_depth(slot) * (g_cur->s.trainer_size > 0.0f ? g_cur->s.trainer_size : 1.0f);
+                dg = bmap_cmd_depth(slot);
+                if (pos & 1) {
+                    dg *= g_cur->s.trainer_size > 0.0f ? g_cur->s.trainer_size : 1.0f;
+                }
             }
         }
         dd = view_depth((const float(*)[3])g_cam_drawn, p);

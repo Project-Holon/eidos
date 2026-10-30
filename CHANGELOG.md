@@ -5,6 +5,10 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Real-map battles: a place's "Your trainer" offsets (right, up, back) now
+  move your trainer during the send-out; they had no effect there.
+- Spot editor: the views now match the game (sprite sizes and positions
+  were off), and Preview keeps the camera views' 16:9 frame.
 - Faster on slower PCs: a field frame takes about a quarter less CPU time.
   The 2D compositor no longer composes the main screen a second time when
   nothing on it is see-through over the 3D (it did that every frame in the
