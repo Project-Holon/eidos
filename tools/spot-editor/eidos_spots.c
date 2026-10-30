@@ -3553,10 +3553,7 @@ static void preview_in_game(int play)
         snprintf(from, sizeof from, "%s\\eidos\\saves\\pokeblack.sav", app != NULL ? app : ".");
     }
     snprintf(to, sizeof to, "%s\\pokeblack.sav", tmp);
-    if (copy_file(from, to) != 0) {
-        say("No save to preview with (%s)", from);
-        return;
-    }
+    (void)copy_file(from, to);          /* the battle builds its own player: a save is optional */
     dir_of(eidos_settings_path(), dir, sizeof dir);
     snprintf(from, sizeof from, "%s\\settings.ini", dir);
     snprintf(to, sizeof to, "%s\\settings.ini", tmp);
@@ -3567,8 +3564,8 @@ static void preview_in_game(int play)
      * once the battle runs */
     snprintf(input, sizeof input, "%s\\preview_in.txt", tmp);
     if ((f = fopen(input, "w")) != NULL) {
-        fprintf(f, "1000 press START 4\n1100 press A 4\n1400 press A 4\n");
-        for (frame = 2400; !play && frame < 400000; frame += 60) {
+        /* a preview's own presses only: the battle starts at once (no title) */
+        for (frame = 120; !play && frame < 400000; frame += 60) {
             fprintf(f, "%d press A 4\n", frame);
         }
         fclose(f);
@@ -3604,7 +3601,8 @@ static void preview_in_game(int play)
     }
     /* a preview skips to the battle; a battle to play shows its encounter
      * from the start */
-    _putenv_s("EIDOS_FAST_UNTIL_BATTLE", play ? "start" : "1");
+    /* the battle alone: no logos, no title, no field (engine/ui/ui.c) */
+    _putenv_s("EIDOS_BATTLE_ONLY", "1");
     _putenv_s("BW_SAVE_DIR", tmp);
     {
         /* shown in the middle view, not a window of its own */
@@ -3628,8 +3626,7 @@ static void preview_in_game(int play)
         preview_stop();
         say("Could not start %s", exe);
     } else {
-        say(play ? "Starting the game: the battle is yours in about 20 seconds"
-                 : "Starting the game: the battle shows in about 20 seconds");
+        say("Starting the battle");
     }
     _putenv_s("EIDOS_EMBED", "");
     /* this program's own environment as it was */
@@ -3638,7 +3635,7 @@ static void preview_in_game(int play)
     _putenv_s("EIDOS_DEBUG_PARTY", "");
     _putenv_s("EIDOS_DEBUG_LEVEL", "");
     _putenv_s("EIDOS_DEBUG_MOVES", "");
-    _putenv_s("EIDOS_FAST_UNTIL_BATTLE", "");
+    _putenv_s("EIDOS_BATTLE_ONLY", "");
     if (saves != NULL) {
         char keep[600];
 

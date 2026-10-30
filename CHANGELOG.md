@@ -16,9 +16,12 @@ Each release's notes on GitHub start with its section here
   look short) or Custom (any height, by slider or typed). The game uses it
   in the intro and whenever the trainer comes back. A place that never set
   it stays Outdoor.
-- Spot editor: Preview plays the battle inside the editor. The game runs in
-  the middle view at its size, from the encounter, with your keys and
-  mouse, until "Stop preview" (the separate Play battle button is gone).
+- Spot editor: Preview plays the battle inside the editor, in about a
+  second: the game starts straight in the battle (no logos, no title, no
+  save, no field), with the place's trainer or wild Pokemon and the party
+  chosen, in the middle view at its size, with your keys and mouse, until
+  the battle ends or "Stop preview" (the separate Play battle button is
+  gone).
 - Spot editor: a trainer who comes back mid-battle to speak shows there as
   well, beside their Pokemon, at the place the game puts them.
 - Builds: a game file copy no longer loses a header copy another file's

@@ -723,6 +723,169 @@ static void debug_battle(void)
     }
 }
 
+/*
+ * EIDOS_BATTLE_ONLY (the spot editor's Preview): no logos, no title, no
+ * save, no field: on the first frame a battle is built in memory and the
+ * battle module runs on top of everything else, the way an encounter starts
+ * it (GAME_EVENT_CallProc of ov093 with a battle setup).  The player is
+ * fresh game data with the party EIDOS_DEBUG_PARTY names (at
+ * EIDOS_DEBUG_LEVEL); EIDOS_DEBUG_BATTLE is "trainer N" (single or double
+ * as the trainer is) or "wild SPECIES LEVEL"; EIDOS_DEBUG_BMAP_AT gives the
+ * place (its zone, season and hour go to the battle's situation).
+ */
+struct BoSituation {                    /* src/game/arm9/btl_setup_types.h's FieldSituation */
+    int bgType, bgAttr;
+    u8 weather, season;
+    u16 zoneId;
+    u8 hour, minute;
+};
+extern void GFL_HEAP_CreateChildHeap(u32 parent, u32 heapId, u32 size) __attribute__((weak));
+extern void *GAME_DATA_Create(u16 heapId) __attribute__((weak));
+extern void ZONEDATA_Init(u16 heapId) __attribute__((weak));
+extern void *POKE_TOOL_Create(u16 species, u16 level, u64 otId, u16 heapId) __attribute__((weak));
+extern void *POKEPARTY_Create(u32 heapId) __attribute__((weak));
+extern void POKEPARTY_Init(void *party) __attribute__((weak));
+extern u32 POKEPARTY_Add(void *party, const void *member) __attribute__((weak));
+extern void BTL_SETUP_InitFieldSituation(struct BoSituation *sit) __attribute__((weak));
+extern void BTL_SETUP_SetupTrainerSingle(void *bs, void *gd, const struct BoSituation *sit, u32 trainerId,
+                                         u16 heapId) __attribute__((weak));
+extern void BTL_SETUP_SetupTrainerDouble(void *bs, void *gd, const struct BoSituation *sit, u32 trainerId,
+                                         u16 heapId) __attribute__((weak));
+extern void BTL_SETUP_SetupWild(void *bs, void *gd, void *wildParty, const struct BoSituation *sit, u32 rule,
+                                u16 heapId) __attribute__((weak));
+extern void PROCSYS_PushGlobal(u32 overlayId, const void *procData, void *param) __attribute__((weak));
+extern void *bw_dsref_ov010_d_021EFDAC __attribute__((weak));   /* the battle's ProcData (ov093) */
+extern void *bw_dsref_ov010_ov093_id __attribute__((weak));     /* its overlay */
+
+static int g_battle_only_done;
+
+/* The proc on show (the global ProcSys's current one, +0x08): its overlay. */
+extern void *g_ProcSys __attribute__((weak));
+extern void *bw_dsref_g_ProcSys __attribute__((weak));
+
+static int current_overlay(void)
+{
+    void *sys = &g_ProcSys != NULL ? g_ProcSys
+              : &bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL ? *(void **)bw_dsref_g_ProcSys : NULL;
+    const u8 *proc;
+
+    if (sys == NULL || (proc = *(const u8 *const *)((const u8 *)sys + 0x08)) == NULL) {
+        return -1;
+    }
+    return (int)*(const u32 *)(proc + sizeof(void *));
+}
+
+/* Battle only: the battle is over when its module gives the screen back;
+ * the game ends there (the logos under it are not wanted). */
+static void battle_only_watch(void)
+{
+    static int seen;
+    int ov;
+
+    if (!g_battle_only_done || !g_debug_battle_started) {
+        return;
+    }
+    ov = current_overlay();
+    if (ov == 93) {
+        seen = 1;
+    } else if (seen && ov >= 0) {
+        fprintf(stderr, "eidos: battle only: the battle is over\n");
+        fflush(stderr);
+        exit(0);
+    }
+}
+
+int eidos_ui_battle_only(void)
+{
+    const char *v = getenv("EIDOS_BATTLE_ONLY");
+
+    return v != NULL && *v != '\0' && strcmp(v, "0") != 0;
+}
+
+static void battle_only(void)
+{
+    const char *what = getenv("EIDOS_DEBUG_BATTLE"), *list = getenv("EIDOS_DEBUG_PARTY");
+    const char *at = getenv("EIDOS_DEBUG_BMAP_AT");
+    u16 lv = (u16)(getenv("EIDOS_DEBUG_LEVEL") ? atoi(getenv("EIDOS_DEBUG_LEVEL")) : 50);
+    struct BoSituation sit;
+    unsigned a1 = 0, a2 = 5, zone, season, hour;
+    float x, z;
+    void *gd, *party, *bs;
+
+    if (g_battle_only_done || !eidos_ui_battle_only() || what == NULL) {
+        return;
+    }
+    g_battle_only_done = 1;
+    if (GFL_HEAP_CreateChildHeap == NULL || GAME_DATA_Create == NULL || GAME_DATA_GetMyParty == NULL
+        || POKE_TOOL_Create == NULL || POKEPARTY_Add == NULL || BTL_SETUP_Create == NULL
+        || BTL_SETUP_InitFieldSituation == NULL || PROCSYS_PushGlobal == NULL
+        || &bw_dsref_ov010_d_021EFDAC == NULL || bw_dsref_ov010_d_021EFDAC == NULL) {
+        fprintf(stderr, "eidos: battle only: the battle calls are not in this build\n");
+        return;
+    }
+    /* the game system's own heaps (GAMESYSTEM_ProcInit makes them the same way) */
+    GFL_HEAP_CreateChildHeap(1, 3, 0xa << 12);
+    GFL_HEAP_CreateChildHeap(1, 4, 4 << 14);
+    gd = GAME_DATA_Create(3);
+    if (ZONEDATA_Init != NULL) {
+        ZONEDATA_Init(3);               /* the zone table (the battle's lights read it) */
+    }
+    party = gd != NULL ? GAME_DATA_GetMyParty(gd) : NULL;
+    if (party == NULL) {
+        return;
+    }
+    /* the player's party: the species named, at the level asked (the game
+     * data starts from the save's: emptied first) */
+    if (POKEPARTY_Init != NULL) {
+        POKEPARTY_Init(party);
+    }
+    while (list != NULL && *list != '\0' && (POKEPARTY_GetCount == NULL || POKEPARTY_GetCount(party) < 6)) {
+        u16 sp = (u16)strtoul(list, (char **)&list, 10);
+
+        if (sp != 0) {
+            (void)POKEPARTY_Add(party, POKE_TOOL_Create(sp, lv, 0, 4));
+        }
+        while (*list == ',' || *list == ' ') {
+            list++;
+        }
+    }
+    if (POKEPARTY_GetCount != NULL && POKEPARTY_GetCount(party) == 0) {
+        (void)POKEPARTY_Add(party, POKE_TOOL_Create(500, lv, 0, 4));
+    }
+    memset(&sit, 0, sizeof sit);
+    BTL_SETUP_InitFieldSituation(&sit);
+    if (at != NULL && sscanf(at, "%u %f %f %*u %u %u", &zone, &x, &z, &season, &hour) == 5) {
+        sit.zoneId = (u16)zone;
+        sit.season = (u8)season;
+        sit.hour = (u8)hour;
+    }
+    bs = BTL_SETUP_Create(4);
+    if (bs == NULL) {
+        return;
+    }
+    if (sscanf(what, "trainer %u", &a1) == 1) {
+        int dbl = ov010_EVENT_TRAINER_IsDoubleBattle != NULL && ov010_EVENT_TRAINER_IsDoubleBattle((int)a1);
+
+        if (dbl && BTL_SETUP_SetupTrainerDouble != NULL) {
+            BTL_SETUP_SetupTrainerDouble(bs, gd, &sit, a1, 4);
+        } else if (BTL_SETUP_SetupTrainerSingle != NULL) {
+            BTL_SETUP_SetupTrainerSingle(bs, gd, &sit, a1, 4);
+        }
+    } else if (sscanf(what, "wild %u %u", &a1, &a2) >= 1 && BTL_SETUP_SetupWild != NULL && POKEPARTY_Create != NULL) {
+        void *wild = POKEPARTY_Create(4);
+
+        (void)POKEPARTY_Add(wild, POKE_TOOL_Create((u16)a1, (u16)a2, 0, 4));
+        BTL_SETUP_SetupWild(bs, gd, wild, &sit, 0, 4);
+    } else {
+        return;
+    }
+    PROCSYS_PushGlobal(&bw_dsref_ov010_ov093_id != NULL && bw_dsref_ov010_ov093_id != NULL
+                           ? (u32)(uintptr_t)bw_dsref_ov010_ov093_id : 93u,
+                       bw_dsref_ov010_d_021EFDAC, bs);
+    g_debug_battle_started = 1;
+    fprintf(stderr, "eidos: battle only: %s\n", what);
+}
+
 /* The game-thread calls: one producer (the frame thread), one consumer (the
  * game's thread), so two indexes are enough. */
 #define GAME_CALLS 16
@@ -752,9 +915,13 @@ void eidos_ui_game_frame(void)
         g_calls[h % GAME_CALLS].fn(g_calls[h % GAME_CALLS].arg);
         g_call_head = h + 1;
     }
-    debug_party();
-    debug_warp();
-    debug_battle();
+    battle_only();
+    battle_only_watch();
+    if (!eidos_ui_battle_only()) {
+        debug_party();
+        debug_warp();
+        debug_battle();
+    }
 
     for (i = 0; i < n; i++) {
         if (GFL_USE_PlaySeDefaultVolume != NULL) {

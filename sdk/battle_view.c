@@ -443,20 +443,20 @@ static void job_main(void *arg)
 /* Where the battle began, from GameData (the player's work) and the setup. */
 static int read_place(uintptr_t eff, BvJob *j)
 {
-    uintptr_t gs, gd, pw, bm, setup;
+    uintptr_t gs = 0, gd = 0, pw = 0, bm, setup;
 
-    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL) {
+    /* the player's place: the game system's; a battle with none (the spot
+     * editor's battle only, engine/ui/ui.c) has its place in
+     * EIDOS_DEBUG_BMAP_AT alone */
+    if (&bw_dsref__GameSystemGlobal != NULL && bw_dsref__GameSystemGlobal != NULL) {
+        gs = (uintptr_t)*(void **)bw_dsref__GameSystemGlobal;
+    }
+    gd = gptr_ok(gs) ? rd32(gs, 0x1C) : 0;
+    if (gptr_ok(gd)) {
+        pw = gd + GD_PLAYER;
+    } else if (getenv("EIDOS_DEBUG_BMAP_AT") == NULL) {
         return -1;
     }
-    gs = (uintptr_t)*(void **)bw_dsref__GameSystemGlobal;
-    if (!gptr_ok(gs)) {
-        return -1;
-    }
-    gd = rd32(gs, 0x1C);
-    if (!gptr_ok(gd)) {
-        return -1;
-    }
-    pw = gd + GD_PLAYER;
     bm = rd32(eff, EFF_MAIN);
     setup = gptr_ok(bm) ? rd32(bm, 0) : 0;
     j->trainer = gptr_ok(setup) && rd32(setup, 0) != 0;     /* competitor: 0 wild */
@@ -466,12 +466,14 @@ static int read_place(uintptr_t eff, BvJob *j)
 
         j->trainer_id = gptr_ok(td) ? (int)rd32(td, 0) : 0;
     }
-    j->zone = rd16(pw, PW_ZONE);
-    j->px = rdfx(pw, PW_X);
-    j->py = rdfx(pw, PW_Y);
-    j->has_py = 1;
-    j->pz = rdfx(pw, PW_Z);
-    j->facing = rd16(pw, PW_FACING);
+    if (pw != 0) {
+        j->zone = rd16(pw, PW_ZONE);
+        j->px = rdfx(pw, PW_X);
+        j->py = rdfx(pw, PW_Y);
+        j->has_py = 1;
+        j->pz = rdfx(pw, PW_Z);
+        j->facing = rd16(pw, PW_FACING);
+    }
     j->season = 0;
     j->hour = 12;
     j->minute = 0;
