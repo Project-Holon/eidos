@@ -18,10 +18,16 @@ What is known to be missing or worth adding, written 2026-10-04. Items marked
   window always opens at the DS size for the layout. Decide: remember the last
   non-maximized size (never a maximized one), or drop the two options.
 - **GPU 3D gaps.** The GPU rasteriser (engine/platform/plat_gl3d.c) does not do
-  fog, the rear-plane bitmap or shadow polygons. A frame that uses one is drawn
-  by the CPU rasteriser at a capped scale. Fog needs the depth buffer (now a
-  texture, for edge marking) and the FOG_TABLE; the rear-plane bitmap is a
-  textured full-screen quad with depth.
+  the rear-plane bitmap or shadow polygons (fog and edge marking it does). A
+  frame that uses one is drawn by the CPU rasteriser at a capped scale. Neither
+  shows up in play: a run through the title and the field (2026-10-30) had no
+  frame with either, and no matched source draws a shadow polygon. The
+  rear-plane bitmap would be a textured full-screen quad with depth.
+- **CPU cost of a frame.** The game's own code is a small part of a frame
+  (about 0.5 ms in the field); the rest is the DS's 2D compositor (three
+  composes a frame: the main screen, the bottom screen and the main screen
+  with its 3D layer off, about 2 ms of CPU each) and the 3D hand-off. The
+  per-pixel layer walk in engine/g2d/bg.c is the next thing to make cheaper.
 - **2D over 3D.** A translucent 2D layer or sprite blended over a GPU 3D layer is
   lost: the composite shows the GPU frame wherever the 2D screen differs from the
   3D-off screen. The fix is to keep the layer-priority and blend information per

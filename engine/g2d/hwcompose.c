@@ -276,6 +276,7 @@ typedef struct Engine {
     G2dPose     *poses;    /* one per used key                          */
     G2dObjEntry *objs;
     u32          n_objs;
+    struct BufSet *bufs;   /* the pooled buffers in use, NULL when allocated */
 } Engine;
 
 static u16 reg16(const Engine *e, u32 off)
@@ -288,12 +289,73 @@ static u32 reg32(const Engine *e, u32 off)
     return bw_rd32(e->io + off);
 }
 
+/*
+ * The large per-compose buffers (the BG and OBJ VRAM windows, the per-pixel
+ * OBJ planes) are kept between frames: a compose takes a free set from the
+ * pool and gives it back, so a frame allocates nothing and touches no new
+ * pages (three composes a frame at 768 KB each, the main engine's, were
+ * fresh blocks from the system every time).  A set is claimed with an
+ * atomic test-and-set; when all are busy the compose allocates as before.
+ */
+#define POOL_SETS 5
+static struct BufSet {
+    volatile int busy;
+    u8 *bgv, *objv, *obj_index, *obj_prio, *obj_src, *obj_semi, *objwin;
+} g_pool[POOL_SETS];
+
+/* The main engine's VRAM windows, gathered once for the composes of one
+ * frame that run together (the screen and the screen with its 3D layer
+ * off read the same VRAM): set by render_scaled_impl around them. */
+static const struct BufSet *g_shared_main;
+
+static struct BufSet *pool_take(void)
+{
+    u32 i;
+
+    for (i = 0; i < POOL_SETS; i++) {
+        if (__sync_lock_test_and_set(&g_pool[i].busy, 1) == 0) {
+            struct BufSet *b = &g_pool[i];
+
+            if (b->bgv == NULL) {
+                /* the largest sizes (the main engine's), once */
+                b->bgv = (u8 *)malloc(0x80000u + BG_GUARD);
+                b->objv = (u8 *)malloc(0x40000u);
+                b->obj_index = (u8 *)malloc(SCREEN_PX);
+                b->obj_prio = (u8 *)malloc(SCREEN_PX);
+                b->obj_src = (u8 *)malloc(SCREEN_PX);
+                b->obj_semi = (u8 *)malloc(SCREEN_PX);
+                b->objwin = (u8 *)malloc(SCREEN_PX);
+                if (b->bgv == NULL || b->objv == NULL || b->obj_index == NULL || b->obj_prio == NULL
+                    || b->obj_src == NULL || b->obj_semi == NULL || b->objwin == NULL) {
+                    free(b->bgv); free(b->objv); free(b->obj_index); free(b->obj_prio);
+                    free(b->obj_src); free(b->obj_semi); free(b->objwin);
+                    b->bgv = NULL;
+                    __sync_lock_release(&b->busy);
+                    return NULL;
+                }
+            }
+            return b;
+        }
+    }
+    return NULL;
+}
+
 static void engine_free(Engine *e)
 {
     u32 i;
 
-    free(e->bgv);
-    free(e->objv);
+    if (e->bufs != NULL) {
+        __sync_lock_release(&e->bufs->busy);
+        e->bufs = NULL;
+    } else {
+        free(e->bgv);
+        free(e->objv);
+        free(e->obj_index);
+        free(e->obj_prio);
+        free(e->obj_src);
+        free(e->obj_semi);
+        free(e->objwin);
+    }
     free(e->obj_ext_colors);
     for (i = 0; i < 4u; i++) {
         free(e->nscr[i].entries);
@@ -306,11 +368,6 @@ static void engine_free(Engine *e)
     }
     free(e->poses);
     free(e->objs);
-    free(e->obj_index);
-    free(e->obj_prio);
-    free(e->obj_src);
-    free(e->obj_semi);
-    free(e->objwin);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1019,22 +1076,44 @@ static int alloc_engine(Engine *e)
 
     e->bg_size = e->main ? 0x80000u : 0x20000u;
     e->obj_size = e->main ? 0x40000u : 0x20000u;
-    e->bgv = (u8 *)malloc(e->bg_size + BG_GUARD);
-    e->objv = (u8 *)malloc(e->obj_size);
-    e->obj_index = (u8 *)calloc(SCREEN_PX, 1);
-    e->obj_prio = (u8 *)calloc(SCREEN_PX, 1);
-    e->obj_src = (u8 *)calloc(SCREEN_PX, 1);
-    e->obj_semi = (u8 *)calloc(SCREEN_PX, 1);
-    e->objwin = (u8 *)calloc(SCREEN_PX, 1);
+    e->bufs = pool_take();
+    if (e->bufs != NULL) {
+        e->bgv = e->bufs->bgv;
+        e->objv = e->bufs->objv;
+        e->obj_index = e->bufs->obj_index;
+        e->obj_prio = e->bufs->obj_prio;
+        e->obj_src = e->bufs->obj_src;
+        e->obj_semi = e->bufs->obj_semi;
+        e->objwin = e->bufs->objwin;
+        memset(e->obj_index, 0, SCREEN_PX);
+        memset(e->obj_prio, 0, SCREEN_PX);
+        memset(e->obj_src, 0, SCREEN_PX);
+        memset(e->obj_semi, 0, SCREEN_PX);
+        memset(e->objwin, 0, SCREEN_PX);
+    } else {
+        e->bgv = (u8 *)malloc(e->bg_size + BG_GUARD);
+        e->objv = (u8 *)malloc(e->obj_size);
+        e->obj_index = (u8 *)calloc(SCREEN_PX, 1);
+        e->obj_prio = (u8 *)calloc(SCREEN_PX, 1);
+        e->obj_src = (u8 *)calloc(SCREEN_PX, 1);
+        e->obj_semi = (u8 *)calloc(SCREEN_PX, 1);
+        e->objwin = (u8 *)calloc(SCREEN_PX, 1);
+    }
     if (e->bgv == NULL || e->objv == NULL || e->obj_index == NULL
         || e->obj_prio == NULL || e->obj_src == NULL || e->obj_semi == NULL
         || e->objwin == NULL) {
         return -1;
     }
-    gather(e->bgv, hw->bg_page[en], e->bg_size / G2D_HW_PAGE_SIZE);
-    /* The window mirrors: what follows its end is its start again. */
-    memcpy(e->bgv + e->bg_size, e->bgv, BG_GUARD);
-    gather(e->objv, hw->obj_page[en], e->obj_size / G2D_HW_PAGE_SIZE);
+    if (e->main && e->bufs != NULL && g_shared_main != NULL) {
+        /* gathered once for this frame's main-engine composes (read only) */
+        e->bgv = g_shared_main->bgv;
+        e->objv = g_shared_main->objv;
+    } else {
+        gather(e->bgv, hw->bg_page[en], e->bg_size / G2D_HW_PAGE_SIZE);
+        /* The window mirrors: what follows its end is its start again. */
+        memcpy(e->bgv + e->bg_size, e->bgv, BG_GUARD);
+        gather(e->objv, hw->obj_page[en], e->obj_size / G2D_HW_PAGE_SIZE);
+    }
 
     for (i = 0; i < 256u; i++) {
         e->bg_colors[i] = bgr555(bw_rd16(pal + i * 2u));
@@ -1137,8 +1216,18 @@ static void lcdc_display(const Engine *e, u8 *rgba, u8 *out6)
  * the colour effects, into `rgba`, and its 6-bit stage into `out6`.  A
  * forced blank is white.
  */
+/* The main engine's last compose blended 2D over 3D (g2d_hw_main_blended_over_3d). */
+static int g_main_blend3d = 1;
+
+int g2d_hw_main_blended_over_3d(void)
+{
+    return g_main_blend3d;
+}
+
 static int compose_graphics(Engine *e, const u8 *rgba3d, u8 *rgba, u8 *out6)
 {
+    int blend3d = 0;
+
     G2dFrameDesc desc;
     G2dWindows windows;
     G2dBlend blend;
@@ -1174,7 +1263,11 @@ static int compose_graphics(Engine *e, const u8 *rgba3d, u8 *rgba, u8 *out6)
     desc.rasters = e->rasters;
     desc.n_rasters = e->n_rasters;
     desc.out6 = out6;
+    desc.blend_over_3d = &blend3d;
     g2d_frame_compose_desc_scaled(&desc, SCREEN_W, SCREEN_H, e->scale, rgba);
+    if (e->main && rgba3d != NULL) {
+        g_main_blend3d = blend3d;
+    }
     return 0;
 }
 
@@ -1495,7 +1588,23 @@ static int render_scaled_impl(const G2dHwState *hw, u32 scale, int adaptive,
         jobs.sub_out = main_on_top ? bottom : top;
         jobs.behind = (behind != NULL && main_3d && main_scale == 1u) ? behind
                                                                       : NULL;
-        g2d_par_run(jobs.behind != NULL ? 3u : 2u, engine_task, &jobs);
+        {
+            /* the screen and the screen with its 3D layer off read the same
+             * main-engine VRAM: gathered once for both */
+            struct BufSet *sh = jobs.behind != NULL ? pool_take() : NULL;
+
+            if (sh != NULL) {
+                gather(sh->bgv, hw->bg_page[0], 0x80000u / G2D_HW_PAGE_SIZE);
+                memcpy(sh->bgv + 0x80000u, sh->bgv, BG_GUARD);
+                gather(sh->objv, hw->obj_page[0], 0x40000u / G2D_HW_PAGE_SIZE);
+                g_shared_main = sh;
+            }
+            g2d_par_run(jobs.behind != NULL ? 3u : 2u, engine_task, &jobs);
+            g_shared_main = NULL;
+            if (sh != NULL) {
+                __sync_lock_release(&sh->busy);
+            }
+        }
         if (jobs.main_rc != 0 || jobs.sub_rc != 0) {
             rc = -1;
         }

@@ -844,6 +844,13 @@ typedef struct G2dFrameDesc {
      * the caller does not need it.
      */
     u8                     *out6;
+    /*
+     * Optional: set non-zero when a 2D pixel is alpha blended over a 3D
+     * pixel (the 3D layer is the second target beneath it).  A caller that
+     * would compose the screen again to find such pixels skips that when
+     * none was (demo/eidos_boot.c, boot_gpu3d).
+     */
+    int                    *blend_over_3d;
 } G2dFrameDesc;
 
 void g2d_frame_compose_desc(const G2dFrameDesc *desc, u32 width, u32 height,
@@ -1058,6 +1065,11 @@ int g2d_hw_render_dsmem_adaptive_ex(u32 scale, const u8 *rgba3d, u8 *top,
 /* The main engine's graphics screen (the capture's source A) at DS size,
  * RGBA8, whatever the display mode; rgba3d NULL turns the 3D layer off. */
 int g2d_hw_main_graphics_dsmem(const u8 *rgba3d, u8 *out);
+
+/* Whether the main engine's last compose alpha blended a 2D pixel over
+ * the 3D layer (G2dFrameDesc.blend_over_3d): when it did not, a compose of
+ * the same screen over another 3D layer has the same 2D everywhere. */
+int g2d_hw_main_blended_over_3d(void);
 /* The two at once (with rgba3d, and with the 3D off), on the worker pool. */
 int g2d_hw_main_graphics_pair_dsmem(const u8 *rgba3d, u8 *with3d, u8 *without);
 

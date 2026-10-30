@@ -5,6 +5,13 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Faster on slower PCs: a field frame takes about a quarter less CPU time.
+  The 2D compositor no longer composes the main screen a second time when
+  nothing on it is see-through over the 3D (it did that every frame in the
+  field), keeps its large buffers between frames instead of asking the
+  system for new ones three times a frame, and copies the main screen's
+  video memory once a frame for its two composes instead of twice. The
+  picture is the same to the pixel.
 - Real-map battles: a place with a strong intro zoom no longer jumps as the
   camera pulls back after the foe's send-out (the view now looks where the
   game's camera looks while the zoom brings it closer). Where the pull

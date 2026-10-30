@@ -871,7 +871,10 @@ static void boot_gpu3d(BootRun *run, int behind_done)
          * second compose of the main screen every frame for nothing. */
         const u8 *zero = NULL;
 
-        if (!run->gpu_real && (bw_io_read16(0x04000050u) & 0x0100u) != 0u) {
+        if (!run->gpu_real && (bw_io_read16(0x04000050u) & 0x0100u) != 0u
+            && g2d_hw_main_blended_over_3d()) {
+            /* only when the frame's compose blended 2D over the 3D at all:
+             * otherwise the second compose finds nothing (the field) */
             if (run->black3d == NULL) {
                 u32 k;
 
