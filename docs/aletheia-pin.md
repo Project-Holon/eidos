@@ -8,11 +8,17 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `bceb69de2ddb634a16f5b0fd7ecd1ca7d6702f62`
-- Date: 2026-10-30 22:02:00 +0100
-- Subject: Japanese Black and White build byte-identical
+- Revision: `632a9e45622c6a9b1fb2013cc2e04892dc8c284c`
+- Date: 2026-10-30 22:51:09 +0100
+- Subject: Symbols rows for nine cross-overlay calls the PC build could not route
 
-The step from `b7ce63a8ce`: all twelve cartridges build byte-identical,
+The step from `bceb69de2d`: symbols rows for calls into other overlays
+that had none, so the port routes them instead of stopping at a stub: the
+trade screens (ov117 into ov119), the wireless setup (ov016 into ov009), a
+field script command (ov021 into ov010) and the Global Trade Station
+(ov135 into ov114).  The DS bytes are unchanged.
+
+The step before, from `b7ce63a8ce`: all twelve cartridges build byte-identical,
 Japanese included.  `BTLV_SCU_Create` takes its stack arguments as one
 struct on the DS only (the host keeps the eight parameters); a
 Japanese-only panic print gains an argument.  The English port is

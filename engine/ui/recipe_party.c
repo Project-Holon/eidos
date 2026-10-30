@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include "ui.h"
+#include "overlay.h"
 #include "kit.h"
 #include "port.h"
 #include "dsmem.h"
@@ -1598,6 +1599,69 @@ static const EidosUiRecipe recipe_summary = {
 };
 
 /* ------------------------------------------------------------------ */
+/* The evolution scene (overlay 195, SHINKA_DEMO)                      */
+/* ------------------------------------------------------------------ */
 
-const EidosUiRecipe *const ui_recipes_party[] = { &recipe_summary, &recipe_party_list };
-const u32 ui_recipes_party_count = 2;
+/* The game draws it on the top screen alone (the Pokemon on its glowing
+ * stage, the message box under it): the window shows that screen whole,
+ * the sides kept dark, as the scene was drawn for the DS's frame.  A click
+ * is A (the messages go on), a right click B (the game's own: it stops the
+ * evolution). */
+/* The bottom screen shows something: some of its pixels are not black. */
+static int bottom_shown(const EidosUiFrame *in)
+{
+    const u8 *px = in->screen_rgba[1];
+    int i, lit = 0;
+
+    if (px == NULL) {
+        return 0;
+    }
+    for (i = 0; i < 256 * 192; i += 7) {
+        if (px[i * 4] > 16 || px[i * 4 + 1] > 16 || px[i * 4 + 2] > 16) {
+            if (++lit > 64) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int evolution_match(void)
+{
+    return bw_overlay_is_loaded(195);
+}
+
+static void evolution_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    EidosUiRect all;
+
+    /* When the evolution teaches a move the game asks on the bottom screen
+     * (FORGET, KEEP OLD MOVES, then the moves): while that screen shows
+     * anything, both screens are shown as the game draws them. */
+    if (bottom_shown(in)) {
+        view->mode = EIDOS_VIEW_FALLBACK;
+        return;
+    }
+    view->mode = EIDOS_VIEW_WORLD;
+    view->world_screen = 0;
+    view->ds_only = 1;
+    all.x = 0;
+    all.y = 0;
+    all.w = c->canvas->w;
+    all.h = c->canvas->h;
+    if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+        eidos_ui_press(BW_KEY_A, 2);
+    } else if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+    /* no footer: the game's message box is at the foot of the screen */
+}
+
+static const EidosUiRecipe recipe_evolution = {
+    "evolution", evolution_match, evolution_run, NULL, 0
+};
+
+/* ------------------------------------------------------------------ */
+
+const EidosUiRecipe *const ui_recipes_party[] = { &recipe_summary, &recipe_party_list, &recipe_evolution };
+const u32 ui_recipes_party_count = 3;

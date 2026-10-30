@@ -5,6 +5,16 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Fixed a crash at the start of every evolution: the scene turns its
+  model with a routine the PC build did not have.
+- Fixed sorting the bag, which would have crashed the same way.
+- Fixed learning a new move in battle with four moves known (one-screen):
+  the Pokemon's moves and the new one show, each with its page and the
+  game's own FORGET or GIVE UP. Using an Ether or a PP Up in battle shows
+  the moves too.
+- The evolution scene fills the window in the one-screen layout instead
+  of sitting at the DS size in a corner.
+
 - Fixed the Poke Ball disappearing while it shakes after a throw (one-screen
   real-map battles): it lies on the ground where the Pokemon stood, and the
   grass in front of it covers it as it covers the Pokemon. The other effect

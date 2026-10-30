@@ -691,6 +691,8 @@ static void debug_warp(void)
  * (after EIDOS_DEBUG_WARP's arrival when both are set). */
 extern void *ov021_FIELDMAP_GetEncount(void *fieldMap) __attribute__((weak));
 extern void *ov021_FIELD_ENCOUNT_StartScriptedWild(void *encount, u16 species, u8 level, u32 flags) __attribute__((weak));
+extern void *ov021_EVENT_FIELDMAP_CONTROL_StartFadeIn(void *gsys, void *fieldMap, int effect, int skipWait, int restoreBg,
+                                                      u8 seasonShown, u8 seasonTarget) __attribute__((weak));
 extern void ov021_FIELD_ENCOUNT_SetupTrainerBattle(void *encount, void *btlSetup, u32 rule, u32 partnerId, u32 trainerId1,
                                                    u32 trainerId2, u16 heapId) __attribute__((weak));
 extern void *BTL_SETUP_Create(u32 heapId) __attribute__((weak));
@@ -710,11 +712,28 @@ int eidos_ui_debug_battle_started(void)
 
 static void debug_battle(void)
 {
-    static int done, wait;
+    static int done, wait, fade_back;
     const char *what = getenv("EIDOS_DEBUG_BATTLE");
     unsigned a1 = 0, a2 = 5;
     u8 *gs;
     void *fm, *enc, *ev = NULL;
+
+    /* A scripted wild battle leaves the screen black: the script that
+     * starts one fades the field back in itself.  Without a script, once the
+     * battle's events are over, the field fades in the way the game's own
+     * battle end does (EVENT_BATTLE_ProcScriptedBattle). */
+    if (done && fade_back && ov021_EVENT_FIELDMAP_CONTROL_StartFadeIn != NULL) {
+        gs = *(u8 **)bw_dsref__GameSystemGlobal;
+        fm = gs != NULL ? *(void **)(gs + 0x20) : NULL;
+        if (fm != NULL && GAMESYSTEM_GetEvent(gs) == NULL) {
+            fade_back = 0;
+            ev = ov021_EVENT_FIELDMAP_CONTROL_StartFadeIn(gs, fm, 0, 0, 1, 0, 0);
+            if (ev != NULL) {
+                GAMESYSTEM_SetEvent(gs, ev);
+            }
+        }
+        return;
+    }
 
     if (done || what == NULL || &bw_dsref__GameSystemGlobal == NULL || GAMESYSTEM_SetEvent == NULL
         || GAMESYSTEM_GetEvent == NULL || ov021_FIELDMAP_GetEncount == NULL) {
@@ -736,6 +755,7 @@ static void debug_battle(void)
     }
     if (sscanf(what, "wild %u %u", &a1, &a2) >= 1 && ov021_FIELD_ENCOUNT_StartScriptedWild != NULL) {
         ev = ov021_FIELD_ENCOUNT_StartScriptedWild(enc, (u16)a1, (u8)a2, 0);
+        fade_back = ev != NULL;
     } else if (sscanf(what, "trainer %u", &a1) == 1 && getenv("EIDOS_DEBUG_FOES") == NULL &&
                ov010_EVENT_BATTLE_CreateEncounterTask != NULL) {
         /* as a trainer's own battle: the trainer's encounter effect and

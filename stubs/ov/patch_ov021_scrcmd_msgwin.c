@@ -1,6 +1,10 @@
 /*
  * patches: src/game/ov021/scrcmd_msgwin.c SCRCMD_MSGWIN_CmdPlainWinMsg SCRCMD_MSGWIN_CmdInfoSysWinMsg SCRCMD_MSGWIN_CmdYesNoWin SCRCMD_MSGWIN_OpenTalkWin SCRCMD_MSGWIN_CmdAddMenuItem
  *
+ * symbols:
+ *   SCRIPT_SYS_GetFromWork  0x021589DC  thumb  ov010
+ *   SCRIPT_SYS_Main  0x0215882C  thumb  ov010
+ *
  * The port's message service at the field's message window (sdk/mod_text.h;
  * sdk/mod_message.h; docs/mod-services.md, "Messages").
  *

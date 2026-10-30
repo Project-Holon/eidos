@@ -2777,6 +2777,36 @@ static u32 pl_sig(const PlV *v)
     return (4u << 24) | ((u32)v->mode << 16) | ((u32)(v->p[0x2178] & 0xFF) << 8) | (u32)v->row;
 }
 
+/* A move of a page: one of the Pokemon's four (the summary record's moves,
+ * 8 bytes from +0x2C: id, PP, max PP, type, class, accuracy, power) or, as
+ * the fifth, the new one a forget page offers (the move table's own). */
+typedef struct PlMove {
+    int id, type, pp, maxpp, category, accuracy, power;
+} PlMove;
+
+static void pl_move(const u8 *s, int i, int new_id, PlMove *m)
+{
+    memset(m, 0, sizeof(*m));
+    if (i < 4) {
+        const u8 *mv = s + 0x2C + i * 8;
+
+        m->id = (int)rd16(mv, 0);
+        m->pp = mv[2];
+        m->maxpp = mv[3] ? mv[3] : mv[2];
+        m->type = kit_type(mv[4]);
+        m->category = mv[5];
+        m->accuracy = mv[6];
+        m->power = mv[7];
+    } else if (new_id != 0 && WAZA_TOOL_GetParam != NULL) {
+        m->id = new_id;
+        m->type = kit_type((int)WAZA_TOOL_GetParam((u32)new_id, 0));
+        m->category = (int)WAZA_TOOL_GetParam((u32)new_id, 2);
+        m->power = (int)WAZA_TOOL_GetParam((u32)new_id, 3);
+        m->accuracy = (int)WAZA_TOOL_GetParam((u32)new_id, 4);
+        m->pp = m->maxpp = (int)WAZA_TOOL_GetParam((u32)new_id, 5);
+    }
+}
+
 static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int ih, u32 sig,
                        const EidosUiFrame *in)
 {
@@ -2830,70 +2860,73 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
                 }
             }
         } else {
-            /* the move list (mode 3): a move opens its page; the move page
-             * (mode 4): the four moves pick the one shown, B_PlistHost
-             * order[3] (0x4B), and its power, accuracy and description
-             * show below.  The taps are the game's cursor rectangles
-             * (ov198 d_022122D4: mode 3 0x022124B4, mode 4 0x02212370). */
-            static const int list_tap[4][2] = { { 63, 71 }, { 191, 71 }, { 63, 119 }, { 191, 119 } };
+            /* The move pages.  Mode 3, the move list: a move opens its
+             * page (mode 4), where the four moves pick the one shown
+             * (B_PlistHost order[3], 0x4B).  Mode 5, a move for an item
+             * (an Ether): a move takes the item.  Mode 6, a move to forget
+             * for a new one (host moveId, 0x26, as a fifth row): a row
+             * opens its page (mode 7) with the game's FORGET or GIVE UP.
+             * The taps are the game's cursor rectangles (ov198
+             * d_022122D4: modes 3 to 7 at 0x022124B4, 0x02212370,
+             * 0x022123B8, 0x02212400, 0x022122B0). */
+            static const int list_tap[5][2] = { { 63, 71 }, { 191, 71 }, { 63, 119 }, { 191, 119 }, { 127, 167 } };
             static const int page_tap[4][2] = { { 107, 159 }, { 147, 159 }, { 107, 175 }, { 147, 175 } };
-            int detail = v->mode == 4;
-            int shown = detail && gptr_ok(v->host) ? (v->host[0x4B] & 3) : -1;
-            int hov = -1;
+            int mode = v->mode, rows = (mode == 6 || mode == 7) ? 5 : 4;
+            int shown = (mode == 4 || mode == 7) && gptr_ok(v->host) ? v->host[0x4B] : -1;
+            int new_id = gptr_ok(v->host) ? (int)rd16(v->host, 0x26) : 0;
+            int mw2 = (iw - 24) / 2;
 
-            for (i = 0; i < 4; i++) {
-                const u8 *mv = s + 0x2C + i * 8;
-                int id = (int)rd16(mv, 0);
-                int mx2 = ix + 8 + (i % 2) * ((iw - 24) / 2 + 8);
+            for (i = 0; i < rows; i++) {
+                PlMove m;
+                int mx2 = i < 4 ? ix + 8 + (i % 2) * (mw2 + 8) : ix + 8 + (iw - 16 - mw2) / 2;
                 int my2 = iy + 34 + (i / 2) * 26;
-                int mw2 = (iw - 24) / 2;
                 char name[40];
-                int type = kit_type(mv[4]);
-                int mst, sel;
+                int mst, sel, can_tap = mode == 3 || mode == 4 || mode == 5 || mode == 6;
 
-                if (id == 0) {
+                pl_move(s, i, new_id, &m);
+                if (m.id == 0) {
                     ui_move_row(c, mx2, my2, mw2, 0, NULL, 0, 0, 0);
                     continue;
                 }
-                if (!msg_line(MSG_MOVE, (u32)id, name, sizeof(name))) {
-                    snprintf(name, sizeof(name), "MOVE %d", id);
+                if (!msg_line(MSG_MOVE, (u32)m.id, name, sizeof(name))) {
+                    snprintf(name, sizeof(name), "MOVE %d", m.id);
                 }
-                mst = hit(c, mx2, my2, mw2, 22);
-                if (mst & EIDOS_UI_HOVER) {
-                    hov = i;
-                }
+                mst = can_tap ? hit(c, mx2, my2, mw2, 22) : 0;
                 sel = (mst & EIDOS_UI_HOVER) || i == shown || (v->cursor == i && eidos_ui_keys_lit());
-                ui_move_row(c, mx2, my2, mw2, type, name, mv[2], mv[3] ? mv[3] : mv[2], sel);
+                ui_move_row(c, mx2, my2, mw2, m.type, name, m.pp, m.maxpp, sel);
+                if (i == 4) {
+                    ui_text(c, mx2 + mw2 - 80 - ui_text_w("NEW", UI_FONT_SMALL), my2 + ui_text_y(22, UI_FONT_SMALL),
+                            "NEW", UI_CYAN, UI_NAVY, UI_FONT_SMALL, 1);
+                }
                 if ((mst & EIDOS_UI_CLICK) && i != shown) {
-                    tap_request(detail ? page_tap[i][0] : list_tap[i][0],
-                                detail ? page_tap[i][1] : list_tap[i][1], sig, in->frame);
+                    tap_request(mode == 4 ? page_tap[i & 3][0] : list_tap[i][0],
+                                mode == 4 ? page_tap[i & 3][1] : list_tap[i][1], sig, in->frame);
                 }
             }
-            if (detail && shown >= 0 && rd16(s + 0x2C + shown * 8, 0) != 0) {
-                const u8 *mv = s + 0x2C + shown * 8;
-                int id = (int)rd16(mv, 0), category = mv[5], accuracy = mv[6], power = mv[7];
-                int dy = iy + 34 + 2 * 26, dh = nav_y - 4 - dy;
+            if (shown >= 0 && shown < rows) {
+                PlMove m;
+                int dy = iy + 34 + ((rows + 1) / 2) * 26, dh = nav_y - 4 - dy;
                 char lab[24], info[64], desc[300];
 
-                (void)hov;
-                if (dh >= 24) {
+                pl_move(s, shown, new_id, &m);
+                if (m.id != 0 && dh >= 24) {
                     ui_panel(c, ix + 8, dy, iw - 16, dh, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY2, UI_EDGE, 255);
-                    ui_category_icon(c, ix + 13, dy + 4, category == 2 ? 1 : category == 1 ? 0 : 2);
+                    ui_category_icon(c, ix + 13, dy + 4, m.category == 2 ? 1 : m.category == 1 ? 0 : 2);
                     snprintf(info, sizeof(info), "%s %s", label(MSG_SUMMARY, 147, "POWER", lab, sizeof(lab)), "--");
-                    if (power > 1) {
-                        snprintf(info, sizeof(info), "%s %d", lab, power);
+                    if (m.power > 1) {
+                        snprintf(info, sizeof(info), "%s %d", lab, m.power);
                     }
                     ui_text(c, ix + 33, dy + 3 + ui_text_y(11, UI_FONT_SMALL), info, UI_WHITE, UI_EDGE,
                             UI_FONT_SMALL, 1);
                     label(MSG_SUMMARY, 148, "ACCURACY", lab, sizeof(lab));
-                    if (accuracy == 0 || accuracy > 100) {
+                    if (m.accuracy == 0 || m.accuracy > 100) {
                         snprintf(info, sizeof(info), "%s --", lab);
                     } else {
-                        snprintf(info, sizeof(info), "%s %d", lab, accuracy);
+                        snprintf(info, sizeof(info), "%s %d", lab, m.accuracy);
                     }
                     ui_text(c, ix + iw - 14 - ui_text_w(info, UI_FONT_SMALL), dy + 3 + ui_text_y(11, UI_FONT_SMALL),
                             info, UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
-                    if (msg_line(MSG_MOVE_DESC, (u32)id, desc, sizeof(desc))) {
+                    if (msg_line(MSG_MOVE_DESC, (u32)m.id, desc, sizeof(desc))) {
                         draw_wrapped(c, ix + 13, dy + 17, iw - 26, desc, UI_FONT_SMALL, 11, (dh - 19) / 11,
                                      UI_LIGHT, UI_EDGE);
                     }
@@ -2901,9 +2934,13 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
             }
         }
     }
-    /* the footer: previous, next, the other page, BACK (the move page has
-     * no previous and next: its moves are its controls) */
-    if (v->mode != 4) {
+    /* the footer: previous, next and the other page on the summary and the
+     * move list; FORGET (or GIVE UP, for the new move) on a forget page;
+     * BACK */
+    if (v->mode == 2 || v->mode == 3) {
+        const char *t = v->mode == 2 ? label(MSG_PLIST_UI, 25, "CHECK MOVES", buf, sizeof(buf))
+                                     : label(MSG_PLIST_UI, 24, "SUMMARY", buf, sizeof(buf));
+
         st = push_button(c, ix, nav_y, 22, 18, "<", UI_SKY, 1);
         if (st & EIDOS_UI_CLICK) {
             tap_request(19, 171, sig, in->frame);
@@ -2912,14 +2949,18 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
         if (st & EIDOS_UI_CLICK) {
             tap_request(59, 171, sig, in->frame);
         }
-    }
-    if (v->mode == 2 || v->mode == 3) {
-        const char *t = v->mode == 2 ? label(MSG_PLIST_UI, 25, "CHECK MOVES", buf, sizeof(buf))
-                                     : label(MSG_PLIST_UI, 24, "SUMMARY", buf, sizeof(buf));
-
         st = push_button(c, ix + 56, nav_y, 100, 18, t, UI_SKY, 1);
         if (st & EIDOS_UI_CLICK) {
             tap_request(147, 171, sig, in->frame);
+        }
+    } else if (v->mode == 7) {
+        int give_up = gptr_ok(v->host) && v->host[0x4B] == 4;
+        const char *t = give_up ? label(MSG_PLIST_UI, 0x45, "GIVE UP", buf, sizeof(buf))
+                                : label(MSG_PLIST_UI, 0x44, "FORGET", buf, sizeof(buf));
+
+        st = push_button(c, ix, nav_y, 140, 18, t, UI_PINK, 1);
+        if (st & EIDOS_UI_CLICK) {
+            tap_request(103, 171, sig, in->frame);
         }
     }
     st = push_button(c, ix + iw - 54, nav_y, 54, 18, "BACK", UI_GREY, 1);
@@ -2961,7 +3002,7 @@ static void pl_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     iw = m.w - 12;
     ih = m.h - iy - 6;
 
-    if (v.mode >= 2 && v.mode <= 4) {
+    if (v.mode >= 2 && v.mode <= 7) {
         pl_summary(c, &v, ix, iy, iw, ih, sig, in);
     } else {
         int colw = (iw - 6) / 2, rowh = 30, gap = 4;
