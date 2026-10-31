@@ -343,9 +343,9 @@ BwRootState bw_setup_check(const char *path, int trusted,
             "eidos and has to be made again from your ROM.", ex);
         return BW_ROOT_OLD;
     }
-    if (!trusted && strcmp(sha, BW_BLACK_SHA1) != 0) {
+    if (!trusted && !bw_rom_known_sha1(sha)) {
         say(why, why_len, "The game data in %s was made from a ROM that is not "
-            "the supported dump of Pokemon Black (SHA-1 %s).", ex, sha);
+            "a supported dump of Pokemon Black or White (SHA-1 %s).", ex, sha);
         return BW_ROOT_OTHER_IMAGE;
     }
     if (!has(data, "a", BW_PATH_DIR) || !has(ex, "arm9_dec.bin", BW_PATH_FILE)) {
@@ -501,7 +501,9 @@ int bw_setup_install(const char *rom, const char *extract_dir,
         return -1;
     }
     memset(&opt, 0, sizeof(opt));
-    opt.require_gamecode = allow_unverified ? NULL : "IRBO";
+    /* a known good dump of any cartridge the port plays, else English
+     * Black only (or anything, when the player allows it) */
+    opt.require_gamecode = allow_unverified || info->verified ? NULL : "IRBO";
     opt.rom_sha1_hex = bw_setup_identity(info);
     opt.replace = 1;        /* the player chose this ROM for this folder */
     outcome->stage = BW_STAGE_EXTRACT;

@@ -606,8 +606,25 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/cp.c            # the divider and square-root unit, computed on access
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/input.c         # buttons, hinge, stylus: host + script onto the hardware
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/armdata.c       # the ARM9 image's data: copy, relocate, bind names
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/langmap.c       # other cartridges laid out as English Black's
     ${BW_PXI_SOURCES}
 )
+
+# The address maps of the other cartridges (aletheia layout/langmap/, by
+# tools/langmap_c.py): addresses only, written when the pin's maps change.
+set(BW_LANGMAP_DIR ${CMAKE_BINARY_DIR}/langmap)
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/langmap_c.py
+            ${ALETHEIA_ROOT} ${BW_LANGMAP_DIR}/langmap_table.h
+    RESULT_VARIABLE _lm_rc)
+if(NOT _lm_rc EQUAL 0)
+    message(FATAL_ERROR "tools/langmap_c.py failed (${_lm_rc}): is ALETHEIA_ROOT at the pin?")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/langmap_c.py
+    ${ALETHEIA_ROOT}/layout/langmap/black_fr.tsv)
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/sdk/langmap.c PROPERTIES
+    INCLUDE_DIRECTORIES ${BW_LANGMAP_DIR})
 
 # sdk/asm/: portable C for the matched SDK and runtime functions whose bodies
 # are mwcc `asm` (sdk/asm/asmsdk.h).  One file per matched source; each

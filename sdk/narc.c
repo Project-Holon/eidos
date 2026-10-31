@@ -37,6 +37,7 @@
 #include <string.h>
 
 #include "port.h"
+#include "langmap.h"
 
 /* The SDK file calls this file uses (sdk/fs.c), declared at file scope:
  * MSVC flags a block-scope extern function declaration (C4210). */
@@ -109,6 +110,19 @@ static void load_arm9(void)
     }
     fclose(fp);
     g_arm9_size = (u32)end;
+    /* another cartridge than English Black: its image laid out as English
+     * Black's (sdk/langmap.h) */
+    bw_lang_init();
+    if (bw_lang_active()) {
+        u32 size = 0;
+        u8 *eng = bw_lang_relayout_arm9(g_arm9, g_arm9_size, &size);
+
+        if (eng != NULL) {
+            free(g_arm9);
+            g_arm9 = eng;
+            g_arm9_size = size;
+        }
+    }
 }
 
 void bw_arm9_set_image(const void *image, u32 size)

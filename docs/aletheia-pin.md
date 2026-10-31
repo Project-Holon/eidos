@@ -8,19 +8,16 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `ae14c2cc42d9831a462a4a71e0727b6f5afad630`
-- Date: 2026-10-31 00:58:10 +0100
-- Subject: Original file names from the Japanese build: 8 renames, 10 files split into 26
+- Revision: `828fe07923eb876f8d94972fe2db045bddf45c65`
+- Date: 2026-10-31
+- Subject: PC builds pick Black or White at run time; pointer words of the size-changed objects
 
-The step from `632a9e4562`: 18 files in `src/game` take the original file
-names from the Japanese build. Eight are renamed (for example ov013
-`vct_main` to `vchat`, ov015 `ircnet` to `net_irc`) and ten are split into
-the pieces the original had (for example ov018 `event_comm_common` into five
-files, ov183 `br_codein` into five). No function body, signature or name
-changes; the pieces keep their `#ifdef` guards and have symbols rows for
-calls into their sibling pieces. eidos names none of these files (it reads
-only `ov125/gds_rap_types.h`, which keeps its name), so nothing here
-changes. All twelve cartridges still build byte-identical.
+The step from `ae14c2cc42`: a PC build picks the cartridge's language
+(`g_pm_language`, b9b2eba6ab) and version (`g_pm_version`) at run time,
+and `layout/langmap/` maps English Black's addresses to White's and the
+French, German, Italian and Spanish cartridges'. eidos defines both
+variables and lays the other cartridges out as English Black's
+(sdk/langmap.c). All twelve cartridges still build byte-identical.
 
 The step before, from `bceb69de2d`: symbols rows for calls into other overlays
 that had none, so the port routes them instead of stopping at a stub: the

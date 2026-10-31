@@ -57,12 +57,14 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "port.h"
 #include "dsmem.h"
 #include "armdata.h"
 #include "overlay_image.h"
+#include "langmap.h"
 #include "mod_slot.h"
 
 #define PIECE 0x10000u            /* sdk/dsmem.c commits main RAM in 64 KiB */
@@ -76,6 +78,10 @@ static char               g_error[256];
 static u8                *g_flat[MAX_RANGES];
 static const BwDataImage *g_flat_img;
 static u32                g_scanned;
+/* Per pointer word of the image being relocated: the English address of
+ * the other cartridge's own data it holds, or 0 (bw_data_relocate). */
+static uintptr_t         *g_lang_target;
+#define LANG_KEEP_WORD ((uintptr_t)1)
 
 /*
  * The code words the port rewrote, so a hook installed later can be put in
@@ -510,16 +516,53 @@ int bw_data_relocate(const BwDataImage *img)
     if (img->overlay < 0) {
         g_code_word_count = 0;
     }
-    /* First pass: every word must hold what the metadata says. */
+    /* First pass: every word must hold what the metadata says.  The image
+     * of another cartridge (sdk/langmap.h) holds its own addresses: the
+     * same object in its layout passes, and a word into its own
+     * language's data (a word list of another length) is taken to where
+     * that data was laid out. */
+    free(g_lang_target);
+    g_lang_target = NULL;
+    if (bw_lang_active() && img->reloc_count != 0) {
+        g_lang_target = (uintptr_t *)calloc(img->reloc_count, sizeof(uintptr_t));
+    }
     for (i = 0; i < img->reloc_count; i++) {
         const BwDataReloc *r = &img->relocs[i];
         u8 *w = flat_word(img, r->where);
+        u32 eng;
 
         if (w == NULL) {
             return fail(BW_DATA_E_LAYOUT, r->where,
                         "pointer word outside every loaded range");
         }
-        if (bw_rd32(w) != r->target) {
+        if (bw_rd32(w) != r->target && !bw_lang_same_address(r->target, bw_rd32(w))
+            && g_lang_target != NULL) {
+            /* (a word the metadata takes for a Thumb function's address
+             * can be an odd address into data: a word list's text) */
+            void *own = bw_lang_target_ptr(bw_rd32(w), img->overlay);
+
+            if (own != NULL) {
+                /* the cartridge's own data, as its image has it */
+                g_lang_target[i] = (uintptr_t)own;
+                continue;
+            }
+            if (r->kind != BW_DATA_RELOC_CODE && bw_lang_to_english(bw_rd32(w), img->overlay, &eng)
+                && (own = bw_ds_try_ptr(eng)) != NULL) {
+                g_lang_target[i] = (uintptr_t)own;
+                continue;
+            }
+            /* not an address at all there: an object of another length in
+             * this cartridge, its words elsewhere; the word stays as the
+             * cartridge has it */
+            g_lang_target[i] = LANG_KEEP_WORD;
+            if (getenv("EIDOS_LANG_LOG") != NULL) {
+                fprintf(stderr, "eidos: lang: ov %d word 0x%08lX kept 0x%08lX (English 0x%08lX)\n",
+                        img->overlay, (unsigned long)r->where, (unsigned long)bw_rd32(w),
+                        (unsigned long)r->target);
+            }
+            continue;
+        }
+        if (bw_rd32(w) != r->target && !bw_lang_same_address(r->target, bw_rd32(w))) {
             snprintf(g_error, sizeof(g_error),
                      "word 0x%08lX holds 0x%08lX, the metadata says 0x%08lX: "
                      "arm9_dec.bin is not the image aletheia describes",
@@ -544,6 +587,10 @@ int bw_data_relocate(const BwDataImage *img)
         u32 word;
         int is_code = 0;
 
+        if (g_lang_target != NULL && g_lang_target[i] == LANG_KEEP_WORD) {
+            continue;
+        }
+
         switch (r->kind) {
         case BW_DATA_RELOC_CODE:
             if (r->index >= img->func_count) {
@@ -564,7 +611,8 @@ int bw_data_relocate(const BwDataImage *img)
             break;
         }
         default: {
-            void *p = bw_ds_try_ptr(r->target);
+            void *p = g_lang_target != NULL && g_lang_target[i] != 0
+                      ? (void *)g_lang_target[i] : bw_ds_try_ptr(r->target);
             if (p == NULL) {
                 return fail(BW_DATA_E_UNBACKED, r->target,
                             "pointer target outside every backed DS region");

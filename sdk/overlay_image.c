@@ -45,6 +45,7 @@
 #include "armdata.h"
 #include "overlay.h"
 #include "overlay_image.h"
+#include "langmap.h"
 #include "mod_slot.h"
 
 #define OVL_MAX 1024u
@@ -123,6 +124,20 @@ static void load_file(u32 id)
         snprintf(rel, sizeof(rel), "%sy9_%04lu.bin", dirs[k], (unsigned long)id);
         if (extract_path(path, sizeof(path), rel) == 0) {
             f->bytes = read_whole(path, &f->size);
+        }
+    }
+    /* another cartridge than English Black: the file laid out as English
+     * Black's, at its English place (sdk/langmap.h) */
+    if (f->bytes != NULL && bw_lang_active()) {
+        const BwOverlayDesc *d = bw_overlay_desc(id);
+        u32 size = 0;
+        u8 *eng = d != NULL ? bw_lang_relayout_overlay(id, d->ram_address, d->ram_size, f->bytes,
+                                                        f->size, &size) : NULL;
+
+        if (eng != NULL) {
+            free(f->bytes);
+            f->bytes = eng;
+            f->size = size;
         }
     }
 }

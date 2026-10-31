@@ -644,7 +644,9 @@ static int test_identify(const char *dir)
     BW_CHECK_EQ("Black, Japanese release", verdict_of(dir, img, g_rom_len, &info), BW_VERDICT_UNSUPPORTED);
     memcpy(img + 0x0C, "IRAO", 4);
     fix_crc(img);
-    BW_CHECK_EQ("White", verdict_of(dir, img, g_rom_len, &info), BW_VERDICT_UNSUPPORTED);
+    /* White is played now (sdk/langmap.h): a White that is not the known
+     * dump is a modified one, as for Black */
+    BW_CHECK_EQ("White", verdict_of(dir, img, g_rom_len, &info), BW_VERDICT_MODIFIED);
     BW_CHECK_EQ("... recognised as White", info.game, BW_GAME_WHITE);
     memcpy(img + 0x0C, "ABCE", 4);
     fix_crc(img);

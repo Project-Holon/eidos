@@ -130,6 +130,11 @@ typedef struct BwRomInfo {
 #define BW_BLACK_SHA1 "26ad0b9967aa279c4a266ee69f52b9b2332399a5"
 #define BW_BLACK_SIZE 268435456u
 
+/* Whether a ROM's SHA-1 is one of the known good dumps the port plays:
+ * English Black, and the White and European cartridges it lays out as
+ * English Black's (sdk/langmap.h). */
+int bw_rom_known_sha1(const char *sha1_hex);
+
 /* The largest image identify and extract will open: twice the largest DS
  * or DSi cartridge (4 Gbit).  Anything bigger is not a cartridge dump. */
 #define BW_ROM_MAX_SIZE 0x40000000u
@@ -168,7 +173,7 @@ typedef enum BwRomVerdict {
                                trimmed of padding only */
     BW_VERDICT_NOT_DS,      /* the header is not a DS header */
     BW_VERDICT_OTHER_GAME,  /* a DS game, not Pokemon Black */
-    BW_VERDICT_UNSUPPORTED, /* Pokemon White, or Black of another region */
+    BW_VERDICT_UNSUPPORTED, /* Black or White of a region not played (Japan, Korea) */
     BW_VERDICT_DAMAGED,     /* Black, but the header checksum is wrong or
                                the image is cut short */
     BW_VERDICT_MODIFIED     /* Black, whole, but not the known dump:

@@ -257,6 +257,17 @@ static const struct {
     const char *sha1;
 } KNOWN_DUMPS[] = {
     { "IRBO", BW_BLACK_SIZE, BW_BLACK_SHA1 },
+    /* the other cartridges the port lays out as English Black's
+     * (sdk/langmap.h), aletheia docs/ROMS.md */
+    { "IRAO", BW_BLACK_SIZE, "bc696a0dfb448c7b3a8a206f0f8214411a039208" },
+    { "IRBF", BW_BLACK_SIZE, "a559da54839663d8f8f3f03382e5665a61873d22" },
+    { "IRAF", BW_BLACK_SIZE, "28f075915dd445cbfd902f1e1a94d5048b03a095" },
+    { "IRBD", BW_BLACK_SIZE, "f5688bd617be7e67a150732f42cfae6ae104b2cb" },
+    { "IRAD", BW_BLACK_SIZE, "fb752b211351f8480e3e1949e11a1d7741f05f5a" },
+    { "IRBI", BW_BLACK_SIZE, "699f8c6a8390b5e30236b6c386bc3c4bd7bdc44e" },
+    { "IRAI", BW_BLACK_SIZE, "2e33164d26236dd499f75d1de3123d85e822d502" },
+    { "IRBS", BW_BLACK_SIZE, "68b55b82f5a033f9e9666c232f429e31ed658e54" },
+    { "IRAS", BW_BLACK_SIZE, "4cc963ca925409ff0f12f3c417d1cbe1094bf934" },
 };
 
 static int is_known(const char *gamecode, const char *sha1_hex)
@@ -266,6 +277,18 @@ static int is_known(const char *gamecode, const char *sha1_hex)
     for (i = 0; i < sizeof(KNOWN_DUMPS) / sizeof(KNOWN_DUMPS[0]); i++) {
         if (strcmp(gamecode, KNOWN_DUMPS[i].gamecode) == 0
             && strcmp(sha1_hex, KNOWN_DUMPS[i].sha1) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int bw_rom_known_sha1(const char *sha1_hex)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof(KNOWN_DUMPS) / sizeof(KNOWN_DUMPS[0]); i++) {
+        if (strcmp(sha1_hex, KNOWN_DUMPS[i].sha1) == 0) {
             return 1;
         }
     }
@@ -397,9 +420,13 @@ static const char *region_name(char c)
 BwRomVerdict bw_rom_verdict(const BwRomInfo *info, char *msg, size_t msg_len)
 {
     if (info->verified) {
+        const char *game = info->gamecode[2] == 'A' ? "Pokemon White" : "Pokemon Black";
+        const char *lang = info->gamecode[3] == 'O' ? "" : region_name(info->gamecode[3]);
+
         say(msg, msg_len, info->trimmed
-            ? "Pokemon Black, the known good dump (trimmed, but only of padding)"
-            : "Pokemon Black, the known good dump");
+            ? "%s%s%s%s, the known good dump (trimmed, but only of padding)"
+            : "%s%s%s%s, the known good dump", game, lang[0] != '\0' ? " (" : "", lang,
+            lang[0] != '\0' ? ")" : "");
         return BW_VERDICT_OK;
     }
     if (info->game == BW_GAME_UNKNOWN) {
@@ -414,15 +441,11 @@ BwRomVerdict bw_rom_verdict(const BwRomInfo *info, char *msg, size_t msg_len)
             "(game code IRBO).", info->title, info->gamecode);
         return BW_VERDICT_OTHER_GAME;
     }
-    if (info->game == BW_GAME_WHITE) {
-        say(msg, msg_len, "This is Pokemon White (game code %s). eidos "
-            "supports Pokemon Black only for now.", info->gamecode);
-        return BW_VERDICT_UNSUPPORTED;
-    }
-    if (strcmp(info->gamecode, "IRBO") != 0) {
-        say(msg, msg_len, "This is Pokemon Black, but the %s release (game "
-            "code %s). eidos supports the USA/Europe release (game code "
-            "IRBO) only.", region_name(info->gamecode[3]), info->gamecode);
+    if (strchr("OFDIS", info->gamecode[3]) == NULL) {
+        say(msg, msg_len, "This is the %s release of Pokemon %s (game code %s). "
+            "eidos plays the English, French, German, Italian and Spanish "
+            "releases for now.", region_name(info->gamecode[3]),
+            info->game == BW_GAME_WHITE ? "White" : "Black", info->gamecode);
         return BW_VERDICT_UNSUPPORTED;
     }
     if (!info->header_crc_ok) {
