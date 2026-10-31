@@ -91,12 +91,27 @@ void eidos_ui_press(u32 keys, u32 frames)
     g_press |= keys;
 }
 
+/* the player's keys this frame: an arrow for the name keyboard */
+static u32 g_keys;
+
+void eidos_ui_take_keys(u32 mask)
+{
+    (void)mask;
+}
+
+u32 eidos_ui_keys_pressed(void)
+{
+    return g_keys;
+}
+
 /* ------------------------------------------------------------------ */
 /* The fake game                                                       */
 /* ------------------------------------------------------------------ */
 
 static void w32(void *b, u32 off, u32 v) { memcpy((unsigned char *)b + off, &v, 4); }
 static void w16(void *b, u32 off, u32 v) { u16 x = (u16)v; memcpy((unsigned char *)b + off, &x, 2); }
+static u32 rd32t(const void *b, u32 off) { u32 v; memcpy(&v, (const unsigned char *)b + off, 4); return v; }
+static u32 rd16t(const void *b, u32 off) { u16 v; memcpy(&v, (const unsigned char *)b + off, 2); return v; }
 
 static unsigned char g_gs[0x34], g_procsys[0x20], g_proc[0x20];
 
@@ -408,6 +423,32 @@ static int test_name(const char *outdir)
     CHECK(taps_seen(0, 426, 240, 1, 40, 140), "qwerty shift");
     CHECK(taps_seen(0, 426, 240, 1, 216, 76), "qwerty delete");
     CHECK(taps_seen(0, 426, 240, 1, 212, 108), "qwerty ok");
+    /* the arrows land on keys, and the opposite arrow comes back (the
+     * game's cursor starts on B, cell (1, 0)) */
+    {
+        static const u32 arrows[4][2] = { { 0x40, 0x80 }, { 0x80, 0x40 }, { 0x20, 0x10 }, { 0x10, 0x20 } };
+        int a2;
+
+        for (a2 = 0; a2 < 4; a2++) {
+            u32 gx, gy;
+
+            name_build(1, 498, 0, 0);
+            g_keys = arrows[a2][0];
+            CHECK(run_recipe(0, 426, 240, 1, NULL, &cv) == 1, "name entry runs with an arrow");
+            free(cv.rgba);
+            gx = rd32t(g_nw, 0x1D4);
+            gy = rd32t(g_nw, 0x1D8);
+            CHECK(gx != 1 || gy != 0, "the arrow moves the cursor");
+            CHECK(gx < 13 && gy < 5 && rd16t(g_m0, 4 + 2 * (gy * 13 + gx)) > 0x20 &&
+                  rd16t(g_m0, 4 + 2 * (gy * 13 + gx)) != 0x3000,
+                  "the arrow lands on a key");
+            g_keys = arrows[a2][1];
+            CHECK(run_recipe(0, 426, 240, 1, NULL, &cv) == 1, "name entry runs with the opposite arrow");
+            free(cv.rgba);
+            CHECK(rd32t(g_nw, 0x1D4) == 1 && rd32t(g_nw, 0x1D8) == 0, "the opposite arrow comes back");
+        }
+        g_keys = 0;
+    }
     /* a scene that is not name entry does not match */
     game_set(70, g_nw);
     CHECK(ui_recipes_input[0]->match() == 0, "bag is not name entry");
