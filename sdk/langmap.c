@@ -47,6 +47,15 @@ static int own_row(const BwLangRow *r)
         && r->eng_end <= d->ram_address + d->ram_size + d->bss_size;
 }
 
+/* The map's rows as the layout uses them.  A run of an overlay's can reach
+ * past the overlay, over the window it shares with others (ov094's starts
+ * in ov093's place): its part inside the overlay is still the overlay's,
+ * so the row is cut to the overlay's English extent, not dropped.  Made at
+ * the first use after the overlay table is read. */
+static BwLangRow *g_rows;
+static u32 g_nrows;
+static int g_rows_ovl;          /* made with the overlay table */
+
 /* The game's language ids (src/game/version.h). */
 #define LANG_ENGLISH 2
 #define LANG_FRENCH  3
@@ -118,12 +127,57 @@ static int read_at(const char *rel, u32 off, void *dst, u32 size)
     return ok ? 0 : -1;
 }
 
+static void rows_ready(void)
+{
+    u32 i;
+    int ovl = bw_overlay_desc(0) != NULL;
+
+    if (g_rows != NULL && (g_rows_ovl || !ovl)) {
+        return;
+    }
+    free(g_rows);
+    g_nrows = 0;
+    g_rows = (BwLangRow *)malloc((g_map->count ? g_map->count : 1) * sizeof(BwLangRow));
+    if (g_rows == NULL) {
+        return;
+    }
+    g_rows_ovl = ovl;
+    for (i = 0; i < g_map->count; i++) {
+        BwLangRow r = g_map->rows[i];
+
+        if (r.region >= 0) {
+            const BwOverlayDesc *d = bw_overlay_desc((u32)r.region);
+            u32 lo, hi;
+
+            if (d == NULL) {
+                continue;
+            }
+            lo = d->ram_address;
+            hi = d->ram_address + d->ram_size + d->bss_size;
+            if (r.eng_end <= lo || r.eng_start >= hi) {
+                continue;
+            }
+            if (r.eng_start < lo) {
+                r.tgt_start += lo - r.eng_start;
+                r.eng_start = lo;
+            }
+            if (r.eng_end > hi) {
+                r.eng_end = hi;
+            }
+        }
+        g_rows[g_nrows++] = r;
+    }
+}
+
 void bw_lang_init(void)
 {
     char code[4];
     u32 i;
 
     g_map = NULL;
+    free(g_rows);
+    g_rows = NULL;
+    g_nrows = 0;
     memset(g_whole_known, 0, sizeof(g_whole_known));
     memset(g_whole_ok, 0, sizeof(g_whole_ok));
     g_pm_language = LANG_ENGLISH;
@@ -175,8 +229,8 @@ static void relayout(int region, u8 *dst, u32 dst_base, u32 dst_size, const u8 *
      * pair) is taken as it is where the gap is as long in both images,
      * and so is what follows the last row: the same bytes in the same
      * order, only moved. */
-    for (i = 0; i <= g_map->count; i++) {
-        const BwLangRow *r = i < g_map->count ? &g_map->rows[i] : NULL;
+    for (i = 0; i <= g_nrows; i++) {
+        const BwLangRow *r = i < g_nrows ? &g_rows[i] : NULL;
         u32 ge, gt, n;
 
         if (r != NULL && (r->region != region || r->eng_start < dst_base
@@ -197,8 +251,8 @@ static void relayout(int region, u8 *dst, u32 dst_base, u32 dst_size, const u8 *
             pt = r->tgt_start + (r->eng_end - r->eng_start);
         }
     }
-    for (i = 0; i < g_map->count; i++) {
-        const BwLangRow *r = &g_map->rows[i];
+    for (i = 0; i < g_nrows; i++) {
+        const BwLangRow *r = &g_rows[i];
         u32 n, d, s;
 
         if (r->region != region || r->eng_start < dst_base || r->tgt_start < src_base
@@ -238,8 +292,8 @@ static int whole_overlay(int id, u32 *eng, u32 *tgt, u32 *size)
         u32 i, rows = 0;
 
         g_whole_known[id] = 1;
-        for (i = 0; i < g_map->count; i++) {
-            if (g_map->rows[i].region == id && own_row(&g_map->rows[i])) {
+        for (i = 0; i < g_nrows; i++) {
+            if (g_rows[i].region == id && own_row(&g_rows[i])) {
                 rows++;
             }
         }
@@ -274,8 +328,8 @@ static int to_english_any_overlay(u32 word, u32 *out)
 
     /* overlays share windows: where two disagree, the shorter run is the
      * more exact (a long run spans objects the overlay merely refers to) */
-    for (i = 0; i < g_map->count; i++) {
-        const BwLangRow *r = &g_map->rows[i];
+    for (i = 0; i < g_nrows; i++) {
+        const BwLangRow *r = &g_rows[i];
 
         if (r->region >= 0 && own_row(r) && word >= r->tgt_start
             && word - r->tgt_start < r->eng_end - r->eng_start
@@ -339,10 +393,11 @@ u8 *bw_lang_relayout_arm9(const u8 *image, u32 image_size, u32 *size)
     if (g_map == NULL) {
         return NULL;
     }
+    rows_ready();
     /* as far as the English image's rows whose bytes are in this file go
      * (the rest is .bss and the autoloads' places, not in the file) */
-    for (i = 0; i < g_map->count; i++) {
-        const BwLangRow *r = &g_map->rows[i];
+    for (i = 0; i < g_nrows; i++) {
+        const BwLangRow *r = &g_rows[i];
 
         if (r->region == -1 && r->eng_start >= ARM9_BASE && r->tgt_start >= ARM9_BASE
             && r->tgt_start - ARM9_BASE < image_size && r->eng_end > end) {
@@ -379,6 +434,7 @@ u8 *bw_lang_relayout_overlay(u32 id, u32 eng_base, u32 eng_size, const u8 *file,
     if (g_map == NULL || eng_size == 0) {
         return NULL;
     }
+    rows_ready();
     /* the overlay's place in the cartridge: its own table (y9.bin) */
     if (read_at("y9.bin", id * 32u, entry, sizeof(entry)) != 0) {
         return NULL;
@@ -407,13 +463,14 @@ int bw_lang_same_address(u32 english, u32 word)
     if (g_map == NULL) {
         return english == word;
     }
+    rows_ready();
     if (english == word) {
         return 1;
     }
     /* an English address can be in several overlays (they share windows):
      * any of them holding `word` there is the same object */
-    for (i = 0; i < g_map->count; i++) {
-        const BwLangRow *r = &g_map->rows[i];
+    for (i = 0; i < g_nrows; i++) {
+        const BwLangRow *r = &g_rows[i];
 
         if (own_row(r) && english >= r->eng_start && english < r->eng_end
             && english - r->eng_start + r->tgt_start == word) {
@@ -429,8 +486,8 @@ int bw_lang_same_address(u32 english, u32 word)
         }
     }
     /* the end of an object (a pointer one past it) */
-    for (i = 0; i < g_map->count; i++) {
-        const BwLangRow *r = &g_map->rows[i];
+    for (i = 0; i < g_nrows; i++) {
+        const BwLangRow *r = &g_rows[i];
 
         if (own_row(r) && english == r->eng_end
             && r->eng_end - r->eng_start + r->tgt_start == word) {
@@ -444,8 +501,8 @@ static int to_english_in(u32 word, int region, u32 *out)
 {
     u32 i;
 
-    for (i = 0; i < g_map->count; i++) {
-        const BwLangRow *r = &g_map->rows[i];
+    for (i = 0; i < g_nrows; i++) {
+        const BwLangRow *r = &g_rows[i];
 
         if (r->region == region && own_row(r) && word >= r->tgt_start
             && word - r->tgt_start < r->eng_end - r->eng_start) {
@@ -469,6 +526,7 @@ int bw_lang_to_english(u32 word, int region, u32 *out)
     if (g_map == NULL) {
         return 0;
     }
+    rows_ready();
     if (region >= 0 && to_english_in(word, region, out)) {
         return 1;
     }

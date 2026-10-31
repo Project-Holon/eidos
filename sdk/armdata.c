@@ -82,6 +82,9 @@ static u32                g_scanned;
  * the other cartridge's own data it holds, or 0 (bw_data_relocate). */
 static uintptr_t         *g_lang_target;
 #define LANG_KEEP_WORD ((uintptr_t)1)
+/* How far another cartridge's address of a function may lie from the
+ * English one and still be taken for it (code of another length in front). */
+#define LANG_CODE_NEAR 0x4000u
 
 /*
  * The code words the port rewrote, so a hook installed later can be put in
@@ -539,11 +542,26 @@ int bw_data_relocate(const BwDataImage *img)
             && g_lang_target != NULL) {
             /* (a word the metadata takes for a Thumb function's address
              * can be an odd address into data: a word list's text) */
-            void *own = bw_lang_target_ptr(bw_rd32(w), img->overlay);
+            void *own;
+            u32 word = bw_rd32(w);
 
+            if (r->kind == BW_DATA_RELOC_CODE && (word & 1u) == (r->target & 1u)
+                && (word > r->target ? word - r->target : r->target - word) < LANG_CODE_NEAR) {
+                /* a function's address, a little off: code of another
+                 * length in front of it (the map's runs are the data's,
+                 * not every function's).  The function the metadata names
+                 * is the one. */
+                continue;
+            }
+            own = bw_lang_target_ptr(word, img->overlay);
             if (own != NULL) {
                 /* the cartridge's own data, as its image has it */
                 g_lang_target[i] = (uintptr_t)own;
+                if (getenv("EIDOS_LANG_LOG") != NULL) {
+                    fprintf(stderr, "eidos: lang: ov %d word 0x%08lX own 0x%08lX (English 0x%08lX)\n",
+                            img->overlay, (unsigned long)r->where, (unsigned long)bw_rd32(w),
+                            (unsigned long)r->target);
+                }
                 continue;
             }
             if (r->kind != BW_DATA_RELOC_CODE && bw_lang_to_english(bw_rd32(w), img->overlay, &eng)
