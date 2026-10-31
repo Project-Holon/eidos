@@ -623,9 +623,42 @@ static void panel_split(EidosUiCtx *c, int x, int y, int w, int h, int cut,
     int xx, yy;
 
     for (yy = 0; yy < h; yy++) {
+        /* the row's inner run (inside at inset 2: plain fill) is one
+         * interval, every constraint being a bound on x; only the pixels
+         * outside it take the three shape tests */
+        int lo = 0, hi = w - 1;
+
+        while (lo <= hi && !in_shape(lo, yy, w, h, cut, corner, 2)) {
+            lo++;
+        }
+        while (hi >= lo && !in_shape(hi, yy, w, h, cut, corner, 2)) {
+            hi--;
+        }
+        if (lo <= hi) {
+            int py = c->oy + y + yy, x0 = c->ox + x + lo, x1 = c->ox + x + hi + 1, px;
+
+            if (py >= c->clip.y && py < c->clip.y + c->clip.h && py >= 0 && py < c->canvas->h) {
+                if (x0 < c->clip.x) x0 = c->clip.x;
+                if (x0 < 0) x0 = 0;
+                if (x1 > c->clip.x + c->clip.w) x1 = c->clip.x + c->clip.w;
+                if (x1 > c->canvas->w) x1 = c->canvas->w;
+                for (px = x0; px < x1; px++) {
+                    u32 col = fill;
+
+                    if (split_rgb != UI_NONE && px - c->ox - x >= split_x + (h - yy)) {
+                        col = split_rgb;
+                    }
+                    blend_at(c->canvas, px, py, col, a);
+                }
+            }
+        }
         for (xx = 0; xx < w; xx++) {
             u32 col;
 
+            if (xx == lo && lo <= hi) {
+                xx = hi;            /* the inner run is drawn */
+                continue;
+            }
             if (!in_shape(xx, yy, w, h, cut, corner, 0)) {
                 continue;
             }
