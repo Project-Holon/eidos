@@ -62,6 +62,10 @@ typedef struct BmapSpot {
                                the spot editor's "Indoor" (a room's furniture
                                makes the base look short)                      */
     float trainer_own_size; /* the player's own trainer's height, the same way  */
+    int doubles;            /* 1: the battle here is a double one (the trainer's
+                               own, two trainers who see the player together,
+                               or grass whose wild battles can be double;
+                               tools/battle_spots.py), from the built-in table */
 } BmapSpot;
 #define BMAP_TRAINER_INDOOR 1.15f
 #define BMAP_VIEWS_MAX 8    /* views of a row */

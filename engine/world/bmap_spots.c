@@ -131,6 +131,7 @@ static int parse_row(char *line, BmapSpot *r)
         r->trainer_size = 1.0f;
     }
     r->trainer_own_size = n > 49 ? field_float(f[49], 1.0f) : 1.0f;
+    r->doubles = n > 50 ? field_int(f[50], 0) : 0;
     if (r->trainer_own_size <= 0.0f) {
         r->trainer_own_size = 1.0f;
     }
@@ -203,6 +204,12 @@ static void load_text(char *text, int user)
                 }
             }
             at = find_id(r.id, r.view);
+            if (user) {
+                /* the battle's kind is the game data's, not the file's */
+                int base = at >= 0 ? at : find_id(r.id, 0);
+
+                r.doubles = base >= 0 ? g_rows[base].doubles : 0;
+            }
             if (at >= 0) {
                 if (r.trainer_id < 0) {
                     r.trainer_id = g_rows[at].trainer_id;   /* a file from before the column */
@@ -628,11 +635,11 @@ static void save_row(FILE *f, const BmapSpot *r)
             (double)r->intro.side, (double)r->intro.tilt, (double)r->intro.aim);
     fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g", (double)r->cam.zoom, (double)r->cam.yaw, (double)r->cam.lift,
             (double)r->cam.side, (double)r->cam.tilt, (double)r->cam.aim);
-    fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%d\t%d\t%g\t%g\n", (double)r->trainer_foe[0],
+    fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%d\t%d\t%g\t%g\t%d\n", (double)r->trainer_foe[0],
             (double)r->trainer_foe[1], (double)r->trainer_foe[2], (double)r->trainer_own[0],
             (double)r->trainer_own[1], (double)r->trainer_own[2], r->view, r->pick_angle,
             r->trainer_n > 0 ? r->trainer_n : 1, (double)(r->trainer_size > 0.0f ? r->trainer_size : 1.0f),
-            (double)(r->trainer_own_size > 0.0f ? r->trainer_own_size : 1.0f));
+            (double)(r->trainer_own_size > 0.0f ? r->trainer_own_size : 1.0f), r->doubles);
 }
 
 int bmap_spots_save(void)

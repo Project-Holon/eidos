@@ -46,7 +46,7 @@ INC = os.path.join(HERE, '..', 'engine', 'world', 'battle_spots_tsv.inc')
 COLUMNS = ['id', 'kind', 'zone', 'label', 'tx', 'tz', 'dir', 'range',
            'rx0', 'rz0', 'rx1', 'rz1', 'px', 'pz', 'pf',
            'mode', 'sx', 'sz', 'angle', 'ax0', 'az0', 'ax1', 'az1', 'ok', 'fl', 'fd', 'iz', 'tid', 'iy', 'ih', 'is', 'it', 'ia',
-           'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vw', 'vm', 'tn', 'tsz', 'tos']
+           'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vw', 'vm', 'tn', 'tsz', 'tos', 'db']
 PLACEMENT = ['mode', 'sx', 'sz', 'angle', 'ax0', 'az0', 'ax1', 'az1', 'ok', 'fl', 'fd', 'iz', 'iy', 'ih', 'is', 'it', 'ia',
              'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vm', 'tsz', 'tos']
 
@@ -62,6 +62,10 @@ STRAY_TRAINERS = {30}
 # the items'.  A resident the player talks to can battle; White Forest's grass
 # has wild Pokemon although its zone header names no encounter table.
 WFBC = {0: 0x22, 424: 0x23}
+# Grass whose wild battles can be double (ov021 map_attr.c
+# MAP_ATTR_IsAnyDoubleGrass: field_encount.c makes 40% of them double when
+# two Pokemon can fight)
+DOUBLE_GRASS = {0x06, 0x07, 0x09, 0x22}
 WFBC_WILD = {424}
 LEADER_CODES = {85, 86, 87, 88, 89, 90, 91, 162, 178, 179}
 # NPC dir codes: 0 up (-z), 1 down (+z), 2 left (-x), 3 right (+x)
@@ -306,6 +310,12 @@ class Rom:
                 ob = struct.unpack_from('<H', f, o + 2)[0]
                 out[ob] = out.get(ob, 0) + 1
         return out
+
+    def trainer_battle(self, tid):
+        """The trainer's battle: 0 single, 1 double, 2 triple, 3 rotation."""
+        if 0 <= tid < len(self.trdata) and len(self.trdata[tid]) > 2:
+            return self.trdata[tid][2]
+        return 0
 
     def trainer_class(self, tid):
         if 0 <= tid < len(self.trdata) and len(self.trdata[tid]) > 1:
@@ -581,10 +591,11 @@ def analyse(rom):
                 s = step.get(first)
                 pf = facing_deg(*s) if s else 0
                 px, pz = tile_center(first)
+                dbl = not water and any(tiles[t][1] in DOUBLE_GRASS for t in comp)
                 rows.append(dict(id='A%d.%d' % (z, np), kind='A', zone=z,
                                  label='%s: %s %d' % (name, 'water' if water else 'area', np),
                                  rx0=min(xs), rz0=min(zs), rx1=max(xs), rz1=max(zs),
-                                 px=px, pz=pz, pf=pf, mode='auto'))
+                                 px=px, pz=pz, pf=pf, mode='auto', db=int(dbl)))
             if np == 0 and z in WFBC_WILD:
                 # White Forest's grass comes with the blocks the game builds
                 # around the residents, not in the map's own tiles: one area
@@ -599,7 +610,45 @@ def analyse(rom):
                     rows.append(dict(id='A%d.1' % z, kind='A', zone=z, label='%s: area 1' % name,
                                      rx0=min(xs), rz0=min(zs), rx1=max(xs), rz1=max(zs),
                                      px=px, pz=pz, pf=0, mode='auto'))
+    mark_doubles(rom, rows)
     return rows
+
+
+def sight_line(tiles, r):
+    """The tiles a trainer row's sight covers, up to the first blocked one."""
+    vx, vz = DIRV.get(int(r['dir']), (0, 1))
+    out = []
+    for k in range(1, int(r['range']) + 1):
+        t = (int(r['tx']) + vx * k, int(r['tz']) + vz * k)
+        if walk_cost(tiles.get(t)) is None:
+            break
+        out.append(t)
+    return out
+
+
+def mark_doubles(rom, rows):
+    """The column db of the trainer rows: 1 when the trainer's own battle is
+    a double one (a/0/9/2 byte 2), or when its sight line crosses another
+    trainer's, where the two see the player at once and fight together (a
+    tag battle).  The wild areas have theirs from their grass."""
+    byzone = collections.defaultdict(list)
+    for r in rows:
+        if r['kind'] == 'T':
+            byzone[r['zone']].append(r)
+    for z, trs in byzone.items():
+        tiles = None
+        lines = {}
+        for r in trs:
+            if int(r['range']) > 0:
+                if tiles is None:
+                    tiles = rom.tiles(z)
+                lines[r['id']] = set(sight_line(tiles, r))
+        for r in trs:
+            tid = r.get('tid', '-')
+            own = isinstance(tid, int) and tid < 100000 and rom.trainer_battle(tid) == 1
+            mine = lines.get(r['id'], set())
+            tag = any(mine & other for i, other in lines.items() if i != r['id'])
+            r['db'] = int(own or tag)
 
 
 # ---------------------------------------------------------------- the table
@@ -697,6 +746,9 @@ def cmd_merge(args):
                 rows[k][c] = r[c]
             n += 1
         else:
+            base = rows.get(r['id'])
+            if base is not None:
+                r['db'] = base.get('db', '-')   # the battle's kind is the data's
             rows[k] = r                     # a row or a view the editor added
             n += 1
     write_table(TABLE, rows)

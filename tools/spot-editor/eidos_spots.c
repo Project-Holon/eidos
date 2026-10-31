@@ -419,7 +419,6 @@ static int vis_pos(int row)
 
 static void sprite_load(Sprite *sp, int species, int back);
 static int trainer_lead(int tid);
-static int trainer_byte(int tid, int at);
 
 static void select_row(int row)
 {
@@ -440,10 +439,10 @@ static void select_row(int row)
     A.hide_mon = 0;
     A.size_custom = 0;
     A.tr_foe_id = -2;
-    /* the battle shown as the trainer fights it: two Pokemon a side for a
-     * double battle, else one */
-    A.doubles = r->kind == 'T' && r->trainer_id >= 0 && r->trainer_id < 100000
-                && trainer_byte(r->trainer_id, 2) == 1;
+    /* the battle shown as it is fought there: two Pokemon a side where it
+     * is a double one (the trainer's own, two trainers together, the
+     * grass's), else one */
+    A.doubles = r->doubles;
     A.battle[0].dirty = A.battle[1].dirty = 1;
     if (r->kind == 'T' && r->trainer_id >= 0 && r->trainer_id < 100000) {
         int lead = trainer_lead(r->trainer_id);
