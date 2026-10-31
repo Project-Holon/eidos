@@ -18,6 +18,9 @@
     edit: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
     link: "M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1",
     upload: "M12 21V9M7 14l5-5 5 5M5 3h14",
+    // a character and a letter, the usual sign for languages
+    translate: "M3 5.5h9M7.5 3.5v2M10 5.5c-.8 4-3.2 7.4-6.5 9.5M5.3 9c1.2 2.4 3.2 4.3 5.7 5.3M12.5 20.5l4-10 4 10M14 17h5",
+    chevron: "M7 10l5 5 5-5",
   };
 
   // Icons drawn on their own grid: a 1.5 px line, solid screens 1.5 px in

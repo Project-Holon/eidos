@@ -23,6 +23,10 @@ pub struct ProfileFile {
     /// The game data folder passed to eidos; empty means its default place.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub data_root: String,
+    /// The language the profile plays in ("fr", "ja-kana", ...); empty:
+    /// English.  A save is made in one language, so it is the profile's.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub language: String,
 }
 
 impl Default for ProfileFile {
@@ -30,9 +34,13 @@ impl Default for ProfileFile {
         ProfileFile {
             version: LATEST.to_string(),
             data_root: String::new(),
+            language: String::new(),
         }
     }
 }
+
+/// The languages a profile can play in.
+pub const LANGUAGES: &[&str] = &["en", "fr", "de", "it", "es", "ja-kana", "ja-kanji"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +48,7 @@ pub struct Profile {
     pub name: String,
     pub version: String,
     pub data_root: String,
+    pub language: String,
 }
 
 /// Checks a profile name: it becomes a folder name on every platform.
@@ -126,6 +135,7 @@ pub fn list(layout: &Layout) -> io::Result<Vec<Profile>> {
                 name,
                 version: f.version,
                 data_root: f.data_root,
+                language: f.language,
             }
         })
         .collect())
@@ -158,6 +168,7 @@ pub fn create(layout: &Layout, name: &str, version: &str) -> Result<Profile, Str
         name,
         version: file.version,
         data_root: file.data_root,
+        language: file.language,
     })
 }
 
@@ -166,6 +177,20 @@ pub fn set_version(layout: &Layout, name: &str, version: &str) -> Result<(), Str
     let dir = layout.profile(name);
     let file = ProfileFile {
         version: version.to_string(),
+        ..read_file(&dir)
+    };
+    write_file(&dir, &file).map_err(|e| e.to_string())
+}
+
+/// Sets the language a profile plays in.
+pub fn set_language(layout: &Layout, name: &str, language: &str) -> Result<(), String> {
+    get(layout, name)?;
+    if !LANGUAGES.contains(&language) {
+        return Err("That language is not known.".into());
+    }
+    let dir = layout.profile(name);
+    let file = ProfileFile {
+        language: if language == "en" { String::new() } else { language.to_string() },
         ..read_file(&dir)
     };
     write_file(&dir, &file).map_err(|e| e.to_string())

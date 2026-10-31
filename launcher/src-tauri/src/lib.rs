@@ -142,6 +142,12 @@ fn set_profile_version(app: State<App>, name: String, version: String) -> R<()> 
 }
 
 #[tauri::command]
+fn set_profile_language(app: State<App>, name: String, language: String) -> R<()> {
+    app.refuse_if_running(&name)?;
+    profile::set_language(&app.layout, &name, &language)
+}
+
+#[tauri::command]
 fn set_profile_data_root(app: State<App>, name: String, path: String) -> R<()> {
     app.refuse_if_running(&name)?;
     profile::set_data_root(&app.layout, &name, &path)
@@ -613,6 +619,7 @@ pub fn run() {
             set_profile_version,
             set_profile_data_root,
             rom_library,
+            set_profile_language,
             add_roms,
             remove_rom,
             locate_rom,

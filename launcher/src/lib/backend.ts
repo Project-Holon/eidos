@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type Profile = { name: string; version: string; dataRoot: string };
+export type Profile = { name: string; version: string; dataRoot: string; language: string };
 
 export type Overview = {
   profiles: Profile[];
@@ -116,6 +116,40 @@ export const getSettings = () => invoke<SettingsView>("get_settings");
 export const saveSettings = (s: { repo: string; token: string | null; indexUrl: string; localBuild: string | null }) =>
   invoke<SettingsView>("save_settings", s);
 export const romLibrary = () => invoke<RomView[]>("rom_library");
+export const setProfileLanguage = (name: string, language: string) =>
+  invoke<void>("set_profile_language", { name, language });
+
+/** A language to play in, as the picker shows it. */
+export type LanguageChoice = { code: string; name: string; note?: string };
+
+const LANGUAGE_OF: Record<string, LanguageChoice[]> = {
+  English: [{ code: "en", name: "English" }],
+  French: [{ code: "fr", name: "Français" }],
+  German: [{ code: "de", name: "Deutsch" }],
+  Italian: [{ code: "it", name: "Italiano" }],
+  Spanish: [{ code: "es", name: "Español" }],
+  Japanese: [
+    { code: "ja-kana", name: "日本語", note: "ひらがな" },
+    { code: "ja-kanji", name: "日本語", note: "漢字" },
+  ],
+};
+
+/** A language code as the picker names it (for a profile set to a
+ * language no ROM covers any more). */
+export function languageName(code: string): string {
+  for (const l of Object.values(LANGUAGE_OF).flat()) {
+    if (l.code === code) return l.note ? `${l.name} (${l.note})` : l.name;
+  }
+  return code;
+}
+
+/** The languages the player's verified ROMs cover, English first. */
+export function languagesOf(roms: RomView[]): LanguageChoice[] {
+  const have = new Set(roms.filter((r) => r.status === "verified").map((r) => r.language));
+  return Object.keys(LANGUAGE_OF)
+    .filter((l) => have.has(l))
+    .flatMap((l) => LANGUAGE_OF[l]);
+}
 export const addRoms = (paths: string[]) =>
   invoke<{ library: RomView[]; added: number; refused: string[] }>("add_roms", { paths });
 export const removeRom = (path: string) => invoke<RomView[]>("remove_rom", { path });

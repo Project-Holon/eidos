@@ -11,9 +11,14 @@
     moveProfileData,
     openFolder,
     renameProfile,
+    languageName,
+    languagesOf,
+    romLibrary,
     setProfileDataRoot,
+    setProfileLanguage,
     setProfileVersion,
     versionLabel,
+    type LanguageChoice,
     type Overview,
   } from "../lib/backend";
   import Icon from "../lib/Icon.svelte";
@@ -38,6 +43,15 @@
   let moveAsk = $state<{ name: string; path: string } | null>(null);
   let moving = $state<string | null>(null);
   let deleteDialog = $state<HTMLDialogElement>();
+
+  // The languages the ROMs cover: a profile plays in one of them.  The
+  // choice always shows, greyed out while there is only one.
+  let languages = $state<LanguageChoice[]>([]);
+  $effect(() => {
+    romLibrary().then((r) => (languages = languagesOf(r))).catch(() => {});
+  });
+  const langChoices = $derived<LanguageChoice[]>(languages.length ? languages : [{ code: "en", name: "English" }]);
+  const langLabel = (l: LanguageChoice) => (l.note ? `${l.name} (${l.note})` : l.name);
 
   // Latest, the local build when set, then the installed versions.
   const choices = $derived([LATEST, ...(ov.localBuild ? [LOCAL] : []), ...ov.installed]);
@@ -159,6 +173,21 @@
                 <button class="quiet outlined" disabled={!p.dataRoot || busy} onclick={() => run(() => setProfileDataRoot(p.name, ""))}>Use default</button>
               {/if}
             </div>
+            <div class="data">
+              <span class="label lang-label"><Icon name="translate" size={15} />Language</span>
+              <select
+                class="lang-select"
+                value={p.language || "en"}
+                aria-label="Language of {p.name}"
+                disabled={langChoices.length < 2 || ov.running.includes(p.name)}
+                title={langChoices.length < 2 ? "Add ROMs in other languages in Settings to choose one" : undefined}
+                onchange={(e) => run(() => setProfileLanguage(p.name, e.currentTarget.value))}>
+                {#each langChoices as l (l.code)}<option value={l.code}>{langLabel(l)}</option>{/each}
+                {#if !langChoices.some((l) => l.code === (p.language || "en"))}
+                  <option value={p.language}>{languageName(p.language)} (no ROM)</option>
+                {/if}
+              </select>
+            </div>
           {/if}
         </li>
       {/each}
@@ -193,6 +222,15 @@
 </dialog>
 
 <style>
+  .lang-select:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .lang-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
   .pick {
     flex: 1;
     min-width: 0;

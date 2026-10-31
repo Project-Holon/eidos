@@ -5,9 +5,9 @@
 
 const overview = {
   profiles: [
-    { name: "Default", version: "latest", dataRoot: "" },
-    { name: "Nuzlocke", version: "0.1.4", dataRoot: "E:\\Games\\eidos" },
-    { name: "Randomizer", version: "local", dataRoot: "" },
+    { name: "Default", version: "latest", dataRoot: "", language: "" },
+    { name: "Nuzlocke", version: "0.1.4", dataRoot: "E:\\Games\\eidos", language: "fr" },
+    { name: "Randomizer", version: "local", dataRoot: "", language: "ja-kana" },
   ],
   installed: ["0.1.5", "0.1.4"],
   localBuild: "C:\\eidos-game",
@@ -54,7 +54,9 @@ const answers: Record<string, unknown> = {
   mods_list: mods,
   get_settings: settings,
   save_settings: settings,
-  rom_library: roms,
+  // ?onelang: a library in one language (the picker greyed out)
+  rom_library: new URLSearchParams(location.search).has("onelang") ? roms.slice(0, 1) : roms,
+
   add_roms: { library: roms, added: 0, refused: [] },
   remove_rom: roms,
   locate_rom: roms,
