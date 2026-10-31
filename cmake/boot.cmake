@@ -391,6 +391,9 @@ if(EIDOS_SOURCE_TREE STREQUAL "game")
     # (its tables name linker symbols as initialisers); sdk/ starts the game.
     list(APPEND EIDOS_BOOT_SHIM_REPLACED src/game/arm9/crt0.c)
     list(APPEND EIDOS_BOOT_PORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/stubs/game_crt0.c)
+    # app_env.c: the port has no wireless, and says so (stubs/game_app_env.c)
+    list(APPEND EIDOS_BOOT_SHIM_REPLACED src/game/arm9/app_env.c)
+    list(APPEND EIDOS_BOOT_PORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/stubs/game_app_env.c)
     # Stand-ins for src/matched's gaps that src/game closed: unit_members.c
     # forwards address spellings to members the old manifests did not list
     # (in src/game its func_02048AE8 is renamed onto itself and recurses),
