@@ -1941,8 +1941,31 @@ static const float *view_offsets(int foe)
     return foe ? r->trainer_foe : r->trainer_own;
 }
 
+/* How deep a point lies in front of a camera (along its line of sight). */
+static float view_depth(const float eye[3], const float at[3], const float p[3])
+{
+    float f[3], len = 0.0f, d = 0.0f;
+    int k;
+
+    for (k = 0; k < 3; k++) {
+        f[k] = at[k] - eye[k];
+        len += f[k] * f[k];
+    }
+    len = sqrtf(len);
+    for (k = 0; k < 3; k++) {
+        d += (p[k] - eye[k]) * f[k] / (len > 0.0f ? len : 1.0f);
+    }
+    return d;
+}
+
+/* Where the send-out puts the player's trainer before the camera (framed
+ * bottom left on the DS; sdk/battle_view.c, own_trainer_point). */
+static const float k_sendout[3] = { -15.0f, -11.0f, 0.0f };
+
 /* A battle view: 0 the command camera's, 1 the intro camera's.  A scene
- * that plays moves its camera and its Pokemon. */
+ * that plays moves its camera and its Pokemon.  The sprites are the size
+ * the game gives them, as with the game's own backdrop (sdk/battle_view.c,
+ * MCSS_Draw): only what the place moves changes it. */
 static void draw_battle_view(int i)
 {
     View3d *v = &A.battle[i];
@@ -1956,6 +1979,8 @@ static void draw_battle_view(int i)
     const Sprite *sp[16];
     int kind[16];                   /* 0 a Pokemon, 1 your trainer, 2 the foe's, 3 your ally */
     int fixed[16] = { 0 };          /* a trainer at an effect script's own point (moved by the warp) */
+    int sendout[16] = { 0 };        /* your trainer at the send-out's point: over the map */
+    float game_eye[3], game_at[3];  /* the game's own camera, before the place's changes */
     int n = 0, a, b;
 
     if (!A.have_placed) {
@@ -1964,6 +1989,8 @@ static void draw_battle_view(int i)
     if (cf != NULL) {
         memcpy(v->eye, cf->eye, sizeof v->eye);
         memcpy(v->at, cf->at, sizeof v->at);
+        memcpy(game_eye, cf->eye, sizeof game_eye);
+        memcpy(game_at, cf->at, sizeof game_at);
         v->dirty = 1;
         for (a = 0; a < cf->np && n < 16; a++) {
             int tr = cf->slot[a] > 7, ally = cf->slot[a] == 12 && A.tr_ally.rgba != NULL;
@@ -1974,8 +2001,8 @@ static void draw_battle_view(int i)
             memcpy(p[n], cf->pos[a], sizeof p[n]);
             if (tr && !(cf->slot[a] & 1) && !ally) {
                 /* the player's trainer away from its slot (the send-out's
-                 * own point, -15 -11 0): the same move from its slot, as
-                 * the game does (sdk/battle_view.c, own_trainer_point) */
+                 * own point, -15 -11 0) is drawn over the map there, as the
+                 * game does (sdk/battle_view.c, own_trainer_point) */
                 float slot[3], dd = 0.0f, e;
                 int k;
 
@@ -1984,11 +2011,7 @@ static void draw_battle_view(int i)
                         e = p[n][k] - slot[k];
                         dd += e * e;
                     }
-                    if (dd > 0.25f) {
-                        p[n][0] = slot[0] + p[n][0] + 15.0f;
-                        p[n][1] = slot[1] + p[n][1] + 11.0f;
-                        p[n][2] = slot[2] + p[n][2];
-                    }
+                    sendout[n] = dd > 0.25f;
                 }
             }
             kind[n] = ally ? 3 : tr ? 1 + (cf->slot[a] & 1) : 0;
@@ -1999,6 +2022,8 @@ static void draw_battle_view(int i)
     } else {
         memcpy(v->eye, k_cam[i][0], sizeof v->eye);
         memcpy(v->at, k_cam[i][1], sizeof v->at);
+        memcpy(game_eye, k_cam[i][0], sizeof game_eye);
+        memcpy(game_at, k_cam[i][1], sizeof game_at);
         if (!A.hide_mon) {
             if (A.doubles) {
                 for (a = 0; a < 4; a++) {
@@ -2029,6 +2054,11 @@ static void draw_battle_view(int i)
                  * spot its Pokemon is sent out to (the Pokemon button hides
                  * that) */
                 if (t->rgba != NULL && n < 16 && bcam_sim_slot(8 + a, p[n]) == 0) {
+                    if (a == 0 && i == 1) {
+                        /* the intro's camera: at the send-out's point */
+                        memcpy(p[n], k_sendout, sizeof p[n]);
+                        sendout[n] = 1;
+                    }
                     sp[n] = t;
                     kind[n] = 1 + a;
                     sc[n] = slot_scale(8 + a);
@@ -2065,16 +2095,14 @@ static void draw_battle_view(int i)
     for (a = 0; a < n; a++) {
         /* its height as the game draws it (sdk/battle_view.c, MCSS_Draw):
          * the game's size, a pixel of its scale two of the DS's 192 lines
-         * (a Pokemon's back twice its front), at its spot's depth before
-         * the game's command camera (a trainer's slot's, wherever a script
-         * puts it), then the room's perspective */
-        float slot[3];
-        const float *at = p[a];
+         * (a Pokemon's back twice its front), the same before any camera:
+         * its depth before the game's camera here, the place's moves and
+         * cameras on top.  A Pokemon's size is the scripts' for the camera
+         * (1 at the command camera, 0.5 all the way back) */
+        float g = kind[a] != 0 ? 1.0f : 1.0f - 0.5f * bmap_intro_progress(game_eye);
+        float dg = view_depth(game_eye, game_at, p[a]);
 
-        if (kind[a] != 0 && bcam_sim_slot(kind[a] == 3 ? 12 : kind[a] == 2 ? 9 : 8, slot) == 0) {
-            at = slot;
-        }
-        sc[a] = (sp[a] == &A.own ? 2.0f : 1.0f) * bmap_cmd_depth(at)
+        sc[a] = (sp[a] == &A.own ? 2.0f : 1.0f) * g * (dg > 0.5f ? dg : 0.5f)
                 * (2.0f * BATTLE_FOV_SIN / BATTLE_FOV_COS / 192.0f) / SPRITE_U;
     }
     for (a = 0; a < n; a++) {
@@ -2118,6 +2146,9 @@ static void draw_battle_view(int i)
         for (a4 = 0; a4 < n && a4 < 16; a4++) {
             memcpy(p4[a4], p[a4], 3 * sizeof(float));
             p4[a4][3] = kind[a4] == 0 ? 6.0f : (float)sp[a4]->h * SPRITE_U * sc[a4];   /* a Pokemon's box */
+            if (sendout[a4]) {
+                p4[a4][3] = 0.0f;   /* over the map, as over the game's own backdrop */
+            }
         }
         render_view(v, &A.placed, A.battle_gen, (const float (*)[4])p4, n, 1);
     }
@@ -2141,7 +2172,7 @@ static void draw_battle_view(int i)
         draw_standing(v, sp[far]->rgba, sp[far]->w, sp[far]->h, p[far], (float)sp[far]->h * SPRITE_U * sc[far]);
         /* the map standing in front of this one, before the nearer ones
          * (the game's second backdrop pass, plat_gl3d.c) */
-        if (far < v->nfronts && v->fronts[far] != NULL) {
+        if (far < v->nfronts && v->fronts[far] != NULL && !sendout[far]) {
             blit_rgba(v->x, v->y, v->fronts[far], v->rw, v->rh, v->w, v->h);
         }
         d[far] = -1.0f;

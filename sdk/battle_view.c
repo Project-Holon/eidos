@@ -871,9 +871,9 @@ static int own_trainer_point(int pos, const float raw[3], float out[3])
         return 0;                       /* at its slot already */
     }
     {
-        /* the move from the send-out's point: the point as the script gave
-         * it, or with the place's offsets on it (when it came through
-         * eidos_bv_fixed_point), whichever the trainer is at */
+        /* the point as the script gave it, or with the place's offsets on
+         * it already (when it came through eidos_bv_fixed_point), whichever
+         * the trainer is at */
         float plain = 0.0f, offset = 0.0f;
 
         for (k = 0; k < 3; k++) {
@@ -884,10 +884,11 @@ static int own_trainer_point(int pos, const float raw[3], float out[3])
             e = raw[k] - (k_sendout[k] + o);
             offset += e * e;
         }
+        if (offset < plain) {
+            return 0;
+        }
         for (k = 0; k < 3; k++) {
-            float anchor = k_sendout[k] + (offset < plain ? spot[k] - (float)b[k] / 4096.0f : 0.0f);
-
-            out[k] = spot[k] + raw[k] - anchor;
+            out[k] = raw[k] + spot[k] - (float)b[k] / 4096.0f;
         }
     }
     return 1;
@@ -1101,9 +1102,7 @@ static void capture(uintptr_t eff, int warp)
             }
             /* how far around a sprite the map in front of it is drawn again:
              * only over the game's own pixels (plat_gl3d.c's stencil), so the
-             * box may be loose: twice a Pokemon's size, a trainer taller.
-             * The player's own trainer where it is drawn (MCSS_Draw,
-             * own_trainer_point) */
+             * box may be loose: twice a Pokemon's size, a trainer taller */
             g_frame.poke[g_frame.n_poke][3] = pos <= 7u ? 12.0f : 18.0f;
             if (pos <= 7u && g_n_sprites < 8u) {
                 g_sprites[g_n_sprites].pos = pos;
@@ -1112,10 +1111,16 @@ static void capture(uintptr_t eff, int warp)
                 g_n_sprites++;
             }
             {
-                float in[3];
+                /* the player's own trainer away from its slot (the
+                 * send-out's point, below the ground before the camera, as
+                 * the DS frames it) is drawn over the map, as over the
+                 * game's own backdrop: no map in front of it */
+                float in[3], at[3];
 
                 memcpy(in, g_frame.poke[g_frame.n_poke], sizeof in);
-                (void)own_trainer_point((int)pos, in, g_frame.poke[g_frame.n_poke]);
+                if (own_trainer_point((int)pos, in, at)) {
+                    continue;
+                }
             }
             g_frame.n_poke++;
         }
@@ -1214,28 +1219,14 @@ static uintptr_t battle_camera(void)
 }
 
 /* The last battle camera committed: the game's own and the one drawn with
- * (see MCSS_Draw below); g_cam_on 0 before the first.  For each sprite
- * (McssSys's works, by index) g_rest, its size at rest, which the scripts
- * chose for the camera; g_far, the size at rest they choose with the camera
- * all the way back (0.5 in the scripts read so far; it is learnt from what
- * they do); g_last_eye and g_still: the game's eye the last draw, and the
- * draws since it last moved. */
+ * (see MCSS_Draw below); g_cam_on 0 before the first. */
 #define SPRITES_MAX 16
-#define STILL_DRAWS 6               /* a size tween ends a step after its camera */
 static float g_cam_game[2][3], g_cam_drawn[2][3];
 static int g_cam_on;
-static float g_rest[SPRITES_MAX], g_far = 0.5f, g_last_eye[3];
-static int g_still, g_far_still;
 
 static void sprite_size_reset(void)
 {
-    int i;
-
     g_cam_on = 0;
-    for (i = 0; i < SPRITES_MAX; i++) {
-        g_rest[i] = 0.0f;
-    }
-    g_still = g_far_still = 0;
 }
 
 /* The battle camera commits its eye and target here (btlv_camera.c, every
@@ -1345,29 +1336,22 @@ static int sprite_pos(uintptr_t w)
  * a sprite's size is its scale, never its distance, and the camera does
  * not change it.  The scripts fake a camera that goes back or comes in
  * instead: they tween the sprites' size (McssWork shadowScale) along with
- * the camera, over the same frames (the wild intro takes the foe to 0.5;
- * the views 14 and 19 take the sides to 0.65 and 0.725, ov094's camera
- * command).  Those are chosen sizes, not the distances (the foe's would be
- * 0.62 for the intro), so against the map, which is real 3D, the Pokemon
- * grow and shrink as the camera moves.
+ * the camera (the wild intro takes the foe to 0.5; the views 14 and 19 take
+ * the sides to 0.65 and 0.725, ov094's camera command).
  *
- * Each flat sprite is drawn here at the size its distance gives: its size
- * over its size at rest (the fake), times its depth before the game's
- * command camera (where the sizes are right) over its depth before the
- * camera drawn with.  The size at rest follows the size while the camera
- * moves (and a few draws after: the tween's last step comes late); with the
- * camera still a change is the script's own (a withdraw, a faint, a pop)
- * and stays.  A sprite that comes from nothing
- * (the send-out) grows toward the size the scripts give at this camera:
- * 1 at the command camera, g_far all the way back, in between in the part
- * the camera has gone back.  The scales are put back after. */
+ * The map behind only changes the backdrop: every sprite is drawn the size
+ * the game gives it, as with the game's own backdrop.  Only what the place
+ * changes changes it: a sprite the place moves (the foe pushed back, a
+ * trainer's offsets) or a camera the place moves (its zoom) is drawn at its
+ * depth before the camera drawn with over the game's own depth before the
+ * game's camera, and a trainer at the place's height for it.  The scales
+ * are put back after. */
 void __wrap_MCSS_Draw(void *sys)
 {
     uintptr_t ms = (uintptr_t)sys, works, w;
     int32_t keep[SPRITES_MAX][2], keep_pos[SPRITES_MAX][3], v;
     int32_t n, i;
-    int moving, pinned[SPRITES_MAX];
-    float prog;
+    int pinned[SPRITES_MAX];
 
     if (!g_cam_on || g_cur == NULL || !gptr_ok(ms) || !bw_battle_view_active() || !(rd32(ms, MSYS_FLAGS) & 1u)) {
         __real_MCSS_Draw(sys);
@@ -1382,37 +1366,22 @@ void __wrap_MCSS_Draw(void *sys)
     if (n > SPRITES_MAX) {
         n = SPRITES_MAX;
     }
-    {
-        /* did the game's camera move lately: a size change now is the
-         * scripts' fake */
-        float dx = g_cam_game[0][0] - g_last_eye[0], dy = g_cam_game[0][1] - g_last_eye[1];
-        float dz = g_cam_game[0][2] - g_last_eye[2];
-
-        g_still = dx * dx + dy * dy + dz * dz > 1e-8f ? 0 : g_still + 1;
-        moving = g_still < STILL_DRAWS;
-        memcpy(g_last_eye, g_cam_game[0], sizeof g_last_eye);
-        prog = bmap_intro_progress(g_cam_game[0]);
-        g_far_still = prog > 0.99f && !moving ? g_far_still + 1 : 0;
-    }
     for (i = 0; i < n; i++) {
         float p[3], q[3], dg, dd, f;
         uint32_t k;
+        int pos;
 
         keep[i][0] = keep[i][1] = 0;
         pinned[i] = 0;
         w = rd32(works, 4u * (uint32_t)i);
         if (!gptr_ok(w)) {
-            g_rest[i] = 0.0f;
             continue;
         }
+        pos = sprite_pos(w);
         {
-            /* the player's own trainer (positions 8, 10, 12) stands in the
-             * room at its slot (the place's offsets on it), as the foe's
-             * does.  The send-out puts it at a point of its own before the
-             * camera (-15, -11, 0, framed bottom left on the DS); that point
-             * is taken as a move from its slot, so it stays where the place
-             * puts it and moves as the script moves it. */
-            int pos = sprite_pos(w);
+            /* the player's own trainer (positions 8, 10, 12) away from its
+             * slot (the send-out's point, framed bottom left as on the DS)
+             * takes the place's offsets for it, as at its slot */
             float raw[3], at[3];
             int kk;
 
@@ -1428,22 +1397,6 @@ void __wrap_MCSS_Draw(void *sys)
                 pinned[i] = 1;          /* put back after the draw */
             }
         }
-        {
-            float sz = rdfx(w, MCSSW_SHADOWSCALE);
-
-            if (sz <= 0.0f) {
-                g_rest[i] = 0.0f;           /* gone: it comes back from nothing */
-            } else if (moving) {
-                g_rest[i] = sz;
-            } else if (g_rest[i] <= 0.0f) {
-                /* growing from nothing: toward the scripts' size here (a
-                 * pop above it and back is the script's own) */
-                g_rest[i] = 1.0f + prog * (g_far - 1.0f);
-            }
-            if (g_far_still > 30 && sz > 0.05f && sz == g_rest[i]) {
-                g_far = sz;                 /* learnt: the size at rest all the way back */
-            }
-        }
         if (!(rd32(w, MCSSW_FLAGS) & (1u << 29))) {
             continue;
         }
@@ -1451,42 +1404,39 @@ void __wrap_MCSS_Draw(void *sys)
             p[k] = rdfx(w, MCSSW_POS + 4u * k) + rdfx(w, MCSSW_OFSPOS + 4u * k);
         }
         memcpy(q, p, sizeof q);
-        bmap_battle_unwarp(q, g_cur->s.foe_dy, g_cur->s.foe_dz);   /* where the game's battle has it */
-        dg = bmap_cmd_depth(q);
-        {
-            /* a trainer is as tall as at its own slot (the game's, before
-             * the place's move) wherever a script puts it: the game draws it
-             * one size anywhere, so at the point a trainer comes back to
-             * mid-battle (closer than its slot) the distance would make it a
-             * third shorter than in the intro */
-            int pos = sprite_pos(w);
+        if (pos < 8) {
+            bmap_battle_unwarp(q, g_cur->s.foe_dy, g_cur->s.foe_dz);   /* where the game's battle has it */
+        } else {
+            /* a trainer: without the place's move of its slot */
+            SlotMove m;
+            int32_t d[3];
 
-            if (pos >= 8 && pos <= 13 && g_slot_base_have) {
-                const int32_t *b = g_slot_base[SLOT_ENTRIES - 6u + (uint32_t)(pos - 8)];
-                float slot[3];
-
-                slot[0] = (float)b[0] / 4096.0f;
-                slot[1] = (float)b[1] / 4096.0f;
-                slot[2] = (float)b[2] / 4096.0f;
-                dg = bmap_cmd_depth(slot);
-                if (pos & 1) {
-                    dg *= g_cur->s.trainer_size > 0.0f ? g_cur->s.trainer_size : 1.0f;
-                } else if (g_cur->s.has_ally && pos == 12) {
-                    dg *= g_cur->s.trainer_ally_size > 0.0f ? g_cur->s.trainer_ally_size : 1.0f;
-                } else {
-                    dg *= g_cur->s.trainer_own_size > 0.0f ? g_cur->s.trainer_own_size : 1.0f;
-                }
+            slot_move_of(&g_cur->s, &m);
+            slot_delta(&m, 1, (uint32_t)(pos - 8), d);
+            for (k = 0; k < 3; k++) {
+                q[k] -= (float)d[k] / 4096.0f;
             }
         }
+        dg = view_depth((const float(*)[3])g_cam_game, q);
         dd = view_depth((const float(*)[3])g_cam_drawn, p);
         if (dg < 0.5f || dd < 0.5f) {
             continue;
         }
-        f = fminf(fmaxf(dg / (dd * (g_rest[i] > 0.05f ? g_rest[i] : 1.0f)), 0.25f), 6.0f);
+        f = dg / dd;
+        if (pos >= 8 && pos <= 13) {
+            if (pos & 1) {
+                f *= g_cur->s.trainer_size > 0.0f ? g_cur->s.trainer_size : 1.0f;
+            } else if (g_cur->s.has_ally && pos == 12) {
+                f *= g_cur->s.trainer_ally_size > 0.0f ? g_cur->s.trainer_ally_size : 1.0f;
+            } else {
+                f *= g_cur->s.trainer_own_size > 0.0f ? g_cur->s.trainer_own_size : 1.0f;
+            }
+        }
+        f = fminf(fmaxf(f, 0.25f), 6.0f);
         if (log_on()) {
-            fprintf(stderr, "battle_view: frame %u sprite %d pos %d at (%.2f %.2f %.2f) command depth %.2f drawn %.2f scale x%.2f size %.3f rest %.3f game scale %.3f\n",
-                    (unsigned)bw_input_frame_number(), (int)i, sprite_pos(w), (double)p[0], (double)p[1], (double)p[2],
-                    (double)dg, (double)dd, (double)f, (double)rdfx(w, MCSSW_SHADOWSCALE), (double)g_rest[i],
+            fprintf(stderr, "battle_view: frame %u sprite %d pos %d at (%.2f %.2f %.2f) game depth %.2f drawn %.2f scale x%.2f size %.3f game scale %.3f\n",
+                    (unsigned)bw_input_frame_number(), (int)i, pos, (double)p[0], (double)p[1], (double)p[2],
+                    (double)dg, (double)dd, (double)f, (double)rdfx(w, MCSSW_SHADOWSCALE),
                     (double)rdfx(w, MCSSW_SCALE));
         }
         keep[i][0] = (int32_t)rd32(w, MCSSW_SCALE);
