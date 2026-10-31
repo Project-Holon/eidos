@@ -1,5 +1,5 @@
 /*
- * func_02017E1C -- read one field of a Pokemon record by field id.
+ * POKE_TOOL_GetPartyValue (func_02017E1C) -- read one field of a Pokemon record by field id.
  *
  * This one IS matched (src/matched/unit_02017E1C.c), but it is deliberately
  * NOT in the port library's source list: its closure pulls in the record's
@@ -12,4 +12,4 @@
  */
 #include "stubs.h"
 
-BW_STUB(func_02017E1C, 0x02017E1C, "Pokemon record getter: matched, but its closure needs the record encryption layer")
+BW_STUB(POKE_TOOL_GetPartyValue, 0x02017E1C, "Pokemon record getter: matched, but its closure needs the record encryption layer")
