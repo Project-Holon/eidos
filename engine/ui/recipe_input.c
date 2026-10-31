@@ -15,6 +15,7 @@
 #include "ui.h"
 #include "kit.h"
 #include "dsmem.h"
+#include "input.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -678,6 +679,49 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         kw = (aw - (cols - 1) * gap) / cols;
         kh = (keys_h - (rows - 1) * gap) / rows;
         kx = x0 + (aw - (kw * cols + gap * (cols - 1))) / 2;
+        /* the arrows move over the keys as they are laid out here (the
+         * game's grid is the DS's, whose neighbours are other keys): the
+         * game's cursor is set on the key the arrow reaches */
+        if (allow && n > 0) {
+            const u32 dirs = BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT;
+            u32 k;
+
+            eidos_ui_take_keys(dirs);
+            k = eidos_ui_keys_pressed() & dirs;
+            if (k != 0) {
+                int cur = 0, to, col, row;
+
+                for (i = 0; i < n; i++) {
+                    if (keys[i].cx == s.gx && keys[i].cy == s.gy) {
+                        cur = i;
+                    }
+                }
+                col = cur % cols;
+                row = cur / cols;
+                /* every arrow lands on a key and the opposite arrow comes
+                 * back: a row wraps within itself, a column within itself
+                 * (the last row may be short: its column ends a row up) */
+                if (k & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
+                    int len = imin(cols, n - row * cols);
+
+                    col = (col + ((k & BW_KEY_LEFT) ? len - 1 : 1)) % len;
+                    to = row * cols + col;
+                } else {
+                    int height = (n - 1 - col) / cols + 1;
+
+                    row = (row + ((k & BW_KEY_UP) ? height - 1 : 1)) % height;
+                    to = row * cols + col;
+                }
+                if (to != cur) {
+                    s32 gx = keys[to].cx, gy = keys[to].cy;
+
+                    memcpy((Byte *)s.w + NW_GRID_X, &gx, sizeof gx);
+                    memcpy((Byte *)s.w + NW_GRID_Y, &gy, sizeof gy);
+                    s.gx = gx;
+                    s.gy = gy;
+                }
+            }
+        }
         for (i = 0; i < n; i++) {
             int col = i % cols, row = i / cols;
             int x = kx + col * (kw + gap), yy = keys_y + row * (kh + gap);

@@ -8,6 +8,7 @@ Each release's notes on GitHub start with its section here
 ### Bug Fixes
 - Fixed the previous save seeming deleted after starting a New Game and quitting before saving: the title screen shows the last real save again (#10).
 - Fixed the name keyboard opening hidden behind the Multiplayer screen in one-screen mode, which left no way to type or leave (#9).
+- Fixed the arrows and D-pad on the one-screen name keyboard following the DS's key grid: they now move over the keys as shown, every move lands on a key, and the opposite direction always comes back (#7).
 
 ## 0.1.8
 
