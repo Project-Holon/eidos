@@ -262,7 +262,7 @@ jobs:
     name: macos
     needs: meta
     if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'macos' }}
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
     env:
       EIDOS_WAMR_CACHE: ${{ github.workspace }}/.cache/wamr
@@ -407,7 +407,7 @@ jobs:
             runner: ubuntu-22.04
             bundles: appimage
           - os: macos
-            runner: macos-14
+            runner: macos-15
             bundles: app
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
