@@ -5,204 +5,40 @@ Each release's notes on GitHub start with its section here
 
 ## 0.1.8
 
-- Walking by touch or mouse (one-screen): press on the world and drag. A
-  stick appears where you pressed and its knob follows; the player walks
-  the way the drag points (up, down, left or right) and runs once the
-  knob reaches the ring (the ring turns cyan; Running Shoes needed). A
-  short tap that does not drag is A, to talk or read a sign.
-- Fixed a crash at the start of every evolution: the scene turns its
-  model with a routine the PC build did not have.
-- Fixed sorting the bag, which would have crashed the same way.
-- Fixed learning a new move in battle with four moves known (one-screen):
-  the Pokemon's moves and the new one show, each with its page and the
-  game's own FORGET or GIVE UP. Using an Ether or a PP Up in battle shows
-  the moves too.
-- The evolution scene fills the window in the one-screen layout, across
-  its width as a battle does, instead of sitting at the DS size in a
-  corner. Its messages show in the same box as the battle's. When the new
-  form learns a move with four known, FORGET and KEEP OLD MOVES are
-  buttons over the message, and the moves are the battle's forget page
-  (after a battle) or the summary's (after a Rare Candy), not the two DS
-  screens.
-- Learning a move with a Rare Candy outside battle (one-screen): the
-  party list's messages show page by page as the game prints them, in the
-  battle's message box, so one press goes on to the next. The move to
-  forget is chosen on a page laid out as the battle's: a click picks a
-  move and shows its details, FORGET confirms it, BACK puts it back, and
-  GIVE UP keeps the old moves. Going from the list to that page and back
-  crossfades without the start menu showing through. Back in the party
-  list after the Pokemon evolved, the list stands on a dark ground
-  instead of a blurred copy of the DS screen.
-- The battle forget page (one-screen) keeps a gap between the move's
-  details and the buttons under them, shows NEW beside the new move, and
-  is titled FORGET A MOVE.
+### One-Screen Mode & UI
+- **Touch & Mouse Movement**: Added an on-screen virtual stick: drag to walk, push past the outer ring to run, and tap NPCs to interact.
+- **PC Storage Rework**: New 3-pane layout (Party, Box, Details), drag-and-drop support, and a dedicated Move Items screen.
+- **Level-Up & Evolution**: Unified move learning, move forgetting, and evolution menus with the modern one-screen UI. Evolution sequences now fill the window.
+- **Battle UI**:
+  - Poké Balls now remain visible while shaking during capture attempts.
+  - Move info can now be inspected directly from the party list.
+  - Field targeting: In double and triple battles, select targets directly on the battlefield instead of from a text list.
+- Restored one-screen boot and title screens, and encounter transitions now scale to fill the entire window.
 
-- Fixed the Poke Ball disappearing while it shakes after a throw (one-screen
-  real-map battles): it lies on the ground where the Pokemon stood, and the
-  grass in front of it covers it as it covers the Pokemon. The other effect
-  sprites the battle draws in 2D show the same way, with the real map or
-  the original backdrop.
-- Fixed the move details in battle (one-screen): in the Pokemon list,
-  Check Moves now opens a move's page with its power, accuracy, category
-  and description, by click or with A.
-- Fixed CONFIRM in the one-screen Options not lighting up when the
-  controller's cursor reaches it; the hint bar shows B as Quit.
+### Controls & Input
+- **Controller Glyphs**: Added Xbox and PlayStation button prompts (`Settings > Controls > Button icons`).
+- Standardized controller menu confirmation to the bottom face button (A / Cross).
+- Fixed keys immediately firing their bound action while being rebound, and the D-Pad can now be bound on the keyboard (#3).
 
-- Fixed a crash when switching Pokemon after the foe's Pokemon fainted (the
-  "Will you switch your Pokemon?" prompt, for example against Cheren at the
-  Trainers' School). The game worked out the "come back" message by
-  dividing by the fainted Pokemon's HP, which the DS tolerates and a PC
-  does not (issue #6).
-- Map transitions (Extras): Original, Fast or Seamless. Fast keeps the
-  game's door and stair animations but drops the waiting: the new map is
-  built in one frame instead of one step a frame, the player no longer
-  stands at the door before walking in, the camera is not waited for
-  behind a black screen, and the door's cross-fade takes a quarter of the
-  time. Walking into a building takes about a second less, and leaving
-  a building shows about a fifth of a second of black instead of almost a
-  second. Seamless is Fast where leaving a building or taking stairs
-  cross-fades like a door instead of going black. Original is the game's
-  own timing.
+### Visuals & Extras
+- **Type-Colored Moves**: Move names in battle messages can now be tinted by type (`Extras > Move colours`).
+- **Map Transitions**: Added options for Original, Fast, and Seamless transitions (`Extras`).
+- **3D Outlines**: Now disabled by default; toggle between Off and Thin in `Settings > Display`.
 
-- Real-map battles: a place's "Your trainer" offsets (right, up, back) now
-  move your trainer during the send-out; they had no effect there.
-- Spot editor: the views now match the game (sprite sizes and positions
-  were off), and Preview keeps the camera views' 16:9 frame.
-- Faster on slower PCs: a field frame takes about a quarter less CPU time.
-  The 2D compositor no longer composes the main screen a second time when
-  nothing on it is see-through over the 3D (it did that every frame in the
-  field), keeps its large buffers between frames instead of asking the
-  system for new ones three times a frame, and copies the main screen's
-  video memory once a frame for its two composes instead of twice. The
-  picture is the same to the pixel.
-- Real-map battles: a place with a strong intro zoom no longer jumps as the
-  camera pulls back after the foe's send-out (the view now looks where the
-  game's camera looks while the zoom brings it closer). Where the pull
-  ends, the shot is as before.
-- Real-map battles: a trainer who comes back mid-battle to speak (a rival
-  or a leader on their last Pokemon) and at the end of the battle now
-  stands where the place puts the foe's side, beside their Pokemon, and as
-  tall as in the intro. Before, at a place with a changed foe distance,
-  they could show huge and cut off at the edge of the screen. The original
-  backdrop is unchanged.
-- Spot editor: a "Size" for the foe's trainer under Trainers, Outdoor (the
-  base), Indoor (a little taller, where a room's furniture makes the base
-  look short) or Custom (any height, by slider or typed). The game uses it
-  in the intro and whenever the trainer comes back. A place that never set
-  it stays Outdoor.
-- Spot editor: Preview plays the battle inside the editor, in about a
-  second: the game starts straight in the battle (no logos, no title, no
-  save, no field), with the place's trainer or wild Pokemon and the party
-  chosen, in the middle view at its size, with your keys and mouse, until
-  the battle ends or "Stop preview" (the separate Play battle button is
-  gone).
-- Spot editor: a trainer who comes back mid-battle to speak shows there as
-  well, beside their Pokemon, at the place the game puts them.
-- Builds: a game file copy no longer loses a header copy another file's
-  copy needs (the header rewrite decided by the order it met the includes,
-  so two files could disagree and one removed the other's copy).
-- Spot editor: a trainer place shows its trainers and its trainer's own
-  first Pokemon from the start; the Trainers and Pokemon buttons hide
-  either. The map in front of a far Pokemon no longer cuts into a nearer
-  one where the two overlap on screen.
-- Battle spots: a spot table row with every column filled no longer
-  writes past the end of the reader's column list.
-- Spot editor: a new layout. The places on the left; one view at a time in
-  the middle (Command camera, Intro camera, Overworld) with a play bar
-  under the battle views: the intro, a trainer back mid-battle, the idle
-  drift or a move, Play and a timeline to drag. The settings are sliders on
-  the right, with the map from above. At 1440p and up everything is a third
-  larger and the right side shows without scrolling.
-- Test runs with a hidden window stay hidden: switching to a window after
-  start-up showed it.
+### Engine & Performance
+- **Performance**: ~25% reduction in CPU frame times in the overworld (#5).
+- Added a warning when the graphics driver falls back to software (CPU) rendering.
+- macOS: Fixed core crashes on Apple Silicon (thanks @DarthMDev, #2).
+- Windows: Source builds now properly locate `SDL3.dll` (#4).
 
-- Battle spots: every trainer the game can battle has a place in the table
-  (433 of the 436 the scripts start; 26 new rows: Team Plasma grunts,
-  gym trainers a leader's script calls, Cheren and Bianca on the routes,
-  the Champion, The Riches and more), a fight's versions sharing a row.
-- Spot editor: "Play battle" starts the game straight into the battle at
-  this place and leaves it to you (keys, pad or mouse), on a copy of your
-  save, from the encounter itself: the flash and the transition play at
-  their own speed, and a trainer brings their own effect and music.
-  "Preview in game" still skips to the battle and plays it by itself.
-- One-screen layout: the wild encounter effects fill the window (the swirl
-  into the grass showed boxed at the DS size for a few frames), and the
-  white flash before a battle fills it too.
-- Controllers: on Xbox and PlayStation pads the bottom button now confirms
-  and the right one goes back (A and B on Xbox, cross and circle on
-  PlayStation); Nintendo pads keep the DS layout. Controls you set
-  yourself stay as set.
-- One-screen PC: the game's own sounds for moving the cursor, picking up,
-  putting down, putting back and a refused move. After a key press, a
-  mouse resting over a slot no longer takes the selection back until it
-  moves.
-- One-screen layout: the boot logos, the intro, the title menu and the new
-  game's name entry show in the one-screen layout again (they fell back to
-  the two DS screens since the aletheia update earlier in this release).
-- Remaster battles, double and triple: the Pokemon choosing has corners
-  around it on the field. Picking a target puts the corners on the Pokemon
-  themselves instead of a list: the arrows move between them as they
-  stand, the mouse picks the one under it, and A or a click takes it. A
-  move that hits several (Earthquake, Surf) takes them all from any one.
-- One-screen PC: a new layout with the party on the left, the box in the
-  middle and the selected Pokemon's details on the right. Moving a Pokemon
-  takes effect at once with the keyboard, a pad or the mouse (click or
-  drag), and the arrows follow the layout on screen. Summary opens straight
-  from its button, each box shows how full it is, the game's message
-  window no longer shows through, and sprites keep their size at 720p.
-- One-screen PC: Move Items has its own screen. Take an item from a
-  Pokemon and drop it on another to give it, or to swap the two items.
-- One-screen PC: after leaving and coming back to the PC, the keys move
-  the new layout again instead of the game's old cursor.
-- Remaster battles: on the target list of double and triple battles, up
-  and down walk the list as shown. In the Bag, BACK sits at the bottom
-  right as on the DS, and BACK in the Bag and the party list lights up when
-  the keys reach it.
-- Source builds on Windows: SDL3.dll is copied next to eidos_boot.exe, so it
-  starts without it on the PATH (reported by raspberryzombie).
-- 3D outlines: off by default, as most players prefer. Settings > Display
-  has "3D outlines" (Off or Thin). Thin draws the edge one screen pixel
-  wide at any size, so it no longer makes spikes and combs at high
-  resolution.
-- Controller icons: hints show the controller's own buttons when a pad was
-  used last: Xbox 360, Xbox One / Series, PS3, PS4, PS5, Switch, GameCube
-  and Steam Deck, drawn for eidos (no maker's logos). Settings > Controls
-  has "Button icons" (Auto follows the controller), and the Controls rows
-  show the pad's icon next to the key.
-- Hint bars: the text sits level with its key or button.
-- Battle spots: every scripted story fight has its own row (Nuvema Town's
-  second fight among them), and a fight's versions (one per starter) share
-  it.
-- Remaster battles: a battle place can hold several views. The battle
-  takes the one nearest where the player stands, or the one closest to the
-  way they face. Each view sets its own command camera (zoom, turn, height,
-  slide, tilt, aim) and moves the foe's and your trainer.
-- Spot editor: Pokemon at their in-game size, trainer sprites drawn as the
-  game draws them (no stray second head), your trainer as the boy or the
-  girl (taken from your save), and controls for views, the camera and the
-  trainers.
-- Remaster battles: move names in battle messages take their type's colour
-  ("Tepig used Ember!" with Ember in fire red). Extras has a "Move colours"
-  setting to turn it off.
-- Controls: setting a key no longer also acts as that button. Setting A
-  no longer gets stuck, setting B no longer leaves the screen, and setting
-  L, R or a D-Pad direction no longer changes the section or moves the
-  cursor.
-- Remaster battles: the prompt ("What will Tepig do?") no longer shows
-  twice while the action menu fades in. It stands in the message box and
-  shows the game's own text.
-- Network: when another program holds the external control's port, the
-  control now reports it and stays off, instead of seeming on while tools
-  reached the other program.
-- macOS: the game's native core is fixed for Apple silicon (pointers kept
-  at full width where the PC needs them, a sound address fix, a crash in
-  the stack walk fixed, 2x edge smoothing where the GPU lacks the usual
-  kind), with its own CI checks (contributed by DarthMDev, #2).
-- The game prints its OpenGL driver at start and warns when the driver
-  draws on the CPU (a slow game then says why: install the graphics
-  card's driver).
-- Whole-number window scales (2x, 3x and up) read each pixel of the game
-  exactly, so a GPU with low-precision filtering no longer blurs edges.
+### Battle Remastering & Tools
+- **Battlefields & Camera**: Arenas now support multiple camera angles, trainers have dedicated field positions, and trainer sprite scaling persists on switch-ins.
+- **Spot Editor**: Redesigned layout, added in-editor battle preview, and added opponent trainer scaling controls.
+
+### Bug Fixes
+- Fixed crash when switching Pokémon after an opposing Pokémon faints (#6).
+- Fixed crashes during evolution sequences.
+- Fixed crash when sorting items in the bag.
 
 ## 0.1.7
 
