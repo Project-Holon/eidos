@@ -487,6 +487,12 @@ void eidos_platform_set_outlines(EidosPlatform *p, int mode);
 void eidos_platform_key_names(const EidosPlatform *p, const char *names[12]);
 int  eidos_platform_take_text(EidosPlatform *p, char *out, int cap);
 
+/* The 2D compositor on the GPU (docs/gpu-2d.md): one engine's frame
+ * composed by the shader; `readback` (256 x 192 RGBA) gets the result.
+ * -1 when the GPU path is not available. */
+struct G2dGpuFrame;
+int eidos_platform_gpu2d(EidosPlatform *p, const struct G2dGpuFrame *f, u8 *readback);
+
 /*
  * The display capture at the 3D's resolution (GPU path only).  A scene that
  * captures the main screen into VRAM every frame and shows that bank would

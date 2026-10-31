@@ -36,6 +36,7 @@
     X(PFNGLDELETEPROGRAMPROC, glDeleteProgram) \
     X(PFNGLGETUNIFORMLOCATIONPROC, glGetUniformLocation) \
     X(PFNGLUNIFORM1IPROC, glUniform1i) \
+    X(PFNGLUNIFORM1IVPROC, glUniform1iv) \
     X(PFNGLUNIFORM1FPROC, glUniform1f) \
     X(PFNGLUNIFORM2FPROC, glUniform2f) \
     X(PFNGLUNIFORM2IPROC, glUniform2i) \

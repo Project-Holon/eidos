@@ -2054,6 +2054,14 @@ void eidos_platform_set_3d_zero(EidosPlatform *p, const u8 *zero)
     }
 }
 
+int eidos_platform_gpu2d(EidosPlatform *p, const struct G2dGpuFrame *f, u8 *readback)
+{
+    if (p == NULL || p->gl == NULL) {
+        return -1;
+    }
+    return eidos_gl2d_compose(p->gl, f, readback);
+}
+
 int eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,
                           const struct G3dSnapshot *snap, int n, int bmode,
                           float bfac, int dilate)

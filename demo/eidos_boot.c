@@ -235,6 +235,7 @@ static int parse_shots(const char *list)
 #include "plat_thread.h"
 #include "dsmem.h"
 #include "g2d.h"
+#include "g2d_gpu.h"
 #include "hw3d.h"
 #include "input.h"
 #include "os.h"
@@ -1210,6 +1211,74 @@ static void boot_ui_frame(BootRun *run)
 }
 #endif
 
+/*
+ * EIDOS_G2D_GPU_CHECK (docs/gpu-2d.md, phase 1): every frame both engines
+ * are also composed by the GPU shader and compared with the CPU's screens;
+ * a line every 120 frames gives the frames compared and the pixels that
+ * differ, and the first different pixel of a frame is named.
+ */
+static void boot_gpu2d_check(BootRun *run)
+{
+    static u8 *gpu;
+    static unsigned long frames, bad_frames, bad_px, skipped, calls;
+    static int logged;
+    int slot;
+
+    g2d_gpu_export(1);      /* the next frames' composes fill the frames */
+    if (gpu == NULL) {
+        gpu = (u8 *)malloc((size_t)256 * 192 * 4);
+        if (gpu == NULL) {
+            return;
+        }
+    }
+    for (slot = 0; slot < 2; slot++) {
+        const G2dGpuFrame *f = g2d_gpu_frame(slot);
+        const u8 *cpu;
+        unsigned long diff = 0;
+        int i, first = -1;
+
+        if (f == NULL || !f->valid || run->hi_sn[f->screen] != 1u
+            || eidos_platform_gpu2d(run->plat, f, gpu) != 0) {
+            static unsigned long why[4];
+
+            why[f == NULL || !f->valid ? 0 : run->hi_n != 1u ? 1 : run->hi_sn[f->screen] != 1u ? 2 : 3]++;
+            if (++skipped % 600u == 0u) {
+                fprintf(stderr, "g2d gpu check skipped: invalid %lu scale %lu screen scale %lu gl %lu\n",
+                        why[0], why[1], why[2], why[3]);
+            }
+            continue;
+        }
+        cpu = f->screen == 0 ? run->hi_top : run->hi_bottom;
+        if (cpu == NULL) {
+            continue;
+        }
+        for (i = 0; i < 256 * 192; i++) {
+            if (memcmp(cpu + i * 4, gpu + i * 4, 3) != 0) {
+                if (first < 0) {
+                    first = i;
+                }
+                diff++;
+            }
+        }
+        frames++;
+        if (diff != 0) {
+            bad_frames++;
+            bad_px += diff;
+            if (logged < 20) {
+                logged++;
+                fprintf(stderr, "g2d gpu: frame %u screen %d: %lu pixels differ, first (%d, %d) cpu %u %u %u gpu %u %u %u\n",
+                        (unsigned)bw_input_frame_number(), f->screen, diff, first % 256, first / 256,
+                        cpu[first * 4], cpu[first * 4 + 1], cpu[first * 4 + 2],
+                        gpu[first * 4], gpu[first * 4 + 1], gpu[first * 4 + 2]);
+            }
+        }
+    }
+    if (++calls % 240u == 0u) {
+        fprintf(stderr, "g2d gpu check: %lu screens compared, %lu differ (%lu pixels), %lu skipped\n",
+                frames, bad_frames, bad_px, skipped);
+    }
+}
+
 static void boot_render(void *user, u8 *top, u8 *bottom)
 {
     u32 unsupported[2];
@@ -1332,6 +1401,9 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
             boot_capture_run(run, &capt);
             eidos_prof_end(EIDOS_PROF_BOOT3D, t3);
         }
+    }
+    if (run->plat != NULL && getenv("EIDOS_G2D_GPU_CHECK") != NULL) {
+        boot_gpu2d_check(run);
     }
     g_render_ns = eidos_prof_on ? bw_clock_ns() - t0 : 0;
     eidos_prof_end(EIDOS_PROF_RENDER, t0);
