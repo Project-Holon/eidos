@@ -491,6 +491,10 @@ static void draw_hints(EidosUiCtx *c, const char *const *pairs, const u32 *keys,
 #define PL_MENU        0x154
 #define PL_PLATES      0x160
 #define PL_ARG         0x280
+#define PL_LVSTATS     0x124     /* u16[6]: the stats before a level up     */
+#define PL_LVWINDOW    0x130     /* the stats window, while it is open      */
+/* the six stat ids the window lists (ov091 gPlistStatParamIds) */
+#define PLIST_STAT_IDS 0x021BECE4u
 /* PokelistArg */
 #define PA_PARTY       0x00
 #define PA_MODE        0x34
@@ -636,6 +640,40 @@ static int g_party_hover = -1;
 
 static void draw_wrapped(EidosUiCtx *c, int x, int y, int width, int lh, int max,
                          const char *text, int font, u32 color, s32 shadow);
+
+/* The stats window after a Rare Candy (PLIST_MENU_UpdateLevelUp, phase 13):
+ * the gains first (input stages 1 and 2), then the new totals (3 to 5),
+ * each waiting for A as on the DS.  Drawn as the battle draws its own,
+ * at the right over the message box. */
+static int party_levelup(EidosUiCtx *c, const PartyView *v, void *mon, int right, int bottom)
+{
+    const u16 *ids = (const u16 *)bw_ds_try_ptr(PLIST_STAT_IDS);
+    int rh = 13, pw = 150, h = 6 * rh + 8, px = right - pw, py = bottom - h, i;
+    int totals = v->stage >= 3, ty = ui_text_y(rh, UI_FONT_SMALL);
+
+    if (v->phase != 13 || v->stage < 1 || v->stage > 5 || mon == NULL || ids == NULL
+        || rdp(v->work, PL_LVWINDOW) == NULL) {
+        return 0;
+    }
+    ui_panel(c, px, py, pw, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 235);
+    for (i = 0; i < 6; i++) {
+        char name[32], val[16];
+        u32 now = pv(mon, ids[i]);
+        u32 before = rd16(v->work, PL_LVSTATS + 2u * (u32)i);
+        int ry = py + 4 + i * rh;
+
+        (void)msg_text(BANK_PARTY, 0x95 + (u32)i, name, (int)sizeof name, 0);
+        snprintf(val, sizeof val, totals ? "%u" : "+%u", totals ? (unsigned)now : (unsigned)(now - before));
+        ui_text(c, px + 10, ry + ty, name, UI_GREY, UI_EDGE, UI_FONT_SMALL, 1);
+        ui_text(c, px + pw - 10 - ui_text_w(val, UI_FONT_SMALL), ry + ty, val,
+                totals ? UI_WHITE : UI_HP_G, UI_EDGE, UI_FONT_SMALL, 1);
+        if (i > 0) {
+            ui_fill(c, px + 8, ry - 1, pw - 16, 1, UI_EDGE, 160);
+        }
+    }
+    return 1;
+}
+
 static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h);
 
 static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
@@ -790,6 +828,14 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 menu_y = y0 + 28;
             }
             msgw = menu_x - (mx + 8) - 6;
+        }
+        if (party_levelup(c, &v, sel_mon, mx + mw - 8, my + mh - 6 - 40 - 4)) {
+            /* a click anywhere goes on, as A does */
+            EidosUiRect all = { mx, my, mw, mh };
+
+            if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+                eidos_ui_press(BW_KEY_A, 3);
+            }
         }
         if (stream_msg && bh >= 40) {
             EidosUiRect rr;
@@ -1499,13 +1545,26 @@ static void draw_ribbon_page(EidosUiCtx *c, const SummaryView *s, int x, int y, 
 #define SK_CONFIRMED   0x20
 
 static int g_forget_next = -1;  /* a move to pick once the picked one is put back */
+static int g_forget_steps;      /* cursor steps still to press: + down, - up */
+static u32 g_forget_step_frame;
+
+/* The slot an arrow leads to on the page: 0 1 / 2 3 / the new move, 4. */
+static int forget_target(int cur, u32 keys)
+{
+    if (keys & BW_KEY_LEFT) return cur < 4 ? cur ^ 1 : cur;
+    if (keys & BW_KEY_RIGHT) return cur < 4 ? cur ^ 1 : cur;
+    if (keys & BW_KEY_UP) return cur == 4 ? 2 : cur >= 2 ? cur - 2 : 4;
+    if (keys & BW_KEY_DOWN) return cur == 4 ? 0 : cur + 2 > 4 ? 4 : cur + 2;
+    return cur;
+}
 
 static int move_pp_max(u32 mv)
 {
     return WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam(mv, 5) : 0;
 }
 
-static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int mw, int mh)
+static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int mw, int mh,
+                        u32 in_frame)
 {
     const void *sk = rdp(s->work, SW_SKILL);
     int picking = sk != NULL && rds32(sk, SK_PICKING) != 0;
@@ -1522,6 +1581,28 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
 
     if (held > 3) {
         picking = 0;
+    }
+    if (!picking && !busy) {
+        u32 keys;
+
+        eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT);
+        keys = eidos_ui_keys_pressed() & (BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT);
+        if (keys != 0 && g_forget_steps == 0 && s->cursor <= 4) {
+            int to = forget_target(s->cursor, keys), d = to - s->cursor;
+
+            /* the game's column wraps through five slots: the shorter way */
+            if (d > 2) d -= 5;
+            if (d < -2) d += 5;
+            g_forget_steps = d;
+        }
+        /* one press every other frame, so the game sees each as new */
+        if (g_forget_steps != 0 && in_frame - g_forget_step_frame >= 2) {
+            eidos_ui_press(g_forget_steps > 0 ? BW_KEY_DOWN : BW_KEY_UP, 1);
+            g_forget_steps += g_forget_steps > 0 ? -1 : 1;
+            g_forget_step_frame = in_frame;
+        }
+    } else {
+        g_forget_steps = 0;
     }
     /* a move clicked while another was picked: once that one is back */
     if (g_forget_next >= 0 && !picking && !busy) {
@@ -1705,7 +1786,7 @@ static void summary_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     }
     ui_header(c, mx + 4, my + 4, mw - 8, "SUMMARY", sub, "", UI_SKY);
     if (s.mode == 2) {
-        forget_view(c, &s, mx, my, mw, mh);
+        forget_view(c, &s, mx, my, mw, mh, in->frame);
         return;
     }
 
@@ -1807,6 +1888,7 @@ static void summary_reset(void)
     g_ribbon_scroll = 0;
     g_move_hover = -1;
     g_forget_next = -1;
+    g_forget_steps = 0;
 }
 
 static const EidosUiRecipe recipe_summary = {
@@ -1974,6 +2056,7 @@ static void evolution_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
     view->mode = EIDOS_VIEW_WORLD;
     view->world_screen = 0;
     view->hide_2d = 1;
+    view->spare_world = 1;      /* the party list after it shows the field */
     if (!g_evo_seen) {
         (void)eidos_text_last_window(&g_evo_since);  /* printed before the scene: not its */
         g_evo_seen = 1;

@@ -105,6 +105,10 @@ typedef struct EidosUiView {
     int keep_world;         /* non-zero: this is the field, the picture an
                                app's hold_world shows later is taken from
                                it                                           */
+    int spare_world;        /* non-zero: a live scene between two apps over
+                               the field (an evolution after a Rare Candy):
+                               the kept picture of the field stays for the
+                               app it goes back to                          */
     int dark;               /* how far the game has faded the world's
                                screen to black, 0..16 (filled by
                                eidos_ui_frame): the kept picture fades with

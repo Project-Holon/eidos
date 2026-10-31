@@ -339,7 +339,7 @@ static const char *k_fsu =
  * (else the fallback draws the two screens as the other layouts do).
  */
 static struct {
-    int on, world, screen, hide2d, crop, blur, no_fade, hold, keep, dark, mix;
+    int on, world, screen, hide2d, crop, blur, no_fade, hold, keep, spare, dark, mix;
     SDL_Rect ds;                   /* the DS screen's rectangle in the window */
     GLuint progw, progb, progu;
     GLint w_tex, w_behind, w_g3d, w_zero, w_texsize, w_dsr, w_win, w_bmode,
@@ -1095,6 +1095,7 @@ void eidos_gl_one_set(EidosGl *g, int on, int world, int screen,
     g_one.no_fade = (no_fade & 1) != 0;
     g_one.hold = (no_fade & 2) != 0;
     g_one.keep = (no_fade & 4) != 0;
+    g_one.spare = (no_fade & (1 << 19)) != 0;
     g_one.dark = (no_fade >> 8) & 31;
     g_one.mix = (no_fade >> 13) & 31;
     if (ds != NULL) {
@@ -1266,7 +1267,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         one_blur(g, out_w, out_h);
         return;
     }
-    if (use_w && !blur && !g_one.keep && !g_one.hold && !g_one.no_fade) {
+    if (use_w && !blur && !g_one.keep && !g_one.hold && !g_one.no_fade && !g_one.spare) {
         /* a live world that is not the field (a battle, the title): the
          * kept picture of the field is out of date from here */
         g_one.frozen_ok = 0;
