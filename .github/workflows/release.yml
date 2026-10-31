@@ -369,7 +369,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.version }}
-          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-test', needs.meta.outputs.version) }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format(inputs.release && 'v{0}' || 'v{0}-test', needs.meta.outputs.version) }}
           REPO: ${{ github.repository }}
         run: |
           mkdir -p out
@@ -466,7 +466,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.version }}
-          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-test', needs.meta.outputs.version) }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format(inputs.release && 'v{0}' || 'v{0}-test', needs.meta.outputs.version) }}
           REPO: ${{ github.repository }}
         run: |
           mkdir -p out
