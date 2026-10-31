@@ -2312,11 +2312,10 @@ int eidos_platform_pad_family(const EidosPlatform *p)
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return 5;
     case SDL_GAMEPAD_TYPE_GAMECUBE:                   return 6;
-#if SDL_VERSION_ATLEAST(3, 4, 0)
-    /* SDL 3.4 adds the Steam Controller's type (macOS CI builds with
-     * Homebrew's SDL, which can be older) */
-    case SDL_GAMEPAD_TYPE_STEAM:                      return 7;
-#endif
+    /* SDL_GAMEPAD_TYPE_STEAM, the type after GameCube from SDL 3.4.x on;
+     * named by its place, as Homebrew's SDL (the macOS CI) has no such
+     * name yet and there it is the count, which no pad reports */
+    case SDL_GAMEPAD_TYPE_GAMECUBE + 1:               return 7;
     default:                                         return 1;
     }
 }
