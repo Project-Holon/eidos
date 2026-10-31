@@ -125,12 +125,31 @@ static void *intro_proc_top(void)
     return procsys_top(rdp(work, 0x30));
 }
 
+/* The global proc system's top: the port's settings at the title push the
+ * keyboard there (engine/platform/mod_options_proc.c, kb_open). */
+static void *global_proc_top(void)
+{
+    void *root;
+
+    if (&g_ProcSys != NULL) {
+        root = g_ProcSys;
+    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+        memcpy(&root, bw_dsref_g_ProcSys, sizeof(root));
+    } else {
+        return NULL;
+    }
+    return procsys_top(root);
+}
+
 static void *find_scene_work(int overlay)
 {
     void *w = proc_work(game_proc_top(), overlay);
 
     if (w == NULL && overlay == OV_NAMEIN) {
         w = proc_work(intro_proc_top(), overlay);
+    }
+    if (w == NULL && overlay == OV_NAMEIN) {
+        w = proc_work(global_proc_top(), overlay);
     }
     return w;
 }
@@ -201,6 +220,13 @@ static int name_match(void)
     NameState s;
 
     return name_read(&s);
+}
+
+/* The game's name entry is up (for a screen drawn over its caller, such as
+ * the settings: it gives way to the entry, engine/ui/recipe_settings.c). */
+int eidos_ui_name_entry_up(void)
+{
+    return name_match();
 }
 
 /* ------------------------------------------------------------------ */

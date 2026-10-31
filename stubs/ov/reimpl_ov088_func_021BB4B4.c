@@ -30,6 +30,9 @@ extern int bw_mod_title_set_in_settings(int on);
 #define BW_TITLE_ROW_SETTINGS 7
 #define BW_TITLE_SEL_SETTINGS 9
 extern int eidos_sui_row_count(void);
+/* sdk/save_slots.h: a new game left before its first save does not hide
+ * the save before it */
+extern void bw_slots_settle(void);
 typedef unsigned char u8;
 
 extern int func_020071EC(void *);
@@ -51,6 +54,8 @@ void func_021BB4B4(char *p)
         }
         return;
     }
+    if (hook)
+        bw_slots_settle();
     if (func_020071EC(*(void **)p) == 1) {
         p[0x120] = 0;
         i++;

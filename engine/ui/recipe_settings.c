@@ -110,8 +110,16 @@ static const char *fit(char *buf, size_t n, const char *s, int maxw, int font)
 /* The recipe                                                          */
 /* ------------------------------------------------------------------ */
 
+/* engine/ui/recipe_input.c */
+extern int eidos_ui_name_entry_up(void);
+
 static int settings_match(void)
 {
+    /* the game's keyboard opened from a settings row (Multiplayer, Your
+     * name) is its own scene: the settings do not cover it */
+    if (eidos_ui_name_entry_up()) {
+        return 0;
+    }
     return bw_mod_title_in_settings() || eidos_ui_options_proc_up;
 }
 

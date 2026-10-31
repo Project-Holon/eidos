@@ -132,19 +132,20 @@ void bw_slots_apply(void)
     apply(0);
 }
 
-/* The game reads its save again from the slot in force. */
-static void reload(int has_save)
+/* The game reads its save again from the slot in force.  Returns whether
+ * it found one it can load. */
+static int reload(int has_save)
 {
     unsigned char *sc;
 
     if (SAVE_CONTROL_Get == NULL) {
-        return;
+        return has_save;
     }
     sc = (unsigned char *)SAVE_CONTROL_Get();
     if (sc == NULL) {
         fprintf(stderr, "eidos: save: the game has no save control yet; "
                 "the save is read at its start-up\n");
-        return;
+        return has_save;
     }
     if (has_save && SAVE_CONTROL_Reload != NULL) {
         int r = SAVE_CONTROL_Reload(sc);
@@ -156,6 +157,51 @@ static void reload(int has_save)
     }
     sc[SAVE_CONTROL_HAS_SAVE] = (unsigned char)(has_save ? 1 : 0);
     sc[SAVE_CONTROL_IS_NEW_GAME] = (unsigned char)(has_save ? 0 : 1);
+    return has_save;
+}
+
+/* A slot the game could not load this run (a new game left before its
+ * first save writes a file the game does not take as a save): it is not
+ * offered, counted or stepped onto. */
+static unsigned char g_bad[BW_SLOTS_MAX + 1];
+
+static int offered(int n)
+{
+    return bw_slots_used(n) && !g_bad[n];
+}
+
+void bw_slots_settle(void)
+{
+    unsigned char *sc;
+    int cur = bw_slots_current(), i;
+
+    if (SAVE_CONTROL_Get == NULL || (sc = (unsigned char *)SAVE_CONTROL_Get()) == NULL
+        || sc[SAVE_CONTROL_HAS_SAVE]) {
+        return;
+    }
+    if (!bw_slots_used(cur)) {
+        return;                     /* a free slot: a new game, as it should */
+    }
+    /* the slot in force holds a file but no save: the last real one, so a
+     * new game left before it was saved does not hide the save before it */
+    g_bad[cur] = 1;
+    for (i = 1; i < BW_SLOTS_MAX; i++) {
+        int n = (cur - 1 - i + BW_SLOTS_MAX) % BW_SLOTS_MAX + 1;
+
+        if (!offered(n)) {
+            continue;
+        }
+        set_current(n);
+        apply(1);
+        if (reload(1)) {
+            fprintf(stderr, "eidos: save: slot %d has no save; slot %d is shown\n", cur, n);
+            return;
+        }
+        g_bad[n] = 1;
+    }
+    set_current(cur);               /* none loads: as it was */
+    apply(1);
+    (void)reload(0);
 }
 
 int bw_slots_load_file(const char *path)
@@ -182,13 +228,16 @@ int bw_slots_flip(int d)
     for (i = 1; i < BW_SLOTS_MAX; i++) {
         int n = ((cur - 1 + d * i) % BW_SLOTS_MAX + BW_SLOTS_MAX) % BW_SLOTS_MAX + 1;
 
-        if (bw_slots_used(n)) {
+        if (offered(n)) {
             if (n == cur) {
                 return 0;
             }
             set_current(n);
             apply(1);
-            reload(1);
+            if (!reload(1)) {
+                g_bad[n] = 1;       /* not a save after all: the next one */
+                continue;
+            }
             return 1;
         }
     }
@@ -199,11 +248,11 @@ int bw_slots_new_game(void)
 {
     int n;
 
-    if (!bw_slots_used(bw_slots_current())) {
+    if (!offered(bw_slots_current())) {
         return 0;                   /* the slot in force is free already */
     }
     for (n = 1; n <= BW_SLOTS_MAX; n++) {
-        if (!bw_slots_used(n)) {
+        if (!offered(n)) {
             set_current(n);
             apply(1);
             reload(0);
@@ -222,7 +271,7 @@ void bw_slots_label(char *out, u32 size)
     int used = 0, at = 0, n;
 
     for (n = 1; n <= BW_SLOTS_MAX; n++) {
-        if (bw_slots_used(n)) {
+        if (offered(n)) {
             used++;
             if (n == bw_slots_current()) {
                 at = used;

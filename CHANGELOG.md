@@ -3,6 +3,12 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## Unreleased
+
+### Bug Fixes
+- Fixed the previous save seeming deleted after starting a New Game and quitting before saving: the title screen shows the last real save again (#10).
+- Fixed the name keyboard opening hidden behind the Multiplayer screen in one-screen mode, which left no way to type or leave (#9).
+
 ## 0.1.8
 
 ### One-Screen Mode & UI

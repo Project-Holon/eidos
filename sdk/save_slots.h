@@ -44,6 +44,12 @@ void bw_slots_apply(void);
  */
 int  bw_slots_flip(int d);
 
+/* The title menu is about to list its rows: when the slot in force holds a
+ * file the game could not load (a new game left before its first save),
+ * the last slot with a save takes its place, so that save shows on the
+ * Continue card instead of seeming gone. */
+void bw_slots_settle(void);
+
 /*
  * The title menu's New Game: when the slot in force holds a save and a
  * slot is free, the free slot is taken, so the new game does not touch the
