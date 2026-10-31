@@ -66,6 +66,8 @@ static const BwLangMap *g_map;
 static u8 *g_tgt_arm9;
 static u32 g_tgt_arm9_size;
 #define OVL_KEEP 512
+static u8 g_whole_known[OVL_KEEP], g_whole_ok[OVL_KEEP];
+static u32 g_whole_eng[OVL_KEEP], g_whole_tgt[OVL_KEEP], g_whole_size[OVL_KEEP];
 static u8 *g_tgt_ovl[OVL_KEEP];
 static u32 g_tgt_ovl_base[OVL_KEEP], g_tgt_ovl_size[OVL_KEEP];
 
@@ -122,6 +124,8 @@ void bw_lang_init(void)
     u32 i;
 
     g_map = NULL;
+    memset(g_whole_known, 0, sizeof(g_whole_known));
+    memset(g_whole_ok, 0, sizeof(g_whole_ok));
     g_pm_language = LANG_ENGLISH;
     g_pm_version = 1;
     memcpy(g_code, "IRBO", 5);
@@ -219,6 +223,48 @@ static void relayout(int region, u8 *dst, u32 dst_base, u32 dst_size, const u8 *
  * words the metadata lists, and the rest are read as they are). */
 static int to_english_in(u32 word, int region, u32 *out);
 
+/* An overlay the map has no rows of, the same length in both cartridges:
+ * one run from its English place to its place in the cartridge's own
+ * table (y9.bin).  0 when it is not such an overlay. */
+
+static int whole_overlay(int id, u32 *eng, u32 *tgt, u32 *size)
+{
+    if (id < 0 || id >= OVL_KEEP) {
+        return 0;
+    }
+    if (!g_whole_known[id]) {
+        const BwOverlayDesc *d = bw_overlay_desc((u32)id);
+        u8 e[16];
+        u32 i, rows = 0;
+
+        g_whole_known[id] = 1;
+        for (i = 0; i < g_map->count; i++) {
+            if (g_map->rows[i].region == id && own_row(&g_map->rows[i])) {
+                rows++;
+            }
+        }
+        if (d != NULL && rows == 0 && read_at("y9.bin", (u32)id * 32u, e, sizeof(e)) == 0) {
+            u32 tb = (u32)e[4] | (u32)e[5] << 8 | (u32)e[6] << 16 | (u32)e[7] << 24;
+            u32 ts = (u32)e[8] | (u32)e[9] << 8 | (u32)e[10] << 16 | (u32)e[11] << 24;
+            u32 tz = (u32)e[12] | (u32)e[13] << 8 | (u32)e[14] << 16 | (u32)e[15] << 24;
+
+            if (ts == d->ram_size && tz == d->bss_size) {
+                g_whole_ok[id] = 1;
+                g_whole_eng[id] = d->ram_address;
+                g_whole_tgt[id] = tb;
+                g_whole_size[id] = ts + tz;
+            }
+        }
+    }
+    if (!g_whole_ok[id]) {
+        return 0;
+    }
+    *eng = g_whole_eng[id];
+    *tgt = g_whole_tgt[id];
+    *size = g_whole_size[id];
+    return 1;
+}
+
 /* An address in the overlays' windows, from another image (the ARM9's
  * table of a resident overlay's functions): the English address when every
  * overlay that holds it agrees on one. */
@@ -235,6 +281,19 @@ static int to_english_any_overlay(u32 word, u32 *out)
 
             if (found && x != e) {
                 return 0;           /* overlays sharing the window disagree */
+            }
+            e = x;
+            found = 1;
+        }
+    }
+    for (i = 0; i < OVL_KEEP; i++) {
+        u32 eb, tb, sz;
+
+        if (whole_overlay((int)i, &eb, &tb, &sz) && word >= tb && word - tb < sz) {
+            u32 x = word - tb + eb;
+
+            if (found && x != e) {
+                return 0;
             }
             e = x;
             found = 1;
@@ -358,6 +417,14 @@ int bw_lang_same_address(u32 english, u32 word)
             return 1;
         }
     }
+    for (i = 0; i < OVL_KEEP; i++) {
+        u32 eb, tb, sz;
+
+        if (whole_overlay((int)i, &eb, &tb, &sz) && english >= eb && english - eb <= sz
+            && english - eb + tb == word) {
+            return 1;
+        }
+    }
     /* the end of an object (a pointer one past it) */
     for (i = 0; i < g_map->count; i++) {
         const BwLangRow *r = &g_map->rows[i];
@@ -380,6 +447,14 @@ static int to_english_in(u32 word, int region, u32 *out)
         if (r->region == region && own_row(r) && word >= r->tgt_start
             && word - r->tgt_start < r->eng_end - r->eng_start) {
             *out = word - r->tgt_start + r->eng_start;
+            return 1;
+        }
+    }
+    {
+        u32 eb, tb, sz;
+
+        if (whole_overlay(region, &eb, &tb, &sz) && word >= tb && word - tb < sz) {
+            *out = word - tb + eb;
             return 1;
         }
     }
