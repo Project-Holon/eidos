@@ -270,21 +270,24 @@ static int whole_overlay(int id, u32 *eng, u32 *tgt, u32 *size)
  * overlay that holds it agrees on one. */
 static int to_english_any_overlay(u32 word, u32 *out)
 {
-    u32 i, found = 0, e = 0;
+    u32 i, found = 0, e = 0, span = 0xFFFFFFFFu;
 
+    /* overlays share windows: where two disagree, the shorter run is the
+     * more exact (a long run spans objects the overlay merely refers to) */
     for (i = 0; i < g_map->count; i++) {
         const BwLangRow *r = &g_map->rows[i];
 
         if (r->region >= 0 && own_row(r) && word >= r->tgt_start
-            && word - r->tgt_start < r->eng_end - r->eng_start) {
-            u32 x = word - r->tgt_start + r->eng_start;
-
-            if (found && x != e) {
-                return 0;           /* overlays sharing the window disagree */
-            }
-            e = x;
+            && word - r->tgt_start < r->eng_end - r->eng_start
+            && r->eng_end - r->eng_start < span) {
+            e = word - r->tgt_start + r->eng_start;
+            span = r->eng_end - r->eng_start;
             found = 1;
         }
+    }
+    if (found) {
+        *out = e;
+        return 1;
     }
     for (i = 0; i < OVL_KEEP; i++) {
         u32 eb, tb, sz;
