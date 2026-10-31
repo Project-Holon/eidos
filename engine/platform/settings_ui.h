@@ -75,6 +75,10 @@ int  eidos_sui_row_pad(int row, char *key, int nk);
 #define EIDOS_SUI_ZONE_DEC (-2)
 #define EIDOS_SUI_ZONE_INC (-3)
 int  eidos_sui_touch(int row, int zone);
+/* A click of the one-screen layout, answered at the screen's next step as
+ * a touch of that row (zone as eidos_sui_touch) or of that section's tab. */
+void eidos_sui_request_touch(int row, int zone);
+void eidos_sui_request_tab(int tab);
 /* The mouse is over a row (numbered as for eidos_sui_touch): the cursor goes
  * there, with no sound and no action.  Returns 1 when it moved. */
 int  eidos_sui_hover(int row);

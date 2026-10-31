@@ -260,6 +260,11 @@ extern u32 PRINTSYS_MeasureWidestLine(struct Strbuf *text, struct GfFont *font, 
 /* The port's settings (engine/platform/settings.h), spelled out: the
  * overlay link header declares what the file itself does not. */
 extern int eidos_settings_get(int id);
+/* The one-screen layout (engine/ui/recipe_menus.c): the page on show, read
+ * by its tabs, and the page a tab click asks for (-1: none), taken here at
+ * the screen's next step as one page change. */
+extern int eidos_ui_opt_page;
+extern int eidos_ui_opt_page_request;
 extern int eidos_settings_set(int id, int value);
 extern int eidos_settings_commit(void);
 
@@ -953,6 +958,7 @@ static void set_page(OptionMenuList *list, OptionMenuTextBox *help, int page)
         drop_page();
     }
     g.page = page;
+    eidos_ui_opt_page = page;
     make_name();
     if (page == PAGE_GAME) {
         game_windows(1);
@@ -979,6 +985,18 @@ static int page_input(OptionMenuList *list, const OptionMenuInput *input,
     OptionMenuPoint touch;
     int d = 0;
 
+    if (eidos_ui_opt_page_request >= 0) {
+        /* a tab clicked in the one-screen layout: straight to its page */
+        int p = eidos_ui_opt_page_request;
+
+        eidos_ui_opt_page_request = -1;
+        if (p >= 0 && p < PAGE_COUNT && p != g.page) {
+            set_page(list, help, p);
+            color_tabs(list);
+            BG_SYS_MarkTileDirty(list->mainLayer);
+            return 1;
+        }
+    }
     if (trg & KEY_R) {
         d = 1;
     } else if (trg & KEY_L) {
@@ -1233,6 +1251,8 @@ void OPTION_MENU_ExitList(OptionMenuList *list)
         drop_win(&g.bar[i]);
     }
     g.page = PAGE_GAME;
+    eidos_ui_opt_page = PAGE_GAME;
+    eidos_ui_opt_page_request = -1;
     g.screen = 0;
     MI_CpuFill8(list, 0, sizeof(OptionMenuList));
 }

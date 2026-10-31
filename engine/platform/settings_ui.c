@@ -1497,9 +1497,44 @@ static int question_input(unsigned pressed, unsigned held)
 /* The screen's own input: the buttons the player pressed. */
 static int sui_input(unsigned pressed, unsigned held);
 
+/* A click from the one-screen layout (engine/ui/recipe_settings.c): taken
+ * at the screen's next step, as a touch of that row or that section, so
+ * the screen answers it once, with one sound, as it answers the stylus. */
+static int g_req_row = -1, g_req_zone, g_req_tab = -1;
+
+void eidos_sui_request_touch(int row, int zone)
+{
+    g_req_row = row;
+    g_req_zone = zone;
+}
+
+void eidos_sui_request_tab(int tab)
+{
+    g_req_tab = tab;
+}
+
 int eidos_sui_input(unsigned pressed, unsigned held)
 {
-    int res = sui_input(pressed, held);
+    int res;
+
+    if (g_req_tab >= 0) {
+        int t = g_req_tab;
+
+        g_req_tab = -1;
+        if (g.level == 1 && !g_mp_only && t != g.tab && t >= 0 && t < TAB_STRIP
+            && !question_up() && !g.capturing && !g.editing) {
+            enter_section(t);
+            return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_MOVE;
+        }
+    }
+    if (g_req_row >= 0) {
+        int row = g_req_row;
+
+        g_req_row = -1;
+        (void)eidos_sui_hover(row);     /* the row first, so the touch acts on it */
+        return eidos_sui_touch(row, g_req_zone);
+    }
+    res = sui_input(pressed, held);
 
     /*
      * The port's own session: the work runs on the port's own worker (the

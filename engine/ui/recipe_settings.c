@@ -136,7 +136,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     int mw, mh, mx, my, i, n, cur, rowh = 20, top;
     int tabs = eidos_sui_tab_count(), tab = eidos_sui_tab(), level = eidos_sui_level();
     char head[48], value[48], label[48];
-    int target = -1, target_choice = -1, target_adj = 0;
+    int target = -1, target_choice = -1, target_adj = 0, target_zone = -1;
     int first = 0, shown = 0, total = 0;
 
     view->mode = EIDOS_VIEW_WORLD;
@@ -180,8 +180,9 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
             ui_text(c, tx + 8, top + ui_text_y(14, UI_FONT_SMALL), name,
                     sel ? UI_WHITE : UI_GREY, sel ? 0x003C50 : (s32)UI_EDGE, UI_FONT_SMALL, 1);
             if ((st & EIDOS_UI_CLICK) && !sel) {
+                /* straight to the section, as a touch: one step, one sound */
                 q_clear();
-                q_push(i > tab ? BW_KEY_R : BW_KEY_L, i > tab ? i - tab : tab - i);
+                eidos_sui_request_tab(i);
             }
             tx += tw + 3;
         }
@@ -235,6 +236,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
                 if (pst & EIDOS_UI_CLICK) {
                     target = i;
                     target_choice = j - active;
+                    target_zone = j;
                 }
             }
         } else if ((pctl = eidos_sui_row_pad(i, keyname, sizeof(keyname))) >= 0) {
@@ -305,25 +307,20 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
 
     ui_hints(c, ch - 17, cw, hints, level == 1 && tabs > 1 ? 3 : 2, hint_keys);
 
-    /* what the mouse asked for, as the keys the screen reads */
+    /* what the mouse asked for: a touch of that row, answered by the
+     * screen at its next step (a choice by its place, an arrow as the
+     * value's step, anything else as the row itself), not a key for each
+     * row or section on the way */
     if (target >= 1 && g_qn == 0 && !eidos_sui_capturing()) {
-        int d = target - cur;
+        int zone = target_zone >= 0 ? target_zone
+                 : target_adj > 0 ? EIDOS_SUI_ZONE_INC
+                 : target_adj < 0 ? EIDOS_SUI_ZONE_DEC : -1;
 
-        q_push(d > 0 ? BW_KEY_DOWN : BW_KEY_UP, d > 0 ? d : -d);
-        if (target_choice != -1 && target_choice != 0) {
-            q_push(target_choice > 0 ? BW_KEY_RIGHT : BW_KEY_LEFT,
-                   target_choice > 0 ? target_choice : -target_choice);
-        } else if (target_adj != 0) {
-            q_push(target_adj > 0 ? BW_KEY_RIGHT : BW_KEY_LEFT, 1);
-        } else if (target_choice == -1 && (d == 0 || !eidos_sui_row_adjustable(target))) {
-            /* a section, an action, Back: A, as the player would */
-            int nch, act;
-            char names[3][20];
-
-            nch = eidos_sui_row_choices(target, &act, names);
-            if (nch == 0) {
-                q_push(BW_KEY_A, 1);
-            }
+        (void)target_choice;
+        if (zone == -1 && target != cur && eidos_sui_row_adjustable(target)) {
+            (void)eidos_sui_hover(target);   /* a value row: the click picks it */
+        } else {
+            eidos_sui_request_touch(target, zone);
         }
     }
     {

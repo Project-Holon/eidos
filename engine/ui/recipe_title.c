@@ -1269,12 +1269,15 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         if (g_age > 240 || g_target >= n) {
             g_target = -1;
         } else if (state == SM_STATE_SELECT && g_wait == 0) {
-            if (cursor < g_target) {
-                eidos_ui_press(BW_KEY_DOWN, 1);
-                g_wait = 4;
-            } else if (cursor > g_target) {
-                eidos_ui_press(BW_KEY_UP, 1);
-                g_wait = 4;
+            if (cursor != g_target) {
+                /* the cursor goes straight to the row, as the keys above do:
+                 * a press per row would play the cursor sound for each row
+                 * passed */
+                *((u8 *)work + SM_CURSOR) = (u8)g_target;
+                if (g_act < 0) {
+                    eidos_ui_sound(0x548);  /* the wheel's one step */
+                }
+                g_wait = 2;
             } else {
                 if (g_act == ACT_A) {
                     eidos_ui_press(BW_KEY_A, 2);

@@ -767,6 +767,11 @@ typedef struct OptState {
 
 static OptState g_opt = { -1, 0, -1, 0, 0 };
 
+/* The page the game's Options shows, and the page a tab click asks for:
+ * written and taken by the overlay patch (stubs/ov/patch_ov068_option_menu.c). */
+int eidos_ui_opt_page;
+int eidos_ui_opt_page_request = -1;
+
 static void options_reset(void)
 {
     g_opt.hover_row = -1;
@@ -776,38 +781,13 @@ static void options_reset(void)
     pend_clear();
 }
 
-/* Which page the port's overlay patch shows: the choice sprites of the
- * pages it does not use sit off the screen (x 300), so the count of sprites
- * on the screen tells the page: 11 the game's, 10 DISPLAY, 1 SOUND, 2
- * EXTRAS. */
+/* Which page the port's overlay patch shows: it says so itself (counting
+ * the choice sprites on the screen no longer told EXTRAS once it had two
+ * rows, and a tab click then stepped the pages without end). */
 static int options_page(const void *work)
 {
-    int i, on = 0, known = 0;
-
-    if (CLACT_GetActorSurfacePosAxis == NULL) {
-        return g_opt.last_page;
-    }
-    for (i = 0; i < 11; i++) {
-        const void *a = rdp(work, OW_LIST + OL_ACTORS + 4u * (u32)i);
-
-        if (a == NULL) {
-            continue;
-        }
-        known++;
-        if (CLACT_GetActorSurfacePosAxis(a, 0, 0) < 256) {
-            on++;
-        }
-    }
-    if (known < 11) {
-        return g_opt.last_page;
-    }
-    switch (on) {
-    case 11: return PAGE_GAME;
-    case 10: return PAGE_DISPLAY;
-    case 1:  return PAGE_SOUND;
-    case 2:  return PAGE_EXTRAS;
-    }
-    return g_opt.last_page;
+    (void)work;
+    return eidos_ui_opt_page >= 0 && eidos_ui_opt_page < PAGE_COUNT ? eidos_ui_opt_page : 0;
 }
 
 static int options_match(void)
@@ -1178,16 +1158,13 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         press_key(BW_KEY_B);
     }
 
-    /* a tab click steps the page bar's arrows until the page is reached */
+    /* a tab click goes straight to its page: the patch takes it at the
+     * screen's next step, one change and one sound */
     if (g_opt.target >= 0) {
-        if (g_opt.target == page || prompt) {
-            g_opt.target = -1;
-        } else if (in->frame >= g_opt.cool) {
-            int fwd = (g_opt.target - page + PAGE_COUNT) % PAGE_COUNT;
-
-            tap(fwd <= 2 ? 232 : 24, scroll_y + 24 * 5 + 12);
-            g_opt.cool = in->frame + 10;
+        if (g_opt.target != page && !prompt) {
+            eidos_ui_opt_page_request = g_opt.target;
         }
+        g_opt.target = -1;
     }
 }
 
