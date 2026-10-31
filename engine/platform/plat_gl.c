@@ -1237,6 +1237,16 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         return;
     }
+    if (g_one.hold && !frozen) {
+        /* an app over the field with no picture of it kept (a live scene
+         * in between, an evolution after a Rare Candy): a plain dark
+         * ground, not the app's own DS screen behind its modal */
+        g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, out_w, out_h);
+        glClearColor(0.04f, 0.04f, 0.05f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        return;
+    }
     if (blur && one_bind_target(g, 0, out_w, out_h) != 0) {
         blur = 0;
     }

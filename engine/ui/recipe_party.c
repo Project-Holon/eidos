@@ -109,12 +109,52 @@ static const void *top_proc(void)
     return rdp(ps, 0x08);
 }
 
-/* The work area of the proc when it runs the overlay, else NULL. */
-static const void *app_work(int overlay, const void **proc_out, const void **arg_out)
+/* The evolution scene's work (ov195 Scene) while it is the app on top. */
+#define EVO_OVERLAY     195
+#define BTL_RETURN_OVERLAY 92
+#define SC_STATE        0x028
+#define SC_YESNO        0x09C
+#define SC_TCB          0x0A0
+#define SC_PLISTHOST    0x0B0
+#define SC_PROCSYS      0x11C
+#define SC_STRBUF_YES   0x094
+#define SC_STRBUF_NO    0x098
+
+static const void *evo_scene(void)
 {
     const void *p = top_proc();
 
-    if (p == NULL || rds32(p, 0x04) != overlay || rds32(p, 0x08) < 2) {
+    /* after a battle the scene runs on the proc system of the battle's
+     * return step (ov092 EventBattleReturnWork.procSys, +0x40) */
+    if (p != NULL && rds32(p, 0x04) == BTL_RETURN_OVERLAY && rdp(p, 0x14) != NULL) {
+        const void *ps = rdp(rdp(p, 0x14), 0x40);
+
+        p = ps != NULL ? rdp(ps, 0x08) : NULL;
+    }
+    if (p == NULL || rds32(p, 0x04) != EVO_OVERLAY || rds32(p, 0x08) < 2) {
+        return NULL;
+    }
+    return rdp(p, 0x14);
+}
+
+/* The work area of the proc when it runs the overlay, else NULL.  The
+ * evolution scene runs the summary (to forget a move) on a proc system of
+ * its own (Scene.proc), so a proc there counts as on top too. */
+static const void *app_work(int overlay, const void **proc_out, const void **arg_out)
+{
+    const void *p = top_proc();
+    const void *sc = evo_scene();
+    int loaded = 0;
+
+    if (sc != NULL && overlay != EVO_OVERLAY) {
+        const void *ps = rdp(sc, SC_PROCSYS);
+
+        p = ps != NULL ? rdp(ps, 0x08) : NULL;
+        /* the scene loads the summary's overlay itself and pushes the
+         * proc with no overlay (-1) */
+        loaded = p != NULL && rds32(p, 0x04) == -1 && bw_overlay_is_loaded(overlay);
+    }
+    if (p == NULL || (rds32(p, 0x04) != overlay && !loaded) || rds32(p, 0x08) < 2) {
         return NULL;
     }
     if (proc_out != NULL) {
@@ -554,17 +594,10 @@ static u32 plate_hp(const PartyView *v, int i, void *mon)
 /* The prompt line for the phase (the game prints it in its own window). */
 static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
 {
-    const void *mw = rdp(v->work, PL_MSGWIN);
     char tmp[256];
     int idx = -1;
 
     out[0] = '\0';
-    if (mw != NULL && rd32(mw, MS_KIND) < 4 && rdp(mw, MS_STREAM) != NULL &&
-        (v->phase == 7 || v->phase == 9 || v->phase == 10 || v->phase == 11)) {
-        (void)strbuf_text(rdp(mw, MS_STREAMTEXT), tmp, (int)sizeof tmp, 0);
-        snprintf(out, (size_t)cap, "%s", tmp);
-        return;
-    }
     switch (v->phase) {
     case 6: {
         const void *menu = rdp(v->work, PL_MENU);
@@ -603,13 +636,14 @@ static int g_party_hover = -1;
 
 static void draw_wrapped(EidosUiCtx *c, int x, int y, int width, int lh, int max,
                          const char *text, int font, u32 color, s32 shadow);
+static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h);
 
 static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     PartyView v;
     int mx, my, mw, mh;
     int i, rowh = 30, gap = 7, colw, x0, y0;
-    int phase_pick, menu_open, msg_open;
+    int phase_pick, menu_open, msg_open, stream_msg;
     void *sel_mon;
     char prompt[160], right[16];
     const void *menu = NULL;
@@ -742,6 +776,9 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             msgw -= 52;
         }
         party_prompt(&v, sel_mon, prompt, (int)sizeof prompt);
+        /* a message the game prints (after a Rare Candy, a move to learn):
+         * as the battle shows its own, page by page as the game prints it */
+        stream_msg = v.phase == 7 || v.phase == 9 || v.phase == 10 || v.phase == 11;
         if (menu_open && menu != NULL) {
             int ew = 104, eh = 17, n = menu_n;
 
@@ -754,29 +791,22 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             }
             msgw = menu_x - (mx + 8) - 6;
         }
-        if (prompt[0] != '\0' && bh >= 18) {
-            int lines, ty;
+        if (stream_msg && bh >= 40) {
             EidosUiRect rr;
-            int longmsg = ui_text_w(prompt, UI_FONT_LARGE) > msgw - 16;
-            int mh2 = bh < (longmsg ? 44 : 30) ? bh : (longmsg ? 44 : 30);
 
-            (void)lines;
-            ui_panel(c, mx + 8, my + mh - 6 - mh2, msgw, mh2, UI_CUT_TL | UI_CUT_BR, 5,
-                     UI_BODY, UI_EDGE, 235);
-            if (!longmsg) {
-                ty = ui_text_y(mh2, UI_FONT_LARGE);
-                ui_text(c, mx + 8 + 8, my + mh - 6 - mh2 + ty, prompt, UI_WHITE, UI_GREY,
-                        UI_FONT_LARGE, 1);
-            } else {
-                /* a long message (a move to learn): two lines of the
-                 * smaller font, as many as the box holds */
-                draw_wrapped(c, mx + 8 + 8, my + mh - 6 - mh2 + 4, msgw - 16, 12, (mh2 - 6) / 12, prompt,
-                             UI_FONT_MEDIUM, UI_WHITE, UI_GREY);
-            }
-            rr.x = mx + 8; rr.y = my + mh - 6 - mh2; rr.w = msgw; rr.h = mh2;
-            if (msg_open && (eidos_ui_hit(rr) & EIDOS_UI_CLICK)) {
+            rr.x = mx + 8; rr.y = my + mh - 6 - 40; rr.w = msgw; rr.h = 40;
+            if (game_message(c, 0xFFFFFFFFu, rr.x, rr.y, rr.w, rr.h) && msg_open
+                && (eidos_ui_hit(rr) & EIDOS_UI_CLICK)) {
                 eidos_ui_press(BW_KEY_A, 3);
             }
+        } else if (prompt[0] != '\0' && bh >= 18) {
+            int ty, mh2 = bh < 30 ? bh : 30;
+
+            ui_panel(c, mx + 8, my + mh - 6 - mh2, msgw, mh2, UI_CUT_TL | UI_CUT_BR, 5,
+                     UI_BODY, UI_EDGE, 235);
+            ty = ui_text_y(mh2, UI_FONT_LARGE);
+            ui_text(c, mx + 8 + 8, my + mh - 6 - mh2 + ty, prompt, UI_WHITE, UI_GREY,
+                    UI_FONT_LARGE, 1);
         }
         if (menu_open && menu != NULL) {
             const void *tm = rdp(menu, PM_TASKMENU);
@@ -1456,6 +1486,172 @@ static void draw_ribbon_page(EidosUiCtx *c, const SummaryView *s, int x, int y, 
     (void)in;
 }
 
+/* Choosing a move to forget for a new one (the summary's mode 2), laid out
+ * as the battle's forget page (recipe_battle.c, pl_summary): the four moves
+ * and the new one under them, the details of one, FORGET and BACK.  The
+ * game's own page takes two steps (P_STA_SKILL_HandleKeysForget and
+ * ...TouchForget): a move is picked (PStaSkillWork.isPickingForget, its slot
+ * heldSlot, the cursor then on the new move), and A, or a touch on the new
+ * move, confirms.  So a click on a move picks it (a touch of its slot), its
+ * details show with FORGET, which is A; BACK and B put it back.  Before a
+ * move is picked, B gives the new move up, as on the DS. */
+#define SK_PICKING     0x18
+#define SK_CONFIRMED   0x20
+
+static int g_forget_next = -1;  /* a move to pick once the picked one is put back */
+
+static int move_pp_max(u32 mv)
+{
+    return WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam(mv, 5) : 0;
+}
+
+static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int mw, int mh)
+{
+    const void *sk = rdp(s->work, SW_SKILL);
+    int picking = sk != NULL && rds32(sk, SK_PICKING) != 0;
+    int held = sk != NULL ? (int)rd8(sk, SK_HELD) : 5;
+    int busy = sk == NULL || rds32(sk, SK_CONFIRMED) != 0 || s->seq != 4;
+    int ix = mx + 8, iy = my + 4 + 22 + 6, iw = mw - 16;
+    int nav_y = my + mh - 6 - 18, i, hov = -1, shown, st;
+    int mw2 = (iw - 24) / 2;
+    u32 newmove = rd16(s->param, SP_NEWMOVE);
+    char nick[40], q[48];
+    static const char *const hints_pick[] = { "A", "Forget", "B", "Back" };
+    static const char *const hints_list[] = { "A", "Choose", "B", "Give up" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+
+    if (held > 3) {
+        picking = 0;
+    }
+    /* a move clicked while another was picked: once that one is back */
+    if (g_forget_next >= 0 && !picking && !busy) {
+        eidos_ui_tap(76, k_slot_tap_y[g_forget_next], 3);
+        g_forget_next = -1;
+    }
+    ui_panel(c, ix, iy, iw, nav_y - iy - 4, UI_CUT_TL | UI_CUT_BR, 5, UI_NAVY, 0x084A73u, 245);
+    {
+        const UiImage *icon = ui_mon_icon((u16)pv(s->mon, P_SPECIES), (u8)pv(s->mon, P_FORM), 0);
+        u32 hp = pv(s->mon, P_HP), maxhp = pv(s->mon, P_MAXHP);
+        int nx;
+
+        if (icon != NULL) {
+            ui_image(c, ix + 8, iy + 6, icon, 1);
+        }
+        mon_nick(s->mon, nick, (int)sizeof nick);
+        nx = ui_text(c, ix + 38, iy + 6, nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_gender(c, nx + 3, iy + 6, gender_of(s->mon), UI_FONT_LARGE);
+        snprintf(q, sizeof q, "Lv.%d", (int)pv(s->mon, P_LEVEL));
+        ui_text(c, ix + iw - 8 - ui_text_w(q, UI_FONT_LARGE), iy + 6, q, UI_LIGHT, UI_EDGE,
+                UI_FONT_LARGE, 1);
+        ui_bar(c, ix + 38, iy + 24, iw - 100, 4, (int)hp, (int)maxhp);
+        snprintf(q, sizeof q, "%u/%u", (unsigned)hp, (unsigned)maxhp);
+        ui_text(c, ix + iw - 8 - ui_text_w(q, UI_FONT_SMALL), iy + 20, q, UI_LIGHT, UI_EDGE,
+                UI_FONT_SMALL, 1);
+    }
+    for (i = 0; i < 5; i++) {
+        u32 mv = i < 4 ? pv(s->mon, P_MOVE1 + (u32)i) : newmove;
+        int x2 = i < 4 ? ix + 8 + (i % 2) * (mw2 + 8) : ix + 8 + (iw - 16 - mw2) / 2;
+        int y2 = iy + 34 + (i / 2) * 26;
+        EidosUiRect r;
+        MoveInfo m;
+        char name[64];
+        int hit, sel;
+
+        if (mv == 0) {
+            ui_move_row(c, x2, y2, mw2, 0, NULL, 0, 0, 0);
+            continue;
+        }
+        r.x = x2; r.y = y2; r.w = mw2; r.h = 22;
+        hit = busy ? 0 : eidos_ui_hit(r);
+        if (hit & EIDOS_UI_HOVER) {
+            hov = i;
+        }
+        if (hit & EIDOS_UI_CLICK) {
+            if (i == 4) {
+                if (picking) {
+                    eidos_ui_press(BW_KEY_B, 3);        /* the new move stays: back */
+                }
+            } else if (!picking) {
+                eidos_ui_tap(76, k_slot_tap_y[i], 3);
+            } else if (i != held) {
+                eidos_ui_press(BW_KEY_B, 3);
+                g_forget_next = i;
+            }
+        }
+        move_info(mv, &m);
+        (void)msg_text(BANK_MOVE, mv, name, (int)sizeof name, 0);
+        if (ui_move_name_modern((int)mv) != NULL) {
+            snprintf(name, sizeof name, "%s", ui_move_name_modern((int)mv));
+        }
+        sel = (picking && i == held) || hov == i ||
+              (!picking && s->cursor == i && eidos_ui_keys_lit());
+        ui_move_row(c, x2, y2, mw2, m.type, name,
+                    i < 4 ? (int)pv(s->mon, P_PP1 + (u32)i) : move_pp_max(mv),
+                    i < 4 ? (int)pv(s->mon, P_MAXPP1 + (u32)i) : move_pp_max(mv), sel);
+        if (i == 4) {
+            ui_text(c, x2 + mw2 + 8, y2 + ui_text_y(22, UI_FONT_SMALL), "NEW", UI_CYAN, UI_NAVY,
+                    UI_FONT_SMALL, 1);
+        }
+    }
+    /* the details: the move under the pointer, else the picked one, else
+     * the one under the game's cursor */
+    shown = hov >= 0 ? hov : picking ? held : (s->cursor < 5 ? s->cursor : 4);
+    {
+        u32 mv = shown < 4 ? pv(s->mon, P_MOVE1 + (u32)shown) : newmove;
+        int dy = iy + 34 + 3 * 26, dh = nav_y - 4 - 4 - dy;
+        MoveInfo m;
+        char lab[24], info[48], d[300];
+
+        if (mv != 0 && dh >= 24) {
+            move_info(mv, &m);
+            ui_panel(c, ix + 8, dy, iw - 16, dh, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY2, UI_EDGE, 255);
+            ui_category_icon(c, ix + 13, dy + 4, kit_class(m.klass));
+            (void)msg_text(BANK_SUMMARY, 147, lab, (int)sizeof lab, 0);
+            if (m.power > 1) {
+                snprintf(info, sizeof info, "%s %d", lab, m.power);
+            } else {
+                snprintf(info, sizeof info, "%s --", lab);
+            }
+            ui_text(c, ix + 33, dy + 3 + ui_text_y(11, UI_FONT_SMALL), info, UI_WHITE, UI_EDGE,
+                    UI_FONT_SMALL, 1);
+            (void)msg_text(BANK_SUMMARY, 148, lab, (int)sizeof lab, 0);
+            if (m.accuracy == 0 || m.always) {
+                snprintf(info, sizeof info, "%s --", lab);
+            } else {
+                snprintf(info, sizeof info, "%s %d", lab, m.accuracy);
+            }
+            ui_text(c, ix + iw - 14 - ui_text_w(info, UI_FONT_SMALL), dy + 3 + ui_text_y(11, UI_FONT_SMALL),
+                    info, UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
+            (void)msg_text(BANK_MOVE_DESC, mv, d, (int)sizeof d, 0);
+            draw_wrapped(c, ix + 13, dy + 16, iw - 26, 10, (dh - 17) / 10, d, UI_FONT_SMALL, UI_LIGHT,
+                         UI_EDGE);
+        }
+    }
+    /* FORGET while a move is picked; BACK puts it back, or GIVE UP gives
+     * the new move up when none is */
+    if (picking) {
+        EidosUiRect r = { ix, nav_y, 140, 18 };
+
+        st = busy ? 0 : eidos_ui_hit(r);
+        ui_cmd_button(c, r.x, r.y, r.w, r.h, "FORGET", UI_PINK, (st & EIDOS_UI_HOVER) != 0);
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_A, 3);
+        }
+    }
+    {
+        int bw = picking ? 54 : 80;
+        EidosUiRect r = { ix + iw - bw, nav_y, bw, 18 };
+
+        st = busy ? 0 : eidos_ui_hit(r);
+        ui_cmd_button(c, r.x, r.y, r.w, r.h, picking ? "BACK" : "GIVE UP", UI_GREY,
+                      (st & EIDOS_UI_HOVER) != 0);
+        if (((st & EIDOS_UI_CLICK) || eidos_ui_right_click()) && !busy) {
+            eidos_ui_press(BW_KEY_B, 3);
+        }
+    }
+    draw_hints(c, picking ? hints_pick : hints_list, keys, 2);
+}
+
 /* The Pokemon after `dir` that the game would step to (it skips empty
  * entries and, on the ribbon page, Pokemon without ribbons); the screen's
  * own up and down handle it, so the recipe only presses the keys. */
@@ -1508,6 +1704,10 @@ static void summary_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         snprintf(right, sizeof right, "%d/%d", s.pos + 1, s.max);
     }
     ui_header(c, mx + 4, my + 4, mw - 8, "SUMMARY", sub, "", UI_SKY);
+    if (s.mode == 2) {
+        forget_view(c, &s, mx, my, mw, mh);
+        return;
+    }
 
     /* the Pokemon arrows, on the title bar */
     if (s.max > 1 && s.mode != 2) {
@@ -1606,6 +1806,7 @@ static void summary_reset(void)
     g_ribbon_sel = 0;
     g_ribbon_scroll = 0;
     g_move_hover = -1;
+    g_forget_next = -1;
 }
 
 static const EidosUiRecipe recipe_summary = {
@@ -1617,40 +1818,58 @@ static const EidosUiRecipe recipe_summary = {
 /* ------------------------------------------------------------------ */
 
 /* The game draws it on the top screen alone (the Pokemon on its glowing
- * stage, the message box under it): the window shows that screen whole,
- * the sides kept dark, as the scene was drawn for the DS's frame.  A click
- * is A (the messages go on), a right click B (the game's own: it stops the
+ * stage, the message box under it): the window shows the scene across its
+ * width, as a battle, with the message in the interface's box.  A click is
+ * A (the messages go on), a right click B (the game's own: it stops the
  * evolution). */
-/* The bottom screen shows something: some of its pixels are not black. */
-static int bottom_shown(const EidosUiFrame *in)
-{
-    const u8 *px = in->screen_rgba[1];
-    int i, lit = 0;
-
-    if (px == NULL) {
-        return 0;
-    }
-    for (i = 0; i < 256 * 192; i += 7) {
-        if (px[i * 4] > 16 || px[i * 4 + 1] > 16 || px[i * 4 + 2] > 16) {
-            if (++lit > 64) {
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
-
 static int evolution_match(void)
 {
-    return bw_overlay_is_loaded(195);
+    return bw_overlay_is_loaded(EVO_OVERLAY);
+}
+
+/* recipe_battle.c: the battle's party list, opened by the evolution scene */
+int eidos_ui_plist_outside(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, void *sys,
+                           const void *host);
+
+/* YesNoMenu (ov067): its step and the answer under the key cursor */
+#define YN_STATE        0x98
+#define YN_CURSOR       0xC0
+
+/* The scene's question when the new form learns a move with four known
+ * (state 22: "Should a move be deleted...?"): the game's two buttons on
+ * the bottom screen (YESNO_MENU, yes over rows 0 to 87, no under them) as
+ * two buttons over the message box.  The keys work as on the DS. */
+static void evolution_yesno(EidosUiCtx *c, const void *sc, int box_x, int box_y, int box_w)
+{
+    const void *yn = rdp(sc, SC_YESNO);
+    int i, bw = 150, bh = 18;
+    char label[48];
+
+    if (yn == NULL || rds32(yn, YN_STATE) != 2) {
+        return;
+    }
+    for (i = 0; i < 2; i++) {
+        EidosUiRect r;
+        int st, sel;
+
+        r.x = box_x + box_w - bw;
+        r.y = box_y - 6 - (2 - i) * (bh + 4);
+        r.w = bw;
+        r.h = bh;
+        (void)strbuf_text(rdp(sc, i == 0 ? SC_STRBUF_YES : SC_STRBUF_NO), label, (int)sizeof label, 0);
+        st = eidos_ui_hit(r);
+        sel = (st & EIDOS_UI_HOVER) != 0 || (eidos_ui_keys_lit() && rds32(yn, YN_CURSOR) == i);
+        ui_cmd_button(c, r.x, r.y, r.w, r.h, label, i == 0 ? UI_PINK : UI_GREY, sel);
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_tap(128, i == 0 ? 44 : 140, 3);
+        }
+    }
 }
 
 /* engine/platform/text_instant.c: the window the game printed into last */
 struct BmpWin;
 struct BmpWin *eidos_text_last_window(u32 *count);
 extern void *BMP_WIN_GetBmp(void *win) __attribute__((weak));
-extern u8 BMP_WIN_GetPosY(void *win) __attribute__((weak));
-extern u8 BMP_WIN_GetHeight(void *win) __attribute__((weak));
 extern u8 BMP_WIN_GetBgLayer(void *win) __attribute__((weak));
 
 /* A pixel of a 4-bit tiled message bitmap. */
@@ -1661,44 +1880,44 @@ static int evo_px(const u8 *px, int bw, int x, int y)
     return (x & 1) != 0 ? v >> 4 : v & 15;
 }
 
-/* The game's message, in the interface's own box over the game's: the
- * window the scene printed into (only one printed since the scene began),
- * its text pixels drawn at the DS size, centred. */
-static void evolution_message(EidosUiCtx *c, u32 since)
+/* The game's message as the battle shows its own (recipe_battle.c,
+ * draw_battle_message): the window the game printed a message into last,
+ * its letters at the DS size in the interface's box.  The window is read as
+ * the game draws it, so a message comes page by page and letter by letter
+ * as on the DS.  Only while the game shows it (its BG on: DISPCNT bits 8 to
+ * 11 of the screen the window is on; the text stays in the bitmap after the
+ * box is hidden), and only a window printed into after `since`.  Returns
+ * whether a message is on show. */
+static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h)
 {
     u32 count;
     void *win = eidos_text_last_window(&count);
     const u8 *bmp, *px;
-    int bw, bh, cnt[16] = { 0 }, ground = 0, ink = -1, x, y, i, any = 0;
-    int ch = c->canvas->h, cw = c->canvas->w, s0, dsw, x0, top, bot, py;
+    int bw, bh, cnt[16] = { 0 }, ground = 0, ink = -1, xx, yy, i;
 
-    if (win == NULL || count == since || BMP_WIN_GetBmp == NULL || BMP_WIN_GetPosY == NULL
-        || BMP_WIN_GetHeight == NULL || BMP_WIN_GetBgLayer == NULL) {
-        return;
+    if (win == NULL || count == since || BMP_WIN_GetBmp == NULL || BMP_WIN_GetBgLayer == NULL) {
+        return 0;
     }
     {
-        /* the game shows its box only while its BG is on (DISPCNT bits 8
-         * to 11 of the screen the window is on): the text stays in the
-         * window's bitmap after the box is hidden */
         u32 layer = BMP_WIN_GetBgLayer(win);
         u32 dispcnt = bw_io_read32(layer < 4u ? 0x04000000u : 0x04001000u);
 
         if ((dispcnt & (0x100u << (layer & 3u))) == 0) {
-            return;
+            return 0;
         }
     }
     bmp = (const u8 *)BMP_WIN_GetBmp(win);
     if (bmp == NULL || (px = rdp(bmp, 0x00)) == NULL) {
-        return;
+        return 0;
     }
     bw = (int)rd16(bmp, 0x04);
     bh = (int)rd16(bmp, 0x06);
     if (bw <= 0 || bh <= 0 || bw > 256 || bh > 64) {
-        return;
+        return 0;
     }
-    for (y = 0; y < bh; y++) {
-        for (x = 0; x < bw; x++) {
-            cnt[evo_px(px, bw, x, y)]++;
+    for (yy = 0; yy < bh; yy++) {
+        for (xx = 0; xx < bw; xx++) {
+            cnt[evo_px(px, bw, xx, yy)]++;
         }
     }
     for (i = 1; i < 16; i++) {
@@ -1711,32 +1930,20 @@ static void evolution_message(EidosUiCtx *c, u32 since)
             ink = i;                    /* the letters; the rest is their shadow */
         }
     }
-    any = ink >= 0;
-    if (!any) {
-        return;                         /* no message on show */
+    if (ink < 0) {
+        return 0;                       /* an empty window: no message */
     }
-    /* the game's box, a tile above and below its window, on the DS frame
-     * that the view fits to the canvas's height */
-    dsw = 256 * ch / 192;
-    x0 = (cw - dsw) / 2;
-    top = ((int)BMP_WIN_GetPosY(win) - 1) * 8 * ch / 192;
-    bot = ((int)BMP_WIN_GetPosY(win) + (int)BMP_WIN_GetHeight(win) + 1) * 8 * ch / 192;
-    if (bot > ch) {
-        bot = ch;
-    }
-    s0 = bot - top;
-    ui_fill(c, x0, top, dsw, s0, UI_INK, 255);
-    ui_panel(c, x0 + 6, top + 4, dsw - 12, s0 - 8, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 255);
-    py = top + (s0 - bh) / 2;
-    for (y = 0; y < bh; y++) {
-        for (x = 0; x < bw && x + 16 < dsw; x++) {
-            int v = evo_px(px, bw, x, y);
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
+    for (yy = 0; yy < bh && yy + 4 < h; yy++) {
+        for (xx = 0; xx < bw && xx + 10 < w; xx++) {
+            int v = evo_px(px, bw, xx, yy);
 
             if (v != ground) {
-                ui_fill(c, x0 + 16 + x, py + y, 1, 1, v == ink ? UI_WHITE : UI_GREY, 255);
+                ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1, v == ink ? UI_WHITE : UI_GREY, 255);
             }
         }
     }
+    return 1;
 }
 
 static u32 g_evo_since;
@@ -1750,22 +1957,47 @@ static void evolution_reset(void)
 static void evolution_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     EidosUiRect all;
+    const void *sc = evo_scene();
 
-    /* When the evolution teaches a move the game asks on the bottom screen
-     * (FORGET, KEEP OLD MOVES, then the moves): while that screen shows
-     * anything, both screens are shown as the game draws them. */
-    if (bottom_shown(in)) {
-        view->mode = EIDOS_VIEW_FALLBACK;
+    /* When the evolution teaches a move the game asks on the bottom screen:
+     * FORGET or KEEP OLD MOVES (drawn here), then the moves, in the battle's
+     * party list after a battle (its page, below) or in the summary after a
+     * Rare Candy (the summary's recipe). */
+    if (sc != NULL && rds32(sc, SC_STATE) == 28 &&
+        eidos_ui_plist_outside(c, view, in, rdp(sc, SC_TCB), (const u8 *)sc + SC_PLISTHOST)) {
+        view->hide_2d = 1;          /* the scene's message box under it */
         return;
     }
+    /* the scene across the window, as a battle: the game's message box
+     * (its 2D) is not shown, its message is in the interface's box, where
+     * the battle has its own */
     view->mode = EIDOS_VIEW_WORLD;
     view->world_screen = 0;
-    view->ds_only = 1;
+    view->hide_2d = 1;
     if (!g_evo_seen) {
         (void)eidos_text_last_window(&g_evo_since);  /* printed before the scene: not its */
         g_evo_seen = 1;
     }
-    evolution_message(c, g_evo_since);
+    {
+        int cw = c->canvas->w, ch = c->canvas->h, bw = cw * 2 / 3;
+        static const char *const hints[] = { "A", "Next" };
+        static const u32 keys[] = { BW_KEY_A };
+        static const char *const hints_yn[] = { "A", "Choose", ARROWS, "Move" };
+        static const u32 keys_yn[] = { BW_KEY_A, 0 };
+        int state = sc != NULL ? rds32(sc, SC_STATE) : 0;
+
+        /* not while the list opens and closes (states 27 to 30): the
+         * question stays in the window, under the game's fade */
+        if (state < 27 || state > 30) {
+            (void)game_message(c, g_evo_since, (cw - bw) / 2, ch - FOOTER_H - 6 - 40, bw, 40);
+        }
+        if (state == 22) {
+            evolution_yesno(c, sc, (cw - bw) / 2, ch - FOOTER_H - 6 - 40, bw);
+            draw_hints(c, hints_yn, keys_yn, 2);
+            return;
+        }
+        draw_hints(c, hints, keys, 1);
+    }
     all.x = 0;
     all.y = 0;
     all.w = c->canvas->w;
@@ -1775,7 +2007,6 @@ static void evolution_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
     } else if (eidos_ui_right_click()) {
         eidos_ui_press(BW_KEY_B, 2);
     }
-    /* no footer: the game's message box is at the foot of the screen */
 }
 
 static const EidosUiRecipe recipe_evolution = {

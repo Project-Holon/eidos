@@ -2972,13 +2972,45 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
     }
 }
 
+static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8 *plist);
+
 static void pl_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    Bt b;
+
+    if (!bt_read(&b) || b.plist == NULL) {
+        return;
+    }
+    pl_draw(c, view, in, b.plist);
+}
+
+/* The same list outside a battle: the evolution scene (ov195) opens it to
+ * choose a move to forget, as a task of its own TCB system (`sys`, the
+ * scene's TcbSystem) with the scene's B_PlistHost (`host`) as its first
+ * word.  Returns 0 when the list is not up. */
+int eidos_ui_plist_outside(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, void *sys,
+                           const void *host)
+{
+    u8 *eff = (u8 *)&sys;           /* find_task_work reads the system from word 0 */
+    u8 *plist;
+
+    if (!gptr_ok((u8 *)sys)) {
+        return 0;
+    }
+    plist = find_task_work(eff, (u32)(uintptr_t)host);
+    if (plist == NULL) {
+        return 0;
+    }
+    pl_draw(c, view, in, plist);
+    return 1;
+}
+
+static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8 *plist)
 {
     static const char *const h0[] = { "A", "Select", "B", "Back" };
     static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
     static const int row_x[6] = { 63, 191, 63, 191, 63, 191 };
     static const int row_y[6] = { 23, 31, 71, 79, 119, 127 };
-    Bt b;
     PlV v;
     Modal m;
     EidosUiRect saved;
@@ -2988,16 +3020,13 @@ static void pl_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     const char *sub;
     int msg_id;
 
-    if (!bt_read(&b) || b.plist == NULL) {
-        return;
-    }
-    cursor_wake(rdp(b.plist, 0x2184));
-    pl_read(b.plist, &v);
+    cursor_wake(rdp(plist, 0x2184));
+    pl_read(plist, &v);
     sig = pl_sig(&v);
     view->mode = EIDOS_VIEW_WORLD;
     view->blur = 1;
     m = modal_rect(c, 84, 320, 460, 84, 190, 260);
-    sub = v.list_type == 3 ? "ITEM" : "SWITCH";
+    sub = v.mode == 6 || v.mode == 7 ? "FORGET A MOVE" : v.list_type == 3 ? "ITEM" : "SWITCH";
     modal_frame(c, &m, "POK\xC3\x89MON", sub, "", UI_PINK, UI_BODY2, UI_EDGE);
     ui_push(c, m.x, m.y, &saved);
     ix = 6;
