@@ -44,7 +44,11 @@ write`) to make the draft. No other secret is needed.
 2. If aletheia moved, move the pin (`cmake/aletheia_pin.cmake` and
    `docs/aletheia-pin.md`) and make sure that commit is pushed to aletheia.
 3. Commit and push to the main branch.
-4. `git tag vx.y.z` and `git push origin vx.y.z`.
+4. Actions, release, Run workflow on the main branch with "release" on.
+   The run builds and tests everything once; only when every job passes
+   does it tag `vx.y.z` on the commit it built and draft the release, so a
+   failed run leaves no tag behind (fix, push, run again).  Pushing a tag
+   (`git tag vx.y.z`, `git push origin vx.y.z`) still works too.
 5. Wait for the workflow. Open the draft release, read the notes, check the
    file list (the nine files below), try at least the Windows zip,
    and publish.
