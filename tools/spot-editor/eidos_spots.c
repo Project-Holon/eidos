@@ -196,7 +196,7 @@ typedef struct App {
     Uint32 play_t0;
     BcamFrame *sim;
     int nsim, sim_scene, sim_attacker;
-    int doubles;                    /* show a double battle                  */
+    int doubles;                    /* show a double battle (the trainer's)  */
     Sprite hero[4];                 /* the player, facing up, down, left, right */
     float hero_h;                   /* its height (map units)                */
     /* the map */
@@ -419,6 +419,7 @@ static int vis_pos(int row)
 
 static void sprite_load(Sprite *sp, int species, int back);
 static int trainer_lead(int tid);
+static int trainer_byte(int tid, int at);
 
 static void select_row(int row)
 {
@@ -439,6 +440,11 @@ static void select_row(int row)
     A.hide_mon = 0;
     A.size_custom = 0;
     A.tr_foe_id = -2;
+    /* the battle shown as the trainer fights it: two Pokemon a side for a
+     * double battle, else one */
+    A.doubles = r->kind == 'T' && r->trainer_id >= 0 && r->trainer_id < 100000
+                && trainer_byte(r->trainer_id, 2) == 1;
+    A.battle[0].dirty = A.battle[1].dirty = 1;
     if (r->kind == 'T' && r->trainer_id >= 0 && r->trainer_id < 100000) {
         int lead = trainer_lead(r->trainer_id);
 
@@ -1044,8 +1050,9 @@ static void sprite_load(Sprite *sp, int species, int back)
     bw_arc_close(&arc);
 }
 
-/* A trainer's class: byte 1 of its record in a/0/9/2.  -1 when unknown. */
-static int trainer_class(int tid)
+/* Byte `at` of a trainer's record in a/0/9/2 (1 its class, 2 its battle:
+ * 0 single, 1 double, 2 triple, 3 rotation).  -1 when unknown. */
+static int trainer_byte(int tid, int at)
 {
     BwArcFile arc;
     u8 *rec;
@@ -1056,13 +1063,18 @@ static int trainer_class(int tid)
         return -1;
     }
     n = bw_arc_member_size(&arc, (u32)tid);
-    rec = n >= 2 ? (u8 *)malloc((size_t)n) : NULL;
-    if (rec != NULL && bw_arc_read_member(&arc, (u32)tid, rec, (u32)n) >= 2) {
-        cls = rec[1];
+    rec = n > at ? (u8 *)malloc((size_t)n) : NULL;
+    if (rec != NULL && bw_arc_read_member(&arc, (u32)tid, rec, (u32)n) > at) {
+        cls = rec[at];
     }
     free(rec);
     bw_arc_close(&arc);
     return cls;
+}
+
+static int trainer_class(int tid)
+{
+    return trainer_byte(tid, 1);
 }
 
 /* A trainer's first Pokemon's species (the party file a/0/9/3: a member is
@@ -2424,16 +2436,6 @@ static void draw_top(int LW, int IW)
         clip_label(kind, LW - U(32));
         text(U(16), U(31), C_MUTED, "%s", kind);
     }
-    /* the battle shown: one Pokemon a side, or two */
-    if (button(x, U(15), U(100), U(30), "Single", !A.doubles)) {
-        A.doubles = 0;
-        A.battle[0].dirty = A.battle[1].dirty = 1;
-    }
-    if (button(x + U(104), U(15), U(100), U(30), "Double", A.doubles)) {
-        A.doubles = 1;
-        A.battle[0].dirty = A.battle[1].dirty = 1;
-    }
-    x += U(224);
     /* the actions, from the right */
     rx -= chip_w("Stop preview");
     if (A.emb != NULL) {
