@@ -194,6 +194,27 @@ pub fn for_game(lib: &[Entry]) -> Option<&Entry> {
     lib.iter().find(|e| e.code == "IRBO" && known(e).is_some() && e.path.is_file())
 }
 
+/// The game code a profile plays: its game ("black" or "white", empty
+/// Black) and language ("en", "fr", "de", "it", "es"; empty English).
+/// None for a language eidos does not play yet (Japanese).
+pub fn code_for(game: &str, language: &str) -> Option<String> {
+    let g = if game == "white" { 'A' } else { 'B' };
+    let l = match language {
+        "" | "en" => 'O',
+        "fr" => 'F',
+        "de" => 'D',
+        "it" => 'I',
+        "es" => 'S',
+        _ => return None,
+    };
+    Some(format!("IR{g}{l}"))
+}
+
+/// A good dump of the cartridge `code` in the library.
+pub fn with_code<'a>(lib: &'a [Entry], code: &str) -> Option<&'a Entry> {
+    lib.iter().find(|e| e.code == code && known(e).is_some() && e.path.is_file())
+}
+
 /// The page's view of the library, in its order.
 pub fn views(lib: &[Entry]) -> Vec<View> {
     let playing = for_game(lib).map(|e| e.path.clone());

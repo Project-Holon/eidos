@@ -142,6 +142,12 @@ fn set_profile_version(app: State<App>, name: String, version: String) -> R<()> 
 }
 
 #[tauri::command]
+fn set_profile_game(app: State<App>, name: String, game: String) -> R<()> {
+    app.refuse_if_running(&name)?;
+    profile::set_game(&app.layout, &name, &game)
+}
+
+#[tauri::command]
 fn set_profile_language(app: State<App>, name: String, language: String) -> R<()> {
     app.refuse_if_running(&name)?;
     profile::set_language(&app.layout, &name, &language)
@@ -320,12 +326,25 @@ fn play(
         None => launch::Layout::Classic,
         Some(text) => launch::Layout::parse(text).ok_or("That screen layout is not known.")?,
     };
-    // the game may have remembered another ROM since: give it the library's
-    if let (Some(e), Some(home)) = (rom::for_game(&s.roms), game_home()) {
-        let _ = rom::remember(&home, Some(&e.path));
+    // the profile's game and language: their ROM to the game, and their own
+    // game data folder (English Black keeps the default one)
+    let code = rom::code_for(&p.game, &p.language)
+        .ok_or("eidos does not play that language yet.")?;
+    let chosen = rom::with_code(&s.roms, &code).ok_or_else(|| {
+        format!("There is no ROM for this profile's game and language ({code}). Add it in Settings, ROMs.")
+    })?;
+    let home = game_home();
+    if let Some(home) = &home {
+        let _ = rom::remember(home, Some(&chosen.path));
+    }
+    let mut data_root = p.data_root.clone();
+    if data_root.is_empty() && code != "IRBO" {
+        if let Some(home) = &home {
+            data_root = home.join(format!("extract-{code}")).to_string_lossy().into_owned();
+        }
     }
     let dir = app.layout.profile(&name);
-    let args = launch::eidos_args(&dir, &p.data_root, join.as_deref(), layout);
+    let args = launch::eidos_args(&dir, &data_root, join.as_deref(), layout);
     let mut child = launch::spawn(&v.exe, &args).map_err(|e| format!("Could not start eidos: {e}"))?;
     app.running.lock().unwrap().insert(name.clone(), child.id());
     let running = app.running.clone();
@@ -620,6 +639,7 @@ pub fn run() {
             set_profile_data_root,
             rom_library,
             set_profile_language,
+            set_profile_game,
             add_roms,
             remove_rom,
             locate_rom,

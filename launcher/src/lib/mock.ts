@@ -5,9 +5,9 @@
 
 const overview = {
   profiles: [
-    { name: "Default", version: "latest", dataRoot: "", language: "" },
-    { name: "Nuzlocke", version: "0.1.4", dataRoot: "E:\\Games\\eidos", language: "fr" },
-    { name: "Randomizer", version: "local", dataRoot: "", language: "ja-kana" },
+    { name: "Default", version: "latest", dataRoot: "", language: "", game: "" },
+    { name: "Nuzlocke", version: "0.1.4", dataRoot: "E:\\Games\\eidos", language: "fr", game: "white" },
+    { name: "Randomizer", version: "local", dataRoot: "", language: "ja-kana", game: "" },
   ],
   installed: ["0.1.5", "0.1.4"],
   localBuild: "C:\\eidos-game",

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type Profile = { name: string; version: string; dataRoot: string; language: string };
+export type Profile = { name: string; version: string; dataRoot: string; language: string; game: string };
 
 export type Overview = {
   profiles: Profile[];
@@ -118,6 +118,13 @@ export const saveSettings = (s: { repo: string; token: string | null; indexUrl: 
 export const romLibrary = () => invoke<RomView[]>("rom_library");
 export const setProfileLanguage = (name: string, language: string) =>
   invoke<void>("set_profile_language", { name, language });
+export const setProfileGame = (name: string, game: string) => invoke<void>("set_profile_game", { name, game });
+
+/** The games the player's verified ROMs cover, Black first. */
+export function gamesOf(roms: RomView[]): ("black" | "white")[] {
+  const have = new Set(roms.filter((r) => r.status === "verified").map((r) => r.game));
+  return (["black", "white"] as const).filter((g) => have.has(g));
+}
 
 /** A language to play in, as the picker shows it. */
 export type LanguageChoice = { code: string; name: string; note?: string };

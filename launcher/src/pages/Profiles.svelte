@@ -11,10 +11,12 @@
     moveProfileData,
     openFolder,
     renameProfile,
+    gamesOf,
     languageName,
     languagesOf,
     romLibrary,
     setProfileDataRoot,
+    setProfileGame,
     setProfileLanguage,
     setProfileVersion,
     versionLabel,
@@ -47,9 +49,16 @@
   // The languages the ROMs cover: a profile plays in one of them.  The
   // choice always shows, greyed out while there is only one.
   let languages = $state<LanguageChoice[]>([]);
+  let games = $state<("black" | "white")[]>([]);
   $effect(() => {
-    romLibrary().then((r) => (languages = languagesOf(r))).catch(() => {});
+    romLibrary()
+      .then((r) => {
+        languages = languagesOf(r);
+        games = gamesOf(r);
+      })
+      .catch(() => {});
   });
+  const gameChoices = $derived(games.length ? games : (["black"] as ("black" | "white")[]));
   const langChoices = $derived<LanguageChoice[]>(languages.length ? languages : [{ code: "en", name: "English" }]);
   const langLabel = (l: LanguageChoice) => (l.note ? `${l.name} (${l.note})` : l.name);
 
@@ -174,6 +183,16 @@
               {/if}
             </div>
             <div class="data">
+              <span class="label lang-label">Game</span>
+              <select
+                class="lang-select"
+                value={p.game || "black"}
+                aria-label="Game of {p.name}"
+                disabled={gameChoices.length < 2 || ov.running.includes(p.name)}
+                title={gameChoices.length < 2 ? "Add ROMs of the other game in Settings to choose it" : undefined}
+                onchange={(e) => run(() => setProfileGame(p.name, e.currentTarget.value))}>
+                {#each gameChoices as g (g)}<option value={g}>{g === "black" ? "Pokémon Black" : "Pokémon White"}</option>{/each}
+              </select>
               <span class="label lang-label"><Icon name="translate" size={15} />Language</span>
               <select
                 class="lang-select"

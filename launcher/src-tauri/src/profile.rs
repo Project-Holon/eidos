@@ -27,6 +27,9 @@ pub struct ProfileFile {
     /// English.  A save is made in one language, so it is the profile's.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub language: String,
+    /// The game: "black" or "white"; empty: Black.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub game: String,
 }
 
 impl Default for ProfileFile {
@@ -35,6 +38,7 @@ impl Default for ProfileFile {
             version: LATEST.to_string(),
             data_root: String::new(),
             language: String::new(),
+            game: String::new(),
         }
     }
 }
@@ -49,6 +53,7 @@ pub struct Profile {
     pub version: String,
     pub data_root: String,
     pub language: String,
+    pub game: String,
 }
 
 /// Checks a profile name: it becomes a folder name on every platform.
@@ -136,6 +141,7 @@ pub fn list(layout: &Layout) -> io::Result<Vec<Profile>> {
                 version: f.version,
                 data_root: f.data_root,
                 language: f.language,
+                game: f.game,
             }
         })
         .collect())
@@ -169,6 +175,7 @@ pub fn create(layout: &Layout, name: &str, version: &str) -> Result<Profile, Str
         version: file.version,
         data_root: file.data_root,
         language: file.language,
+        game: file.game,
     })
 }
 
@@ -177,6 +184,20 @@ pub fn set_version(layout: &Layout, name: &str, version: &str) -> Result<(), Str
     let dir = layout.profile(name);
     let file = ProfileFile {
         version: version.to_string(),
+        ..read_file(&dir)
+    };
+    write_file(&dir, &file).map_err(|e| e.to_string())
+}
+
+/// Sets the game a profile plays ("black" or "white").
+pub fn set_game(layout: &Layout, name: &str, game: &str) -> Result<(), String> {
+    get(layout, name)?;
+    if game != "black" && game != "white" {
+        return Err("That game is not known.".into());
+    }
+    let dir = layout.profile(name);
+    let file = ProfileFile {
+        game: if game == "black" { String::new() } else { game.to_string() },
         ..read_file(&dir)
     };
     write_file(&dir, &file).map_err(|e| e.to_string())
