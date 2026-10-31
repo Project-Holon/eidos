@@ -23,7 +23,10 @@
 #include "settings_ui.h"
 
 extern int bw_mod_title_in_settings(void);
-extern int eidos_opt_proc_active(void) __attribute__((weak));  /* the game's options proc: boot builds only */
+/* Non-zero while the port's own options screen is up (set by
+ * engine/platform/mod_options_proc.c): a flag here, so a build without the
+ * game links this recipe without that screen's code. */
+int eidos_ui_options_proc_up;
 
 /* ------------------------------------------------------------------ */
 /* Keys, one at a time                                                 */
@@ -109,7 +112,7 @@ static const char *fit(char *buf, size_t n, const char *s, int maxw, int font)
 
 static int settings_match(void)
 {
-    return bw_mod_title_in_settings() || (eidos_opt_proc_active != NULL && eidos_opt_proc_active());
+    return bw_mod_title_in_settings() || eidos_ui_options_proc_up;
 }
 
 static void settings_reset(void)

@@ -298,6 +298,7 @@ extern int bw_mod_title_return_ov(void);
 extern const void *bw_mod_title_return_table(void);
 
 extern void eidos_sui_enter(void);
+extern int eidos_ui_options_proc_up;    /* engine/ui/recipe_settings.c */
 extern void eidos_sui_leave(void);
 extern int eidos_sui_input(unsigned pressed, unsigned held);
 extern int eidos_sui_row_count(void);
@@ -1101,6 +1102,7 @@ static u32 opt_init(void *proc, u32 *seq, u32 pwork, u32 work)
     func_02082BCC(w, 0, (int)sizeof(OptWork));
     w->heap = OPT_HEAP;
     g_w = w;
+    eidos_ui_options_proc_up = 1;
     eidos_sui_enter();
     return 1;
 }
@@ -1202,6 +1204,7 @@ static u32 opt_end(void *proc, u32 *seq, u32 pwork, u32 work)
     func_020315D4(proc);
     func_020306F0(OPT_HEAP);
     g_w = NULL;
+    eidos_ui_options_proc_up = 0;
     /* back to the title menu, loaded again like the game loads it */
     func_020312F8(bw_mod_title_return_ov(), bw_mod_title_return_table(), NULL);
     return 1;
@@ -1216,13 +1219,6 @@ static const struct {
 const void *eidos_opt_proc_table(void)
 {
     return &k_proc;
-}
-
-/* Non-zero while this screen is up (the one-screen layout draws it
- * itself, engine/ui/recipe_settings.c). */
-int eidos_opt_proc_active(void)
-{
-    return g_w != NULL;
 }
 
 /* ------------------------------------------------------------------ */

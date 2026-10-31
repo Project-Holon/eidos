@@ -296,6 +296,12 @@ u32 w2c_env_SDL_SetWindowIcon(struct w2c_env *e, u32 w, u32 surf)
     return SDL_SetWindowIcon((SDL_Window *)handle_ptr(w), (SDL_Surface *)handle_ptr(surf));
 }
 
+u32 w2c_env_SDL_HideWindow(struct w2c_env *e, u32 w)
+{
+    (void)e;
+    return SDL_HideWindow((SDL_Window *)handle_ptr(w));
+}
+
 u32 w2c_env_SDL_GetWindowProperties(struct w2c_env *e, u32 w)
 {
     (void)e;
