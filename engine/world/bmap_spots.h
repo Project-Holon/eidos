@@ -66,6 +66,11 @@ typedef struct BmapSpot {
                                own, two trainers who see the player together,
                                or grass whose wild battles can be double;
                                tools/battle_spots.py), from the built-in table */
+    int ally_id;            /* a battle beside a character of the story (0x86):
+                               the ally's trainer number, -1 none; from the
+                               built-in table                                  */
+    float trainer_ally[3];  /* the ally's sprite moved: right, up, back        */
+    float trainer_ally_size; /* the ally's height (1 the base)                  */
 } BmapSpot;
 #define BMAP_TRAINER_INDOOR 1.15f
 #define BMAP_VIEWS_MAX 8    /* views of a row */

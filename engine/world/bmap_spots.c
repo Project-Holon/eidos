@@ -132,6 +132,14 @@ static int parse_row(char *line, BmapSpot *r)
     }
     r->trainer_own_size = n > 49 ? field_float(f[49], 1.0f) : 1.0f;
     r->doubles = n > 50 ? field_int(f[50], 0) : 0;
+    r->ally_id = n > 51 ? field_int(f[51], -1) : -1;
+    for (i = 0; i < 3; i++) {
+        r->trainer_ally[i] = n > 52 + i ? field_float(f[52 + i], 0.0f) : 0.0f;
+    }
+    r->trainer_ally_size = n > 55 ? field_float(f[55], 1.0f) : 1.0f;
+    if (r->trainer_ally_size <= 0.0f) {
+        r->trainer_ally_size = 1.0f;
+    }
     if (r->trainer_own_size <= 0.0f) {
         r->trainer_own_size = 1.0f;
     }
@@ -209,6 +217,7 @@ static void load_text(char *text, int user)
                 int base = at >= 0 ? at : find_id(r.id, 0);
 
                 r.doubles = base >= 0 ? g_rows[base].doubles : 0;
+                r.ally_id = base >= 0 ? g_rows[base].ally_id : -1;
             }
             if (at >= 0) {
                 if (r.trainer_id < 0) {
@@ -567,6 +576,9 @@ void bmap_spots_spec(const BmapSpot *e, float px, float pz, unsigned facing, Bma
     memcpy(out->trainer_own, e->trainer_own, sizeof out->trainer_own);
     out->trainer_size = e->trainer_size;
     out->trainer_own_size = e->trainer_own_size;
+    out->has_ally = e->ally_id >= 0;
+    memcpy(out->trainer_ally, e->trainer_ally, sizeof out->trainer_ally);
+    out->trainer_ally_size = e->trainer_ally_size;
     if (e->kind == 'T') {
         /* the player faces the trainer, wherever the game left the facing */
         float vx = (float)e->tx * 16.0f + 8.0f - px, vz = (float)e->tz * 16.0f + 8.0f - pz;
@@ -635,11 +647,17 @@ static void save_row(FILE *f, const BmapSpot *r)
             (double)r->intro.side, (double)r->intro.tilt, (double)r->intro.aim);
     fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g", (double)r->cam.zoom, (double)r->cam.yaw, (double)r->cam.lift,
             (double)r->cam.side, (double)r->cam.tilt, (double)r->cam.aim);
-    fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%d\t%d\t%g\t%g\t%d\n", (double)r->trainer_foe[0],
+    fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%d\t%d\t%g\t%g\t%d", (double)r->trainer_foe[0],
             (double)r->trainer_foe[1], (double)r->trainer_foe[2], (double)r->trainer_own[0],
             (double)r->trainer_own[1], (double)r->trainer_own[2], r->view, r->pick_angle,
             r->trainer_n > 0 ? r->trainer_n : 1, (double)(r->trainer_size > 0.0f ? r->trainer_size : 1.0f),
             (double)(r->trainer_own_size > 0.0f ? r->trainer_own_size : 1.0f), r->doubles);
+    if (r->ally_id >= 0) {
+        fprintf(f, "\t%d\t%g\t%g\t%g\t%g", r->ally_id, (double)r->trainer_ally[0],
+                (double)r->trainer_ally[1], (double)r->trainer_ally[2],
+                (double)(r->trainer_ally_size > 0.0f ? r->trainer_ally_size : 1.0f));
+    }
+    fputc('\n', f);
 }
 
 int bmap_spots_save(void)

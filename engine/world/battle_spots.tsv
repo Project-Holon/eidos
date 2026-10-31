@@ -1,5 +1,5 @@
 # battle spots: tools/battle_spots.py, engine/world/bmap_spots.c
-#id	kind	zone	label	tx	tz	dir	range	rx0	rz0	rx1	rz1	px	pz	pf	mode	sx	sz	angle	ax0	az0	ax1	az1	ok	fl	fd	iz	tid	iy	ih	is	it	ia	cz	cy	ch	cs	ct	ca	tfx	tfy	tfz	tux	tuy	tuz	vw	vm	tn	tsz	tos	db
+#id	kind	zone	label	tx	tz	dir	range	rx0	rz0	rx1	rz1	px	pz	pf	mode	sx	sz	angle	ax0	az0	ax1	az1	ok	fl	fd	iz	tid	iy	ih	is	it	ia	cz	cy	ch	cs	ct	ca	tfx	tfy	tfz	tux	tuy	tuz	vw	vm	tn	tsz	tos	db	al	tax	tay	taz	tas
 T0.r1	T	0	Black City: resident 1	53	21	1	0	-	-	-	-	872	344	90	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
 T0.r2	T	0	Black City: resident 2	22	53	1	0	-	-	-	-	360	872	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
 T0.r3	T	0	Black City: resident 3	38	36	1	0	-	-	-	-	616	568	180	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
@@ -482,7 +482,7 @@ A321.6	A	321	Route 3: area 6	-	-	-	-	686	596	695	601	11112	9544	180	auto	-	-	-	-
 A321.7	A	321	Route 3: water 7	-	-	-	-	697	597	710	598	11160	9560	0	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
 A321.8	A	321	Route 3: area 8	-	-	-	-	709	596	713	601	11416	9544	180	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
 T324.0	T	324	Wellspring Cave: Team Plasma (story)	24	5	2	0	-	-	-	-	376	88	270	auto	-	-	-	-	-	-	-	1	1	0	50	294	3	0.06	1.41	1.05	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	1	-	-	0
-T324.0b	T	324	Wellspring Cave: Team Plasma (story)	24	5	2	0	-	-	-	-	376	88	270	auto	-	-	-	-	-	-	-	0	-	-	-	62	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	2	-	-	0
+T324.0b	T	324	Wellspring Cave: Team Plasma (story)	24	5	2	0	-	-	-	-	376	88	270	auto	-	-	-	-	-	-	-	0	-	-	-	62	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	2	-	-	1	56
 A324.1	A	324	Wellspring Cave: water 1	-	-	-	-	4	4	27	18	72	104	0	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
 A324.2	A	324	Wellspring Cave: area 2	-	-	-	-	13	3	31	13	504	88	0	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
 A324.3	A	324	Wellspring Cave: area 3	-	-	-	-	3	9	26	29	56	152	0	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
@@ -514,7 +514,7 @@ T329.7	T	329	Route 5: Artist (trainer 4)	343	436	3	3	-	-	-	-	5512	6984	90	auto	-
 T329.9	T	329	Route 5: Backpacker (trainer 5)	372	426	2	3	-	-	-	-	5944	6824	270	auto	-	-	-	-	-	-	-	0	1	0	1	45	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
 T329.8	T	329	Route 5: Musician (story)	352	431	1	0	-	-	-	-	5640	6920	0	fixed	5614	6938	270	-	-	-	-	1	1	-6	10.9028	46	0	0	1.74	1.95	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	1	-	-	0
 T329.s11a	T	329	Route 5: Pokemon Trainer (story)	353	433	1	0	-	-	-	-	5656	6936	0	auto	-	-	-	-	-	-	-	0	-	-	-	90	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	3	-	-	0
-T329.s11b	T	329	Route 5: Preschooler (story)	353	433	1	0	-	-	-	-	5656	6936	0	auto	-	-	-	-	-	-	-	0	-	-	-	401	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	2	-	-	0
+T329.s11b	T	329	Route 5: Preschooler (story)	353	433	1	0	-	-	-	-	5656	6936	0	auto	-	-	-	-	-	-	-	0	-	-	-	401	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	2	-	-	1	90
 A329.1	A	329	Route 5: area 1	-	-	-	-	333	423	371	429	5336	6776	0	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	1
 T331.2	T	331	Route 6: Pokemon Ranger (trainer 1)	152	383	1	4	-	-	-	-	2440	6200	0	auto	-	-	-	-	-	-	-	0	1	0	1	186	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0
 T331.3	T	331	Route 6: Scientist (trainer 2)	137	375	3	4	-	-	-	-	2216	6008	90	auto	-	-	-	-	-	-	-	0	1	0	1	257	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	-	0

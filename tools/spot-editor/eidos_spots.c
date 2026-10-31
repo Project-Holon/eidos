@@ -187,6 +187,8 @@ typedef struct App {
     int hide_mon;                   /* the Pokemon hidden in them (the trainers alone) */
     int gender;                     /* your trainer: 0 the boy, 1 the girl (spot_editor.ini), -1 not read yet */
     int tr_own_gender;              /* the one tr_own shows, -2 none yet       */
+    Sprite tr_ally;                 /* the ally's picture, in a battle beside one */
+    int tr_ally_id;                 /* the trainer tr_ally shows, -2 none yet  */
     int species[2];                 /* the sprites shown: foe, yours         */
     /* the battle camera played (engine/world/bcam_sim.c): the scene chosen
      * (0 the wild intro, 1 the trainer intro, 2 idle, 3 and on the moves
@@ -333,6 +335,9 @@ static int changed_row(const BmapSpot *r)
            || r->foe_dz != d.foe_dz || memcmp(&r->intro, &d.intro, sizeof r->intro) != 0
            || memcmp(&r->cam, &d.cam, sizeof r->cam) != 0 || memcmp(r->trainer_foe, d.trainer_foe, sizeof d.trainer_foe) != 0
            || memcmp(r->trainer_own, d.trainer_own, sizeof d.trainer_own) != 0
+           || memcmp(r->trainer_ally, d.trainer_ally, sizeof d.trainer_ally) != 0
+           || r->trainer_size != d.trainer_size || r->trainer_own_size != d.trainer_own_size
+           || r->trainer_ally_size != d.trainer_ally_size
            || r->pick_angle != d.pick_angle;
 }
 
@@ -1221,6 +1226,20 @@ static void gender_write(void)
     }
 }
 
+/* The ally's picture: its back, from a/0/7/3 (0 and 1 the player's, 2
+ * Professor Juniper, 3 Cheren, 4 and 5 the player's throwing), by its class
+ * ("Pokemon Trainer", 37: Cheren); another class shows its front. */
+static void ally_load(Sprite *sp, int tid)
+{
+    if (tid < 0) {
+        memset(sp, 0, sizeof *sp);
+    } else if (trainer_class(tid) == 37) {
+        trainer_load(sp, 3, 1);
+    } else {
+        trainer_load(sp, tid, 0);
+    }
+}
+
 /* The trainers' pictures for the row on show. */
 static void trainer_refresh(void)
 {
@@ -1239,6 +1258,12 @@ static void trainer_refresh(void)
         free(A.tr_own.rgba);
         trainer_load(&A.tr_own, A.gender, 1);
         A.tr_own_gender = A.gender;
+    }
+    tid = r != NULL ? r->ally_id : -1;
+    if (A.tr_ally_id != tid) {
+        free(A.tr_ally.rgba);
+        ally_load(&A.tr_ally, tid);
+        A.tr_ally_id = tid;
     }
 }
 
@@ -1929,7 +1954,7 @@ static void draw_battle_view(int i)
                                      { 2.43f, 0.4f, -10.38f }, { -2.2f, 0.4f, -11.56f } };
     float p[16][3], d[16], sc[16];
     const Sprite *sp[16];
-    int kind[16];                   /* 0 a Pokemon, 1 your trainer, 2 the foe's */
+    int kind[16];                   /* 0 a Pokemon, 1 your trainer, 2 the foe's, 3 your ally */
     int fixed[16] = { 0 };          /* a trainer at an effect script's own point (moved by the warp) */
     int n = 0, a, b;
 
@@ -1941,13 +1966,13 @@ static void draw_battle_view(int i)
         memcpy(v->at, cf->at, sizeof v->at);
         v->dirty = 1;
         for (a = 0; a < cf->np && n < 16; a++) {
-            int tr = cf->slot[a] > 7;
+            int tr = cf->slot[a] > 7, ally = cf->slot[a] == 12 && A.tr_ally.rgba != NULL;
 
-            if (tr && (cf->slot[a] > 13 || (cf->slot[a] & 1 ? A.tr_foe.rgba : A.tr_own.rgba) == NULL)) {
+            if (tr && !ally && (cf->slot[a] > 13 || (cf->slot[a] & 1 ? A.tr_foe.rgba : A.tr_own.rgba) == NULL)) {
                 continue;
             }
             memcpy(p[n], cf->pos[a], sizeof p[n]);
-            if (tr && !(cf->slot[a] & 1)) {
+            if (tr && !(cf->slot[a] & 1) && !ally) {
                 /* the player's trainer away from its slot (the send-out's
                  * own point, -15 -11 0): the same move from its slot, as
                  * the game does (sdk/battle_view.c, own_trainer_point) */
@@ -1966,9 +1991,10 @@ static void draw_battle_view(int i)
                     }
                 }
             }
-            kind[n] = tr ? 1 + (cf->slot[a] & 1) : 0;
+            kind[n] = ally ? 3 : tr ? 1 + (cf->slot[a] & 1) : 0;
             sc[n] = slot_scale(cf->slot[a]);
-            sp[n++] = tr ? ((cf->slot[a] & 1) ? &A.tr_foe : &A.tr_own) : (cf->slot[a] & 1) ? &A.foe : &A.own;
+            sp[n++] = ally ? &A.tr_ally : tr ? ((cf->slot[a] & 1) ? &A.tr_foe : &A.tr_own)
+                    : (cf->slot[a] & 1) ? &A.foe : &A.own;
         }
     } else {
         memcpy(v->eye, k_cam[i][0], sizeof v->eye);
@@ -2009,6 +2035,13 @@ static void draw_battle_view(int i)
                     n++;
                 }
             }
+            if (A.tr_ally.rgba != NULL && n < 16 && bcam_sim_slot(12, p[n]) == 0) {
+                /* your ally at its own slot (12), beside you */
+                sp[n] = &A.tr_ally;
+                kind[n] = 3;
+                sc[n] = slot_scale(12);
+                n++;
+            }
             {
                 /* and where it comes back to mid-battle, when it has a line
                  * there: effect 63's point (0.74, 0.4, -9) and its slide in
@@ -2038,7 +2071,7 @@ static void draw_battle_view(int i)
         float slot[3];
         const float *at = p[a];
 
-        if (kind[a] != 0 && bcam_sim_slot(kind[a] == 2 ? 9 : 8, slot) == 0) {
+        if (kind[a] != 0 && bcam_sim_slot(kind[a] == 3 ? 12 : kind[a] == 2 ? 9 : 8, slot) == 0) {
             at = slot;
         }
         sc[a] = (sp[a] == &A.own ? 2.0f : 1.0f) * bmap_cmd_depth(at)
@@ -2059,7 +2092,7 @@ static void draw_battle_view(int i)
         }
         if (kind[a] != 0) {
             /* the place's offset for this trainer: right, up, back */
-            const float *o = view_offsets(kind[a] == 2);
+            const float *o = kind[a] == 3 ? cur()->trainer_ally : view_offsets(kind[a] == 2);
 
             p[a][0] += o[0];
             p[a][1] += o[1];
@@ -2069,6 +2102,9 @@ static void draw_battle_view(int i)
             }
             if (kind[a] == 1 && cur()->trainer_own_size > 0.0f) {
                 sc[a] *= cur()->trainer_own_size;  /* the player's own trainer, the same */
+            }
+            if (kind[a] == 3 && cur()->trainer_ally_size > 0.0f) {
+                sc[a] *= cur()->trainer_ally_size; /* the ally, the same */
             }
         }
     }
@@ -3061,6 +3097,28 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
             y += SL_ROW + U(4);
         }
     }
+    if (r->ally_id >= 0) {
+        float *tr = r->trainer_ally, before = tr[0] + 3.0f * tr[1] + 7.0f * tr[2] + 11.0f * r->trainer_ally_size;
+
+        text(x, y, C_TEXT, "Ally trainer");
+        y += U(28);
+        setting(38, x, y, third, "Right", "%+.1f", &tr[0], -10.0f, 10.0f, 0.1f, 0);
+        setting(39, x + third + U(16), y, third, "Up", "%+.1f", &tr[1], -10.0f, 10.0f, 0.1f, 0);
+        setting(40, x + 2 * (third + U(16)), y, third, "Back", "%+.1f", &tr[2], -10.0f, 10.0f, 0.1f, 0);
+        y += SL_ROW + U(4);
+        if (r->trainer_ally_size <= 0.0f) {
+            r->trainer_ally_size = 1.0f;
+        }
+        setting(41, x, y, w, "Size", "%.2f", &r->trainer_ally_size, 0.5f, 2.0f, 0.01f, 0);
+        if (r->trainer_ally_size <= 0.0f) {
+            r->trainer_ally_size = 1.0f;
+        }
+        if (before != tr[0] + 3.0f * tr[1] + 7.0f * tr[2] + 11.0f * r->trainer_ally_size) {
+            A.show_tr = 1;
+            A.battle[0].dirty = A.battle[1].dirty = 1;
+        }
+        y += SL_ROW + U(4);
+    }
     /* the Pokemon shown in the views (Shift: ten at a time) */
     y = section(x, y + U(4), w, "POKEMON SHOWN");
     for (i = 0; i < 2; i++) {
@@ -3106,6 +3164,8 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
             memset(r->trainer_own, 0, sizeof r->trainer_own);
             r->trainer_size = 1.0f;
             r->trainer_own_size = 1.0f;
+            memset(r->trainer_ally, 0, sizeof r->trainer_ally);
+            r->trainer_ally_size = 1.0f;
             save_now();
             say("Back to auto");
         }
@@ -4051,6 +4111,7 @@ int main(int argc, char **argv)
     A.species[1] = SPECIES_OWN;
     A.tr_foe_id = -2;
     A.tr_own_gender = -2;
+    A.tr_ally_id = -2;
     A.gender = -1;
     sprite_load(&A.foe, SPECIES_FOE, 0);
     sprite_load(&A.own, SPECIES_OWN, 1);

@@ -46,9 +46,9 @@ INC = os.path.join(HERE, '..', 'engine', 'world', 'battle_spots_tsv.inc')
 COLUMNS = ['id', 'kind', 'zone', 'label', 'tx', 'tz', 'dir', 'range',
            'rx0', 'rz0', 'rx1', 'rz1', 'px', 'pz', 'pf',
            'mode', 'sx', 'sz', 'angle', 'ax0', 'az0', 'ax1', 'az1', 'ok', 'fl', 'fd', 'iz', 'tid', 'iy', 'ih', 'is', 'it', 'ia',
-           'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vw', 'vm', 'tn', 'tsz', 'tos', 'db']
+           'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vw', 'vm', 'tn', 'tsz', 'tos', 'db', 'al', 'tax', 'tay', 'taz', 'tas']
 PLACEMENT = ['mode', 'sx', 'sz', 'angle', 'ax0', 'az0', 'ax1', 'az1', 'ok', 'fl', 'fd', 'iz', 'iy', 'ih', 'is', 'it', 'ia',
-             'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vm', 'tsz', 'tos']
+             'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vm', 'tsz', 'tos', 'tax', 'tay', 'taz', 'tas']
 
 WATER = {0x14, 0x17, 0x1C, 0x3D, 0x3E, 0x3F, 0x42, 0x43}
 GYMS = {7: 'Striaton Gym', 18: 'Nacrene Gym', 19: 'Nacrene Gym', 29: 'Castelia Gym',
@@ -309,6 +309,27 @@ class Rom:
             if struct.unpack_from('<H', f, o)[0] == 0x64:
                 ob = struct.unpack_from('<H', f, o + 2)[0]
                 out[ob] = out.get(ob, 0) + 1
+        return out
+
+    def multi_battles(self, z):
+        """{first opponent: ally} of the zone's 0x86 StartMultiTrainerBattle
+        commands (u16 ally, opponent, opponent, flags): the battles the player
+        fights beside a character of the story (Cheren)."""
+        sid = struct.unpack_from('<H', self.zh, z * 48 + 6)[0]
+        if sid >= len(self.scripts):
+            return {}
+        f = self.scripts[sid]
+        ntr = len(self.trdata)
+        out = {}
+        for o in range(0, len(f) - 9):
+            if struct.unpack_from('<H', f, o)[0] != 0x86:
+                continue
+            args = struct.unpack_from('<4H', f, o + 2)
+            if args[0] == 0 or args[0] in STRAY_TRAINERS or not all(a == 0 or a < ntr for a in args):
+                continue
+            opp = [t for t in args[1:3] if t]
+            if opp:
+                out.setdefault(opp[0], args[0])
         return out
 
     def trainer_battle(self, tid):
@@ -636,6 +657,15 @@ def mark_doubles(rom, rows):
         if r['kind'] == 'T':
             byzone[r['zone']].append(r)
     for z, trs in byzone.items():
+        # a battle beside an ally (the column al: the ally's trainer number,
+        # the first of the versions by the player's starter)
+        multi = rom.multi_battles(z)
+        for r in trs:
+            tid = r.get('tid', '-')
+            if isinstance(tid, int):
+                ally = next((a for o, a in multi.items() if tid <= o < tid + int(r.get('tn', 1))), None)
+                if ally is not None:
+                    r['al'] = ally
         tiles = None
         lines = {}
         for r in trs:
@@ -648,7 +678,7 @@ def mark_doubles(rom, rows):
             own = isinstance(tid, int) and tid < 100000 and rom.trainer_battle(tid) == 1
             mine = lines.get(r['id'], set())
             tag = any(mine & other for i, other in lines.items() if i != r['id'])
-            r['db'] = int(own or tag)
+            r['db'] = int(own or tag or r.get('al', '-') != '-')
 
 
 # ---------------------------------------------------------------- the table
@@ -749,6 +779,7 @@ def cmd_merge(args):
             base = rows.get(r['id'])
             if base is not None:
                 r['db'] = base.get('db', '-')   # the battle's kind is the data's
+                r['al'] = base.get('al', '-')
             rows[k] = r                     # a row or a view the editor added
             n += 1
     write_table(TABLE, rows)

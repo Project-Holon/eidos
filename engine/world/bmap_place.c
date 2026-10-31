@@ -1748,10 +1748,14 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     s->view_set = !sp->field;
     s->trainer_size = sp->trainer_size > 0.0f ? sp->trainer_size : 1.0f;
     s->trainer_own_size = sp->trainer_own_size > 0.0f ? sp->trainer_own_size : 1.0f;
+    s->has_ally = sp->has_ally;
+    s->trainer_ally_size = sp->trainer_ally_size > 0.0f ? sp->trainer_ally_size : 1.0f;
+    memset(s->trainer_ally, 0, sizeof s->trainer_ally);
     if (s->view_set) {
         s->cam = sp->cam;
         memcpy(s->trainer_foe, sp->trainer_foe, sizeof s->trainer_foe);
         memcpy(s->trainer_own, sp->trainer_own, sizeof s->trainer_own);
+        memcpy(s->trainer_ally, sp->trainer_ally, sizeof s->trainer_ally);
     }
     s->intro = sp->intro;
     if (s->intro.zoom <= 0.0f) {

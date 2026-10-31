@@ -94,6 +94,9 @@ typedef struct BmapScene {
     BmapIntro cam;          /* bmap_place: the command camera's settings and ... */
     float trainer_size;     /* the foe trainer's height (1 the base; BmapSpot.trainer_size) */
     float trainer_own_size; /* the player's own trainer's, the same            */
+    int has_ally;           /* a battle beside an ally: its trainer at slot 12 */
+    float trainer_ally[3];  /* ... moved (right, up, back) ...                 */
+    float trainer_ally_size; /* ... and its height                             */
     float trainer_foe[3], trainer_own[3]; /* ... the trainers' offsets (battle
                                units: right, up, back)                         */
     int view_set;           /* bmap_place: cam and the offsets are a battle's  */

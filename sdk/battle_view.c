@@ -675,8 +675,17 @@ static void placed_free(BvPlaced *p)
  * (odd positions) up by dy and back by dz, and a trainer's slot (positions 8
  * to 13, the table `trainers`) by its side's own offset, right, up and back. */
 typedef struct SlotMove {
-    float dy, dz, foe[3], own[3];
+    float dy, dz, foe[3], own[3], ally[3];
+    int has_ally;
 } SlotMove;
+
+/* A trainer slot's own offsets (positions 8 to 13): the foe's side (odd),
+ * the ally's (12, in a battle beside one), else yours. */
+static const float *slot_offsets(const float *foe, const float *own, const float *ally, int has_ally,
+                                 int pos)
+{
+    return (pos & 1) ? foe : has_ally && pos == 12 ? ally : own;
+}
 
 static void slot_delta(const SlotMove *m, int trainers, uint32_t i, int32_t out[3])
 {
@@ -686,7 +695,7 @@ static void slot_delta(const SlotMove *m, int trainers, uint32_t i, int32_t out[
         out[2] -= (int32_t)(m->dz * 4096.0f);
     }
     if (trainers) {
-        const float *t = (i & 1u) == 1u ? m->foe : m->own;
+        const float *t = slot_offsets(m->foe, m->own, m->ally, m->has_ally, 8 + (int)i);
 
         out[0] += (int32_t)(t[0] * 4096.0f);
         out[1] += (int32_t)(t[1] * 4096.0f);
@@ -706,6 +715,8 @@ static void slot_move_of(const BmapScene *s, SlotMove *m)
     if (s->view_set) {
         memcpy(m->foe, s->trainer_foe, sizeof m->foe);
         memcpy(m->own, s->trainer_own, sizeof m->own);
+        memcpy(m->ally, s->trainer_ally, sizeof m->ally);
+        m->has_ally = s->has_ally;
     }
 }
 
@@ -732,7 +743,8 @@ static void fixed_point_move(int pos, int *xyz)
     }
     bmap_battle_warp(p, g_cur->s.foe_dy, g_cur->s.foe_dz);
     if (pos >= 8 && g_cur->s.view_set) {
-        const float *t = (pos & 1) ? g_cur->s.trainer_foe : g_cur->s.trainer_own;
+        const float *t = slot_offsets(g_cur->s.trainer_foe, g_cur->s.trainer_own, g_cur->s.trainer_ally,
+                                      g_cur->s.has_ally, pos);
 
         p[0] += t[0];
         p[1] += t[1];
@@ -844,9 +856,12 @@ static int own_trainer_point(int pos, const float raw[3], float out[3])
         spot[k] = (float)b[k] / 4096.0f;
     }
     if (g_cur->s.view_set) {
-        spot[0] += g_cur->s.trainer_own[0];
-        spot[1] += g_cur->s.trainer_own[1];
-        spot[2] -= g_cur->s.trainer_own[2];
+        const float *t = slot_offsets(g_cur->s.trainer_foe, g_cur->s.trainer_own, g_cur->s.trainer_ally,
+                                      g_cur->s.has_ally, pos);
+
+        spot[0] += t[0];
+        spot[1] += t[1];
+        spot[2] -= t[2];
     }
     for (k = 0; k < 3; k++) {
         e = raw[k] - spot[k];
@@ -1456,6 +1471,8 @@ void __wrap_MCSS_Draw(void *sys)
                 dg = bmap_cmd_depth(slot);
                 if (pos & 1) {
                     dg *= g_cur->s.trainer_size > 0.0f ? g_cur->s.trainer_size : 1.0f;
+                } else if (g_cur->s.has_ally && pos == 12) {
+                    dg *= g_cur->s.trainer_ally_size > 0.0f ? g_cur->s.trainer_ally_size : 1.0f;
                 } else {
                     dg *= g_cur->s.trainer_own_size > 0.0f ? g_cur->s.trainer_own_size : 1.0f;
                 }
