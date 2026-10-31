@@ -46,15 +46,23 @@ INC = os.path.join(HERE, '..', 'engine', 'world', 'battle_spots_tsv.inc')
 COLUMNS = ['id', 'kind', 'zone', 'label', 'tx', 'tz', 'dir', 'range',
            'rx0', 'rz0', 'rx1', 'rz1', 'px', 'pz', 'pf',
            'mode', 'sx', 'sz', 'angle', 'ax0', 'az0', 'ax1', 'az1', 'ok', 'fl', 'fd', 'iz', 'tid', 'iy', 'ih', 'is', 'it', 'ia',
-           'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vw', 'vm', 'tn']
+           'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vw', 'vm', 'tn', 'tsz', 'tos']
 PLACEMENT = ['mode', 'sx', 'sz', 'angle', 'ax0', 'az0', 'ax1', 'az1', 'ok', 'fl', 'fd', 'iz', 'iy', 'ih', 'is', 'it', 'ia',
-             'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vm']
+             'cz', 'cy', 'ch', 'cs', 'ct', 'ca', 'tfx', 'tfy', 'tfz', 'tux', 'tuy', 'tuz', 'vm', 'tsz', 'tos']
 
 WATER = {0x14, 0x17, 0x1C, 0x3D, 0x3E, 0x3F, 0x42, 0x43}
 GYMS = {7: 'Striaton Gym', 18: 'Nacrene Gym', 19: 'Nacrene Gym', 29: 'Castelia Gym',
         63: 'Nimbasa Gym', 97: 'Driftveil Gym', 108: 'Mistralton Gym',
         114: 'Icirrus Gym', 121: 'Opelucid Gym'}
 STRAY_TRAINERS = {30}
+# Black City (Black) and White Forest (White): their residents are not in
+# the zone's event file.  The game places them (ov020 field_wfbc_data_local.c)
+# at the tiles of a table in archive a/1/5/4, member 0x22 for Black City and
+# 0x23 for White Forest: ten (x, z) byte pairs, the residents' places, before
+# the items'.  A resident the player talks to can battle; White Forest's grass
+# has wild Pokemon although its zone header names no encounter table.
+WFBC = {0: 0x22, 424: 0x23}
+WFBC_WILD = {424}
 LEADER_CODES = {85, 86, 87, 88, 89, 90, 91, 162, 178, 179}
 # NPC dir codes: 0 up (-z), 1 down (+z), 2 left (-x), 3 right (+x)
 DIRV = {0: (0, -1), 1: (0, 1), 2: (-1, 0), 3: (1, 0)}
@@ -118,6 +126,7 @@ class Rom:
         msgs = narc(os.path.join(a, '0', '0', '2'))
         self.places = msg_bank(msgs[89])
         self.classes = msg_bank(msgs[191])
+        self.wfbc = narc(os.path.join(a, '1', '5', '4'))
         self.species = msg_bank(msgs[70])
         self.nzones = len(self.zh) // 48
 
@@ -407,8 +416,8 @@ def analyse(rom):
                     n['script'] = sn
                     n['walked'] = bool(mv)
                     storied.append(n)
-        has_enc = info['encount'] != 0xFFFF
-        if not trainers and not has_enc and not storied and not rom.story_battles(z):
+        has_enc = info['encount'] != 0xFFFF or z in WFBC_WILD
+        if not trainers and not has_enc and not storied and not rom.story_battles(z) and z not in WFBC:
             continue
         tiles = rom.tiles(z)
         if not tiles:
@@ -437,6 +446,19 @@ def analyse(rom):
                              tid=n['script'] - 3000 if n['script'] >= 3000 else '-',
                              tx=n['gx'], tz=n['gz'], dir=n['dir'], range=rng,
                              px=px, pz=pz, pf=facing_deg(-vx, -vz), mode='auto'))
+        if z in WFBC:
+            pos = rom.wfbc[WFBC[z]]
+            for k in range(10):
+                tx, tz = pos[2 * k], pos[2 * k + 1]
+                near = [(tx + dx, tz + dz) for dx, dz in (DIRV[1], DIRV[0], DIRV[2], DIRV[3])]
+                near = [t for t in near if walk_cost(tiles.get(t)) is not None] or [(tx, tz + 1)]
+                best = min(near, key=lambda t: dist.get(t, 1 << 30))
+                fx, fz = tx - best[0], tz - best[1]
+                px, pz = tile_center(best)
+                rows.append(dict(id='T%d.r%d' % (z, k + 1), kind='T', zone=z,
+                                 label='%s: resident %d' % (name, k + 1), tid='-',
+                                 tx=tx, tz=tz, dir=1, range=0,
+                                 px=px, pz=pz, pf=facing_deg(fx, fz), mode='auto'))
         # a gym leader's battle is the leader row's (the leader's own talk
         # script jumps to it): its trainers go there, no second row.  The
         # leaders of one gym (the starter picks one) are one range.
@@ -563,6 +585,20 @@ def analyse(rom):
                                  label='%s: %s %d' % (name, 'water' if water else 'area', np),
                                  rx0=min(xs), rz0=min(zs), rx1=max(xs), rz1=max(zs),
                                  px=px, pz=pz, pf=pf, mode='auto'))
+            if np == 0 and z in WFBC_WILD:
+                # White Forest's grass comes with the blocks the game builds
+                # around the residents, not in the map's own tiles: one area
+                # over the walkable ground
+                walk = [t for t in tiles if walk_cost(tiles.get(t)) is not None]
+                if walk:
+                    xs = [t[0] for t in walk]
+                    zs = [t[1] for t in walk]
+                    mx, mz = (min(xs) + max(xs)) / 2, (min(zs) + max(zs)) / 2
+                    mid = min(walk, key=lambda t: ((t[0] - mx) ** 2 + (t[1] - mz) ** 2, t))
+                    px, pz = tile_center(mid)
+                    rows.append(dict(id='A%d.1' % z, kind='A', zone=z, label='%s: area 1' % name,
+                                     rx0=min(xs), rz0=min(zs), rx1=max(xs), rz1=max(zs),
+                                     px=px, pz=pz, pf=0, mode='auto'))
     return rows
 
 

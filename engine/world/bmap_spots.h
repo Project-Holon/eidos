@@ -61,6 +61,7 @@ typedef struct BmapSpot {
     float trainer_size;     /* the foe trainer's height: 1 the base, BMAP_TRAINER_INDOOR
                                the spot editor's "Indoor" (a room's furniture
                                makes the base look short)                      */
+    float trainer_own_size; /* the player's own trainer's height, the same way  */
 } BmapSpot;
 #define BMAP_TRAINER_INDOOR 1.15f
 #define BMAP_VIEWS_MAX 8    /* views of a row */

@@ -1,5 +1,15 @@
 # battle spots: tools/battle_spots.py, engine/world/bmap_spots.c
-#id	kind	zone	label	tx	tz	dir	range	rx0	rz0	rx1	rz1	px	pz	pf	mode	sx	sz	angle	ax0	az0	ax1	az1	ok	fl	fd	iz	tid	iy	ih	is	it	ia	cz	cy	ch	cs	ct	ca	tfx	tfy	tfz	tux	tuy	tuz	vw	vm	tn
+#id	kind	zone	label	tx	tz	dir	range	rx0	rz0	rx1	rz1	px	pz	pf	mode	sx	sz	angle	ax0	az0	ax1	az1	ok	fl	fd	iz	tid	iy	ih	is	it	ia	cz	cy	ch	cs	ct	ca	tfx	tfy	tfz	tux	tuy	tuz	vw	vm	tn	tsz	tos
+T0.r1	T	0	Black City: resident 1	53	21	1	0	-	-	-	-	872	344	90	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r2	T	0	Black City: resident 2	22	53	1	0	-	-	-	-	360	872	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r3	T	0	Black City: resident 3	38	36	1	0	-	-	-	-	616	568	180	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r4	T	0	Black City: resident 4	16	38	1	0	-	-	-	-	264	632	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r5	T	0	Black City: resident 5	46	50	1	0	-	-	-	-	744	824	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r6	T	0	Black City: resident 6	41	12	1	0	-	-	-	-	664	184	180	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r7	T	0	Black City: resident 7	23	23	1	0	-	-	-	-	376	392	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r8	T	0	Black City: resident 8	6	27	1	0	-	-	-	-	104	456	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r9	T	0	Black City: resident 9	39	23	1	0	-	-	-	-	632	392	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T0.r10	T	0	Black City: resident 10	15	15	1	0	-	-	-	-	248	232	180	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
 T5.14	T	5	Black City: Roughneck (story)	4	15	1	0	-	-	-	-	72	264	0	fixed	66	250	357	-	-	-	-	1	1	-3	16.3938	615	0	0	2.43	1.05	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	1
 T5.15	T	5	Black City: Backpacker (story)	22	15	1	0	-	-	-	-	360	264	0	fixed	360	264	0	-	-	-	-	1	1	0	5.11168	528	0	0	2.73	0.75	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	1
 A6.1	A	6	Striaton City: water 1	-	-	-	-	742	581	746	589	11880	9304	0	fixed	11878	9378	0	-	-	-	-	1	1	-6	5.41838	-	0	0	0	0	0
@@ -730,5 +740,16 @@ A423.2	A	423	Route 17: water 2	-	-	-	-	672	710	703	733	10760	11640	0	auto	-	-	-	
 A423.3	A	423	Route 17: water 3	-	-	-	-	672	736	675	742	10760	11784	0	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0
 A423.4	A	423	Route 17: water 4	-	-	-	-	699	733	729	761	11256	11736	0	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0
 A423.5	A	423	Route 17: water 5	-	-	-	-	672	744	694	761	10760	11960	0	auto	-	-	-	-	-	-	-	0	1	0	1	-	0	0	0	0	0
+T424.r1	T	424	White Forest: resident 1	47	23	1	0	-	-	-	-	760	392	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r2	T	424	White Forest: resident 2	25	47	1	0	-	-	-	-	408	776	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r3	T	424	White Forest: resident 3	47	39	1	0	-	-	-	-	776	632	90	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r4	T	424	White Forest: resident 4	15	39	1	0	-	-	-	-	232	632	270	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r5	T	424	White Forest: resident 5	52	32	1	0	-	-	-	-	840	536	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r6	T	424	White Forest: resident 6	31	31	1	0	-	-	-	-	504	520	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r7	T	424	White Forest: resident 7	39	47	1	0	-	-	-	-	632	776	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r8	T	424	White Forest: resident 8	39	23	1	0	-	-	-	-	632	392	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r9	T	424	White Forest: resident 9	13	14	1	0	-	-	-	-	200	232	270	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+T424.r10	T	424	White Forest: resident 10	23	23	1	0	-	-	-	-	392	376	90	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
+A424.1	A	424	White Forest: area 1	-	-	-	-	0	0	63	63	504	504	0	auto	-	-	-	-	-	-	-	0	-	-	-	-	-	-	-	-	-
 T426.4	T	426	White Forest: School Kid (story)	9	4	2	0	-	-	-	-	136	72	270	fixed	98	66	272	-	-	-	-	1	1	-7	5.74348	529	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	1
 T426.5	T	426	White Forest: Nursery Aide (story)	9	6	2	0	-	-	-	-	136	104	270	fixed	90	102	270	-	-	-	-	1	1	-7	27.697	530	0	0	0	0	0	-	-	-	-	-	-	-	-	-	-	-	-	-	-	1

@@ -2056,6 +2056,9 @@ static void draw_battle_view(int i)
             if (kind[a] == 2 && cur()->trainer_size > 0.0f) {
                 sc[a] *= cur()->trainer_size;      /* "Indoor": the game's trainer height */
             }
+            if (kind[a] == 1 && cur()->trainer_own_size > 0.0f) {
+                sc[a] *= cur()->trainer_own_size;  /* the player's own trainer, the same */
+            }
         }
     }
     bmap_battle_camera(v->eye, v->at, &A.placed);      /* as the game draws it */
@@ -3040,6 +3043,22 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
             A.show_tr = 1;
         }
         y += SL_ROW + U(4);
+        if (i == 0) {
+            /* your trainer's height, as the foe's Size: a click on the
+             * number types it */
+            float sz = r->trainer_own_size > 0.0f ? r->trainer_own_size : 1.0f;
+
+            r->trainer_own_size = sz;
+            setting(37, x, y, w, "Size", "%.2f", &r->trainer_own_size, 0.5f, 2.0f, 0.01f, 0);
+            if (r->trainer_own_size <= 0.0f) {
+                r->trainer_own_size = sz;
+            }
+            if (r->trainer_own_size != sz) {
+                A.show_tr = 1;
+                A.battle[0].dirty = A.battle[1].dirty = 1;
+            }
+            y += SL_ROW + U(4);
+        }
     }
     /* the Pokemon shown in the views (Shift: ten at a time) */
     y = section(x, y + U(4), w, "POKEMON SHOWN");
@@ -3085,6 +3104,7 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
             memset(r->trainer_foe, 0, sizeof r->trainer_foe);
             memset(r->trainer_own, 0, sizeof r->trainer_own);
             r->trainer_size = 1.0f;
+            r->trainer_own_size = 1.0f;
             save_now();
             say("Back to auto");
         }

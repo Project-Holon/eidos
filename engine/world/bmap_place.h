@@ -62,6 +62,7 @@ typedef struct BmapPlaceSpec {
                                (battle units)                                  */
     float trainer_own[3];   /* the same for the player's own trainer sprite     */
     float trainer_size;     /* the foe trainer's height (0 or 1: the base)      */
+    float trainer_own_size; /* the player's own trainer's height, the same      */
 } BmapPlaceSpec;
 void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp);
 /* The height of a wild area's grass (its leafy sheets over the encounter

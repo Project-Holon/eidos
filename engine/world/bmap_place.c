@@ -1747,6 +1747,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     bmap_camera_intro(k_eyes[1][0], k_eyes[1][1], &sp->intro);
     s->view_set = !sp->field;
     s->trainer_size = sp->trainer_size > 0.0f ? sp->trainer_size : 1.0f;
+    s->trainer_own_size = sp->trainer_own_size > 0.0f ? sp->trainer_own_size : 1.0f;
     if (s->view_set) {
         s->cam = sp->cam;
         memcpy(s->trainer_foe, sp->trainer_foe, sizeof s->trainer_foe);

@@ -1456,6 +1456,8 @@ void __wrap_MCSS_Draw(void *sys)
                 dg = bmap_cmd_depth(slot);
                 if (pos & 1) {
                     dg *= g_cur->s.trainer_size > 0.0f ? g_cur->s.trainer_size : 1.0f;
+                } else {
+                    dg *= g_cur->s.trainer_own_size > 0.0f ? g_cur->s.trainer_own_size : 1.0f;
                 }
             }
         }
