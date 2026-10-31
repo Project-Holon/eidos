@@ -200,6 +200,15 @@ int eidos_ui_right_click(void)
     return g_right;
 }
 
+int eidos_ui_pointer(int *x, int *y, int *pressed, int *released)
+{
+    *x = g_mx;
+    *y = g_my;
+    *pressed = g_pressed;
+    *released = g_released;
+    return g_down;
+}
+
 int eidos_ui_wheel(EidosUiRect r)
 {
     r.x += g_ctx.ox;
@@ -1240,7 +1249,8 @@ static int screen_with_3d(void)
 /*
  * For checks only: EIDOS_UI_MOUSE scripts the mouse in window pixels, a
  * comma-separated list of events "frame:x:y" (move there and click: down
- * that frame, up two frames later), "frame:x:y:m" (move only, a hover) and
+ * that frame, up two frames later), "frame:x:y:m" (move only, a hover, or
+ * a drag while held), "frame:x:y:d" / "frame:x:y:u" (down and held, up) and
  * "frame:x:y:w+N" / "w-N" (wheel steps).  The real mouse is ignored while
  * the script has events left.
  */
@@ -1249,6 +1259,7 @@ static ScriptedMouse g_script[256];
 static int g_script_n = -1;
 static int g_sx = -1, g_sy = -1;
 static u32 g_release_at;
+static int g_held;              /* down by a "d" event, until its "u" */
 
 static void script_load(void)
 {
@@ -1271,6 +1282,12 @@ static void script_load(void)
                 end += 2;
             } else if (end[1] == 'r') {
                 e.kind = 3;
+                end += 2;
+            } else if (end[1] == 'd') {
+                e.kind = 4;
+                end += 2;
+            } else if (end[1] == 'u') {
+                e.kind = 5;
                 end += 2;
             } else if (end[1] == 'w') {
                 e.kind = 2;
@@ -1299,7 +1316,7 @@ static int script_mouse(u32 frame, EidosUiMouse *m)
     if (g_release_at != 0 && frame >= g_release_at) {
         m->released = 1;
         g_release_at = 0;
-    } else if (g_release_at != 0) {
+    } else if (g_release_at != 0 || g_held) {
         m->down = 1;
     }
     for (i = 0; i < g_script_n; i++) {
@@ -1313,13 +1330,20 @@ static int script_mouse(u32 frame, EidosUiMouse *m)
                 m->wheel += g_script[i].wheel;
             } else if (g_script[i].kind == 3) {
                 m->right_pressed = 1;
+            } else if (g_script[i].kind == 4) {
+                m->pressed = m->down = 1;
+                g_held = 1;
+            } else if (g_script[i].kind == 5) {
+                m->down = 0;
+                m->released = 1;
+                g_held = 0;
             }
         }
         if (g_script[i].frame >= frame) {
             any = 1;
         }
     }
-    return any || g_release_at != 0 || g_sx >= 0;
+    return any || g_release_at != 0 || g_held || g_sx >= 0;
 }
 
 static void read_mouse(const EidosUiFrame *in)

@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <time.h>
 
 #include "ui.h"
@@ -1115,6 +1116,89 @@ static int encounter_effect(void)
     return fm != NULL && ov021_FIELDMAP_GetDrawMode != NULL && ov021_FIELDMAP_GetDrawMode(fm) == 2;
 }
 
+/* ------------------------------------------------------------------ */
+/* The field: the stick                                                */
+/* ------------------------------------------------------------------ */
+
+/* A stick that appears where the finger (or the mouse) goes down on the
+ * world and follows it: the knob shows the way, the player walks the one
+ * of the four directions the drag is closest to, and runs (B, with the
+ * Running Shoes) once the knob reaches the ring.  A tap that does not
+ * drag is A (talk, read a sign).  The keys are pressed as the player's own
+ * would be, so the game moves the player exactly as with the D-pad. */
+#define STICK_R      18     /* the ring, canvas pixels                     */
+#define STICK_KNOB   7
+#define STICK_DEAD   5      /* a drag shorter than this walks nowhere      */
+#define STICK_TAP    15u    /* frames: a shorter press with no drag is A   */
+
+typedef struct Stick {
+    int on;                 /* held, down on the world                     */
+    int ax, ay;             /* where it went down                          */
+    int moved;              /* the drag left the dead zone                 */
+    u32 since;
+} Stick;
+
+static Stick g_stick;
+
+/* `top`: the world starts under it (the bar); `blocked`: an event runs or
+ * the bar moves, so no stick starts and a held one lets go. */
+static void field_stick(EidosUiCtx *c, const EidosUiFrame *in, int top, int blocked)
+{
+    int x, y, pressed, released, down, dx, dy, adx, ady, kx, ky;
+    double dist;
+    u32 key;
+
+    down = eidos_ui_pointer(&x, &y, &pressed, &released);
+    if (pressed && !blocked && x >= 0 && y > top) {
+        g_stick.on = 1;
+        g_stick.ax = x;
+        g_stick.ay = y;
+        g_stick.moved = 0;
+        g_stick.since = in->frame;
+    }
+    if (!g_stick.on) {
+        return;
+    }
+    if (!down || blocked) {
+        if (released && !blocked && !g_stick.moved && in->frame - g_stick.since < STICK_TAP) {
+            eidos_ui_press(BW_KEY_A, 4);
+        }
+        g_stick.on = 0;
+        return;
+    }
+    dx = x - g_stick.ax;
+    dy = y - g_stick.ay;
+    dist = sqrt((double)dx * dx + (double)dy * dy);
+    if (dist >= STICK_DEAD) {
+        g_stick.moved = 1;
+    }
+    if (g_stick.moved && dist >= STICK_DEAD) {
+        adx = dx < 0 ? -dx : dx;
+        ady = dy < 0 ? -dy : dy;
+        key = adx >= ady ? (dx > 0 ? BW_KEY_RIGHT : BW_KEY_LEFT) : (dy > 0 ? BW_KEY_DOWN : BW_KEY_UP);
+        if (dist >= STICK_R) {
+            key |= BW_KEY_B;
+        }
+        eidos_ui_press(key, 2);
+    }
+    /* the ring where it went down, the knob under the finger, kept on the
+     * ring; the ring turns cyan while running */
+    kx = dx;
+    ky = dy;
+    if (dist > STICK_R) {
+        kx = (int)(dx * STICK_R / dist);
+        ky = (int)(dy * STICK_R / dist);
+    }
+    ui_ellipse(c, g_stick.ax - STICK_R, g_stick.ay - STICK_R, 2 * STICK_R + 1, 2 * STICK_R + 1,
+               UI_INK, UI_NONE, 90);
+    ui_ellipse(c, g_stick.ax - STICK_R, g_stick.ay - STICK_R, 2 * STICK_R + 1, 2 * STICK_R + 1,
+               UI_NONE, dist >= STICK_R ? UI_CYAN : UI_WHITE, dist >= STICK_R ? 220 : 120);
+    ui_ellipse(c, g_stick.ax + kx - STICK_KNOB, g_stick.ay + ky - STICK_KNOB, 2 * STICK_KNOB + 1,
+               2 * STICK_KNOB + 1, UI_WHITE, UI_NONE, 150);
+    ui_ellipse(c, g_stick.ax + kx - STICK_KNOB, g_stick.ay + ky - STICK_KNOB, 2 * STICK_KNOB + 1,
+               2 * STICK_KNOB + 1, UI_NONE, UI_WHITE, 230);
+}
+
 static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     FieldNow f;
@@ -1186,6 +1270,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             eidos_ui_press(BW_KEY_B, 4);
         }
     }
+    field_stick(c, in, bh - g_bar_slide,
+                GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0);
     /* Opening and closing the menu are events too: right after the menu
      * the bar is simply there, fading in with the menu fading out. */
     if (in->frame - g_menu_last_frame <= 90u && !banner_shown(&f)) {
@@ -1316,6 +1402,7 @@ static void field_reset(void)
 {
     g_show_cgear = 0;
     g_bar_slide = BAR_HIDDEN;
+    g_stick.on = 0;
 }
 
 static const EidosUiRecipe recipe_field = {

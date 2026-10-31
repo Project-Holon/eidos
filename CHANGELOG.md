@@ -5,6 +5,11 @@ Each release's notes on GitHub start with its section here
 
 ## Unreleased
 
+- Walking by touch or mouse (one-screen): press on the world and drag. A
+  stick appears where you pressed and its knob follows; the player walks
+  the way the drag points (up, down, left or right) and runs once the
+  knob reaches the ring (the ring turns cyan; Running Shoes needed). A
+  short tap that does not drag is A, to talk or read a sign.
 - Fixed a crash at the start of every evolution: the scene turns its
   model with a routine the PC build did not have.
 - Fixed sorting the bag, which would have crashed the same way.

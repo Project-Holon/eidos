@@ -211,6 +211,10 @@ int  eidos_ui_wheel(EidosUiRect r);
 /* The right button went down this frame (B), from the real mouse or the
  * test script; use this rather than EidosUiFrame.mouse.right_pressed. */
 int  eidos_ui_right_click(void);
+/* The pointer in canvas pixels (-1 when outside), whether the left button
+ * went down or up this frame; returns whether it is held.  For a recipe
+ * that follows a drag (the field's stick) rather than a click. */
+int  eidos_ui_pointer(int *x, int *y, int *pressed, int *released);
 /* Whether a screen draws its keys' cursor: not while the mouse is the
  * device in use (it moved or clicked since the last key), so the mouse's
  * highlight and the keys' never show two different things. */
