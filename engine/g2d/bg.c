@@ -983,7 +983,7 @@ static const u8 *l3_src(const G2dLayer3d *l3, u32 x, u32 y, u32 sx, u32 sy,
 /* One DS pixel's colour (and 6-bit stage) given its 3D sample. */
 static void compose_px(const G2dFrameDesc *desc, const PlanStep *plan,
                        u32 np, u32 x, u32 y, const u8 *src3, u8 *out,
-                       u8 *out6)
+                       u8 *out6, u8 *zero6)
 {
     G2dFrameSample stack[2];
     u8 top[3];
@@ -1019,6 +1019,35 @@ static void compose_px(const G2dFrameDesc *desc, const PlanStep *plan,
     }
     if (out6 != NULL) {
         six_of(out, is3d, out6);
+    }
+    if (zero6 != NULL) {
+        /* the same pixel with the 3D layer's colours black: different only
+         * where a 3D sample takes part */
+        u32 k;
+        int any3d = 0;
+
+        for (k = 0; k < n; k++) {
+            if (stack[k].is_3d) {
+                stack[k].rgb[0] = stack[k].rgb[1] = stack[k].rgb[2] = 0;
+                any3d = 1;
+            }
+        }
+        if (!any3d && out6 != NULL) {
+            memcpy(zero6, out6, 3u);
+        } else {
+            u8 z[4];
+
+            stack_color(desc, stack, n, 0, top, &top_bit);
+            z[0] = top[0];
+            z[1] = top[1];
+            z[2] = top[2];
+            z[3] = 255;
+            is3d = (n > 0 && stack[0].is_3d) ? 1 : 0;
+            if (desc->blend != NULL) {
+                is3d = blend_pixel(desc, stack, n, top, top_bit, x, y, z);
+            }
+            six_of(z, is3d, zero6);
+        }
     }
 }
 
@@ -1082,6 +1111,9 @@ static void compose_rows(const ComposeCtx *c, u32 y0, u32 y1)
                            c->rgba + ((size_t)y * w_out + x) * 4u,
                            desc->out6 != NULL
                                ? desc->out6 + ((size_t)y * w_out + x) * 3u
+                               : NULL,
+                           desc->zero6 != NULL
+                               ? desc->zero6 + ((size_t)y * w_out + x) * 3u
                                : NULL);
                 continue;
             }
@@ -1095,12 +1127,12 @@ static void compose_rows(const ComposeCtx *c, u32 y0, u32 y1)
                     u8 *o6 = desc->out6 != NULL ? desc->out6 + at * 3u : NULL;
 
                     if (p3 != NULL) {
-                        compose_px(desc, c->plan, c->np, x, y, p3, out, o6);
+                        compose_px(desc, c->plan, c->np, x, y, p3, out, o6, NULL);
                         continue;
                     }
                     if (!have_base) {
                         compose_px(desc, c->plan, c->np, x, y, NULL, base,
-                                   base6);
+                                   base6, NULL);
                         have_base = 1;
                     }
                     memcpy(out, base, 4u);

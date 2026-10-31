@@ -851,6 +851,14 @@ typedef struct G2dFrameDesc {
      * none was (demo/eidos_boot.c, boot_gpu3d).
      */
     int                    *blend_over_3d;
+    /*
+     * Optional, like out6 (scale 1 only): the 6-bit stage the same frame
+     * has with its 3D layer's colours black, its alpha kept.  What a
+     * second compose over an opaque black 3D layer gives, made in the same
+     * pass (demo/eidos_boot.c, boot_gpu3d: the 2D a GPU-drawn 3D shows
+     * through).
+     */
+    u8                     *zero6;
 } G2dFrameDesc;
 
 void g2d_frame_compose_desc(const G2dFrameDesc *desc, u32 width, u32 height,
@@ -1070,6 +1078,12 @@ int g2d_hw_main_graphics_dsmem(const u8 *rgba3d, u8 *out);
  * the 3D layer (G2dFrameDesc.blend_over_3d): when it did not, a compose of
  * the same screen over another 3D layer has the same 2D everywhere. */
 int g2d_hw_main_blended_over_3d(void);
+/* The next main-engine compose at DS size over a 3D layer also writes
+ * `out` (256 x 192 RGBA8): the screen as g2d_hw_main_graphics_dsmem gives
+ * it over an opaque black 3D layer, from the same pass.  NULL cancels.
+ * g2d_hw_main_zero_done: 1 when the last compose wrote it. */
+void g2d_hw_main_zero_request(u8 *out);
+int g2d_hw_main_zero_done(void);
 /* The two at once (with rgba3d, and with the 3D off), on the worker pool. */
 int g2d_hw_main_graphics_pair_dsmem(const u8 *rgba3d, u8 *with3d, u8 *without);
 

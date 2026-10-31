@@ -882,10 +882,14 @@ static void boot_gpu3d(BootRun *run, int behind_done)
                 for (k = 0; run->black3d != NULL && k < 256u * 192u; k++) {
                     run->black3d[k * 4u + 3] = 255;
                 }
+            }
+            if (run->zero == NULL) {
                 run->zero = (u8 *)calloc(1, (size_t)256 * 192 * 4);
             }
-            if (run->black3d != NULL && run->zero != NULL
-                && g2d_hw_main_graphics_dsmem(run->black3d, run->zero) == 0) {
+            if (g2d_hw_main_zero_done()) {
+                zero = run->zero;       /* made by the frame's own compose */
+            } else if (run->black3d != NULL && run->zero != NULL
+                       && g2d_hw_main_graphics_dsmem(run->black3d, run->zero) == 0) {
                 zero = run->zero;
             }
         }
@@ -1307,6 +1311,17 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
         BootCapture capt;
 
         boot_capture_plan(run, &capt);
+        /* a frame that can blend 2D over the GPU's 3D (BG0 a second target)
+         * also gets its screen over a black 3D layer from the same compose
+         * (boot_gpu3d) */
+        g2d_hw_main_zero_request(NULL);
+        if (run->plat != NULL && eidos_platform_gpu3d(run->plat) && !run->gpu_real
+            && (bw_io_read16(0x04000050u) & 0x0100u) != 0u) {
+            if (run->zero == NULL) {
+                run->zero = (u8 *)calloc(1, (size_t)256 * 192 * 4);
+            }
+            g2d_hw_main_zero_request(run->zero);
+        }
         (void)g2d_hw_render_dsmem_adaptive_ex(
             n, rgba3d, run->hi_top, run->hi_bottom, unsupported, run->hi_sn,
             run->frame1x_valid ? run->behind : NULL, &behind_done);

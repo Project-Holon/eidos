@@ -782,7 +782,23 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* The icons: taken from the game's sprites once the menu has settled;
      * the lit button's picture may be mid-animation, so it is taken again
      * once that button is no longer lit. */
-    eidos_ui_want_objs(1);
+    {
+        /* the sprites are drawn for the interface only while an icon
+         * still has to be cut from them (eidos_ui_want_objs: a whole
+         * screen's OBJs a frame) */
+        int need = 0;
+
+        for (i = 0; i < n; i++) {
+            const MenuIcon *ic = &g_icons[btn_of[i]];
+
+            if (!ic->ok || (ic->lit && slot_of[i] != sel)) {
+                need = 1;
+            }
+        }
+        if (need) {
+            eidos_ui_want_objs(1);
+        }
+    }
     if (ready && in->objs_rgba[1] != NULL) {
         for (i = 0; i < n; i++) {
             int s = slot_of[i];

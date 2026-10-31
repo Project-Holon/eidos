@@ -1224,6 +1224,22 @@ int g2d_hw_main_blended_over_3d(void)
     return g_main_blend3d;
 }
 
+/* g2d_hw_main_zero_request: where the next main compose writes its screen
+ * over a black 3D layer, and whether the last one did. */
+static u8 *g_zero_out;
+static int g_zero_done;
+
+void g2d_hw_main_zero_request(u8 *out)
+{
+    g_zero_out = out;
+    g_zero_done = 0;
+}
+
+int g2d_hw_main_zero_done(void)
+{
+    return g_zero_done;
+}
+
 static int compose_graphics(Engine *e, const u8 *rgba3d, u8 *rgba, u8 *out6)
 {
     int blend3d = 0;
@@ -1264,7 +1280,28 @@ static int compose_graphics(Engine *e, const u8 *rgba3d, u8 *rgba, u8 *out6)
     desc.n_rasters = e->n_rasters;
     desc.out6 = out6;
     desc.blend_over_3d = &blend3d;
-    g2d_frame_compose_desc_scaled(&desc, SCREEN_W, SCREEN_H, e->scale, rgba);
+    {
+        u8 *zero6 = NULL;
+        u32 i;
+
+        if (e->main && rgba3d != NULL && g_zero_out != NULL && e->scale == 1u) {
+            zero6 = (u8 *)malloc((size_t)SCREEN_PX * 3u);
+        }
+        desc.zero6 = zero6;
+        g2d_frame_compose_desc_scaled(&desc, SCREEN_W, SCREEN_H, e->scale, rgba);
+        if (zero6 != NULL) {
+            /* as g2d_hw_main_graphics_dsmem writes its screen */
+            for (i = 0; i < SCREEN_PX; i++) {
+                g_zero_out[i * 4u + 0] = (u8)(zero6[i * 3u + 0] * 255u / 63u);
+                g_zero_out[i * 4u + 1] = (u8)(zero6[i * 3u + 1] * 255u / 63u);
+                g_zero_out[i * 4u + 2] = (u8)(zero6[i * 3u + 2] * 255u / 63u);
+                g_zero_out[i * 4u + 3] = 255;
+            }
+            free(zero6);
+            g_zero_done = 1;
+            g_zero_out = NULL;
+        }
+    }
     if (e->main && rgba3d != NULL) {
         g_main_blend3d = blend3d;
     }
@@ -1788,11 +1825,8 @@ int g2d_hw_main_graphics_dsmem(const u8 *rgba3d, u8 *out)
 int g2d_hw_objs_dsmem(int screen, u8 *out)
 {
     G2dHwState hw;
-    G2dFrameDesc desc;
-    G2dFrameSample s;
     Engine *e;
     int main_on_top, rc = 0;
-    s32 x, y;
 
     g2d_hw_state_from_dsmem(&hw);
     if (hw.io == NULL || hw.pal == NULL || hw.oam == NULL || out == NULL) {
@@ -1814,22 +1848,47 @@ int g2d_hw_objs_dsmem(int screen, u8 *out)
         rc = -1;
     } else if ((e->dispcnt & 0x1000u) != 0
                && build_objs(e) == 0 && emit_obj_poses(e) == 0) {
-        memset(&desc, 0, sizeof(desc));
-        desc.objs = e->objs;
-        desc.n_objs = e->n_objs;
-        desc.backdrop_pal = &e->bg_pal;
-        for (y = 0; y < (s32)SCREEN_H; y++) {
-            for (x = 0; x < (s32)SCREEN_W; x++) {
-                u8 *px = out + ((size_t)y * SCREEN_W + (size_t)x) * 4u;
+        /* The OBJs alone, no windows: a pixel shows the first OBJ in order
+         * of priority, then of OAM index, that is opaque there (the order
+         * g2d_frame_stack takes them in).  Each pose is painted over the
+         * ones behind it, the frontmost last, so only the OBJs' own pixels
+         * are visited, not every OBJ at every pixel of the screen. */
+        s32 prio, i;
 
-                if (g2d_frame_stack(&desc, x, y, &s, 1) == 0 || !s.is_obj
-                    || s.pal == NULL || s.color_index >= s.pal->count) {
+        for (prio = 3; prio >= 0; prio--) {
+            for (i = (s32)e->n_objs - 1; i >= 0; i--) {
+                const G2dObjEntry *obj = &e->objs[i];
+                const G2dPose *pose = obj->pose;
+                s32 px, py;
+
+                if ((s32)obj->priority != prio || pose == NULL || pose->indices == NULL) {
                     continue;
                 }
-                px[0] = s.pal->colors[s.color_index].r;
-                px[1] = s.pal->colors[s.color_index].g;
-                px[2] = s.pal->colors[s.color_index].b;
-                px[3] = 255;
+                for (py = 0; py < (s32)pose->height; py++) {
+                    s32 y = obj->y + py;
+
+                    if (y < 0 || y >= (s32)SCREEN_H) {
+                        continue;
+                    }
+                    for (px = 0; px < (s32)pose->width; px++) {
+                        s32 x = obj->x + px;
+                        u8 index = pose->indices[(size_t)py * pose->width + (size_t)px];
+                        u8 *o;
+
+                        if (x < 0 || x >= (s32)SCREEN_W || index == 0) {
+                            continue;
+                        }
+                        o = out + ((size_t)y * SCREEN_W + (size_t)x) * 4u;
+                        if (obj->pal == NULL || index >= obj->pal->count) {
+                            memset(o, 0, 4);
+                            continue;
+                        }
+                        o[0] = obj->pal->colors[index].r;
+                        o[1] = obj->pal->colors[index].g;
+                        o[2] = obj->pal->colors[index].b;
+                        o[3] = 255;
+                    }
+                }
             }
         }
     }

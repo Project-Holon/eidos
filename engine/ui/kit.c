@@ -200,11 +200,20 @@ static void put(EidosUiCtx *c, int x, int y, u32 rgb, int a)
 
 void ui_fill(EidosUiCtx *c, int x, int y, int w, int h, u32 rgb, int a)
 {
-    int xx, yy;
+    /* the rectangle clipped once, then each pixel blended as put() would */
+    int x0 = c->ox + x, y0 = c->oy + y, x1 = x0 + w, y1 = y0 + h, px, py;
 
-    for (yy = 0; yy < h; yy++) {
-        for (xx = 0; xx < w; xx++) {
-            put(c, x + xx, y + yy, rgb, a);
+    if (x0 < c->clip.x) x0 = c->clip.x;
+    if (y0 < c->clip.y) y0 = c->clip.y;
+    if (x1 > c->clip.x + c->clip.w) x1 = c->clip.x + c->clip.w;
+    if (y1 > c->clip.y + c->clip.h) y1 = c->clip.y + c->clip.h;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > c->canvas->w) x1 = c->canvas->w;
+    if (y1 > c->canvas->h) y1 = c->canvas->h;
+    for (py = y0; py < y1; py++) {
+        for (px = x0; px < x1; px++) {
+            blend_at(c->canvas, px, py, rgb, a);
         }
     }
 }
