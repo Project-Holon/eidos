@@ -18,7 +18,7 @@ mod settings;
 mod versions;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -76,8 +76,6 @@ struct SettingsView {
     token_set: bool,
     index_url: String,
     local_build: Option<String>,
-    rom_black: Option<String>,
-    rom_white: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -316,11 +314,9 @@ fn play(
         None => launch::Layout::Classic,
         Some(text) => launch::Layout::parse(text).ok_or("That screen layout is not known.")?,
     };
-    // the game may have remembered another ROM since: give it the chosen one
-    if let (Some(rom), Some(home)) = (s.rom_black.as_deref(), game_home()) {
-        if rom.is_file() {
-            let _ = rom::remember(&home, Some(rom));
-        }
+    // the game may have remembered another ROM since: give it the library's
+    if let (Some(e), Some(home)) = (rom::for_game(&s.roms), game_home()) {
+        let _ = rom::remember(&home, Some(&e.path));
     }
     let dir = app.layout.profile(&name);
     let args = launch::eidos_args(&dir, &p.data_root, join.as_deref(), layout);
@@ -405,8 +401,6 @@ fn view(s: &Settings) -> SettingsView {
             .local_build
             .as_ref()
             .map(|p| p.to_string_lossy().into_owned()),
-        rom_black: s.rom_black.as_ref().map(|p| p.to_string_lossy().into_owned()),
-        rom_white: s.rom_white.as_ref().map(|p| p.to_string_lossy().into_owned()),
     }
 }
 
@@ -415,29 +409,93 @@ fn game_home() -> Option<PathBuf> {
     datamove::game_home(std::env::consts::OS, &|k| std::env::var(k).ok())
 }
 
-/// Sets or clears (`path` None) the ROM of a game ("black" or "white").
-/// The file must be a ROM of that game; the Black one goes to the game.
-#[tauri::command]
-fn set_rom(app: State<App>, game: String, path: Option<String>) -> R<SettingsView> {
-    let game = rom::Game::parse(&game).ok_or("That game is not known.")?;
-    let path = path.map(|p| PathBuf::from(p.trim())).filter(|p| !p.as_os_str().is_empty());
-    if let Some(p) = &path {
-        rom::check(p, game)?;
-    }
-    let mut s = app.settings.lock().unwrap();
-    match game {
-        rom::Game::Black => s.rom_black = path.clone(),
-        rom::Game::White => s.rom_white = path,
-    }
+/// Saves the library and gives the game its ROM (or none).
+fn save_roms(app: &App, s: &Settings) -> R<()> {
     s.save(&app.layout.settings_file())
         .map_err(|e| format!("Could not save the settings: {e}"))?;
-    if game == rom::Game::Black {
-        if let Some(home) = game_home() {
-            rom::remember(&home, s.rom_black.as_deref())
-                .map_err(|e| format!("Could not give the ROM to the game: {e}"))?;
+    if let Some(home) = game_home() {
+        rom::remember(&home, rom::for_game(&s.roms).map(|e| e.path.as_path()))
+            .map_err(|e| format!("Could not give the ROM to the game: {e}"))?;
+    }
+    Ok(())
+}
+
+/// The library, each file read again if it changed since.
+#[tauri::command]
+async fn rom_library(app: State<'_, App>) -> R<Vec<rom::View>> {
+    let old = app.settings().roms;
+    let fresh: Vec<rom::Entry> =
+        old.iter().map(|e| rom::refresh(e).unwrap_or_else(|| e.clone())).collect();
+    let mut s = app.settings.lock().unwrap();
+    if fresh != old && s.roms == old {
+        s.roms = fresh;
+        save_roms(&app, &s)?;
+    }
+    Ok(rom::views(&s.roms))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RomsAdded {
+    library: Vec<rom::View>,
+    added: u32,
+    /// Files not added, each "name: why".
+    refused: Vec<String>,
+}
+
+/// Adds files, or the `.nds` files of folders, to the library.  A file
+/// already in it, or the same dump at another place, is not added twice.
+#[tauri::command]
+async fn add_roms(app: State<'_, App>, paths: Vec<String>) -> R<RomsAdded> {
+    let have = app.settings().roms;
+    let mut new: Vec<rom::Entry> = Vec::new();
+    let mut refused = Vec::new();
+    for p in paths.iter().flat_map(|p| rom::files(Path::new(p.trim()))) {
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if have.iter().chain(new.iter()).any(|e| e.path == p) {
+            continue;
+        }
+        match rom::read(&p) {
+            Ok(e) if have.iter().chain(new.iter()).any(|o| o.sha1 == e.sha1 && o.path.is_file()) => {
+                refused.push(format!("{name}: the same dump is already in the list"))
+            }
+            Ok(e) => new.push(e),
+            Err(why) => refused.push(format!("{name}: {why}")),
         }
     }
-    Ok(view(&s))
+    let mut s = app.settings.lock().unwrap();
+    let added = new.len() as u32;
+    // a file found again where a missing one was takes its place
+    for e in new {
+        match s.roms.iter().position(|o| o.sha1 == e.sha1 && !o.path.is_file()) {
+            Some(i) => s.roms[i] = e,
+            None => s.roms.push(e),
+        }
+    }
+    save_roms(&app, &s)?;
+    Ok(RomsAdded { library: rom::views(&s.roms), added, refused })
+}
+
+/// Takes a file out of the library (the file itself stays).
+#[tauri::command]
+fn remove_rom(app: State<App>, path: String) -> R<Vec<rom::View>> {
+    let mut s = app.settings.lock().unwrap();
+    s.roms.retain(|e| e.path != Path::new(&path));
+    save_roms(&app, &s)?;
+    Ok(rom::views(&s.roms))
+}
+
+/// A missing file found at `to`: it takes the old one's place in the list.
+#[tauri::command]
+async fn locate_rom(app: State<'_, App>, path: String, to: String) -> R<Vec<rom::View>> {
+    let e = rom::read(Path::new(to.trim()))?;
+    let mut s = app.settings.lock().unwrap();
+    match s.roms.iter().position(|o| o.path == Path::new(&path)) {
+        Some(i) => s.roms[i] = e,
+        None => s.roms.push(e),
+    }
+    save_roms(&app, &s)?;
+    Ok(rom::views(&s.roms))
 }
 
 #[tauri::command]
@@ -512,7 +570,17 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let layout = Layout::system().ok_or("The user folder cannot be found.")?;
-            let settings = Settings::load(&layout.settings_file());
+            let mut settings = Settings::load(&layout.settings_file());
+            // the Black and White ROMs of an older launcher join the library
+            let old = settings.take_old_roms();
+            if !old.is_empty() {
+                for p in old {
+                    if let Ok(e) = rom::read(&p) {
+                        settings.roms.push(e);
+                    }
+                }
+                let _ = settings.save(&layout.settings_file());
+            }
             profile::ensure_default(&layout)?;
             app.manage(App {
                 layout,
@@ -544,7 +612,10 @@ pub fn run() {
             delete_profile,
             set_profile_version,
             set_profile_data_root,
-            set_rom,
+            rom_library,
+            add_roms,
+            remove_rom,
+            locate_rom,
             move_profile_data,
             list_remote,
             install_version,

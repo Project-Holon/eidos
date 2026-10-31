@@ -31,6 +31,9 @@ Each release's notes on GitHub start with its section here
 - macOS: Fixed core crashes on Apple Silicon (thanks @DarthMDev, #2).
 - Windows: Source builds now properly locate `SDL3.dll` (#4).
 
+### Launcher
+- **ROM Library**: Add any number of Pokémon Black and White ROMs (files, a folder, or drag and drop). Each is matched by its hash to the known good dumps, with its language, and shows as Verified, Modified or Missing. Files stay where they are, and a moved file can be located again.
+
 ### Battle Remastering & Tools
 - **Battlefields & Camera**: Arenas now support multiple camera angles, trainers have dedicated field positions, and trainer sprite scaling persists on switch-ins.
 - **Spot Editor**: Redesigned layout, added in-editor battle preview, and added opponent trainer scaling controls.

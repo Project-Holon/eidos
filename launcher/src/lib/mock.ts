@@ -37,9 +37,16 @@ const settings = {
   tokenSet: false,
   indexUrl: "",
   localBuild: "C:\\eidos-game",
-  romBlack: "D:\\ROMs\\Pokemon - Black Version (USA, Europe).nds",
-  romWhite: null,
 };
+
+const roms = [
+  { path: "D:\\ROMs\\Pokemon - Black Version (USA, Europe) (NDSi Enhanced).nds", game: "black", language: "English", status: "verified", name: "Pokemon - Black Version (USA, Europe)", inUse: true },
+  { path: "D:\\ROMs\\Pokemon - White Version (USA, Europe) (NDSi Enhanced).nds", game: "white", language: "English", status: "verified", name: "Pokemon - White Version (USA, Europe)", inUse: false },
+  { path: "D:\\ROMs\\fr\\Pokemon - Version Noire (France).nds", game: "black", language: "French", status: "verified", name: "Pokemon - Version Noire (France)", inUse: false },
+  { path: "D:\\ROMs\\jp\\pokemon_white_jp.nds", game: "white", language: "Japanese", status: "verified", name: "Pocket Monsters - White (Japan)", inUse: false },
+  { path: "E:\\old\\black_hack.nds", game: "black", language: "English", status: "modified", name: null, inUse: false },
+  { path: "F:\\usb\\Pokemon - Weisse Edition (Germany).nds", game: "white", language: "German", status: "missing", name: null, inUse: false },
+];
 
 const answers: Record<string, unknown> = {
   overview,
@@ -47,7 +54,10 @@ const answers: Record<string, unknown> = {
   mods_list: mods,
   get_settings: settings,
   save_settings: settings,
-  set_rom: settings,
+  rom_library: roms,
+  add_roms: { library: roms, added: 0, refused: [] },
+  remove_rom: roms,
+  locate_rom: roms,
   move_profile_data: "The data is now at E:\\Games\\eidos.",
   take_pending_join: null,
 };

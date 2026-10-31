@@ -38,11 +38,17 @@ export type SettingsView = {
   tokenSet: boolean;
   indexUrl: string;
   localBuild: string | null;
-  romBlack: string | null;
-  romWhite: string | null;
 };
 
-export type Game = "black" | "white";
+/** A file of the ROM library (src-tauri/src/rom.rs, View). */
+export type RomView = {
+  path: string;
+  game: "black" | "white" | null;
+  language: string;
+  status: "verified" | "modified" | "missing";
+  name: string | null;
+  inUse: boolean;
+};
 
 export const LATEST = "latest";
 export const LOCAL = "local";
@@ -109,7 +115,11 @@ export const openFolder = (what: "root" | "profile" | "mods", profile?: string) 
 export const getSettings = () => invoke<SettingsView>("get_settings");
 export const saveSettings = (s: { repo: string; token: string | null; indexUrl: string; localBuild: string | null }) =>
   invoke<SettingsView>("save_settings", s);
-export const setRom = (game: Game, path: string | null) => invoke<SettingsView>("set_rom", { game, path });
+export const romLibrary = () => invoke<RomView[]>("rom_library");
+export const addRoms = (paths: string[]) =>
+  invoke<{ library: RomView[]; added: number; refused: string[] }>("add_roms", { paths });
+export const removeRom = (path: string) => invoke<RomView[]>("remove_rom", { path });
+export const locateRom = (path: string, to: string) => invoke<RomView[]>("locate_rom", { path, to });
 export const takePendingJoin = () => invoke<string | null>("take_pending_join");
 
 /** The text of a failed command. */

@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::rom;
+
 pub const DEFAULT_REPO: &str = "Project-Holon/eidos";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,9 +21,13 @@ pub struct Settings {
     pub index_url: String,
     /// A folder holding a build of eidos, offered as the version "Local build".
     pub local_build: Option<PathBuf>,
-    /// The player's Pokemon Black ROM, given to the game (src/rom.rs).
+    /// The player's ROMs, in the order they were added (src/rom.rs).
+    pub roms: Vec<rom::Entry>,
+    /// The Black and White ROMs of launchers before the library: read once
+    /// into `roms` (`take_old_roms`), then no longer written.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rom_black: Option<PathBuf>,
-    /// The player's Pokemon White ROM.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rom_white: Option<PathBuf>,
 }
 
@@ -32,6 +38,7 @@ impl Default for Settings {
             token: String::new(),
             index_url: String::new(),
             local_build: None,
+            roms: Vec::new(),
             rom_black: None,
             rom_white: None,
         }
@@ -54,6 +61,11 @@ impl Settings {
         let tmp = path.with_extension("tmp");
         fs::write(&tmp, text + "\n")?;
         fs::rename(tmp, path)
+    }
+
+    /// The two ROMs an older launcher kept, once, for the library.
+    pub fn take_old_roms(&mut self) -> Vec<PathBuf> {
+        [self.rom_black.take(), self.rom_white.take()].into_iter().flatten().collect()
     }
 
     pub fn token(&self) -> Option<&str> {

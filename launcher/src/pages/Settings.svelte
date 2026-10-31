@@ -1,8 +1,20 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import ThemePicker from "morphe/ThemePicker.svelte";
   import { toast } from "morphe/menu.svelte";
-  import { getSettings, message, openFolder, saveSettings, setRom, type Game, type Overview } from "../lib/backend";
+  import {
+    addRoms,
+    getSettings,
+    locateRom,
+    message,
+    openFolder,
+    removeRom,
+    romLibrary,
+    saveSettings,
+    type Overview,
+    type RomView,
+  } from "../lib/backend";
   import Icon from "../lib/Icon.svelte";
   import { autoUpdate, checkForUpdate, setAutoUpdate, updates } from "../lib/updater.svelte";
 
@@ -16,7 +28,9 @@
   let token = $state("");
   let clearToken = $state(false);
   let auto = $state(autoUpdate());
-  let roms = $state<Record<Game, string | null>>({ black: null, white: null });
+  let roms = $state<RomView[]>([]);
+  let adding = $state(false);
+  let dropping = $state(false);
 
   $effect(() => {
     getSettings().then((s) => {
@@ -24,25 +38,68 @@
       indexUrl = s.indexUrl;
       localBuild = s.localBuild ?? "";
       tokenSet = s.tokenSet;
-      roms = { black: s.romBlack, white: s.romWhite };
     });
+    romLibrary().then((r) => (roms = r)).catch((e) => toast(message(e), true));
   });
 
-  const games: [Game, string][] = [
-    ["black", "Pokémon Black"],
-    ["white", "Pokémon White"],
-  ];
+  // Files dropped on the window join the library.
+  $effect(() => {
+    let stop: (() => void) | undefined;
+    getCurrentWebview()
+      .onDragDropEvent((e) => {
+        if (e.payload.type === "over" || e.payload.type === "enter") dropping = true;
+        else if (e.payload.type === "leave") dropping = false;
+        else if (e.payload.type === "drop") {
+          dropping = false;
+          add(e.payload.paths);
+        }
+      })
+      .then((f) => (stop = f))
+      .catch(() => {});
+    return () => stop?.();
+  });
 
-  async function chooseRom(game: Game, label: string) {
-    const path = await open({ multiple: false, title: label, filters: [{ name: "DS ROM", extensions: ["nds"] }] });
-    if (typeof path === "string") await applyRom(game, path);
+  const gameName = (r: RomView) =>
+    r.game === "black" ? "Pokémon Black" : r.game === "white" ? "Pokémon White" : "Unknown game";
+
+  async function add(paths: string[]) {
+    if (paths.length === 0) return;
+    adding = true;
+    try {
+      const r = await addRoms(paths);
+      roms = r.library;
+      if (r.refused.length) toast(r.refused.join("\n"), true);
+      else if (r.added) toast(r.added === 1 ? "ROM added." : `${r.added} ROMs added.`);
+    } catch (e) {
+      toast(message(e), true);
+    } finally {
+      adding = false;
+    }
   }
 
-  async function applyRom(game: Game, path: string | null) {
+  async function addFiles() {
+    const p = await open({ multiple: true, title: "Add ROMs", filters: [{ name: "DS ROM", extensions: ["nds"] }] });
+    if (p) await add(Array.isArray(p) ? p : [p]);
+  }
+
+  async function addFolder() {
+    const p = await open({ directory: true, multiple: false, title: "A folder with ROMs" });
+    if (typeof p === "string") await add([p]);
+  }
+
+  async function locate(r: RomView) {
+    const p = await open({ multiple: false, title: `Where is ${fileName(r.path)}?`, filters: [{ name: "DS ROM", extensions: ["nds"] }] });
+    if (typeof p !== "string") return;
     try {
-      const s = await setRom(game, path);
-      roms = { black: s.romBlack, white: s.romWhite };
-      toast(path ? "ROM saved." : "ROM removed.");
+      roms = await locateRom(r.path, p);
+    } catch (e) {
+      toast(message(e), true);
+    }
+  }
+
+  async function remove(r: RomView) {
+    try {
+      roms = await removeRom(r.path);
     } catch (e) {
       toast(message(e), true);
     }
@@ -94,24 +151,40 @@
 
   <div>
     <h2 class="section-label">ROMs</h2>
-    <div class="window block">
-      {#each games as [game, label] (game)}
-        <div class="inline rom">
-          <div class="grow">
-            <div class="title">{label}</div>
-            {#if roms[game]}
-              <div class="muted small path" title={roms[game]}>{fileName(roms[game] ?? "")}</div>
-            {:else}
-              <div class="muted small">Not set</div>
-            {/if}
-          </div>
-          {#if roms[game]}
-            <button class="quiet" onclick={() => applyRom(game, null)} title="Remove"><Icon name="trash" size={15} /></button>
-          {/if}
-          <button onclick={() => chooseRom(game, label)}><Icon name="folder" size={15} />Choose</button>
+    <div class="window block" class:dropping>
+      {#if roms.length === 0}
+        <div class="empty muted">No ROMs yet. Add your own dumps of Pokémon Black or White, or drop them here.</div>
+      {:else}
+        <div class="roms">
+          {#each roms as r (r.path)}
+            <div class="inline rom">
+              <span class="cart {r.game ?? ''}"></span>
+              <div class="grow">
+                <div class="inline head">
+                  <span class="title">{gameName(r)}</span>
+                  <span class="badge">{r.language}</span>
+                  {#if r.inUse}<span class="badge accent">In use</span>{/if}
+                </div>
+                <div class="muted small path" title={r.path}>{fileName(r.path)}</div>
+              </div>
+              {#if r.status === "verified"}
+                <span class="badge ok" title={r.name ?? ""}>Verified</span>
+              {:else if r.status === "modified"}
+                <span class="badge bad" title="Not a known good dump: edited, damaged or another revision">Modified</span>
+              {:else}
+                <span class="badge bad">Missing</span>
+                <button onclick={() => locate(r)}><Icon name="folder" size={15} />Locate</button>
+              {/if}
+              <button class="quiet" onclick={() => remove(r)} title="Remove from the list"><Icon name="trash" size={15} /></button>
+            </div>
+          {/each}
         </div>
-      {/each}
-      <span class="muted small">Your own dumps. eidos makes its game data from the Black ROM when it needs to.</span>
+      {/if}
+      <div class="inline buttons">
+        <span class="muted small grow">Each file is checked against the known good dumps. The files stay where they are.</span>
+        <button disabled={adding} onclick={addFolder}><Icon name="folder" size={15} />Add folder</button>
+        <button class="primary" disabled={adding} onclick={addFiles}><Icon name="plus" size={15} />{adding ? "Checking" : "Add ROMs"}</button>
+      </div>
     </div>
   </div>
 
@@ -187,6 +260,43 @@
   }
   .rom .grow {
     min-width: 0;
+  }
+  .roms {
+    display: flex;
+    flex-direction: column;
+  }
+  .rom {
+    gap: 0.7rem;
+    padding: 0.55rem 0;
+  }
+  .rom + .rom {
+    border-top: 1px solid var(--line);
+  }
+  .head {
+    gap: 0.45rem;
+  }
+  /* the cartridge's colour: Black's dark shell, White's light one */
+  .cart {
+    flex: none;
+    width: 0.8rem;
+    height: 2.1rem;
+    border-radius: 0.2rem;
+    border: 1px solid var(--line-strong);
+    background: var(--panel);
+  }
+  .cart.black {
+    background: #1b1b1f;
+  }
+  .cart.white {
+    background: #ececea;
+  }
+  .empty {
+    padding: 1.2rem 0;
+    text-align: center;
+  }
+  .dropping {
+    outline: 2px dashed var(--accent);
+    outline-offset: -6px;
   }
   .path {
     overflow: hidden;
