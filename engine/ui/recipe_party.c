@@ -1950,7 +1950,7 @@ static void evolution_yesno(EidosUiCtx *c, const void *sc, int box_x, int box_y,
 
 /* engine/platform/text_instant.c: the window the game printed into last */
 struct BmpWin;
-struct BmpWin *eidos_text_last_window(u32 *count);
+struct BmpWin *eidos_text_last_window(u32 *count) BW_WEAK;   /* not in builds without the game */
 extern void *BMP_WIN_GetBmp(void *win) __attribute__((weak));
 extern u8 BMP_WIN_GetBgLayer(void *win) __attribute__((weak));
 
@@ -1972,8 +1972,8 @@ static int evo_px(const u8 *px, int bw, int x, int y)
  * whether a message is on show. */
 static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h)
 {
-    u32 count;
-    void *win = eidos_text_last_window(&count);
+    u32 count = 0;
+    void *win = eidos_text_last_window != NULL ? eidos_text_last_window(&count) : NULL;
     const u8 *bmp, *px;
     int bw, bh, cnt[16] = { 0 }, ground = 0, ink = -1, xx, yy, i;
 
@@ -2058,7 +2058,9 @@ static void evolution_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
     view->hide_2d = 1;
     view->spare_world = 1;      /* the party list after it shows the field */
     if (!g_evo_seen) {
-        (void)eidos_text_last_window(&g_evo_since);  /* printed before the scene: not its */
+        if (eidos_text_last_window != NULL) {
+            (void)eidos_text_last_window(&g_evo_since);  /* printed before the scene: not its */
+        }
         g_evo_seen = 1;
     }
     {

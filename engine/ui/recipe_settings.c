@@ -23,7 +23,7 @@
 #include "settings_ui.h"
 
 extern int bw_mod_title_in_settings(void);
-extern int eidos_opt_proc_active(void);
+extern int eidos_opt_proc_active(void) __attribute__((weak));  /* the game's options proc: boot builds only */
 
 /* ------------------------------------------------------------------ */
 /* Keys, one at a time                                                 */
@@ -109,7 +109,7 @@ static const char *fit(char *buf, size_t n, const char *s, int maxw, int font)
 
 static int settings_match(void)
 {
-    return bw_mod_title_in_settings() || eidos_opt_proc_active();
+    return bw_mod_title_in_settings() || (eidos_opt_proc_active != NULL && eidos_opt_proc_active());
 }
 
 static void settings_reset(void)

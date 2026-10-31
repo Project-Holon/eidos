@@ -42,96 +42,84 @@ Each release's notes on GitHub start with its section here
 
 ## 0.1.7
 
-- macOS: 3D scenes draw again. The title screen's Reshiram, the new
-  game's house scene and the starter choice showed as a flat white or
-  green screen. 3D edge smoothing is off on macOS for now.
-- macOS: choosing your ROM no longer crashes the game.
-- Remaster battles: about 150 battle places now have a camera placed and
-  checked by hand, so the battle shows the right part of the map. Story
-  battles start where the player stands.
-- Remaster battle menus: your Pokemon's HP plate stays at the bottom
-  right, and the actions and moves show as a small grid above it, in each
-  move's type colour. Moves use their modern names (Double Slap, Dragon
-  Breath).
-- Remaster starter choice: the gift box in widescreen, the game's own text,
-  and a small box with the Pokemon's animated sprite in the close-up. Its
-  cry plays when the close-up opens.
-- Remaster intro: the trainer choice keeps the DS frame, and the flight
-  over the house fills the window.
-- Remaster menus: menus and apps open and close with smooth fades, with no
-  flashes or black frames, and going back to the menu from an app is
-  quick. The menu icons are the game's own sprites. The Pokedex shows each
-  Pokemon's animated sprite and opens with a short animation. The
-  interface has more room in small windows such as 1280x720.
-- Launcher: Play shows when a new version is out, and Settings has a ROMs
-  section for Black and White.
-- Settings: values no longer overlap their arrows, and long text such as
-  the mods folder is shortened to fit small windows. The CONTINUE card on
-  the title menu keeps its cut corner.
-- Downloads: the macOS launcher is a disk image (.dmg) with a READ ME
-  FIRST file for the first start, and each release has one file per
-  download.
+### One-Screen Mode & UI
+- **Menus & Apps**: Smooth fades when menus and apps open and close, with no flashes or black frames, and a quick return to the menu. Menu icons use the game's own sprites, and the interface has more room in small windows such as 1280x720.
+- **Pokédex**: Animated Pokémon sprites and a short opening animation.
+- **Battle Menus**: Your HP plate stays at the bottom right, with actions and moves in a small grid above it, tinted by type. Moves use their modern names (Double Slap, Dragon Breath).
+- **Starter Choice**: Widescreen gift box, the game's own text, and an animated sprite in the close-up with its cry.
+- **Intro**: The trainer choice keeps the DS frame, and the flight over the house fills the window.
+
+### Battle Remastering & Tools
+- **Battle Cameras**: About 150 battle places now have a hand-placed camera. Story battles start where the player stands.
+
+### Launcher & Settings
+- **Launcher**: Shows when a new version is out, and Settings has a ROMs section for Black and White.
+- **Settings**: Values no longer overlap their arrows, long text is shortened to fit small windows, and the CONTINUE card keeps its cut corner.
+- **Downloads**: The macOS launcher is a disk image (.dmg) with a READ ME FIRST file, and each release has one file per download.
+
+### Bug Fixes
+- macOS: Fixed 3D scenes showing as a flat white or green screen (title, intro, starter choice). 3D edge smoothing is off on macOS for now.
+- macOS: Fixed a crash when choosing your ROM.
 
 ## 0.1.6
 
-- 64-bit on Windows, Linux (an AppImage) and macOS (Apple silicon), with
-  multiplayer and code mods. The game keeps the DS's own memory layout and
-  plays the same as before. There are no 32-bit packages any more.
-- One screen: a new layout that shows the game on one screen, wider than
-  the DS, with a new interface for the menus, the Bag, the Pokedex, the
-  party, battles, Options, Save, the trainer card, the PC, name entry and
-  the title screen, in the game's own colours, font and icons. It works
-  with the mouse, and names can be typed on the keyboard. Start it with
-  Remaster in the launcher, or choose ONE in Options, DISPLAY, SCREENS.
-- Multiplayer: a player who left no longer stays on the map, the other
-  player stays visible while a menu is open, avatars keep up with running
-  and cycling, fast-forward is off in a session, a joiner sends much less
-  data, and the name is asked when Multiplayer first opens.
-- The launcher updates itself when it starts, on every platform, and keeps
-  running on the version it has if an update fails. Install this version
-  once by hand; later ones arrive by themselves. It also has a new look,
-  two play buttons (Remaster and Classic), and a game data folder per
-  profile.
-- SDL3 in place of SDL2.
-- Fixes: the trainer card no longer crashes the game; NINTENDO WFC
-  SETTINGS, which closed years ago and crashed the game, is gone from the
-  title menu; the volume starts at 50%.
+### Platforms
+- **64-bit Builds**: Windows, Linux (AppImage) and macOS (Apple silicon), with multiplayer and code mods. The game keeps the DS's own memory layout and plays the same. No more 32-bit packages.
+- **SDL3**: Replaces SDL2.
+
+### One-Screen Mode & UI
+- **One-Screen Layout**: The game on one screen, wider than the DS, with a new interface for the menus, Bag, Pokédex, party, battles, Options, Save, trainer card, PC, name entry and title screen. Works with the mouse, and names can be typed on the keyboard. Start it with Remaster in the launcher, or `Options > DISPLAY > SCREENS > ONE`.
+
+### Multiplayer
+- Players who leave no longer stay on the map, the other player stays visible while a menu is open, and avatars keep up with running and cycling.
+- Fast-forward is off in a session, joiners send much less data, and the name is asked when Multiplayer first opens.
+
+### Launcher
+- **Self-Updating**: The launcher updates itself on every platform and keeps running on its version if an update fails. Install this version once by hand; later ones arrive by themselves.
+- New look, two play buttons (Remaster and Classic), and a game data folder per profile.
+
+### Bug Fixes
+- Fixed a crash when opening the trainer card.
+- Removed NINTENDO WFC SETTINGS from the title menu (the service closed, and it crashed the game).
+- The volume now starts at 50%.
 
 ## 0.1.5
 
-- 3D outlines at high resolution match the DS: no more gap and thin line
-  under objects standing on the floor, and no comb or flicker along edges.
+### Visuals & Extras
+- **3D Outlines**: At high resolution they now match the DS: no gap or thin line under objects on the floor, and no comb or flicker along edges.
 
 ## 0.1.4
 
-- Instant text: each page of a message appears at once, whatever the text
-  speed. It is on the new Extras tab in Settings and the EXTRAS page in the
-  game's Options.
-- Launcher: shows its real version, outlines the folder, copy and remove
-  buttons, and highlights text boxes and lists on hover.
+### Visuals & Extras
+- **Instant Text**: Each page of a message appears at once, whatever the text speed (`Settings > Extras`, or `Options > EXTRAS` in the game).
+
+### Launcher
+- Shows its real version, outlines the folder, copy and remove buttons, and highlights text boxes and lists on hover.
 
 ## 0.1.3
 
-- The port's settings inside the game's Options screen: DISPLAY and SOUND
-  pages next to the game's own, changed with the arrows in the bottom bar or
-  with L and R.
-- No console window next to the game. Start `eidos --console` to get one for
-  a bug report.
-- Launcher: the version list keeps working when GitHub limits requests.
+### Settings
+- **In-Game Settings**: DISPLAY and SOUND pages in the game's Options screen, changed with the arrows in the bottom bar or with L and R.
+
+### Engine & Performance
+- No console window next to the game. Start `eidos --console` to get one for a bug report.
+
+### Launcher
+- The version list keeps working when GitHub limits requests.
 
 ## 0.1.2
 
-- Two display settings, each Auto or a fixed size: Pixel scale (how big each
-  DS pixel is) and 3D resolution (how detailed the 3D is). The 3D is now
-  sharp by default.
+### Visuals & Extras
+- **Display Settings**: Pixel scale (how big each DS pixel is) and 3D resolution (how detailed the 3D is), each Auto or a fixed size. The 3D is now sharp by default.
 - The window opens at a size that fits the screen.
 
 ## 0.1.1
 
+### Bug Fixes
 - Escape no longer closes the game. Use the window's close button.
 
 ## 0.1.0
 
 - First release. The game asks for your own ROM on the first start.
-- Multiplayer through the public relay: host a game and share the code.
-- The launcher: profiles, versions and mods.
+- **Multiplayer**: Host a game through the public relay and share the code.
+- **Launcher**: Profiles, versions and mods.
