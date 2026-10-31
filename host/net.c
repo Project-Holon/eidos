@@ -249,11 +249,14 @@ u32 w2c_eidos_sock_listen_loopback(struct w2c_eidos *e, u32 s, u32 port)
         return (u32)-1;
     }
     /* Windows' SO_REUSEADDR lets a second socket bind a port another one
-     * listens on (a tool then reaches that one): there the default bind. */
+     * listens on (a tool then reaches that one), and even the default bind
+     * shares a port another program holds on the wildcard address: there
+     * the port is taken for this socket alone (SO_EXCLUSIVEADDRUSE), so the
+     * bind fails on a port in use. */
 #ifndef _WIN32
     (void)setsockopt(g_sock[s], SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof on);
 #else
-    (void)on;
+    (void)setsockopt(g_sock[s], SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&on, sizeof on);
 #endif
     memset(&a, 0, sizeof a);
     a.sin_family = AF_INET;

@@ -911,14 +911,16 @@ static BwSock sock_listen_loopback(u16 port)
         return BW_SOCK_INVALID;
     }
     /* Windows' SO_REUSEADDR lets a second socket bind a port another one
-     * listens on, and a tool then reaches that one.  There the bind takes
-     * the default, which fails on a taken port and still rebinds at once
-     * after a restart. */
+     * listens on, and a tool then reaches that one; even the default bind
+     * shares a port another program holds on the wildcard address.  There
+     * the port is taken for this socket alone (SO_EXCLUSIVEADDRUSE), which
+     * fails on a port in use and still rebinds at once after a restart. */
 #ifndef _WIN32
     (void)SOCK_SETSOCKOPT(s, SOL_SOCKET, SO_REUSEADDR, SOCK_OPT_VALUE(&on),
                           (BwOptLen)sizeof(on));
 #else
-    (void)on;
+    (void)SOCK_SETSOCKOPT(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, SOCK_OPT_VALUE(&on),
+                          (BwOptLen)sizeof(on));
 #endif
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;

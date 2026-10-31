@@ -641,9 +641,9 @@ static int wait_closed(void)
 }
 
 /* Wait until the control has `want` tools connected. */
-static int wait_clients(int want)
+static int wait_clients_for(int want, unsigned long long ns)
 {
-    unsigned long long deadline = bw_clock_ns() + T_WAIT_NS;
+    unsigned long long deadline = bw_clock_ns() + ns;
 
     while (bw_clock_ns() < deadline) {
         if (bw_mod_net_control_clients() == want) {
@@ -652,6 +652,11 @@ static int wait_clients(int want)
         t_sleep_ms(1);
     }
     return (bw_mod_net_control_clients() == want);
+}
+
+static int wait_clients(int want)
+{
+    return wait_clients_for(want, T_WAIT_NS);
 }
 
 /* Whether the token the client made is one the port could have made: a
@@ -1154,7 +1159,11 @@ static void test_control(void)
         if (bw_mod_net_control_set_port(port) != 0) {
             continue;
         }
-        if (tcp->connect(tcp->user, "127.0.0.1", (u16)port) == 0) {
+        /* a port another program also holds (GitHub's Windows runner has
+         * one in this range) can take the connection: the port is ours
+         * only when the control sees the tool arrive */
+        if (tcp->connect(tcp->user, "127.0.0.1", (u16)port) == 0
+            && wait_clients_for(1, 2000000000ull)) {
             break;
         }
     }
