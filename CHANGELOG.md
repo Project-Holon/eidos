@@ -3,7 +3,7 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
-## Unreleased
+## 0.1.8
 
 - Walking by touch or mouse (one-screen): press on the world and drag. A
   stick appears where you pressed and its knob follows; the player walks
@@ -194,6 +194,15 @@ Each release's notes on GitHub start with its section here
 - Network: when another program holds the external control's port, the
   control now reports it and stays off, instead of seeming on while tools
   reached the other program.
+- macOS: the game's native core is fixed for Apple silicon (pointers kept
+  at full width where the PC needs them, a sound address fix, a crash in
+  the stack walk fixed, 2x edge smoothing where the GPU lacks the usual
+  kind), with its own CI checks (contributed by DarthMDev, #2).
+- The game prints its OpenGL driver at start and warns when the driver
+  draws on the CPU (a slow game then says why: install the graphics
+  card's driver).
+- Whole-number window scales (2x, 3x and up) read each pixel of the game
+  exactly, so a GPU with low-precision filtering no longer blurs edges.
 
 ## 0.1.7
 

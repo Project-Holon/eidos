@@ -17,7 +17,7 @@
 #
 
 cmake_minimum_required(VERSION 3.16)
-project(eidos VERSION 0.1.7 LANGUAGES C)
+project(eidos VERSION 0.1.8 LANGUAGES C)
 
 # The version players and the lobby see (docs/distribution.md).  A release
 # build (EIDOS_RELEASE=ON, the release workflow) is the plain number; any

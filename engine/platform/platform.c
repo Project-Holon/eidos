@@ -2312,8 +2312,12 @@ int eidos_platform_pad_family(const EidosPlatform *p)
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return 5;
     case SDL_GAMEPAD_TYPE_GAMECUBE:                   return 6;
+#if SDL_VERSION_ATLEAST(3, 4, 0)
+    /* SDL 3.4 adds the Steam Controller's type (macOS CI builds with
+     * Homebrew's SDL, which can be older) */
     case SDL_GAMEPAD_TYPE_STEAM:                      return 7;
-    default:                                          return 1;
+#endif
+    default:                                         return 1;
     }
 }
 
