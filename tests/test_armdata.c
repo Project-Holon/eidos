@@ -66,6 +66,7 @@ static void *bw_dsref_t_const;
 static void *bw_dsref_t_host;
 static void *bw_dsref_t_sink;
 static void *bw_dsref_t_bss;
+static void *bw_dsref_t_zero;
 
 /* A name that could not be a macro: a host object of its own. */
 static BwDataCell t_obj[BW_DATA_CELLS(0x10u)];
@@ -78,6 +79,8 @@ static const BwDataName k_names[] = {
     { "t_sink",  0x0214699Cu, &bw_dsref_t_sink,  BW_DATA_BIND_DS,    BW_DATA_SEC_BSS,   0, 0, NULL, 0 },
     { "t_bss",   0x02010010u, &bw_dsref_t_bss,   BW_DATA_BIND_DS,    BW_DATA_SEC_BSS,   0, 0x30, NULL, 0 },
     { "t_obj",   0x02004040u, NULL,              BW_DATA_BIND_OBJECT, BW_DATA_SEC_DATA, 0, 0x10, t_obj, 0x02004040u },
+    /* a linker constant 0 (ov029's abs_id_0, overlay 0) */
+    { "t_zero",  0x00000000u, &bw_dsref_t_zero,  BW_DATA_BIND_CONST, BW_DATA_SEC_CONST, 0, 0, NULL, 0 },
 };
 
 static const BwDataObject k_objects[] = {
@@ -109,7 +112,7 @@ static const BwDataRange k_scan[] = {
 static const BwDataImage k_img = {
     "arm9", -1,
     k_ranges, 4,
-    k_names, 7,
+    k_names, 8,
     k_relocs, 5,
     k_funcs, 1,
     k_anchors, 1,
@@ -193,8 +196,10 @@ static int test_steps(void)
     CHECK_PTR("host object registered", bw_ds_ptr(0x02004048u), (u8 *)t_obj + 8);
     BW_CHECK_EQ("host object filled", *((u8 *)t_obj + 0xF), g_image[0x4F]);
 
+    bw_dsref_t_zero = &bw_dsref_t_zero;
     rc = bw_data_bind(&k_img);
     BW_CHECK_EQ("bind", rc, BW_DATA_OK);
+    CHECK_PTR("t_zero is the value 0", bw_dsref_t_zero, NULL);
     CHECK_PTR("t_data -> its DS address", bw_dsref_t_data, bw_ds_ptr(0x02004010u));
     CHECK_PTR("t_alias -> the same byte", bw_dsref_t_alias, bw_dsref_t_data);
     CHECK_PTR("t_const is the value", bw_dsref_t_const, (void *)(uintptr_t)0x800u);

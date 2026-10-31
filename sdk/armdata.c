@@ -458,8 +458,10 @@ int bw_data_bind(const BwDataImage *img)
         }
         switch (n->bind) {
         case BW_DATA_BIND_CONST:
-            p = (void *)(uintptr_t)n->addr;
-            break;
+            /* the value itself, 0 too (C-Gear's GAME_EVENT_CreateOverlayEvent
+             * takes overlay 0 as abs_id_0) */
+            *n->ref = (void *)(uintptr_t)n->addr;
+            continue;
         case BW_DATA_BIND_HOST:
             p = (u8 *)(uintptr_t)n->anchor + (n->addr - n->anchor_addr);
             break;
