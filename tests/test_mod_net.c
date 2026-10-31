@@ -1167,6 +1167,9 @@ static void test_control(void)
             break;
         }
     }
+    /* the probe leaves: the steps below start with no tool, as before */
+    tcp->close(tcp->user);
+    (void)wait_clients_for(0, 2000000000ull);
     BW_STEP("the port is set", i < T_CONTROL_PORTS);
     BW_CHECK_EQ("the port is the one that was set",
                 bw_mod_net_control_port(), port);
