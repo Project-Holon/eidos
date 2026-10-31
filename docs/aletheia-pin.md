@@ -8,11 +8,21 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `632a9e45622c6a9b1fb2013cc2e04892dc8c284c`
-- Date: 2026-10-30 22:51:09 +0100
-- Subject: Symbols rows for nine cross-overlay calls the PC build could not route
+- Revision: `ae14c2cc42d9831a462a4a71e0727b6f5afad630`
+- Date: 2026-10-31 00:58:10 +0100
+- Subject: Original file names from the Japanese build: 8 renames, 10 files split into 26
 
-The step from `bceb69de2d`: symbols rows for calls into other overlays
+The step from `632a9e4562`: 18 files in `src/game` take the original file
+names from the Japanese build. Eight are renamed (for example ov013
+`vct_main` to `vchat`, ov015 `ircnet` to `net_irc`) and ten are split into
+the pieces the original had (for example ov018 `event_comm_common` into five
+files, ov183 `br_codein` into five). No function body, signature or name
+changes; the pieces keep their `#ifdef` guards and have symbols rows for
+calls into their sibling pieces. eidos names none of these files (it reads
+only `ov125/gds_rap_types.h`, which keeps its name), so nothing here
+changes. All twelve cartridges still build byte-identical.
+
+The step before, from `bceb69de2d`: symbols rows for calls into other overlays
 that had none, so the port routes them instead of stopping at a stub: the
 trade screens (ov117 into ov119), the wireless setup (ov016 into ov009), a
 field script command (ov021 into ov010) and the Global Trade Station
