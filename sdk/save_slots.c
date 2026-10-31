@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "save.h"
 #include "plat_save.h"
@@ -170,6 +171,18 @@ static int offered(int n)
     return bw_slots_used(n) && !g_bad[n];
 }
 
+/* When the slot's file was last written (0 when it cannot be read). */
+static long slot_time(int n)
+{
+    char path[512];
+    struct stat st;
+
+    if (bw_slots_path(n, path, sizeof(path)) != 0 || stat(path, &st) != 0) {
+        return 0;
+    }
+    return (long)st.st_mtime;
+}
+
 void bw_slots_settle(void)
 {
     unsigned char *sc;
@@ -182,22 +195,36 @@ void bw_slots_settle(void)
     if (!bw_slots_used(cur)) {
         return;                     /* a free slot: a new game, as it should */
     }
-    /* the slot in force holds a file but no save: the last real one, so a
-     * new game left before it was saved does not hide the save before it */
+    /* the slot in force holds a file but no save: the save played last
+     * (the newest file that loads), so a new game left before it was saved
+     * does not hide the game before it */
     g_bad[cur] = 1;
     for (i = 1; i < BW_SLOTS_MAX; i++) {
-        int n = (cur - 1 - i + BW_SLOTS_MAX) % BW_SLOTS_MAX + 1;
+        int n, best = 0;
+        long best_t = -1;
 
-        if (!offered(n)) {
-            continue;
+        for (n = 1; n <= BW_SLOTS_MAX; n++) {
+            long t;
+
+            if (n == cur || !offered(n)) {
+                continue;
+            }
+            t = slot_time(n);
+            if (t > best_t) {
+                best = n;
+                best_t = t;
+            }
         }
-        set_current(n);
+        if (best == 0) {
+            break;
+        }
+        set_current(best);
         apply(1);
         if (reload(1)) {
-            fprintf(stderr, "eidos: save: slot %d has no save; slot %d is shown\n", cur, n);
+            fprintf(stderr, "eidos: save: slot %d has no save; slot %d is shown\n", cur, best);
             return;
         }
-        g_bad[n] = 1;
+        g_bad[best] = 1;
     }
     set_current(cur);               /* none loads: as it was */
     apply(1);
