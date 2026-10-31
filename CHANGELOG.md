@@ -6,9 +6,9 @@ Each release's notes on GitHub start with its section here
 ## 0.1.9
 
 ### Bug Fixes
-- **Saves**: Fixed saves seeming gone from the title screen after starting a New Game and quitting before saving. The title now opens on the save you played last, and nothing was ever deleted (#10).
-- Fixed the name keyboard opening hidden behind the Multiplayer screen in one-screen mode, which left no way to type or leave (#9).
-- Fixed the arrows and D-pad on the one-screen name keyboard following the DS's key grid: they now move over the keys as shown, every move lands on a key, and the opposite direction always comes back (#7).
+- **Saves**: Fixed title screen failing to display existing saves after quitting an unsaved New Game; the menu now properly selects the last-played save (#10).
+- **One-Screen UI**: Fixed naming keyboard rendering behind the Multiplayer screen and softlocking input (#9).
+- **Keyboard Navigation**: Fixed one-screen keyboard D-pad/arrow controls using original DS key coordinates instead of matching the visible layout (#7).
 
 ## 0.1.8
 
