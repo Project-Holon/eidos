@@ -136,6 +136,7 @@ typedef struct View3d {
     u8 *rgba;
     u8 *front;                      /* the map in front of the Pokemon (rgba, 0 alpha elsewhere) */
     u8 *fronts[16];                 /* or the map in front of each one, apart (render_view's `each`) */
+    int fbox[17][4];                /* each front's opaque box (x0 y0 x1 y1, render size); [16] front's */
     int nfronts;
     int dirty;
     float eye[3], at[3], fsin, fcos;
@@ -199,6 +200,7 @@ typedef struct App {
     BcamFrame *sim;
     int nsim, sim_scene, sim_attacker;
     int doubles;                    /* show a double battle (the trainer's)  */
+    int idle_ticks;                 /* event waits without an event since the last draw */
     Sprite hero[4];                 /* the player, facing up, down, left, right */
     float hero_h;                   /* its height (map units)                */
     /* the map */
@@ -809,6 +811,31 @@ static void field_camera(unsigned zone, float *dist, float *pitch, float *yaw, f
  * `poke` (where, and the height of each one's box): all in one picture, or
  * with `each` one picture a sprite, so that a sprite drawn later (nearer)
  * covers the map in front of a farther one and not the other way round. */
+/* The box of a layer's opaque pixels (x0 y0 x1 y1, x1 y1 past the end;
+ * empty when x0 >= x1): a front layer is mostly clear, and only its box is
+ * drawn every frame. */
+static void opaque_box(const u8 *rgba, int w, int h, int box[4])
+{
+    int x, y;
+
+    box[0] = w;
+    box[1] = h;
+    box[2] = 0;
+    box[3] = 0;
+    for (y = 0; rgba != NULL && y < h; y++) {
+        const u8 *row = rgba + (size_t)y * (size_t)w * 4u;
+
+        for (x = 0; x < w; x++) {
+            if (row[x * 4 + 3] != 0) {
+                if (x < box[0]) box[0] = x;
+                if (x >= box[2]) box[2] = x + 1;
+                if (y < box[1]) box[1] = y;
+                box[3] = y + 1;
+            }
+        }
+    }
+}
+
 static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*poke)[4], int npoke, int each)
 {
     G3dSnapshot snap;
@@ -861,6 +888,7 @@ static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*po
                 fr = NULL;
             }
             v->fronts[i] = fr;
+            opaque_box(fr, v->rw, v->rh, v->fbox[i]);
         }
         v->nfronts = i;
     } else if (poke != NULL && npoke > 0 && (v->front = (u8 *)malloc(need)) != NULL) {
@@ -873,6 +901,7 @@ static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*po
             free(v->front);
             v->front = NULL;
         }
+        opaque_box(v->front, v->rw, v->rh, v->fbox[16]);
     }
     v->dirty = 0;
 }
@@ -1363,32 +1392,69 @@ static int num_field(int id, int x, int y, const char *label, const char *shown,
 static void remember(void);
 static void save_now(void);
 
-static void blit_rgba(int dx, int dy, const u8 *src, int sw, int sh, int dw, int dh)
+/* `src` (sw x sh) stretched over dw x dh at (dx, dy), its clear pixels
+ * skipped; `box` (the source's opaque box, opaque_box) or NULL limits the
+ * work to the part that can draw. */
+static void blit_rgba_box(int dx, int dy, const u8 *src, int sw, int sh, int dw, int dh, const int *box)
 {
     EidosUiCanvas *cv = &A.canvas;
-    int x, y;
+    static int *col;
+    static int col_n;
+    int x, y, x0 = 0, x1 = dw, y0 = 0, y1 = dh;
 
-    for (y = 0; y < dh; y++) {
-        int py = dy + y, sy = y * sh / dh;
-
-        if (py < 0 || py >= cv->h) {
-            continue;
+    if (src == NULL || sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) {
+        return;
+    }
+    if (box != NULL) {
+        if (box[0] >= box[2] || box[1] >= box[3]) {
+            return;
         }
-        for (x = 0; x < dw; x++) {
-            int px = dx + x, sx = x * sw / dw;
-            const u8 *s = src + ((size_t)sy * (size_t)sw + (size_t)sx) * 4u;
-            u8 *d;
-
-            if (px < 0 || px >= cv->w || s[3] == 0) {
-                continue;
-            }
-            d = cv->rgba + ((size_t)py * (size_t)cv->w + (size_t)px) * 4u;
-            d[0] = s[0];
-            d[1] = s[1];
-            d[2] = s[2];
-            d[3] = 255;
+        /* the destination pixels whose source falls in the box */
+        x0 = box[0] * dw / sw;
+        x1 = (box[2] * dw + sw - 1) / sw;
+        y0 = box[1] * dh / sh;
+        y1 = (box[3] * dh + sh - 1) / sh;
+        if (x1 > dw) x1 = dw;
+        if (y1 > dh) y1 = dh;
+    }
+    if (dx + x0 < 0) x0 = -dx;
+    if (dx + x1 > cv->w) x1 = cv->w - dx;
+    if (dy + y0 < 0) y0 = -dy;
+    if (dy + y1 > cv->h) y1 = cv->h - dy;
+    if (x0 >= x1 || y0 >= y1) {
+        return;
+    }
+    if (col_n < dw) {
+        free(col);
+        col = (int *)malloc((size_t)dw * sizeof(int));
+        col_n = col != NULL ? dw : 0;
+        if (col == NULL) {
+            return;
         }
     }
+    for (x = x0; x < x1; x++) {
+        col[x] = x * sw / dw;
+    }
+    for (y = y0; y < y1; y++) {
+        const u8 *srow = src + (size_t)(y * sh / dh) * (size_t)sw * 4u;
+        u8 *d = cv->rgba + ((size_t)(dy + y) * (size_t)cv->w + (size_t)(dx + x0)) * 4u;
+
+        for (x = x0; x < x1; x++, d += 4) {
+            const u8 *s = srow + (size_t)col[x] * 4u;
+
+            if (s[3] != 0) {
+                d[0] = s[0];
+                d[1] = s[1];
+                d[2] = s[2];
+                d[3] = 255;
+            }
+        }
+    }
+}
+
+static void blit_rgba(int dx, int dy, const u8 *src, int sw, int sh, int dw, int dh)
+{
+    blit_rgba_box(dx, dy, src, sw, sh, dw, dh, NULL);
 }
 
 static void ring(float x, float y, float r, u32 col)
@@ -2221,7 +2287,7 @@ static void draw_battle_view(int i)
         /* the map standing in front of this one, before the nearer ones
          * (the game's second backdrop pass, plat_gl3d.c) */
         if (far < v->nfronts && v->fronts[far] != NULL && !sendout[far]) {
-            blit_rgba(v->x, v->y, v->fronts[far], v->rw, v->rh, v->w, v->h);
+            blit_rgba_box(v->x, v->y, v->fronts[far], v->rw, v->rh, v->w, v->h, v->fbox[far]);
         }
         d[far] = -1.0f;
     }
@@ -2355,7 +2421,7 @@ static void draw_field_view(void)
         }
     }
     if (v->front != NULL) {
-        blit_rgba(v->x, v->y, v->front, v->rw, v->rh, v->w, v->h);    /* the map in front of them */
+        blit_rgba_box(v->x, v->y, v->front, v->rw, v->rh, v->w, v->h, v->fbox[16]);    /* the map in front of them */
     }
     if (r->kind == 'T') {
         map_to_battle(&A.field, (float)r->tx * 16.0f + 8.0f,
@@ -4242,7 +4308,10 @@ int main(int argc, char **argv)
 
         if (SDL_WaitEventTimeout(&ev, A.play || A.emb != NULL ? 1 : 50)) {
             SDL_PushEvent(&ev);
+        } else if (!A.play && A.emb == NULL && ++A.idle_ticks < 10) {
+            continue;       /* nothing happened: the window is as drawn (once in a while it is drawn anyway) */
         }
+        A.idle_ticks = 0;
         pump();
         frame();
     }

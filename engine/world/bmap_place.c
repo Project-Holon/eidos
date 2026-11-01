@@ -1135,38 +1135,113 @@ static int stand_card(BmapScene *s, const BmapTexture *t, Card *c, const float n
     return 1;
 }
 
+/* The map's placed-object corners in a grid of LOOSE_CELL cubes (a hash of
+ * the cube to a chain of vertex indices): loose() looks at the corners near
+ * a card's corners only, not at every triangle of the map. */
+#define LOOSE_CELL 0.05f
+typedef struct CornerGrid {
+    unsigned *head;     /* per bucket: the first vertex + 1, 0 none */
+    unsigned *next;     /* per vertex: the next in its bucket + 1   */
+    unsigned mask;
+    unsigned char *moved;   /* per vertex: a stood card's, no longer where the grid has it */
+    unsigned *mlist, nm;    /* those vertices                        */
+} CornerGrid;
+
+static unsigned corner_bucket(int cx, int cy, int cz, unsigned mask)
+{
+    return ((unsigned)cx * 73856093u ^ (unsigned)cy * 19349663u ^ (unsigned)cz * 83492791u) & mask;
+}
+
+static int corner_cell(float v)
+{
+    return (int)floorf(v / LOOSE_CELL);
+}
+
+static void corner_grid_make(const BmapScene *s, CornerGrid *g)
+{
+    unsigned n = 1, k;
+
+    while (n < s->nv * 2u) {
+        n <<= 1;
+    }
+    g->mask = n - 1u;
+    g->nm = 0;
+    g->head = (unsigned *)calloc(n, sizeof *g->head);
+    g->next = (unsigned *)calloc(s->nv + 1u, sizeof *g->next);
+    g->moved = (unsigned char *)calloc(s->nv + 1u, 1);
+    g->mlist = (unsigned *)malloc((s->nv + 1u) * sizeof *g->mlist);
+    if (g->head == NULL || g->next == NULL || g->moved == NULL || g->mlist == NULL) {
+        free(g->head);
+        free(g->next);
+        free(g->moved);
+        free(g->mlist);
+        g->head = g->next = NULL;
+        return;
+    }
+    for (k = 0; k < s->nv; k++) {
+        const BmapVertex *v = &s->v[k];
+        unsigned b;
+
+        if (v->obj == 0) {
+            continue;
+        }
+        b = corner_bucket(corner_cell(v->x), corner_cell(v->y), corner_cell(v->z), g->mask);
+        g->next[k] = g->head[b];
+        g->head[b] = k + 1u;
+    }
+}
+
 /* No corner of the card's triangles is a corner of another triangle of its
  * object, in any draw (the map's triangles are whole, three vertices each
- * from the start of the vertex array). */
-static int loose(const BmapScene *s, const Card *c, unsigned first, unsigned end)
+ * from the start of the vertex array): the corners within LOOSE_CELL of
+ * each of the card's, through the grid (the cubes around it). */
+static int loose(const BmapScene *s, const Card *c, const CornerGrid *g)
 {
-    unsigned obj = s->v[c->tri[0]].obj, i, j, k;
+    unsigned obj = s->v[c->tri[0]].obj, i, j, q2;
 
-    (void)first;
-    (void)end;
-    for (k = 0; k + 2 < s->nv; k += 3) {
-        int mine = 0;
-        unsigned q;
+    for (i = 0; i < c->ntri; i++) {
+        for (j = 0; j < 3; j++) {
+            const BmapVertex *m = &s->v[c->tri[i] + j];
+            int cx = corner_cell(m->x), cy = corner_cell(m->y), cz = corner_cell(m->z), dx, dy, dz;
 
-        if (s->v[k].obj != obj) {
-            continue;
-        }
-        for (i = 0; i < c->ntri && !mine; i++) {
-            mine = c->tri[i] == k;
-        }
-        if (mine) {
-            continue;
-        }
-        for (q = 0; q < 3; q++) {
-            const BmapVertex *o = &s->v[k + q];
+            for (dx = -1; dx <= 1; dx++) {
+                for (dy = -1; dy <= 1; dy++) {
+                    for (dz = -1; dz <= 1; dz++) {
+                        unsigned at = g->head[corner_bucket(cx + dx, cy + dy, cz + dz, g->mask)];
 
-            for (i = 0; i < c->ntri; i++) {
-                for (j = 0; j < 3; j++) {
-                    const BmapVertex *m = &s->v[c->tri[i] + j];
+                        for (; at != 0; at = g->next[at - 1u]) {
+                            unsigned k = at - 1u, t = k - k % 3u, q;
+                            const BmapVertex *o = &s->v[k];
+                            int mine = 0;
 
-                    if (fabsf(m->x - o->x) < 0.05f && fabsf(m->y - o->y) < 0.05f && fabsf(m->z - o->z) < 0.05f) {
-                        return 0;
+                            if (o->obj != obj || t + 2 >= s->nv || g->moved[k]) {
+                                continue;
+                            }
+                            for (q = 0; q < c->ntri && !mine; q++) {
+                                mine = c->tri[q] == t;
+                            }
+                            if (!mine && fabsf(m->x - o->x) < 0.05f && fabsf(m->y - o->y) < 0.05f
+                                && fabsf(m->z - o->z) < 0.05f) {
+                                return 0;
+                            }
+                        }
                     }
+                }
+            }
+            for (q2 = 0; q2 < g->nm; q2++) {
+                unsigned k = g->mlist[q2], t = k - k % 3u, q;
+                const BmapVertex *o = &s->v[k];
+                int mine = 0;
+
+                if (o->obj != obj || t + 2 >= s->nv) {
+                    continue;
+                }
+                for (q = 0; q < c->ntri && !mine; q++) {
+                    mine = c->tri[q] == t;
+                }
+                if (!mine && fabsf(m->x - o->x) < 0.05f && fabsf(m->y - o->y) < 0.05f
+                    && fabsf(m->z - o->z) < 0.05f) {
+                    return 0;
                 }
             }
         }
@@ -1180,6 +1255,8 @@ static void stand_cards(BmapScene *s)
     Card *card = NULL;
     unsigned *pool;
     unsigned char *used;
+    unsigned pool_used = 0;
+    CornerGrid grid;
 
     /* room for every triangle of the textured draws once */
     nt_all = s->nv / 3 + 1;
@@ -1190,6 +1267,7 @@ static void stand_cards(BmapScene *s)
         free(used);
         return;
     }
+    corner_grid_make(s, &grid);
     for (i = 0; i < nd0; i++) {
         BmapDraw *d = &s->d[i];
         const BmapTexture *t;
@@ -1216,12 +1294,9 @@ static void stand_cards(BmapScene *s)
                 if (used[a / 3] || !tri_plane(s, a, n, &dist)) {
                     continue;
                 }
-                c.tri = &pool[0];
                 c.ntri = 0;
                 /* this triangle's plane mates, gathered at the pool's end */
-                for (b = 0; b < ncard; b++) {
-                    base += card[b].ntri;
-                }
+                base = pool_used;
                 c.tri = &pool[base];
                 for (b = a; b < end; b += 3) {
                     if (!used[b / 3] && tri_plane(s, b, n2, &d2) && n2[0] * n[0] + n2[1] * n[1] + n2[2] * n[2] > 0.995f
@@ -1229,7 +1304,7 @@ static void stand_cards(BmapScene *s)
                         c.tri[c.ntri++] = b;
                     }
                 }
-                if (c.ntri < 2 || !loose(s, &c, first, end)) {
+                if (c.ntri < 2 || grid.head == NULL || !loose(s, &c, &grid)) {
                     used[a / 3] = 1;
                     continue;
                 }
@@ -1251,6 +1326,18 @@ static void stand_cards(BmapScene *s)
                     d->cull = 0;
                     nvx += c.ntri * 3 * (CARD_COPIES - 1);
                     card[ncard++] = c;
+                    pool_used += c.ntri;
+                    for (b = 0; grid.head != NULL && b < c.ntri; b++) {
+                        unsigned q3;
+
+                        for (q3 = 0; q3 < 3; q3++) {
+                            /* stood up: compared where it is now */
+                            if (!grid.moved[c.tri[b] + q3]) {
+                                grid.moved[c.tri[b] + q3] = 1;
+                                grid.mlist[grid.nm++] = c.tri[b] + q3;
+                            }
+                        }
+                    }
                 } else {
                     used[a / 3] = 1;    /* not a card: never looked at again */
                 }
@@ -1300,6 +1387,10 @@ static void stand_cards(BmapScene *s)
     free(card);
     free(pool);
     free(used);
+    free(grid.head);
+    free(grid.next);
+    free(grid.moved);
+    free(grid.mlist);
 }
 
 /* The field's floor pictures: a gym's emblem, a button's icon, a flower,
