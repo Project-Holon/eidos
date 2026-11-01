@@ -5,7 +5,11 @@ composed 4,949 screens per scene over the title, the field, the X menu, the
 Pokedex, the bag, the save screen, the options, the trainer card, the starter
 choice and a wild battle, with no pixel different from the CPU compositor.
 
-Phase 2 is in, behind `EIDOS_G2D_GPU=1`: a screen the shader can compose is
+All four phases are in and on by default. The "GPU drawing" setting
+(Display) turns them off; `EIDOS_G2D_GPU=0` or `1` overrides the setting.
+Without OpenGL 3.3, or when the shader fails to build, the CPU composes.
+
+Phase 2: a screen the shader can compose is
 drawn from its output, composed when the screen is presented (with the
 pixels it stands in for). The window is the same with it on and off in both
 layouts (the title, the field, the Pokedex, the starter choice, a battle).

@@ -122,6 +122,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "one screen pixel wide." },
     [EIDOS_OPT_TRANSITIONS]         = { "Doors and map changes. Seamless",
                                         "never goes black." },
+    [EIDOS_OPT_GPU_2D]              = { "The graphics card draws the",
+                                        "screens. Off uses the CPU." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -231,6 +233,7 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_PAD_ICONS]           = "Button icons",
     [EIDOS_OPT_OUTLINES]            = "3D outlines",
     [EIDOS_OPT_TRANSITIONS]         = "Map transitions",
+    [EIDOS_OPT_GPU_2D]              = "GPU drawing",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -719,6 +722,7 @@ static void build_rows(void)
         add_row(ROW_OPTION, EIDOS_OPT_DISPLAY_PIXEL_SCALE, 0);
         add_row(ROW_OPTION, EIDOS_OPT_DISPLAY_RESOLUTION, 0);
         add_row(ROW_OPTION, EIDOS_OPT_OUTLINES, 0);
+        add_row(ROW_OPTION, EIDOS_OPT_GPU_2D, 0);
         break;
     case 1:
         add_row(ROW_OPTION, EIDOS_OPT_LAYOUT_ARRANGEMENT, 0);

@@ -59,7 +59,7 @@ int main(void)
     BW_CHECK_EQ("no grey bar", eidos_sui_has_back(), 0);
     row(0);
     BW_CHECK_EQ("the header is the tab", strcmp(g_label, "Display"), 0);
-    BW_CHECK_EQ("display rows", eidos_sui_row_count(), 1 + 5);
+    BW_CHECK_EQ("display rows", eidos_sui_row_count(), 1 + 6);
     row(1);
     BW_CHECK_EQ("mode label", strcmp(g_label, "Window mode"), 0);
     BW_CHECK_EQ("mode value", strcmp(g_value, "Windowed"), 0);
@@ -96,6 +96,10 @@ int main(void)
     row(4);
     BW_CHECK_EQ("outlines label", strcmp(g_label, "3D outlines"), 0);
     BW_CHECK_EQ("outlines off by default", eidos_settings_get(EIDOS_OPT_OUTLINES), 0);
+    press(DOWN);
+    row(5);
+    BW_CHECK_EQ("GPU drawing label", strcmp(g_label, "GPU drawing"), 0);
+    BW_CHECK_EQ("GPU drawing on by default", eidos_settings_get(EIDOS_OPT_GPU_2D), 1);
 
     /* The action row puts the defaults back. */
     press(DOWN);
@@ -267,7 +271,7 @@ int main(void)
     BW_CHECK_EQ("touch sets the first choice", eidos_settings_get(EIDOS_OPT_DISPLAY_MODE), 0);
     BW_CHECK_EQ("row 2 is adjustable", eidos_sui_row_adjustable(2), 1);
     BW_CHECK_EQ("row 3 is adjustable", eidos_sui_row_adjustable(3), 1);
-    BW_CHECK_EQ("row 5 is not", eidos_sui_row_adjustable(5), 0);
+    BW_CHECK_EQ("row 6 is not", eidos_sui_row_adjustable(6), 0);
     eidos_settings_set(EIDOS_OPT_DISPLAY_RESOLUTION, 2);
     eidos_sui_touch(3, EIDOS_SUI_ZONE_INC);
     BW_CHECK_EQ("first touch only selects", eidos_settings_get(EIDOS_OPT_DISPLAY_RESOLUTION), 2);
