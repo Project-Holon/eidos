@@ -3,6 +3,8 @@
 A native PC port of Pokémon Black, built from the
 [aletheia](https://github.com/Project-Holon/aletheia) decompilation.
 
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/Fpyemx4qp)
+
 > eidos is an unofficial fan project. It is not affiliated with or endorsed
 > by Nintendo, Game Freak, Creatures Inc. or The Pokémon Company. It contains
 > no game data: you need your own legally obtained copy of Pokémon Black or
@@ -125,6 +127,10 @@ extracts it. Saves go to `%APPDATA%\eidos\saves` on Windows.
 | SELECT | Right Shift | Touch | Left mouse button |
 
 Tab: fast forward. Alt+Return: fullscreen. F12: screenshot.
+
+## Community
+
+Join the [Project Holon Discord](https://discord.gg/Fpyemx4qp) for troubleshooting, bug reports, multiplayer matchmaking, and development updates.
 
 ## Documentation
 
