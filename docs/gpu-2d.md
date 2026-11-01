@@ -5,6 +5,14 @@ composed 4,949 screens per scene over the title, the field, the X menu, the
 Pokedex, the bag, the save screen, the options, the trainer card, the starter
 choice and a wild battle, with no pixel different from the CPU compositor.
 
+Phase 2 is in, behind `EIDOS_G2D_GPU=1`: a screen the shader can compose is
+drawn from its output, composed when the screen is presented (with the
+pixels it stands in for). The window is the same with it on and off in both
+layouts (the title, the field, the Pokedex, the starter choice, a battle).
+It costs more than it saves until phase 4: the Pokedex frame took 3.8 ms
+without it and 4.7 ms with it (the copy for the shader and the GPU pass on
+top of the CPU compose).
+
 ## Why
 
 The DS 2D compositor (`engine/g2d/hwcompose.c`, `engine/g2d/bg.c`) runs on the

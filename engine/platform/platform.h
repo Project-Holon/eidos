@@ -492,6 +492,9 @@ int  eidos_platform_take_text(EidosPlatform *p, char *out, int cap);
  * -1 when the GPU path is not available. */
 struct G2dGpuFrame;
 int eidos_platform_gpu2d(EidosPlatform *p, const struct G2dGpuFrame *f, u8 *readback);
+/* The same, straight into the screen's texture: the next present does not
+ * upload that screen's pixels (phase 2). */
+int eidos_platform_gpu2d_show(EidosPlatform *p, const struct G2dGpuFrame *f, int screen);
 
 /*
  * The display capture at the 3D's resolution (GPU path only).  A scene that

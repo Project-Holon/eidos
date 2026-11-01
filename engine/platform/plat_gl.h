@@ -62,11 +62,13 @@ struct G3dSnapshot;
 int eidos_gl_has3d(const EidosGl *gl);
 
 /* The 2D compositor on the GPU (plat_gl2d.c, docs/gpu-2d.md): composes one
- * engine's frame into its 256 x 192 target and, with `readback`, copies it
- * out (256 x 192 RGBA, DS row 0 first).  -1 when the GPU path is not
+ * engine's frame into its 256 x 192 target; with `readback` copies it out
+ * (256 x 192 RGBA, DS row 0 first), with `to_screen` 0 or 1 into that
+ * screen's texture in place of an upload.  -1 when the GPU path is not
  * available. */
 struct G2dGpuFrame;
-int eidos_gl2d_compose(EidosGl *gl, const struct G2dGpuFrame *f, unsigned char *readback);
+int eidos_gl2d_compose(EidosGl *gl, const struct G2dGpuFrame *f, unsigned char *readback,
+                       int to_screen);
 
 /* The display capture at the 3D's resolution: see plat_gl.c. */
 int eidos_gl_capture(EidosGl *gl, const unsigned char *a2d,

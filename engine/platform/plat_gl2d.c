@@ -333,7 +333,8 @@ static void upload(GLuint t, int w, int h, GLenum fmt, const void *px)
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, fmt, GL_UNSIGNED_BYTE, px);
 }
 
-int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback)
+int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback,
+                       int to_screen)
 {
     Gl2d *s = &g_2d;
     static u8 pal[18 * 256 * 4];
@@ -477,6 +478,17 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
     if (readback != NULL) {
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
         glReadPixels(0, 0, 256, 192, GL_RGBA, GL_UNSIGNED_BYTE, readback);
+    }
+    if (to_screen == 0 || to_screen == 1) {
+        /* the screen's own texture, as eidos_gl_upload fills it: target
+         * row 0 is DS row 0, the upload's first row too */
+        glBindTexture(GL_TEXTURE_2D, g->tex[to_screen]);
+        if (g->tw[to_screen] != 256 || g->th[to_screen] != 192) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 192, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            g->tw[to_screen] = 256;
+            g->th[to_screen] = 192;
+        }
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, 256, 192);
     }
     g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(vp[0], vp[1], vp[2], vp[3]);

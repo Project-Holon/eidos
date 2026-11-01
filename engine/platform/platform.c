@@ -137,6 +137,7 @@ struct EidosPlatform {
     int               dev_rate;
     double            rs_pos;
     s16               rs_hist[4][2];
+    const struct G2dGpuFrame *gpu2d_frame[2]; /* the GPU composes the screen at the present */
 };
 
 /* ------------------------------------------------------------------ */
@@ -2004,8 +2005,14 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
             memcpy(p->shadow[i], src[i], bytes);
         }
         if (p->gl != NULL) {
-            eidos_gl_upload(p->gl, i, p->shadow[i], (int)SCREEN_W * nn[i],
-                            (int)SCREEN_H * nn[i]);
+            /* a screen the GPU composed is in its texture already
+             * (eidos_platform_gpu2d_show) */
+            if (p->gpu2d_frame[i] == NULL || nn[i] != 1
+                || eidos_gl2d_compose(p->gl, p->gpu2d_frame[i], NULL, i) != 0) {
+                eidos_gl_upload(p->gl, i, p->shadow[i], (int)SCREEN_W * nn[i],
+                                (int)SCREEN_H * nn[i]);
+            }
+            p->gpu2d_frame[i] = NULL;
         } else {
             SDL_UpdateTexture(p->tex[i], NULL, p->shadow[i],
                               (int)SCREEN_W * nn[i] * 4);
@@ -2059,7 +2066,18 @@ int eidos_platform_gpu2d(EidosPlatform *p, const struct G2dGpuFrame *f, u8 *read
     if (p == NULL || p->gl == NULL) {
         return -1;
     }
-    return eidos_gl2d_compose(p->gl, f, readback);
+    return eidos_gl2d_compose(p->gl, f, readback, -1);
+}
+
+int eidos_platform_gpu2d_show(EidosPlatform *p, const struct G2dGpuFrame *f, int screen)
+{
+    if (p == NULL || p->gl == NULL || screen < 0 || screen > 1) {
+        return -1;
+    }
+    /* composed when the screen is presented, with the pixels it stands in
+     * for (eidos_platform_present_nn) */
+    p->gpu2d_frame[screen] = f;
+    return 0;
 }
 
 int eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,

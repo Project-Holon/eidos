@@ -1405,6 +1405,20 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
     if (run->plat != NULL && getenv("EIDOS_G2D_GPU_CHECK") != NULL) {
         boot_gpu2d_check(run);
     }
+    if (run->plat != NULL && getenv("EIDOS_G2D_GPU") != NULL) {
+        /* docs/gpu-2d.md, phase 2: a screen the shader can compose is shown
+         * from its output; the CPU's stays for the readers that need it */
+        int slot;
+
+        g2d_gpu_export(1);
+        for (slot = 0; slot < 2; slot++) {
+            const G2dGpuFrame *f = g2d_gpu_frame(slot);
+
+            if (f != NULL && f->valid && run->hi_sn[f->screen] == 1u) {
+                (void)eidos_platform_gpu2d_show(run->plat, f, f->screen);
+            }
+        }
+    }
     g_render_ns = eidos_prof_on ? bw_clock_ns() - t0 : 0;
     eidos_prof_end(EIDOS_PROF_RENDER, t0);
 }
