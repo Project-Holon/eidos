@@ -41,25 +41,18 @@
   let error = $state<string | null>(null);
   let starting = $state(false);
 
-  // The profile's game ("" is Black). With a ROM of that game in the
-  // library, its box legendary is shown, drawn from the ROM; without one,
-  // the eidos dragon.
-  const game = $derived(current?.game === "white" ? "white" : "black");
-  const art = new Map<string, string | null>();
-  let legend = $state<string | null>(null);
-  $effect(() => {
-    const g = game;
-    if (art.has(g)) {
-      legend = art.get(g)!;
-      return;
-    }
-    legend = null;
-    coverArt(g)
-      .then((url) => {
-        art.set(g, url);
-        if (g === game) legend = url;
-      })
-      .catch(() => art.set(g, null));
+  // The box legendaries, drawn from the player's ROMs: Zekrom by night (a
+  // Black ROM in the library), Reshiram by day (a White ROM). Without that
+  // game's ROM, its theme keeps the eidos dragon.
+  let zekrom = $state<string | null>(null);
+  let reshiram = $state<string | null>(null);
+  onMount(() => {
+    coverArt("black")
+      .then((url) => (zekrom = url))
+      .catch(() => {});
+    coverArt("white")
+      .then((url) => (reshiram = url))
+      .catch(() => {});
   });
 
   // The version a Play press runs, as the backend resolves it.
@@ -128,12 +121,16 @@
 
 <section class="home">
   <div class="hero window">
-    {#if legend}
-      <!-- the profile's box legendary, drawn from the player's ROM -->
-      <img class="legend" src={legend} alt={game === "white" ? "Reshiram" : "Zekrom"} />
+    <!-- by night Zekrom, by day Reshiram, from the player's ROMs; the eidos
+         dragon (and its Reshiram-coloured day form) without them -->
+    {#if zekrom}
+      <img class="legend night" src={zekrom} alt="Zekrom" />
     {:else}
-      <!-- the eidos dragon by night, in Reshiram's colours by day -->
       <div class="art night" style:background-image="url({dragon})"></div>
+    {/if}
+    {#if reshiram}
+      <img class="legend day" src={reshiram} alt="Reshiram" />
+    {:else}
       <div class="art day" style:background-image="url({dragonDay})"></div>
     {/if}
     <div class="intro">
