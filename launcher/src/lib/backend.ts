@@ -54,6 +54,12 @@ export const LATEST = "latest";
 export const LOCAL = "local";
 
 export const overview = () => invoke<Overview>("overview");
+/// The box legendary of a game ("black" or "white"), drawn from a ROM of
+/// that game in the library, as a picture URL; null without such a ROM.
+export async function coverArt(game: string): Promise<string | null> {
+  const bytes = await invoke<number[] | null>("cover_art", { game });
+  return bytes ? URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "image/png" })) : null;
+}
 export const createProfile = (name: string, version: string) => invoke<Profile>("create_profile", { name, version });
 export const renameProfile = (from: string, to: string) => invoke<void>("rename_profile", { from, to });
 export const duplicateProfile = (name: string) => invoke<Profile>("duplicate_profile", { name });

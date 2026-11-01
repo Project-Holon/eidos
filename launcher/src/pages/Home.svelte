@@ -5,6 +5,7 @@
   import {
     LATEST,
     LOCAL,
+    coverArt,
     installVersion,
     listRemote,
     message,
@@ -39,6 +40,27 @@
 
   let error = $state<string | null>(null);
   let starting = $state(false);
+
+  // The profile's game ("" is Black). With a ROM of that game in the
+  // library, its box legendary is shown, drawn from the ROM; without one,
+  // the eidos dragon.
+  const game = $derived(current?.game === "white" ? "white" : "black");
+  const art = new Map<string, string | null>();
+  let legend = $state<string | null>(null);
+  $effect(() => {
+    const g = game;
+    if (art.has(g)) {
+      legend = art.get(g)!;
+      return;
+    }
+    legend = null;
+    coverArt(g)
+      .then((url) => {
+        art.set(g, url);
+        if (g === game) legend = url;
+      })
+      .catch(() => art.set(g, null));
+  });
 
   // The version a Play press runs, as the backend resolves it.
   const version = $derived.by(() => {
@@ -106,9 +128,14 @@
 
 <section class="home">
   <div class="hero window">
-    <!-- the eidos dragon by night, in Reshiram's colours by day -->
-    <div class="art night" style:background-image="url({dragon})"></div>
-    <div class="art day" style:background-image="url({dragonDay})"></div>
+    {#if legend}
+      <!-- the profile's box legendary, drawn from the player's ROM -->
+      <img class="legend" src={legend} alt={game === "white" ? "Reshiram" : "Zekrom"} />
+    {:else}
+      <!-- the eidos dragon by night, in Reshiram's colours by day -->
+      <div class="art night" style:background-image="url({dragon})"></div>
+      <div class="art day" style:background-image="url({dragonDay})"></div>
+    {/if}
     <div class="intro">
       <span class="display title">EIDOS</span>
     </div>
@@ -215,6 +242,15 @@
     background-repeat: no-repeat;
     background-size: 290px 238px;
     image-rendering: pixelated;
+  }
+  .legend {
+    position: absolute;
+    right: 2rem;
+    top: 0.5rem;
+    width: 256px;
+    height: 256px;
+    image-rendering: pixelated;
+    pointer-events: none;
   }
   .day,
   :global(:root[data-theme="light"]) .night {

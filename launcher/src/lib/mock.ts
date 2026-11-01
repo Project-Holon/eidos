@@ -55,6 +55,7 @@ const answers: Record<string, unknown> = {
   get_settings: settings,
   save_settings: settings,
   // ?onelang: a library in one language (the picker greyed out)
+  cover_art: null,
   rom_library: new URLSearchParams(location.search).has("onelang") ? roms.slice(0, 1) : roms,
 
   add_roms: { library: roms, added: 0, refused: [] },

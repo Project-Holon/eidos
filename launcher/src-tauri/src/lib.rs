@@ -445,6 +445,28 @@ fn save_roms(app: &App, s: &Settings) -> R<()> {
     Ok(())
 }
 
+/// The legendary on a game's box (Zekrom on Black, Reshiram on White), its
+/// front battle sprite drawn from a ROM of that game in the library, as PNG.
+/// None when the library holds no ROM of that game: the page then shows the
+/// eidos dragon. Nothing is stored; the picture comes from the player's ROM.
+#[tauri::command]
+async fn cover_art(app: State<'_, App>, game: String) -> R<Option<Vec<u8>>> {
+    let (prefix, species) = match game.as_str() {
+        "white" => ("IRA", nds::sprite::RESHIRAM),
+        _ => ("IRB", nds::sprite::ZEKROM),
+    };
+    let roms = app.settings().roms;
+    for e in roms.iter().filter(|e| e.code.starts_with(prefix)) {
+        let Ok(rom) = nds::rom::Rom::open(&e.path) else {
+            continue;
+        };
+        if let Ok(png) = nds::sprite::battle_front_png(&rom, species) {
+            return Ok(Some(png));
+        }
+    }
+    Ok(None)
+}
+
 /// The library, each file read again if it changed since.
 #[tauri::command]
 async fn rom_library(app: State<'_, App>) -> R<Vec<rom::View>> {
@@ -638,6 +660,7 @@ pub fn run() {
             set_profile_version,
             set_profile_data_root,
             rom_library,
+            cover_art,
             set_profile_language,
             set_profile_game,
             add_roms,

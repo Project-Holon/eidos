@@ -917,6 +917,7 @@ name = "eidos-launcher"
 version = "0.1.0"
 dependencies = [
  "eidos-mod",
+ "nds",
  "releases",
  "serde",
  "serde_json",
@@ -935,8 +936,8 @@ dependencies = [
 
 [[package]]
 name = "eidos-mod"
-version = "0.1.0"
-source = "git+https://github.com/Project-Holon/morphe?tag=v0.1.0#09d6fb50f20fb753d2ef59ba89c92278dbcc04e4"
+version = "0.2.2"
+source = "git+https://github.com/Project-Holon/morphe?tag=v0.2.2#5ef490bdfca67af3ed34d0ad940c9135a592a9ae"
 dependencies = [
  "serde",
  "serde_json",
@@ -2251,6 +2252,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nds"
+version = "0.2.2"
+source = "git+https://github.com/Project-Holon/morphe?tag=v0.2.2#5ef490bdfca67af3ed34d0ad940c9135a592a9ae"
+dependencies = [
+ "png",
+ "serde",
+ "sha1_smol",
+]
+
+[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2934,8 +2945,8 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "releases"
-version = "0.1.0"
-source = "git+https://github.com/Project-Holon/morphe?tag=v0.1.0#09d6fb50f20fb753d2ef59ba89c92278dbcc04e4"
+version = "0.2.2"
+source = "git+https://github.com/Project-Holon/morphe?tag=v0.2.2#5ef490bdfca67af3ed34d0ad940c9135a592a9ae"
 dependencies = [
  "serde",
  "serde_json",
@@ -3435,6 +3446,12 @@ dependencies = [
  "cpufeatures",
  "digest",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
