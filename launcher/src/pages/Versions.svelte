@@ -2,22 +2,22 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "morphe/menu.svelte";
-  import { installVersion, listRemote, message, removeVersion, type Overview, type Remote } from "../lib/backend";
+  import { installVersion, knownRemote, listRemote, message, removeVersion, type Overview, type Remote } from "../lib/backend";
   import Icon from "../lib/Icon.svelte";
 
   let { ov, onRefresh }: { ov: Overview; onRefresh: () => Promise<void> | void } = $props();
 
-  let remote = $state<Remote[] | null>(null);
+  let remote = $state<Remote[] | null>(knownRemote());
   let error = $state<string | null>(null);
   let loading = $state(false);
   let busy = $state<string | null>(null);
   let stage = $state("");
 
-  async function load() {
+  async function load(fresh = false) {
     loading = true;
     error = null;
     try {
-      remote = await listRemote();
+      remote = await listRemote(fresh);
     } catch (e) {
       error = message(e);
     } finally {
@@ -31,7 +31,7 @@
       await installVersion(tag);
       toast("Installed.");
       await onRefresh();
-      await load();
+      await load(true);
     } catch (e) {
       toast(message(e), true);
     } finally {
@@ -44,7 +44,7 @@
     try {
       await removeVersion(id);
       await onRefresh();
-      await load();
+      await load(true);
     } catch (e) {
       toast(message(e), true);
     }
@@ -99,7 +99,7 @@
   <div>
     <h2 class="section-label">
       Releases
-      <button class="quiet small refresh" disabled={loading} onclick={load} title="Refresh the list">
+      <button class="quiet small refresh" disabled={loading} onclick={() => load(true)} title="Refresh the list">
         <Icon name="refresh" size={14} />{loading ? "Loading" : "Refresh"}
       </button>
     </h2>

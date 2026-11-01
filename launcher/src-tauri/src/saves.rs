@@ -39,6 +39,8 @@ pub struct SaveView {
     pub seconds: u32,
     /// How many badges.
     pub badges: u8,
+    /// One bit per badge, in the order the game awards them.
+    pub badge_bits: u8,
     pub party: Vec<PartyMember>,
     /// The zone the player saved in; `place` is its name, from a ROM of
     /// the save's game ("" when the library has none).
@@ -87,6 +89,7 @@ fn view(slot: u8, s: Save, saved: u64) -> SaveView {
         female: s.female,
         seconds: s.seconds,
         badges: s.badges.count_ones() as u8,
+        badge_bits: s.badges,
         party: s
             .party
             .into_iter()

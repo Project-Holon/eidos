@@ -10,8 +10,12 @@
     saves as listSaves,
     setCurrentSave,
     speciesArt,
+    badgeArt,
+    playerArt,
+    type BadgeArt,
     type Save,
     listRemote,
+    knownRemote,
     message,
     openFolder,
     newerThan,
@@ -74,7 +78,9 @@
 
   // A newer release than any installed one, for the profiles that follow
   // the latest version.  A failed check shows nothing.
-  let remote = $state<Remote[] | null>(null);
+  let remote = $state<Remote[] | null>(knownRemote());
+  // The list could not be had (offline): no notes panel, no skeleton.
+  let remoteFailed = $state(false);
   let updating = $state(false);
   let stage = $state("");
   const update = $derived.by(() => {
@@ -101,7 +107,7 @@
       await installVersion(r.tag);
       toast(`eidos ${r.id ?? r.tag} installed.`);
       await onRefresh();
-      remote = await listRemote();
+      remote = await listRemote(true);
     } catch (e) {
       toast(message(e), true);
     } finally {
@@ -113,7 +119,7 @@
   onMount(() => {
     listRemote()
       .then((r) => (remote = r))
-      .catch(() => {});
+      .catch(() => (remoteFailed = remote === null));
     const stop = listen<[string, string]>("install-progress", (e) => (stage = e.payload[1]));
     return () => {
       stop.then((f) => f());
@@ -125,6 +131,11 @@
   let saveList = $state<Save[]>([]);
   let sprites = $state<Record<string, string | null>>({});
   const art = (s: Save, species: number) => sprites[`${s.game}:${species}`];
+  // The badge case's badges and empty slots, per game.
+  let badgeCase = $state<Record<string, BadgeArt | null>>({});
+  // Hilbert and Hilda, per game.
+  let players = $state<Record<string, string | null>>({});
+  const player = (s: Save) => players[`${s.game}:${s.female}`];
   $effect(() => {
     const name = selected;
     void ov.running.length;
@@ -132,16 +143,18 @@
       .then((list) => {
         if (name !== selected) return;
         saveList = list;
+        for (const s of list) {
+          const k = `${s.game}:${s.female}`;
+          if (!(k in players)) playerArt(s.game, s.female).then((url) => (players = { ...players, [k]: url }));
+        }
+        for (const g of new Set(list.map((s) => s.game)))
+          if (!(g in badgeCase)) badgeArt(g).then((a) => (badgeCase = { ...badgeCase, [g]: a }));
         for (const s of list)
           for (const m of s.party)
             speciesArt(m.species, s.game).then((url) => (sprites = { ...sprites, [`${s.game}:${m.species}`]: url }));
       })
       .catch(() => (saveList = []));
   });
-  // The eight slots in order, each with its save or free.
-  const slots = $derived(
-    Array.from({ length: 8 }, (_, i) => ({ slot: i + 1, save: saveList.find((s) => s.slot === i + 1) ?? null })),
-  );
 
   // A sprite as large as its frame allows: a whole-number scale (every
   // pixel the same size) when that fills most of the frame, else the
@@ -291,7 +304,19 @@
   {/if}
   {#if error}<p class="note bad" role="alert">{error}</p>{/if}
 
-  {#if latest}
+  {#if !latest && !remoteFailed}
+    <!-- the first load of the release list: the panel's shape, waiting -->
+    <section class="news window" aria-label="Release notes" aria-busy="true">
+      <header><span class="skel" style:width="14rem"></span></header>
+      <div class="notes">
+        <span class="skel" style:width="6rem"></span>
+        <span class="skel" style:width="92%"></span>
+        <span class="skel" style:width="78%"></span>
+        <span class="skel" style:width="85%"></span>
+        <span class="skel" style:width="60%"></span>
+      </div>
+    </section>
+  {:else if latest}
     <section class="news window" aria-label="Release notes">
       <header>
         <span class="section-label">What's new in eidos {latest.id ?? latest.tag}</span>
@@ -314,11 +339,10 @@
       <span class="faint small">{saveList.length} of 8</span>
     </header>
       <div class="list">
-        {#each slots as entry (entry.slot)}
-          {#if !entry.save}
-            <div class="free faint small">Slot {entry.slot} · free</div>
-          {:else}
-          {@const s = entry.save}
+        {#if saveList.length === 0}
+          <p class="faint small">No saves yet.</p>
+        {/if}
+        {#each saveList as s (s.slot)}
           <button
             class="save"
             class:current={s.current}
@@ -326,6 +350,10 @@
             onclick={() => chooseSave(s)}
             title={s.current ? "The game opens on this save" : "Open this save next time"}
           >
+            <span class="avatar" aria-hidden="true">
+              {#if player(s)}<img src={player(s)} alt="" />{/if}
+            </span>
+            <span class="body">
             <span class="top">
               <span class="who" class:female={s.female}>{s.trainer}</span>
               {#if s.current}<span class="badge accent">Continues here</span>{:else}<span class="faint small">Save {s.slot}</span>{/if}
@@ -339,13 +367,23 @@
             </span>
             <span class="facts">
               <span><b>{playTime(s.seconds)}</b> played</span>
-              <span class="dots" aria-label="{s.badges} badges">
-                {#each Array(8) as _, i}<i class:on={i < s.badges}></i>{/each}
-              </span>
+              <span class="faint small">{s.badges} of 8 badges</span>
             </span>
+            {#if badgeCase[s.game]}
+              {@const b = badgeCase[s.game]!}
+              <span class="case" aria-hidden="true">
+                {#each b.badges as src, i (i)}
+                  <img src={(s.badgeBits >> i) & 1 ? src : b.outlines[i]} alt="" />
+                {/each}
+              </span>
+            {:else}
+              <span class="dots" aria-hidden="true">
+                {#each Array(8) as _, i}<i class:on={((s.badgeBits >> i) & 1) === 1}></i>{/each}
+              </span>
+            {/if}
             <span class="where faint small">{s.place || "Unknown place"} · {ago(s.saved)}</span>
+            </span>
           </button>
-          {/if}
         {/each}
       </div>
     <footer>
@@ -402,6 +440,28 @@
   .news header .section-label {
     margin: 0;
   }
+  .skel {
+    display: block;
+    height: 0.8rem;
+    margin: 0.35rem 0 0.6rem;
+    border-radius: 0.4rem;
+    background: linear-gradient(90deg, var(--panel-2), var(--panel-3), var(--panel-2));
+    background-size: 200% 100%;
+    animation: skel 1.4s ease-in-out infinite;
+  }
+  @keyframes skel {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skel {
+      animation: none;
+    }
+  }
   .notes {
     min-height: 0;
     overflow-y: auto;
@@ -436,9 +496,6 @@
   }
   .main-col .hero {
     flex: none;
-  }
-  .main-col .hero {
-    aspect-ratio: 9 / 4;
   }
   .saves {
     min-height: 6rem;
@@ -498,8 +555,9 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
     align-content: start;
     gap: 0.6rem;
   }
@@ -513,26 +571,36 @@
     padding-top: 0.75rem;
     border-top: 2px solid var(--panel-3);
   }
-  .free {
-    min-height: 3rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 0.9rem;
-    border: 2px dashed var(--panel-3);
-    border-radius: var(--radius-s);
-  }
+  /* the player's picture down the left, the save's facts beside it */
   .save {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 3.6rem minmax(0, 1fr);
     align-items: stretch;
-    gap: 0.45rem;
-    padding: 0.7rem 0.9rem;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem 0.7rem 0.6rem;
     text-align: left;
     font-weight: 400;
     background: var(--panel-2);
     min-width: 0;
     flex: none;
+  }
+  .save .body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    min-width: 0;
+  }
+  .avatar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .avatar img {
+    width: 100%;
+    max-height: 7rem;
+    object-fit: contain;
+    object-position: bottom;
+    image-rendering: pixelated;
   }
   .save.current {
     border-color: var(--accent);
@@ -540,9 +608,10 @@
   }
   .save .top {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.25rem 0.5rem;
   }
   .who {
     font-weight: 700;
@@ -565,9 +634,24 @@
   }
   .facts {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     gap: 0.5rem;
+  }
+  /* the badge case's own pictures: a badge where it is won, its empty slot
+     where not */
+  .case {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    justify-items: center;
+  }
+  .case img {
+    width: 100%;
+    max-width: 1.1rem;
+    height: auto;
+    aspect-ratio: 1 / 2;
+    image-rendering: pixelated;
   }
   .dots {
     display: flex;
@@ -594,14 +678,17 @@
     overflow: hidden;
     container-type: inline-size;
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
     background: linear-gradient(160deg, var(--hero-a), var(--hero-b));
   }
   /* The art's own area above the launch row: the legendary (or the
      dragon) fills its height on the right at every window size, never
      cut. */
+  /* the art area keeps one shape (3:1) at every width; the launch row
+     sits under it */
   .stage {
     display: flex;
+    aspect-ratio: 3 / 1;
     min-height: 0;
   }
   .pic {

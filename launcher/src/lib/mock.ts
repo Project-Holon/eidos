@@ -93,9 +93,24 @@ export function installMock() {
           ...remote.filter((x) => x.id !== id),
         ];
       }
+      // The badge case drawn by the real reader from a real ROM, in
+      // public/mock/badges/b<i>.png and o<i>.png (not in the repository).
+      if (cmd === "badge_art") {
+        const get = async (f: string) => {
+          const r = await fetch(`/mock/badges/${f}.png`).catch(() => null);
+          return r && r.ok ? Array.from(new Uint8Array(await r.arrayBuffer())) : null;
+        };
+        const badges = await Promise.all([0, 1, 2, 3, 4, 5, 6, 7].map((i) => get(`b${i}`)));
+        const outlines = await Promise.all([0, 1, 2, 3, 4, 5, 6, 7].map((i) => get(`o${i}`)));
+        return badges.every(Boolean) && outlines.every(Boolean) ? { badges, outlines } : null;
+      }
       if (cmd === "saves") {
         const r = await fetch("/mock/saves.json").catch(() => null);
         return r && r.ok ? r.json() : [];
+      }
+      if (cmd === "player_art") {
+        const r = await fetch(`/mock/player_${args?.female ? 1 : 0}.png`).catch(() => null);
+        return r && r.ok ? Array.from(new Uint8Array(await r.arrayBuffer())) : null;
       }
       if (cmd === "species_art" || cmd === "cover_art") {
         const n = cmd === "cover_art" ? (args?.game === "white" ? 643 : 644) : args?.species;

@@ -69,6 +69,8 @@ export type Save = {
   seconds: number;
   /// How many badges.
   badges: number;
+  /// One bit per badge, in the order the game awards them.
+  badgeBits: number;
   /// The party, in order.
   party: { species: number; egg: boolean; name: string; level: number; hp: number; maxHp: number }[];
   /// The zone the player saved in, and its name from a ROM of the game
@@ -96,6 +98,37 @@ export function speciesArt(species: number, game: string): Promise<string | null
   }
   return p;
 }
+/// The player's trainer picture (Hilbert or Hilda), drawn from a ROM of the
+/// game, as a picture URL; null without such a ROM.
+const playerCache = new Map<string, Promise<string | null>>();
+export function playerArt(game: string, female: boolean): Promise<string | null> {
+  const key = `${game}:${female}`;
+  let p = playerCache.get(key);
+  if (!p) {
+    p = invoke<number[] | null>("player_art", { game, female })
+      .then((b) => (b ? URL.createObjectURL(new Blob([new Uint8Array(b)], { type: "image/png" })) : null))
+      .catch(() => null);
+    playerCache.set(key, p);
+  }
+  return p;
+}
+
+/// The badges and their empty slots, drawn from the badge case of a ROM of
+/// the game, as picture URLs; null without such a ROM.
+export type BadgeArt = { badges: string[]; outlines: string[] };
+const badgeCache = new Map<string, Promise<BadgeArt | null>>();
+export function badgeArt(game: string): Promise<BadgeArt | null> {
+  let p = badgeCache.get(game);
+  if (!p) {
+    const url = (b: number[]) => URL.createObjectURL(new Blob([new Uint8Array(b)], { type: "image/png" }));
+    p = invoke<{ badges: number[][]; outlines: number[][] } | null>("badge_art", { game })
+      .then((a) => (a ? { badges: a.badges.map(url), outlines: a.outlines.map(url) } : null))
+      .catch(() => null);
+    badgeCache.set(game, p);
+  }
+  return p;
+}
+
 /// The box legendary of a game ("black" or "white"), drawn from a ROM of
 /// that game in the library, as a picture URL; null without such a ROM.
 export async function coverArt(game: string): Promise<string | null> {
@@ -111,7 +144,20 @@ export const setProfileVersion = (name: string, version: string) =>
 export const moveProfileData = (name: string, to: string) => invoke<string>("move_profile_data", { name, to });
 export const setProfileDataRoot = (name: string, path: string) =>
   invoke<void>("set_profile_data_root", { name, path });
-export const listRemote = () => invoke<Remote[]>("list_remote");
+/// The release list, kept for the session: pages show it at once when they
+/// open again, and it is fetched again when asked (`fresh`, after an
+/// install or a removal) or when older than ten minutes.
+let remoteKept: Remote[] | null = null;
+let remoteAt = 0;
+const REMOTE_AGE = 10 * 60 * 1000;
+export const knownRemote = () => remoteKept;
+export async function listRemote(fresh = false): Promise<Remote[]> {
+  if (!fresh && remoteKept && Date.now() - remoteAt < REMOTE_AGE) return remoteKept;
+  const list = await invoke<Remote[]>("list_remote");
+  remoteKept = list;
+  remoteAt = Date.now();
+  return list;
+}
 export const installVersion = (tag: string) => invoke<void>("install_version", { tag });
 export const removeVersion = (id: string) => invoke<void>("remove_version", { id });
 export type Layout = "classic" | "one";

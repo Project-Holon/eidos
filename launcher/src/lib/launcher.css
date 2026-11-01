@@ -71,9 +71,9 @@ input[type="checkbox"] {
 
 /* A page: its title, a line under it, then sections */
 /* The whole interface scales with the window: everything is sized in
-   rem, and the root size runs from 11px (the smallest window) to 16px. */
+   rem, and the root size runs from 14px (small windows) to 16px. */
 html {
-  font-size: clamp(11px, min(1.25vw, 2.2vh), 16px);
+  font-size: clamp(14px, min(1.6vw, 2.8vh), 16px);
 }
 /* morphe's body text is 14px; here it is 14px at the full size and
    scales with the rest */

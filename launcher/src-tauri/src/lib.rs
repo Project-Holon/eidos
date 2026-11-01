@@ -562,6 +562,81 @@ async fn species_art(app: State<'_, App>, species: u16, game: String) -> R<Optio
     Ok(None)
 }
 
+#[derive(Serialize)]
+struct BadgeArt {
+    /// The eight badges, in award order, as PNG.
+    badges: Vec<Vec<u8>>,
+    /// The empty slot of each badge, as PNG.
+    outlines: Vec<Vec<u8>>,
+}
+
+/// The badges and their empty slots from the badge case of a ROM of the
+/// game. None without one.
+#[tauri::command]
+async fn badge_art(app: State<'_, App>, game: String) -> R<Option<BadgeArt>> {
+    for path in roms_of(&app, &game, None) {
+        let Ok(rom) = nds::rom::Rom::open(&path) else {
+            continue;
+        };
+        if let Ok(art) = nds::badges::badge_art(&rom) {
+            let png = |v: &[nds::image::Rgba]| v.iter().map(nds::image::encode_png).collect();
+            return Ok(Some(BadgeArt {
+                badges: png(&art.badges),
+                outlines: png(&art.outlines),
+            }));
+        }
+    }
+    Ok(None)
+}
+
+/// The player's trainer picture (Hilbert or Hilda) from a ROM of the game,
+/// cut to the figure. None without one.
+#[tauri::command]
+async fn player_art(app: State<'_, App>, game: String, female: bool) -> R<Option<Vec<u8>>> {
+    let graphic = if female {
+        nds::sprite::PLAYER_FEMALE
+    } else {
+        nds::sprite::PLAYER_MALE
+    };
+    for path in roms_of(&app, &game, None) {
+        let Ok(rom) = nds::rom::Rom::open(&path) else {
+            continue;
+        };
+        if let Ok(img) = nds::sprite::trainer_front(&rom, graphic) {
+            return Ok(Some(nds::image::encode_png(&tight_crop(&img))));
+        }
+    }
+    Ok(None)
+}
+
+/// The picture cut to its opaque pixels (the whole picture when empty).
+fn tight_crop(img: &nds::image::Rgba) -> nds::image::Rgba {
+    let (w, h) = (img.width, img.height);
+    let opaque = |x: usize, y: usize| img.pixels[(y * w + x) * 4 + 3] > 0;
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
+    for y in 0..h {
+        for x in 0..w {
+            if opaque(x, y) {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x + 1);
+                y1 = y1.max(y + 1);
+            }
+        }
+    }
+    if x1 <= x0 {
+        return img.clone();
+    }
+    let cw = x1 - x0;
+    let mut out = nds::image::Rgba::new(cw, y1 - y0);
+    for y in y0..y1 {
+        let s = (y * w + x0) * 4;
+        let d = (y - y0) * cw * 4;
+        out.pixels[d..d + cw * 4].copy_from_slice(&img.pixels[s..s + cw * 4]);
+    }
+    out
+}
+
 /// The smallest square around the picture's opaque pixels, the picture
 /// centred in it (at least 8x8; the whole picture when it is empty).
 fn square_crop(img: &nds::image::Rgba) -> nds::image::Rgba {
@@ -805,6 +880,8 @@ pub fn run() {
             saves,
             set_current_save,
             species_art,
+            badge_art,
+            player_art,
             get_auto_update,
             set_auto_update,
             set_profile_language,
@@ -878,6 +955,10 @@ mod tests {
                 )
                 .unwrap();
             }
+        }
+        for (f, g) in [(0, nds::sprite::PLAYER_MALE), (1, nds::sprite::PLAYER_FEMALE)] {
+            let img = nds::sprite::trainer_front(&rom, g).unwrap();
+            std::fs::write(out.join(format!("player_{f}.png")), nds::image::encode_png(&tight_crop(&img))).unwrap();
         }
         std::fs::write(
             out.join("saves.json"),

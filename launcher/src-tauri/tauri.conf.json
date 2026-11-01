@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "eidos launcher",
-        "width": 960,
-        "height": 640,
+        "width": 1280,
+        "height": 800,
         "minWidth": 640,
         "minHeight": 480,
         "center": true

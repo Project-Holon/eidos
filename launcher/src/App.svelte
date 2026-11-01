@@ -192,7 +192,7 @@
   }
   .shell {
     display: grid;
-    grid-template-columns: 13.5rem 1fr;
+    grid-template-columns: 10.5rem 1fr;
     height: 100%;
   }
   nav {
