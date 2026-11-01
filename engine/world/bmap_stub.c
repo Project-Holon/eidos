@@ -11,6 +11,16 @@
 
 #include "bmap.h"
 
+unsigned bmap_tex_gen(void)
+{
+    static unsigned gen;
+
+    if (++gen == 0) {
+        gen = 1;
+    }
+    return gen;
+}
+
 #define TILE 16.0f
 #define HALF 20                     /* tiles each way from the player's */
 
@@ -156,6 +166,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season,
     t->repeat_s = t->repeat_t = 1;
     s->t = t;
     s->nt = 1;
+    s->tex_gen = bmap_tex_gen();
     s->clear[0] = 150; s->clear[1] = 200; s->clear[2] = 240;
     return 0;
 }

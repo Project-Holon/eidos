@@ -110,3 +110,14 @@ A frame is composed on the CPU when any of these is true:
    sentinel, behind and zero screens go away.
 4. The interface reads the screens back a frame late; the CPU compose stops
    running on GPU frames.
+
+## The spot editor
+
+The spot editor (`tools/spot-editor`) draws its window with OpenGL through
+`engine/platform/plat_gl_view.c`. The 3D views stay GPU textures (no read
+back), the sprites are cached textures, and the interface canvas is one
+texture laid on top. Each spot drag reuses the work that does not depend on
+where the battle stands (`bmap_place_prepare`) and the map's textures
+(`BmapScene.tex_gen`). At 2559x1340, a frame takes about 11 ms (it took
+about 28 ms), and a drag step takes about 20 ms (it took about 65 ms).
+`EIDOS_SPOTS_PROF=1` prints each frame's time.

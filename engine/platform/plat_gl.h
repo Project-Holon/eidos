@@ -70,6 +70,24 @@ struct G2dGpuFrame;
 int eidos_gl2d_compose(EidosGl *gl, const struct G2dGpuFrame *f, unsigned char *readback,
                        int to_screen);
 
+/* Drawing a tool's window with the GPU (plat_gl_view.c): keep3d copies the
+ * last eidos_gl_render3d picture into a texture (made when `tex` is 0);
+ * upload makes or refills a texture from straight top-down RGBA; begin
+ * clears the window, draw lays a texture over the window rectangle (mode 0
+ * a kept 3D picture: clear pixels out, the rest opaque; 1 a sprite: the
+ * same, straight; 2 a canvas blended by its alpha; flip for a kept 3D
+ * picture; clip x y w h or NULL), read copies the window out top-down,
+ * end shows it. */
+unsigned eidos_gl_view_keep3d(EidosGl *gl, unsigned tex, int w, int h);
+unsigned eidos_gl_view_upload(EidosGl *gl, unsigned tex, const unsigned char *rgba, int w, int h,
+                              int same_size);
+void eidos_gl_view_free(EidosGl *gl, unsigned tex);
+void eidos_gl_view_begin(EidosGl *gl, int win_w, int win_h, unsigned rgb);
+void eidos_gl_view_draw(EidosGl *gl, unsigned tex, int mode, int x, int y, int w, int h, int flip,
+                        const int *clip);
+int eidos_gl_view_read(EidosGl *gl, unsigned char *rgba);
+void eidos_gl_view_end(EidosGl *gl);
+
 /* The display capture at the 3D's resolution: see plat_gl.c. */
 int eidos_gl_capture(EidosGl *gl, const unsigned char *a2d,
                      const unsigned char *behind,

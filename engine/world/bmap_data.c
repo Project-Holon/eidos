@@ -2857,6 +2857,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     }
     s->t = c->tex;
     s->nt = (unsigned)c->ntex;
+    s->tex_gen = bmap_tex_gen();
     c->tex = NULL;
     s->uva = c->uva;
     s->nuva = (unsigned)c->nuva;
@@ -2957,6 +2958,16 @@ out:
     return rc;
 }
 
+unsigned bmap_tex_gen(void)
+{
+    static unsigned gen;
+
+    if (++gen == 0) {
+        gen = 1;
+    }
+    return gen;
+}
+
 void bmap_free(BmapScene *s)
 {
     unsigned i;
@@ -2964,6 +2975,7 @@ void bmap_free(BmapScene *s)
 
     free(s->v);
     free(s->d);
+    free(s->prep);
     if (s->shared) {                    /* a copy (bmap_copy): the rest is the original's */
         memset(s, 0, sizeof *s);
         return;
@@ -3141,6 +3153,7 @@ int bmap_add_bmd(BmapScene *s, const unsigned char *bmd, size_t bmd_n,
             s->nd = o;
             s->nv += t.nv;
             s->nt += (unsigned)c->ntex;
+            s->tex_gen = bmap_tex_gen();
             c->ntex = 0;
             nd = NULL;
             rc = 0;

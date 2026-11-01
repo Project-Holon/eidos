@@ -102,7 +102,7 @@ static int leafy(const BmapScene *s, const BmapDraw *g)
  * cell of `tile` units: the same three tufts, the same height, on every
  * cell, the whole grass picture on each; the grass triangles are dropped
  * after. */
-static unsigned char *g_tmask;      /* the grass triangles (bmap_place_spec), by index */
+static const unsigned char *g_tmask;      /* the grass triangles (bmap_place_spec), by index */
 
 static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned nd0, float tile)
 {
@@ -670,15 +670,24 @@ int bmap_copy(BmapScene *dst, const BmapScene *src)
     dst->shared = 1;
     dst->v = (BmapVertex *)malloc((src->nv > 0 ? src->nv : 1) * sizeof *dst->v);
     dst->d = (BmapDraw *)malloc((src->nd > 0 ? src->nd : 1) * sizeof *dst->d);
-    if (dst->v == NULL || dst->d == NULL) {
+    dst->prep = NULL;
+    if (src->prep != NULL) {
+        dst->prep = (unsigned char *)malloc(src->prep_nd0 + src->prep_ntri + 1u);
+    }
+    if (dst->v == NULL || dst->d == NULL || (src->prep != NULL && dst->prep == NULL)) {
         free(dst->v);
         free(dst->d);
+        free(dst->prep);
         dst->v = NULL;
         dst->d = NULL;
+        dst->prep = NULL;
         return -1;
     }
     memcpy(dst->v, src->v, src->nv * sizeof *dst->v);
     memcpy(dst->d, src->d, src->nd * sizeof *dst->d);
+    if (src->prep != NULL) {
+        memcpy(dst->prep, src->prep, src->prep_nd0 + src->prep_ntri);
+    }
     return 0;
 }
 
@@ -1839,6 +1848,85 @@ static void drop_cave_light(BmapScene *s)
     }
 }
 
+void bmap_place_prepare(BmapScene *s, int field)
+{
+    unsigned i, nd0, ntri;
+    unsigned char *grass, *tmask;
+
+    if (s == NULL) {
+        return;
+    }
+    /* the same map for the battle and the editor's free field view */
+    stand_cards(s);
+    if (!field) {
+        drop_cave_light(s);
+    }
+    nd0 = s->nd;
+    ntri = s->nv / 3 + 1;
+    free(s->prep);
+    s->prep = (unsigned char *)calloc(nd0 + ntri + 1u, 1);
+    s->prep_nd0 = nd0;
+    s->prep_ntri = s->prep != NULL ? ntri : 0;
+    s->prepared = field ? 2 : 1;
+    grass = s->prep;
+    /* The grass: each level triangle of a cut-out sheet a little above the
+     * solid ground right under it, leafy or over the tiles where wild
+     * Pokemon appear (dark grass is not green enough to tell by its colour;
+     * a rug never lies on those tiles; the soft shadow sheet under the
+     * leaves is translucent).  Triangle by triangle: one draw holds the
+     * grass of every height (a hill's terraces).  Laid on the ground, and
+     * the tufts grow from them (the triangle marks). */
+    tmask = s->prep != NULL ? s->prep + nd0 : NULL;
+    for (i = 0; tmask != NULL && !field && i < s->nd; i++) {
+        BmapDraw *d = &s->d[i];
+        const BmapTexture *t = d->tex >= 0 && (unsigned)d->tex < s->nt ? &s->t[d->tex] : NULL;
+        unsigned j;
+        int cut = d->translucent != 0, lf;
+
+        if (d->billboard != 0 || d->count < 3 || d->first % 3 != 0 || d->first + d->count > s->nv || t == NULL
+            || s->v[d->first].obj != 0) {
+            continue;                   /* a placed object (a gym button's leaf) stays */
+        }
+        for (j = 0; !cut && j < (unsigned)(t->w * t->h); j++) {
+            cut = t->rgba[j * 4 + 3] == 0;
+        }
+        if (!cut) {
+            continue;
+        }
+        lf = leafy(s, d);
+        for (j = d->first; j + 2 < d->first + d->count; j += 3) {
+            BmapVertex *v = &s->v[j];
+            float y0 = v[0].y, cx = (v[0].x + v[1].x + v[2].x) / 3.0f, cz = (v[0].z + v[1].z + v[2].z) / 3.0f, g, dh;
+            int hit, k2;
+
+            if (fabsf(v[1].y - y0) > 0.01f || fabsf(v[2].y - y0) > 0.01f || v[0].obj != 0) {
+                continue;
+            }
+            g = bmap_ground_below(s, cx, cz, y0 - 0.01f, &hit);
+            if (!hit) {
+                continue;
+            }
+            dh = y0 - g;
+            if (dh <= 0.0f || dh > GRASS_MAX_H) {
+                continue;
+            }
+            if (!lf && (d->translucent || !bmap_tile_encounter(s, cx, cz))) {
+                continue;
+            }
+            tmask[j / 3] = 1;
+            if (grass != NULL) {
+                grass[i] = 1;
+            }
+            for (k2 = 0; k2 < 3; k2++) {
+                v[k2].y = g + dh * 0.05f;
+            }
+        }
+    }
+    /* after the grass: a grass sheet is told by lying flat as a whole, and
+     * is laid down (and grown into tufts) by its own rule */
+    lay_decals(s, grass, nd0);
+}
+
 void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
 {
     const double pi = 3.14159265358979323846;
@@ -1876,7 +1964,8 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     float ca, sa;
     float gy, k = BMAP_PLACE_K, th[6];
     unsigned i, nd0;
-    unsigned char *done, *grass;
+    unsigned char *done;
+    const unsigned char *grass;
 
     if (s == NULL) {
         return;
@@ -1884,69 +1973,12 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     if (getenv("EIDOS_DEBUG_BMAP_K") != NULL) {     /* tests: another scale */
         k = (float)atof(getenv("EIDOS_DEBUG_BMAP_K"));
     }
-    /* the same map for the battle and the editor's free field view */
-    stand_cards(s);
-    if (!sp->field) {
-        drop_cave_light(s);
+    if (!s->prepared) {
+        bmap_place_prepare(s, sp->field);
     }
-    nd0 = s->nd;
-    grass = (unsigned char *)calloc(nd0 > 0 ? nd0 : 1, 1);
-    /* The grass: each level triangle of a cut-out sheet a little above the
-     * solid ground right under it, leafy or over the tiles where wild
-     * Pokemon appear (dark grass is not green enough to tell by its colour;
-     * a rug never lies on those tiles; the soft shadow sheet under the
-     * leaves is translucent).  Triangle by triangle: one draw holds the
-     * grass of every height (a hill's terraces).  Laid on the ground, and
-     * the tufts grow from them (g_tmask). */
-    g_tmask = (unsigned char *)calloc(s->nv / 3 + 1, 1);
-    for (i = 0; g_tmask != NULL && !sp->field && i < s->nd; i++) {
-        BmapDraw *d = &s->d[i];
-        const BmapTexture *t = d->tex >= 0 && (unsigned)d->tex < s->nt ? &s->t[d->tex] : NULL;
-        unsigned j;
-        int cut = d->translucent != 0, lf;
-
-        if (d->billboard != 0 || d->count < 3 || d->first % 3 != 0 || d->first + d->count > s->nv || t == NULL
-            || s->v[d->first].obj != 0) {
-            continue;                   /* a placed object (a gym button's leaf) stays */
-        }
-        for (j = 0; !cut && j < (unsigned)(t->w * t->h); j++) {
-            cut = t->rgba[j * 4 + 3] == 0;
-        }
-        if (!cut) {
-            continue;
-        }
-        lf = leafy(s, d);
-        for (j = d->first; j + 2 < d->first + d->count; j += 3) {
-            BmapVertex *v = &s->v[j];
-            float y0 = v[0].y, cx = (v[0].x + v[1].x + v[2].x) / 3.0f, cz = (v[0].z + v[1].z + v[2].z) / 3.0f, g, dh;
-            int hit, k2;
-
-            if (fabsf(v[1].y - y0) > 0.01f || fabsf(v[2].y - y0) > 0.01f || v[0].obj != 0) {
-                continue;
-            }
-            g = bmap_ground_below(s, cx, cz, y0 - 0.01f, &hit);
-            if (!hit) {
-                continue;
-            }
-            dh = y0 - g;
-            if (dh <= 0.0f || dh > GRASS_MAX_H) {
-                continue;
-            }
-            if (!lf && (d->translucent || !bmap_tile_encounter(s, cx, cz))) {
-                continue;
-            }
-            g_tmask[j / 3] = 1;
-            if (grass != NULL) {
-                grass[i] = 1;
-            }
-            for (k2 = 0; k2 < 3; k2++) {
-                v[k2].y = g + dh * 0.05f;
-            }
-        }
-    }
-    /* after the grass: a grass sheet is told by lying flat as a whole, and
-     * is laid down (and grown into tufts) by its own rule */
-    lay_decals(s, grass, nd0);
+    nd0 = s->prep_nd0;
+    grass = s->prep;                    /* NULL when its memory ran out */
+    g_tmask = s->prep != NULL ? s->prep + s->prep_nd0 : NULL;
     if (sp->has_rect) {                 /* the start inside the rectangle */
         px = fminf(fmaxf(px, sp->x0), sp->x1);
         pz = fminf(fmaxf(pz, sp->z0), sp->z1);
@@ -2139,8 +2171,6 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     topview_dump(s, nd0, 1, th);
     if (grass != NULL) {
         grass_grow_fixed(s, grass, nd0, 16.0f * k);
-        free(grass);
     }
-    free(g_tmask);
-    g_tmask = NULL;
+    g_tmask = NULL;                     /* the scene's own (prep) */
 }

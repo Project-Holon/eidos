@@ -68,6 +68,12 @@ typedef struct BmapPlaceSpec {
     float trainer_ally_size; /* ... its height                                  */
 } BmapPlaceSpec;
 void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp);
+/* The part of bmap_place_spec that does not depend on where the battle
+ * stands (the standing cards, the grass laid on the ground, the decals):
+ * done once on a scene, then each bmap_copy of it can be placed without it
+ * (the spot editor places one build many times).  bmap_place_spec does it
+ * itself on a scene that has not had it.  `field`: as BmapPlaceSpec.field. */
+void bmap_place_prepare(BmapScene *s, int field);
 /* The height of a wild area's grass (its leafy sheets over the encounter
  * tiles in [x0, x1] x [z0, z1], map units, the lowest): the area's floor is
  * just under it.  0 when there is no grass there (water, a cave). */

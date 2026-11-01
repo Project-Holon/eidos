@@ -211,6 +211,28 @@ void ui_fill(EidosUiCtx *c, int x, int y, int w, int h, u32 rgb, int a)
     if (y0 < 0) y0 = 0;
     if (x1 > c->canvas->w) x1 = c->canvas->w;
     if (y1 > c->canvas->h) y1 = c->canvas->h;
+    if (x0 >= x1 || y0 >= y1 || a <= 0) {
+        return;
+    }
+    if (a >= 255) {
+        /* opaque: the first row's pixels written, every other row copied
+         * from it (what blend_at writes for a = 255) */
+        u8 *row0 = c->canvas->rgba + ((size_t)y0 * (size_t)c->canvas->w + (size_t)x0) * 4u;
+        size_t n = (size_t)(x1 - x0) * 4u;
+
+        for (px = x0; px < x1; px++) {
+            u8 *d = row0 + (size_t)(px - x0) * 4u;
+
+            d[0] = (u8)((rgb >> 16) & 255u);
+            d[1] = (u8)((rgb >> 8) & 255u);
+            d[2] = (u8)(rgb & 255u);
+            d[3] = 255;
+        }
+        for (py = y0 + 1; py < y1; py++) {
+            memcpy(c->canvas->rgba + ((size_t)py * (size_t)c->canvas->w + (size_t)x0) * 4u, row0, n);
+        }
+        return;
+    }
     for (py = y0; py < y1; py++) {
         for (px = x0; px < x1; px++) {
             blend_at(c->canvas, px, py, rgb, a);

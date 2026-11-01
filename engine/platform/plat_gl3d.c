@@ -487,6 +487,7 @@ typedef struct Gl3dBackdrop {
     float reach;                /* half-width of the placed map, battle units */
     GLuint *tex;
     unsigned n_tex;
+    unsigned tex_gen;           /* the scene textures' BmapScene.tex_gen */
     BdPiece *piece;             /* the see-through parts, and their order  */
     unsigned n_piece;
     unsigned *order;
@@ -500,7 +501,7 @@ typedef struct Gl3dBackdrop {
 
 static Gl3dBackdrop g_bd;
 
-static void backdrop_free_scene(void)
+static void backdrop_free_tex(void)
 {
     if (g_bd.n_tex > 0) {
         glDeleteTextures((GLsizei)g_bd.n_tex, g_bd.tex);
@@ -508,6 +509,15 @@ static void backdrop_free_scene(void)
     free(g_bd.tex);
     g_bd.tex = NULL;
     g_bd.n_tex = 0;
+    g_bd.tex_gen = 0;
+}
+
+/* keep_tex: the textures stay (the next scene has the same ones) */
+static void backdrop_free_scene(int keep_tex)
+{
+    if (!keep_tex) {
+        backdrop_free_tex();
+    }
     free(g_bd.piece);
     free(g_bd.order);
     free(g_bd.dist);
@@ -594,7 +604,7 @@ static int piece_far_first(const void *a, const void *b)
 
 static void backdrop_destroy(EidosGl *g)
 {
-    backdrop_free_scene();
+    backdrop_free_scene(0);
     if (g_bd.vbo != 0) {
         g->glDeleteBuffers(1, &g_bd.vbo);
     }
@@ -758,20 +768,24 @@ static void backdrop_mips(const BmapTexture *t)
 static void backdrop_upload(EidosGl *g, const BmapScene *sc)
 {
     unsigned i;
+    /* another placing of the same build (the spot editor's drags): its
+     * textures are already up, mipmaps and all */
+    int keep = sc->tex_gen != 0 && sc->tex_gen == g_bd.tex_gen && sc->nt == g_bd.n_tex && g_bd.tex != NULL;
 
-    backdrop_free_scene();
+    backdrop_free_scene(keep);
     g_bd.scene = sc;
-    if (sc->nt > 0) {
+    if (!keep && sc->nt > 0) {
         g_bd.tex = (GLuint *)calloc(sc->nt, sizeof(GLuint));
         if (g_bd.tex == NULL) {
             g_bd.scene = NULL;
             return;
         }
         g_bd.n_tex = sc->nt;
+        g_bd.tex_gen = sc->tex_gen;
         glGenTextures((GLsizei)sc->nt, g_bd.tex);
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    for (i = 0; i < sc->nt; i++) {
+    for (i = 0; !keep && i < sc->nt; i++) {
         const BmapTexture *t = &sc->t[i];
 
         glBindTexture(GL_TEXTURE_2D, g_bd.tex[i]);

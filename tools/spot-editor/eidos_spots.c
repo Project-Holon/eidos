@@ -135,8 +135,10 @@ typedef struct View3d {
     int rw, rh;                     /* its render size                     */
     u8 *rgba;
     u8 *front;                      /* the map in front of the Pokemon (rgba, 0 alpha elsewhere) */
-    u8 *fronts[16];                 /* or the map in front of each one, apart (render_view's `each`) */
-    int fbox[17][4];                /* each front's opaque box (x0 y0 x1 y1, render size); [16] front's */
+    u8 *fronts[16];                 /* (unused: the pictures are GPU textures, tex and ftex) */
+    unsigned tex;                   /* the 3D picture (GL texture, kept from the render) */
+    unsigned ftex[17];              /* the map in front of each sprite ([16]: of all, the field view's) */
+    int has_front[17];
     int nfronts;
     int dirty;
     float eye[3], at[3], fsin, fcos;
@@ -161,6 +163,11 @@ typedef struct App {
     /* the scenes */
     BmapScene base, placed, field, obase;
     int have_base, have_placed, have_field, have_obase;
+    /* the base with what does not move with the spot done (bmap_place_prepare),
+     * for the floor height it was done at: each placing copies it */
+    BmapScene prep;
+    int have_prep, prep_field, prep_has_ref;
+    float prep_ref;
     /* the overworld view: its own map, around where it looks */
     unsigned ob_zone;
     float ob_cx, ob_cz;
@@ -370,15 +377,26 @@ static void refilter(void)
     A.nvis = 0;
     for (i = 0; A.vis != NULL && i < n; i++) {
         const BmapSpot *r = bmap_spots_get(i);
-        int keep = r->view == 0;
+        int keep = 1, k;
 
+        if (r->view != 0) {
+            continue;                   /* the list holds each spot once: its first view */
+        }
         switch (A.filter) {
         case F_TRAINERS: keep = r->kind == 'T' && strstr(r->label, "(story)") == NULL && r->trainer_id < 100000; break;
         case F_LEGEND: keep = r->trainer_id >= 100000; break;
         case F_STORY: keep = strstr(r->label, "(story)") != NULL; break;
         case F_WILD: keep = r->kind == 'A'; break;
         case F_TODO: keep = !r->ok; break;
-        case F_CHANGED: keep = changed_row(r) || bmap_spots_view_count(i) > 1; break;
+        case F_CHANGED:
+            /* any of its views changed, or a view added */
+            keep = bmap_spots_view_count(i) > 1;
+            for (k = 0; !keep && k < n; k++) {
+                const BmapSpot *o = bmap_spots_get(k);
+
+                keep = o->view >= 0 && strcmp(o->id, r->id) == 0 && changed_row(o);
+            }
+            break;
         default: break;
         }
         if (keep && A.search[0] != '\0') {
@@ -578,6 +596,7 @@ static void ensure_base(const BmapPlaceSpec *sp)
         return;
     }
     scene_drop(&A.placed, &A.have_placed);
+    scene_drop(&A.prep, &A.have_prep);
     scene_drop(&A.base, &A.have_base);
     if (bmap_build(&A.base, r->zone, sp->px, sp->pz, A.season, k_hours[A.hour], 0) != 0) {
         say("Could not build zone %u", r->zone);
@@ -675,15 +694,28 @@ static void place_all(void)
     }
     scene_drop(&A.placed, &A.have_placed);
     {
-        float y;
+        float y = 0.0f;
+        int has = row_height(r, &y);
 
-        if (row_height(r, &y)) {
+        if (has) {
             bmap_set_ref(&A.base, y);
         } else {
             bmap_clear_ref(&A.base);
         }
+        /* the grass and the cards lie where the floor height says: done
+         * again only when it (or the base) changes, not each drag step */
+        if (A.have_prep && (A.prep_field != sp.field || A.prep_has_ref != has || (has && A.prep_ref != y))) {
+            scene_drop(&A.prep, &A.have_prep);
+        }
+        if (!A.have_prep && bmap_copy(&A.prep, &A.base) == 0) {
+            bmap_place_prepare(&A.prep, sp.field);
+            A.have_prep = 1;
+            A.prep_field = sp.field;
+            A.prep_has_ref = has;
+            A.prep_ref = y;
+        }
     }
-    if (bmap_copy(&A.placed, &A.base) == 0) {
+    if (bmap_copy(&A.placed, A.have_prep ? &A.prep : &A.base) == 0) {
         bmap_place_spec(&A.placed, &sp);
         A.have_placed = 1;
         A.battle_gen = ++A.gen;
@@ -811,42 +843,12 @@ static void field_camera(unsigned zone, float *dist, float *pitch, float *yaw, f
  * `poke` (where, and the height of each one's box): all in one picture, or
  * with `each` one picture a sprite, so that a sprite drawn later (nearer)
  * covers the map in front of a farther one and not the other way round. */
-/* The box of a layer's opaque pixels (x0 y0 x1 y1, x1 y1 past the end;
- * empty when x0 >= x1): a front layer is mostly clear, and only its box is
- * drawn every frame. */
-static void opaque_box(const u8 *rgba, int w, int h, int box[4])
-{
-    int x, y;
-
-    box[0] = w;
-    box[1] = h;
-    box[2] = 0;
-    box[3] = 0;
-    for (y = 0; rgba != NULL && y < h; y++) {
-        const u8 *row = rgba + (size_t)y * (size_t)w * 4u;
-
-        for (x = 0; x < w; x++) {
-            if (row[x * 4 + 3] != 0) {
-                if (x < box[0]) box[0] = x;
-                if (x >= box[2]) box[2] = x + 1;
-                if (y < box[1]) box[1] = y;
-                box[3] = y + 1;
-            }
-        }
-    }
-}
-
 static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*poke)[4], int npoke, int each)
 {
     G3dSnapshot snap;
-    size_t need = (size_t)v->rw * (size_t)v->rh * 4u;
     int i;
 
     if (v->rw <= 0 || v->rh <= 0) {
-        return;
-    }
-    v->rgba = (u8 *)realloc(v->rgba, need);
-    if (v->rgba == NULL) {
         return;
     }
     memset(&snap, 0, sizeof snap);
@@ -863,45 +865,36 @@ static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*po
     snap.backdrop.scene = s;
     snap.backdrop.scene_gen = gen;
     memcpy(snap.backdrop.sky, s->clear, 3);
-    if (eidos_gl_render3d(A.gl, &snap, v->rw, v->rh) != 0 || eidos_gl_read3d(A.gl, v->rgba, v->rw, v->rh) != 0) {
-        memset(v->rgba, 0, need);
+    /* each picture stays on the GPU: kept in a texture, drawn at the frame's
+     * end (gpu_flush), never read back */
+    if (eidos_gl_render3d(A.gl, &snap, v->rw, v->rh) == 0) {
+        v->tex = eidos_gl_view_keep3d(A.gl, v->tex, v->rw, v->rh);
     }
     /* the map in front of the Pokemon, alone over a clear background: laid
      * over the sprites, as the game's second pass draws it over its own */
-    free(v->front);
-    v->front = NULL;
-    for (i = 0; i < v->nfronts; i++) {
-        free(v->fronts[i]);
-        v->fronts[i] = NULL;
-    }
+    memset(v->has_front, 0, sizeof v->has_front);
     v->nfronts = 0;
     if (each && poke != NULL) {
         for (i = 0; i < npoke && i < 16; i++) {
-            u8 *fr = (u8 *)malloc(need);
-
             memcpy(snap.backdrop.poke[0], poke[i], 4 * sizeof(float));
             snap.backdrop.n_poke = 1;
             snap.backdrop.front_only = 1;
-            if (fr != NULL && (eidos_gl_render3d(A.gl, &snap, v->rw, v->rh) != 0
-                               || eidos_gl_read3d(A.gl, fr, v->rw, v->rh) != 0)) {
-                free(fr);
-                fr = NULL;
+            if (eidos_gl_render3d(A.gl, &snap, v->rw, v->rh) == 0) {
+                v->ftex[i] = eidos_gl_view_keep3d(A.gl, v->ftex[i], v->rw, v->rh);
+                v->has_front[i] = 1;
             }
-            v->fronts[i] = fr;
-            opaque_box(fr, v->rw, v->rh, v->fbox[i]);
         }
         v->nfronts = i;
-    } else if (poke != NULL && npoke > 0 && (v->front = (u8 *)malloc(need)) != NULL) {
+    } else if (poke != NULL && npoke > 0) {
         for (i = 0; i < npoke && i < G3D_BACKDROP_SPRITES; i++) {
             memcpy(snap.backdrop.poke[i], poke[i], 4 * sizeof(float));    /* where, and its box's height */
         }
         snap.backdrop.n_poke = (u32)(npoke < G3D_BACKDROP_SPRITES ? npoke : G3D_BACKDROP_SPRITES);
         snap.backdrop.front_only = 1;
-        if (eidos_gl_render3d(A.gl, &snap, v->rw, v->rh) != 0 || eidos_gl_read3d(A.gl, v->front, v->rw, v->rh) != 0) {
-            free(v->front);
-            v->front = NULL;
+        if (eidos_gl_render3d(A.gl, &snap, v->rw, v->rh) == 0) {
+            v->ftex[16] = eidos_gl_view_keep3d(A.gl, v->ftex[16], v->rw, v->rh);
+            v->has_front[16] = 1;
         }
-        opaque_box(v->front, v->rw, v->rh, v->fbox[16]);
     }
     v->dirty = 0;
 }
@@ -1992,6 +1985,97 @@ static void fit_view(View3d *v, int x, int y, int w, int h)
     }
 }
 
+/* The GPU draws of a frame, in order, under the interface canvas: the views'
+ * 3D pictures, the sprites and the map in front of them.  The canvas has a
+ * clear hole where a view shows (gpu_hole). */
+typedef struct GpuOp {
+    unsigned tex;
+    int mode, x, y, w, h, flip;
+    int clip[4];
+} GpuOp;
+static GpuOp g_ops[1024];
+static const char *g_shot_path;     /* frame_shot: where this frame is written */
+static int g_nops;
+
+static void gpu_op(unsigned tex, int mode, int x, int y, int w, int h, int flip, const View3d *clip)
+{
+    GpuOp *o;
+
+    if (tex == 0 || g_nops >= (int)(sizeof g_ops / sizeof g_ops[0])) {
+        return;
+    }
+    o = &g_ops[g_nops++];
+    o->tex = tex;
+    o->mode = mode;
+    o->x = x;
+    o->y = y;
+    o->w = w;
+    o->h = h;
+    o->flip = flip;
+    o->clip[0] = clip->x;
+    o->clip[1] = clip->y;
+    o->clip[2] = clip->w;
+    o->clip[3] = clip->h;
+}
+
+/* A view's rectangle of the canvas, clear: the GPU's pictures show there. */
+static void gpu_hole(const View3d *v)
+{
+    EidosUiCanvas *cv = &A.canvas;
+    int y, x0 = v->x < 0 ? 0 : v->x, x1 = v->x + v->w > cv->w ? cv->w : v->x + v->w;
+
+    for (y = v->y < 0 ? 0 : v->y; y < v->y + v->h && y < cv->h && x1 > x0; y++) {
+        memset(cv->rgba + ((size_t)y * (size_t)cv->w + (size_t)x0) * 4u, 0, (size_t)(x1 - x0) * 4u);
+    }
+}
+
+/* A picture's GPU texture: the pictures (sprites, NPCs) are known by their
+ * pixels' address and size, and a few of their bytes in case an address is
+ * used again. */
+typedef struct SpriteTex {
+    const u8 *rgba;
+    int w, h;
+    u32 sum;
+    unsigned tex;
+} SpriteTex;
+static SpriteTex g_stex[512];
+static int g_nstex;
+
+static u32 sprite_sum(const u8 *rgba, int w, int h)
+{
+    size_t n = (size_t)w * (size_t)h * 4u, i, step = n / 64u + 1u;
+    u32 h32 = 2166136261u;
+
+    for (i = 0; i < n; i += step) {
+        h32 = (h32 ^ rgba[i]) * 16777619u;
+    }
+    return h32;
+}
+
+static unsigned sprite_tex(const u8 *rgba, int w, int h)
+{
+    u32 sum = sprite_sum(rgba, w, h);
+    int i, lru;
+
+    for (i = 0; i < g_nstex; i++) {
+        if (g_stex[i].rgba == rgba && g_stex[i].w == w && g_stex[i].h == h && g_stex[i].sum == sum) {
+            return g_stex[i].tex;
+        }
+    }
+    if (g_nstex < (int)(sizeof g_stex / sizeof g_stex[0])) {
+        lru = g_nstex++;
+        g_stex[lru].tex = 0;
+    } else {
+        lru = (int)(sum % (u32)g_nstex);
+    }
+    g_stex[lru].tex = eidos_gl_view_upload(A.gl, g_stex[lru].tex, rgba, w, h, 0);
+    g_stex[lru].rgba = rgba;
+    g_stex[lru].w = w;
+    g_stex[lru].h = h;
+    g_stex[lru].sum = sum;
+    return g_stex[lru].tex;
+}
+
 /* A picture standing at p (its bottom centre) through the view, `bh` battle
  * units tall. */
 static void draw_standing(const View3d *v, const u8 *rgba, int w, int h, const float p[3], float bh)
@@ -2011,40 +2095,7 @@ static void draw_standing(const View3d *v, const u8 *rgba, int w, int h, const f
     if (dw <= 0 || dh <= 0 || dw > 4000 || dh > 4000) {
         return;
     }
-    {
-        EidosUiRect saved;
-
-        ui_push(&C, 0, 0, &saved);
-        ui_clip(&C, v->x, v->y, v->w, v->h);
-        /* the canvas clip does not reach blit_rgba: clip by hand */
-        {
-            int x0 = (int)sx - dw / 2, y0 = (int)sy - dh;
-            EidosUiCanvas *cv = &A.canvas;
-            int yy, xx;
-
-            for (yy = 0; yy < dh; yy++) {
-                int py = y0 + yy, ty = yy * s->h / dh;
-
-                if (py < v->y || py >= v->y + v->h || py >= cv->h) {
-                    continue;
-                }
-                for (xx = 0; xx < dw; xx++) {
-                    int px = x0 + xx, txx = xx * s->w / dw;
-                    const u8 *src = s->rgba + ((size_t)ty * (size_t)s->w + (size_t)txx) * 4u;
-                    u8 *d;
-
-                    if (px < v->x || px >= v->x + v->w || px >= cv->w || src[3] == 0) {
-                        continue;
-                    }
-                    d = cv->rgba + ((size_t)py * (size_t)cv->w + (size_t)px) * 4u;
-                    d[0] = src[0];
-                    d[1] = src[1];
-                    d[2] = src[2];
-                }
-            }
-        }
-        ui_pop(&C, 0, 0, &saved);
-    }
+    gpu_op(sprite_tex(rgba, w, h), 1, (int)sx - dw / 2, (int)sy - dh, dw, dh, 0, v);
 }
 
 /* The place's offset of the foe's trainer, or of yours: right, up, back. */
@@ -2266,9 +2317,8 @@ static void draw_battle_view(int i)
         }
         render_view(v, &A.placed, A.battle_gen, (const float (*)[4])p4, n, 1);
     }
-    if (v->rgba != NULL) {
-        blit_rgba(v->x, v->y, v->rgba, v->rw, v->rh, v->w, v->h);
-    }
+    gpu_hole(v);
+    gpu_op(v->tex, 0, v->x, v->y, v->w, v->h, 1, v);
     /* the sprites, the farthest from the camera first */
     for (a = 0; a < n; a++) {
         float dx = p[a][0] - v->eye[0], dz = p[a][2] - v->eye[2];
@@ -2286,8 +2336,8 @@ static void draw_battle_view(int i)
         draw_standing(v, sp[far]->rgba, sp[far]->w, sp[far]->h, p[far], (float)sp[far]->h * SPRITE_U * sc[far]);
         /* the map standing in front of this one, before the nearer ones
          * (the game's second backdrop pass, plat_gl3d.c) */
-        if (far < v->nfronts && v->fronts[far] != NULL && !sendout[far]) {
-            blit_rgba_box(v->x, v->y, v->fronts[far], v->rw, v->rh, v->w, v->h, v->fbox[far]);
+        if (far < v->nfronts && v->has_front[far] && !sendout[far]) {
+            gpu_op(v->ftex[far], 0, v->x, v->y, v->w, v->h, 1, v);
         }
         d[far] = -1.0f;
     }
@@ -2368,9 +2418,8 @@ static void draw_field_view(void)
         memcpy(sp, all, (size_t)ns * sizeof sp[0]);
         render_view(v, &A.field, A.field_gen, (const float (*)[4])sp, ns, 0);
     }
-    if (v->rgba != NULL) {
-        blit_rgba(v->x, v->y, v->rgba, v->rw, v->rh, v->w, v->h);
-    }
+    gpu_hole(v);
+    gpu_op(v->tex, 0, v->x, v->y, v->w, v->h, 1, v);
     /* the zone's NPCs, the farthest first, as the field draws them */
     if (A.nnpc > 0 && A.npc_zone == r->zone) {
         int order[256], n = 0, a, b;
@@ -2420,8 +2469,8 @@ static void draw_field_view(void)
             ring(sx, sy, 8.0f, C_TEXT);
         }
     }
-    if (v->front != NULL) {
-        blit_rgba_box(v->x, v->y, v->front, v->rw, v->rh, v->w, v->h, v->fbox[16]);    /* the map in front of them */
+    if (v->has_front[16]) {
+        gpu_op(v->ftex[16], 0, v->x, v->y, v->w, v->h, 1, v);    /* the map in front of them */
     }
     if (r->kind == 'T') {
         map_to_battle(&A.field, (float)r->tx * 16.0f + 8.0f,
@@ -3528,11 +3577,50 @@ static void pump(void)
     }
 }
 
+/* The frame on the GPU: the views' pictures and the sprites in their order,
+ * then the interface canvas over them; `shot` (a BMP path) also writes the
+ * window out before it is shown. */
+static void gpu_flush(const char *shot)
+{
+    static unsigned canvas_tex;
+    static int canvas_w, canvas_h;
+    int i;
+
+    eidos_gl_view_begin(A.gl, A.W, A.H, C_BG);
+    for (i = 0; i < g_nops; i++) {
+        const GpuOp *o = &g_ops[i];
+
+        eidos_gl_view_draw(A.gl, o->tex, o->mode, o->x, o->y, o->w, o->h, o->flip, o->clip);
+    }
+    g_nops = 0;
+    canvas_tex = eidos_gl_view_upload(A.gl, canvas_tex, A.canvas.rgba, A.canvas.w, A.canvas.h,
+                                      canvas_w == A.canvas.w && canvas_h == A.canvas.h);
+    canvas_w = A.canvas.w;
+    canvas_h = A.canvas.h;
+    eidos_gl_view_draw(A.gl, canvas_tex, 2, 0, 0, A.W, A.H, 0, NULL);
+    if (shot != NULL) {
+        u8 *px = (u8 *)malloc((size_t)A.W * (size_t)A.H * 4u);
+        SDL_Surface *sf = px != NULL && eidos_gl_view_read(A.gl, px) == 0
+                          ? SDL_CreateSurfaceFrom(A.W, A.H, SDL_PIXELFORMAT_RGBA32, px, A.W * 4) : NULL;
+
+        if (sf != NULL) {
+            SDL_SaveBMP(sf, shot);
+            SDL_DestroySurface(sf);
+        }
+        free(px);
+    }
+    eidos_gl_view_end(A.gl);
+}
+
 static void frame(void)
 {
     int LW, IW;
-    SDL_Surface *src, *dst;
+    Uint64 t0 = SDL_GetPerformanceCounter();
+    static int prof = -1;
 
+    if (prof < 0) {
+        prof = getenv("EIDOS_SPOTS_PROF") != NULL;
+    }
     SDL_GetWindowSize(A.win, &A.W, &A.H);
     /* 1440p and up: the text a half bigger, the room between a quarter
      * (all of the inspector shows), the map under the list */
@@ -3554,14 +3642,12 @@ static void frame(void)
     draw_inspector(A.W - IW, TOP_H, IW, A.H - TOP_H);
     draw_top(LW, IW);
     slider_release();
-    dst = SDL_GetWindowSurface(A.win);
-    src = SDL_CreateSurfaceFrom(A.W, A.H, SDL_PIXELFORMAT_RGBA32, A.canvas.rgba, A.W * 4);
-    if (dst != NULL && src != NULL) {
-        SDL_SetSurfaceBlendMode(src, SDL_BLENDMODE_NONE);
-        SDL_BlitSurface(src, NULL, dst, NULL);
-        SDL_UpdateWindowSurface(A.win);
+    gpu_flush(g_shot_path);
+    if (prof) {
+        /* EIDOS_SPOTS_PROF: each frame's time on stderr */
+        fprintf(stderr, "frame %.2f ms\n",
+                (double)(SDL_GetPerformanceCounter() - t0) * 1000.0 / (double)SDL_GetPerformanceFrequency());
     }
-    SDL_DestroySurface(src);
 }
 
 /* --script FILE (tests): one step a line, each followed by frames:
@@ -3590,6 +3676,14 @@ static void push_motion(int x, int y)
     ev.motion.x = (float)x;
     ev.motion.y = (float)y;
     SDL_PushEvent(&ev);
+}
+
+/* A frame drawn and written out (tests). */
+static void frame_shot(const char *path)
+{
+    g_shot_path = path;
+    frame();
+    g_shot_path = NULL;
 }
 
 static void step(void)
@@ -3656,7 +3750,7 @@ static void run_script(const char *path)
             step();
         } else if (sscanf(line, "shot %199s", arg) == 1) {
             step();
-            SDL_SaveBMP(SDL_GetWindowSurface(A.win), arg);
+            frame_shot(arg);
         } else if (sscanf(line, "scene %d", &x1) == 1) {
             A.scene = x1;                           /* played, frame 0 */
             A.play = 1;
@@ -4236,12 +4330,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "eidos_spots: %s\n", SDL_GetError());
         return 1;
     }
-    A.glwin = SDL_CreateWindow("eidos spots gl", 64, 64, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
-    A.gl = A.glwin != NULL ? eidos_gl_create(A.glwin) : NULL;
-    if (A.gl == NULL) {
-        fprintf(stderr, "eidos_spots: no OpenGL 3.3: %s\n", SDL_GetError());
-        return 1;
-    }
     {
         /* EIDOS_SPOTS_SIZE=WxH (tests): the window's size */
         const char *sz = getenv("EIDOS_SPOTS_SIZE");
@@ -4252,9 +4340,17 @@ int main(int argc, char **argv)
         }
     }
     A.win = SDL_CreateWindow("eidos battle spots", win_w, win_h,
-                             SDL_WINDOW_RESIZABLE | (shot != NULL ? SDL_WINDOW_HIDDEN : SDL_WINDOW_MAXIMIZED));
+                             SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+                             | (shot != NULL ? SDL_WINDOW_HIDDEN : SDL_WINDOW_MAXIMIZED));
     if (A.win == NULL) {
         fprintf(stderr, "eidos_spots: %s\n", SDL_GetError());
+        return 1;
+    }
+    /* one OpenGL context for the window: the 3D pictures, the sprites and
+     * the interface canvas are all drawn by the GPU (gpu_flush) */
+    A.gl = eidos_gl_create(A.win);
+    if (A.gl == NULL) {
+        fprintf(stderr, "eidos_spots: no OpenGL 3.3: %s\n", SDL_GetError());
         return 1;
     }
     SDL_StartTextInput(A.win);
@@ -4300,7 +4396,7 @@ int main(int argc, char **argv)
         if (script != NULL) {
             run_script(script);
         }
-        SDL_SaveBMP(SDL_GetWindowSurface(A.win), shot);
+        frame_shot(shot);
         return 0;
     }
     while (!A.quit) {

@@ -1111,6 +1111,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl3d.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl2d.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl_view.c
         # the one-screen layout: scenes, recipes, the interface kit
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipes.c

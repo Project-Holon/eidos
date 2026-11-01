@@ -104,6 +104,14 @@ typedef struct BmapScene {
     int shared;             /* a copy (bmap_copy): textures, the animations and
                                the ground index belong to the original, which
                                must outlive it                                */
+    unsigned tex_gen;       /* changes whenever t is made or grows (bmap_tex_gen):
+                               copies share it, so a renderer keeps their
+                               textures from one placing to the next          */
+    int prepared;           /* bmap_place_prepare done: 1 battle, 2 field      */
+    unsigned char *prep;    /* ... its grass: prep_nd0 bytes (a draw holds grass),
+                               then prep_ntri (a triangle is grass); owned by
+                               this scene, copied by bmap_copy                 */
+    unsigned prep_nd0, prep_ntri;
 } BmapScene;
 
 /* Build the map around (px, pz) (map world units, matrix-absolute, as GameData's
@@ -119,6 +127,8 @@ void bmap_free(BmapScene *s);
  * many times): its own vertices and draws, the original's textures and
  * ground index.  Returns 0 on success. */
 int  bmap_copy(BmapScene *dst, const BmapScene *src);
+/* A new BmapScene.tex_gen, never 0. */
+unsigned bmap_tex_gen(void);
 /* The ground height under (x, z) map units, or the player's tile height.
  * After bmap_set_ref, where several surfaces lie under (x, z) (a floor and
  * the wall tops, a road and a bridge), the one nearest that height. */
