@@ -627,18 +627,25 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
         if (from2d) {
             /* the world composite's other two screens: the 3D off, and
              * (where a 2D layer can blend over the 3D) a black 3D */
+            /* unit 0 is the BG window again (the copy above bound the
+             * screen's texture there); the copies use unit 7 */
+            glBindTexture(GL_TEXTURE_2D, s->vram[v]);
             g->glUniform1i(s->u_g3m, 5);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            g->glActiveTexture(GL_TEXTURE7);
             glBindTexture(GL_TEXTURE_2D, g->behind_tex);
             glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, 256, 192, 0);
+            g->glActiveTexture(GL_TEXTURE0);
             g->behind_w = 256;
             g->behind_h = 192;
             g->has_zero = 0;
             if ((f->blend.second & 1u) != 0u) {
                 g->glUniform1i(s->u_g3m, 4);
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+                g->glActiveTexture(GL_TEXTURE7);
                 glBindTexture(GL_TEXTURE_2D, g->zero_tex);
                 glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, 256, 192, 0);
+                g->glActiveTexture(GL_TEXTURE0);
                 g->has_zero = 1;
             }
         }
