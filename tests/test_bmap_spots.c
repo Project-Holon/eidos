@@ -168,16 +168,16 @@ int main(void)
     BW_CHECK_EQ("a view's row is not a place of its own", bmap_spots_find(7, 1, tile_centre(11), tile_centre(30)), waiter);
     BW_CHECK_EQ("the nearest spot: first", bmap_spots_pick_view(waiter, 110.0f, 100.0f, 0x0000u), waiter);
     BW_CHECK_EQ("the nearest spot: second", bmap_spots_pick_view(waiter, 290.0f, 100.0f, 0x0000u), v1);
-    BW_CHECK_EQ("the nearest spot: third", bmap_spots_pick_view(waiter, 600.0f, 100.0f, 0x0000u), v2);
+    /* the angle counts more: near view 3 but facing view 1's way, view 1 */
+    BW_CHECK_EQ("the angle over the place", bmap_spots_pick_view(waiter, 600.0f, 100.0f, 0x0000u), waiter);
+    BW_CHECK_EQ("the nearest spot: third", bmap_spots_pick_view(waiter, 600.0f, 100.0f, 0x8000u), v2);
     /* two spots as near: the angle decides (facing 180 degrees: 0x8000) */
     bmap_spots_get(v2)->sx = 105.0f;
     BW_CHECK_EQ("a tie: the angle", bmap_spots_pick_view(waiter, 100.0f, 100.0f, 0x8000u), v2);
     BW_CHECK_EQ("a tie: the other angle", bmap_spots_pick_view(waiter, 100.0f, 100.0f, 0x0000u), waiter);
     bmap_spots_get(v2)->sx = 500.0f;
-    /* the angle first: east of the player (facing 90 degrees, 0x4000) takes view 2 from afar */
-    r->pick_angle = 1;
-    BW_CHECK_EQ("the angle first", bmap_spots_pick_view(waiter, 100.0f, 100.0f, 0x4000u), v1);
-    r->pick_angle = 0;
+    /* half way between views 1 and 2, facing 90 degrees (0x4000): view 2's angle */
+    BW_CHECK_EQ("the angle decides between two as near", bmap_spots_pick_view(waiter, 200.0f, 100.0f, 0x4000u), v1);
 
     /* a story fight has one row for all the versions by the player's starter */
     {
