@@ -652,5 +652,11 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
     }
     g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(vp[0], vp[1], vp[2], vp[3]);
+    /* the integer textures off the units the presenter's float samplers
+     * use (a driver checks every sampler of a program) */
+    for (i = 7; i >= 0; i--) {
+        g->glActiveTexture(GL_TEXTURE0 + (GLenum)i);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
     return 0;
 }

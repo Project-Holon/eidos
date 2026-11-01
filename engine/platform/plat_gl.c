@@ -228,6 +228,7 @@ static const char *k_fsw =
     "uniform int hasz;\n"
     "uniform int hide2d;\n"
     "uniform int crop;\n"
+    "uniform vec3 bd;\n"
     "uniform float bfac;\n"
     "uniform vec3 sent;\n"
     "in vec2 uv;\n"
@@ -257,27 +258,35 @@ static const char *k_fsw =
     "        ivec2 sz0 = ivec2(texsize);\n"
     "        ivec2 e = ivec2(duv.x < 0.0 ? 0 : sz0.x - 1, clamp(int(floor(duv.y * texsize.y)), 0, sz0.y - 1));\n"
     "        vec3 T = texelFetch(tex, e, 0).rgb;\n"
-    "        if (T == texelFetch(behind, e, 0).rgb && max(T.r, max(T.g, T.b)) < 0.03) {\n"
+    /* a layer of one colour across the whole row (a fade the game draws
+     * with a BG, white or any colour): the same at both edges and the
+     * middle; a panel at the edge is not stretched out */
+    "        ivec2 eo = ivec2(sz0.x - 1 - e.x, e.y), ec = ivec2(sz0.x / 2, e.y);\n"
+    "        bool rowflat = T == texelFetch(tex, eo, 0).rgb && T == texelFetch(tex, ec, 0).rgb;\n"
+    "        if (T == texelFetch(behind, e, 0).rgb && (max(T.r, max(T.g, T.b)) < 0.03 || rowflat)) {\n"
     "            color = vec4(T, 1.0);\n"
     "            return;\n"
     "        }\n"
-    /* the same black layer half blended over the 3D (a fade the game
-     * makes with alpha blending): the edge pixel blend, worked out from
+    /* the same layer (black, or one colour across the row) half blended
+     * over the 3D (a fade the game makes with alpha blending): the edge
+     * pixel blend, worked out from
      * the screen with a black 3D layer as inside, applied to the world on
      * the rest of the row */
     "        if (hasz != 0) {\n"
     "            vec3 X = texelFetch(zero, e, 0).rgb;\n"
-    "            if (T != X && max(X.r, max(X.g, X.b)) < 0.03) {\n"
+    "            bool xflat = X == texelFetch(zero, eo, 0).rgb && X == texelFetch(zero, ec, 0).rgb;\n"
+    "            if (T != X && (max(X.r, max(X.g, X.b)) < 0.03 || xflat)) {\n"
     "                float w = clamp((T.g - X.g) / sent.g, 0.0, 1.0);\n"
     "                color = vec4(X + w * P, 1.0);\n"
     "                return;\n"
     "            }\n"
     "        }\n"
     "    }\n"
-    /* outside: the 3D over the black beyond the screen, all of it under the
-     * master brightness as the DS screen is (a fade to white whitens the
-     * empty parts too, not only the DS rectangle) */
-    "    if (!inside) { color = vec4(P + (bmode == 1 ? (1.0 - A) * bfac : 0.0), 1.0); return; }\n"
+    /* outside: the 3D over the DS screen's own backdrop colour, under the
+     * master brightness as the DS screen is (`bd` has it), so a scene with
+     * little 3D, or a fade to white, fills the window like the DS
+     * rectangle and does not leave it a square */
+    "    if (!inside) { color = vec4(P + (1.0 - A) * bd, 1.0); return; }\n"
     "    ivec2 sz = ivec2(texsize);\n"
     "    ivec2 ip = ivec2(floor(duv * texsize));\n"
     "    vec2 dstsize = dsr.zw;\n"
@@ -346,7 +355,8 @@ static struct {
     SDL_Rect ds;                   /* the DS screen's rectangle in the window */
     GLuint progw, progb, progu;
     GLint w_tex, w_behind, w_g3d, w_zero, w_texsize, w_dsr, w_win, w_bmode,
-          w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect;
+          w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect, w_bd;
+    float bd[3];                   /* the backdrop colour beyond the DS screen */
     GLint b_src, b_win, b_dir, b_tint, b_rect;
     GLint u_ctex, u_rect;
     GLuint ctex;                   /* the canvas */
@@ -409,7 +419,7 @@ GLuint eidos_gl_compile_program(EidosGl *g, const char *vsrc, const char *fsrc)
 }
 
 /*
- * Debugging aid: EIDOS_GL_DUMP=path.bmp:N writes the window's pixels (what
+ * Debugging aid: EIDOS_GL_DUMP=path.bmp:N writes (path:N-M: each one from N to M, as path.N.bmp) the window's pixels (what
  * the GPU actually drew, before the swap) at the Nth presented frame.
  */
 static void gl_debug_dump(int w, int h)
@@ -418,8 +428,9 @@ static void gl_debug_dump(int w, int h)
     static const char *spec;
     static int init;
     static char path[512];
-    static int at;
+    static int at, last;
     static int done;
+    char name[600];
 
     if (!init) {
         const char *colon;
@@ -428,9 +439,14 @@ static void gl_debug_dump(int w, int h)
         spec = getenv("EIDOS_GL_DUMP");
         if (spec != NULL && (colon = strrchr(spec, ':')) != NULL &&
             (size_t)(colon - spec) < sizeof(path)) {
+            const char *dash;
+
             memcpy(path, spec, (size_t)(colon - spec));
             path[colon - spec] = 0;
             at = atoi(colon + 1);
+            /* "path:N-M": every presented frame from N to M, as path.N.bmp */
+            dash = strchr(colon + 1, '-');
+            last = dash != NULL ? atoi(dash + 1) : 0;
         } else {
             spec = NULL;
         }
@@ -438,7 +454,14 @@ static void gl_debug_dump(int w, int h)
     if (spec == NULL || ++frame < at || done) {
         return;
     }
-    done = 1;
+    if (last == 0 || frame >= last) {
+        done = 1;
+    }
+    if (last != 0) {
+        snprintf(name, sizeof name, "%s.%d.bmp", path, frame);
+    } else {
+        snprintf(name, sizeof name, "%s", path);
+    }
     {
         size_t row = ((size_t)w * 3u + 3u) & ~(size_t)3u;
         unsigned char *px = (unsigned char *)malloc(row * (size_t)h);
@@ -460,7 +483,7 @@ static void gl_debug_dump(int w, int h)
                 px[(size_t)y * row + (size_t)x * 3u + 2] = rgb[((size_t)y * w + x) * 3u + 0];
             }
         }
-        f = fopen(path, "wb");
+        f = fopen(name, "wb");
         if (f != NULL) {
             unsigned char hd[54] = { 'B', 'M' };
             unsigned long sz = 54ul + (unsigned long)(row * (size_t)h);
@@ -618,6 +641,7 @@ EidosGl *eidos_gl_create(SDL_Window *window)
         g_one.w_hasz = g->glGetUniformLocation(g_one.progw, "hasz");
         g_one.w_hide2d = g->glGetUniformLocation(g_one.progw, "hide2d");
         g_one.w_crop = g->glGetUniformLocation(g_one.progw, "crop");
+        g_one.w_bd = g->glGetUniformLocation(g_one.progw, "bd");
         g_one.w_bfac = g->glGetUniformLocation(g_one.progw, "bfac");
         g_one.w_sent = g->glGetUniformLocation(g_one.progw, "sent");
     }
@@ -824,6 +848,14 @@ void eidos_gl_set_3d2d(EidosGl *g, int screen)
         g->s3d = -1;
         g->s3d2 = screen == 0 || screen == 1 ? screen : -1;
     }
+}
+
+void eidos_gl_set_world_backdrop(EidosGl *g, unsigned rgb)
+{
+    (void)g;
+    g_one.bd[0] = (float)((rgb >> 16) & 255u) / 255.f;
+    g_one.bd[1] = (float)((rgb >> 8) & 255u) / 255.f;
+    g_one.bd[2] = (float)(rgb & 255u) / 255.f;
 }
 
 void eidos_gl_set_3d2d_shown(EidosGl *g, int w, int h)
@@ -1336,6 +1368,11 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         g->glUniform1i(g_one.w_hasz, g->has_zero);
         g->glUniform1i(g_one.w_hide2d, g_one.hide2d);
         g->glUniform1i(g_one.w_crop, g_one.crop);
+        {
+            static const GLfloat none[3] = { 0.f, 0.f, 0.f };
+
+            g->glUniform3fv(g_one.w_bd, 1, g_one.no_fade ? none : g_one.bd);
+        }
         g->glUniform3fv(g_one.w_sent, 1, sent);
         g->glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, g->zero_tex);
@@ -1416,7 +1453,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         d[s] = g_one.ds;
         /* around it, black as the game's brightness has it: a fade to
          * white whitens the whole window, not only the DS rectangle */
-        g_frame_clear = !g_one.no_fade && g->bmode == 1 ? g->bfac : 0.f;
+        g_frame_clear = g_one.no_fade ? 0.f : (g_one.bd[0] + g_one.bd[1] + g_one.bd[2]) / 3.f;
         draw_frame(g, out_w, out_h, d);
         g_frame_clear = 0.f;
     }

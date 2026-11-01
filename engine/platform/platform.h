@@ -531,6 +531,9 @@ int  eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,
  * into screen `screen` by the 2D shader at the next present (the screen's
  * frame given with eidos_platform_gpu2d_show).  -1 when it cannot. */
 int  eidos_platform_set_3d2d(EidosPlatform *p, int screen, const struct G3dSnapshot *snap, int n);
+/* The one-screen world's colour beyond the DS screen where no 3D is (the
+ * screen's backdrop under its master brightness), 0xRRGGBB. */
+void eidos_platform_set_world_backdrop(EidosPlatform *p, u32 rgb);
 /* The same for the one-screen world: its own composite (the 3D at the
  * window's shape), with the screen, the screen with the 3D off and the one
  * over black made by the 2D shader at the next present instead of the CPU.

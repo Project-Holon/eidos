@@ -2171,6 +2171,13 @@ int eidos_platform_set_3d_from2d(EidosPlatform *p, int screen, const struct G3dS
     return 0;
 }
 
+void eidos_platform_set_world_backdrop(EidosPlatform *p, u32 rgb)
+{
+    if (p != NULL && p->gl != NULL) {
+        eidos_gl_set_world_backdrop(p->gl, rgb);
+    }
+}
+
 int eidos_platform_set_3d2d(EidosPlatform *p, int screen, const struct G3dSnapshot *snap, int n)
 {
     if (!eidos_platform_gpu3d(p) || snap == NULL || screen < 0 || screen > 1) {

@@ -820,6 +820,29 @@ static u64 g_render_ns;   /* this frame's 3D + 2D time, for the profiler */
  * 3D layer off goes to the presenter beside the one the CPU composed with its
  * own 1x 3D; the presenter shows the GPU's frame where the two differ.
  */
+/* The one-screen world beyond the DS screen, where no 3D is: the main
+ * engine's backdrop (BG palette entry 0) under its master brightness, as
+ * the DS screen shows it (bg.c's 6-bit stage). */
+static void boot_world_backdrop(BootRun *run, u32 bright)
+{
+    const u8 *pal = (const u8 *)bw_ds_ptr(0x05000000u);
+    u16 c = pal != NULL ? bw_rd16(pal) : 0;
+    u32 mode = (bright >> 14) & 3u, f = bright & 0x1Fu, rgb = 0, i;
+
+    f = f > 16u ? 16u : f;
+    for (i = 0; i < 3u; i++) {
+        u32 c5 = ((u32)c >> (5u * i)) & 31u, c6 = c5 != 0u ? c5 * 2u + 1u : 0u;
+
+        if (mode == 1u && f != 0u) {
+            c6 += ((63u - c6) * f) >> 4;
+        } else if (mode == 2u && f != 0u) {
+            c6 -= (c6 * f) >> 4;
+        }
+        rgb |= (c6 * 255u / 63u) << (16u - 8u * i);
+    }
+    eidos_platform_set_world_backdrop(run->plat, rgb);
+}
+
 static void boot_gpu3d(BootRun *run, int behind_done)
 {
     const G3dSnapshot *snap;
@@ -862,6 +885,7 @@ static void boot_gpu3d(BootRun *run, int behind_done)
     main_on_top = (bw_io_read16(0x04000304u) & 0x8000u) != 0;
     screen = main_on_top ? 0 : 1;
     bright = bw_io_read16(0x0400006Cu);
+    boot_world_backdrop(run, bright);
     bmode = (bright >> 14) & 3u;
     {
         u32 f = bright & 0x1Fu;

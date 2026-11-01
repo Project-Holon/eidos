@@ -120,6 +120,9 @@ void eidos_gl_set_3d_from2d(EidosGl *gl, int screen, int bmode, float bfac);
 /* The size that screen is shown at in the window (the composite is made at
  * least that big). */
 void eidos_gl_set_3d2d_shown(EidosGl *gl, int w, int h);
+/* The one-screen world's colour beyond the DS screen where no 3D is: the
+ * screen's backdrop with its master brightness, 0xRRGGBB. */
+void eidos_gl_set_world_backdrop(EidosGl *gl, unsigned rgb);
 /* The same screen composed with an opaque black 3D layer (w x h RGBA), so
  * the presenter can tell what a 2D layer adds over the 3D and how much of
  * the 3D shows through a blend; NULL for none.  Call before eidos_gl_set_3d. */
