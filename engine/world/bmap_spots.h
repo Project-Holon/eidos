@@ -56,7 +56,8 @@ typedef struct BmapSpot {
                                cameras and trainer offsets); -1 deleted         */
     int trainer_n;          /* T: how many numbers from trainer_id on are the same fight
                                (the versions by the player's starter), 1 when one   */
-    int pick_angle;         /* view 0: the view is chosen by the angle first
+    int pick_angle;         /* no longer read (the views are scored on both);
+                               kept so older tables load: view 0: the view was chosen by the angle first
                                (else by the spot, the angle breaking a tie)     */
     float trainer_size;     /* the foe trainer's height: 1 the base, BMAP_TRAINER_INDOOR
                                the spot editor's "Indoor" (a room's furniture
@@ -89,10 +90,12 @@ int       bmap_spots_find_trainer(unsigned zone, int trainer_id, float px, float
 /* The views of the row at index i (any of its views): their count, the
  * table index of view v (0 is the first; -1 when there is none), and the one
  * a battle with the player at (px, pz) facing the game's 16-bit angle takes:
- * the view whose spot (a fixed spot, a safe area's middle, else the player's
- * usual place) is nearest, the one whose angle is nearest the facing when two
- * are about as near (less than a tile apart) or when the row asks for the angle
- * first.  Returns the table index of that view. */
+ * the view with the lowest score, the angle counting a little more than the
+ * place.  A view's place is its fixed spot, its safe area's middle, else the
+ * player's usual place; its angle is its own (an auto view has none and
+ * scores half marks on it).  Returns the table index of that view. */
+#define BMAP_VIEW_ANGLE_WEIGHT 0.6f   /* the angle's part of the score        */
+#define BMAP_VIEW_PLACE_TILES  8.0f   /* a place this far off scores full marks */
 int       bmap_spots_view_count(int i);
 int       bmap_spots_view_at(int i, int v);
 int       bmap_spots_pick_view(int i, float px, float pz, unsigned facing);

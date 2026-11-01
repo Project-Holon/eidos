@@ -465,34 +465,30 @@ static void view_place(const BmapSpot *r, float *x, float *z)
 
 int bmap_spots_pick_view(int i, float px, float pz, unsigned facing)
 {
-    int n = bmap_spots_view_count(i), v, best = i, base;
-    float best_d = 1e30f, best_a = 1e30f;
+    int n = bmap_spots_view_count(i), v, best = i;
+    float best_s = 1e30f;
     float face = (float)(facing & 0xFFFFu) * 360.0f / 65536.0f;
 
     if (n <= 1) {
         return n == 1 ? bmap_spots_view_at(i, 0) : i;
     }
-    base = bmap_spots_view_at(i, 0);
     for (v = 0; v < n; v++) {
         int k = bmap_spots_view_at(i, v);
         const BmapSpot *r = &g_rows[k];
-        float x, z, d, a = 0.0f;
+        float x, z, d, a = 0.5f, sc;
 
         view_place(r, &x, &z);
-        d = sqrtf((px - x) * (px - x) + (pz - z) * (pz - z));
-        if (r->mode != BMAP_SPOT_AUTO && r->angle >= 0.0f) {
-            a = fabsf(fmodf(r->angle - face + 540.0f, 360.0f) - 180.0f);    /* 0 to 180 */
+        d = sqrtf((px - x) * (px - x) + (pz - z) * (pz - z)) / (BMAP_VIEW_PLACE_TILES * 16.0f);
+        if (d > 1.0f) {
+            d = 1.0f;
         }
-        {
-            int by_angle = g_rows[base].pick_angle;
-            int better = by_angle ? (a < best_a - 0.5f || (a < best_a + 0.5f && d < best_d))
-                                  : (d < best_d - 16.0f || (d < best_d + 16.0f && a < best_a));
-
-            if (v == 0 || better) {
-                best = k;
-                best_d = d;
-                best_a = a;
-            }
+        if (r->mode != BMAP_SPOT_AUTO && r->angle >= 0.0f) {
+            a = fabsf(fmodf(r->angle - face + 540.0f, 360.0f) - 180.0f) / 180.0f;   /* 0 to 1 */
+        }
+        sc = BMAP_VIEW_ANGLE_WEIGHT * a + (1.0f - BMAP_VIEW_ANGLE_WEIGHT) * d;
+        if (v == 0 || sc < best_s) {
+            best = k;
+            best_s = sc;
         }
     }
     return best;
