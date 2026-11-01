@@ -440,7 +440,11 @@ static void select_row(int row)
     A.follow = 1;
     A.need_place = 1;
     A.ow_reset = 1;
-    A.show_tr = r->kind == 'T';
+    /* the still views show the battle as it runs: the trainers have left
+     * (the Trainers chip shows them, and so does a change to their
+     * offsets; the played intro and mid-battle scenes show them as the
+     * game does) */
+    A.show_tr = 0;
     A.hide_mon = 0;
     A.size_custom = 0;
     A.tr_foe_id = -2;
@@ -2095,14 +2099,14 @@ static void draw_battle_view(int i)
     for (a = 0; a < n; a++) {
         /* its height as the game draws it (sdk/battle_view.c, MCSS_Draw):
          * the game's size, a pixel of its scale two of the DS's 192 lines
-         * (a Pokemon's back twice its front), the same before any camera:
-         * its depth before the game's camera here, the place's moves and
-         * cameras on top.  A Pokemon's size is the scripts' for the camera
-         * (1 at the command camera, 0.5 all the way back) */
-        float g = kind[a] != 0 ? 1.0f : 1.0f - 0.5f * bmap_intro_progress(game_eye);
-        float dg = view_depth(game_eye, game_at, p[a]);
+         * (a Pokemon's back twice its front).  A trainer is that size
+         * before any camera (its depth before the game's camera here); a
+         * Pokemon is a thing in the room, bmap_mon_size, the game's size at
+         * the command camera and the scripts' (0.5) all the way back */
+        float dg = kind[a] != 0 ? view_depth(game_eye, game_at, p[a])
+                                : bmap_mon_size(p[a], bmap_intro_progress(game_eye), 0.5f);
 
-        sc[a] = (sp[a] == &A.own ? 2.0f : 1.0f) * g * (dg > 0.5f ? dg : 0.5f)
+        sc[a] = (sp[a] == &A.own ? 2.0f : 1.0f) * (dg > 0.5f ? dg : 0.5f)
                 * (2.0f * BATTLE_FOV_SIN / BATTLE_FOV_COS / 192.0f) / SPRITE_U;
     }
     for (a = 0; a < n; a++) {
@@ -3014,15 +3018,11 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
         }
         y += U(40);
         if (nv > 1) {
-            BmapSpot *b = bmap_spots_get(first_view(A.row));
+            /* the game scores the views on the player's place and facing
+             * (bmap_spots_pick_view) */
             int pick = bmap_spots_pick_view(A.row, A.tx, A.tz, deg_to_facing((float)A.tf));
 
-            if (button(x, y, chip_w("Picks by angle"), U(30), b->pick_angle ? "Picks by angle" : "Picks by spot", 0)) {
-                remember();
-                b->pick_angle = !b->pick_angle;
-                save_now();
-            }
-            text(x + chip_w("Picks by angle") + U(12), y + U(5), pick == A.row ? C_GOOD : C_MUTED, "Game takes %d",
+            text(x, y + U(5), pick == A.row ? C_GOOD : C_MUTED, "Game takes view %d here",
                  view_no(pick) + 1);
             y += U(40);
         }
@@ -3763,9 +3763,14 @@ static void preview_in_game(int play)
         }
     }
     _putenv_s("EIDOS_DEBUG_BMAP_AT", v);
-    snprintf(v, sizeof v, "%d", A.species[1]);
+    /* a party of four (the one on show first) and a bag of balls and
+     * healing items, to try switching and items; every badge, so every
+     * Pokemon obeys */
+    snprintf(v, sizeof v, "%d,497,503,571", A.species[1]);
     _putenv_s("EIDOS_DEBUG_PARTY", v);
     _putenv_s("EIDOS_DEBUG_LEVEL", "50");
+    _putenv_s("EIDOS_DEBUG_ITEMS", "4:30,3:30,2:30,17:20,26:20,25:20,23:10,28:10,27:10");
+    _putenv_s("EIDOS_DEBUG_UNLOCK", "1");
     if (A.scene >= 3 && !play) {
         snprintf(v, sizeof v, "0:%d:0", A.scene - 2);
         _putenv_s("EIDOS_DEBUG_MOVES", v);
@@ -3805,6 +3810,8 @@ static void preview_in_game(int play)
     _putenv_s("EIDOS_DEBUG_BMAP_AT", "");
     _putenv_s("EIDOS_DEBUG_PARTY", "");
     _putenv_s("EIDOS_DEBUG_LEVEL", "");
+    _putenv_s("EIDOS_DEBUG_ITEMS", "");
+    _putenv_s("EIDOS_DEBUG_UNLOCK", "");
     _putenv_s("EIDOS_DEBUG_MOVES", "");
     _putenv_s("EIDOS_BATTLE_ONLY", "");
     if (saves != NULL) {

@@ -1219,14 +1219,28 @@ static uintptr_t battle_camera(void)
 }
 
 /* The last battle camera committed: the game's own and the one drawn with
- * (see MCSS_Draw below); g_cam_on 0 before the first. */
+ * (see MCSS_Draw below); g_cam_on 0 before the first.  For each sprite
+ * (McssSys's works, by index) g_rest, its size at rest, which the scripts
+ * chose for the camera; g_far, the size at rest they choose with the camera
+ * all the way back (0.5 in the scripts read so far; it is learnt from what
+ * they do); g_last_eye and g_still: the game's eye the last draw, and the
+ * draws since it last moved. */
 #define SPRITES_MAX 16
+#define STILL_DRAWS 6               /* a size tween ends a step after its camera */
 static float g_cam_game[2][3], g_cam_drawn[2][3];
 static int g_cam_on;
+static float g_rest[SPRITES_MAX], g_far = 0.5f, g_last_eye[3];
+static int g_still, g_far_still;
 
 static void sprite_size_reset(void)
 {
+    int i;
+
     g_cam_on = 0;
+    for (i = 0; i < SPRITES_MAX; i++) {
+        g_rest[i] = 0.0f;
+    }
+    g_still = g_far_still = 0;
 }
 
 /* The battle camera commits its eye and target here (btlv_camera.c, every
@@ -1339,19 +1353,30 @@ static int sprite_pos(uintptr_t w)
  * the camera (the wild intro takes the foe to 0.5; the views 14 and 19 take
  * the sides to 0.65 and 0.725, ov094's camera command).
  *
- * The map behind only changes the backdrop: every sprite is drawn the size
- * the game gives it, as with the game's own backdrop.  Only what the place
- * changes changes it: a sprite the place moves (the foe pushed back, a
- * trainer's offsets) or a camera the place moves (its zoom) is drawn at its
- * depth before the camera drawn with over the game's own depth before the
- * game's camera, and a trainer at the place's height for it.  The scales
- * are put back after. */
+ * A trainer is drawn the size the game gives it, as with the game's own
+ * backdrop: only what the place changes changes it (its offsets, its
+ * height, a camera the place moves), by its depth before the camera drawn
+ * with over the game's own depth before the game's camera.
+ *
+ * A Pokemon's size follows the camera, as a thing in the room does, so it
+ * does not grow and shrink against the map while the scripts' size tween
+ * runs a little out of step with the camera: its size at rest (the fake)
+ * is taken out, and it is drawn at bmap_mon_size over its depth before the
+ * camera drawn with.  That size is the game's own at the command camera
+ * and the scripts' at rest all the way back (g_far), so the two ends look
+ * as with the game's backdrop.  The size at rest follows the size while
+ * the camera moves (and a few draws after: the tween's last step comes
+ * late); with the camera still a change is the script's own (a withdraw, a
+ * faint, a pop) and stays.  A sprite that comes from nothing (the
+ * send-out) grows toward the size the scripts give at this camera.  The
+ * scales are put back after. */
 void __wrap_MCSS_Draw(void *sys)
 {
     uintptr_t ms = (uintptr_t)sys, works, w;
     int32_t keep[SPRITES_MAX][2], keep_pos[SPRITES_MAX][3], v;
     int32_t n, i;
-    int pinned[SPRITES_MAX];
+    int moving, pinned[SPRITES_MAX];
+    float prog;
 
     if (!g_cam_on || g_cur == NULL || !gptr_ok(ms) || !bw_battle_view_active() || !(rd32(ms, MSYS_FLAGS) & 1u)) {
         __real_MCSS_Draw(sys);
@@ -1366,6 +1391,18 @@ void __wrap_MCSS_Draw(void *sys)
     if (n > SPRITES_MAX) {
         n = SPRITES_MAX;
     }
+    {
+        /* did the game's camera move lately: a size change now is the
+         * scripts' fake */
+        float dx = g_cam_game[0][0] - g_last_eye[0], dy = g_cam_game[0][1] - g_last_eye[1];
+        float dz = g_cam_game[0][2] - g_last_eye[2];
+
+        g_still = dx * dx + dy * dy + dz * dz > 1e-8f ? 0 : g_still + 1;
+        moving = g_still < STILL_DRAWS;
+        memcpy(g_last_eye, g_cam_game[0], sizeof g_last_eye);
+        prog = bmap_intro_progress(g_cam_game[0]);
+        g_far_still = prog > 0.99f && !moving ? g_far_still + 1 : 0;
+    }
     for (i = 0; i < n; i++) {
         float p[3], q[3], dg, dd, f;
         uint32_t k;
@@ -1375,6 +1412,7 @@ void __wrap_MCSS_Draw(void *sys)
         pinned[i] = 0;
         w = rd32(works, 4u * (uint32_t)i);
         if (!gptr_ok(w)) {
+            g_rest[i] = 0.0f;
             continue;
         }
         pos = sprite_pos(w);
@@ -1397,6 +1435,22 @@ void __wrap_MCSS_Draw(void *sys)
                 pinned[i] = 1;          /* put back after the draw */
             }
         }
+        {
+            float sz = rdfx(w, MCSSW_SHADOWSCALE);
+
+            if (sz <= 0.0f) {
+                g_rest[i] = 0.0f;           /* gone: it comes back from nothing */
+            } else if (moving) {
+                g_rest[i] = sz;
+            } else if (g_rest[i] <= 0.0f) {
+                /* growing from nothing: toward the scripts' size here (a
+                 * pop above it and back is the script's own) */
+                g_rest[i] = 1.0f + prog * (g_far - 1.0f);
+            }
+            if (g_far_still > 30 && sz > 0.05f && sz == g_rest[i]) {
+                g_far = sz;                 /* learnt: the size at rest all the way back */
+            }
+        }
         if (!(rd32(w, MCSSW_FLAGS) & (1u << 29))) {
             continue;
         }
@@ -1417,7 +1471,11 @@ void __wrap_MCSS_Draw(void *sys)
                 q[k] -= (float)d[k] / 4096.0f;
             }
         }
-        dg = view_depth((const float(*)[3])g_cam_game, q);
+        if (pos < 8) {
+            dg = bmap_mon_size(q, prog, g_far) / (g_rest[i] > 0.05f ? g_rest[i] : 1.0f);
+        } else {
+            dg = view_depth((const float(*)[3])g_cam_game, q);
+        }
         dd = view_depth((const float(*)[3])g_cam_drawn, p);
         if (dg < 0.5f || dd < 0.5f) {
             continue;

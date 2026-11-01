@@ -96,6 +96,18 @@ void bmap_camera_view(float eye[3], float target[3], const BmapIntro *cam, float
 float bmap_intro_progress(const float eye[3]);
 /* How deep a battle point lies in front of the game's command camera. */
 float bmap_cmd_depth(const float p[3]);
+/* ... and in front of the intro's camera (all the way back). */
+float bmap_far_depth(const float p[3]);
+/*
+ * A Pokemon's size in the 3D world, in units of its size at the command
+ * camera, for the game's camera at intro progress `prog` (0..1): its
+ * command-camera depth at the command camera, `far_size` times its depth
+ * before the intro's camera all the way back, and the mix of the two in
+ * between.  Drawn at that size before the camera, a Pokemon shows as big as
+ * the game makes it at both ends (1 and the scripts' size far back, 0.5),
+ * and its size follows the camera, never the scripts' tween of it.
+ */
+float bmap_mon_size(const float p[3], float prog, float far_size);
 /* No change at all (zoom 1 or 0, everything else 0). */
 int bmap_intro_none(const BmapIntro *in);
 /* A battle point in the place's battle: the foe's side (z < 0) stretched so

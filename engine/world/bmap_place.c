@@ -707,6 +707,27 @@ float bmap_intro_progress(const float eye[3])
     return w < 0.0f ? 0.0f : w > 1.0f ? 1.0f : w;
 }
 
+float bmap_far_depth(const float p[3])
+{
+    float f[3], len = 0.0f, d = 0.0f;
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        f[i] = k_intro_target[i] - k_intro_eye[i];
+        len += f[i] * f[i];
+    }
+    len = sqrtf(len);
+    for (i = 0; i < 3; i++) {
+        d += (p[i] - k_intro_eye[i]) * f[i] / len;
+    }
+    return d;
+}
+
+float bmap_mon_size(const float p[3], float prog, float far_size)
+{
+    return (1.0f - prog) * bmap_cmd_depth(p) + prog * far_size * bmap_far_depth(p);
+}
+
 float bmap_cmd_depth(const float p[3])
 {
     static const float tgt[3] = { 0.0f, 2.6f, 0.0f };
