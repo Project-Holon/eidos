@@ -143,9 +143,11 @@ static const char *k_fs2d =
     "\n"
     /* the GPU's 3D at the layer's pixel bx (scrolled) of DS row y, straight */
     "uvec4 g3fetch(int bx, int y) {\n"
-    /* 3: the sentinel colour (where the 3D shows), 4: opaque black */
+    /* 3: the sentinel colour (where the 3D shows), 4: opaque black, 5:
+     * nothing (the 3D off: BG0 stays the 3D layer, never a text BG) */
     "    if (g3m == 3) return uvec4(84u, 168u, 52u, 255u);\n"
     "    if (g3m == 4) return uvec4(0u, 0u, 0u, 255u);\n"
+    "    if (g3m == 5) return uvec4(0u);\n"
     "    int gx, gy;\n"
     "    if (g3m == 1) {\n"
     "        gx = (bx * 2 + 1) * g3sz.x / 512;\n"
@@ -625,11 +627,7 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
         if (from2d) {
             /* the world composite's other two screens: the 3D off, and
              * (where a 2D layer can blend over the 3D) a black 3D */
-            ints[0] = 0;
-            ints[1] = (GLint)f->l3_priority;
-            ints[2] = (GLint)f->l3_bg_index;
-            ints[3] = f->l3_hofs;
-            g->glUniform1iv(s->u_l3p, 4, ints);
+            g->glUniform1i(s->u_g3m, 5);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             glBindTexture(GL_TEXTURE_2D, g->behind_tex);
             glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, 256, 192, 0);
@@ -637,8 +635,6 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
             g->behind_h = 192;
             g->has_zero = 0;
             if ((f->blend.second & 1u) != 0u) {
-                ints[0] = 1;
-                g->glUniform1iv(s->u_l3p, 4, ints);
                 g->glUniform1i(s->u_g3m, 4);
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
                 glBindTexture(GL_TEXTURE_2D, g->zero_tex);
