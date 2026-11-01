@@ -580,6 +580,20 @@ fn save_settings(
     Ok(view(&s))
 }
 
+/// Whether the launcher updates itself when it starts.
+#[tauri::command]
+fn get_auto_update(app: State<App>) -> bool {
+    app.settings().auto_update
+}
+
+#[tauri::command]
+fn set_auto_update(app: State<App>, on: bool) -> R<()> {
+    let mut s = app.settings.lock().unwrap();
+    s.auto_update = on;
+    s.save(&app.layout.settings_file())
+        .map_err(|e| format!("Could not save the settings: {e}"))
+}
+
 /// The invite code that arrived before the page was ready, once.
 #[tauri::command]
 fn take_pending_join(app: State<App>) -> Option<String> {
@@ -661,6 +675,8 @@ pub fn run() {
             set_profile_data_root,
             rom_library,
             cover_art,
+            get_auto_update,
+            set_auto_update,
             set_profile_language,
             set_profile_game,
             add_roms,

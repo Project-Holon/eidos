@@ -8,6 +8,7 @@
 // not tried again on launch for a day, so a broken release cannot trap the
 // launcher in a loop; the Settings page can still try it by hand.
 
+import { invoke } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
@@ -59,20 +60,28 @@ function clearFailures() {
   }
 }
 
-export function autoUpdate(): boolean {
+/// The automatic-update choice, kept in the launcher's settings file so every
+/// build reads the same one.  An "off" left in the web view's storage by an
+/// older launcher is carried over once.
+export async function autoUpdate(): Promise<boolean> {
   try {
-    return localStorage.getItem(AUTO_KEY) !== "off";
+    if (localStorage.getItem(AUTO_KEY) === "off") {
+      localStorage.removeItem(AUTO_KEY);
+      await setAutoUpdate(false);
+      return false;
+    }
+  } catch {
+    /* no storage: nothing to carry over */
+  }
+  try {
+    return await invoke<boolean>("get_auto_update");
   } catch {
     return true;
   }
 }
 
-export function setAutoUpdate(on: boolean) {
-  try {
-    localStorage.setItem(AUTO_KEY, on ? "on" : "off");
-  } catch {
-    /* the choice holds for this run only */
-  }
+export async function setAutoUpdate(on: boolean): Promise<void> {
+  await invoke<void>("set_auto_update", { on });
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -110,7 +119,12 @@ async function install(update: Update) {
 /// Checks for a newer launcher and installs it.  `manual` is the Settings
 /// button: it ignores the automatic setting and the failure pause.
 export async function checkForUpdate(manual = false): Promise<void> {
-  if (!manual && !autoUpdate()) return;
+  if (!manual) {
+    // A development build (`npm run tauri dev`) never updates itself on its
+    // own: it would replace the installed launcher with the release.
+    if (import.meta.env.DEV) return;
+    if (!(await autoUpdate())) return;
+  }
   updates.state = { kind: "checking" };
   let update: Update | null;
   try {

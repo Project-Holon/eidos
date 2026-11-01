@@ -27,7 +27,8 @@
   // Empty field keeps the saved token; "clear" removes it.
   let token = $state("");
   let clearToken = $state(false);
-  let auto = $state(autoUpdate());
+  let auto = $state(true);
+  autoUpdate().then((on) => (auto = on));
   let roms = $state<RomView[]>([]);
   let adding = $state(false);
   let dropping = $state(false);

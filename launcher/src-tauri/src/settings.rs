@@ -23,6 +23,10 @@ pub struct Settings {
     pub local_build: Option<PathBuf>,
     /// The player's ROMs, in the order they were added (src/rom.rs).
     pub roms: Vec<rom::Entry>,
+    /// Whether the launcher updates itself when it starts.  Kept here, not
+    /// in the web view's storage, so every build of the launcher reads the
+    /// same choice.
+    pub auto_update: bool,
     /// The Black and White ROMs of launchers before the library: read once
     /// into `roms` (`take_old_roms`), then no longer written.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,6 +43,7 @@ impl Default for Settings {
             index_url: String::new(),
             local_build: None,
             roms: Vec::new(),
+            auto_update: true,
             rom_black: None,
             rom_white: None,
         }
