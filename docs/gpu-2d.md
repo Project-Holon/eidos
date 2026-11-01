@@ -9,9 +9,27 @@ Phase 2 is in, behind `EIDOS_G2D_GPU=1`: a screen the shader can compose is
 drawn from its output, composed when the screen is presented (with the
 pixels it stands in for). The window is the same with it on and off in both
 layouts (the title, the field, the Pokedex, the starter choice, a battle).
-It costs more than it saves until phase 4: the Pokedex frame took 3.8 ms
-without it and 4.7 ms with it (the copy for the shader and the GPU pass on
-top of the CPU compose).
+
+Phase 4 is in, with phase 2: the CPU no longer composes a screen the shader
+composes. The readers of the pixels get the GPU's screen a frame late (an
+asynchronous read back). The CPU still composes a frame with the display
+capture on, a screenshot, and any frame the shader cannot take.
+
+Phase 3 is in, with phase 2: the main screen's 3D layer is the GPU's own
+3D frame, sampled by the 2D shader at the 3D's resolution. The screen with
+the 3D off and the screen over black 3D are no longer composed on the CPU.
+The one-screen world view keeps its own composite (its 3D is the window's
+shape); the shader makes the three screens it takes (the 3D as the sentinel
+colour, the 3D off, a black 3D). Frames with the display capture keep the
+CPU path.
+
+Measured on 2026-11-01 (the two-screen layout, a fast PC, per frame):
+
+| Scene | Render, CPU | Render, GPU | Present, CPU | Present, GPU |
+|---|---|---|---|---|
+| Field (3D) | 2.9 ms | 1.5 ms | 0.39 ms | 0.66 ms |
+| Pokedex | 2.3 ms | 1.0 ms | 0.38 ms | 0.63 ms |
+| Battle field, one-screen world | 3.9 ms | 2.3 ms | 0.45 ms | 0.65 ms |
 
 ## Why
 

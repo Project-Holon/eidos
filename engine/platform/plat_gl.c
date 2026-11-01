@@ -493,6 +493,7 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     }
     g->window = window;
     g->s3d = -1;
+    g->s3d2 = -1;
     g->edge_mode = 0;           /* no outlines until the setting asks */
     g->ctx = SDL_GL_CreateContext(window);
     if (g->ctx == NULL) {
@@ -776,6 +777,8 @@ void eidos_gl_set_3d(EidosGl *g, int screen, const unsigned char *behind,
     if (g == NULL) {
         return;
     }
+    g->s3d2 = -1;
+    g->s3d_from2d = 0;
     if (screen < 0 || behind == NULL || w <= 0 || h <= 0) {
         g->s3d = -1;
         return;
@@ -795,6 +798,37 @@ void eidos_gl_set_3d(EidosGl *g, int screen, const unsigned char *behind,
     g->bmode = bmode;
     g->bfac = bfac;
     g->dilate = dilate;
+}
+
+void eidos_gl_set_3d_from2d(EidosGl *g, int screen, int bmode, float bfac)
+{
+    if (g == NULL) {
+        return;
+    }
+    g->s3d2 = -1;
+    g->s3d = screen;
+    g->s3d_from2d = 1;
+    g->has_zero = 0;
+    g->bmode = bmode;
+    g->bfac = bfac;
+    g->dilate = 0;
+}
+
+void eidos_gl_set_3d2d(EidosGl *g, int screen)
+{
+    if (g != NULL) {
+        g->s3d_from2d = 0;
+        g->s3d = -1;
+        g->s3d2 = screen == 0 || screen == 1 ? screen : -1;
+    }
+}
+
+void eidos_gl_set_3d2d_shown(EidosGl *g, int w, int h)
+{
+    if (g != NULL) {
+        g->s3d2_w = w > 0 ? w : 0;
+        g->s3d2_h = h > 0 ? h : 0;
+    }
 }
 
 static void cap_tex_setup(GLuint t, int w, int h, const unsigned char *px)

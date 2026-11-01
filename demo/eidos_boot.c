@@ -353,6 +353,8 @@ typedef struct BootRun {
     u8 *black3d;       /* a 3D layer of opaque black                      */
     u8 *zero;          /* the 3D screen composed with black3d, 256x192    */
     int gpu_real;      /* this frame's 3D layer is the real read-back frame */
+    int gpu2d3d;       /* phase 3: the 2D shader composes the main screen's
+                          3D layer from the GPU's frame (docs/gpu-2d.md)   */
     u8 *cap_a;         /* capture source A with the sentinel 3D layer, 256x192 */
     u8 *cap_behind;    /* the same with the 3D layer off                  */
     u8 *cap_b;         /* the captured bank as RGBA, to seed the GPU's copy */
@@ -836,7 +838,24 @@ static void boot_gpu3d(BootRun *run, int behind_done)
         run->gpu3d_ok = snap != NULL && snap->unsupported == 0u;
         return;
     }
-    if (!behind_done || run->behind == NULL) {
+    if (run->gpu2d3d) {
+        /* phase 3: the 2D shader composes the 3D from the GPU's frame */
+        const G2dGpuFrame *mf = g2d_gpu_frame(0);
+
+        if (mf == NULL || !mf->valid) {
+            return;
+        }
+        main_on_top = (bw_io_read16(0x04000304u) & 0x8000u) != 0;
+        if (!(eidos_ui_enabled() && eidos_platform_world_active(run->plat))) {
+            if (eidos_platform_set_3d2d(run->plat, main_on_top ? 0 : 1, snap,
+                                        eidos_settings_internal_scale()) == 0) {
+                run->gpu3d_ok = 1;
+            }
+            return;
+        }
+        /* the world view: its own composite, with the screens it takes
+         * made by the shader (below) */
+    } else if (!behind_done || run->behind == NULL) {
         return;     /* the compositor did not make the 3D-off screen */
     }
     main_on_top = (bw_io_read16(0x04000304u) & 0x8000u) != 0;
@@ -872,6 +891,14 @@ static void boot_gpu3d(BootRun *run, int behind_done)
          * second compose of the main screen every frame for nothing. */
         const u8 *zero = NULL;
 
+        if (run->gpu2d3d) {
+            if (eidos_platform_set_3d_from2d(run->plat, screen, snap, eidos_settings_internal_scale(),
+                                             bmode == 1u || bmode == 2u ? (int)bmode : 0,
+                                             (float)f / 16.f) == 0) {
+                run->gpu3d_ok = 1;
+            }
+            return;
+        }
         if (!run->gpu_real && (bw_io_read16(0x04000050u) & 0x0100u) != 0u
             && g2d_hw_main_blended_over_3d()) {
             /* only when the frame's compose blended 2D over the 3D at all:
@@ -1372,6 +1399,14 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
         run->hi_n = n;
     }
     run->hi_sn[0] = run->hi_sn[1] = 1u;
+    /* phase 3 (docs/gpu-2d.md): with the GPU 2D path on, the main screen's
+     * 3D layer is the GPU's own frame in the 2D shader; the CPU's screens
+     * with the 3D off and over black are not needed (the one-screen world
+     * gets them from the shader too).  Not with the capture (it reads the
+     * real frame) nor in the check mode. */
+    run->gpu2d3d = run->frame1x_valid && !run->gpu_real && getenv("EIDOS_G2D_GPU") != NULL
+                   && getenv("EIDOS_G2D_GPU_CHECK") == NULL && eidos_platform_gpu2d_ready(run->plat);
+    g2d_gpu_main_3d(run->gpu2d3d);
     if (run->behind == NULL && run->plat != NULL && eidos_platform_gpu3d(run->plat)) {
         run->behind = (u8 *)calloc(1, (size_t)256 * 192 * 4);
     }
@@ -1384,7 +1419,7 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
          * also gets its screen over a black 3D layer from the same compose
          * (boot_gpu3d) */
         g2d_hw_main_zero_request(NULL);
-        if (run->plat != NULL && eidos_platform_gpu3d(run->plat) && !run->gpu_real
+        if (run->plat != NULL && eidos_platform_gpu3d(run->plat) && !run->gpu_real && !run->gpu2d3d
             && (bw_io_read16(0x04000050u) & 0x0100u) != 0u) {
             if (run->zero == NULL) {
                 run->zero = (u8 *)calloc(1, (size_t)256 * 192 * 4);
@@ -1393,7 +1428,7 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
         }
         (void)g2d_hw_render_dsmem_adaptive_ex(
             n, rgba3d, run->hi_top, run->hi_bottom, unsupported, run->hi_sn,
-            run->frame1x_valid ? run->behind : NULL, &behind_done);
+            run->frame1x_valid && !run->gpu2d3d ? run->behind : NULL, &behind_done);
         {
             unsigned long long t3 = eidos_prof_begin();
 
@@ -1411,11 +1446,20 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
         int slot;
 
         g2d_gpu_export(1);
+        /* phase 4: the CPU stops composing the screens the GPU composes
+         * (not while the check compares the two) */
+        g2d_gpu_skip_cpu(getenv("EIDOS_G2D_GPU_CHECK") == NULL && eidos_platform_gpu2d_ready(run->plat));
         for (slot = 0; slot < 2; slot++) {
             const G2dGpuFrame *f = g2d_gpu_frame(slot);
 
             if (f != NULL && f->valid && run->hi_sn[f->screen] == 1u) {
                 (void)eidos_platform_gpu2d_show(run->plat, f, f->screen);
+                if (g2d_gpu_cpu_skipped(slot)) {
+                    /* the readers of the pixels (the one-screen interface,
+                     * the held screens) get the GPU's, a frame late */
+                    (void)eidos_platform_gpu2d_pixels(run->plat, f->screen,
+                                                      f->screen == 0 ? run->hi_top : run->hi_bottom);
+                }
             }
         }
     }

@@ -279,6 +279,8 @@ typedef struct Engine {
     u32          n_objs;
     struct BufSet *bufs;   /* the pooled buffers in use, NULL when allocated */
     int        exp_slot;   /* G2dGpuFrame to fill (g2d_gpu_export), or -1 */
+    int        need6;      /* the caller reads the 6-bit stage (the capture) */
+    int        skipped;    /* the GPU composes it: no CPU pixels this frame */
 } Engine;
 
 static u16 reg16(const Engine *e, u32 off)
@@ -1219,6 +1221,25 @@ static void lcdc_display(const Engine *e, u8 *rgba, u8 *out6)
 
 static int g_gpu_export;
 static G2dGpuFrame g_gpu_frames[2];
+static int g_gpu_skip;          /* g2d_gpu_skip_cpu                         */
+static int g_gpu_hold;          /* this frame composes everything (capture) */
+static int g_gpu_skipped[2];
+static int g_gpu_main3d;        /* g2d_gpu_main_3d                          */
+
+void g2d_gpu_main_3d(int on)
+{
+    g_gpu_main3d = on;
+}
+
+void g2d_gpu_skip_cpu(int on)
+{
+    g_gpu_skip = on;
+}
+
+int g2d_gpu_cpu_skipped(int slot)
+{
+    return (slot == 0 || slot == 1) && g_gpu_skipped[slot];
+}
 
 void g2d_gpu_export(int on)
 {
@@ -1269,14 +1290,18 @@ static void gpu_fill(Engine *e, const G2dWindows *windows, const G2dBlend *blend
         free(f->bgv);
         f->bgv = (u8 *)malloc(need);
         f->bgv_cap = f->bgv != NULL ? need : 0u;
+        f->bgv_size = 0;
     }
     if (f->bgv == NULL || gpu_own(&f->obj, SCREEN_PX * 4u) == NULL
         || gpu_own(&f->l3, SCREEN_PX * 4u) == NULL) {
         return;
     }
     f->screen = e->main == main_on_top ? 0 : 1;
-    memcpy(f->bgv, e->bgv, need);
-    f->bgv_size = need;
+    if (f->bgv_size != need || memcmp(f->bgv, e->bgv, need) != 0) {
+        memcpy(f->bgv, e->bgv, need);
+        f->bgv_size = need;
+        f->bgv_gen++;
+    }
     gpu_pal(f, 0, &e->bg_pal);
     gpu_pal(f, 1, &e->obj_pal);
     for (i = 0; i < 16u; i++) {
@@ -1357,7 +1382,9 @@ static void gpu_fill(Engine *e, const G2dWindows *windows, const G2dBlend *blend
         f->l3_priority = e->layer3d.priority;
         f->l3_bg_index = e->layer3d.bg_index;
         f->l3_hofs = e->layer3d.hofs;
-        memcpy(f->l3, e->layer3d.rgba, SCREEN_PX * 4u);
+        if (!(e->main && g_gpu_main3d)) {
+            memcpy(f->l3, e->layer3d.rgba, SCREEN_PX * 4u);   /* the GPU's own otherwise */
+        }
     }
     f->windows = *windows;
     f->windows.obj_mask = NULL;
@@ -1436,7 +1463,20 @@ static int compose_graphics(Engine *e, const u8 *rgba3d, u8 *rgba, u8 *out6)
     desc.out6 = out6;
     desc.blend_over_3d = &blend3d;
     if (e->exp_slot >= 0) {
-        gpu_fill(e, &windows, &blend);
+        /* a screen the CPU composes anyway (the 3D layer, the capture) is
+         * not also composed on the GPU while phase 4 is on */
+        int cpu_too = g_gpu_hold || e->need6
+                      || (e->main && rgba3d != NULL
+                          && ((e->layer3d.enabled && !g_gpu_main3d) || g_zero_out != NULL));
+
+        if (!(g_gpu_skip && cpu_too)) {
+            gpu_fill(e, &windows, &blend);
+        }
+        if (g_gpu_skip && !cpu_too && g_gpu_frames[e->exp_slot].valid) {
+            e->skipped = 1;     /* the GPU composes this screen */
+            g_gpu_skipped[e->exp_slot] = 1;
+            return 0;
+        }
     }
     {
         u8 *zero6 = NULL;
@@ -1488,8 +1528,12 @@ static int render_engine(const G2dHwState *hw, int engine, u32 scale,
     e->scale = scale;
     e->main = (engine == G2D_HW_MAIN);
     e->exp_slot = -1;
+    e->need6 = graphics6 != NULL;
     if (g_gpu_export && exp_slot >= 0) {
         g_gpu_frames[exp_slot].valid = 0;
+    }
+    if (exp_slot == 0 || exp_slot == 1) {
+        g_gpu_skipped[exp_slot] = 0;
     }
     e->io = hw->io + (e->main ? 0u : REG_SUB_BASE);
     e->dispcnt = reg32(e, REG_DISPCNT);
@@ -1511,7 +1555,9 @@ static int render_engine(const G2dHwState *hw, int engine, u32 scale,
         if (graphics6 != NULL) {
             memcpy(graphics6, out6, (size_t)SCREEN_PX * 3u);
         }
-        master_bright(e, rgba, out6);
+        if (!e->skipped) {
+            master_bright(e, rgba, out6);
+        }
         goto done;
     }
     if (graphics6 != NULL) {
@@ -1762,6 +1808,9 @@ static int render_scaled_impl(const G2dHwState *hw, u32 scale, int adaptive,
         }
     }
     t0 = eidos_prof_begin();
+    /* only the display's own render leaves screens to the GPU (a
+     * screenshot's needs its pixels); the capture reads the screens */
+    g_gpu_hold = !adaptive || (cap & 0x80000000u) != 0;
     if (main_scale > 1u && graphics6 != NULL) {
         /* The capture's source A is the DS-resolution graphics screen. */
         u8 *tmp = (u8 *)malloc((size_t)SCREEN_PX * 4u);
@@ -1820,6 +1869,7 @@ static int render_scaled_impl(const G2dHwState *hw, u32 scale, int adaptive,
     if ((cap & 0x80000000u) && rc == 0) {
         capture(hw, cap, cap3d, graphics6, &flags[0]);
     }
+    g_gpu_hold = 0;
     free(graphics6);
     free(down3d);
     if (unsupported != NULL) {

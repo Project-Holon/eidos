@@ -1987,6 +1987,19 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
     src[1] = bottom;
     nn[0] = n_top;
     nn[1] = n_bottom;
+    if (p->gl != NULL) {
+        /* the size the screens are shown at (phase 3 composes its 3D
+         * screen at least that big) */
+        EidosScreenPlacement pl;
+        EidosViewport vp;
+        int ow, oh;
+
+        place(p, &pl);
+        out_size(p, &ow, &oh);
+        viewport(p, &pl, ow, oh, &vp);
+        eidos_gl_set_3d2d_shown(p->gl, vp.screen[0].w > vp.screen[1].w ? vp.screen[0].w : vp.screen[1].w,
+                                vp.screen[0].h > vp.screen[1].h ? vp.screen[0].h : vp.screen[1].h);
+    }
     for (i = 0; i < 2; i++) {
         size_t bytes;
 
@@ -2069,6 +2082,19 @@ int eidos_platform_gpu2d(EidosPlatform *p, const struct G2dGpuFrame *f, u8 *read
     return eidos_gl2d_compose(p->gl, f, readback, -1);
 }
 
+int eidos_platform_gpu2d_ready(EidosPlatform *p)
+{
+    return p != NULL && p->gl != NULL && eidos_gl2d_ready(p->gl);
+}
+
+int eidos_platform_gpu2d_pixels(EidosPlatform *p, int screen, u8 *out)
+{
+    if (p == NULL || p->gl == NULL || out == NULL) {
+        return -1;
+    }
+    return eidos_gl2d_pixels(p->gl, screen, out);
+}
+
 int eidos_platform_gpu2d_show(EidosPlatform *p, const struct G2dGpuFrame *f, int screen)
 {
     if (p == NULL || p->gl == NULL || screen < 0 || screen > 1) {
@@ -2078,6 +2104,37 @@ int eidos_platform_gpu2d_show(EidosPlatform *p, const struct G2dGpuFrame *f, int
      * for (eidos_platform_present_nn) */
     p->gpu2d_frame[screen] = f;
     return 0;
+}
+
+/* The 3D for screen `screen` at n times the DS size, or at the window's
+ * shape and size for the one-screen world.  0 on success. */
+static int render_3d_for(EidosPlatform *p, int screen, const struct G3dSnapshot *snap, int n)
+{
+    int rw, rh;
+
+    n = n < 1 ? 1 : n > 20 ? 20 : n;
+    rw = (int)SCREEN_W * n;
+    rh = (int)SCREEN_H * n;
+    /* The world view: this screen's 3D is rendered at the window's
+     * shape and size, one to one with what is shown. */
+    if (world_active(p) && screen == p->ui_view.world_screen) {
+        int ow, oh;
+
+        out_size(p, &ow, &oh);
+        if (p->ui_view.ds_only) {
+            /* the DS's own frame: the 3D is the DS rectangle's size */
+            EidosWorldGeometry wg;
+
+            eidos_world_geometry(ow, oh, p->ui_view.zoom, &wg);
+            ow = wg.ds.w;
+            oh = wg.ds.h;
+        }
+        if (ow > 0 && oh > 0 && ow <= 8192 && oh <= 8192) {
+            rw = ow;
+            rh = oh;
+        }
+    }
+    return eidos_gl_render3d(p->gl, snap, rw, rh);
 }
 
 int eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,
@@ -2091,41 +2148,40 @@ int eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,
         eidos_gl_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
         return 0;
     }
-    if (n < 1) {
-        n = 1;
-    }
-    if (n > 20) {
-        n = 20;
-    }
-    {
-        int rw = (int)SCREEN_W * n, rh = (int)SCREEN_H * n;
-
-        /* The world view: this screen's 3D is rendered at the window's
-         * shape and size, one to one with what is shown. */
-        if (world_active(p) && screen == p->ui_view.world_screen) {
-            int ow, oh;
-
-            out_size(p, &ow, &oh);
-            if (p->ui_view.ds_only) {
-                /* the DS's own frame: the 3D is the DS rectangle's size */
-                EidosWorldGeometry wg;
-
-                eidos_world_geometry(ow, oh, p->ui_view.zoom, &wg);
-                ow = wg.ds.w;
-                oh = wg.ds.h;
-            }
-            if (ow > 0 && oh > 0 && ow <= 8192 && oh <= 8192) {
-                rw = ow;
-                rh = oh;
-            }
-        }
-        if (eidos_gl_render3d(p->gl, snap, rw, rh) != 0) {
-            eidos_gl_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
-            return -1;
-        }
+    if (render_3d_for(p, screen, snap, n) != 0) {
+        eidos_gl_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
+        return -1;
     }
     eidos_gl_set_3d(p->gl, screen, behind, (int)SCREEN_W, (int)SCREEN_H, bmode,
                     bfac, dilate);
+    return 0;
+}
+
+int eidos_platform_set_3d_from2d(EidosPlatform *p, int screen, const struct G3dSnapshot *snap, int n,
+                                 int bmode, float bfac)
+{
+    if (!eidos_platform_gpu3d(p) || snap == NULL || screen < 0 || screen > 1) {
+        return -1;
+    }
+    if (render_3d_for(p, screen, snap, n) != 0) {
+        eidos_gl_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
+        return -1;
+    }
+    eidos_gl_set_3d_from2d(p->gl, screen, bmode, bfac);
+    return 0;
+}
+
+int eidos_platform_set_3d2d(EidosPlatform *p, int screen, const struct G3dSnapshot *snap, int n)
+{
+    if (!eidos_platform_gpu3d(p) || snap == NULL || screen < 0 || screen > 1) {
+        return -1;
+    }
+    n = n < 1 ? 1 : n > 20 ? 20 : n;
+    if (eidos_gl_render3d(p->gl, snap, (int)SCREEN_W * n, (int)SCREEN_H * n) != 0) {
+        eidos_gl_set_3d2d(p->gl, -1);
+        return -1;
+    }
+    eidos_gl_set_3d2d(p->gl, screen);
     return 0;
 }
 

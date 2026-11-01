@@ -42,6 +42,15 @@ static const char *k_fs2d =
     "uniform int win[15];\n"          /* w0 en x1 x2 y1 y2 layers, w1 the same, obj en, obj layers, outside */
     "uniform int bld[6];\n"           /* effect first second eva evb evy   */
     "uniform int mb;\n"
+    /* the GPU's own 3D frame as the 3D layer (phase 3): g3m 0 off (l3t),
+     * 1 sampled at each DS pixel's centre, 2 per output pixel (osz the
+     * output's size, a multiple of the DS screen); premultiplied, row 0 at
+     * the bottom */
+    "uniform int g3m;\n"
+    "uniform sampler2D g3d;\n"
+    "uniform ivec2 g3sz;\n"
+    "uniform ivec2 osz;\n"
+    "int ox, oy;\n"
     "out vec4 color;\n"
     "\n"
     "int rd8(int a) { return int(texelFetch(vram, ivec2(a & 1023, a >> 10), 0).r); }\n"
@@ -132,6 +141,30 @@ static const char *k_fs2d =
     "    return win[14];\n"
     "}\n"
     "\n"
+    /* the GPU's 3D at the layer's pixel bx (scrolled) of DS row y, straight */
+    "uvec4 g3fetch(int bx, int y) {\n"
+    /* 3: the sentinel colour (where the 3D shows), 4: opaque black */
+    "    if (g3m == 3) return uvec4(84u, 168u, 52u, 255u);\n"
+    "    if (g3m == 4) return uvec4(0u, 0u, 0u, 255u);\n"
+    "    int gx, gy;\n"
+    "    if (g3m == 1) {\n"
+    "        gx = (bx * 2 + 1) * g3sz.x / 512;\n"
+    "        gy = (y * 2 + 1) * g3sz.y / 384;\n"
+    "    }\n"
+    "    vec4 g;\n"
+    "    if (g3m == 1) {\n"
+    "        g = texelFetch(g3d, clamp(ivec2(gx, g3sz.y - 1 - gy), ivec2(0), g3sz - 1), 0);\n"
+    "    } else {\n"
+    /* the output pixel's centre in the layer (scrolled), filtered as the
+     * old composite sampled the 3D */
+    "        float fx = (float(bx) + (float(ox) + 0.5) * 256.0 / float(osz.x) - float(ox * 256 / osz.x)) / 256.0;\n"
+    "        float fy = (float(oy) + 0.5) / float(osz.y);\n"
+    "        g = texture(g3d, vec2(fx, 1.0 - fy));\n"
+    "    }\n"
+    "    if (g.a <= 0.0) return uvec4(0u);\n"
+    "    vec3 c = clamp(g.rgb / g.a, 0.0, 1.0);\n"
+    "    return uvec4(uvec3(round(c * 255.0)), uint(round(g.a * 255.0)));\n"
+    "}\n"
     /* the stack: up to two samples, front to back */
     "ivec3 s_rgb[2];\n"
     "int s_bit[2];\n"
@@ -155,7 +188,7 @@ static const char *k_fs2d =
     "            if (l3[0] != 0 && l3[1] == prio && l3[2] == bgi) {\n"
     "                int bx = (x + l3[3]) & 0x1FF;\n"
     "                if (bx < 256) {\n"
-    "                    uvec4 p = texelFetch(l3t, ivec2(bx, y), 0);\n"
+    "                    uvec4 p = g3m == 0 ? texelFetch(l3t, ivec2(bx, y), 0) : g3fetch(bx, y);\n"
     "                    if (p.a != 0u) {\n"
     "                        int a5 = (int(p.a) * 31 + 127) / 255;\n"
     "                        push(ivec3(p.rgb), bit, true, a5 != 0 ? a5 : 1, false);\n"
@@ -199,7 +232,8 @@ static const char *k_fs2d =
     "}\n"
     "\n"
     "void main() {\n"
-    "    int x = int(gl_FragCoord.x), y = int(gl_FragCoord.y);\n"
+    "    ox = int(gl_FragCoord.x); oy = int(gl_FragCoord.y);\n"
+    "    int x = g3m == 2 ? ox * 256 / osz.x : ox, y = g3m == 2 ? oy * 192 / osz.y : oy;\n"
     "    uvec4 o = texelFetch(objt, ivec2(x, y), 0);\n"
     "    int allowed = win_mask(x, y, (o.a & 2u) != 0u);\n"
     "    walk(x, y, allowed, o);\n"
@@ -220,6 +254,15 @@ static const char *k_fs2d =
     "                    int c6 = (c8to6(top[i]) * (a5 + 1) + c5to6(to5(below[i])) * (31 - a5)) >> 5;\n"
     "                    outc[i] = c6to8(c6);\n"
     "                }\n"
+    "            }\n"
+    "        } else if (g3m == 2 && s_a5[0] < 31) {\n"
+    /* the GPU's smoothed 3D edges over any 2D (the DS has no such
+     * partial pixels where the 2D is not a blend target) */
+    "            done = true;\n"
+    "            int a5 = s_a5[0];\n"
+    "            for (int i = 0; i < 3; i++) {\n"
+    "                int c6 = (c8to6(top[i]) * (a5 + 1) + c5to6(to5(below[i])) * (31 - a5)) >> 5;\n"
+    "                outc[i] = c6to8(c6);\n"
     "            }\n"
     "        }\n"
     "    }\n"
@@ -254,10 +297,16 @@ static const char *k_fs2d =
     "}\n";
 
 typedef struct Gl2d {
-    GLuint prog, vao, fbo, out, vram, pal, obj, l3, rast;
-    int vram_h;
+    GLuint prog, vao, fbo, out, vram[2], pal, obj, l3, rast;
+    const void *vram_from[2];   /* the frame and the bytes each one holds   */
+    u32 vram_gen[2];
+    int vram_h[2];
+    GLuint pbo[2];              /* a screen's pixels on their way back      */
+    int pbo_full[2];
     GLint u_vram, u_pal, u_obj, u_l3, u_rast, u_vram_size, u_pal_count, u_text, u_aff,
-          u_ras, u_obj_on, u_l3p, u_win, u_bld, u_mb;
+          u_ras, u_obj_on, u_l3p, u_win, u_bld, u_mb, u_g3m, u_g3d, u_g3sz, u_osz;
+    GLuint hfbo, hout;          /* the screen at the 3D's size (phase 3)    */
+    int hw, hh;
     int failed;
 } Gl2d;
 
@@ -305,6 +354,10 @@ static int gl2d_init(EidosGl *g)
     s->u_win = g->glGetUniformLocation(s->prog, "win");
     s->u_bld = g->glGetUniformLocation(s->prog, "bld");
     s->u_mb = g->glGetUniformLocation(s->prog, "mb");
+    s->u_g3m = g->glGetUniformLocation(s->prog, "g3m");
+    s->u_g3d = g->glGetUniformLocation(s->prog, "g3d");
+    s->u_g3sz = g->glGetUniformLocation(s->prog, "g3sz");
+    s->u_osz = g->glGetUniformLocation(s->prog, "osz");
     g->glGenVertexArrays(1, &s->vao);
     s->pal = utex(GL_RGBA8UI, 256, 18);
     s->obj = utex(GL_RGBA8UI, 256, 192);
@@ -333,34 +386,64 @@ static void upload(GLuint t, int w, int h, GLenum fmt, const void *px)
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, fmt, GL_UNSIGNED_BYTE, px);
 }
 
+int eidos_gl2d_ready(EidosGl *g)
+{
+    return g != NULL && gl2d_init(g) == 0;
+}
+
+int eidos_gl2d_pixels(EidosGl *g, int screen, unsigned char *out)
+{
+    Gl2d *s = &g_2d;
+    const unsigned char *px;
+
+    if (g == NULL || screen < 0 || screen > 1 || !s->pbo_full[screen]) {
+        return -1;
+    }
+    g->glBindBuffer(GL_PIXEL_PACK_BUFFER, s->pbo[screen]);
+    px = (const unsigned char *)g->glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_ONLY);
+    if (px != NULL) {
+        memcpy(out, px, 256 * 192 * 4);
+        g->glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+    }
+    g->glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    s->pbo_full[screen] = 0;
+    return px != NULL ? 0 : -1;
+}
+
 int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback,
                        int to_screen)
 {
     Gl2d *s = &g_2d;
     static u8 pal[18 * 256 * 4];
-    static u8 *rast;
     GLint ints[40];
     GLint vp[4];
-    int i, rows;
+    int i, rows, v, same, g3, from2d;
 
     if (f == NULL || !f->valid || gl2d_init(g) != 0) {
         return -1;
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     rows = (int)((f->bgv_size + 1023u) / 1024u);
-    if (rows > s->vram_h) {
-        if (s->vram != 0) {
-            glDeleteTextures(1, &s->vram);
+    v = f->screen & 1;          /* one BG window texture per screen */
+    if (rows > s->vram_h[v]) {
+        if (s->vram[v] != 0) {
+            glDeleteTextures(1, &s->vram[v]);
         }
-        s->vram = utex(GL_R8UI, 1024, rows);
-        s->vram_h = rows;
+        s->vram[v] = utex(GL_R8UI, 1024, rows);
+        s->vram_h[v] = rows;
+        s->vram_from[v] = NULL;
     }
-    glBindTexture(GL_TEXTURE_2D, s->vram);
-    if (f->bgv_size >= 1024u) {
+    glBindTexture(GL_TEXTURE_2D, s->vram[v]);
+    same = s->vram_from[v] == (const void *)f && s->vram_gen[v] == f->bgv_gen;
+    s->vram_from[v] = f;
+    s->vram_gen[v] = f->bgv_gen;
+    if (same) {
+        /* the bytes it holds already */
+    } else if (f->bgv_size >= 1024u) {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, (GLsizei)(f->bgv_size / 1024u),
                         GL_RED_INTEGER, GL_UNSIGNED_BYTE, f->bgv);
     }
-    if (f->bgv_size % 1024u != 0u) {
+    if (!same && f->bgv_size % 1024u != 0u) {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, (GLint)(f->bgv_size / 1024u),
                         (GLsizei)(f->bgv_size % 1024u), 1, GL_RED_INTEGER, GL_UNSIGNED_BYTE,
                         f->bgv + (f->bgv_size / 1024u) * 1024u);
@@ -373,24 +456,24 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
     }
     upload(s->pal, 256, 18, GL_RGBA_INTEGER, pal);
     upload(s->obj, 256, 192, GL_RGBA_INTEGER, f->obj);
-    if (f->l3_on) {
+    /* phase 3: the screen whose 3D the GPU drew takes it from there */
+    g3 = to_screen >= 0 && to_screen == g->s3d2 && f->l3_on && g->fb[0].color != 0 && g->fb[0].w > 0
+         && g->fb[0].h > 0;
+    if (f->l3_on && !g3) {
         upload(s->l3, 256, 192, GL_RGBA_INTEGER, f->l3);
     }
-    if (rast == NULL) {
-        rast = (u8 *)calloc(1, 256 * 192 * 4 * 4);
-    }
-    for (i = 0; i < 4 && rast != NULL; i++) {
+    glBindTexture(GL_TEXTURE_2D, s->rast);
+    for (i = 0; i < 4; i++) {
+        /* only the rasters in use (the shader reads no other) */
         if (f->raster[i].enabled) {
-            memcpy(rast + (size_t)i * 256 * 192 * 4, f->raster[i].rgba, 256 * 192 * 4);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, i * 192, 256, 192, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE,
+                            f->raster[i].rgba);
         }
-    }
-    if (rast != NULL) {
-        upload(s->rast, 256, 192 * 4, GL_RGBA_INTEGER, rast);
     }
 
     g->glUseProgram(s->prog);
     g->glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, s->vram);
+    glBindTexture(GL_TEXTURE_2D, s->vram[v]);
     g->glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, s->pal);
     g->glActiveTexture(GL_TEXTURE2);
@@ -399,7 +482,14 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
     glBindTexture(GL_TEXTURE_2D, s->l3);
     g->glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D, s->rast);
+    g->glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, g3 ? g->fb[0].color : 0);
     g->glActiveTexture(GL_TEXTURE0);
+    g->glUniform1i(s->u_g3d, 5);
+    from2d = to_screen >= 0 && to_screen == g->s3d && g->s3d_from2d && f->l3_on;
+    g->glUniform1i(s->u_g3m, g3 ? 1 : from2d ? 3 : 0);
+    g->glUniform2i(s->u_g3sz, g->fb[0].w, g->fb[0].h);
+    g->glUniform2i(s->u_osz, 256, 192);
     g->glUniform1i(s->u_vram, 0);
     g->glUniform1i(s->u_pal, 1);
     g->glUniform1i(s->u_obj, 2);
@@ -480,15 +570,82 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
         glReadPixels(0, 0, 256, 192, GL_RGBA, GL_UNSIGNED_BYTE, readback);
     }
     if (to_screen == 0 || to_screen == 1) {
+        int ow = 256, oh = 192;
+
+        if (g3) {
+            /* the screen again at the 3D's size, each pixel with the 3D
+             * pixel under it: what the window shows */
+            /* at least the size it is shown at: the 3D filtered up to it,
+             * the 2D pixels sharp */
+            ow = g->fb[0].w > g->s3d2_w ? g->fb[0].w : g->s3d2_w;
+            oh = g->fb[0].h > g->s3d2_h ? g->fb[0].h : g->s3d2_h;
+            ow = ow > 4096 ? 4096 : ow;
+            oh = oh > 4096 ? 4096 : oh;
+            if (s->hw != ow || s->hh != oh) {
+                if (s->hout == 0) {
+                    glGenTextures(1, &s->hout);
+                    g->glGenFramebuffers(1, &s->hfbo);
+                }
+                glBindTexture(GL_TEXTURE_2D, s->hout);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ow, oh, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+                g->glBindFramebuffer(GL_FRAMEBUFFER, s->hfbo);
+                g->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s->hout, 0);
+                s->hw = ow;
+                s->hh = oh;
+            }
+            g->glBindFramebuffer(GL_FRAMEBUFFER, s->hfbo);
+            glViewport(0, 0, ow, oh);
+            g->glUniform1i(s->u_g3m, 2);
+            g->glUniform2i(s->u_osz, ow, oh);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
         /* the screen's own texture, as eidos_gl_upload fills it: target
          * row 0 is DS row 0, the upload's first row too */
         glBindTexture(GL_TEXTURE_2D, g->tex[to_screen]);
-        if (g->tw[to_screen] != 256 || g->th[to_screen] != 192) {
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 192, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-            g->tw[to_screen] = 256;
-            g->th[to_screen] = 192;
+        if (g->tw[to_screen] != ow || g->th[to_screen] != oh) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ow, oh, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            g->tw[to_screen] = ow;
+            g->th[to_screen] = oh;
         }
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, 256, 192);
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, ow, oh);
+        g->glBindFramebuffer(GL_FRAMEBUFFER, s->fbo);
+        /* and back to the CPU without waiting (eidos_gl2d_pixels) */
+        if (s->pbo[to_screen] == 0) {
+            g->glGenBuffers(1, &s->pbo[to_screen]);
+            g->glBindBuffer(GL_PIXEL_PACK_BUFFER, s->pbo[to_screen]);
+            g->glBufferData(GL_PIXEL_PACK_BUFFER, 256 * 192 * 4, NULL, GL_STREAM_READ);
+        }
+        g->glBindBuffer(GL_PIXEL_PACK_BUFFER, s->pbo[to_screen]);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, 256, 192, GL_RGBA, GL_UNSIGNED_BYTE, (void *)0);
+        g->glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        s->pbo_full[to_screen] = 1;
+        if (from2d) {
+            /* the world composite's other two screens: the 3D off, and
+             * (where a 2D layer can blend over the 3D) a black 3D */
+            ints[0] = 0;
+            ints[1] = (GLint)f->l3_priority;
+            ints[2] = (GLint)f->l3_bg_index;
+            ints[3] = f->l3_hofs;
+            g->glUniform1iv(s->u_l3p, 4, ints);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            glBindTexture(GL_TEXTURE_2D, g->behind_tex);
+            glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, 256, 192, 0);
+            g->behind_w = 256;
+            g->behind_h = 192;
+            g->has_zero = 0;
+            if ((f->blend.second & 1u) != 0u) {
+                ints[0] = 1;
+                g->glUniform1iv(s->u_l3p, 4, ints);
+                g->glUniform1i(s->u_g3m, 4);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+                glBindTexture(GL_TEXTURE_2D, g->zero_tex);
+                glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, 256, 192, 0);
+                g->has_zero = 1;
+            }
+        }
     }
     g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(vp[0], vp[1], vp[2], vp[3]);

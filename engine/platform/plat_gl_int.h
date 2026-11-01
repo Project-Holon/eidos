@@ -100,6 +100,10 @@ struct EidosGl {
     GLint u3_rect, u3_tex, u3_behind, u3_g3d, u3_texsize, u3_dstsize,
           u3_bmode, u3_bfac, u3_dil, u3_zero, u3_hasz, u3_sent;
     int s3d;                       /* screen index, -1 none                */
+    int s3d2;                      /* the screen whose 3D the 2D shader
+                                      composes (phase 3), -1 none          */
+    int s3d2_w, s3d2_h;            /* ... and the size it is shown at      */
+    int s3d_from2d;                /* s3d's screens come from the 2D shader */
     int edge_mode;                 /* outlines: 0 off, 1 thin, 2 DS pixel  */
     GLuint behind_tex;
     GLuint zero_tex;               /* the screen with a black 3D layer, or 0 */

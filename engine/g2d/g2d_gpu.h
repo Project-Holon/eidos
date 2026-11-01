@@ -49,6 +49,8 @@ typedef struct G2dGpuFrame {
     u8 *bgv;                      /* the BG window, owned                   */
     u32 bgv_size;                 /* bg_size + the guard                    */
     u32 bgv_cap;
+    u32 bgv_gen;                  /* changes when bgv's bytes change: the
+                                     GPU sends the window only then         */
     u8 pal[18][256][3];           /* BG, OBJ, the 16 OBJ extended slots     */
     u32 pal_count[18];
     G2dGpuText text[4];
@@ -70,5 +72,19 @@ typedef struct G2dGpuFrame {
  * its frame; g2d_gpu_frame gives it back.  Off by default. */
 void g2d_gpu_export(int on);
 const G2dGpuFrame *g2d_gpu_frame(int slot);
+
+/* Phase 4: with `on`, a screen whose frame the GPU composes is not also
+ * composed on the CPU (its pixels in the caller's buffer stay as they
+ * were).  The CPU still composes a screen that shows the 3D layer, one
+ * whose 6-bit stage is read (the display capture), a frame with the
+ * capture on, any frame the GPU cannot take, and every render but the
+ * display's own (g2d_hw_render_dsmem_adaptive_ex: a screenshot composes).  g2d_gpu_cpu_skipped
+ * says whether the last compose of a slot left its pixels out. */
+void g2d_gpu_skip_cpu(int on);
+int g2d_gpu_cpu_skipped(int slot);
+/* Phase 3: the main engine's 3D layer comes from the GPU's own 3D frame
+ * (the shader composes it), so a main screen showing the 3D can be left
+ * to the GPU too, and its 3D layer is not copied. */
+void g2d_gpu_main_3d(int on);
 
 #endif

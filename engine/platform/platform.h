@@ -495,6 +495,11 @@ int eidos_platform_gpu2d(EidosPlatform *p, const struct G2dGpuFrame *f, u8 *read
 /* The same, straight into the screen's texture: the next present does not
  * upload that screen's pixels (phase 2). */
 int eidos_platform_gpu2d_show(EidosPlatform *p, const struct G2dGpuFrame *f, int screen);
+/* 1 when the GPU can compose screens (phase 4 may stop the CPU's). */
+int eidos_platform_gpu2d_ready(EidosPlatform *p);
+/* The pixels of the screen the GPU composed at the last present (a frame
+ * late, 256 x 192 RGBA into `out`); -1 when there are none. */
+int eidos_platform_gpu2d_pixels(EidosPlatform *p, int screen, u8 *out);
 
 /*
  * The display capture at the 3D's resolution (GPU path only).  A scene that
@@ -522,6 +527,16 @@ void eidos_platform_set_3d_zero(EidosPlatform *p, const u8 *zero);
 int  eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,
                            const struct G3dSnapshot *snap, int n, int bmode,
                            float bfac, int dilate);
+/* Phase 3 (docs/gpu-2d.md): the 3D drawn at n times the DS size and composed
+ * into screen `screen` by the 2D shader at the next present (the screen's
+ * frame given with eidos_platform_gpu2d_show).  -1 when it cannot. */
+int  eidos_platform_set_3d2d(EidosPlatform *p, int screen, const struct G3dSnapshot *snap, int n);
+/* The same for the one-screen world: its own composite (the 3D at the
+ * window's shape), with the screen, the screen with the 3D off and the one
+ * over black made by the 2D shader at the next present instead of the CPU.
+ * bmode and bfac as eidos_platform_set_3d. */
+int  eidos_platform_set_3d_from2d(EidosPlatform *p, int screen, const struct G3dSnapshot *snap, int n,
+                                  int bmode, float bfac);
 /* The multiple of the last presented frame (1 before the first). */
 int  eidos_platform_frame_scale(const EidosPlatform *p);
 

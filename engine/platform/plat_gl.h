@@ -69,6 +69,11 @@ int eidos_gl_has3d(const EidosGl *gl);
 struct G2dGpuFrame;
 int eidos_gl2d_compose(EidosGl *gl, const struct G2dGpuFrame *f, unsigned char *readback,
                        int to_screen);
+/* 1 when the 2D shader is built (or builds now). */
+int eidos_gl2d_ready(EidosGl *gl);
+/* The last screen eidos_gl2d_compose drew to `screen`, read back without a
+ * wait (256 x 192 RGBA into `out`); -1 when none came since the last call. */
+int eidos_gl2d_pixels(EidosGl *gl, int screen, unsigned char *out);
 
 /* Drawing a tool's window with the GPU (plat_gl_view.c): keep3d copies the
  * last eidos_gl_render3d picture into a texture (made when `tex` is 0);
@@ -104,6 +109,17 @@ void eidos_gl_set_edges(EidosGl *gl, int mode);
  * bfac 0..1 are the engine's master brightness.  screen < 0 turns it off. */
 void eidos_gl_set_3d(EidosGl *gl, int screen, const unsigned char *behind,
                      int w, int h, int bmode, float bfac, int dilate);
+/* Phase 3 (docs/gpu-2d.md): the last rendered 3D frame is screen `screen`'s
+ * 3D layer, composed by the 2D shader with the rest of the screen at the
+ * frame's size (eidos_gl2d_compose); -1 none.  Turns eidos_gl_set_3d's
+ * composite off, and that one turns this off. */
+void eidos_gl_set_3d2d(EidosGl *gl, int screen);
+/* eidos_gl_set_3d's composite, with its screens (the screen with the
+ * sentinel 3D, the 3D off, a black 3D) made by eidos_gl2d_compose. */
+void eidos_gl_set_3d_from2d(EidosGl *gl, int screen, int bmode, float bfac);
+/* The size that screen is shown at in the window (the composite is made at
+ * least that big). */
+void eidos_gl_set_3d2d_shown(EidosGl *gl, int w, int h);
 /* The same screen composed with an opaque black 3D layer (w x h RGBA), so
  * the presenter can tell what a 2D layer adds over the 3D and how much of
  * the 3D shows through a blend; NULL for none.  Call before eidos_gl_set_3d. */
