@@ -1624,6 +1624,15 @@ static void map_input(void)
             A.follow = 0;
             return;
         }
+        {
+            float px, py;
+
+            map_to_px(A.tx, A.tz, &px, &py);
+            if (fabsf(px - (float)A.mx) < 11.0f && fabsf(py - (float)A.my) < 11.0f) {
+                A.drag = 5;             /* the player marker */
+                return;
+            }
+        }
         if (A.shift) {
             A.drag = 3;
             A.drag_x = mx;
@@ -1634,8 +1643,15 @@ static void map_input(void)
         }
     }
     if (inside && A.rpressed && A.drag == 0) {
-        A.drag = 2;
-        remember();
+        float px, py;
+
+        map_to_px(A.tx, A.tz, &px, &py);
+        if (fabsf(px - (float)A.mx) < 11.0f && fabsf(py - (float)A.my) < 11.0f) {
+            A.drag = 6;                 /* turn the player marker */
+        } else {
+            A.drag = 2;
+            remember();
+        }
     }
     if (inside && A.mdown && A.drag == 0) {
         A.drag = 4;
@@ -1703,6 +1719,34 @@ static void map_input(void)
             }
             A.drag = 0;
             save_now();
+        }
+        break;
+    case 5:
+        /* the player: where the battle starts (the view the game takes
+         * from there; Preview shows the view on show) */
+        if (A.down) {
+            float qx = floorf(mx / 4.0f) * 4.0f + 2.0f, qz = floorf(mz / 4.0f) * 4.0f + 2.0f;
+
+            if (A.tx != qx || A.tz != qz) {
+                A.tx = qx;
+                A.tz = qz;
+                A.need_place = 1;
+            }
+        } else {
+            A.drag = 0;
+        }
+        break;
+    case 6:
+        if (A.rdown) {
+            int deg = norm_deg((float)(atan2(-(double)(mx - A.tx), -(double)(mz - A.tz)) * 180.0 / 3.14159265358979));
+
+            deg = A.shift ? (deg + 22) / 45 * 45 % 360 : (deg + 2) / 5 * 5 % 360;
+            if (A.tf != deg) {
+                A.tf = deg;
+                A.need_place = 1;
+            }
+        } else {
+            A.drag = 0;
         }
         break;
     case 4:
@@ -2576,6 +2620,8 @@ static int top_view(int x, int y, int w, int room)
     y += U(26);
     text(x, y, C_MUTED, "Drag: move  Right: turn");
     y += U(26);
+    text(x, y, C_MUTED, "On the player: the same");
+    y += U(26);
     text(x, y, C_MUTED, "Shift drag: safe area");
     y += U(26);
     text(x, y, C_MUTED, "Wheel: zoom  Middle: pan");
@@ -2585,7 +2631,7 @@ static int top_view(int x, int y, int w, int room)
 /* the height top_view takes, w across */
 static int top_view_h(int w)
 {
-    return w + U(10) + 3 * U(26) + U(30);
+    return w + U(10) + 4 * U(26) + U(30);
 }
 
 /* ---- the places ---- */
@@ -3022,7 +3068,7 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
              * (bmap_spots_pick_view) */
             int pick = bmap_spots_pick_view(A.row, A.tx, A.tz, deg_to_facing((float)A.tf));
 
-            text(x, y + U(5), pick == A.row ? C_GOOD : C_MUTED, "Game takes view %d here",
+            text(x, y + U(5), pick == A.row ? C_GOOD : C_MUTED, "From the player marker: view %d",
                  view_no(pick) + 1);
             y += U(40);
         }
