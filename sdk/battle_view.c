@@ -997,7 +997,10 @@ static void battle_begin(uintptr_t eff)
         row = bmap_spots_find(j->zone, !j->trainer, j->px, j->pz);  /* the previewed place */
     }
     if (row >= 0) {                     /* the row's view nearest the player */
-        row = bmap_spots_pick_view(row, j->px, j->pz, j->facing);
+        const char *forced = getenv("EIDOS_DEBUG_VIEW");    /* the spot editor's Preview: its view */
+        int v = forced != NULL ? bmap_spots_view_at(row, atoi(forced)) : -1;
+
+        row = v >= 0 ? v : bmap_spots_pick_view(row, j->px, j->pz, j->facing);
     }
     bmap_spots_spec(bmap_spots_get(row), j->px, j->pz, j->facing, &j->spec);
     if (j->reach != 0) {                /* EIDOS_DEBUG_BMAP_AT's own reach (tests) */

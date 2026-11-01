@@ -3763,6 +3763,9 @@ static void preview_in_game(int play)
         }
     }
     _putenv_s("EIDOS_DEBUG_BMAP_AT", v);
+    /* the view on show, whichever the game would take from this place */
+    snprintf(v, sizeof v, "%d", view_no(A.row));
+    _putenv_s("EIDOS_DEBUG_VIEW", v);
     /* a party of four (the one on show first) and a bag of balls and
      * healing items, to try switching and items; every badge, so every
      * Pokemon obeys */
@@ -3812,6 +3815,7 @@ static void preview_in_game(int play)
     _putenv_s("EIDOS_DEBUG_LEVEL", "");
     _putenv_s("EIDOS_DEBUG_ITEMS", "");
     _putenv_s("EIDOS_DEBUG_UNLOCK", "");
+    _putenv_s("EIDOS_DEBUG_VIEW", "");
     _putenv_s("EIDOS_DEBUG_MOVES", "");
     _putenv_s("EIDOS_BATTLE_ONLY", "");
     if (saves != NULL) {
