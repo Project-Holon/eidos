@@ -274,7 +274,10 @@ static const char *k_fsw =
     "            }\n"
     "        }\n"
     "    }\n"
-    "    if (!inside) { color = vec4(P, 1.0); return; }\n"
+    /* outside: the 3D over the black beyond the screen, all of it under the
+     * master brightness as the DS screen is (a fade to white whitens the
+     * empty parts too, not only the DS rectangle) */
+    "    if (!inside) { color = vec4(P + (bmode == 1 ? (1.0 - A) * bfac : 0.0), 1.0); return; }\n"
     "    ivec2 sz = ivec2(texsize);\n"
     "    ivec2 ip = ivec2(floor(duv * texsize));\n"
     "    vec2 dstsize = dsr.zw;\n"
@@ -1010,6 +1013,10 @@ void eidos_gl_show_capture(EidosGl *g, int screen, int bmode, float bfac)
     g->cap_bfac = bfac;
 }
 
+/* The colour draw_frame clears to: black, or the grey a master
+ * brightness fade has brought black to (one_world). */
+static float g_frame_clear;
+
 static void draw_frame(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
 {
     int i;
@@ -1018,7 +1025,7 @@ static void draw_frame(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         return;
     }
     glViewport(0, 0, out_w, out_h);
-    glClearColor(0.f, 0.f, 0.f, 1.f);
+    glClearColor(g_frame_clear, g_frame_clear, g_frame_clear, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
     g->glBindVertexArray(g->vao);
     for (i = 0; i < 2; i++) {
@@ -1407,7 +1414,11 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
 
         memset(d, 0, sizeof(d));
         d[s] = g_one.ds;
+        /* around it, black as the game's brightness has it: a fade to
+         * white whitens the whole window, not only the DS rectangle */
+        g_frame_clear = !g_one.no_fade && g->bmode == 1 ? g->bfac : 0.f;
         draw_frame(g, out_w, out_h, d);
+        g_frame_clear = 0.f;
     }
     if (blur) {
         one_blur(g, out_w, out_h);
