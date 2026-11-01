@@ -70,11 +70,58 @@ input[type="checkbox"] {
 }
 
 /* A page: its title, a line under it, then sections */
+/* The whole interface scales with the window: everything is sized in
+   rem, and the root size runs from 11px (the smallest window) to 16px. */
+html {
+  font-size: clamp(11px, min(1.25vw, 2.2vh), 16px);
+}
+/* morphe's body text is 14px; here it is 14px at the full size and
+   scales with the rest */
+body {
+  font-size: 0.875rem;
+}
+
 .page {
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
   max-width: 52rem;
+  min-height: 0;
+  /* the last resort, when even the lists at their smallest leave too
+     little room: the page scrolls inside its own area, the window never */
+  overflow-y: auto;
+}
+
+/* A page fits the window: its sections keep their height, and a section
+   holding a list gives up height first, the list scrolling inside its
+   panel. */
+.page.settings {
+  max-width: 76rem;
+}
+
+.page > * {
+  flex: none;
+  min-height: 0;
+}
+.page > div:has(.rows, .scroll) {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 9rem;
+}
+.page > div > .window:has(> .scroll) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.page .rows,
+.page .scroll {
+  min-height: 5rem;
+  overflow-y: auto;
+}
+.page .rows > *,
+.page .scroll > * {
+  flex-shrink: 0;
 }
 
 .page-head h1 {

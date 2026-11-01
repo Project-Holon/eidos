@@ -138,25 +138,25 @@
   }
 </script>
 
-<section class="page">
+<section class="page settings">
   <header class="page-head">
     <h1>Settings</h1>
   </header>
 
-  <div>
+  <div class="sec-appearance">
     <h2 class="section-label">Appearance</h2>
     <div class="window block">
       <ThemePicker />
     </div>
   </div>
 
-  <div>
+  <div class="sec-roms">
     <h2 class="section-label">ROMs</h2>
     <div class="window block" class:dropping>
       {#if roms.length === 0}
         <div class="empty muted">No ROMs yet. Add your own dumps of Pokémon Black or White, or drop them here.</div>
       {:else}
-        <div class="roms">
+        <div class="roms scroll">
           {#each roms as r (r.path)}
             <div class="inline rom">
               <span class="cart {r.game ?? ''}"></span>
@@ -189,7 +189,7 @@
     </div>
   </div>
 
-  <div>
+  <div class="sec-updates">
     <h2 class="section-label">Updates</h2>
     <div class="window block">
       <div class="inline">
@@ -211,9 +211,9 @@
     </div>
   </div>
 
-  <div>
+  <div class="sec-downloads">
     <h2 class="section-label">Downloads</h2>
-    <div class="window block">
+    <div class="window block scroll">
       <label class="field">
         <span>Releases repository</span>
         <input bind:value={repo} placeholder="owner/name" />
@@ -247,6 +247,28 @@
 </section>
 
 <style>
+  /* A wide window: the ROM list down the left, the other settings on the
+     right, so the page fits without scrolling. */
+  @media (min-width: 1000px) {
+    .settings {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      column-gap: 1.25rem;
+    }
+    .settings > :global(header) {
+      grid-column: 1 / -1;
+    }
+    .sec-roms {
+      grid-column: 1;
+      grid-row: 2 / 5;
+    }
+    .sec-appearance,
+    .sec-updates,
+    .sec-downloads {
+      grid-column: 2;
+    }
+  }
   .page {
     max-width: 40rem;
   }
@@ -312,5 +334,9 @@
   .buttons {
     border-top: 1px solid var(--line);
     padding-top: 1rem;
+    flex-wrap: wrap;
+  }
+  .buttons > .grow {
+    flex: 1 1 14rem;
   }
 </style>

@@ -217,11 +217,24 @@
     flex-direction: column;
     padding: 0 0.6rem;
   }
+  /* The window never scrolls: each page fits it, and its lists scroll
+     inside their panels (launcher.css, .page). */
   main {
     min-width: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     padding: 1.5rem 1.75rem;
+  }
+  @media (max-height: 600px) {
+    main {
+      padding: 1rem 1.25rem;
+    }
+  }
+  main > :global(*) {
+    flex: 1 1 auto;
+    min-height: 0;
   }
   .updating {
     position: fixed;

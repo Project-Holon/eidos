@@ -19,6 +19,8 @@ export type Remote = {
   prerelease: boolean;
   published: string | null;
   size: number | null;
+  /// The release notes (Markdown), when the release list gave them.
+  notes: string | null;
   available: boolean;
   installed: boolean;
 };
@@ -54,6 +56,46 @@ export const LATEST = "latest";
 export const LOCAL = "local";
 
 export const overview = () => invoke<Overview>("overview");
+
+/// One save of a profile, read from its save file (src-tauri/src/saves.rs).
+export type Save = {
+  /// 1 to 8: the game's save slot.
+  slot: number;
+  /// The slot the game opens on (slot.txt).
+  current: boolean;
+  trainer: string;
+  female: boolean;
+  /// Play time in seconds.
+  seconds: number;
+  /// How many badges.
+  badges: number;
+  /// The party, in order.
+  party: { species: number; egg: boolean; name: string; level: number; hp: number; maxHp: number }[];
+  /// The zone the player saved in, and its name from a ROM of the game
+  /// ("" without one).
+  zone: number;
+  place: string;
+  /// When the file was last written, seconds since 1970.
+  saved: number;
+  game: "black" | "white";
+  language: number;
+};
+export const saves = (profile: string) => invoke<Save[]>("saves", { profile });
+export const setCurrentSave = (profile: string, slot: number) => invoke<void>("set_current_save", { profile, slot });
+
+/// A species' battle sprite, drawn from a ROM of the game in the library.
+const speciesCache = new Map<string, Promise<string | null>>();
+export function speciesArt(species: number, game: string): Promise<string | null> {
+  const key = `${game}:${species}`;
+  let p = speciesCache.get(key);
+  if (!p) {
+    p = invoke<number[] | null>("species_art", { species, game })
+      .then((b) => (b ? URL.createObjectURL(new Blob([new Uint8Array(b)], { type: "image/png" })) : null))
+      .catch(() => null);
+    speciesCache.set(key, p);
+  }
+  return p;
+}
 /// The box legendary of a game ("black" or "white"), drawn from a ROM of
 /// that game in the library, as a picture URL; null without such a ROM.
 export async function coverArt(game: string): Promise<string | null> {
@@ -116,7 +158,7 @@ export const modsSetEnabled = (profile: string, folder: string, enabled: boolean
 export const modsRemove = (profile: string, folder: string) => invoke<void>("mods_remove", { profile, folder });
 export const modsInspect = (path: string) => invoke<PackageInfo>("mods_inspect", { path });
 export const modsAdd = (profile: string, path: string) => invoke<string>("mods_add", { profile, path });
-export const openFolder = (what: "root" | "profile" | "mods", profile?: string) =>
+export const openFolder = (what: "root" | "profile" | "mods" | "saves", profile?: string) =>
   invoke<void>("open_folder", { what, profile: profile ?? null });
 export const getSettings = () => invoke<SettingsView>("get_settings");
 export const saveSettings = (s: { repo: string; token: string | null; indexUrl: string; localBuild: string | null }) =>

@@ -7,8 +7,13 @@
     LOCAL,
     coverArt,
     installVersion,
+    saves as listSaves,
+    setCurrentSave,
+    speciesArt,
+    type Save,
     listRemote,
     message,
+    openFolder,
     newerThan,
     play,
     supportsOneScreen,
@@ -19,6 +24,7 @@
     type Remote,
   } from "../lib/backend";
   import Icon from "../lib/Icon.svelte";
+  import { notesHtml, whatsNew } from "../lib/notes";
   import dragon from "../assets/dragon.png";
   import dragonDay from "../assets/dragon-day.png";
 
@@ -79,6 +85,16 @@
     return !have || newerThan(r.id ?? r.tag, have) ? r : null;
   });
 
+  // The newest release and its notes: what eidos is now, whether this
+  // profile runs it yet or not.
+  const latest = $derived(remote?.find((r) => !r.prerelease) ?? null);
+  const notes = $derived(latest?.notes ? notesHtml(whatsNew(latest.notes)) : "");
+  const released = $derived(
+    latest?.published
+      ? new Date(latest.published).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+      : "",
+  );
+
   async function installUpdate(r: Remote) {
     updating = true;
     try {
@@ -104,6 +120,74 @@
     };
   });
 
+  // The profile's saves, read from its save files; the party drawn from the
+  // player's ROMs. Read again when a game closes (it may have saved).
+  let saveList = $state<Save[]>([]);
+  let sprites = $state<Record<string, string | null>>({});
+  const art = (s: Save, species: number) => sprites[`${s.game}:${species}`];
+  $effect(() => {
+    const name = selected;
+    void ov.running.length;
+    listSaves(name)
+      .then((list) => {
+        if (name !== selected) return;
+        saveList = list;
+        for (const s of list)
+          for (const m of s.party)
+            speciesArt(m.species, s.game).then((url) => (sprites = { ...sprites, [`${s.game}:${m.species}`]: url }));
+      })
+      .catch(() => (saveList = []));
+  });
+  // The eight slots in order, each with its save or free.
+  const slots = $derived(
+    Array.from({ length: 8 }, (_, i) => ({ slot: i + 1, save: saveList.find((s) => s.slot === i + 1) ?? null })),
+  );
+
+  // A sprite as large as its frame allows: a whole-number scale (every
+  // pixel the same size) when that fills most of the frame, else the
+  // exact fit.
+  function pixelFit(img: HTMLImageElement) {
+    const frame = img.parentElement!;
+    const apply = () => {
+      const w = img.naturalWidth;
+      if (!w) return;
+      const room = Math.min(frame.clientWidth, frame.clientHeight);
+      const whole = Math.floor(room / w);
+      const scale = whole >= 1 && whole * w >= 0.8 * room ? whole : room / w;
+      img.style.width = `${w * scale}px`;
+    };
+    img.addEventListener("load", apply);
+    const ro = new ResizeObserver(apply);
+    ro.observe(frame);
+    apply();
+    return {
+      destroy() {
+        ro.disconnect();
+        img.removeEventListener("load", apply);
+      },
+    };
+  }
+
+  async function chooseSave(s: Save) {
+    if (s.current) return;
+    try {
+      await setCurrentSave(selected, s.slot);
+      saveList = saveList.map((x) => ({ ...x, current: x.slot === s.slot }));
+    } catch (e) {
+      toast(message(e), true);
+    }
+  }
+
+  const playTime = (sec: number) => `${Math.floor(sec / 3600)}:${String(Math.floor(sec / 60) % 60).padStart(2, "0")}`;
+  function ago(t: number): string {
+    const d = Date.now() / 1000 - t;
+    if (d < 3600) return `${Math.max(1, Math.floor(d / 60))} min ago`;
+    if (d < 86400) return `${Math.floor(d / 3600)} h ago`;
+    if (d < 2 * 86400) return "yesterday";
+    if (d < 7 * 86400) return `${Math.floor(d / 86400)} days ago`;
+    return new Date(t * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
   async function start(layout: Layout) {
     error = null;
     starting = true;
@@ -120,7 +204,13 @@
 </script>
 
 <section class="home">
+  <div class="main-col">
   <div class="hero window">
+    <div class="stage">
+    <div class="intro">
+      <span class="display title">EIDOS</span>
+    </div>
+    <div class="pic">
     <!-- by night Zekrom, by day Reshiram, from the player's ROMs; the eidos
          dragon (and its Reshiram-coloured day form) without them -->
     {#if zekrom}
@@ -133,8 +223,7 @@
     {:else}
       <div class="art day" style:background-image="url({dragonDay})"></div>
     {/if}
-    <div class="intro">
-      <span class="display title">EIDOS</span>
+    </div>
     </div>
 
     <div class="launch">
@@ -202,52 +291,344 @@
   {/if}
   {#if error}<p class="note bad" role="alert">{error}</p>{/if}
 
-  <div class="tiles">
-    <button class="tile window" onclick={() => onGoto("profiles")}>
-      <span class="section-label">Profiles</span>
-      <span class="big">{ov.profiles.length}</span>
-    </button>
-    <button class="tile window" onclick={() => onGoto("versions")}>
-      <span class="section-label">Versions</span>
-      <span class="big">{ov.installed.length}</span>
-      {#if ov.installed[0]}<span class="faint small">Newest: {ov.installed[0]}</span>{/if}
-    </button>
+  {#if latest}
+    <section class="news window" aria-label="Release notes">
+      <header>
+        <span class="section-label">What's new in eidos {latest.id ?? latest.tag}</span>
+        <span class="faint small">{released}{latest.installed ? " · installed" : ""}</span>
+      </header>
+      {#if notes}
+        <!-- escaped text with simple markup (lib/notes.ts) -->
+        <div class="notes">{@html notes}</div>
+      {:else}
+        <p class="muted small">This release has no notes.</p>
+      {/if}
+    </section>
+  {/if}
+
   </div>
+
+  <aside class="saves window" aria-label="Saves">
+    <header>
+      <span class="section-label">Saves in {selected}</span>
+      <span class="faint small">{saveList.length} of 8</span>
+    </header>
+      <div class="list">
+        {#each slots as entry (entry.slot)}
+          {#if !entry.save}
+            <div class="free faint small">Slot {entry.slot} · free</div>
+          {:else}
+          {@const s = entry.save}
+          <button
+            class="save"
+            class:current={s.current}
+            disabled={running}
+            onclick={() => chooseSave(s)}
+            title={s.current ? "The game opens on this save" : "Open this save next time"}
+          >
+            <span class="top">
+              <span class="who" class:female={s.female}>{s.trainer}</span>
+              {#if s.current}<span class="badge accent">Continues here</span>{:else}<span class="faint small">Save {s.slot}</span>{/if}
+            </span>
+            <span class="party">
+              {#each s.party as m, i (i)}
+                <span class="frame small-frame" title={m.egg ? "Egg" : `${m.name} · Lv. ${m.level} · ${m.hp}/${m.maxHp} HP`}>
+                  {#if m.egg}<span class="egg"></span>{:else if art(s, m.species)}<img use:pixelFit src={art(s, m.species)} alt="" />{/if}
+                </span>
+              {/each}
+            </span>
+            <span class="facts">
+              <span><b>{playTime(s.seconds)}</b> played</span>
+              <span class="dots" aria-label="{s.badges} badges">
+                {#each Array(8) as _, i}<i class:on={i < s.badges}></i>{/each}
+              </span>
+            </span>
+            <span class="where faint small">{s.place || "Unknown place"} · {ago(s.saved)}</span>
+          </button>
+          {/if}
+        {/each}
+      </div>
+    <footer>
+      <span class="faint small hint">New Game in the title menu takes a free slot.</span>
+      <button class="quiet outlined" onclick={() => openFolder("saves", selected)}><Icon name="folder" size={15} />Open saves folder</button>
+    </footer>
+  </aside>
 </section>
 
 <style>
+  /* The window never scrolls. The banner keeps one shape (9:4) and its
+     title one proportion at every size; the saves run down the side, their
+     list scrolling inside the panel (under the banner only in the
+     narrowest windows). */
   .home {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    max-width: 58rem;
+    height: 100%;
+    min-height: 0;
+  }
+  @media (min-width: 800px) {
+    .home {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(16rem, 1fr);
+      align-items: stretch;
+    }
+    .main-col {
+      min-height: 0;
+    }
+  }
+  /* The release notes take what the column has left under the banner and
+     scroll inside their panel; a narrow or very short window leaves them
+     out. */
+  .news {
+    display: none;
+  }
+  @media (min-width: 800px) and (min-height: 540px) {
+    .news {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      padding: 1rem 1.2rem;
+    }
+  }
+  .news header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+  }
+  .news header .section-label {
+    margin: 0;
+  }
+  .notes {
+    min-height: 0;
+    overflow-y: auto;
+    line-height: 1.5;
+  }
+  .notes :global(h4) {
+    margin: 0.4rem 0 0.3rem;
+    font-size: 0.95rem;
+  }
+  .notes :global(h4:first-child) {
+    margin-top: 0;
+  }
+  .notes :global(ul) {
+    margin: 0 0 0.6rem;
+    padding-left: 1.2rem;
+  }
+  .notes :global(li) {
+    margin: 0.2rem 0;
+  }
+  .notes :global(p) {
+    margin: 0 0 0.6rem;
+  }
+  .notes :global(code) {
+    font-size: 0.9em;
+  }
+  .main-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+    flex: none;
+  }
+  .main-col .hero {
+    flex: none;
+  }
+  .main-col .hero {
+    aspect-ratio: 9 / 4;
+  }
+  .saves {
+    min-height: 6rem;
+  }
+  /* the smallest windows: the hint gives way, the button stays */
+  @media (max-height: 600px) {
+    .saves footer .hint {
+      display: none;
+    }
+    .saves footer {
+      padding-top: 0.5rem;
+    }
+    .saves {
+      padding: 0.75rem 1rem;
+      gap: 0.5rem;
+    }
+  }
+  .saves header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .saves header .section-label {
+    margin: 0;
+  }
+  .frame {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    background: var(--panel-2);
+    border: 2px solid var(--panel-3);
+  }
+  .frame img {
+    display: block;
+    height: auto;
+    image-rendering: pixelated;
+  }
+  .egg {
+    width: 38%;
+    aspect-ratio: 4 / 5;
+    border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%;
+    background: #f1ead2;
+    box-shadow: inset -3px -4px 0 rgba(0, 0, 0, 0.12), 0 0 0 2px var(--outline);
+  }
+  .saves {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem 1.1rem;
+    min-width: 0;
+    min-height: 0;
+  }
+  .list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    align-content: start;
+    gap: 0.6rem;
+  }
+  .saves footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 0.75rem;
+    border-top: 2px solid var(--panel-3);
+  }
+  .free {
+    min-height: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.9rem;
+    border: 2px dashed var(--panel-3);
+    border-radius: var(--radius-s);
+  }
+  .save {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+    padding: 0.7rem 0.9rem;
+    text-align: left;
+    font-weight: 400;
+    background: var(--panel-2);
+    min-width: 0;
+    flex: none;
+  }
+  .save.current {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .save .top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .who {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--male);
+  }
+  .who.female {
+    color: var(--female);
+  }
+  .party {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 3.25rem));
+    gap: 0.3rem;
+  }
+  .party:empty {
+    display: none;
+  }
+  .small-frame {
+    border-width: 1px;
+  }
+  .facts {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .dots {
+    display: flex;
+    gap: 3px;
+  }
+  .dots i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--panel-3);
+    box-shadow: 0 0 0 1px var(--outline);
+  }
+  .dots i.on {
+    background: var(--gold);
+  }
+  /* the trainer's colour: the game's blue and red for the boy and the
+     girl, in both themes (the light theme's accent is red) */
+  .home {
+    --male: #3d8ee6;
+    --female: #e0503f;
   }
   .hero {
     position: relative;
     overflow: hidden;
-    min-height: 22.5rem;
+    container-type: inline-size;
     display: grid;
-    grid-template-rows: 1fr auto;
+    grid-template-rows: minmax(0, 1fr) auto;
     background: linear-gradient(160deg, var(--hero-a), var(--hero-b));
   }
-  .art {
-    position: absolute;
-    right: 2rem;
-    top: 1.25rem;
-    width: 290px;
-    height: 238px;
-    background-repeat: no-repeat;
-    background-size: 290px 238px;
-    image-rendering: pixelated;
+  /* The art's own area above the launch row: the legendary (or the
+     dragon) fills its height on the right at every window size, never
+     cut. */
+  .stage {
+    display: flex;
+    min-height: 0;
   }
+  .pic {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .art,
   .legend {
     position: absolute;
-    right: 2rem;
-    top: 0.5rem;
-    width: 256px;
-    height: 256px;
+    top: 0.75rem;
+    right: 1.5rem;
+    height: calc(100% - 1.5rem);
+    max-width: calc(100% - 1.5rem);
     image-rendering: pixelated;
     pointer-events: none;
+  }
+  .legend {
+    width: auto;
+    object-fit: contain;
+    object-position: right center;
+  }
+  .art {
+    width: calc(100% - 1.5rem);
+    background-repeat: no-repeat;
+    background-size: contain;
+    background-position: right center;
   }
   .day,
   :global(:root[data-theme="light"]) .night {
@@ -258,13 +639,14 @@
   }
   .intro {
     position: relative;
-    padding: 2.25rem 2rem 0;
+    flex: none;
+    padding: 4.5cqw 4cqw 0;
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
   }
   .title {
-    font-size: 3.2rem;
+    font-size: 5.2cqw;
     letter-spacing: 0.35em;
     line-height: 1;
   }
@@ -282,14 +664,15 @@
    * window's smallest width: the profile and the buttons give up width
    * before anything wraps */
   .profile {
-    flex: 0 1 13rem;
-    min-width: 8rem;
+    flex: 1 1 9rem;
+    max-width: 14rem;
+    min-width: 7rem;
   }
   .profile select {
     width: 100%;
   }
   .which {
-    flex: 1 0 auto;
+    flex: none;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
@@ -299,13 +682,14 @@
   .plays {
     display: flex;
     gap: 0.75rem;
+    margin-left: auto;
   }
   .plays .play {
     flex: 1 1 0;
-    min-width: 8.5rem;
+    min-width: 7.5rem;
     justify-content: center;
-    font-size: 1.15rem;
-    padding: 0.75rem 1.25rem;
+    font-size: 1.1rem;
+    padding: 0.7rem 1.1rem;
   }
   /* the icon's middle on the label's capitals, not on its line box */
   .plays .play :global(svg) {
@@ -350,25 +734,5 @@
     gap: 0.75rem;
     color: var(--muted);
     margin: 0;
-  }
-  .tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-    gap: 1rem;
-  }
-  .tile {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.15rem;
-    padding: 1rem 1.2rem;
-    text-align: left;
-    font-weight: 400;
-  }
-  .tile .section-label {
-    margin: 0;
-  }
-  .big {
-    font-size: 1.6rem;
-    font-weight: 700;
   }
 </style>

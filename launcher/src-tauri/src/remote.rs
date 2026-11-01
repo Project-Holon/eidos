@@ -139,6 +139,7 @@ fn guessed(repo: &str, tag: &str, title: String, updated: String) -> Release {
         draft: false,
         prerelease: false,
         published_at: Some(updated),
+        body: None,
         assets: names
             .into_iter()
             .map(|name| {

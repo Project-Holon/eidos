@@ -56,6 +56,8 @@ const answers: Record<string, unknown> = {
   save_settings: settings,
   // ?onelang: a library in one language (the picker greyed out)
   cover_art: null,
+  saves: [],
+  set_current_save: null,
   get_auto_update: true,
   rom_library: new URLSearchParams(location.search).has("onelang") ? roms.slice(0, 1) : roms,
 
@@ -72,8 +74,35 @@ export function installMock() {
   const w = window as unknown as Record<string, unknown>;
   w.__EIDOS_MOCK__ = true;
   w.__TAURI_INTERNALS__ = {
-    invoke: async (cmd: string) => {
+    invoke: async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd.startsWith("plugin:event|")) return next++;
+      // The sample sprites in public/mock (not in the repository): the
+      // battle sprites the real launcher draws from the player's ROM.
+      // Saves decoded by the real reader from real files, dropped in
+      // public/mock/saves.json (not in the repository); none without it.
+      // The real latest eidos release, as `gh release view --json
+      // tagName,name,body,publishedAt` writes it, in public/mock/release.json
+      // (not in the repository): first in the list, with its notes.
+      if (cmd === "list_remote") {
+        const r = await fetch("/mock/release.json").catch(() => null);
+        if (!r || !r.ok) return remote;
+        const g = await r.json();
+        const id = String(g.tagName).replace(/^v/, "");
+        return [
+          { tag: g.tagName, id, name: g.name, prerelease: false, published: g.publishedAt, size: 7500000, notes: g.body, available: true, installed: false },
+          ...remote.filter((x) => x.id !== id),
+        ];
+      }
+      if (cmd === "saves") {
+        const r = await fetch("/mock/saves.json").catch(() => null);
+        return r && r.ok ? r.json() : [];
+      }
+      if (cmd === "species_art" || cmd === "cover_art") {
+        const n = cmd === "cover_art" ? (args?.game === "white" ? 643 : 644) : args?.species;
+        const r = await fetch(`/mock/${n}.png`).catch(() => null);
+        if (!r || !r.ok) return null;
+        return Array.from(new Uint8Array(await r.arrayBuffer()));
+      }
       if (cmd.startsWith("plugin:updater|")) return null;
       if (cmd in answers) return structuredClone(answers[cmd]);
       return null;

@@ -14,6 +14,7 @@ mod mods;
 mod profile;
 mod remote;
 mod rom;
+mod saves;
 mod settings;
 mod versions;
 
@@ -87,6 +88,8 @@ struct Remote {
     prerelease: bool,
     published: Option<String>,
     size: Option<u64>,
+    /// The release notes (Markdown), when the release list gave them.
+    notes: Option<String>,
     /// The release has a file for this platform and a SHA256SUMS file.
     available: bool,
     installed: bool,
@@ -197,6 +200,7 @@ async fn list_remote(app: State<'_, App>) -> R<Vec<Remote>> {
                 published: r.published_at.clone(),
                 // 0: a release known from the feed only, size unknown
                 size: asset.map(|a| a.size).filter(|&n| n > 0),
+                notes: r.body.clone().filter(|b| !b.trim().is_empty()),
             }
         })
         .collect())
@@ -395,13 +399,14 @@ fn mods_add(app: State<App>, profile: String, path: String) -> R<String> {
     }
 }
 
-/// Opens the user folder, a profile's folder or its mods folder.
+/// Opens the user folder, or a profile's folder, mods folder or saves folder.
 #[tauri::command]
 fn open_folder(app: State<App>, what: String, profile: Option<String>) -> R<()> {
     let path = match (what.as_str(), profile) {
         ("root", _) => app.layout.root.clone(),
         ("profile", Some(p)) => profile_dir(&app, &p)?,
         ("mods", Some(p)) => profile_dir(&app, &p)?.join("mods"),
+        ("saves", Some(p)) => profile_dir(&app, &p)?.join("saves"),
         _ => return Err("Unknown folder.".into()),
     };
     std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
@@ -465,6 +470,128 @@ async fn cover_art(app: State<'_, App>, game: String) -> R<Option<Vec<u8>>> {
         }
     }
     Ok(None)
+}
+
+/// The library's ROMs of a game ("black" or "white"), the one in the
+/// wanted language first. Any file that opens will do: the pictures and
+/// names drawn from it are not the game eidos plays.
+fn roms_of(app: &App, game: &str, language: Option<char>) -> Vec<PathBuf> {
+    let prefix = if game == "white" { "IRA" } else { "IRB" };
+    let mut list: Vec<rom::Entry> = app
+        .settings()
+        .roms
+        .into_iter()
+        .filter(|e| e.code.starts_with(prefix) && e.path.is_file())
+        .collect();
+    list.sort_by_key(|e| Some(e.code.chars().nth(3).unwrap_or(' ')) != language);
+    list.into_iter().map(|e| e.path).collect()
+}
+
+/// The game code letter of a save's language (MyStatus language).
+fn language_letter(language: u8) -> Option<char> {
+    Some(match language {
+        1 => 'J',
+        2 => 'O',
+        3 => 'F',
+        4 => 'I',
+        5 => 'D',
+        7 => 'S',
+        8 => 'K',
+        _ => return None,
+    })
+}
+
+/// Place names per ROM file, read once.
+static PLACES: Mutex<Option<HashMap<PathBuf, Arc<Vec<String>>>>> = Mutex::new(None);
+
+fn place_names(path: &Path) -> Option<Arc<Vec<String>>> {
+    if let Some(n) = PLACES
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .get(path)
+    {
+        return Some(n.clone());
+    }
+    let rom = nds::rom::Rom::open(path).ok()?;
+    let names = Arc::new(nds::place::place_names(&rom).ok()?);
+    PLACES
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(path.to_path_buf(), names.clone());
+    Some(names)
+}
+
+/// A profile's saves, read from its save files; each place named from a
+/// ROM of the save's game in the library.
+#[tauri::command]
+async fn saves(app: State<'_, App>, profile: String) -> R<Vec<saves::SaveView>> {
+    let dir = profile_dir(&app, &profile)?.join("saves");
+    let mut list = saves::list(&dir);
+    for s in &mut list {
+        let place = roms_of(&app, s.game, language_letter(s.language))
+            .iter()
+            .find_map(|p| place_names(p))
+            .and_then(|n| n.get(s.zone as usize).cloned());
+        s.place = place.unwrap_or_default();
+    }
+    Ok(list)
+}
+
+/// Makes a save the one the game opens on (slot.txt, as eidos's title menu
+/// writes it).
+#[tauri::command]
+fn set_current_save(app: State<App>, profile: String, slot: u8) -> R<()> {
+    app.refuse_if_running(&profile)?;
+    saves::set_current(&profile_dir(&app, &profile)?.join("saves"), slot)
+}
+
+/// A species' battle sprite from a ROM of the game, cut to the square
+/// around the Pokemon so it fills the card's frame. None without a ROM.
+#[tauri::command]
+async fn species_art(app: State<'_, App>, species: u16, game: String) -> R<Option<Vec<u8>>> {
+    for path in roms_of(&app, &game, None) {
+        let Ok(rom) = nds::rom::Rom::open(&path) else {
+            continue;
+        };
+        if let Ok(img) = nds::sprite::battle_front(&rom, species) {
+            return Ok(Some(nds::image::encode_png(&square_crop(&img))));
+        }
+    }
+    Ok(None)
+}
+
+/// The smallest square around the picture's opaque pixels, the picture
+/// centred in it (at least 8x8; the whole picture when it is empty).
+fn square_crop(img: &nds::image::Rgba) -> nds::image::Rgba {
+    let (w, h) = (img.width, img.height);
+    let opaque = |x: usize, y: usize| img.pixels[(y * w + x) * 4 + 3] > 0;
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
+    for y in 0..h {
+        for x in 0..w {
+            if opaque(x, y) {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x + 1);
+                y1 = y1.max(y + 1);
+            }
+        }
+    }
+    if x1 <= x0 {
+        return img.clone();
+    }
+    let side = (x1 - x0).max(y1 - y0).max(8);
+    let mut out = nds::image::Rgba::new(side, side);
+    let (dx, dy) = ((side - (x1 - x0)) / 2, (side - (y1 - y0)) / 2);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let s = (y * w + x) * 4;
+            let d = ((y - y0 + dy) * side + (x - x0 + dx)) * 4;
+            out.pixels[d..d + 4].copy_from_slice(&img.pixels[s..s + 4]);
+        }
+    }
+    out
 }
 
 /// The library, each file read again if it changed since.
@@ -675,6 +802,9 @@ pub fn run() {
             set_profile_data_root,
             rom_library,
             cover_art,
+            saves,
+            set_current_save,
+            species_art,
             get_auto_update,
             set_auto_update,
             set_profile_language,
@@ -699,4 +829,60 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("the launcher could not start");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn square_crop_centres_the_picture() {
+        let mut img = nds::image::Rgba::new(96, 96);
+        // a 10x4 block at (40, 50)
+        for y in 50..54 {
+            for x in 40..50 {
+                img.pixels[(y * 96 + x) * 4 + 3] = 255;
+            }
+        }
+        let out = square_crop(&img);
+        assert_eq!((out.width, out.height), (10, 10));
+        assert_eq!(out.pixels[(3 * 10) * 4 + 3], 255);
+        assert_eq!(out.pixels[(2 * 10) * 4 + 3], 0);
+        let empty = nds::image::Rgba::new(96, 96);
+        assert_eq!(square_crop(&empty).width, 96);
+    }
+
+    /// Writes what the Home page shows for a real saves folder, for the
+    /// browser preview (npm run dev): EIDOS_SAVES the folder, NDS_ROM a
+    /// Black or White ROM, EIDOS_MOCK_OUT the output folder (public/mock).
+    #[test]
+    fn preview_data() {
+        let (Some(saves_dir), Some(rom), Some(out)) = (
+            std::env::var_os("EIDOS_SAVES"),
+            std::env::var_os("NDS_ROM"),
+            std::env::var_os("EIDOS_MOCK_OUT"),
+        ) else {
+            return;
+        };
+        let out = PathBuf::from(out);
+        let rom = nds::rom::Rom::open(Path::new(&rom)).unwrap();
+        let names = nds::place::place_names(&rom).unwrap();
+        let mut list = saves::list(Path::new(&saves_dir));
+        for s in &mut list {
+            s.place = names.get(s.zone as usize).cloned().unwrap_or_default();
+            for m in &s.party {
+                let img = nds::sprite::battle_front(&rom, m.species).unwrap();
+                std::fs::write(
+                    out.join(format!("{}.png", m.species)),
+                    nds::image::encode_png(&square_crop(&img)),
+                )
+                .unwrap();
+            }
+        }
+        std::fs::write(
+            out.join("saves.json"),
+            serde_json::to_string_pretty(&list).unwrap(),
+        )
+        .unwrap();
+    }
 }
