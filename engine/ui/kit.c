@@ -1559,18 +1559,25 @@ void ui_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender,
     ui_panel(c, x, y, w, h, UI_CUT_TR | UI_CUT_BL, 6, UI_BODY, UI_EDGE, 225);
     nx = ui_text(c, x + 8, y + 1, name, UI_WHITE, SHADOW_DARK, UI_FONT_LARGE, 1);
     ui_gender(c, nx + 3, y + 1, gender, UI_FONT_LARGE);
-    lv[0] = 'L';
-    lv[1] = 'v';
-    lv[2] = '.';
-    i = 0;
-    do {
-        t[i++] = (char)('0' + n % 10);
-        n /= 10;
-    } while (n > 0 && i < 8);
-    for (j = 0; j < i; j++) {
-        lv[3 + j] = t[i - 1 - j];
+    {
+        /* "Lv." in the game's language ("N." in French), then the level */
+        const char *pre = ui_tr("Lv.");
+        int pl = (int)strlen(pre);
+
+        if (pl > 6) {
+            pl = 6;
+        }
+        memcpy(lv, pre, (size_t)pl);
+        i = 0;
+        do {
+            t[i++] = (char)('0' + n % 10);
+            n /= 10;
+        } while (n > 0 && i < 8);
+        for (j = 0; j < i; j++) {
+            lv[pl + j] = t[i - 1 - j];
+        }
+        lv[pl + i] = '\0';
     }
-    lv[3 + i] = '\0';
     tw = ui_text_w(lv, UI_FONT_SMALL);
     ui_text(c, x + w - 10 - tw, y + 2, lv, UI_LIGHT, SHADOW_DARK, UI_FONT_SMALL, 1);
     ui_text(c, x + 8, y + 14, "HP", UI_LIME, SHADOW_DARK, UI_FONT_SMALL, 1);

@@ -26,6 +26,7 @@
 
 #include "ui.h"
 #include "overlay.h"
+#include "ui_lang.h"
 #include "kit.h"
 #include "port.h"
 #include "dsmem.h"
@@ -788,7 +789,7 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                              (int)hp, (int)maxhp, icon, sel);
                 st = mon_status(mon, hp);
                 if (st >= 0) {
-                    snprintf(lv, sizeof lv, "Lv.%d", (int)pv(mon, P_LEVEL));
+                    snprintf(lv, sizeof lv, "%s%d", ui_tr("Lv."), (int)pv(mon, P_LEVEL));
                     lvw = ui_text_w(lv, UI_FONT_SMALL);
                     ui_status_badge(c, x + colw - 9 - lvw - 28, y + 3, st);
                 }
@@ -1151,7 +1152,7 @@ static void draw_card(EidosUiCtx *c, const SummaryView *s, int x, int y, int w, 
         char lv[16];
 
         ui_gender(c, nx + 3, y + 3 + ty, gender, UI_FONT_LARGE);
-        snprintf(lv, sizeof lv, "Lv.%d", (int)pv(s->mon, P_LEVEL));
+        snprintf(lv, sizeof lv, "%s%d", ui_tr("Lv."), (int)pv(s->mon, P_LEVEL));
         ui_text(c, x + w - 6 - ui_text_w(lv, UI_FONT_SMALL), y + 3 + ui_text_y(16, UI_FONT_SMALL),
                 lv, UI_LIGHT, UI_EDGE, UI_FONT_SMALL, 1);
     }
@@ -1621,7 +1622,7 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
         mon_nick(s->mon, nick, (int)sizeof nick);
         nx = ui_text(c, ix + 38, iy + 6, nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         ui_gender(c, nx + 3, iy + 6, gender_of(s->mon), UI_FONT_LARGE);
-        snprintf(q, sizeof q, "Lv.%d", (int)pv(s->mon, P_LEVEL));
+        snprintf(q, sizeof q, "%s%d", ui_tr("Lv."), (int)pv(s->mon, P_LEVEL));
         ui_text(c, ix + iw - 8 - ui_text_w(q, UI_FONT_LARGE), iy + 6, q, UI_LIGHT, UI_EDGE,
                 UI_FONT_LARGE, 1);
         ui_bar(c, ix + 38, iy + 24, iw - 100, 4, (int)hp, (int)maxhp);

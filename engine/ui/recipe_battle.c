@@ -47,6 +47,7 @@
 #include <string.h>
 
 #include "ui.h"
+#include "ui_lang.h"
 #include "kit.h"
 #include "assets.h"
 #include "settings.h"
@@ -1056,7 +1057,7 @@ static void levelup_draw(EidosUiCtx *c, const Bt *b, int phase)
         ui_panel(c, px, y, pw, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
         nx = ui_text(c, px + 10, y + 3, m.name, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         ui_gender(c, nx + 3, y + 3, m.gender, UI_FONT_LARGE);
-        snprintf(lv, sizeof(lv), "Lv.%d", rd16(scu, 0x170) & 0xFF);
+        snprintf(lv, sizeof(lv), "%s%d", ui_tr("Lv."), rd16(scu, 0x170) & 0xFF);
         ui_text(c, px + pw - 10 - ui_text_w(lv, UI_FONT_SMALL), y + 5, lv, UI_LIGHT, UI_EDGE,
                 UI_FONT_SMALL, 1);
         ui_fill(c, px + 8, y + head - 1, pw - 16, 1, UI_LIME, 255);
@@ -2832,7 +2833,7 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
         }
         nx = ui_text(c, ix + 38, iy + 6, mon.name, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         ui_gender(c, nx + 3, iy + 6, s[0x17] & 7, UI_FONT_LARGE);
-        snprintf(q, sizeof(q), "Lv.%d", level);
+        snprintf(q, sizeof(q), "%s%d", ui_tr("Lv."), level);
         ui_text(c, ix + iw - 8 - ui_text_w(q, UI_FONT_LARGE), iy + 6, q, UI_LIGHT, UI_EDGE,
                 UI_FONT_LARGE, 1);
         ui_bar(c, ix + 38, iy + 24, iw - 100, 4, hp, maxhp);

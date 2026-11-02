@@ -67,6 +67,7 @@
 #include <stdint.h>
 
 #include "ui.h"
+#include "ui_lang.h"
 #include "kit.h"
 #include "dsmem.h"
 #include "input.h"
@@ -1331,7 +1332,7 @@ static void party_chip(EidosUiCtx *c, int x, int y, int w, int h, int slot, cons
         nx = ui_text(c, x + 34, top, m->egg ? "Egg" : m->nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         if (!m->egg) {
             ui_gender(c, nx + 2, top, m->gender, UI_FONT_LARGE);
-            fmt_int(lv, "Lv.", m->level);
+            fmt_int(lv, ui_tr("Lv."), m->level);
             ui_text(c, x + 34, top + 17, lv, UI_LIGHT, UI_EDGE, UI_FONT_SMALL, 1);
             ui_bar(c, x + 34, top + 29, w - 34 - 6, 5, m->hp, m->maxhp);
         }
@@ -1343,7 +1344,7 @@ static void party_chip(EidosUiCtx *c, int x, int y, int w, int h, int slot, cons
         nx = ui_text(c, x + 34, top + 1, m->egg ? "Egg" : m->nick, UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
         if (!m->egg) {
             ui_gender(c, nx + 2, top + 1, m->gender, UI_FONT_SMALL);
-            fmt_int(lv, "Lv.", m->level);
+            fmt_int(lv, ui_tr("Lv."), m->level);
             ui_text(c, x + 34, top + 11, lv, UI_LIGHT, UI_EDGE, UI_FONT_SMALL, 1);
             ui_bar(c, x + 34, top + 22, w - 34 - 6, 4, m->hp, m->maxhp);
         }
@@ -1369,7 +1370,7 @@ static void details_panel(EidosUiCtx *c, int x, int y, int w, int h, const PcMon
 
         if (!m->egg) {
             ui_gender(c, nx + 3, iy, m->gender, UI_FONT_LARGE);
-            fmt_int(lv, "Lv.", m->level);
+            fmt_int(lv, ui_tr("Lv."), m->level);
             ui_text(c, x + w - 5 - ui_text_w(lv, UI_FONT_SMALL), iy + 2, lv, UI_LIGHT, UI_EDGE,
                     UI_FONT_SMALL, 1);
         }
