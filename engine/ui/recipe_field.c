@@ -1450,6 +1450,10 @@ static Stick g_stick;
 
 /* `top`: the world starts under it (the bar); `blocked`: an event runs or
  * the bar moves, so no stick starts and a held one lets go. */
+/* A card over the world (the Union Room's, the Entralink's): the rectangle
+ * it took last frame, where a press is the card's, not the stick's. */
+static EidosUiRect g_card;
+
 static void field_stick(EidosUiCtx *c, const EidosUiFrame *in, int top, int blocked)
 {
     int x, y, pressed, released, down, dx, dy, adx, ady, kx, ky;
@@ -1457,6 +1461,10 @@ static void field_stick(EidosUiCtx *c, const EidosUiFrame *in, int top, int bloc
     u32 key;
 
     down = eidos_ui_pointer(&x, &y, &pressed, &released);
+    if (pressed && g_card.w > 0 && x >= g_card.x && x < g_card.x + g_card.w && y >= g_card.y
+        && y < g_card.y + g_card.h) {
+        pressed = 0;                    /* on a card: the card's            */
+    }
     if (pressed && !blocked && x >= 0 && y > top) {
         g_stick.on = 1;
         g_stick.ax = x;
@@ -1809,36 +1817,21 @@ static int lower_match(void)
 
 static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
-    view->mode = EIDOS_VIEW_WORLD;
-    view->keep_world = 1;
-    view->hide_2d = capture_bg_shown();
-    view->cap_mix = capture_mix();
-    view->stretch = encounter_effect();
-    {
-        FieldNow f;
+    FieldNow f;
+    int own;
 
-        /* the Union Room: its own card; the other lower screens: the
-         * game's screen as a sheet */
-        int own = field_now(&f) && ((f.mode == 2 && union_card(c, in, &f))
-                                    || (f.mode == 3 && entralink_card(c, in)));
-
-        if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 0, 0) < 0) {
-            view->mode = EIDOS_VIEW_FALLBACK;
-            return;
-        }
+    /* the field as everywhere else: the world, the top bar, the stick, the
+     * game's text; then the lower screen's own card over it */
+    g_card.w = 0;
+    field_run(c, view, in);
+    if (view->mode != EIDOS_VIEW_WORLD || !field_now(&f) || f.main_state != 1) {
+        return;
     }
-    {
-        FieldNow f;
-
-        if (field_now(&f)) {
-            field_text(c, &f);
-            if (field_choices(c, in, &f)) {
-                return;
-            }
-        }
-    }
-    if (right_click(in)) {
-        eidos_ui_press(BW_KEY_B, 4);
+    /* the Union Room and the Entralink: their own cards; the other lower
+     * screens: the game's screen as a sheet */
+    own = (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in));
+    if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
+        view->mode = EIDOS_VIEW_FALLBACK;
     }
 }
 
@@ -2098,6 +2091,11 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
     /* the five buttons */
     {
         int tile = (pw - 4 * 3) / 5, by = top + chh + 4;
+
+        g_card.x = x0;
+        g_card.y = top;
+        g_card.w = pw;
+        g_card.h = chh + 4 + 34;
         int appeal = f->panel != NULL ? f->panel[0x30] : 0;
 
         if (g_union_keys) {
@@ -2182,10 +2180,13 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
 
 static int g_entra_shown = 1;
 
+#define ENTRA_DW (ENTRA_W * 2 / 3)    /* the map at two thirds          */
+#define ENTRA_DH (ENTRA_H * 2 / 3)
+
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in)
 {
     int cw = c->canvas->w;
-    int pw = ENTRA_W + 14, ph = 22 + ENTRA_H + 8;
+    int pw = ENTRA_DW + 14, ph = 22 + ENTRA_DH + 8;
     int x0 = cw - 6 - pw, top = 22, st;
     u32 keys = eidos_ui_keys_pressed();
     EidosUiRect r;
@@ -2217,17 +2218,33 @@ static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in)
             g_entra_shown = 0;
         }
     }
-    ui_blit_screen(c, x0 + 7, top + 21, in->screen_rgba[1], ENTRA_SX, ENTRA_SY, ENTRA_W, ENTRA_H, 1, 0);
+    {
+        /* the game's map, every third pixel of a row and column left out */
+        int dx, dy;
+
+        for (dy = 0; dy < ENTRA_DH; dy++) {
+            for (dx = 0; dx < ENTRA_DW; dx++) {
+                const u8 *p = in->screen_rgba[1]
+                              + ((size_t)(ENTRA_SY + dy * 3 / 2) * 256 + (size_t)(ENTRA_SX + dx * 3 / 2)) * 4;
+
+                ui_fill(c, x0 + 7 + dx, top + 21 + dy, 1, 1, (u32)p[0] << 16 | (u32)p[1] << 8 | p[2], 255);
+            }
+        }
+    }
+    g_card.x = x0;
+    g_card.y = top;
+    g_card.w = pw;
+    g_card.h = ph;
     r.x = x0 + 7;
     r.y = top + 21;
-    r.w = ENTRA_W;
-    r.h = ENTRA_H;
+    r.w = ENTRA_DW;
+    r.h = ENTRA_DH;
     st = eidos_ui_hit(r);
     if (in->mouse.down && (st & EIDOS_UI_HOVER)) {
         int mx, my;
 
         if (eidos_ui_mouse_pos(&mx, &my)) {
-            eidos_ui_tap(ENTRA_SX + mx - r.x, ENTRA_SY + my - r.y, 2);
+            eidos_ui_tap(ENTRA_SX + (mx - r.x) * 3 / 2, ENTRA_SY + (my - r.y) * 3 / 2, 2);
         }
     }
     return 1;

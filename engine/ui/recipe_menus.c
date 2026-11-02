@@ -41,6 +41,7 @@
 #include "ui_lang.h"
 #include "assets.h"
 #include "input.h"
+#include "textbox.h"
 #include "overlay.h"
 #include "plat_thread.h"
 #include "port.h"
@@ -2493,6 +2494,156 @@ static const EidosUiRecipe recipe_wireless = {
     "wireless", wireless_match, wireless_run, wireless_reset, 0
 };
 
+/* ------------------------------------------------------------------ */
+/* Geonet                                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Geonet (overlay 219, ov219/beacon_detail.c, the globe in the Pokemon
+ * Centers' upper floor) as one screen (mock-up "geonet"): the globe fills
+ * the window, the game's windows are the interface's system boxes (the
+ * upper screen's on the top left, the lower screen's along the bottom),
+ * and View and Quit are tiles with their keys (X, B).  The pointer held
+ * on the globe is the stylus there, so the globe turns as the game turns
+ * it for a drag.  The game's own windows and its grid are left out of the
+ * screen (g2d_hw_hide_main_bgs: BG2 and BG3 of the engine with the 3D).
+ *
+ * BeaconDetailWork: bmp18 0xC018, bmp1C 0xC01C, bmp40 0xC040 (BmpWins).
+ */
+#define GEO_OVERLAY 219
+
+extern void g2d_hw_hide_main_bgs(u32 mask) MN_WEAK;
+
+static int geonet_match(void)
+{
+    if (app_work(GEO_OVERLAY) == NULL) {
+        return 0;
+    }
+    eidos_ui_want_ds_scale();
+    return 1;
+}
+
+static int geo_win_live(const u8 *w)
+{
+    return w != NULL && (rd16(w, 0) & 0x7FFFu) == 0x7FB2u;
+}
+
+/* A battle-sheet tile with a key: the strip, the label, the keycap. */
+static int geo_tile(EidosUiCtx *c, int x, int y, int w, const char *label, const char *key, int lit)
+{
+    EidosUiRect r;
+    int st, rr, h = 21;
+    u32 col = lit ? 0x008BACu : UI_EDGE2;
+
+    r.x = x; r.y = y; r.w = w; r.h = h;
+    st = eidos_ui_hit(r);
+    if (st & EIDOS_UI_HOVER) {
+        lit = 1;
+        col = 0x008BACu;
+    }
+    ui_panel(c, x, y - (lit ? 1 : 0), w, h, UI_CUT_TL | UI_CUT_BR, 5, lit ? 0x05343Eu : UI_BODY,
+             lit ? 0x008BACu : UI_EDGE, 242);
+    for (rr = 3; rr < h - 3; rr++) {
+        int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+        if (left < 6) {
+            ui_fill(c, x + left, y - (lit ? 1 : 0) + rr, 6 - left, 1, col, 255);
+        }
+    }
+    ui_text(c, x + 12, y - (lit ? 1 : 0) + ui_text_y(h, UI_FONT_LARGE), label, UI_WHITE, 0x313131u,
+            UI_FONT_LARGE, 1);
+    ui_keycap(c, x + w - 6 - ui_keycap_w(key), y - (lit ? 1 : 0) + 4, key);
+    return st;
+}
+
+static void geonet_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    const u8 *w = (const u8 *)app_work(GEO_OVERLAY);
+    const u8 *wins[3];
+    int cw = c->canvas->w, ch = c->canvas->h, i, bw, bottom_top = ch - 4;
+    float s = (float)ch / 192.0f;
+    float ox = ((float)cw - 256.0f * s) * 0.5f;
+    EidosUiRect all;
+
+    view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = 1.0f;
+    if (w == NULL) {
+        return;
+    }
+    if (g2d_hw_hide_main_bgs != NULL) {
+        g2d_hw_hide_main_bgs(0x4u | 0x8u);  /* the windows and the grid */
+    }
+    wins[0] = rdp(w, 0xC018);
+    wins[1] = rdp(w, 0xC01C);
+    wins[2] = rdp(w, 0xC040);
+    bw = (int)(256.0f * s) - 8;
+    if (bw > cw - 8) {
+        bw = cw - 8;
+    }
+    /* the lower screen's windows first, along the bottom; the upper
+     * screen's on the top left */
+    for (i = 0; i < 3; i++) {
+        const u8 *b = wins[i];
+
+        if (!geo_win_live(b) || b[2] >= 4) {
+            continue;
+        }
+        bottom_top -= b[6] * 8 + 10;
+        ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, (cw - bw) / 2, bottom_top, bw, b, -1, -1);
+        bottom_top -= 4;
+    }
+    {
+        int y = 4;
+
+        for (i = 0; i < 3; i++) {
+            const u8 *b = wins[i];
+
+            if (!geo_win_live(b) || b[2] < 4) {
+                continue;
+            }
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, 4, y, b[5] * 8 + 20, b, -1, -1);
+            y += b[6] * 8 + 14;
+        }
+    }
+    {
+        /* View (X) and Quit (B) */
+        int tw = ui_text_w("Quit", UI_FONT_LARGE) + 44, vw = ui_text_w("View", UI_FONT_LARGE) + 44;
+        int x = (cw + bw) / 2 - tw, y = bottom_top - 24;
+
+        if (geo_tile(c, x, y, tw, "Quit", "B", 0) & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_B, 2);
+        }
+        x -= vw + 4;
+        if (geo_tile(c, x, y, vw, "View", "X", 1) & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_X, 2);
+        }
+    }
+    /* the pointer held on the globe is the stylus there */
+    all.x = 0; all.y = 0; all.w = cw; all.h = bottom_top - 26;
+    if (in->mouse.down && (eidos_ui_hit(all) & EIDOS_UI_HOVER)) {
+        int mx, my, tx, ty;
+
+        if (eidos_ui_mouse_pos(&mx, &my)) {
+            tx = (int)(((float)mx - ox) / s);
+            ty = (int)((float)my / s);
+            if (tx >= 0 && tx < 256 && ty >= 0 && ty < 192) {
+                eidos_ui_tap(tx, ty, 2);
+            }
+        }
+    }
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void geonet_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_geonet = {
+    "geonet", geonet_match, geonet_run, geonet_reset, 0
+};
+
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
-                                                  &recipe_wireless };
-const u32 ui_recipes_menus_count = 4;
+                                                  &recipe_wireless, &recipe_geonet };
+const u32 ui_recipes_menus_count = 5;
