@@ -1056,11 +1056,307 @@ static int field_match(void)
     if (!field_now(&f)) {
         return 0;
     }
-    if (f.mode == 0 || f.mode == 5 || f.mode == 8) {
+    /* mode 7 is the save report; the start menu's save has its own recipe
+     * (recipe_menus.c, before this one), so a mode 7 here is a script's
+     * save (a receptionist's "Would you like to save the game?"): the
+     * world, its yes/no as a choice list, the report left out */
+    if (f.mode == 0 || f.mode == 5 || f.mode == 7 || f.mode == 8) {
         logf_scene("field");
         return 1;
     }
     return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* The field's choice lists                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A script's list menu (a receptionist's "Enter the Union Room / Info /
+ * Cancel") and its yes/no window are overlay 21's FieldMenuFunc: a window
+ * on the upper screen, a BmpMenuList the keys move.  In the one-screen view
+ * that window is covered by a list in the interface's own style, at the
+ * same place and with the same rows.  The game's cursor is the marked row
+ * and moves only by UP and DOWN presses, so the game plays its own sound
+ * and prints the row's help as it does for the keys.  The mouse: the cursor
+ * follows the pointer and a click picks the row (A).  A finger: a tap on
+ * another row moves the cursor there, a tap on the cursor's row picks it.
+ * A tap outside the list does nothing; a right click is B.
+ *
+ * The open window is found from the game's current event: the script's
+ * list event (SCRCMD_MSGWIN_MenuEventMain: the menu is in the script's
+ * common work, ScrcmdCommonWork.menu.fieldMenu) or its yes/no event
+ * (SCRCMD_MSGWIN_YesNoEventMain: YesNoEventWork.menu), each at its waiting
+ * step (2).
+ */
+extern void *GAMESYSTEM_GetEvent(void *gameSystem) __attribute__((weak));
+extern int ov021_SCRCMD_MSGWIN_MenuEventMain(void *ev, int *seq, void *work) __attribute__((weak));
+extern int ov021_SCRCMD_MSGWIN_YesNoEventMain(void *ev, int *seq, void *work) __attribute__((weak));
+extern void BMP_MENULIST_GetPos(void *menu, u16 *outScroll, u16 *outRow) __attribute__((weak));
+extern u16 *STRBUF_GetChars(void *strbuf) __attribute__((weak));
+extern u16  STRBUF_GetLength(void *strbuf) __attribute__((weak));
+
+#define CHOICE_MAX 32
+
+typedef struct Choices {
+    u8 *list;               /* the BmpMenuList                             */
+    u8 *win;                /* its BmpWin                                  */
+    int count, rows, scroll, row;
+    int yesno;
+} Choices;
+
+static int g_choice_target = -1;    /* the row a click asked for (-2 - row:
+                                       the wheel, which moves without A)  */
+static u8 *g_choice_list;           /* the list it was asked on             */
+static u32 g_choice_frame;          /* the last frame a key went in         */
+static int g_choice_hover = -1;     /* the row under the pointer last frame */
+static int g_choice_px, g_choice_py; /* the pointer last frame              */
+static int g_choice_pick;           /* the press went down on the cursor's
+                                       row, or on a row the mouse was already
+                                       over: its click picks the row        */
+
+static int choices_now(const FieldNow *f, Choices *ch)
+{
+    u8 *ev, *work, *fmf = NULL;
+    uintptr_t func;
+
+    memset(ch, 0, sizeof(*ch));
+    if (GAMESYSTEM_GetEvent == NULL || BMP_MENULIST_GetPos == NULL) {
+        return 0;
+    }
+    ev = (u8 *)GAMESYSTEM_GetEvent(f->gs);
+    if (ev == NULL || rd32(ev + 8) != 2u) {
+        return 0;
+    }
+    func = (uintptr_t)rd32(ev + 4);
+    work = rdp(ev + 0x0C);
+    if (getenv("EIDOS_UI_CHOICE_LOG") != NULL) {
+        static uintptr_t last;
+
+        if (func != last) {
+            fprintf(stderr, "eidos: ui choice event %08x mode %u (menu %08x yesno %08x)\n",
+                    (unsigned)func, f->mode, (unsigned)(uintptr_t)ov021_SCRCMD_MSGWIN_MenuEventMain,
+                    (unsigned)(uintptr_t)ov021_SCRCMD_MSGWIN_YesNoEventMain);
+            last = func;
+        }
+    }
+    if (work == NULL) {
+        return 0;
+    }
+    if (ov021_SCRCMD_MSGWIN_MenuEventMain != NULL
+        && func == (uintptr_t)ov021_SCRCMD_MSGWIN_MenuEventMain) {
+        u8 *cmd = rdp(work), *common = cmd != NULL ? rdp(cmd + 0x20) : NULL;
+
+        fmf = common != NULL ? rdp(common + 0x34 + 0x1C) : NULL;
+    } else if (ov021_SCRCMD_MSGWIN_YesNoEventMain != NULL
+               && func == (uintptr_t)ov021_SCRCMD_MSGWIN_YesNoEventMain) {
+        fmf = rdp(work + 8);
+        ch->yesno = 1;
+    }
+    if (fmf == NULL) {
+        return 0;
+    }
+    ch->list = rdp(fmf + 0x10);
+    ch->win = rdp(fmf + 0x08);
+    if (ch->list == NULL || ch->win == NULL || ch->win[2] >= 4) {
+        return 0;                           /* not on the upper screen      */
+    }
+    ch->count = rd16(ch->list + 0x10);
+    ch->rows = rd16(ch->list + 0x12);
+    if (ch->count < 1 || ch->count > CHOICE_MAX || ch->rows < 1) {
+        return 0;
+    }
+    if (ch->rows > ch->count) {
+        ch->rows = ch->count;
+    }
+    {
+        u16 sc = 0, rw = 0;
+
+        BMP_MENULIST_GetPos(ch->list, &sc, &rw);
+        ch->scroll = sc;
+        ch->row = rw;
+    }
+    return 1;
+}
+
+static void choice_text(const Choices *ch, int i, char *out, int n)
+{
+    u8 *items = rdp(ch->list), *sb;
+
+    out[0] = '\0';
+    if (items == NULL || STRBUF_GetChars == NULL || STRBUF_GetLength == NULL) {
+        return;
+    }
+    sb = rdp(items + 8 * i);
+    if (sb != NULL) {
+        u16 len = STRBUF_GetLength(sb);
+        const u16 *u = STRBUF_GetChars(sb);
+
+        if (u != NULL) {
+            units_to_utf8(u, len, out, n);
+        }
+    }
+}
+
+/*
+ * Draws the open choice list, if there is one, and turns clicks into the
+ * game's keys.  Returns 1 while one is open (the caller's own clicks on the
+ * world wait).
+ */
+static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
+{
+    Choices ch;
+    int cw = c->canvas->w, chh = c->canvas->h;
+    float s = (float)chh / 192.0f;
+    float ox = ((float)cw - 256.0f * s) * 0.5f;
+    int gx0, gy0, gx1, gy1, pitch, bh, w, h, x, y, i, hover = -1, cur;
+    char text[CHOICE_MAX][48];
+    EidosUiRect r;
+
+    if (!choices_now(f, &ch)) {
+        g_choice_target = -1;
+        return 0;
+    }
+    cur = ch.scroll + ch.row;
+    /* the game's window, its frame included, in canvas pixels */
+    gx0 = (int)(ox + (float)((ch.win[3] - 1) * 8) * s);
+    gy0 = (int)((float)((ch.win[4] - 1) * 8) * s);
+    gx1 = (int)(ox + (float)((ch.win[3] + ch.win[5] + 1) * 8) * s + 0.99f);
+    gy1 = (int)((float)((ch.win[4] + ch.win[6] + 1) * 8) * s + 0.99f);
+    pitch = (int)(16.0f * s);
+    if (pitch < 22) {
+        pitch = 22;
+    }
+    bh = pitch - 3;
+    w = 0;
+    for (i = 0; i < ch.rows; i++) {
+        int tw;
+
+        choice_text(&ch, ch.scroll + i, text[i], (int)sizeof text[i]);
+        tw = ui_text_w(text[i], UI_FONT_LARGE) + 30;
+        if (tw > w) {
+            w = tw;
+        }
+    }
+    w += 12;
+    h = ch.rows * pitch + 9;
+    if (w < gx1 - gx0) w = gx1 - gx0;
+    if (h < gy1 - gy0) h = gy1 - gy0;
+    x = gx1 - w;
+    y = gy0;
+    if (x + w > cw - 4) x = cw - 4 - w;
+    if (x < 4) x = 4;
+    if (y + h > chh - 4) y = chh - 4 - h;
+    if (y < 4) y = 4;
+
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE2, 245);
+    for (i = 0; i < ch.rows; i++) {
+        r.x = x + 6; r.y = y + 6 + i * pitch; r.w = w - 12; r.h = bh;
+        if (eidos_ui_hit(r) & EIDOS_UI_HOVER) {
+            hover = i;
+        }
+    }
+    {
+        int px = -1, py = -1, pressed = 0, released = 0;
+        int held = eidos_ui_pointer(&px, &py, &pressed, &released);
+        int moved = px != g_choice_px || py != g_choice_py;
+
+        if (pressed) {
+            /* a finger lands where it presses; a mouse was over the row
+             * before it pressed */
+            g_choice_pick = hover >= 0 && (ch.scroll + hover == cur
+                                           || (hover == g_choice_hover && !moved));
+        }
+        /* the game's cursor follows a moving mouse (by the keys, so the
+         * game plays its own sound and prints the row's help); a finger
+         * moves it only by a tap */
+        if (hover >= 0 && !held && moved && ch.scroll + hover != cur && g_choice_target == -1) {
+            g_choice_target = -2 - (ch.scroll + hover);
+            g_choice_list = ch.list;
+        }
+        g_choice_hover = hover;
+        g_choice_px = px;
+        g_choice_py = py;
+    }
+    for (i = 0; i < ch.rows; i++) {
+        int ry = y + 6 + i * pitch, st, lit, j;
+
+        r.x = x + 6; r.y = ry; r.w = w - 12; r.h = bh;
+        st = eidos_ui_hit(r);
+        lit = ch.row == i;          /* the game's cursor (it follows the mouse) */
+        ui_panel(c, r.x, ry, r.w, bh, UI_CUT_TL | UI_CUT_BR, 4,
+                 lit ? UI_CYAN2 : UI_BODY2, lit ? UI_CYAN : UI_EDGE, 255);
+        if (ch.row == i) {
+            for (j = 0; j < 4; j++) {       /* the game's cursor: the bar's mark */
+                ui_fill(c, r.x + 6 + j, ry + bh / 2 - 4 + j, 1, 9 - 2 * j,
+                        lit ? UI_WHITE : UI_CYAN, 255);
+            }
+        }
+        ui_text(c, r.x + 16, ry + ui_text_y(bh, UI_FONT_LARGE), text[i], UI_WHITE,
+                lit ? UI_NAVY : UI_EDGE, UI_FONT_LARGE, 1);
+        if (st & EIDOS_UI_CLICK) {
+            /* a click on a row the pointer was already over picks it; a
+             * tap that lands on a row (a finger: the row came under the
+             * pointer with this press) only moves the game's cursor there,
+             * unless it is already there: the second tap picks it */
+            if (g_choice_pick) {
+                g_choice_target = ch.scroll + i;
+            } else {
+                g_choice_target = -2 - (ch.scroll + i);
+            }
+            g_choice_list = ch.list;
+        }
+    }
+    /* more rows above or below: the game scrolls its window with the keys */
+    if (ch.count > ch.rows) {
+        if (ch.scroll > 0) {
+            for (i = 0; i < 4; i++) {
+                ui_fill(c, x + w / 2 - i, y + 1 + i, 2 * i + 1, 1, UI_CYAN, 255);
+            }
+        }
+        if (ch.scroll + ch.rows < ch.count) {
+            for (i = 0; i < 4; i++) {
+                ui_fill(c, x + w / 2 - i, y + h - 2 - i, 2 * i + 1, 1, UI_CYAN, 255);
+            }
+        }
+        r.x = x; r.y = y; r.w = w; r.h = h;
+        i = eidos_ui_wheel(r);
+        if (i != 0 && g_choice_target == -1) {
+            int t = cur - i;
+
+            t = t < 0 ? 0 : t >= ch.count ? ch.count - 1 : t;
+            g_choice_target = -2 - t;
+            g_choice_list = ch.list;
+        }
+    }
+
+    /* walk the game's cursor to the asked row, one key every other frame */
+    if (g_choice_target != -1 && g_choice_list == ch.list) {
+        int target = g_choice_target >= 0 ? g_choice_target : -2 - g_choice_target;
+
+        if (in->frame - g_choice_frame >= 2u) {
+            g_choice_frame = in->frame;
+            if (cur < target) {
+                eidos_ui_press(BW_KEY_DOWN, 1);
+            } else if (cur > target) {
+                eidos_ui_press(BW_KEY_UP, 1);
+            } else {
+                if (g_choice_target >= 0) {
+                    eidos_ui_press(BW_KEY_A, 2);
+                }
+                g_choice_target = -1;
+            }
+        }
+    } else {
+        g_choice_target = -1;
+    }
+    /* a right click is B; a click or a tap outside the list does nothing
+     * (it is not A: that would pick the row the cursor is on) */
+    if (right_click(in)) {
+        eidos_ui_press(BW_KEY_B, 2);
+        g_choice_target = -1;
+    }
+    return 1;
 }
 
 static void bar_trapezoid(EidosUiCtx *c, int cx, int w, int h, int hot)
@@ -1455,7 +1751,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* While the game's place-name banner shows (it names the same place)
      * or an event runs, the bar slides up out of the way and comes back
      * after. */
-    if (GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0) {
+    if (field_choices(c, in, &f)) {
+        /* a choice list is open: its own clicks (field_choices) */
+    } else if (GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0) {
         /* An event (a talk, a scene): the game's speech bubbles go on
          * with A or B only (FIELD_MSGBG_KeyWaitCheckAdvance), so a click
          * on the world is A and a right click is B. */
@@ -1668,6 +1966,13 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (lower_sheet(c, in, c->canvas->w, c->canvas->h, 0, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
         return;
+    }
+    {
+        FieldNow f;
+
+        if (field_now(&f) && field_choices(c, in, &f)) {
+            return;
+        }
     }
     if (right_click(in)) {
         eidos_ui_press(BW_KEY_B, 4);
