@@ -507,7 +507,12 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     /* the keys */
     pairs[0] = "A"; pairs[1] = "Choose";
     pairs[2] = "B"; pairs[3] = "Back";
-    ui_hints(c, ch - 17, cw, pairs, menu ? 2 : 1, NULL);
+    {
+        /* a touch on a hint is its key */
+        static const u32 keys[2] = { BW_KEY_A, BW_KEY_B };
+
+        ui_hints(c, ch - 17, cw, pairs, menu ? 2 : 1, keys);
+    }
     if (menu && eidos_ui_right_click()) {
         eidos_ui_press(BW_KEY_B, 2);
     }
