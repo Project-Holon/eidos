@@ -691,22 +691,36 @@ static void debug_party(void)
 
 /* The save file cannot be written (a folder the system refuses, a full
  * disk): the game believes it saved, but the progress is only in memory.
- * A warning stays at the top of the window until a write succeeds, so the
- * player knows not to quit (sdk/arm7/fs.c retries on its own). */
+ * A warning shows at the top of the window for a few seconds, so the
+ * player knows not to quit (sdk/arm7/fs.c retries on its own); it shows
+ * again if writes fail again after one succeeds. */
 extern u32 bw_arm7_backup_failures(void) __attribute__((weak));
+
+#define SAVE_NOTICE_FRAMES 480u
 
 static void save_failing_notice(EidosUiCtx *c)
 {
+    static u32 shown;               /* frames it has been up this time      */
     const char *msg = "The save could not be written to storage. Do not close the game.";
-    int w, x;
+    int w, x, a;
 
     if (bw_arm7_backup_failures == NULL || bw_arm7_backup_failures() < 2u) {
+        shown = 0;                  /* written: the next failure shows it again */
         return;
     }
+    /* up for eight seconds, the last one fading; it does not stay over
+     * the game while the writer keeps retrying */
+    if (shown >= SAVE_NOTICE_FRAMES) {
+        return;
+    }
+    shown++;
+    a = shown + 60u > SAVE_NOTICE_FRAMES ? (int)(SAVE_NOTICE_FRAMES - shown) * 245 / 60 : 245;
     w = ui_text_w(msg, UI_FONT_LARGE) + 24;
     x = (c->canvas->w - w) / 2;
-    ui_panel(c, x, 22, w, 22, UI_CUT_TL | UI_CUT_BR, 5, 0x3A0A10u, 0xE04050u, 245);
-    ui_text(c, x + 12, 22 + ui_text_y(22, UI_FONT_LARGE), msg, UI_WHITE, 0x200508u, UI_FONT_LARGE, 1);
+    ui_panel(c, x, 22, w, 22, UI_CUT_TL | UI_CUT_BR, 5, 0x3A0A10u, 0xE04050u, a);
+    if (a > 120) {
+        ui_text(c, x + 12, 22 + ui_text_y(22, UI_FONT_LARGE), msg, UI_WHITE, 0x200508u, UI_FONT_LARGE, 1);
+    }
 }
 
 /* Tests: EIDOS_DEBUG_WARP="zone x y z dir" (map units, dir 0 up
@@ -834,6 +848,7 @@ extern void *FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(void *gsys, void *fie
                                                            void *procWork, void (*callback)(void *), void *callbackWork)
     __attribute__((weak));
 extern void *GAME_DATA_GetBoxManager(void *gd) __attribute__((weak));
+extern void *GFL_HEAP_Alloc(u32 heapId, u32 size, int clear, const char *site, u16 tag) __attribute__((weak));
 extern void *GAME_DATA_GetSaveControl(void *gd) __attribute__((weak));
 extern void *SYSTEM_DATA_GetConfig(void *save) __attribute__((weak));
 extern void *ZUKAN_SAVE_GetFromGameData(void *gd) __attribute__((weak));
@@ -849,7 +864,7 @@ static void debug_open(void)
 {
     static int done, wait;
     static struct { u16 value; u16 pad; void *gameData; } tvt;
-    static struct {
+    struct BoxParamDbg {
         void *gameData, *boxSave, *party, *myItem, *myStatus;
         int linkMode;
         void *config;
@@ -858,7 +873,7 @@ static void debug_open(void)
         int mode;
         u16 result;
         u8 box, slot;
-    } boxp;                             /* BoxParam (ov170/box2_param_types.h) */
+    } *boxp;                            /* BoxParam (ov170/box2_param_types.h) */
     const char *what = getenv("EIDOS_DEBUG_OPEN");
     unsigned a = 0, b2 = 0;
     u8 *gs, *fm, *gd;
@@ -908,18 +923,20 @@ static void debug_open(void)
                                                      debug_open_done, NULL);
     } else if (sscanf(what, "box %u", &a) == 1 && FIELD_STATUS_CreateSubProcNoFadeCallbackEvent != NULL
                && &bw_dsref_ov021_d_021EF78C != NULL && GAME_DATA_GetBoxManager != NULL && GAME_DATA_GetMyItem != NULL
-               && GAME_DATA_GetSaveControl != NULL && SYSTEM_DATA_GetConfig != NULL) {
-        memset(&boxp, 0, sizeof boxp);
-        boxp.gameData = gd;
-        boxp.boxSave = GAME_DATA_GetBoxManager(gd);
-        boxp.party = GAME_DATA_GetMyParty(gd);
-        boxp.myItem = GAME_DATA_GetMyItem(gd);
-        boxp.myStatus = GAME_DATA_GetMyStatus(gd);
-        boxp.config = SYSTEM_DATA_GetConfig(GAME_DATA_GetSaveControl(gd));
-        boxp.natDex = ZUKAN_SAVE_GetFromGameData != NULL && ZUKAN_SAVE_IsNationalDexEnabled != NULL
-                      ? ZUKAN_SAVE_IsNationalDexEnabled(ZUKAN_SAVE_GetFromGameData(gd)) : 0;
-        boxp.mode = (int)a;
-        ev = FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(gs, fm, 170, bw_dsref_ov021_d_021EF78C, &boxp,
+               && GAME_DATA_GetSaveControl != NULL && SYSTEM_DATA_GetConfig != NULL && GFL_HEAP_Alloc != NULL) {
+        /* on the game's heap, as the PC's script command puts it (the
+         * recipes read it as a game pointer) */
+        boxp = (struct BoxParamDbg *)GFL_HEAP_Alloc(4, sizeof(*boxp), 1, "debug_open", 0);
+        boxp->gameData = gd;
+        boxp->boxSave = GAME_DATA_GetBoxManager(gd);
+        boxp->party = GAME_DATA_GetMyParty(gd);
+        boxp->myItem = GAME_DATA_GetMyItem(gd);
+        boxp->myStatus = GAME_DATA_GetMyStatus(gd);
+        boxp->config = SYSTEM_DATA_GetConfig(GAME_DATA_GetSaveControl(gd));
+        boxp->natDex = ZUKAN_SAVE_GetFromGameData != NULL && ZUKAN_SAVE_IsNationalDexEnabled != NULL
+                       ? ZUKAN_SAVE_IsNationalDexEnabled(ZUKAN_SAVE_GetFromGameData(gd)) : 0;
+        boxp->mode = (int)a;
+        ev = FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(gs, fm, 170, bw_dsref_ov021_d_021EF78C, boxp,
                                                            debug_open_done, NULL);
     } else if (sscanf(what, "egg %u", &a) == 1 && ov010_SYMBOL_MAP_CreatePokeEventTask != NULL
                && GAME_DATA_GetMyParty != NULL && POKEPARTY_GetMember != NULL && POKE_TOOL_SetPartyValue != NULL) {
