@@ -10,6 +10,12 @@
 #   cmake -S host -B build-host -DEIDOS_WASM_MODULE=<stage one>/eidos_boot.wasm
 #         -DWABT_ROOT=<wabt source tree> -DWASM2C=<wasm2c> -DSDL3_PREFIX=<SDL3>
 #         -DWASM_OPT=<wasm-opt> [-DEIDOS_HOST_OPT=-O2]
+#
+# Android and iOS build SDL3 from its source tree with the program
+# (-DEIDOS_HOST_SDL_SOURCE=<SDL3 source> in place of SDL3_PREFIX): on
+# Android the program is libmain.so, which SDL's SDLActivity loads (the
+# Gradle project in android/), and on iOS an app bundle (ios/).  Both draw
+# with OpenGL ES 3.0 (HOST_GLES, host/sdl.c).
 
 cmake_minimum_required(VERSION 3.16)
 project(eidos_host C)
@@ -22,6 +28,7 @@ set(EIDOS_HOST_OPT "-O2" CACHE STRING "wasm-opt's optimisation level (-O0 to deb
 option(EIDOS_HOST_FPCAST
        "--fpcast-emu (OFF: a diagnostic build that logs calls through pointers of another type)" ON)
 set(SDL3_PREFIX "" CACHE PATH "SDL3: a prefix with include/SDL3 and the library")
+set(EIDOS_HOST_SDL_SOURCE "" CACHE PATH "SDL3's source tree, built with the program (Android, iOS)")
 set(EIDOS_HOST_PARTS 32 CACHE STRING "how many C files wasm2c writes")
 option(EIDOS_HOST_WINDOWED "Windows: a windowed program with no console (a release)" OFF)
 
@@ -36,6 +43,22 @@ endif()
 
 set(_root ${CMAKE_CURRENT_SOURCE_DIR}/..)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+if(EIDOS_HOST_SDL_SOURCE)
+    # SDLActivity loads libSDL3.so itself on Android; iOS links it in
+    if(ANDROID)
+        set(SDL_SHARED ON CACHE BOOL "" FORCE)
+        set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    else()
+        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    endif()
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${EIDOS_HOST_SDL_SOURCE} ${CMAKE_BINARY_DIR}/sdl3 EXCLUDE_FROM_ALL)
+    set(_sdl_include ${EIDOS_HOST_SDL_SOURCE}/include)
+else()
+    set(_sdl_include ${SDL3_PREFIX}/include)
+endif()
 
 # wasm-opt, then wasm2c.  The game calls functions through pointers of
 # other prototypes (a handler stored as one type, called as another), which
@@ -80,11 +103,11 @@ add_custom_command(
 add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/gl_imports.c
     COMMAND ${Python3_EXECUTABLE} ${_root}/tools/wasm_gl_imports.py
-            --sdl-include ${SDL3_PREFIX}/include --names ${CMAKE_BINARY_DIR}/gl_names.txt
+            --sdl-include ${_sdl_include} --names ${CMAKE_BINARY_DIR}/gl_names.txt
             -o ${CMAKE_BINARY_DIR}/gl_imports.c
     DEPENDS ${CMAKE_BINARY_DIR}/gl_names.txt ${_root}/tools/wasm_gl_imports.py)
 
-add_executable(eidos
+set(_host_sources
     ${_parts}
     ${CMAKE_BINARY_DIR}/gl_imports.c
     ${WABT_ROOT}/wasm2c/wasm-rt-impl.c
@@ -100,13 +123,39 @@ add_executable(eidos
     ${_root}/install/location.c
     ${_root}/sdk/plat_save.c
     ${_root}/sdk/plat_dir.c)
+if(ANDROID)
+    add_library(eidos SHARED ${_host_sources})
+    set_target_properties(eidos PROPERTIES OUTPUT_NAME main)
+elseif(IOS)
+    add_executable(eidos MACOSX_BUNDLE ${_host_sources})
+    set_target_properties(eidos PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST ${_root}/ios/Info.plist.in
+        MACOSX_BUNDLE_GUI_IDENTIFIER org.projectholon.eidos
+        MACOSX_BUNDLE_BUNDLE_NAME eidos
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER org.projectholon.eidos
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
+else()
+    add_executable(eidos ${_host_sources})
+endif()
 target_include_directories(eidos PRIVATE
     ${CMAKE_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${_root}/install
     ${_root}/sdk
     ${WABT_ROOT}/wasm2c
-    ${SDL3_PREFIX}/include)
+    ${_sdl_include})
+if(ANDROID OR IOS)
+    target_compile_definitions(eidos PRIVATE HOST_GLES=1)
+endif()
+if(ANDROID)
+    # 16 KB pages (Android 15 and later devices): the NDK aligns the LOAD
+    # segments for them with ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES, which
+    # android/build.py passes; SDL3's library is linked the same way
+    target_link_options(eidos PRIVATE -Wl,-z,max-page-size=16384)
+    # plain char is unsigned on Android's ARM ABIs; sdk/types.h wants the
+    # DS's signed one for the port's own sources compiled here
+    target_compile_options(eidos PRIVATE -fsigned-char)
+endif()
 # Each fiber has its own native stack, so wasm2c's stack-depth count (one
 # per thread) does not apply; a trap ends the program (no recovery across
 # fibers), and guard pages check the memory, which then never moves (the
@@ -161,6 +210,11 @@ if(WIN32)
         COMPILE_DEFINITIONS _WIN32_WINNT=0x0601)
     add_custom_command(TARGET eidos POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SDL3_PREFIX}/bin/SDL3.dll $<TARGET_FILE_DIR:eidos>)
+elseif(EIDOS_HOST_SDL_SOURCE)
+    target_link_libraries(eidos PRIVATE SDL3::SDL3 m)
+    if(ANDROID)
+        target_link_libraries(eidos PRIVATE dl log android)
+    endif()
 else()
     find_library(_sdl3 NAMES SDL3 PATHS ${SDL3_PREFIX}/lib ${SDL3_PREFIX}/lib64)
     target_link_libraries(eidos PRIVATE ${_sdl3} m dl)

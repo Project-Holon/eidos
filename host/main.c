@@ -6,6 +6,10 @@
  * A trap (an access outside the module's memory, a call through a pointer
  * of the wrong type, an `unreachable`) ends the program with its kind and
  * exit code 3.  The module's own exit is WASI's proc_exit.
+ *
+ * On Android and iOS SDL owns the process's entry (SDL_main.h turns main
+ * into SDL_main) and there is no command line: the arguments are made from
+ * the app's own folder (mobile_args).
  */
 
 #include <stdio.h>
@@ -19,6 +23,17 @@
 #endif
 
 #include <SDL3/SDL.h>
+#if defined(__ANDROID__)
+#include <pthread.h>
+#include <sys/mman.h>
+#endif
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+#define HOST_MOBILE 1
+#include <SDL3/SDL_main.h>
+#endif
 
 #include "host.h"
 #include "picker.h"
@@ -290,7 +305,138 @@ static DWORD WINAPI stall_watch(LPVOID arg)
 }
 #endif
 
+#if defined(HOST_MOBILE)
+/* The game's arguments on a phone: its data and its profile in the app's
+ * own folder (SDL_GetPrefPath: Android's internal files, iOS's sandbox),
+ *
+ *   <folder>/extract/    the extracted game data (docs/installer.md)
+ *   <folder>/profile/    settings and saves
+ *
+ * the one-screen layout in the game's window, and no setup window (no ROM
+ * picking yet).  Lines
+ * of <folder>/args.txt are added after these, and <folder>/env.txt's
+ * NAME=value lines set the environment (the EIDOS_* switches), since
+ * neither system gives an app a command line.  The program's messages go
+ * to <folder>/stderr.txt (to the console with EIDOS_MOBILE_CONSOLE set,
+ * as `xcrun simctl launch --console` can). */
+static char **mobile_args(int *argc)
+{
+    static char *argv[64];
+    static char data[1024], prof[1024], file[1024], line[1024];
+    const char *pref = SDL_GetPrefPath("eidos", "eidos");
+    int n = 0;
+    FILE *f;
+
+    if (pref == NULL) {
+        pref = "./";
+    }
+    snprintf(file, sizeof file, "%sstderr.txt", pref);
+    if (getenv("EIDOS_MOBILE_CONSOLE") == NULL && freopen(file, "w", stderr) != NULL) {
+        setvbuf(stderr, NULL, _IONBF, 0);
+    }
+    snprintf(data, sizeof data, "%sextract", pref);
+    snprintf(prof, sizeof prof, "%sprofile", pref);
+    SDL_CreateDirectory(prof);
+    argv[n++] = "eidos";
+    argv[n++] = "--no-window";
+    argv[n++] = "--data-root";
+    argv[n++] = data;
+    argv[n++] = "--profile-dir";
+    argv[n++] = prof;
+    argv[n++] = "--layout";
+    argv[n++] = "one";
+    argv[n++] = "--window";
+    snprintf(file, sizeof file, "%senv.txt", pref);
+    if ((f = fopen(file, "r")) != NULL) {
+        while (fgets(line, sizeof line, f) != NULL) {
+            char *eq = strchr(line, '=');
+
+            line[strcspn(line, "\r\n")] = 0;
+            if (eq != NULL && line[0] != '#') {
+                *eq = 0;
+                setenv(line, eq + 1, 1);
+            }
+        }
+        fclose(f);
+    }
+    snprintf(file, sizeof file, "%sargs.txt", pref);
+    if ((f = fopen(file, "r")) != NULL) {
+        while (n < 63 && fgets(line, sizeof line, f) != NULL) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (line[0] != 0 && line[0] != '#') {
+                argv[n++] = SDL_strdup(line);
+            }
+        }
+        fclose(f);
+    }
+    argv[n] = NULL;
+    *argc = n;
+    /* the DS screens side by side are wider than tall: landscape only */
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+    return argv;
+}
+#endif
+
+static int host_run(int argc, char **argv);
+
+#if defined(__ANDROID__)
+/* The game runs on a thread of its own whose stack holds every fiber's
+ * (host/fiber.c says why). */
+static int g_run_argc, g_run_rc;
+static char **g_run_argv;
+
+static void *game_thread(void *p)
+{
+    (void)p;
+    /* Attached to the Java VM before any fiber has a stack: attaching
+     * releases the pages of the thread's stack below where it runs, which
+     * would empty the fibers' first frames. */
+    SDL_GetAndroidJNIEnv();
+    g_run_rc = host_run(g_run_argc, g_run_argv);
+    return NULL;
+}
+
+static int run_on_fiber_stack(int argc, char **argv)
+{
+    size_t size = host_fiber_region_size();
+    void *region = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    pthread_attr_t attr;
+    pthread_t t;
+
+    if (region == MAP_FAILED) {
+        fprintf(stderr, "eidos: no room for the fibers' stacks\n");
+        return 1;
+    }
+    host_fiber_region(region);
+    g_run_argc = argc;
+    g_run_argv = argv;
+    pthread_attr_init(&attr);
+    pthread_attr_setstack(&attr, region, size);
+    if (pthread_create(&t, &attr, game_thread, NULL) != 0) {
+        fprintf(stderr, "eidos: no game thread\n");
+        return 1;
+    }
+    pthread_join(t, NULL);
+    return g_run_rc;
+}
+#endif
+
 int main(int argc, char **argv)
+{
+#if defined(HOST_MOBILE)
+    (void)argc;
+    (void)argv;
+    argv = mobile_args(&argc);
+#endif
+#if defined(__ANDROID__)
+    return run_on_fiber_stack(argc, argv);
+#else
+    return host_run(argc, argv);
+#endif
+}
+
+static int host_run(int argc, char **argv)
 {
 #if defined(_WIN32)
     if (getenv("EIDOS_HOST_STALL") != NULL) {

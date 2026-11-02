@@ -429,9 +429,24 @@ u32 w2c_env_SDL_SetTextureScaleMode(struct w2c_env *e, u32 t, u32 mode)
 /* OpenGL context                                                      */
 /* ------------------------------------------------------------------ */
 
+int host_gl_es;
+unsigned host_gl_window_fbo;
+
+/* The module asks for OpenGL 3.3 core.  Android and iOS have OpenGL ES 3.0
+ * instead, whose shading language and calls the OpenGL imports translate
+ * to (tools/wasm_gl_imports.py). */
 u32 w2c_env_SDL_GL_SetAttribute(struct w2c_env *e, u32 attr, u32 v)
 {
     (void)e;
+#if defined(HOST_GLES)
+    switch ((SDL_GLAttr)attr) {
+    case SDL_GL_CONTEXT_PROFILE_MASK: v = SDL_GL_CONTEXT_PROFILE_ES; break;
+    case SDL_GL_CONTEXT_MAJOR_VERSION: v = 3; break;
+    case SDL_GL_CONTEXT_MINOR_VERSION: v = 0; break;
+    case SDL_GL_CONTEXT_FLAGS: v = 0; break;
+    default: break;
+    }
+#endif
     return SDL_GL_SetAttribute((SDL_GLAttr)attr, (int)v);
 }
 
@@ -445,6 +460,7 @@ static void report_gl(void)
     const char *v = get != NULL ? (const char *)get(0x1F02u) : NULL;   /* GL_VERSION */
 
     fprintf(stderr, "eidos: OpenGL %s (%s)\n", r != NULL ? r : "?", v != NULL ? v : "?");
+    host_gl_es = v != NULL && strncmp(v, "OpenGL ES", 9) == 0;
     if (r != NULL && (strstr(r, "llvmpipe") != NULL || strstr(r, "softpipe") != NULL ||
                       strstr(r, "Software") != NULL)) {
         fprintf(stderr, "eidos: this OpenGL draws on the CPU, so the game runs slowly; "
@@ -460,6 +476,11 @@ u32 w2c_env_SDL_GL_CreateContext(struct w2c_env *e, u32 w)
     c = SDL_GL_CreateContext((SDL_Window *)handle_ptr(w));
     if (c != NULL) {
         report_gl();
+#if defined(SDL_PLATFORM_IOS)
+        host_gl_window_fbo = (unsigned)SDL_GetNumberProperty(
+            SDL_GetWindowProperties((SDL_Window *)handle_ptr(w)),
+            SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
+#endif
     }
     return handle_of(c);
 }

@@ -67,8 +67,19 @@ static inline void *host_ptr(uint32_t addr, uint32_t len)
  * g_game on the module's own thread). */
 w2c_game *host_instance(void);
 
+/* host/sdl.c: the OpenGL context is OpenGL ES (Android, iOS), which the
+ * OpenGL imports translate for (tools/wasm_gl_imports.py). */
+extern int host_gl_es;
+/* The framebuffer that is the window's: 0, except on iOS, where SDL's view
+ * has one of its own (host/sdl.c). */
+extern unsigned host_gl_window_fbo;
+
 /* host/fiber.c, host/wasi.c */
 void host_fibers_init(void);
+#if defined(__ANDROID__)
+size_t host_fiber_region_size(void);
+void host_fiber_region(void *base);
+#endif
 void host_wasi_init(void);
 
 /* host/main.c: the module's malloc and free under the heap's lock
