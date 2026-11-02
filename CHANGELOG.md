@@ -3,6 +3,22 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.0
+
+### Languages
+- **Every European cartridge plays through battles**: Fixed the move-forget screen crashing (and other screens' windows breaking) on French, German, Italian, Spanish and White cartridges.
+- **Interface in the game's language**: The one-screen interface's labels, buttons and hints follow the cartridge's language (French, German, Italian, Spanish), with the games' own words.
+
+### Graphics & Performance
+- **GPU drawing**: The DS screens are now composed on the graphics card, including the 3D at full resolution, about 1 to 1.5 ms less CPU per frame (#5). `Settings > Display > GPU drawing` turns it off.
+- **Full-window fades**: Fades and flashes (the starter gift box) now cover the whole one-screen window instead of a 4:3 square.
+
+### Touch
+- **Item button**: The field's top bar has an Item (Y) button for the registered item, so the field needs no keys on a touch screen.
+
+### Spot editor
+- Drawn with the GPU: about 11 ms a frame at 1440p (was 28), dragging a spot about 20 ms a step (was 65).
+
 ## 0.1.9
 
 ### Bug Fixes
