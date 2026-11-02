@@ -2008,9 +2008,33 @@ static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h)
             ground = i;
         }
     }
-    for (i = 0; i < 16; i++) {
-        if (i != ground && cnt[i] > 0 && (ink < 0 || cnt[i] > cnt[ink])) {
-            ink = i;                    /* the letters; the rest is their shadow */
+    {
+        int c1 = -1, c2 = -1, ab = 0, ba = 0;
+
+        for (i = 0; i < 16; i++) {
+            if (i == ground || cnt[i] == 0) {
+                continue;
+            }
+            if (c1 < 0 || cnt[i] > cnt[c1]) {
+                c2 = c1;
+                c1 = i;
+            } else if (c2 < 0 || cnt[i] > cnt[c2]) {
+                c2 = i;
+            }
+        }
+        ink = c1;
+        if (c1 >= 0 && c2 >= 0) {
+            for (yy = 0; yy + 1 < bh; yy++) {
+                for (xx = 0; xx + 1 < bw; xx++) {
+                    int v = evo_px(px, bw, xx, yy);
+                    int r = evo_px(px, bw, xx + 1, yy), d = evo_px(px, bw, xx, yy + 1);
+                    int dd = evo_px(px, bw, xx + 1, yy + 1);
+
+                    if (v == c1 && (r == c2 || d == c2 || dd == c2)) ab++;
+                    if (v == c2 && (r == c1 || d == c1 || dd == c1)) ba++;
+                }
+            }
+            ink = ab >= ba ? c1 : c2;
         }
     }
     if (ink < 0) {

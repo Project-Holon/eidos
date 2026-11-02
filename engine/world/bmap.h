@@ -112,6 +112,7 @@ typedef struct BmapScene {
                                then prep_ntri (a triangle is grass); owned by
                                this scene, copied by bmap_copy                 */
     unsigned prep_nd0, prep_ntri;
+    int indoor;             /* bmap_build: non-zero for indoor areas (rooms, caves) */
 } BmapScene;
 
 /* Build the map around (px, pz) (map world units, matrix-absolute, as GameData's

@@ -1782,7 +1782,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->keep_world = 1;
         view->hide_2d = enc ? 0 : capture_bg_shown();
         view->cap_mix = enc ? 0 : capture_mix();
-        view->stretch = enc;
+        view->ds_only = enc ? 1 : 0;
+        view->stretch = 0;
         return;
     }
     {
@@ -1840,7 +1841,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->keep_world = 1;
     view->hide_2d = enc ? 0 : capture_bg_shown();
     view->cap_mix = enc ? 0 : capture_mix();
-    view->stretch = enc;
+    view->ds_only = enc ? 1 : 0;
+    view->stretch = 0;
 
     /* While the game's place-name banner shows (it names the same place)
      * or an event runs, the bar slides up out of the way and comes back

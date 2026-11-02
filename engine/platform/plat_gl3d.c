@@ -452,6 +452,7 @@ static const char *k_fsb =
     "        /* the far part fades into the sky before the map ends */\n"
     "        float f = smoothstep(u_atm.z, u_atm.w, length(v_pos.xz - u_atm.xy));\n"
     "        c.rgb = mix(c.rgb, u_sky, f);\n"
+    "        a *= (1.0 - f * 0.95);\n"
     "    }\n"
     "    o = vec4(c.rgb * a, a);\n"
     "}\n";
@@ -1007,6 +1008,9 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         if (g_bd.reach > 40.0f) {
             at[2] = 0.45f * g_bd.reach;
             at[3] = 0.97f * g_bd.reach;
+        } else if (g_bd.reach > 5.0f) {
+            at[2] = 0.82f * g_bd.reach;
+            at[3] = 0.98f * g_bd.reach;
         }
         g->glUniform4f(g_bd.u_atm, at[0], at[1], at[2], at[3]);
         float sk[3];

@@ -940,9 +940,33 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
             ground = i;
         }
     }
-    for (i = 0; i < 16; i++) {
-        if (i != ground && cnt[i] > 0 && (ink < 0 || cnt[i] > cnt[ink])) {
-            ink = i;
+    {
+        int c1 = -1, c2 = -1, ab = 0, ba = 0;
+
+        for (i = 0; i < 16; i++) {
+            if (i == ground || cnt[i] == 0) {
+                continue;
+            }
+            if (c1 < 0 || cnt[i] > cnt[c1]) {
+                c2 = c1;
+                c1 = i;
+            } else if (c2 < 0 || cnt[i] > cnt[c2]) {
+                c2 = i;
+            }
+        }
+        ink = c1;
+        if (c1 >= 0 && c2 >= 0) {
+            for (yy = 0; yy + 1 < bh; yy++) {
+                for (xx = 0; xx + 1 < bw; xx++) {
+                    int v = msg_px(px, bw, xx, yy);
+                    int r = msg_px(px, bw, xx + 1, yy), d = msg_px(px, bw, xx, yy + 1);
+                    int dd = msg_px(px, bw, xx + 1, yy + 1);
+
+                    if (v == c1 && (r == c2 || d == c2 || dd == c2)) ab++;
+                    if (v == c2 && (r == c1 || d == c1 || dd == c1)) ba++;
+                }
+            }
+            ink = ab >= ba ? c1 : c2;
         }
     }
     if (ink < 0) {
@@ -1263,6 +1287,8 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
         intro = !g_battle_intro_done || is_encounter_active();
         view->hide_2d = !intro;
+        view->ds_only = intro ? 1 : 0;
+        view->stretch = 0;
         if (!intro) {
             mw = sh.px - 6 - 6;
             shell_draw(c, &b, &sh, NULL, 0);
@@ -1286,6 +1312,8 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
          * the last picture stays, keeping 2D visible during intro/encounter */
         int intro = !g_battle_intro_done || is_encounter_active();
         view->hide_2d = !intro;
+        view->ds_only = intro ? 1 : 0;
+        view->stretch = 0;
         eidos_ui_hold_canvas();
         return;
     }
@@ -1915,7 +1943,7 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static const int tap_y[4] = { 84, 167, 167, 171 };
     Bt b;
     Shell sh;
-    int i, hovered = -1, cur, can_back, tw, th = 20, g = 3, x0, y0;
+    int i, hovered = -1, cur, can_back, tw, th = 26, g = 3, x0, y0;
     const char *names[4];
     u32 colors[4] = { UI_FIGHT, UI_BAGY, UI_MON, UI_RUN };
     char run_label[16];
