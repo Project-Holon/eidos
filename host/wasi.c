@@ -153,8 +153,31 @@ static wchar_t *wide(const char *s)
 }
 #endif
 
+#if defined(__ANDROID__)
+/* The ROM a player picks on Android is a descriptor the host already holds
+ * (host/pick_mobile.c), named /proc/self/fd/<n>.  Reopening that path is
+ * refused (the file belongs to another app's provider), so the host uses
+ * the descriptor itself.  -1 for any other path. */
+static int held_fd(const char *p)
+{
+    char *end;
+    long n;
+
+    if (strncmp(p, "/proc/self/fd/", 14) != 0) {
+        return -1;
+    }
+    n = strtol(p + 14, &end, 10);
+    return end != p + 14 && *end == 0 && n >= 0 ? (int)n : -1;
+}
+#endif
+
 static int native_stat(const char *p, struct stat *st)
 {
+#if defined(__ANDROID__)
+    if (held_fd(p) >= 0) {
+        return fstat(held_fd(p), st);
+    }
+#endif
 #if defined(_WIN32)
     wchar_t *w = wide(p);
     struct _stat64 s64;
@@ -913,6 +936,14 @@ u32 w2c_wasi__snapshot__preview1_path_open(struct w2c_wasi__snapshot__preview1 *
         free(wp);
     }
 #else
+#if defined(__ANDROID__)
+    if (held_fd(p) >= 0 && (flags & (O_WRONLY | O_RDWR)) == 0) {
+        nfd = dup(held_fd(p));
+        if (nfd >= 0) {
+            lseek(nfd, 0, SEEK_SET);
+        }
+    } else
+#endif
     nfd = open(p, flags, 0644);
 #endif
     if (nfd < 0) {

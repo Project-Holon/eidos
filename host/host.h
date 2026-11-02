@@ -76,6 +76,10 @@ extern int host_gl_es_version;
  * has one of its own (host/sdl.c). */
 extern unsigned host_gl_window_fbo;
 
+/* The ROM dialog on phones (host/pick_mobile.c), as install/picker.h's
+ * bw_pick_rom. */
+int host_pick_rom(const char *title, char *out, size_t n);
+
 /* host/fiber.c, host/wasi.c */
 void host_fibers_init(void);
 #if defined(__ANDROID__)

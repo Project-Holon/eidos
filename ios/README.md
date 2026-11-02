@@ -14,8 +14,9 @@ python3 ios/build.py --module build64/module/eidos_boot.wasm --device   # device
 
 ## Running
 
-There is no ROM picking on iOS yet. The game reads everything from the
-app's own folder (`SDL_GetPrefPath`: `Library/Application Support/eidos/eidos/`
+On the first start eidos asks for the ROM through the Files picker
+(`host/pick_ios.m`), checks it and writes the game data. Everything lives
+in the app's own folder (`SDL_GetPrefPath`: `Library/Application Support/eidos/eidos/`
 in the app's data container):
 
 | path | what |
@@ -26,7 +27,13 @@ in the app's data container):
 | `env.txt` | `NAME=value` lines for the environment (the `EIDOS_*` switches) |
 | `stderr.txt` | the program's messages |
 
-On the simulator:
+On a device, `python3 ios/build.py --module ... --xcode --team <team id>`
+makes and opens an Xcode project: choose the eidos scheme and the iPhone,
+and Run signs and installs it.  iOS gives an app far less address space
+than a desktop, so the iOS host checks the module's memory accesses one by
+one instead of reserving guard pages (`host/CMakeLists.txt`).
+
+On the simulator (which can also be filled by hand, skipping the first start):
 
 ```
 xcrun simctl install booted build-ios/eidos.app

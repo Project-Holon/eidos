@@ -19,7 +19,9 @@ is in `android/app/build/outputs/apk/debug/`. Only arm64-v8a is built.
 
 ## Running
 
-There is no ROM picking on Android yet. The game reads everything from the
+On the first start eidos asks for the ROM through Android's file list
+(the Storage Access Framework, `host/pick_mobile.c`), checks it and writes
+the game data; the ROM itself stays where it is. Everything lives in the
 app's own folder (`SDL_GetPrefPath`, `/data/user/0/org.projectholon.eidos/files/`):
 
 | path | what |
@@ -30,7 +32,7 @@ app's own folder (`SDL_GetPrefPath`, `/data/user/0/org.projectholon.eidos/files/
 | `env.txt` | `NAME=value` lines for the environment (the `EIDOS_*` switches) |
 | `stderr.txt` | the program's messages |
 
-A debug build can be filled with adb:
+A debug build can also be filled with adb, skipping the first start:
 
 ```
 adb push <extract> /data/local/tmp/eidos-extract

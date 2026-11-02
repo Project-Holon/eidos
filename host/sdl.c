@@ -224,6 +224,11 @@ u32 w2c_env_SDL_GetDisplayForWindow(struct w2c_env *e, u32 w)
 u32 w2c_env_SDL_CreateWindow(struct w2c_env *e, u32 title, u32 w, u32 h, u64 flags)
 {
     (void)e;
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_IOS)
+    /* A phone has one screen-sized window (the setup window's too), with
+     * the system's bars hidden rather than drawn over it. */
+    flags |= SDL_WINDOW_FULLSCREEN;
+#endif
     return handle_of(SDL_CreateWindow((const char *)M(title), (int)w, (int)h, (SDL_WindowFlags)flags));
 }
 
@@ -490,7 +495,16 @@ u32 w2c_env_SDL_GL_CreateContext(struct w2c_env *e, u32 w)
     (void)e;
     c = SDL_GL_CreateContext((SDL_Window *)handle_ptr(w));
     if (c != NULL) {
+        SDL_Rect safe;
+        int ww = 0, wh = 0;
+
         report_gl();
+        if (SDL_GetWindowSafeArea((SDL_Window *)handle_ptr(w), &safe)
+            && SDL_GetWindowSize((SDL_Window *)handle_ptr(w), &ww, &wh)
+            && (safe.x != 0 || safe.y != 0 || safe.w != ww || safe.h != wh)) {
+            fprintf(stderr, "eidos: window %dx%d, safe area %d,%d %dx%d\n",
+                    ww, wh, safe.x, safe.y, safe.w, safe.h);
+        }
 #if defined(SDL_PLATFORM_IOS)
         host_gl_window_fbo = (unsigned)SDL_GetNumberProperty(
             SDL_GetWindowProperties((SDL_Window *)handle_ptr(w)),

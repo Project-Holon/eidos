@@ -123,6 +123,19 @@ set(_host_sources
     ${_root}/install/location.c
     ${_root}/sdk/plat_save.c
     ${_root}/sdk/plat_dir.c)
+if(ANDROID OR IOS)
+    # the ROM dialog on phones
+    list(APPEND _host_sources ${CMAKE_CURRENT_SOURCE_DIR}/pick_mobile.c)
+endif()
+if(IOS)
+    enable_language(OBJC)
+    list(APPEND _host_sources ${CMAKE_CURRENT_SOURCE_DIR}/pick_ios.m)
+    # the app's icon (assets/icon.png at the sizes Info.plist.in names),
+    # at the top of the bundle
+    file(GLOB _ios_icons ${_root}/ios/icons/*.png)
+    set_source_files_properties(${_ios_icons} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    list(APPEND _host_sources ${_ios_icons})
+endif()
 if(ANDROID)
     add_library(eidos SHARED ${_host_sources})
     set_target_properties(eidos PROPERTIES OUTPUT_NAME main)
@@ -133,7 +146,9 @@ elseif(IOS)
         MACOSX_BUNDLE_GUI_IDENTIFIER org.projectholon.eidos
         MACOSX_BUNDLE_BUNDLE_NAME eidos
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER org.projectholon.eidos
-        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+        # the icons stay separate PNGs, as Info.plist.in names them
+        XCODE_ATTRIBUTE_COMBINE_HIDPI_IMAGES NO)
 else()
     add_executable(eidos ${_host_sources})
 endif()
@@ -146,6 +161,10 @@ target_include_directories(eidos PRIVATE
     ${_sdl_include})
 if(ANDROID OR IOS)
     target_compile_definitions(eidos PRIVATE HOST_GLES=1)
+endif()
+if(IOS)
+    # the ROM dialog (host/pick_ios.m)
+    target_link_libraries(eidos PRIVATE "-framework UIKit" "-framework UniformTypeIdentifiers")
 endif()
 if(ANDROID)
     # 16 KB pages (Android 15 and later devices): the NDK aligns the LOAD
@@ -167,6 +186,13 @@ target_compile_definitions(eidos PRIVATE
     WASM_RT_NONCONFORMING_UNCHECKED_STACK_EXHAUSTION=1
     WASM_RT_SKIP_SIGNAL_RECOVERY=1
     WASM_RT_TRAP_HANDLER=host_trap)
+if(IOS)
+    # iOS refuses an app the 8 GiB of address space the guard pages
+    # reserve (without an entitlement a free team cannot have), so there
+    # the accesses are checked one by one and only the module's own
+    # maximum is reserved; the memory still grows in place (mmap).
+    target_compile_definitions(eidos PRIVATE WASM_RT_MEMCHECK_BOUNDS_CHECK=1)
+endif()
 # The generated files are large; GCC's assembly between its stages would
 # otherwise go through the temporary folder (hundreds of MB per file).
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")

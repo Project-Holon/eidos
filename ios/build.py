@@ -7,9 +7,13 @@ eidos.app (ios/README.md).
 
     python3 ios/build.py --module <build64>/module/eidos_boot.wasm
                          [--build-dir build-ios] [--device]
+                         [--xcode [--team <team id>]]
 
 The default is the simulator (arm64); --device builds for iPhones and iPads,
-which Xcode then has to sign.
+which Xcode then has to sign.  --xcode makes an Xcode project instead (in
+<build-dir>-xcode) and opens it: choose the iPhone and press Run, and Xcode
+signs with the team (the Apple ID's, under Signing & Capabilities, or
+--team) and installs the app.
 """
 
 import argparse
@@ -33,6 +37,8 @@ def main():
     ap.add_argument("--device", action="store_true", help="for devices, not the simulator")
     ap.add_argument("--deployment-target", default="15.0")
     ap.add_argument("--jobs", type=int, default=8)
+    ap.add_argument("--xcode", action="store_true", help="make and open an Xcode project for devices")
+    ap.add_argument("--team", default="", help="the signing team's id, for --xcode")
     a = ap.parse_args()
 
     out = subprocess.check_output([sys.executable, os.path.join(ROOT, "tools", "fetch_sdl.py"),
@@ -42,6 +48,14 @@ def main():
     t = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
     build = os.path.abspath(a.build_dir)
     gen = ["-G", "Ninja"] if shutil.which("ninja") else []
+    if a.xcode:
+        a.device = True
+        build += "-xcode"
+        gen = ["-G", "Xcode", "-DCMAKE_XCODE_GENERATE_SCHEME=ON",
+               "-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_STYLE=Automatic",
+               "-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=Apple Development"]
+        if a.team:
+            gen.append("-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + a.team)
     env = dict(os.environ, CMAKE_POLICY_VERSION_MINIMUM="3.5")
 
     run(["cmake", "-S", os.path.join(ROOT, "host"), "-B", build] + gen + [
@@ -53,6 +67,15 @@ def main():
         "-DEIDOS_WASM_MODULE=" + os.path.abspath(a.module),
         "-DWABT_ROOT=" + t["WABT_ROOT"], "-DWASM2C=" + t["WASM2C"], "-DWASM_OPT=" + t["WASM_OPT"],
         "-DEIDOS_HOST_SDL_SOURCE=" + sdl], env=env)
+    if a.xcode:
+        proj = os.path.join(build, "eidos_host.xcodeproj")
+        for f in os.listdir(build):
+            if f.endswith(".xcodeproj"):
+                proj = os.path.join(build, f)
+        print("ios/build.py: %s" % proj)
+        if shutil.which("open"):
+            run(["open", proj])
+        return 0
     run(["cmake", "--build", build, "--parallel", str(a.jobs), "--target", "eidos"], env=env)
     print("ios/build.py: %s" % os.path.join(build, "eidos.app"))
     return 0

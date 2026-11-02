@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 9 and later: the game draws edge to edge, into the cutouts
+         of the short edges too, and SDL reports them as the window's safe
+         area (SDL_GetWindowSafeArea), inside which the one-screen layout
+         keeps its bars, hints and panels. -->
+    <style name="AppTheme" parent="android:Theme.NoTitleBar.Fullscreen">
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

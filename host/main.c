@@ -63,7 +63,11 @@ u32 w2c_eidos_pick_rom(struct w2c_eidos *e, u32 title, u32 out, u32 n)
 
     (void)e;
     buf[0] = 0;
+#if defined(HOST_MOBILE)
+    rc = host_pick_rom((const char *)host_ptr(title, 0), buf, sizeof buf);
+#else
     rc = bw_pick_rom(NULL, (const char *)host_ptr(title, 0), buf, sizeof buf);
+#endif
     if (n > 0) {
         size_t len = strlen(buf);
 
@@ -312,9 +316,9 @@ static DWORD WINAPI stall_watch(LPVOID arg)
  *   <folder>/extract/    the extracted game data (docs/installer.md)
  *   <folder>/profile/    settings and saves
  *
- * the one-screen layout in the game's window, and no setup window (no ROM
- * picking yet).  Lines
- * of <folder>/args.txt are added after these, and <folder>/env.txt's
+ * and the one-screen layout in the game's window.  Without game data the
+ * first-run window asks for the ROM through the system's file list
+ * (host/pick_mobile.c) and extracts it there.  Lines of <folder>/args.txt are added after these, and <folder>/env.txt's
  * NAME=value lines set the environment (the EIDOS_* switches), since
  * neither system gives an app a command line.  The program's messages go
  * to <folder>/stderr.txt (to the console with EIDOS_MOBILE_CONSOLE set,
@@ -346,6 +350,13 @@ static char **mobile_args(int *argc)
     argv[n++] = "--layout";
     argv[n++] = "one";
     argv[n++] = "--window";
+    /* A phone is played by touch: the hints show the DS's own button
+     * letters (a connected pad still shows its own).  Android's curved
+     * screens also get a margin of 2% a side inside the safe area. */
+    setenv("EIDOS_TOUCH_DEVICE", "1", 1);
+#if defined(__ANDROID__)
+    setenv("EIDOS_EDGE_MARGIN", "2", 1);
+#endif
     snprintf(file, sizeof file, "%senv.txt", pref);
     if ((f = fopen(file, "r")) != NULL) {
         while (fgets(line, sizeof line, f) != NULL) {
