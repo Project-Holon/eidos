@@ -131,12 +131,45 @@ static const BwWmAir k_air = { NULL, air_send, air_recv, air_power };
 /* The shared air                                                      */
 /* ------------------------------------------------------------------ */
 
-/* The room key: players on the same eidos version share rooms. */
+/* Where the player is, read the way sdk/mp.c reads it (weak: a test
+ * without the game links without them). */
+#define LINK_WEAK __attribute__((weak))
+extern void *bw_dsref__GameSystemGlobal LINK_WEAK;
+extern void *GAMESYSTEM_GetMyPlayerWork(const void *gs) LINK_WEAK;
+extern u16   GAME_DATA_GetPlayerZoneId(const void *pw) LINK_WEAK;
+extern u32   ZONEDATA_IsUnionRoom(u32 id) LINK_WEAK;
+extern u32   ZONEDATA_IsEntralink(u32 id) LINK_WEAK;
+
+/* The activity: players meet others doing the same thing, as on a DS
+ * only those in the same room hear each other. */
+static const char *air_activity(void)
+{
+    void *gs, *pw;
+    u32 zone;
+
+    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL
+        || GAMESYSTEM_GetMyPlayerWork == NULL || GAME_DATA_GetPlayerZoneId == NULL)
+        return "radio";
+    gs = *(void **)bw_dsref__GameSystemGlobal;
+    pw = gs != NULL ? GAMESYSTEM_GetMyPlayerWork(gs) : NULL;
+    if (pw == NULL)
+        return "radio";
+    zone = GAME_DATA_GetPlayerZoneId(pw);
+    if (ZONEDATA_IsUnionRoom != NULL && ZONEDATA_IsUnionRoom(zone))
+        return "union";
+    if (ZONEDATA_IsEntralink != NULL && ZONEDATA_IsEntralink(zone))
+        return "entralink";
+    return "radio";
+}
+
+/* The room key: the eidos version and the activity. */
+static char g_air_key[80];
+
 static void air_key(char *out, u32 size)
 {
     char *c;
 
-    snprintf(out, size, "bw:%s:radio", bw_mp_version());
+    snprintf(out, size, "bw:%s:%s", bw_mp_version(), air_activity());
     /* the relay takes A-Z a-z 0-9 . : _ - in a key (a build's "+hash") */
     for (c = out; *c != 0; c++) {
         if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9')
@@ -154,6 +187,7 @@ static void air_join_thread(void *arg)
     air_key(key, sizeof key);
     rc = bw_mod_net_session_air(key);
     if (rc == 0) {
+        snprintf(g_air_key, sizeof g_air_key, "%s", key);
         g_link.air_up = 1;
         fprintf(stderr, "eidos: link: on the air (%s)\n", key);
     } else {
@@ -372,6 +406,20 @@ void bw_link_frame(void)
     if (g_link.air_installed && g_link.state != BW_LINK_OPEN) {
         if (g_link.air_up && !bw_mod_net_session_active()) {
             g_link.air_up = 0;         /* the relay dropped us: try again    */
+        }
+        if (g_link.air_up) {
+            /* the player went somewhere else (into the Union Room, out of
+             * the Entralink): another room of the air */
+            static u32 tick;
+            char key[80];
+
+            if ((++tick & 31u) == 0) {
+                air_key(key, sizeof key);
+                if (strcmp(key, g_air_key) != 0 && bw_mod_net_air_move(key) == 0) {
+                    fprintf(stderr, "eidos: link: moved to %s\n", key);
+                    snprintf(g_air_key, sizeof g_air_key, "%s", key);
+                }
+            }
         }
         air_try();
         return;
