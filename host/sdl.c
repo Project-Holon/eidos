@@ -336,6 +336,15 @@ u32 w2c_env_SDL_GetPointerProperty(struct w2c_env *e, u32 props, u32 name, u32 d
 u32 w2c_env_SDL_StartTextInput(struct w2c_env *e, u32 w)
 {
     (void)e;
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_IOS)
+    /* The name entry's keyboard is the game's own, played by touch.  Text
+     * input on a phone raises the system's keyboard over it (iOS for any
+     * text input, whatever SDL's hints say), so it is only started with a
+     * hardware keyboard to type on. */
+    if (!SDL_HasKeyboard()) {
+        return 1;
+    }
+#endif
     return SDL_StartTextInput((SDL_Window *)handle_ptr(w));
 }
 
