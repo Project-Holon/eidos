@@ -37,7 +37,7 @@ def main():
 
     out = subprocess.check_output([sys.executable, os.path.join(ROOT, "tools", "fetch_sdl.py"),
                                    "--flavor", "source"], text=True)
-    sdl = out.strip().splitlines()[-1]
+    sdl = out.strip().splitlines()[-1].split(" ready in ", 1)[-1]   # "SDL3 <version> source ready in <folder>"
     out = subprocess.check_output([sys.executable, os.path.join(ROOT, "tools", "fetch_wasm.py")], text=True)
     t = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
     build = os.path.abspath(a.build_dir)

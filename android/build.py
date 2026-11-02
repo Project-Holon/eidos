@@ -77,7 +77,8 @@ def main():
 
     sdk = android_sdk()
     nd = ndk(sdk, a.ndk)
-    sdl = last_line("fetch_sdl.py", "--flavor", "source")
+    # "SDL3 <version> source ready in <folder>"
+    sdl = last_line("fetch_sdl.py", "--flavor", "source").split(" ready in ", 1)[-1]
     t = wasm_tools()
     build = os.path.abspath(a.build_dir)
     gen = ["-G", "Ninja"] if shutil.which("ninja") else []
