@@ -29,6 +29,7 @@
 #include "kit.h"
 #include "dsmem.h"
 #include "input.h"
+#include "textbox.h"
 #include "settings.h"
 
 /* ------------------------------------------------------------------ */
@@ -216,6 +217,11 @@ int eidos_ui_pointer(int *x, int *y, int *pressed, int *released)
     *y = g_my;
     *pressed = g_pressed;
     *released = g_released;
+    return g_down;
+}
+
+int eidos_ui_held(void)
+{
     return g_down;
 }
 
@@ -829,6 +835,7 @@ static void debug_script(void)
  *   "relearn S"   the move relearner for party slot S (as
  *                 SCRCMD_PROC_CallMoveRelearn opens it)
  *   "tvt N"       Xtransceiver story call N (as SCRCMD_PROC_CallValueScreen)
+ *   "makeegg S"   party slot S becomes an Egg (for a Spin Trade)
  *   "egg S"       party slot S becomes an Egg and hatches (the hatching the
  *                 field's step check starts, SYMBOL_MAP_CreatePokeEventTask)
  *   "box M"       the PC's boxes in mode M (as the PC's script command opens
@@ -938,6 +945,12 @@ static void debug_open(void)
         boxp->mode = (int)a;
         ev = FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(gs, fm, 170, bw_dsref_ov021_d_021EF78C, boxp,
                                                            debug_open_done, NULL);
+    } else if (sscanf(what, "makeegg %u", &a) == 1 && GAME_DATA_GetMyParty != NULL && POKEPARTY_GetMember != NULL
+               && POKE_TOOL_SetPartyValue != NULL) {
+        /* party slot S becomes an Egg, nothing more (a Spin Trade needs one) */
+        POKE_TOOL_SetPartyValue(POKEPARTY_GetMember(GAME_DATA_GetMyParty(gd), a), 0x4C, 1);
+        fprintf(stderr, "eidos: debug open %s\n", what);
+        return;
     } else if (sscanf(what, "egg %u", &a) == 1 && ov010_SYMBOL_MAP_CreatePokeEventTask != NULL
                && GAME_DATA_GetMyParty != NULL && POKEPARTY_GetMember != NULL && POKE_TOOL_SetPartyValue != NULL) {
         void *mon = POKEPARTY_GetMember(GAME_DATA_GetMyParty(gd), a);
@@ -950,6 +963,90 @@ static void debug_open(void)
     } else {
         fprintf(stderr, "eidos: debug open %s: not available\n", what);
     }
+}
+
+/* Tests: EIDOS_DEBUG_SEEK=FRAME walks the player, from that frame on, to
+ * the nearest other person on the map and talks to them (A), as a player
+ * would: one step every few frames toward them, then a turn and A when next
+ * to them.  It stops once an event runs (the talk started).  For link
+ * tests in the Union Room, where the other players wander. */
+extern void *ov021_FIELDMAP_GetMmdlSys(void *fieldMap) __attribute__((weak));
+extern int ov010_FLDMMDL_SysSearchUseMmdl(const void *sys, void **out, u32 *iter) __attribute__((weak));
+extern void *ov010_FLDMMDL_SysSearchPlayer(void *sys) __attribute__((weak));
+extern void ov010_FLDMMDL_GetGridNowPos(const void *mmdl, s16 *out) __attribute__((weak));
+
+static void debug_seek(u32 frame)
+{
+    static u32 next;
+    static int done;
+    const char *at = getenv("EIDOS_DEBUG_SEEK");
+    u8 *gs, *fm;
+    void *sys, *me, *o, *best = NULL;
+    u32 iter = 0;
+    s16 p[3], q[3], b[3] = { 0, 0, 0 };
+    int bd = 1 << 30, dx, dz;
+
+    if (done || at == NULL || frame < (u32)atoi(at) || frame < next || ov021_FIELDMAP_GetMmdlSys == NULL
+        || ov010_FLDMMDL_SysSearchUseMmdl == NULL || ov010_FLDMMDL_SysSearchPlayer == NULL
+        || ov010_FLDMMDL_GetGridNowPos == NULL || &bw_dsref__GameSystemGlobal == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    fm = gs != NULL ? *(u8 **)(gs + 0x20) : NULL;
+    if (fm == NULL || (sys = ov021_FIELDMAP_GetMmdlSys(fm)) == NULL || (me = ov010_FLDMMDL_SysSearchPlayer(sys)) == NULL) {
+        return;
+    }
+    if (GAMESYSTEM_GetEvent != NULL && GAMESYSTEM_GetEvent(gs) != NULL) {
+        if (next != 0) {
+            done = 1;               /* the talk started */
+            fprintf(stderr, "eidos: debug seek: talking\n");
+        }
+        return;
+    }
+    ov010_FLDMMDL_GetGridNowPos(me, p);
+    while (ov010_FLDMMDL_SysSearchUseMmdl(sys, &o, &iter)) {
+        int d;
+
+        if (o == me) {
+            continue;
+        }
+        ov010_FLDMMDL_GetGridNowPos(o, q);
+        d = abs(q[0] - p[0]) + abs(q[2] - p[2]);
+        if (d < bd) {
+            bd = d;
+            best = o;
+            b[0] = q[0];
+            b[2] = q[2];
+        }
+    }
+    if (best == NULL) {
+        return;
+    }
+    dx = b[0] - p[0];
+    dz = b[2] - p[2];
+    if (bd == 1) {
+        u32 dir = dx > 0 ? BW_KEY_RIGHT : dx < 0 ? BW_KEY_LEFT : dz > 0 ? BW_KEY_DOWN : BW_KEY_UP;
+
+        eidos_ui_press(dir, 2);     /* face them */
+        next = frame + 8;
+        done = 0;
+        {
+            static int turned;
+
+            if (ui_textbox_field_active(fm)) {
+                done = 1;           /* the talk is up: its menus follow */
+                fprintf(stderr, "eidos: debug seek: talking\n");
+                return;
+            }
+            if (turned++ > 0) {
+                eidos_ui_press(BW_KEY_A, 3);
+                next = frame + 30;
+            }
+        }
+        return;
+    }
+    eidos_ui_press(abs(dx) >= abs(dz) ? (dx > 0 ? BW_KEY_RIGHT : BW_KEY_LEFT) : (dz > 0 ? BW_KEY_DOWN : BW_KEY_UP), 8);
+    next = frame + 14;
 }
 
 /* EIDOS_DEBUG_BATTLE="wild SPECIES LEVEL" or "trainer ID" (the spot
@@ -1266,6 +1363,7 @@ void eidos_ui_game_frame(void)
         debug_battle();
         debug_script();
         debug_open();
+        debug_seek(bw_input_frame_number());
     }
 
     for (i = 0; i < n; i++) {

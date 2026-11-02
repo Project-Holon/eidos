@@ -2628,7 +2628,7 @@ static void geonet_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     /* the pointer held on the globe is the stylus there */
     all.x = 0; all.y = 0; all.w = cw; all.h = bottom_top - 26;
-    if (in->mouse.down && (eidos_ui_hit(all) & EIDOS_UI_HOVER)) {
+    if (eidos_ui_held() && (eidos_ui_hit(all) & EIDOS_UI_HOVER)) {
         int mx, my, tx, ty;
 
         if (eidos_ui_mouse_pos(&mx, &my)) {
@@ -3737,7 +3737,7 @@ static void townmap_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         }
     }
     r.x = mx + 12; r.y = my + IN_HEAD + 2; r.w = mapw; r.h = maph;
-    if (in->mouse.down && (eidos_ui_hit(r) & EIDOS_UI_HOVER)) {
+    if (eidos_ui_held() && (eidos_ui_hit(r) & EIDOS_UI_HOVER)) {
         int px, py;
 
         if (eidos_ui_mouse_pos(&px, &py)) {
@@ -4528,7 +4528,255 @@ static const EidosUiRecipe recipe_trade = {
     "npc_trade", trade_match, trade_run, trade_reset, 0
 };
 
+/* ------------------------------------------------------------------ */
+/* The Union Room's drawing                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The drawing everyone in the Union Room can join (overlay 23,
+ * ov023/oekaki.c; mock-up "union_drawing"): one window over the blurred
+ * room with the game's own canvas (its lower screen, everyone's strokes as
+ * the game draws them) twice its size, the members on the right (their
+ * names, the one drawing marked), the eight pens and the three sizes as
+ * tiles, Done, and the game's message as a system box with its YES / NO.
+ * The pointer held on the canvas is the stylus there, so the stroke is the
+ * game's and the others see it; the tiles tap the game's own buttons.
+ *
+ * OekakiWork (ov023/oekaki_types.h): playerName[5] 0x018 (Strbufs),
+ * nameTagActor[5] 0x098 (a member is there), messageWindow 0x11C, menu
+ * 0x178, penColor 0x420A, penSize 0x420B.  The lower screen:
+ * canvas (8..248, 16..136), pens (12 + 24 * i, 170), Done (224, 170),
+ * sizes (20 + 16 * i, 7).
+ */
+#define OEKAKI_OVERLAY 23
+
+extern u16 *STRBUF_GetChars(void *strbuf) MN_WEAK;
+extern u16  STRBUF_GetLength(void *strbuf) MN_WEAK;
+
+static int oekaki_match(void)
+{
+    return app_work(OEKAKI_OVERLAY) != NULL;
+}
+
+static void oekaki_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const u32 pen_rgb[8] = { 0x000000u, 0xFFFFFFu, 0xFF0000u, 0xFF00FFu,
+                                    0x0000FFu, 0x00FFFFu, 0x00FF00u, 0xFFFF00u };
+    static const char *const hints[] = { "B", "Done" };
+    static const u32 keys[] = { BW_KEY_B };
+    const u8 *w = (const u8 *)app_work(OEKAKI_OVERLAY);
+    int cw = c->canvas->w, ch = c->canvas->h, k = 2, cvw = 240, cvh = 120;
+    int mw, mh, mx, my, x, y, i, members = 0;
+    EidosUiRect r;
+    char count[16];
+
+    in_view(view);
+    if (w == NULL) {
+        return;
+    }
+    if (cvw * k + 24 + 120 > cw - 16 || cvh * k + 100 > ch - 17) {
+        k = 1;
+    }
+    mw = cvw * k + 24 + 120;
+    if (mw < 8 * 28 + 8 + 3 * 28 + 120 + 24) mw = 8 * 28 + 8 + 3 * 28 + 120 + 24;
+    mh = IN_HEAD + cvh * k + 8 + 30 + 10;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh) / 2;
+    if (my < 2) my = 2;
+    for (i = 0; i < 5; i++) {
+        const u8 *sb = (const u8 *)rdp(w, 0x018 + 4u * (u32)i);
+
+        members += sb != NULL && STRBUF_GetLength != NULL && STRBUF_GetLength((void *)sb) > 0;
+    }
+    snprintf(count, sizeof count, "%d / 5", members);
+    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, IN_MBODY, IN_MEDGE, 245);
+    ui_text(c, mx + 12, my + 6, "DRAWING", IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+    ui_text(c, mx + mw - 12 - ui_text_w(count, UI_FONT_SMALL), my + 6, count, UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+    ui_fill(c, mx + 10, my + IN_HEAD - 4, mw - 20, 1, IN_MEDGE, 255);
+
+    /* the game's canvas */
+    x = mx + 12;
+    y = my + IN_HEAD;
+    ui_fill(c, x - 2, y - 2, cvw * k + 4, cvh * k + 4, UI_EDGE, 255);
+    if (in->screen_rgba[1] != NULL) {
+        ui_blit_screen(c, x, y, in->screen_rgba[1], 8, 16, cvw, cvh, k, 0);
+    }
+    r.x = x; r.y = y; r.w = cvw * k; r.h = cvh * k;
+    {
+        int px = -1, py = -1, pressed = 0, released = 0;
+
+        /* the pointer held on the canvas (a mouse button, a finger) */
+        if (eidos_ui_pointer(&px, &py, &pressed, &released) && px >= r.x && px < r.x + r.w && py >= r.y
+            && py < r.y + r.h) {
+            eidos_ui_tap(8 + (px - r.x) / k, 16 + (py - r.y) / k, 2);
+            if (getenv("EIDOS_UI_DEBUG") != NULL) {
+                fprintf(stderr, "eidos: oekaki stroke %d,%d\n", 8 + (px - r.x) / k, 16 + (py - r.y) / k);
+            }
+        }
+    }
+
+    /* the pens, the sizes and Done under the canvas */
+    y = my + IN_HEAD + cvh * k + 8;
+    for (i = 0; i < 8; i++) {
+        int sx = x + i * 28, lit = w[0x420A] == i, st;
+
+        r.x = sx; r.y = y; r.w = 24; r.h = 24;
+        st = eidos_ui_hit(r);
+        ui_panel(c, sx, y - (lit ? 1 : 0), 24, 24, UI_CUT_TL | UI_CUT_BR, 4, pen_rgb[i],
+                 lit || (st & EIDOS_UI_HOVER) ? IN_HL : UI_EDGE, 255);
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_tap(12 + 24 * i, 170, 3);
+        }
+    }
+    for (i = 0; i < 3; i++) {
+        int sx = x + 8 * 28 + 8 + i * 28, lit = w[0x420B] == i, st, d = 4 + 4 * i;
+
+        r.x = sx; r.y = y; r.w = 24; r.h = 24;
+        st = eidos_ui_hit(r);
+        ui_panel(c, sx, y - (lit ? 1 : 0), 24, 24, UI_CUT_TL | UI_CUT_BR, 4, lit ? 0x05343Eu : UI_BODY,
+                 lit || (st & EIDOS_UI_HOVER) ? IN_HL : UI_EDGE, 255);
+        ui_ellipse(c, sx + 12 - d / 2, y - (lit ? 1 : 0) + 12 - d / 2, d, d, UI_WHITE, UI_WHITE, 255);
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_tap(20 + 16 * i, 7, 3);
+        }
+    }
+    if (in_tile_words(c, mx + mw - 12 - 108, y, 108, 24, NULL, "Done", 0, 0) & EIDOS_UI_CLICK) {
+        eidos_ui_tap(224, 170, 3);
+    }
+
+    /* the members */
+    x = mx + 12 + cvw * k + 12;
+    y = my + IN_HEAD;
+    for (i = 0; i < 5; i++) {
+        const u8 *sb = (const u8 *)rdp(w, 0x018 + 4u * (u32)i);
+        int here = sb != NULL && STRBUF_GetLength != NULL && STRBUF_GetLength((void *)sb) > 0;
+        char name[32] = "";
+
+        if (here && sb != NULL && STRBUF_GetChars != NULL && STRBUF_GetLength != NULL) {
+            units_utf8(STRBUF_GetChars((void *)sb), STRBUF_GetLength((void *)sb), name, (int)sizeof name);
+        }
+        ui_panel(c, x, y + i * 26, mx + mw - 12 - x, 22, UI_CUT_TL | UI_CUT_BR, 4, here ? UI_BODY2 : IN_MBODY,
+                 here ? UI_EDGE : IN_MEDGE, 240);
+        if (here) {
+            ui_fill(c, x + 5, y + i * 26 + 5, 3, 12, IN_HL, 255);
+            ui_text(c, x + 12, y + i * 26 + ui_text_y(22, UI_FONT_LARGE), name, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+        }
+    }
+
+    /* the game's message and its YES / NO */
+    {
+        const void *mwin = rdp(w, 0x11C);
+        int bh = mwin != NULL ? ui_textbox_h(mwin) : 0;
+
+        if (bh > 0) {
+            int by = my + mh - 10 - bh;
+
+            if (g2d_hw_hide_main_bgs != NULL) {
+                g2d_hw_hide_main_bgs(0x1u);
+            }
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, mx + 12, by, mw - 24 - 100, mwin, -1, -1);
+            if (rdp(w, 0x178) != NULL) {
+                ui_taskmenu(c, rdp(w, 0x178), mx + mw - 12, by + bh, UI_CHOICE_SYSTEM);
+            }
+        }
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 1, keys);
+}
+
+static void oekaki_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_oekaki = {
+    "union_drawing", oekaki_match, oekaki_run, oekaki_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* The Union Room's Spin Trade                                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Spin Trade (overlay 137, ov137/guru2*.c; mock-up "union_spin"): the
+ * game's own spinner scene (the dish, the Eggs, the arrows, in 3D) is the
+ * world the window shows, with a title card and the game's words in the
+ * system box at the bottom.  The game's
+ * text window is left out of its screen.  A, the touch and the keys stay
+ * the game's (A stops the spin as the game asks); a click on the scene is A.
+ * The recruiting lobby and the Egg list before it keep their own screens
+ * (the party list's recipe takes the list).
+ *
+ * Guru2Entry (ov137/guru2_types.h): session 0x0C.  Guru2Session:
+ * playerCount 0x08, gameWork 0x1C (the spinner's Guru2Game, 0 outside it).
+ * Guru2Game: windows 0xCE0 (Guru2Windows: mainWindow +0x10), nameBuf[5]
+ * (the members' names, Strbufs) after it.
+ */
+#define GURU2_OVERLAY 137
+
+static const u8 *guru2_game(void)
+{
+    const u8 *e = (const u8 *)app_work(GURU2_OVERLAY), *sess;
+
+    if (e == NULL || (sess = (const u8 *)rdp(e, 0x0C)) == NULL) {
+        return NULL;
+    }
+    return (const u8 *)rdp(sess, 0x1C);
+}
+
+static int guru2_match(void)
+{
+    return guru2_game() != NULL;
+}
+
+static void guru2_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Stop" };
+    static const u32 keys[] = { BW_KEY_A };
+    const u8 *g = guru2_game(), *win;
+    int cw = c->canvas->w, ch = c->canvas->h;
+    EidosUiRect all;
+
+    (void)in;
+    /* the spinner is 3D: the game's own scene is the world the window
+     * shows, the game's text window left out */
+    view->mode = EIDOS_VIEW_WORLD;
+    view->hide_2d = 0;
+    if (g == NULL) {
+        return;
+    }
+    win = (const u8 *)rdp(g, 0xCE0 + 0x10);
+    if (win != NULL && ui_bmpwin_bmp(win) != NULL && g2d_hw_hide_main_bgs != NULL && win[2] < 4) {
+        g2d_hw_hide_main_bgs(1u << win[2]);
+    }
+    {
+        const char *t = "SPIN TRADE";
+        int tw = ui_text_w(t, UI_FONT_SMALL) + 28;
+
+        ui_panel(c, 6, 6, tw, 18, UI_CUT_TL | UI_CUT_BR, 5, IN_MBODY, IN_MEDGE, 235);
+        ui_text(c, 18, 9, t, IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+    }
+    if (win != NULL && ui_bmpwin_bmp(win) != NULL) {
+        int bh = ui_textbox_h(win), bw = cw - 16 < 300 ? cw - 16 : 300;
+
+        if (bh > 0) {
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, (cw - bw) / 2, ch - 17 - 6 - bh, bw, win, -1, -1);
+        }
+    }
+    all.x = 0; all.y = 0; all.w = cw; all.h = ch - ui_bar_h(c);
+    if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+        eidos_ui_press(BW_KEY_A, 2);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 1, keys);
+}
+
+static void guru2_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_guru2 = {
+    "union_spin", guru2_match, guru2_run, guru2_reset, 0
+};
+
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
                                                   &recipe_wireless, &recipe_geonet, &recipe_entree,
-                                                  &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_egg, &recipe_trade };
-const u32 ui_recipes_menus_count = 14;
+                                                  &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_egg, &recipe_trade, &recipe_oekaki, &recipe_guru2 };
+const u32 ui_recipes_menus_count = 16;

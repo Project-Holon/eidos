@@ -241,6 +241,9 @@ int  eidos_ui_right_click(void);
  * went down or up this frame; returns whether it is held.  For a recipe
  * that follows a drag (the field's stick) rather than a click. */
 int  eidos_ui_pointer(int *x, int *y, int *pressed, int *released);
+/* The pointer is held (the left button, a finger, the test script); use
+ * this rather than EidosUiFrame.mouse.down, which only sees the mouse. */
+int  eidos_ui_held(void);
 /* Whether a screen draws its keys' cursor: not while the mouse is the
  * device in use (it moved or clicked since the last key), so the mouse's
  * highlight and the keys' never show two different things. */

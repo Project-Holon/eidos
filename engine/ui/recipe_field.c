@@ -59,8 +59,6 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldN
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
 static int power_card(EidosUiCtx *c, const struct FieldNow *f);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
-static void season_card(EidosUiCtx *c, const struct FieldNow *f);
-static int season_shown(const struct FieldNow *f);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1231,12 +1229,9 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     (void)choices_now(f, &list, &win);
     hide = ui_textbox_field(c, f->fm, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s, win);
     item_card(c, f, hide != 0);
-    season_card(c, f);
+    /* the season's scoreboard stays the game's own (the player prefers it) */
     if (banner_shown(f)) {
         hide |= 0x8u | 0x10u;           /* the game's banner: BG3, its letters */
-    }
-    if (season_shown(f)) {
-        hide |= 0x8u;                   /* the game's scoreboard: BG3        */
     }
     if (g2d_hw_hide_main_bgs != NULL) {
         g2d_hw_hide_main_bgs(hide);
@@ -1349,51 +1344,6 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
     ui_text(c, x + 38, y + 20, pocket, 0x008BACu, 0x313131u, UI_FONT_SMALL, 1);
 }
 
-/*
- * The season card (mock-up "season"): when a new season starts the game
- * shows it on its electric scoreboard (ov020 el_scoreboard.c, an event the
- * field's fade runs).  While that event runs, a card in the middle shows
- * the season in the game's words (a/0/0/2 file 0, 30 + season) with
- * Deerling in that season's form.
- *
- * ElScoreboardWork (ov020/el_scoreboard_types.h): targetSeason 0x14.
- */
-extern int ov020_EL_SCOREBOARD_EventMain(void *ev, int *seq, void *work) WEAK;
-
-static int season_shown(const FieldNow *f)
-{
-    const u8 *ev = GAMESYSTEM_GetEvent != NULL ? (const u8 *)GAMESYSTEM_GetEvent(f->gs) : NULL;
-
-    return ev != NULL && ov020_EL_SCOREBOARD_EventMain != NULL
-           && (uintptr_t)rd32(ev + 4) == (uintptr_t)ov020_EL_SCOREBOARD_EventMain;
-}
-
-static void season_card(EidosUiCtx *c, const FieldNow *f)
-{
-    const u8 *ev = GAMESYSTEM_GetEvent != NULL ? (const u8 *)GAMESYSTEM_GetEvent(f->gs) : NULL;
-    const u8 *work;
-    int cw = c->canvas->w, ch = c->canvas->h, mw = 220, mh = 150, x, y, season, k = 2;
-    const UiImage *ic;
-    const char *name;
-
-    if (ev == NULL || ov020_EL_SCOREBOARD_EventMain == NULL
-        || (uintptr_t)rd32(ev + 4) != (uintptr_t)ov020_EL_SCOREBOARD_EventMain || (work = rdp(ev + 0x0C)) == NULL) {
-        return;
-    }
-    season = work[0x14] & 3;
-    name = ui_game_text(2, 0, 30u + (u32)season);
-    x = (cw - mw) / 2;
-    y = (ch - mh) / 2;
-    ui_panel(c, x, y, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
-    ic = ui_mon_icon(585, (u8)season, 0);
-    if (ic != NULL) {
-        ui_image(c, x + (mw - ic->w * 3) / 2, y + 2, ic, 3);
-    }
-    ui_text(c, x + (mw - ui_text_w(name, UI_FONT_LARGE) * k) / 2, y + 102, name, UI_WHITE, 0x313131u,
-            UI_FONT_LARGE, k);
-    ui_fill(c, x + 24, y + mh - 8, mw - 48, 1, 0x008BACu, 255);
-}
-
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
 {
     u8 *list, *win;
@@ -1498,7 +1448,7 @@ static int lower_sheet(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch,
     r.w = w;
     r.h = h;
     (void)eidos_ui_hit(r);
-    if (in->mouse.down && eidos_ui_mouse_pos(&mx, &my) && mx >= px && my >= py
+    if (eidos_ui_held() && eidos_ui_mouse_pos(&mx, &my) && mx >= px && my >= py
         && mx < px + w && my < py + h) {
         eidos_ui_tap(mx - px, my - py, 2);
     }
@@ -2518,7 +2468,7 @@ static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in)
     r.w = ENTRA_DW;
     r.h = ENTRA_DH;
     st = eidos_ui_hit(r);
-    if (in->mouse.down && (st & EIDOS_UI_HOVER)) {
+    if (eidos_ui_held() && (st & EIDOS_UI_HOVER)) {
         int mx, my;
 
         if (eidos_ui_mouse_pos(&mx, &my)) {
@@ -2619,7 +2569,7 @@ static void lower_only_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame 
     view->world_screen = 1;
     view->ds_only = 1;
     view->lower_only = 1;
-    if (in->mouse.down && eidos_ui_mouse_pos(&mx, &my) && mx >= px && mx < px + sw
+    if (eidos_ui_held() && eidos_ui_mouse_pos(&mx, &my) && mx >= px && mx < px + sw
         && my >= 0 && my < ch) {
         eidos_ui_tap((int)((float)(mx - px) / k), (int)((float)my / k), 2);
     }
