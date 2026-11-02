@@ -23,6 +23,21 @@ extern "C" {
 void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *bmpwin,
                      int tail_x, int tail_y);
 
+/* A box of `kind` without words (the caller prints into it). */
+void ui_textbox_frame(EidosUiCtx *c, int kind, int x, int y, int w, int h);
+/* The height ui_textbox_draw gives the window's box; 0 when it is blank. */
+int  ui_textbox_h(const void *bmpwin);
+/* The Bmp of a live BmpWin, or NULL. */
+const void *ui_bmpwin_bmp(const void *bmpwin);
+/* The letters of a Bmp (the game's 4-bit text bitmap), what is printed
+ * in it placed with its top-left at (x, y), one canvas pixel per bitmap
+ * pixel, the letters in `ink`, their shadow in `shadow`; *w and *h get
+ * the size of what is printed (0 when blank).  With c NULL it only
+ * measures.  Returns 0 when nothing is printed. */
+int  ui_letters(EidosUiCtx *c, const void *bmp, int x, int y, u32 ink, u32 shadow, int *w, int *h);
+/* Debug: a Bmp's colour indices as a PGM file. */
+void ui_letters_dump(const void *bmp, const char *path);
+
 /* The field's open text windows (talk balloons, the plain window, the
  * system and information windows) as boxes, the DS screen at (ox, oy),
  * s canvas pixels per DS pixel; `skip` is a window not to draw (an open

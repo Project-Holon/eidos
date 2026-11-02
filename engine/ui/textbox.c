@@ -29,6 +29,7 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "textbox.h"
@@ -73,11 +74,11 @@ typedef struct WinBmp {
     int top, bottom;        /* the rows that hold anything (bottom
                                exclusive); top > bottom when blank          */
     int right;              /* the last column that holds anything + 1     */
+    int left;               /* the first column that holds anything        */
 } WinBmp;
 
-static int win_bmp(const u8 *bmpwin, WinBmp *b)
+static int bmp_scan(const u8 *bmp, WinBmp *b)
 {
-    const u8 *bmp = rdp(bmpwin + 0x0C);
     int cnt[16] = { 0 }, x, y, i;
 
     memset(b, 0, sizeof(*b));
@@ -135,16 +136,27 @@ static int win_bmp(const u8 *bmpwin, WinBmp *b)
     }
     b->top = b->h;
     b->bottom = 0;
+    b->left = b->w;
     for (y = 0; y < b->h; y++) {
         for (x = 0; x < b->w; x++) {
             if (bmp_px(b->px, b->w, x, y) != b->ground) {
                 if (y < b->top) b->top = y;
                 if (y + 1 > b->bottom) b->bottom = y + 1;
                 if (x + 1 > b->right) b->right = x + 1;
+                if (x < b->left) b->left = x;
             }
         }
     }
     return 1;
+}
+
+static int win_bmp(const u8 *bmpwin, WinBmp *b)
+{
+    if (bmpwin == NULL) {
+        memset(b, 0, sizeof(*b));
+        return 0;
+    }
+    return bmp_scan(rdp(bmpwin + 0x0C), b);
 }
 
 /* The window's letters at (x, y): the letters in `ink`, the rest (their
@@ -162,6 +174,51 @@ static void draw_letters(EidosUiCtx *c, const WinBmp *b, int x, int y, u32 ink, 
             }
         }
     }
+}
+
+const void *ui_bmpwin_bmp(const void *bmpwin)
+{
+    const u8 *w = (const u8 *)bmpwin;
+
+    if (w == NULL || (rd16(w) & 0x7FFFu) != 0x7FB2u) {
+        return NULL;
+    }
+    return rdp(w + 0x0C);
+}
+
+int ui_letters(EidosUiCtx *c, const void *bmp, int x, int y, u32 ink, u32 shadow, int *w, int *h)
+{
+    WinBmp b;
+
+    if (w != NULL) *w = 0;
+    if (h != NULL) *h = 0;
+    if (!bmp_scan((const u8 *)bmp, &b) || b.ink < 0 || b.top >= b.bottom) {
+        return 0;
+    }
+    if (w != NULL) *w = b.right - b.left;
+    if (h != NULL) *h = b.bottom - b.top;
+    if (c != NULL) {
+        draw_letters(c, &b, x - b.left, y - b.top, ink, shadow);
+    }
+    return 1;
+}
+
+void ui_letters_dump(const void *bmp, const char *path)
+{
+    WinBmp b;
+    FILE *f;
+    int x, y;
+
+    if (!bmp_scan((const u8 *)bmp, &b) || (f = fopen(path, "wb")) == NULL) {
+        return;
+    }
+    fprintf(f, "P5\n%d %d\n15\n", b.w, b.h);
+    for (y = 0; y < b.h; y++) {
+        for (x = 0; x < b.w; x++) {
+            fputc(bmp_px(b.px, b.w, x, y), f);
+        }
+    }
+    fclose(f);
 }
 
 /* ------------------------------------------------------------------ */
@@ -203,6 +260,26 @@ static void strip(EidosUiCtx *c, int x, int y, int h, int cut, u32 col)
             ui_fill(c, x + left, y + r, 6 - left, 1, col, 255);
         }
     }
+}
+
+void ui_textbox_frame(EidosUiCtx *c, int kind, int x, int y, int w, int h)
+{
+    if (kind == UI_TEXTBOX_SYSTEM) {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, TB_SYS, TB_SEDGE, 255);
+        strip(c, x, y, h, 7, TB_HL);
+    } else {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, TB_PAPER, TB_PEDGE, 255);
+    }
+}
+
+int ui_textbox_h(const void *bmpwin)
+{
+    WinBmp b;
+
+    if (!win_bmp((const u8 *)bmpwin, &b) || b.ink < 0 || b.top >= b.bottom) {
+        return 0;
+    }
+    return b.h + 10;
 }
 
 void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *bmpwin,
