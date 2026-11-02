@@ -308,11 +308,10 @@ static int hint_bar(EidosUiCtx *c, int y, int w, const char *const *pairs, int n
     int bh, top = ui_bottom_bar(c, y, 17, &bh), lift = bh - 17, i, x = 6 + ui_safe_left(c);
     int clicked = -1;
 
-    /* on the bottom edge, taller on a phone, the keys in its middle */
+    /* on the bottom edge, taller on a phone, the keys in its middle; it
+     * lies over the world (no bar_top), so opening and closing the field's
+     * menu does not move the world */
     y = top + lift / 2;
-    if (lift > 0) {
-        c->bar_top = c->oy + top;
-    }
     ui_fill(c, 0, top, w, bh, UI_BODY2, 235);
     ui_fill(c, 0, top, w, 1, UI_EDGE, 255);
     for (i = 0; i < n; i++) {
