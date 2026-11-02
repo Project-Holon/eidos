@@ -441,10 +441,12 @@ void bw_arm7_fs_reset(void)
         /* a reset before the held new game was saved: nothing is written */
         g_fs.hold = 0;
         g_fs.dirty = 0;
-        if (bw_slots_dropped != NULL)
-            bw_slots_dropped();
     }
     (void)bw_arm7_backup_flush();
+    /* the new game's slot: kept when its file is on the disk, else the
+     * save in force before it */
+    if (bw_slots_dropped != NULL)
+        bw_slots_dropped();
     g_fs.type = 0;
     g_fs.expect_arg = 0;
 }

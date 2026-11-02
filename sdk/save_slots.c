@@ -22,6 +22,10 @@
 extern void bw_arm7_backup_set_path(const char *path) BW_SLOTS_WEAK;
 extern void bw_arm7_backup_switch_path(const char *path) BW_SLOTS_WEAK;
 extern void *SAVE_CONTROL_Get(void) BW_SLOTS_WEAK;
+/* Where the game keeps its save control pointer (_pSaveControl):
+ * SAVE_CONTROL_Get halts the game when there is none (between a soft reset
+ * and the next boot). */
+extern void *bw_dsref__pSaveControl BW_SLOTS_WEAK;
 extern int SAVE_CONTROL_Reload(void *saveControl) BW_SLOTS_WEAK;
 extern int SYSTEM_DATA_IsActive(void *saveControl) BW_SLOTS_WEAK;
 extern void bw_arm7_backup_hold(int on) BW_SLOTS_WEAK;
@@ -329,10 +333,12 @@ void bw_slots_frame(void)
 {
     unsigned char *sc;
 
-    if (g_pending == 0 || SAVE_CONTROL_Get == NULL || (sc = (unsigned char *)SAVE_CONTROL_Get()) == NULL) {
+    if (g_pending == 0) {
         return;
     }
-    if (!g_released && sc[SAVE_CONTROL_HAS_SAVE] && !sc[SAVE_CONTROL_IS_NEW_GAME]) {
+    sc = &bw_dsref__pSaveControl != NULL && bw_dsref__pSaveControl != NULL
+         ? *(unsigned char **)bw_dsref__pSaveControl : NULL;
+    if (!g_released && sc != NULL && sc[SAVE_CONTROL_HAS_SAVE] && !sc[SAVE_CONTROL_IS_NEW_GAME]) {
         /* the first completed save: the held writes go to the slot's file */
         g_released = 1;
         g_writes_before = bw_arm7_backup_writes != NULL ? bw_arm7_backup_writes() : 0;
@@ -353,6 +359,13 @@ void bw_slots_frame(void)
 
 void bw_slots_dropped(void)
 {
+    if (g_pending != 0 && g_released && bw_arm7_backup_writes != NULL
+        && bw_arm7_backup_writes() != g_writes_before) {
+        set_current(g_pending);     /* its file reached the disk after all */
+        g_pending = 0;
+        g_released = 0;
+        return;
+    }
     if (g_pending != 0) {
         g_current = g_prev;         /* the save in force before New Game */
         g_pending = 0;
