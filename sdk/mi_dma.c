@@ -139,6 +139,21 @@ static void bw_dma_run(uintptr_t src, uintptr_t dest, u32 ctrl)
     if (count == 0) {
         count = 0x200000u;          /* 0 means the maximum */
     }
+    if (((bw_dma_lcdc_fold(dest) >> 24) == 0x06u) || ((bw_dma_lcdc_fold(src) >> 24) == 0x06u)) {
+        /* VRAM: the banks are separate host blocks, and a copy can run
+         * off the end of the one it starts in (Spin Trade's sub BG3
+         * characters, ov137 GURU2_MAIN_LoadBgPalette, end past bank C).
+         * Each unit is placed by its own address, so what lands where no
+         * bank is mapped goes nowhere, as on the DS. */
+        uintptr_t da = dest, sa = src;
+
+        for (i = 0; i < count; i++) {
+            memmove(bw_dma_pointer(da), bw_dma_pointer(sa), unit);
+            da = (uintptr_t)((intptr_t)da + ds);
+            sa = (uintptr_t)((intptr_t)sa + ss);
+        }
+        return;
+    }
     for (i = 0; i < count; i++) {
         memmove(d, s, unit);
         d += ds;
