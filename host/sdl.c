@@ -259,8 +259,17 @@ u32 w2c_env_SDL_GetWindowSizeInPixels(struct w2c_env *e, u32 w, u32 pw, u32 ph)
 
 u32 w2c_env_SDL_GetWindowSafeArea(struct w2c_env *e, u32 w, u32 rect)
 {
+    static SDL_Rect last;
+    SDL_Rect *r = (SDL_Rect *)M(rect);
+    u32 rc;
+
     (void)e;
-    return SDL_GetWindowSafeArea((SDL_Window *)handle_ptr(w), (SDL_Rect *)M(rect));   /* four ints */
+    rc = SDL_GetWindowSafeArea((SDL_Window *)handle_ptr(w), r);     /* four ints */
+    if (rc && (r->x != last.x || r->y != last.y || r->w != last.w || r->h != last.h)) {
+        last = *r;
+        fprintf(stderr, "eidos: safe area now %d,%d %dx%d\n", r->x, r->y, r->w, r->h);
+    }
+    return rc;
 }
 
 u32 w2c_env_SDL_SetWindowSize(struct w2c_env *e, u32 w, u32 x, u32 y)
