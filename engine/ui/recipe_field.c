@@ -54,6 +54,12 @@
 static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h, const char *key);
 extern void bw_mod_restart(u32 flags) WEAK;
 
+static void title_restart(void *arg)
+{
+    (void)arg;
+    bw_mod_restart(0);
+}
+
 /* The game system's global and the accessors the recipes call. */
 extern void *bw_dsref__GameSystemGlobal WEAK;
 extern void *GAME_DATA_GetMyParty(const void *gd) WEAK;
@@ -944,15 +950,19 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
          * within three seconds confirms: unsaved progress is lost. */
         static u32 armed_at;
         int armed = armed_at != 0u && in->frame - armed_at < 180u;
-        int tx = cw - 4;
-        int st = small_button(c, &tx, ch - ui_bar_h(c), armed ? "Sure? Unsaved progress is lost" : "Title screen",
-                              17, NULL);
+        int bh, top = ui_bottom_bar(c, ch - ui_bar_h(c), 17, &bh);
+        int tx = cw - 4 - c->safe_r;
+        /* in the bar's middle, as its keys are (taller on a phone) */
+        int st = small_button(c, &tx, top + (bh - 17) / 2,
+                              armed ? "Sure? Unsaved progress is lost" : "Title screen", 17, NULL);
 
         if (st & EIDOS_UI_CLICK) {
             if (armed) {
                 armed_at = 0;
                 if (bw_mod_restart != NULL) {
-                    bw_mod_restart(0);
+                    /* the reset belongs to the game's thread (a phone runs
+                     * the game on its own thread, not the interface's) */
+                    eidos_ui_game_call(title_restart, NULL);
                 }
             } else {
                 armed_at = in->frame != 0u ? in->frame : 1u;
