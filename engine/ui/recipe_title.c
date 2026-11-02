@@ -33,6 +33,8 @@
 #include "ui.h"
 #include "kit.h"
 #include "input.h"
+#include "choice_list.h"
+#include "textbox.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define TT_WEAK __attribute__((weak))
@@ -506,21 +508,21 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
     /* the credit, bottom left */
-    ui_text(c, 6, H - 17 - 11, "Developed by GAME FREAK inc.", UI_LIGHT, 0x202020u,
+    ui_text(c, 6, H - ui_bar_h(c) - 11, "Developed by GAME FREAK inc.", UI_LIGHT, 0x202020u,
             UI_FONT_SMALL, 1);
 
     /* click anywhere is START */
     all.x = 0;
     all.y = 0;
     all.w = W;
-    all.h = H - 17;
+    all.h = H - ui_bar_h(c);
     if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
         eidos_ui_press(BW_KEY_START, 2);
         g_started = 1;
         g_started_at = in->frame;
     }
-    ui_fill(c, 0, H - 17, W, 17, UI_BODY2, 255);       /* the 3D carries its own credit */
-    ui_hints(c, H - 17, W, hints, 1, keys);
+    ui_fill(c, 0, H - ui_bar_h(c), W, ui_bar_h(c), UI_BODY2, 255);   /* the 3D carries its own credit */
+    ui_hints(c, H - ui_bar_h(c), W, hints, 1, keys);
     dbg = getenv("EIDOS_TITLE_DEBUG");
     if (dbg != NULL && ((in->frame % 30) == 0 || dbg[0] == '2')) {
         fprintf(stderr, "title: frame %u ws %d vis %d logo %d\n", in->frame,
@@ -693,9 +695,12 @@ static void menu_reset(void)
 
 static int menu_match(void)
 {
-    if (scene(NULL) != TT_SCENE_MENU) {
+    TtProc *mp = NULL;
+
+    if (scene(&mp) != TT_SCENE_MENU) {
         return 0;
     }
+    (void)mp;   /* the notices are long: they keep the interface's size */
     /* the settings screens of the port keep the DS screens */
     if (bw_mod_title_in_settings != NULL && bw_mod_title_settings_on != NULL &&
         bw_mod_title_settings_on() && bw_mod_title_in_settings()) {
@@ -976,6 +981,64 @@ static void request(int target, int act)
     g_age = 0;
 }
 
+/*
+ * The title menu's yes/no (a BmpMenu, arm9/bmp_menu.c: header.items 0x00,
+ * selected 0x2D) as a list in the system box's style, its right edge at
+ * `right`, its foot at `foot`.  A click on the other row presses UP or
+ * DOWN, on the chosen row A (the game's cursor moves by its own keys).
+ */
+extern u16 *STRBUF_GetChars(void *strbuf) TT_WEAK;
+extern u16  STRBUF_GetLength(void *strbuf) TT_WEAK;
+
+static void title_yes_no(EidosUiCtx *c, const EidosUiFrame *in, const u8 *menu, int right, int foot)
+{
+    const u8 *items = *(const u8 *const *)menu;
+    int sel = menu[0x2D], i, w = 0, rh = 18, h, x, y;
+    char label[2][24];
+
+    (void)in;
+    for (i = 0; i < 2; i++) {
+        const u8 *sb = items != NULL ? *(const u8 *const *)(items + 8 * i) : NULL;
+
+        label[i][0] = '\0';
+        if (sb != NULL && STRBUF_GetChars != NULL && STRBUF_GetLength != NULL) {
+            name_utf8(STRBUF_GetChars((void *)sb), label[i], 24);
+        }
+        if (label[i][0] == '\0') {
+            snprintf(label[i], sizeof label[i], "%s", i == 0 ? "YES" : "NO");
+        }
+        if (ui_text_w(label[i], UI_FONT_LARGE) + 30 > w) {
+            w = ui_text_w(label[i], UI_FONT_LARGE) + 30;
+        }
+    }
+    h = 4 + 2 * rh + 4;
+    x = right - w;
+    y = foot - h;
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
+    for (i = 0; i < 2; i++) {
+        int ry = y + 4 + i * rh, lit = i == sel, st, rr;
+        EidosUiRect r;
+
+        r.x = x + 3; r.y = ry; r.w = w - 6; r.h = rh;
+        st = eidos_ui_hit(r);
+        if (lit) {
+            ui_panel(c, r.x, ry - 1, r.w, rh, UI_CUT_TL | UI_CUT_BR, 5, 0x05343Eu, 0x008BACu, 250);
+            for (rr = 3; rr < rh - 3; rr++) {
+                int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+                if (left < 6) {
+                    ui_fill(c, r.x + left, ry - 1 + rr, 6 - left, 1, 0x008BACu, 255);
+                }
+            }
+        }
+        ui_text(c, r.x + 10, ry - (lit ? 1 : 0) + ui_text_y(rh, UI_FONT_LARGE), label[i],
+                lit ? UI_WHITE : UI_LIGHT, 0x464850u, UI_FONT_LARGE, 1);
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_press(lit ? BW_KEY_A : (i < sel ? BW_KEY_UP : BW_KEY_DOWN), 2);
+        }
+    }
+}
+
 static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     TtProc *p = NULL;
@@ -1011,7 +1074,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     all.x = 0;
     all.y = 0;
     all.w = W;
-    all.h = H - 17;
+    all.h = H - ui_bar_h(c);
 
     /* the game's own questions and notices (states 7 to 10): its windows stay
      * visible, only the keys are offered.  CONTINUE passes through them for
@@ -1026,23 +1089,32 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
     if (state >= 7 && state <= 10) {
-        int dsw = H * 4 / 3, x0 = (W - dsw) / 2;
+        /* the game's questions and notices as the interface's system box
+         * over the menu's floor, dimmed (mock-up n9): the message window
+         * (StartMenuWork windows[13] 0xE8), the information window
+         * (descWindow 0xF0) when it holds text, and the yes/no
+         * (yesNoMenu 0x7C, a BmpMenu: items 0x00, selected 0x2D) as a list
+         * in the same style */
+        const u8 *msgw = *(const u8 *const *)((const char *)work + 0xE8);
+        const u8 *desc = *(const u8 *const *)((const char *)work + 0xF0);
+        const u8 *yn = *(const u8 *const *)((const char *)work + 0x7C);
+        int bw = H * 4 / 3 - 8, bx = (W - bw) / 2, by;
 
-        view->hide_2d = 0;
-        if (x0 > 0) {
-            /* beside the game's window, the menu's own floor */
-            EidosUiRect keep;
-
-            ui_push(c, 0, 0, &keep);
-            ui_clip(c, 0, 0, x0, H);
-            backdrop(c, W, H, (int)in->frame);
-            ui_pop(c, 0, 0, &keep);
-            ui_push(c, 0, 0, &keep);
-            ui_clip(c, W - x0, 0, x0, H);
-            backdrop(c, W, H, (int)in->frame);
-            ui_pop(c, 0, 0, &keep);
+        backdrop(c, W, H, (int)in->frame);
+        ui_fill(c, 0, 0, W, H, 0x000000u, 150);
+        if (desc != NULL && (*(const u16 *)desc & 0x7FFFu) == 0x7FB2u) {
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, bx, 8, bw, desc, -1, -1);
         }
-        ui_hints(c, H - 17, W, hints_ask, 2, keys_one);
+        by = H - ui_bar_h(c) - 4 - 42;
+        if (msgw != NULL && (*(const u16 *)msgw & 0x7FFFu) == 0x7FB2u) {
+            by = H - ui_bar_h(c) - 4 - (msgw[6] * 8 + 10);
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, bx, by, bw, msgw, -1, -1);
+        }
+        /* the connect prompt asks at its step 3 (STARTMENU_StateConnectPrompt) */
+        if (yn != NULL && state == 7 && *((const u8 *)work + 0x12A) == 3) {
+            title_yes_no(c, in, yn, bx + bw, by - 2);
+        }
+        ui_hints(c, H - ui_bar_h(c), W, hints_ask, 2, keys_one);
         return;
     }
     backdrop(c, W, H, (int)in->frame);
@@ -1125,7 +1197,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     /* the layout: two columns on a wide canvas (the logo and the card, the
      * rows), one column otherwise */
-    avail = H - 17 - 12;
+    avail = H - ui_bar_h(c) - 12;
     wide = W * 10 >= H * 15 && n > 0;
     if (g_logo_have) {
         int x0, y0, x1, y1;
@@ -1294,7 +1366,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
-    ui_hints(c, H - 17, W, slots > 1 && card >= 0 ? hints_slots : hints_one,
+    ui_hints(c, H - ui_bar_h(c), W, slots > 1 && card >= 0 ? hints_slots : hints_one,
              slots > 1 && card >= 0 ? 3 : 2, slots > 1 && card >= 0 ? keys_slots : keys_one);
     dbg = getenv("EIDOS_TITLE_DEBUG");
     if (dbg != NULL && (in->frame % 30) == 0) {
@@ -1318,9 +1390,16 @@ static const EidosUiRecipe recipe_menu = {
  * one screen shown big in the middle of the window, the one that holds
  * the picture, rather than the two DS screens side by side.  No interface.
  */
+static u8 *intro_cmd_work(void);
+
 static int boot_match(void)
 {
     TtProc *p = root_proc();
+
+    /* the professor's words at the game's own size */
+    if (intro_cmd_work() != NULL) {
+        eidos_ui_want_ds_scale();
+    }
 
     if (p == NULL || scene(NULL) != TT_SCENE_NONE) {
         return 0;
@@ -1376,6 +1455,181 @@ static u32 screen_ink(const u8 *s)
     return sum;
 }
 
+/* ------------------------------------------------------------------ */
+/* The professor's intro: its choices                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The intro (overlay 204) runs on the new-game proc's own ProcSys
+ * (NewGameIntroWork procSys 0x30, ov088/startmenu_types.h); its proc's
+ * work is the IntroGraphicWork (cmdWork 0x14).  IntroCmdWork
+ * (ov204/intro_types.h): msg 0x18, commands 0x20 (8 IntroCommand
+ * pointers, tag at 0x00), slots 0x40 (12 bytes each).  IntroMsgWork
+ * (ov204/intro_msg.c): the menu's BmpMenuList 0x24, its window 0x38.
+ */
+extern int ov204_INTRO_CMD_CmdAnimMode(char *p, u32 *q) TT_WEAK;
+extern void *bw_dsref_ov204_gIntroCmdCommandTable TT_WEAK;
+typedef void (*TtDataFn)(void);
+extern TtDataFn bw_ovl_code_entry(u32 value) TT_WEAK;
+extern void ov088_STARTMENU_NewGameIntroMain(void) TT_WEAK;
+extern void ov204_INTRO_GRAPHIC_Main(void) TT_WEAK;
+
+/* A code word of the game's data is `fn`: the host function itself (a
+ * pointer the loader relocated) or a DS address that resolves to it. */
+static int code_is(u32 word, const void *fn)
+{
+    if (fn == NULL || word == 0u) {
+        return 0;
+    }
+    if ((uintptr_t)word == (uintptr_t)fn) {
+        return 1;
+    }
+    return bw_ovl_code_entry != NULL && (const void *)bw_ovl_code_entry(word) == fn;
+}
+
+/* The proc runs `main` (its ProcData: init, main, end). */
+static int proc_runs(const TtProc *p, void (*main)(void))
+{
+    return p != NULL && p->data != NULL && code_is(((const u32 *)p->data)[1], (const void *)main);
+}
+
+static u8 *intro_cmd_work(void)
+{
+    TtProc *p = root_proc(), *child;
+    u8 *ngw, *sys, *gw;
+
+    if (p == NULL || p->overlayId != 88 || p->work == NULL
+        || !proc_runs(p, ov088_STARTMENU_NewGameIntroMain)) {
+        return NULL;
+    }
+    ngw = (u8 *)p->work;
+    sys = *(u8 **)(ngw + 0x30);
+    child = sys != NULL ? *(TtProc **)(sys + 0x08) : NULL;
+    if (child == NULL || child->work == NULL || !proc_runs(child, ov204_INTRO_GRAPHIC_Main)) {
+        return NULL;
+    }
+    gw = (u8 *)child->work;
+    return *(u8 **)(gw + 0x14);
+}
+
+/* The gender choice's state words (INTRO_CMD_CmdAnimMode: step, choice 0
+ * boy 1 girl), or NULL when it is not running. */
+static u32 *intro_gender(u8 *cmd)
+{
+    u32 *table;
+    int i;
+
+    if (cmd == NULL || ov204_INTRO_CMD_CmdAnimMode == NULL
+        || &bw_dsref_ov204_gIntroCmdCommandTable == NULL
+        || bw_dsref_ov204_gIntroCmdCommandTable == NULL) {
+        return NULL;
+    }
+    table = (u32 *)bw_dsref_ov204_gIntroCmdCommandTable;
+    for (i = 0; i < 8; i++) {
+        const u32 *q = *(const u32 **)(cmd + 0x20 + 4 * i);
+
+        if (q != NULL && q[0] < 0x40u
+            && code_is(table[q[0]], (const void *)ov204_INTRO_CMD_CmdAnimMode)) {
+            return (u32 *)(cmd + 0x40 + 12 * i);
+        }
+    }
+    return NULL;
+}
+
+/*
+ * The intro's choices by touch.  Returns 1 when a choice is up (the tap is
+ * not A then).  The professor's yes/no and name lists are the game's own
+ * BmpMenuList: the shared choice list (engine/ui/choice_list.h).  The boy
+ * and the girl stand on the left and the right of the screen: a tap on the
+ * one not chosen moves the game's choice there (LEFT or RIGHT, so the game
+ * turns them as for the keys), a tap on the chosen one is A.  A tap
+ * anywhere else does nothing.
+ */
+extern void g2d_hw_hide_main_bgs(u32 mask) TT_WEAK;
+
+/*
+ * The professor's words as the interface's narration box (engine/ui/
+ * textbox.c): the intro's message window (IntroMsgWork textWin 0x1C) at
+ * its place, the game's own window and its menu window left out of the
+ * screen.  Returns 1 while the intro runs.
+ */
+static int intro_text(EidosUiCtx *c)
+{
+    u8 *cmd = intro_cmd_work(), *msg;
+    const u8 *tw, *mw;
+    float sc = (float)c->canvas->h / 192.0f;
+    float ox = ((float)c->canvas->w - 256.0f * sc) * 0.5f;
+    u32 hide = 0;
+
+    if (cmd == NULL || (msg = *(u8 **)(cmd + 0x18)) == NULL) {
+        return 0;
+    }
+    tw = *(const u8 **)(msg + 0x1C);
+    mw = *(const u8 **)(msg + 0x38);
+    if (tw != NULL && (*(const u16 *)tw & 0x7FFFu) == 0x7FB2u) {
+        int gw = (int)((float)((tw[5] + 2) * 8) * sc);
+        int x = (int)(ox + (float)((tw[3] - 1) * 8) * sc);
+        int y = (int)((float)((tw[4] - 1) * 8) * sc);
+
+        if (y + tw[6] * 8 + 10 > c->canvas->h - 4) {
+            y = c->canvas->h - 4 - (tw[6] * 8 + 10);
+        }
+        ui_textbox_draw(c, UI_TEXTBOX_NARRATION, x, y, gw, tw, -1, -1);
+        if (tw[2] < 4) hide |= 1u << tw[2];
+    }
+    if (mw != NULL && (*(const u16 *)mw & 0x7FFFu) == 0x7FB2u && mw[2] < 4) {
+        hide |= 1u << mw[2];
+    }
+    if (g2d_hw_hide_main_bgs != NULL) {
+        g2d_hw_hide_main_bgs(hide);
+    }
+    return 1;
+}
+
+static int intro_choices(EidosUiCtx *c, const EidosUiFrame *in)
+{
+    u8 *cmd = intro_cmd_work(), *msg;
+    u32 *g;
+    float sc = (float)c->canvas->h / 192.0f;
+    float ox = ((float)c->canvas->w - 256.0f * sc) * 0.5f;
+
+    if (cmd == NULL) {
+        ui_choice_list_idle();
+        return 0;
+    }
+    msg = *(u8 **)(cmd + 0x18);
+    if (msg != NULL && *(void **)(msg + 0x24) != NULL && *(void **)(msg + 0x38) != NULL) {
+        if (ui_choice_list(c, in, *(void **)(msg + 0x24), *(void **)(msg + 0x38), ox, 0.0f, sc, UI_CHOICE_WHITE)) {
+            if (eidos_ui_right_click()) {
+                eidos_ui_press(BW_KEY_B, 2);
+            }
+            return 1;
+        }
+    }
+    ui_choice_list_idle();
+    g = intro_gender(cmd);
+    if (g != NULL && (g[0] == 1u || g[0] == 4u)) {
+        int side;
+        EidosUiRect r;
+
+        for (side = 0; side < 2; side++) {
+            r.x = (int)(ox + (float)(side * 128) * sc);
+            r.y = 0;
+            r.w = (int)(128.0f * sc);
+            r.h = (int)(144.0f * sc);       /* above the message box */
+            if ((eidos_ui_hit(r) & EIDOS_UI_CLICK) && g[0] == 1u) {
+                if ((u32)side == g[1]) {
+                    eidos_ui_press(BW_KEY_A, 2);
+                } else {
+                    eidos_ui_press(side == 0 ? BW_KEY_LEFT : BW_KEY_RIGHT, 2);
+                }
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
 static void boot_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static int shown = -1;
@@ -1411,7 +1665,12 @@ static void boot_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         int skip = !g_title_passed || (p != NULL && p->overlayId == 179);
         EidosUiRect all = { 0, 0, c->canvas->w, c->canvas->h };
 
-        if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+        if (!skip) {
+            (void)intro_text(c);
+        }
+        if (!skip && intro_choices(c, in)) {
+            /* a choice is up: the taps go to it (intro_choices) */
+        } else if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
             eidos_ui_press(skip ? BW_KEY_START : BW_KEY_A, 2);
         } else if (skip && (eidos_ui_keys_pressed() & BW_KEY_A) != 0u) {
             eidos_ui_press(BW_KEY_START, 2);

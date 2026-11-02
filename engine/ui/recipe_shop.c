@@ -724,7 +724,7 @@ static void run_shop(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     Shop s;
     const u8 *t = shop_task();
     int cw = c->canvas->w, ch = c->canvas->h;
-    int hints_y = ch - 17, mx, my, mw, mh, pad = 8, hdr = 22;
+    int hints_y = ch - ui_bar_h(c), mx, my, mw, mh, pad = 8, hdr = 22;
     int list_x, list_w, det_x, det_w, body_y, body_h, rowh, rows, total, i, sb, rw;
     int hover_item = 0, sel_item = 0, hover_row = -1;
     int browse;

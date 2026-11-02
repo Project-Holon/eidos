@@ -393,13 +393,35 @@ static void buttons(Wiz *z, const char *a, int act_a, const char *b, int act_b)
     layout_buttons(z);
 }
 
+/* A phone (the hosts set EIDOS_TOUCH_DEVICE=1): no keys, no drag and drop,
+ * and paths that mean nothing to the player (a picker's /proc/self/fd/N). */
+static int on_phone(void)
+{
+    const char *t = getenv("EIDOS_TOUCH_DEVICE");
+
+    return t != NULL && t[0] == '1';
+}
+
 static void show_welcome(Wiz *z)
 {
     z->screen = EIDOS_WIZARD_WELCOME;
-    snprintf(z->heading, sizeof(z->heading), "Pokemon Black is needed");
+    snprintf(z->heading, sizeof(z->heading), "Pokemon Black or White is needed");
+    if (on_phone()) {
+        snprintf(z->body, sizeof(z->body),
+                 "%s%s"
+                 "eidos runs Pokemon Black or White from your own copy of the game: "
+                 "a ROM, the file a dumping tool makes from your cartridge, usually "
+                 "ending in .nds. Nothing is downloaded. eidos reads the ROM once "
+                 "and keeps the game data it needs on this phone.",
+                 z->cfg->reason != NULL ? z->cfg->reason : "",
+                 z->cfg->reason != NULL ? "\n\n" : "");
+        z->foot[0] = '\0';
+        buttons(z, "Choose ROM file", ACT_CHOOSE, NULL, ACT_NONE);
+        return;
+    }
     snprintf(z->body, sizeof(z->body),
              "%s%s"
-             "eidos runs Pokemon Black from your own copy of the game. It needs "
+             "eidos runs Pokemon Black or White from your own copy of the game. It needs "
              "a ROM: the file a dumping tool makes from your cartridge, usually "
              "ending in .nds. Nothing is downloaded, and the ROM is not copied: "
              "eidos reads it once and writes the game data it needs to\n"
@@ -477,7 +499,16 @@ static void finish_job(Wiz *z)
         bw_thread_join(z->thread);
         z->thread = NULL;
     }
-    if (j->rc == 0) {
+    if (j->rc == 0 && on_phone()) {
+        z->screen = EIDOS_WIZARD_DONE;
+        snprintf(z->heading, sizeof(z->heading), "Ready to play");
+        snprintf(z->body, sizeof(z->body), "%s",
+                 j->outcome.already ? "This ROM's game data was already on this phone."
+                                    : "The game data is on this phone. The ROM is not "
+                                      "needed again.");
+        z->foot[0] = '\0';
+        buttons(z, "Start", ACT_START, NULL, ACT_NONE);
+    } else if (j->rc == 0) {
         z->screen = EIDOS_WIZARD_DONE;
         snprintf(z->heading, sizeof(z->heading), "Ready to play");
         snprintf(z->body, sizeof(z->body),
@@ -534,7 +565,7 @@ static void choose(Wiz *z)
     if (z->cfg->pick != NULL) {
         rc = z->cfg->pick(z->cfg->user, path, sizeof(path));
     } else {
-        rc = bw_pick_rom(native_parent(z), "Choose your Pokemon Black ROM",
+        rc = bw_pick_rom(native_parent(z), "Choose your Pokemon Black or White ROM",
                          path, sizeof(path));
     }
     if (rc == BW_PICK_OK) {

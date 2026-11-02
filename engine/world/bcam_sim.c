@@ -664,7 +664,7 @@ typedef struct Tint {           /* BTLV_STAGE / BTLV_FIELD palette tint */
 } Tint;
 
 typedef struct SpriteFade {     /* MCSS_SetPaletteFade */
-    int active, cur, end, step, wait, wait_set;
+    int active, cur, end, step, wait, wait_set, color;
 } SpriteFade;
 
 typedef struct Script {
@@ -716,6 +716,12 @@ typedef struct Sim {
     Tint stage, field;
     SpriteFade sfade[14];
     int rotating;
+    /* what the frames show of each sprite (McssWork): its size (the
+     * shadowScale the scripts tween, fx32), its alpha (0..31), its vanish
+     * flag (and BtlvMcssWork's vanishHeld), its animation (the multi-cell
+     * sequence an effect set, and the frames since) */
+    fx32 shadow[14];
+    int alpha[14], vanish[14], vheld[14], anim[14], anim_t[14];
 
     /* output */
     BcamFrame *frames;
@@ -864,6 +870,12 @@ static void sprite_add(int pos)
         return;
     S.loaded[pos] = 1;
     S.pos[pos] = slot_position(pos);
+    /* a new McssWork: full size, opaque, shown, its first animation */
+    S.shadow[pos] = 0x1000;
+    S.alpha[pos] = 31;
+    S.vanish[pos] = S.vheld[pos] = 0;
+    S.anim[pos] = S.anim_t[pos] = 0;
+    memset(&S.sfade[pos], 0, sizeof S.sfade[pos]);
 }
 
 static int is_loaded(int pos)
@@ -1097,6 +1109,10 @@ static void tasks_run(void)
             break;
         case TK_SHADOW: case TK_DRAW: case TK_SCALE: case TK_ROT: case TK_ALPHA: case TK_MOSAIC:
             done = step_mover(&t->m, &t->cur);
+            if (t->slot >= 0 && t->slot < 14 && t->cls == TK_SHADOW)
+                S.shadow[t->slot] = t->cur.x;
+            if (t->slot >= 0 && t->slot < 14 && t->cls == TK_ALPHA)
+                S.alpha[t->slot] = t->cur.x >> 12;
             if (done == 1)
                 t->used = 0;
             break;
@@ -1884,8 +1900,15 @@ static void op_tween_args(int op)
 
         kind = vm_arg(); t.x = vm_arg(); t.y = vm_arg(); t.z = 0x1000;
         frames = vm_arg(); wait = vm_arg(); rep = vm_arg();
-        for (i = 0; i < n; i++)
-            other_tween(op == OP_SHADOW_SCALE ? TK_SHADOW : TK_DRAW, ids[i], kind, one, t, frames, wait, rep);
+        for (i = 0; i < n; i++) {
+            /* BTLV_MCSS_StartShadowScaleTween starts from the sprite's own
+             * size (the secondary one, the shadow's draw scale, is not shown) */
+            V3 from = one;
+
+            if (op == OP_SHADOW_SCALE && ids[i] >= 0 && ids[i] < 14)
+                from.x = from.y = S.shadow[ids[i]];
+            other_tween(op == OP_SHADOW_SCALE ? TK_SHADOW : TK_DRAW, ids[i], kind, from, t, frames, wait, rep);
+        }
         break;
     }
     case OP_ROT:
@@ -1902,8 +1925,11 @@ static void op_tween_args(int op)
         frames = vm_arg(); wait = vm_arg(); rep = vm_arg();
         from.x = (op == OP_ALPHA ? 31 : 0) * 4096; from.y = from.z = 0;
         to.x = v * 4096; to.y = to.z = 0;
-        for (i = 0; i < n; i++)
+        for (i = 0; i < n; i++) {
+            if (op == OP_ALPHA && ids[i] >= 0 && ids[i] < 14)
+                from.x = S.alpha[ids[i]] * 4096;     /* MCSS_GetAlpha */
             other_tween(op == OP_ALPHA ? TK_ALPHA : TK_MOSAIC, ids[i], kind, from, to, frames, wait, rep);
+        }
         break;
     }
     }
@@ -2039,13 +2065,55 @@ static int vm_exec(int op)
     case OP_PAL_FADE: {
         int ids[8];
         int n = resolve_list(vm_arg(), ids);
-        int cur = vm_arg(), target = vm_arg(), step = vm_arg();
+        int cur = vm_arg(), target = vm_arg(), step = vm_arg(), color = vm_arg();
 
-        (void)vm_arg();
-        for (i = 0; i < n; i++)
+        for (i = 0; i < n; i++) {
             sprite_fade_start(ids[i], cur & 0xFF, target & 0xFF, (signed char)step);
+            if (ids[i] >= 0 && ids[i] < 14)
+                S.sfade[ids[i]].color = color & 0x7FFF;
+        }
         return S.result;
     }
+    case OP_VANISH: {
+        /* BTLV_MCSS_SetVanishMode: 0 shown, 1 hidden, 2 flipped, 3 hidden
+         * (held when it already was), 4 shown unless held; 5 the vanish
+         * states saved before (not modelled: as it is) */
+        int ids[8];
+        int n = resolve_list(vm_arg(), ids), mode = vm_arg();
+
+        for (i = 0; i < n && mode != 5; i++) {
+            int q = ids[i];
+
+            if (!is_loaded(q))
+                continue;
+            switch (mode) {
+            case 0: S.vanish[q] = 0; break;
+            case 1: S.vanish[q] = 1; break;
+            case 2: S.vanish[q] = !S.vanish[q]; break;
+            case 3:
+                if (S.vanish[q])
+                    S.vheld[q] = 1;
+                S.vanish[q] = 1;
+                break;
+            case 4:
+                if (S.vheld[q])
+                    S.vheld[q] = 0;
+                else
+                    S.vanish[q] = 0;
+                break;
+            }
+        }
+        return S.result;
+    }
+    case OP_ANIM_IDX:
+        /* BTLV_EFFVM_CmdSetPokeAnimIndex: the multi-cell sequence, from its
+         * start (the sequence count is the sprite's own: the caller checks) */
+        a = vm_arg(); b = vm_arg();
+        if (is_loaded(a)) {
+            S.anim[a] = b;
+            S.anim_t[a] = 0;
+        }
+        return S.result;
     case OP_DEL_POKE: {
         int ids[8];
         int n = resolve_list(vm_arg(), ids);
@@ -2296,8 +2364,14 @@ static void vm_control(void)
             S.state = ST_STOP;
             return;
         }
-        if (g_trace)
-            fprintf(stderr, "f%d op %u\n", S.nframes, op);
+        if (g_trace) {
+            unsigned k;
+
+            fprintf(stderr, "f%d op %u", S.nframes, op);
+            for (k = 0; k < k_nargs[op] && in_script(S.pc, 4u * (k + 1u)); k++)
+                fprintf(stderr, " %d", (int)rd_u32(S.pc + 4u * k));
+            fputc('\n', stderr);
+        }
         if (vm_exec((int)op) == 1)
             return;
         if (S.state == ST_STOP)
@@ -2347,11 +2421,25 @@ static void frame_record(void)
             f->trainer_mask |= 1u << i;
         }
     }
+    for (i = 0; i < 14; i++) {
+        if (!S.loaded[i])
+            continue;
+        f->size[i] = S.shadow[i] / 4096.0f;
+        f->alpha[i] = (unsigned char)(S.alpha[i] < 0 ? 0 : S.alpha[i] > 31 ? 31 : S.alpha[i]);
+        f->fade[i] = (unsigned char)(S.sfade[i].cur < 0 ? 0 : S.sfade[i].cur > 16 ? 16 : S.sfade[i].cur);
+        f->fade_color[i] = (unsigned short)S.sfade[i].color;
+        f->anim[i] = (unsigned char)S.anim[i];
+        f->anim_t[i] = (unsigned short)(S.anim_t[i] > 0xFFFF ? 0xFFFF : S.anim_t[i]);
+        if (S.vanish[i])
+            f->vanish_mask |= 1u << i;
+    }
 }
 
 /* One BTLV_EFFECT_Main. */
 static void frame_run(void)
 {
+    int i;
+
     vm_control();
     if (S.ptc_load_pending)
         S.ptc_load_pending = 0;     /* BTLV_EFFVM_ParticleLoadTaskMain finishes in the frame it is made */
@@ -2363,6 +2451,8 @@ static void frame_run(void)
     cam_step(&S.cam);
     emitters_run();
     frame_record();
+    for (i = 0; i < 14; i++)
+        S.anim_t[i]++;          /* MCSS_Main ticks the animations once a frame */
 }
 
 static void sim_reset(void)
@@ -2438,28 +2528,42 @@ static void sim_scene_init(void)
 typedef struct EntryStep {
     int effect;             /* offset from the first non-move effect */
     int attacker;           /* 0xFF: the effect has no user */
-    unsigned loaded;        /* slot bit mask: bit 9 the foe trainer, bit 1 the foe, bit 0 the player's Pokemon */
+    unsigned loaded;        /* slot bit mask: bit 9 the foe trainer, bit 8 the player, bit 1 the
+                               foe, bit 0 the player's Pokemon */
+    unsigned fresh;         /* slots whose sprite is a new one (a Pokemon sent out
+                               in place of another) */
 } EntryStep;
 
+/* the player's trainer (slot 8) that effect 1 adds at the send-out's point
+ * stays for effect 3, which throws the ball with it (its slot-8 branch) */
 static const EntryStep k_wild[] = {
-    { 0, 1, 1u << 1 },
-    { 1, NO_POKE, 1u << 1 },
-    { 3, NO_POKE, (1u << 1) | (1u << 0) },
+    { 0, 1, 1u << 1, 0 },
+    { 1, NO_POKE, 1u << 1, 0 },
+    { 3, NO_POKE, (1u << 1) | (1u << 0) | (1u << 8), 0 },
 };
 
 static const EntryStep k_trainer[] = {
-    { 6, 1, 1u << 9 },
-    { 7, 1, 1u << 9 },
-    { 8, 1, 1u << 9 },
-    { 1, NO_POKE, 1u << 1 },
-    { 3, NO_POKE, (1u << 1) | (1u << 0) },
+    { 6, 1, 1u << 9, 0 },
+    { 7, 1, 1u << 9, 0 },
+    { 8, 1, 1u << 9, 0 },
+    { 1, NO_POKE, 1u << 1, 0 },
+    { 3, NO_POKE, (1u << 1) | (1u << 0) | (1u << 8), 0 },
 };
 
 /* a trainer's message mid-battle (btl_client.c): the trainer slides in
  * (effect 63), speaks, slides out (64); both Pokemon stay on the field */
 static const EntryStep k_mid[] = {
-    { 63, NO_POKE, (1u << 1) | (1u << 0) },
-    { 64, NO_POKE, (1u << 1) | (1u << 0) | (1u << 9) },
+    { 63, NO_POKE, (1u << 1) | (1u << 0), 0 },
+    { 64, NO_POKE, (1u << 1) | (1u << 0) | (1u << 9), 0 },
+};
+
+/* the player's switch (btlv_scu.c): BTLV_SCU_StartMonWithdraw plays effect
+ * 59 on the Pokemon going back and deletes its sprite; "Go! ..." and
+ * BTLV_SCU_StartMonSendOut plays effect 60 on the same place, which adds
+ * the next one's sprite */
+static const EntryStep k_switch[] = {
+    { 59, 0, (1u << 1) | (1u << 0), 0 },
+    { 60, 0, (1u << 1) | (1u << 0), 1u << 0 },
 };
 
 /* gBtlvIntroPickTableB: the six camera moves of the command wait (BTLV_EFFECT_UpdateIntroInput) */
@@ -2501,6 +2605,7 @@ static int play_entry(const EntryStep *steps, int n, int id)
             S.frames[0] = S.frames[S.nframes - 1];
             S.nframes = 1;
         }
+        scene_set(steps[i].loaded & ~steps[i].fresh);
         scene_set(steps[i].loaded);
         rc = play_effect(MOVE_END + steps[i].effect, steps[i].attacker, NO_POKE, 0);
     }
@@ -2535,6 +2640,22 @@ int bcam_sim_run(int kind, int id, int attacker, int defender, BcamFrame **frame
         break;
     case BCAM_TRAINER_MID:
         rc = play_entry(k_mid, (int)(sizeof(k_mid) / sizeof(k_mid[0])), id);
+        break;
+    case BCAM_SWITCH:
+        rc = play_entry(k_switch, (int)(sizeof(k_switch) / sizeof(k_switch[0])), -1);
+        break;
+    case BCAM_BALL:
+        /* BTL_CLIENT_StepThrowBall: BTLV_EFFECT_StartEffectWithColor(the foe,
+         * the ball, the shakes, caught, critical) runs effect 9 with the
+         * user 0 and the target the foe */
+        scene_set((1u << 1) | (1u << 0));
+        S.side = 3;
+        S.arg_a = 0;
+        S.arg_b = 0;
+        S.type_code = id > 0 ? id : 4;
+        rc = sim_start(MOVE_END + 9, 0, 1, 0);
+        if (rc == 0)
+            sim_play();
         break;
     case BCAM_IDLE:
         for (i = 0; i < IDLE_MOVES && rc == 0; i++) {

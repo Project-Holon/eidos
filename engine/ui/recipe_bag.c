@@ -945,7 +945,7 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         caches_clear();
         g_wheel_pending = 0;
     }
-    hints_y = ch - 17;
+    hints_y = ch - ui_bar_h(c);
 
     /* ---- the modal ------------------------------------------------- */
     mw = iclamp(cw * 90 / 100, 330, 520);

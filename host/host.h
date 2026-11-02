@@ -80,6 +80,11 @@ extern unsigned host_gl_window_fbo;
  * bw_pick_rom. */
 int host_pick_rom(const char *title, char *out, size_t n);
 
+#if defined(__APPLE__)
+/* host/ios_view.m: the home indicator hidden, its swipe deferred (iOS). */
+void host_ios_view_setup(void);
+#endif
+
 /* host/fiber.c, host/wasi.c */
 void host_fibers_init(void);
 #if defined(__ANDROID__)

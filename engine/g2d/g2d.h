@@ -189,6 +189,10 @@ typedef struct G2dFrame {
 } G2dFrame;
 
 int  g2d_nanr_parse(G2dNanr *out, const u8 *data, u32 size);
+/* An NMAR (multi-cell animation, magic RAMN): the same bank, each frame's
+ * cell_idx a multi-cell (an NMCR group) and its SRT that multi-cell's move.
+ * Freed with g2d_nanr_free. */
+int  g2d_nmar_parse(G2dNanr *out, const u8 *data, u32 size);
 void g2d_nanr_free(G2dNanr *nanr);
 
 /* 0 on success, -1 when the sequence has no such frame. */
@@ -1078,6 +1082,11 @@ int g2d_hw_main_graphics_dsmem(const u8 *rgba3d, u8 *out);
  * the 3D layer (G2dFrameDesc.blend_over_3d): when it did not, a compose of
  * the same screen over another 3D layer has the same 2D everywhere. */
 int g2d_hw_main_blended_over_3d(void);
+/* Main-engine BGs (bit n: BGn; BG0 only while it is not the 3D layer) and OBJs (bit 4) left
+ * out of the composed screens: windows the port's interface draws itself
+ * (the one-screen text boxes, engine/ui/textbox.c; the place-name banner's
+ * letters). 0 shows all. */
+void g2d_hw_hide_main_bgs(u32 mask);
 /* The next main-engine compose at DS size over a 3D layer also writes
  * `out` (256 x 192 RGBA8): the screen as g2d_hw_main_graphics_dsmem gives
  * it over an opaque black 3D layer, from the same pass.  NULL cancels.

@@ -140,6 +140,8 @@ static struct {
     char path[1100];
     int path_set;
     u32 writes;                     /* successful file writes               */
+    u32 failures;                   /* failed writes since the last success */
+    int hold;                       /* writes stay in memory (save slots)   */
 } g_fs;
 
 /* ------------------------------------------------------------------ */
@@ -203,7 +205,7 @@ int bw_arm7_backup_flush(void)
 {
     const char *path;
 
-    if (!g_fs.dirty)
+    if (!g_fs.dirty || g_fs.hold)
         return 0;
     path = save_path();
     if (path[0] == '\0') {
@@ -213,10 +215,16 @@ int bw_arm7_backup_flush(void)
         return -1;
     }
     if (bw_save_write_atomic(path, g_fs.image, g_fs.image_size) != 0) {
-        fprintf(stderr, "eidos: backup: cannot write %s; will retry\n", path);
+        if (g_fs.failures++ == 0) {
+            fprintf(stderr, "eidos: backup: cannot write %s; will retry\n", path);
+        }
         g_fs.changed_at = time(NULL);
         return -1;
     }
+    if (g_fs.failures != 0) {
+        fprintf(stderr, "eidos: backup: written %s after %u failed tries\n", path, g_fs.failures);
+    }
+    g_fs.failures = 0;
     g_fs.dirty = 0;
     g_fs.writes++;
     return 0;
@@ -425,9 +433,20 @@ void bw_arm7_fs_init(void)
     bw_pxi_arm7_set_callback(BW_PXI_TAG_FS, fs_callback);
 }
 
+extern void bw_slots_dropped(void) __attribute__((weak));
+
 void bw_arm7_fs_reset(void)
 {
+    if (g_fs.hold) {
+        /* a reset before the held new game was saved: nothing is written */
+        g_fs.hold = 0;
+        g_fs.dirty = 0;
+    }
     (void)bw_arm7_backup_flush();
+    /* the new game's slot: kept when its file is on the disk, else the
+     * save in force before it */
+    if (bw_slots_dropped != NULL)
+        bw_slots_dropped();
     g_fs.type = 0;
     g_fs.expect_arg = 0;
 }
@@ -468,6 +487,7 @@ u32 bw_arm7_fs_init_word(void)
 void bw_arm7_backup_set_path(const char *path)
 {
     (void)bw_arm7_backup_flush();
+    g_fs.hold = 0;                      /* held writes are dropped          */
     if (path == NULL || strlen(path) >= sizeof g_fs.path) {
         g_fs.path_set = 0;
     } else {
@@ -490,6 +510,7 @@ void bw_arm7_backup_switch_path(const char *path)
     long n;
 
     (void)bw_arm7_backup_flush();
+    g_fs.hold = 0;                      /* held writes are dropped          */
     if (path == NULL || strlen(path) >= sizeof g_fs.path) {
         g_fs.path_set = 0;
     } else {
@@ -504,6 +525,16 @@ void bw_arm7_backup_switch_path(const char *path)
         g_fs.loaded = 1;
     }
     g_fs.dirty = 0;
+}
+
+/* While held, the chip's writes stay in memory and no file is written;
+ * releasing writes what changed.  A path change while held drops it: a
+ * new game left before its first save leaves no file behind. */
+void bw_arm7_backup_hold(int on)
+{
+    g_fs.hold = on != 0;
+    if (!g_fs.hold)
+        (void)bw_arm7_backup_flush();
 }
 
 void bw_arm7_backup_set_flush_delay(int seconds)
@@ -532,4 +563,11 @@ int bw_arm7_backup_dirty(void)
 u32 bw_arm7_backup_writes(void)
 {
     return g_fs.writes;
+}
+
+/* Failed file writes since the last one that worked: the save is only in
+ * memory while this is not 0 (the interface warns the player). */
+u32 bw_arm7_backup_failures(void)
+{
+    return g_fs.failures;
 }

@@ -716,42 +716,85 @@ float bmap_intro_progress(const float eye[3])
     return w < 0.0f ? 0.0f : w > 1.0f ? 1.0f : w;
 }
 
-float bmap_far_depth(const float p[3])
+float bmap_view_depth(const float eye[3], const float target[3], const float p[3])
 {
     float f[3], len = 0.0f, d = 0.0f;
     int i;
 
     for (i = 0; i < 3; i++) {
-        f[i] = k_intro_target[i] - k_intro_eye[i];
+        f[i] = target[i] - eye[i];
         len += f[i] * f[i];
     }
     len = sqrtf(len);
+    if (len <= 0.0f) {
+        return 0.0f;
+    }
     for (i = 0; i < 3; i++) {
-        d += (p[i] - k_intro_eye[i]) * f[i] / len;
+        d += (p[i] - eye[i]) * f[i] / len;
     }
     return d;
-}
-
-float bmap_mon_size(const float p[3], float prog, float far_size)
-{
-    return (1.0f - prog) * bmap_cmd_depth(p) + prog * far_size * bmap_far_depth(p);
 }
 
 float bmap_cmd_depth(const float p[3])
 {
-    static const float tgt[3] = { 0.0f, 2.6f, 0.0f };
-    float f[3], len = 0.0f, d = 0.0f;
+    return bmap_view_depth(k_cmd_eye, k_cmd_target, p);
+}
+
+float bmap_mon_size(const float p[3])
+{
+    return bmap_cmd_depth(p);
+}
+
+void bmap_rest_reset(BmapRest *r)
+{
     int i;
 
-    for (i = 0; i < 3; i++) {
-        f[i] = tgt[i] - k_cmd_eye[i];
-        len += f[i] * f[i];
+    for (i = 0; i < BMAP_REST_MAX; i++) {
+        r->rest[i] = 0.0f;
     }
-    len = sqrtf(len);
-    for (i = 0; i < 3; i++) {
-        d += (p[i] - k_cmd_eye[i]) * f[i] / len;
+    if (r->far <= 0.0f) {
+        r->far = 0.5f;
     }
-    return d;
+    r->still = r->far_still = 0;
+}
+
+void bmap_rest_frame(BmapRest *r, const float game_eye[3])
+{
+    float dx = game_eye[0] - r->last_eye[0], dy = game_eye[1] - r->last_eye[1], dz = game_eye[2] - r->last_eye[2];
+
+    if (r->far <= 0.0f) {
+        r->far = 0.5f;
+    }
+    /* did the game's camera move lately: a size change now is the scripts'
+     * fake */
+    r->still = dx * dx + dy * dy + dz * dz > 1e-8f ? 0 : r->still + 1;
+    r->moving = r->still < BMAP_REST_STILL;
+    memcpy(r->last_eye, game_eye, sizeof r->last_eye);
+    r->prog = bmap_intro_progress(game_eye);
+    r->far_still = r->prog > 0.99f && !r->moving ? r->far_still + 1 : 0;
+}
+
+float bmap_rest_sprite(BmapRest *r, int i, float size)
+{
+    float *rest;
+
+    if (i < 0 || i >= BMAP_REST_MAX) {
+        return size;
+    }
+    rest = &r->rest[i];
+    if (size <= 0.0f) {
+        *rest = 0.0f;               /* gone: it comes back from nothing */
+    } else if (r->moving) {
+        *rest = size;
+    } else if (*rest <= 0.0f) {
+        /* growing from nothing: toward the scripts' size here (a pop above
+         * it and back is the script's own) */
+        *rest = 1.0f + r->prog * (r->far - 1.0f);
+    }
+    if (r->far_still > 30 && size > 0.05f && size == *rest) {
+        r->far = size;              /* learnt: the size at rest all the way back */
+    }
+    return *rest;
 }
 
 /* A camera moved by the settings `in`, in the part `w` (0 to 1).  The zoom

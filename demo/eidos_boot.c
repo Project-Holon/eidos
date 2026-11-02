@@ -1176,19 +1176,20 @@ static void boot_ui_frame(BootRun *run)
     memset(&view, 0, sizeof(view));
     view.zoom = 1.0f;
     {
-        /* the interface lives in the safe area (a phone's notch, its
-         * corners): the pointer is read from its corner */
-        int sx, sy;
+        /* the interface covers the whole window and is told what the
+         * system covers on each side (a phone's notch, its corners, the
+         * home indicator), where it keeps nothing to read or touch */
+        int sx, sy, sw, sh;
 
-        eidos_platform_safe_area(run->plat, &sx, &sy, &in.win_w, &in.win_h);
-        (void)eidos_platform_mouse(run->plat, &in.mouse);
-        if (in.mouse.x >= 0) {
-            in.mouse.x -= sx;
-            in.mouse.y -= sy;
-            if (in.mouse.x < 0 || in.mouse.y < 0 || in.mouse.x >= in.win_w || in.mouse.y >= in.win_h) {
-                in.mouse.x = in.mouse.y = -1;
-            }
+        eidos_platform_window_size(run->plat, &in.win_w, &in.win_h);
+        eidos_platform_safe_area(run->plat, &sx, &sy, &sw, &sh);
+        if (sw > 0 && sh > 0) {
+            in.safe_l = sx;
+            in.safe_t = sy;
+            in.safe_r = in.win_w - sx - sw;
+            in.safe_b = in.win_h - sy - sh;
         }
+        (void)eidos_platform_mouse(run->plat, &in.mouse);
     }
     in.buttons = eidos_platform_buttons(run->plat);
     in.frame = bw_input_frame_number();

@@ -5,8 +5,7 @@
  *
  * The Pokedex is one proc (overlay 212) that runs a private proc stack; the
  * screen on top of that stack is the splash (211), the list (209), the entry
- * (208) or the search (210).  The recipe matches the first three and lets the
- * search fall back to the two DS screens.  It draws a red and black modal (the
+ * (208) or the search (210, run_search).  It draws a red and black modal (the
  * device's colours) over the blurred world and reads everything from the
  * game's own state:
  *
@@ -36,6 +35,7 @@
 #include "assets.h"
 #include "port.h"
 #include "input.h"
+#include "textbox.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define DEX_WEAK __attribute__((weak))
@@ -103,7 +103,7 @@ static const void *rdptr(const void *base, u32 off)
 /* What the Pokedex shows now                                          */
 /* ------------------------------------------------------------------ */
 
-enum { DEX_NONE = 0, DEX_SPLASH, DEX_LIST, DEX_ENTRY, DEX_LOADING };
+enum { DEX_NONE = 0, DEX_SPLASH, DEX_LIST, DEX_ENTRY, DEX_LOADING, DEX_SEARCH };
 
 typedef struct DexNow {
     int kind;
@@ -116,6 +116,8 @@ typedef struct DexNow {
     int visible;                /* rows the game's list shows (FrameList)   */
     void *fl;                   /* the game's FrameList, for the hover      */
     void *save;
+    /* search: its work (ZknSearchWork, ov210/zknsearch_types.h) */
+    const u8 *sw;
     /* entry */
     int species, page;          /* page 1 info, 2 area, 3 voice, 4 form     */
     int index, total, number;
@@ -228,8 +230,11 @@ static int dex_probe(DexNow *v)
                 v->save = ZUKAN_SAVE_GetFromGameData((void *)rdptr(pw, ZD_GAMEDATA));
             }
         }
+    } else if (ov == 210) {
+        v->sw = (const u8 *)rdptr(child, PR_WORK);
+        v->kind = v->sw != NULL ? DEX_SEARCH : DEX_LOADING;
     } else {
-        v->kind = DEX_NONE;     /* the search (210): the DS screens */
+        v->kind = DEX_NONE;
         return 0;
     }
     return 1;
@@ -416,7 +421,7 @@ static int iclamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v;
 
 static void dex_layout(EidosUiCtx *c, DexLayout *L)
 {
-    int W = c->canvas->w, H = c->canvas->h - 17;
+    int W = c->canvas->w, H = c->canvas->h - ui_bar_h(c);
 
     L->mw = iclamp(W * 9 / 10, imin(W - 8, 300), 560);
     L->mh = iclamp(H * 9 / 10, imin(H - 8, 170), 320);
@@ -446,7 +451,7 @@ typedef struct DexHint {
 
 static void dex_hints(EidosUiCtx *c, const DexHint *h, int n)
 {
-    int i, x = 6, y = c->canvas->h - 17;
+    int i, x = 6, y = c->canvas->h - ui_bar_h(c);
 
     ui_fill(c, 0, y, c->canvas->w, 17, UI_BODY2, 235);
     ui_fill(c, 0, y, c->canvas->w, 1, UI_DEX2, 255);
@@ -476,7 +481,7 @@ static void dex_hints(EidosUiCtx *c, const DexHint *h, int n)
 /* A click outside the modal is B (the tap at the game's back button). */
 static void outside_back(EidosUiCtx *c, const DexLayout *L, int tx, int ty)
 {
-    int W = c->canvas->w, H = c->canvas->h - 17;
+    int W = c->canvas->w, H = c->canvas->h - ui_bar_h(c);
     EidosUiRect r[4] = {
         { 0, 0, W, L->my },
         { 0, L->my + L->mh, W, H - L->my - L->mh },
@@ -931,7 +936,7 @@ static void run_splash(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
     dex_modal(c, &L, "", "");
     ui_text(c, L.bx + (L.bw - ui_text_w("POK\xC3\x89" "DEX", UI_FONT_LARGE) * 3) / 2,
             L.by + L.bh / 2 - 22, "POK\xC3\x89" "DEX", UI_DEX, UI_DEX3, UI_FONT_LARGE, 3);
-    all.x = 0; all.y = 0; all.w = c->canvas->w; all.h = c->canvas->h - 17;
+    all.x = 0; all.y = 0; all.w = c->canvas->w; all.h = c->canvas->h - ui_bar_h(c);
     if (v->kind == DEX_SPLASH && (eidos_ui_hit(all) & EIDOS_UI_CLICK)) {
         eidos_ui_tap(128, 96, 3);
     }
@@ -945,6 +950,218 @@ static void run_splash(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
 /* ------------------------------------------------------------------ */
 /* The recipe                                                          */
 /* ------------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------------ */
+/* The search                                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Pokedex search (overlay 210, ov210/zknsearch_*.c; mock-up
+ * "dex_search") in the Pokedex's window: the game's rows (ORDER, NAME,
+ * TYPE, COLOR, FORM) as tiles with their values in the game's letters,
+ * RESET and START, and the game's prompt as a system box.  A row opened
+ * shows the game's own list of choices (the FrameList it fills) with the
+ * marks the game puts on the chosen ones.  Every click taps the game's own
+ * button or row where the game put it; the keys stay the game's.
+ *
+ * ZknSearchWork: bmpWin[16] 0x14C (8 bytes each: 0 the title, 1 the
+ * prompt, 2..6 the row names, 7..10 the values of ORDER, NAME, TYPE and
+ * COLOR, 11 START), frameList 0x1E0 (set while a row's list shows),
+ * entries[50] 0x1E4 (Strbufs: the list's choices), cursorIndex 0x2C1 (the
+ * row the keys are on).  FrameList: cursor 0x5C, visibleCount 0x5E,
+ * scrollPos 0x62.  The lower screen: the rows at (192, 12 + 24 * row),
+ * FORM at 116, RESET (26, 155), START (192, 155), back (244, 180); a
+ * list's rows at (190, 12 + 24 * row), its page arrows (198, 179) and
+ * (219, 179).
+ */
+extern u16 *STRBUF_GetChars(void *strbuf) DEX_WEAK;
+extern u16  STRBUF_GetLength(void *strbuf) DEX_WEAK;
+
+static const void *zs_win(const u8 *sw, int i)
+{
+    const u8 *win = (const u8 *)rdptr(sw, 0x14C + 8u * (u32)i);
+
+    return win != NULL ? ui_bmpwin_bmp(win) : NULL;
+}
+
+static void zs_text(const u8 *sw, int i, char *out, int cap)
+{
+    u8 *sb = (u8 *)rdptr(sw, 0x1E4 + 4u * (u32)i);
+    const u16 *u;
+    int n = 0, k, len;
+
+    out[0] = '\0';
+    if (sb == NULL || STRBUF_GetChars == NULL || STRBUF_GetLength == NULL || (u = STRBUF_GetChars(sb)) == NULL) {
+        return;
+    }
+    len = STRBUF_GetLength(sb);
+    for (k = 0; k < len && u[k] != 0xFFFFu; k++) {
+        if (u[k] == 0xF000u) {
+            k += 2 + (k + 2 < len ? u[k + 2] : 0);
+            continue;
+        }
+        if (u[k] >= 0xD800u && u[k] <= 0xF8FFu) {
+            continue;
+        }
+        n = put_utf8(out, n, cap, u[k]);
+    }
+    out[n] = '\0';
+}
+
+/* The game's mark on the list row at DS y: a red tick in the box at the
+ * row's left (x 128..142). */
+static int zs_marked(const EidosUiFrame *in, int y)
+{
+    int x, yy, red = 0;
+
+    if (in->screen_rgba[1] == NULL || y < 6 || y > 180) {
+        return 0;
+    }
+    for (yy = y - 6; yy <= y + 6; yy++) {
+        for (x = 128; x < 142; x++) {
+            const u8 *p = in->screen_rgba[1] + ((size_t)yy * 256 + (size_t)x) * 4;
+
+            red += p[0] > 180 && p[1] < 90 && p[2] < 90;
+        }
+    }
+    return red > 6;
+}
+
+/* A battle tile; the hit state, 0x100 when it is lit. */
+static int zs_tile(EidosUiCtx *c, int x, int y, int w, int h, int lit)
+{
+    EidosUiRect r;
+    int st, rr, lift;
+
+    r.x = x; r.y = y; r.w = w; r.h = h;
+    st = eidos_ui_hit(r);
+    lit = lit || (st & EIDOS_UI_HOVER);
+    lift = lit ? -1 : 0;
+    ui_panel(c, x, y + lift, w, h, UI_CUT_TL | UI_CUT_BR, 5, lit ? 0x05343Eu : UI_BODY, lit ? 0x008BACu : UI_EDGE, 242);
+    for (rr = 3; rr < h - 3; rr++) {
+        int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+        if (left < 6) {
+            ui_fill(c, x + left, y + lift + rr, 6 - left, 1, lit ? 0x008BACu : UI_EDGE2, 255);
+        }
+    }
+    return st | (lit ? 0x100 : 0);
+}
+
+static void run_search(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, const DexNow *v)
+{
+    static const DexHint hints[] = { { "A", "Choose", BW_KEY_A, 0, 0 }, { "B", "Back", 0, 244, 180 } };
+    const u8 *sw = v->sw, *fl = (const u8 *)rdptr(sw, 0x1E0);
+    DexLayout L;
+    int i, x, y, w, rowh = 26, lit_row = eidos_ui_keys_lit() ? sw[0x2C1] : -1;
+    int bw = 0, bh = 0;
+
+    view->mode = EIDOS_VIEW_WORLD;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+    dex_layout(c, &L);
+    dex_modal(c, &L, "", "");
+    /* the game's title where the header's sub-title goes */
+    if (ui_letters(NULL, zs_win(sw, 0), 0, 0, 0, 0, &bw, &bh)) {
+        ui_letters(c, zs_win(sw, 0), L.mx + 80, L.my + 8, UI_WHITE, UI_DEX3, NULL, NULL);
+    }
+    x = L.bx + 6;
+    w = L.bw - 12;
+    y = L.by + 2;
+    if (fl == NULL) {
+        /* the rows, the values at their right */
+        static const int row_y[5] = { 12, 36, 60, 84, 116 };
+
+        for (i = 0; i < 5; i++) {
+            int st = zs_tile(c, x, y + i * (rowh + 3), w, rowh, i == lit_row);
+            int dy = (st & 0x100) ? -1 : 0;
+            int vw = 0, vh = 0;
+
+            ui_letters(c, zs_win(sw, 2 + i), x + 12, y + i * (rowh + 3) + dy + 6, UI_WHITE, 0x313131u, NULL, NULL);
+            if (i < 4 && ui_letters(NULL, zs_win(sw, 7 + i), 0, 0, 0, 0, &vw, &vh)) {
+                ui_letters(c, zs_win(sw, 7 + i), x + w - 14 - vw, y + i * (rowh + 3) + dy + (rowh - vh) / 2,
+                           UI_WHITE, 0x313131u, NULL, NULL);
+            }
+            if (st & EIDOS_UI_CLICK) {
+                eidos_ui_tap(192, row_y[i], 3);
+            }
+        }
+        y += 5 * (rowh + 3) + 2;
+        {
+            int half = (w - 4) / 2, st, dy, sw2 = 0, sh2 = 0;
+
+            st = zs_tile(c, x, y, half, rowh, lit_row == 5);
+            dy = (st & 0x100) ? -1 : 0;
+            ui_text(c, x + 12, y + dy + ui_text_y(rowh, UI_FONT_LARGE), "RESET", UI_WHITE, 0x313131u, UI_FONT_LARGE, 1);
+            if (st & EIDOS_UI_CLICK) {
+                eidos_ui_tap(26, 155, 3);
+            }
+            st = zs_tile(c, x + half + 4, y, half, rowh, lit_row == 6);
+            dy = (st & 0x100) ? -1 : 0;
+            if (ui_letters(NULL, zs_win(sw, 11), 0, 0, 0, 0, &sw2, &sh2)) {
+                ui_letters(c, zs_win(sw, 11), x + half + 16, y + dy + (rowh - sh2) / 2, UI_WHITE, 0x313131u, NULL, NULL);
+            }
+            if (st & EIDOS_UI_CLICK) {
+                eidos_ui_tap(192, 155, 3);
+            }
+        }
+    } else {
+        /* a row's list: the game's choices, its marks, its cursor */
+        int vis = (int)rd16p(fl, 0x5E), cur = (int)(s16)rd16p(fl, 0x5C), scroll = (int)(s16)rd16p(fl, 0x62);
+        int total = 0, cols = 2, cw2 = (w - 4) / 2;
+        char t[48];
+
+        for (i = 0; i < 50 && rdptr(sw, 0x1E4 + 4u * (u32)i) != NULL; i++) {
+            total++;
+        }
+        if (vis < 1 || vis > 8) vis = 7;
+        for (i = 0; i < vis && scroll + i < total; i++) {
+            int ry = y + (i / cols) * (rowh + 3), rx = x + (i % cols) * (cw2 + 4);
+            int st = zs_tile(c, rx, ry, cw2, rowh, i == cur && eidos_ui_keys_lit());
+            int dy = (st & 0x100) ? -1 : 0, mark = zs_marked(in, 12 + 24 * i);
+
+            zs_text(sw, scroll + i, t, (int)sizeof t);
+            ui_panel(c, rx + 12, ry + dy + 5, 12, 12, 0, 0, mark ? 0x008BACu : UI_BODY2, UI_EDGE2, 255);
+            if (mark) {
+                ui_fill(c, rx + 15, ry + dy + 10, 2, 2, UI_WHITE, 255);
+                ui_fill(c, rx + 17, ry + dy + 12, 2, 2, UI_WHITE, 255);
+                ui_fill(c, rx + 19, ry + dy + 10, 2, 2, UI_WHITE, 255);
+                ui_fill(c, rx + 21, ry + dy + 8, 2, 2, UI_WHITE, 255);
+            }
+            ui_text(c, rx + 30, ry + dy + ui_text_y(rowh, UI_FONT_LARGE), t, UI_WHITE, 0x313131u, UI_FONT_LARGE, 1);
+            if (st & EIDOS_UI_CLICK) {
+                eidos_ui_tap(190, 12 + 24 * i, 3);
+            }
+        }
+        if (total > vis) {
+            int ay = y + ((vis + 1) / cols) * (rowh + 3);
+
+            if (zs_tile(c, x, ay, cw2, rowh, 0) & EIDOS_UI_CLICK) {
+                eidos_ui_tap(198, 179, 3);
+            }
+            ui_text(c, x + 12, ay + ui_text_y(rowh, UI_FONT_LARGE), "<<", UI_WHITE, 0x313131u, UI_FONT_LARGE, 1);
+            if (zs_tile(c, x + cw2 + 4, ay, cw2, rowh, 0) & EIDOS_UI_CLICK) {
+                eidos_ui_tap(219, 179, 3);
+            }
+            ui_text(c, x + cw2 + 16, ay + ui_text_y(rowh, UI_FONT_LARGE), ">>", UI_WHITE, 0x313131u, UI_FONT_LARGE, 1);
+        }
+    }
+    /* the game's prompt */
+    {
+        const u8 *pw = (const u8 *)rdptr(sw, 0x14C + 8u);
+        int ph = pw != NULL ? ui_textbox_h(pw) : 0;
+
+        if (ph > 0) {
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, L.bx, L.my + L.mh - 6 - ph, L.bw, pw, -1, -1);
+        }
+    }
+    if (eidos_ui_right_click()) {
+        eidos_ui_tap(244, 180, 3);
+    }
+    dex_hints(c, hints, 2);
+}
 
 static int g_last_kind = -1;    /* the dex screen shown last frame */
 
@@ -1029,6 +1246,9 @@ static void dex_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         break;
     case DEX_ENTRY:
         run_entry(c, view, in, &v);
+        break;
+    case DEX_SEARCH:
+        run_search(c, view, in, &v);
         break;
     default:
         run_splash(c, view, in, &v);

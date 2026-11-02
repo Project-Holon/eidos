@@ -444,14 +444,13 @@ void g2d_ncer_free(G2dNcer *ncer)
  * what the bank's own fixup routine at 0x02062688 adds base addresses
  * into, which is how the layout is pinned.
  */
-int g2d_nanr_parse(G2dNanr *out, const u8 *data, u32 size)
+static int abnk_parse(G2dNanr *out, const u8 *data, u32 size, u32 magic)
 {
     u32 body, body_size;
     u32 i;
 
     memset(out, 0, sizeof(*out));
-    if (find_block(data, size, FOURCC('R', 'N', 'A', 'N'),
-                   FOURCC('K', 'N', 'B', 'A'), &body, &body_size) != 0) {
+    if (find_block(data, size, magic, FOURCC('K', 'N', 'B', 'A'), &body, &body_size) != 0) {
         return -1;
     }
     if (body_size < 16) {
@@ -485,6 +484,17 @@ int g2d_nanr_parse(G2dNanr *out, const u8 *data, u32 size)
         out->sequences[i].frames_ofs = bw_rd32(p + 12);
     }
     return 0;
+}
+
+int g2d_nanr_parse(G2dNanr *out, const u8 *data, u32 size)
+{
+    return abnk_parse(out, data, size, FOURCC('R', 'N', 'A', 'N'));
+}
+
+/* NMAR (RAMN): the same animation bank, its frames naming multi-cells. */
+int g2d_nmar_parse(G2dNanr *out, const u8 *data, u32 size)
+{
+    return abnk_parse(out, data, size, FOURCC('R', 'A', 'M', 'N'));
 }
 
 void g2d_nanr_free(G2dNanr *nanr)

@@ -1401,6 +1401,24 @@ static void gpu_fill(Engine *e, const G2dWindows *windows, const G2dBlend *blend
 /* The main engine's last compose blended 2D over 3D (g2d_hw_main_blended_over_3d). */
 static int g_main_blend3d = 1;
 
+/* Main-engine BGs the port's interface draws itself (g2d_hw_hide_main_bgs). */
+static volatile u32 g_hide_main_bgs;
+
+void g2d_hw_hide_main_bgs(u32 mask)
+{
+    g_hide_main_bgs = mask & 0x1Fu;     /* BG0..BG3 and the OBJs */
+}
+
+static u32 shown_dispcnt(const Engine *e, u32 dispcnt)
+{
+    u32 hide = g_hide_main_bgs;
+
+    if (dispcnt & 8u) {
+        hide &= ~1u;                    /* BG0 is the 3D layer: never taken */
+    }
+    return e->main ? dispcnt & ~(hide << 8) : dispcnt;
+}
+
 int g2d_hw_main_blended_over_3d(void)
 {
     return g_main_blend3d;
@@ -1536,7 +1554,7 @@ static int render_engine(const G2dHwState *hw, int engine, u32 scale,
         g_gpu_skipped[exp_slot] = 0;
     }
     e->io = hw->io + (e->main ? 0u : REG_SUB_BASE);
-    e->dispcnt = reg32(e, REG_DISPCNT);
+    e->dispcnt = shown_dispcnt(e, reg32(e, REG_DISPCNT));
     dmode = (e->dispcnt >> 16) & 3u;
     if (g_gpu_export && exp_slot >= 0 && dmode == 1u) {
         e->exp_slot = exp_slot;     /* only a screen that shows the graphics */
@@ -2057,7 +2075,7 @@ int g2d_hw_objs_dsmem(int screen, u8 *out)
     e->scale = 1u;
     e->main = (screen == 0) == main_on_top;
     e->io = hw.io + (e->main ? 0u : REG_SUB_BASE);
-    e->dispcnt = reg32(e, REG_DISPCNT);
+    e->dispcnt = shown_dispcnt(e, reg32(e, REG_DISPCNT));
     g2d_tables_init();
     if (alloc_engine(e) != 0) {
         rc = -1;

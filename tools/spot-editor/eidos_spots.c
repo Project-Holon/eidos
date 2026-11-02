@@ -128,7 +128,37 @@ typedef struct ClipFrame {
     int np;
     int slot[14];                   /* 0..7 the Pokemon, 8..13 the trainers */
     float pos[14][3];
+    /* each one as the game draws it (the scripts' own changes): its size
+     * (a Pokemon's over its size at rest, BmapRest), its alpha (0..31), its
+     * palette faded fade/16 of the way to fade_color, the animation an
+     * effect set and the frames since (anim 0: its own) */
+    float size[14];
+    int alpha[14], fade[14], fade_color[14], anim[14], anim_t[14];
 } ClipFrame;
+
+/* A trainer's battle picture animated as the game's McssWork does: its
+ * rig (the cells, their animations, the multi-cells) and its multi-cell
+ * animation (the NMAR: sequence 0 standing, 1 the throw), each frame made
+ * once as it is first shown.  A frame's anchor is the picture's point that
+ * stands on the trainer's place: the standing picture's foot (its bottom
+ * middle) moved with the multi-cell's origin. */
+#define TR_SEQS 4
+#define TR_TIME 160                 /* frames kept a sequence (the throw: 100) */
+typedef struct TrFrame {
+    int w, h;
+    u8 *rgba;                       /* NULL: not made yet                  */
+    float ax, ay;                   /* the anchor (picture pixels)         */
+    int tried;
+} TrFrame;
+typedef struct TrAnim {
+    int key;                        /* the set loaded (archive * 1000 + set), -1 none */
+    G2dRig rig;
+    G2dNanr nmar;
+    u8 *nmar_buf;                   /* the NMAR's bytes (the bank reads them) */
+    int have_rig, have_nmar;
+    float ox0, oy0, w0, h0;         /* the standing picture: its origin and size */
+    TrFrame frame[TR_SEQS][TR_TIME];
+} TrAnim;
 
 typedef struct View3d {
     int x, y, w, h;                 /* where the picture goes (window)     */
@@ -206,6 +236,8 @@ typedef struct App {
     Uint32 play_t0;
     BcamFrame *sim;
     int nsim, sim_scene, sim_attacker;
+    float *sim_rest;                /* each frame's size at rest of slots 0..13 (BmapRest) */
+    TrAnim an_foe, an_own;          /* the trainers' pictures, animated     */
     int doubles;                    /* show a double battle (the trainer's)  */
     int idle_ticks;                 /* event waits without an event since the last draw */
     Sprite hero[4];                 /* the player, facing up, down, left, right */
@@ -255,6 +287,8 @@ static void scene_frames(void);
 #define SCENE_MOVES 559             /* Black's moves */
 #define SCENE_COUNT (3 + SCENE_MOVES)
 #define SCENE_MID   SCENE_COUNT     /* a trainer back mid-battle to speak */
+#define SCENE_SWITCH (SCENE_COUNT + 1)  /* the player switches Pokemon */
+#define SCENE_BALL  (SCENE_COUNT + 2)   /* the player throws a ball (wild) */
 static const ClipFrame *play_frame(void);
 
 /* The interface layer's two hooks the kit calls (engine/ui/ui.c is the
@@ -944,10 +978,10 @@ static int project(const View3d *v, const float p[3], float *sx, float *sy, floa
  * offsets from it), not by their tile numbers (g2d_compose_pose reads those
  * as tile numbers of a 2D sheet and so draws a second head from other
  * pixels).  Canvas as g2d_compose_pose's: two pixels of margin. */
-static int trainer_compose(const G2dRig *rig, G2dPose *out)
+static int trainer_compose(const G2dRig *rig, int mc, u32 t, G2dPose *out)
 {
     enum { MAXU = 64, CANVAS = 320, ORG = 160 };
-    const G2dMcGroup *grp = &rig->nmcr.groups[0];
+    const G2dMcGroup *grp = &rig->nmcr.groups[mc >= 0 && mc < (int)rig->nmcr.num_multi_cell ? mc : 0];
     const G2dNcgr *cg = &rig->ncgr;
     struct { const G2dOam *oam; int ax, ay, sx, sy; } un[MAXU];
     int n = 0, minx = 1 << 20, miny = 1 << 20, maxx = -(1 << 20), maxy = -(1 << 20), pr, k, i;
@@ -964,7 +998,11 @@ static int trainer_compose(const G2dRig *rig, G2dPose *out)
         G2dFrame fr;
         u32 j;
 
-        if (g2d_nanr_frame_data(&rig->nanr, nd->anim_seq_idx, 0, &fr) != 0 || fr.cell_idx >= rig->ncer.num_cells) {
+        /* the node's own cell animation at time t (MCSS: they run with
+         * the multi-cell animation's clock) */
+        if (g2d_nanr_frame_data(&rig->nanr, nd->anim_seq_idx, g2d_nanr_frame_at_time(&rig->nanr, nd->anim_seq_idx, t),
+                                &fr) != 0
+            || fr.cell_idx >= rig->ncer.num_cells) {
             continue;
         }
         cell = &rig->ncer.cells[fr.cell_idx];
@@ -1046,7 +1084,7 @@ static void pose_sprite(Sprite *sp, G2dRig *rig, int trainer)
     u32 i;
 
     if (rig->nmcr.num_multi_cell > 0
-        && (trainer ? trainer_compose(rig, &pose)
+        && (trainer ? trainer_compose(rig, 0, 0, &pose)
                     : g2d_compose_pose(&rig->ncgr, &rig->ncer, rig->has_nanr ? &rig->nanr : NULL, &rig->nmcr.groups[0], 0,
                                        rig->palette.count, &pose)) == 0) {
         sp->w = (int)pose.width;
@@ -1195,6 +1233,133 @@ static void trainer_load(Sprite *sp, int tid, int back)
     bw_arc_close(&arc);
 }
 
+/* A trainer's animated picture (TrAnim): the same set trainer_load shows,
+ * its rig kept, and its multi-cell animation (the set's RAMN member). */
+static void tranim_free(TrAnim *an)
+{
+    int q, t;
+
+    for (q = 0; q < TR_SEQS; q++) {
+        for (t = 0; t < TR_TIME; t++) {
+            free(an->frame[q][t].rgba);
+        }
+    }
+    if (an->have_rig) {
+        g2d_rig_free(&an->rig);
+    }
+    if (an->have_nmar) {
+        g2d_nanr_free(&an->nmar);
+    }
+    free(an->nmar_buf);
+    memset(an, 0, sizeof *an);
+    an->key = -1;
+}
+
+static void tranim_load(TrAnim *an, int tid, int back)
+{
+    BwArcFile arc;
+    int cls = back ? tid : trainer_class(tid), set, key;
+    const u8 *tab = (const u8 *)bw_arm9_rodata(0x020A023Cu, 0x6Au);
+    G2dPose pose;
+    u32 m;
+
+    set = cls < 0 ? -1 : back ? cls : cls > 0x69 ? 0 : tab != NULL ? tab[cls] : cls;
+    key = set < 0 ? -1 : (back ? 1000 : 0) + set;
+    if (key == an->key) {
+        return;
+    }
+    tranim_free(an);
+    if (set < 0 || bw_arc_open(&arc, back ? "a/0/7/3" : "a/0/7/2") != 0) {
+        return;
+    }
+    an->key = key;
+    if (g2d_rig_load(&an->rig, &arc, (u32)set * 8u, 8) == 0) {
+        an->have_rig = 1;
+        for (m = (u32)set * 8u; m < (u32)set * 8u + 8u && !an->have_nmar; m++) {
+            long n = bw_arc_member_size(&arc, m);
+            u8 *raw = n > 0 ? (u8 *)malloc((size_t)n) : NULL, *dec = NULL;
+            u32 dn = 0;
+
+            if (raw != NULL && bw_arc_read_member(&arc, m, raw, (u32)n) == n) {
+                dec = g2d_decompress(raw, (u32)n, &dn);
+                if (dec == NULL) {
+                    dec = raw;              /* stored plain */
+                    dn = (u32)n;
+                    raw = NULL;
+                }
+                if (dn >= 4 && memcmp(dec, "RAMN", 4) == 0 && g2d_nmar_parse(&an->nmar, dec, dn) == 0) {
+                    an->have_nmar = 1;
+                    an->nmar_buf = dec;         /* the bank reads its bytes */
+                    dec = NULL;
+                }
+            }
+            free(raw);
+            free(dec);
+        }
+        /* the standing picture (as trainer_load's): its origin and size */
+        if (trainer_compose(&an->rig, 0, 0, &pose) == 0) {
+            an->ox0 = (float)pose.ox;
+            an->oy0 = (float)pose.oy;
+            an->w0 = (float)pose.width;
+            an->h0 = (float)pose.height;
+            g2d_pose_free(&pose);
+        } else {
+            an->w0 = 0.0f;
+        }
+    }
+    bw_arc_close(&arc);
+}
+
+/* The trainer's picture `t` frames into animation `seq` (NULL when there
+ * is none: the standing picture shows). */
+static const TrFrame *tranim_frame(TrAnim *an, int seq, int t)
+{
+    TrFrame *f;
+    G2dFrame mf;
+    G2dPose pose;
+    int mc = 0;
+    float px = 0.0f, py = 0.0f;
+    u32 i;
+
+    if (!an->have_rig || an->w0 <= 0.0f || seq < 0 || seq >= TR_SEQS) {
+        return NULL;
+    }
+    if (!an->have_nmar || seq >= an->nmar.num_sequences) {
+        seq = 0;                        /* BTLV_MCSS_SetAnimIndexIfValid: kept as it is */
+    }
+    t = t < 0 ? 0 : t >= TR_TIME ? TR_TIME - 1 : t;
+    f = &an->frame[seq][t];
+    if (f->rgba != NULL || f->tried) {
+        return f->rgba != NULL ? f : NULL;
+    }
+    f->tried = 1;
+    if (an->have_nmar
+        && g2d_nanr_frame_data(&an->nmar, (u32)seq, g2d_nanr_frame_at_time(&an->nmar, (u32)seq, (u32)t), &mf) == 0) {
+        mc = mf.cell_idx;
+        px = (float)mf.px;
+        py = (float)mf.py;
+    }
+    if (trainer_compose(&an->rig, mc, (u32)t, &pose) != 0) {
+        return NULL;
+    }
+    f->w = (int)pose.width;
+    f->h = (int)pose.height;
+    f->rgba = (u8 *)malloc((size_t)f->w * (size_t)f->h * 4u);
+    if (f->rgba != NULL) {
+        g2d_pose_to_rgba(&pose, &an->rig.palette, f->rgba);
+        for (i = 0; i < (u32)(f->w * f->h); i++) {
+            f->rgba[i * 4 + 3] = pose.indices[i] == 0 ? 0 : 255;
+        }
+        /* the multi-cell's move (MCSS_Draw: the pose's offset) carries the
+         * picture with it: the foot is the standing picture's, at the same
+         * place from the origin */
+        f->ax = (float)pose.ox + px + (an->w0 * 0.5f - an->ox0);
+        f->ay = (float)pose.oy + py + (an->h0 - an->oy0);
+    }
+    g2d_pose_free(&pose);
+    return f->rgba != NULL ? f : NULL;
+}
+
 static void dir_of(const char *path, char *out, size_t n);
 
 /* The player's gender for your trainer: the editor's own settings file beside
@@ -1279,11 +1444,13 @@ static void trainer_refresh(void)
         free(A.tr_foe.rgba);
         trainer_load(&A.tr_foe, tid, 0);
         A.tr_foe_id = tid;
+        tranim_load(&A.an_foe, tid, 0);
     }
     if (A.tr_own_gender != A.gender) {
         free(A.tr_own.rgba);
         trainer_load(&A.tr_own, A.gender, 1);
         A.tr_own_gender = A.gender;
+        tranim_load(&A.an_own, A.gender, 1);
     }
     tid = r != NULL ? r->ally_id : -1;
     if (A.tr_ally_id != tid) {
@@ -1990,8 +2157,9 @@ static void fit_view(View3d *v, int x, int y, int w, int h)
  * clear hole where a view shows (gpu_hole). */
 typedef struct GpuOp {
     unsigned tex;
-    int mode, x, y, w, h, flip;
+    int mode, x, y, w, h, flip;     /* mode 3: a sprite faded and blended (fx, alpha) */
     int clip[4];
+    float fx[4], alpha;
 } GpuOp;
 static GpuOp g_ops[1024];
 static const char *g_shot_path;     /* frame_shot: where this frame is written */
@@ -2076,26 +2244,44 @@ static unsigned sprite_tex(const u8 *rgba, int w, int h)
     return g_stex[lru].tex;
 }
 
+/* A picture through the view: its point (ax, ay) (picture pixels) at p,
+ * `upx` battle units a picture pixel; alpha 0..31, and its colours faded
+ * fade/16 of the way to fade_color (BGR555), as MCSS draws them (the GPU
+ * does it: eidos_gl_view_draw_fx). */
+static void draw_sprite(const View3d *v, const u8 *rgba, int w, int h, float ax, float ay, const float p[3], float upx,
+                        int alpha, int fade, int fade_color)
+{
+    float sx, sy, unit, k;
+    int dw, dh;
+
+    if (rgba == NULL || w <= 0 || h <= 0 || alpha <= 0 || !project(v, p, &sx, &sy, &unit)) {
+        return;
+    }
+    k = upx * unit;                     /* window pixels a picture pixel */
+    dh = (int)((float)h * k);
+    dw = (int)((float)w * k);
+    if (dw <= 0 || dh <= 0 || dw > 4000 || dh > 4000) {
+        return;
+    }
+    gpu_op(sprite_tex(rgba, w, h), alpha < 31 || fade > 0 ? 3 : 1, (int)(sx - ax * k), (int)(sy - ay * k), dw, dh, 0, v);
+    if (alpha < 31 || fade > 0) {
+        GpuOp *o = &g_ops[g_nops - 1];
+
+        o->fx[0] = (float)(fade_color & 31) / 31.0f;
+        o->fx[1] = (float)(fade_color >> 5 & 31) / 31.0f;
+        o->fx[2] = (float)(fade_color >> 10 & 31) / 31.0f;
+        o->fx[3] = (float)(fade > 16 ? 16 : fade) / 16.0f;
+        o->alpha = (float)(alpha > 31 ? 31 : alpha) / 31.0f;
+    }
+}
+
 /* A picture standing at p (its bottom centre) through the view, `bh` battle
  * units tall. */
 static void draw_standing(const View3d *v, const u8 *rgba, int w, int h, const float p[3], float bh)
 {
-    float sx, sy, unit;
-    int dw, dh;
-    Sprite tmp, *s = &tmp;
-
-    tmp.w = w;
-    tmp.h = h;
-    tmp.rgba = (u8 *)rgba;
-    if (s->rgba == NULL || h <= 0 || !project(v, p, &sx, &sy, &unit)) {
-        return;
+    if (h > 0) {
+        draw_sprite(v, rgba, w, h, (float)w * 0.5f, (float)h, p, bh / (float)h, 31, 0, 0);
     }
-    dh = (int)(bh * unit);
-    dw = dh * w / h;
-    if (dw <= 0 || dh <= 0 || dw > 4000 || dh > 4000) {
-        return;
-    }
-    gpu_op(sprite_tex(rgba, w, h), 1, (int)sx - dw / 2, (int)sy - dh, dw, dh, 0, v);
 }
 
 /* The place's offset of the foe's trainer, or of yours: right, up, back. */
@@ -2104,23 +2290,6 @@ static const float *view_offsets(int foe)
     const BmapSpot *r = cur();
 
     return foe ? r->trainer_foe : r->trainer_own;
-}
-
-/* How deep a point lies in front of a camera (along its line of sight). */
-static float view_depth(const float eye[3], const float at[3], const float p[3])
-{
-    float f[3], len = 0.0f, d = 0.0f;
-    int k;
-
-    for (k = 0; k < 3; k++) {
-        f[k] = at[k] - eye[k];
-        len += f[k] * f[k];
-    }
-    len = sqrtf(len);
-    for (k = 0; k < 3; k++) {
-        d += (p[k] - eye[k]) * f[k] / (len > 0.0f ? len : 1.0f);
-    }
-    return d;
 }
 
 /* Where the send-out puts the player's trainer before the camera (framed
@@ -2143,6 +2312,9 @@ static void draw_battle_view(int i)
     float p[16][3], d[16], sc[16];
     const Sprite *sp[16];
     int kind[16];                   /* 0 a Pokemon, 1 your trainer, 2 the foe's, 3 your ally */
+    /* a played scene's own changes (play_frame): size, alpha, fade, animation */
+    float fx_size[16];
+    int fx_alpha[16], fx_fade[16], fx_color[16], fx_anim[16], fx_t[16];
     int fixed[16] = { 0 };          /* a trainer at an effect script's own point (moved by the warp) */
     int sendout[16] = { 0 };        /* your trainer at the send-out's point: over the map */
     float game_eye[3], game_at[3];  /* the game's own camera, before the place's changes */
@@ -2181,6 +2353,12 @@ static void draw_battle_view(int i)
             }
             kind[n] = ally ? 3 : tr ? 1 + (cf->slot[a] & 1) : 0;
             sc[n] = slot_scale(cf->slot[a]);
+            fx_size[n] = cf->size[a];
+            fx_alpha[n] = cf->alpha[a];
+            fx_fade[n] = cf->fade[a];
+            fx_color[n] = cf->fade_color[a];
+            fx_anim[n] = ally ? -1 : cf->anim[a];
+            fx_t[n] = cf->anim_t[a];
             sp[n++] = ally ? &A.tr_ally : tr ? ((cf->slot[a] & 1) ? &A.tr_foe : &A.tr_own)
                     : (cf->slot[a] & 1) ? &A.foe : &A.own;
         }
@@ -2189,6 +2367,13 @@ static void draw_battle_view(int i)
         memcpy(v->at, k_cam[i][1], sizeof v->at);
         memcpy(game_eye, k_cam[i][0], sizeof game_eye);
         memcpy(game_at, k_cam[i][1], sizeof game_at);
+        for (a = 0; a < 16; a++) {
+            fx_size[a] = 1.0f;
+            fx_alpha[a] = 31;
+            fx_fade[a] = fx_color[a] = 0;
+            fx_anim[a] = -1;            /* the standing picture */
+            fx_t[a] = 0;
+        }
         if (!A.hide_mon) {
             if (A.doubles) {
                 for (a = 0; a < 4; a++) {
@@ -2264,11 +2449,12 @@ static void draw_battle_view(int i)
          * before any camera (its depth before the game's camera here); a
          * Pokemon is a thing in the room, bmap_mon_size, the game's size at
          * the command camera and the scripts' (0.5) all the way back */
-        float dg = kind[a] != 0 ? view_depth(game_eye, game_at, p[a])
-                                : bmap_mon_size(p[a], bmap_intro_progress(game_eye), 0.5f);
+        float dg = kind[a] != 0 ? bmap_view_depth(game_eye, game_at, p[a]) : bmap_mon_size(p[a]);
 
         sc[a] = (sp[a] == &A.own ? 2.0f : 1.0f) * (dg > 0.5f ? dg : 0.5f)
                 * (2.0f * BATTLE_FOV_SIN / BATTLE_FOV_COS / 192.0f) / SPRITE_U;
+        /* and the scripts' own change of it (a recall, a send-out's pop) */
+        sc[a] *= fx_size[a];
     }
     for (a = 0; a < n; a++) {
         if (kind[a] != 0 && !fixed[a]) {
@@ -2319,27 +2505,40 @@ static void draw_battle_view(int i)
     }
     gpu_hole(v);
     gpu_op(v->tex, 0, v->x, v->y, v->w, v->h, 1, v);
-    /* the sprites, the farthest from the camera first */
+    /* the sprites, the deepest first: the game's depth (MCSS_Draw: a
+     * sprite's place through the camera drawn with this frame, along its
+     * line of sight), so the order follows every move of the camera */
     for (a = 0; a < n; a++) {
-        float dx = p[a][0] - v->eye[0], dz = p[a][2] - v->eye[2];
-
-        d[a] = dx * dx + dz * dz;
+        d[a] = bmap_view_depth(v->eye, v->at, p[a]);
     }
     for (a = 0; a < n; a++) {
         int far = -1;
+        const TrFrame *tf = NULL;
+        float upx;
 
         for (b = 0; b < n; b++) {
-            if (d[b] >= 0.0f && (far < 0 || d[b] > d[far])) {
+            if (d[b] > -1e8f && (far < 0 || d[b] > d[far])) {
                 far = b;
             }
         }
-        draw_standing(v, sp[far]->rgba, sp[far]->w, sp[far]->h, p[far], (float)sp[far]->h * SPRITE_U * sc[far]);
+        upx = SPRITE_U * sc[far];       /* battle units a picture pixel */
+        if (fx_anim[far] >= 0 && (kind[far] == 1 || kind[far] == 2)) {
+            /* a trainer the scene animates (its throw) */
+            tf = tranim_frame(kind[far] == 2 ? &A.an_foe : &A.an_own, fx_anim[far], fx_t[far]);
+        }
+        if (tf != NULL) {
+            draw_sprite(v, tf->rgba, tf->w, tf->h, tf->ax, tf->ay, p[far], upx, fx_alpha[far], fx_fade[far],
+                        fx_color[far]);
+        } else if (sp[far]->h > 0) {
+            draw_sprite(v, sp[far]->rgba, sp[far]->w, sp[far]->h, (float)sp[far]->w * 0.5f, (float)sp[far]->h, p[far],
+                        upx, fx_alpha[far], fx_fade[far], fx_color[far]);
+        }
         /* the map standing in front of this one, before the nearer ones
          * (the game's second backdrop pass, plat_gl3d.c) */
         if (far < v->nfronts && v->has_front[far] && !sendout[far]) {
             gpu_op(v->ftex[far], 0, v->x, v->y, v->w, v->h, 1, v);
         }
-        d[far] = -1.0f;
+        d[far] = -1e9f;
     }
     if (cf == NULL) {
         text(v->x + U(10), v->y + v->h - U(26), 0xFFFFFFu, "Drag: turn, height   Right: slide, tilt   Wheel: zoom");
@@ -2854,18 +3053,24 @@ static int play_h(int w0)
 /* The scene buttons, Play and the timeline under a battle view. */
 static void draw_play_bar(int x0, int y0, int w0)
 {
-    static const char *k_kinds[4] = { "Intro", "Mid-battle", "Idle", "Move" };
+    static const char *k_kinds[6] = { "Intro", "Mid-battle", "Idle", "Move", "Switch", "Ball" };
     int x = x0 + U(14), y = y0 + U(12), kind, k, step = A.shift ? 10 : 1;
+    const BmapSpot *row = cur();
 
     ui_fill(&C, x0, y0, w0, play_h(w0), C_PANEL, 255);
     /* the scene: the place's intro (wild or trainer), a trainer back mid-
-     * battle, the idle drift or a move */
-    kind = A.scene <= 1 ? 0 : A.scene == SCENE_MID ? 1 : A.scene == 2 ? 2 : 3;
-    for (k = 0; k < 4; k++) {
+     * battle, the idle drift, a move, your switch, a ball (wild only) */
+    kind = A.scene <= 1 ? 0 : A.scene == SCENE_MID ? 1 : A.scene == 2 ? 2 : A.scene == SCENE_SWITCH ? 4
+         : A.scene == SCENE_BALL ? 5 : 3;
+    for (k = 0; k < 6; k++) {
+        if (k == 5 && row != NULL && row->kind == 'T') {
+            continue;                   /* no ball at a trainer's Pokemon */
+        }
         if (chip(x, y, k_kinds[k], kind == k)) {
             const BmapSpot *r = cur();
 
             A.scene = k == 0 ? (r != NULL && r->kind == 'T' ? 1 : 0) : k == 1 ? SCENE_MID : k == 2 ? 2
+                    : k == 4 ? SCENE_SWITCH : k == 5 ? SCENE_BALL
                     : A.last_move >= 3 && A.last_move < SCENE_COUNT ? A.last_move : 3;
             A.play = 1;
             A.play_t0 = SDL_GetTicks();
@@ -3590,7 +3795,11 @@ static void gpu_flush(const char *shot)
     for (i = 0; i < g_nops; i++) {
         const GpuOp *o = &g_ops[i];
 
-        eidos_gl_view_draw(A.gl, o->tex, o->mode, o->x, o->y, o->w, o->h, o->flip, o->clip);
+        if (o->mode == 3) {
+            eidos_gl_view_draw_fx(A.gl, o->tex, o->x, o->y, o->w, o->h, o->clip, o->fx, o->alpha);
+        } else {
+            eidos_gl_view_draw(A.gl, o->tex, o->mode, o->x, o->y, o->w, o->h, o->flip, o->clip);
+        }
     }
     g_nops = 0;
     canvas_tex = eidos_gl_view_upload(A.gl, canvas_tex, A.canvas.rgba, A.canvas.w, A.canvas.h,
@@ -3802,6 +4011,12 @@ static const char *scene_name(int sc)
     if (sc == SCENE_MID) {
         return "Mid-battle";
     }
+    if (sc == SCENE_SWITCH) {
+        return "Switch";
+    }
+    if (sc == SCENE_BALL) {
+        return "Ball";
+    }
     n = bcam_sim_move_name(sc - 2);
     snprintf(buf, sizeof buf, "%d %s", sc - 2, n != NULL ? n : "");
     return buf;
@@ -3817,15 +4032,37 @@ static void scene_frames(void)
         return;
     }
     free(A.sim);
+    free(A.sim_rest);
     A.sim = NULL;
+    A.sim_rest = NULL;
     A.nsim = 0;
     kind = A.scene == 0 ? BCAM_WILD_INTRO : A.scene == 1 ? BCAM_TRAINER_INTRO : A.scene == 2 ? BCAM_IDLE
-         : A.scene == SCENE_MID ? BCAM_TRAINER_MID : BCAM_MOVE;
-    id = A.scene >= 3 && A.scene < SCENE_COUNT ? A.scene - 2 : -1;
+         : A.scene == SCENE_MID ? BCAM_TRAINER_MID : A.scene == SCENE_SWITCH ? BCAM_SWITCH
+         : A.scene == SCENE_BALL ? BCAM_BALL : BCAM_MOVE;
+    id = A.scene >= 3 && A.scene < SCENE_COUNT ? A.scene - 2 : A.scene == SCENE_BALL ? 4 : -1;
     if (bcam_sim_run(kind, id, att, !att, &A.sim, &A.nsim) != 0) {
         A.sim = NULL;
         A.nsim = 0;
         say("No camera for %s", scene_name(A.scene));
+    }
+    if (A.nsim > 0 && (A.sim_rest = (float *)malloc((size_t)A.nsim * 14u * sizeof(float))) != NULL) {
+        /* the size at rest of each sprite, frame by frame from the scene's
+         * start, as the game works it out (sdk/battle_view.c) */
+        BmapRest r;
+        int k, q;
+
+        memset(&r, 0, sizeof r);
+        bmap_rest_reset(&r);
+        for (k = 0; k < A.nsim; k++) {
+            const BcamFrame *b = &A.sim[k];
+
+            bmap_rest_frame(&r, b->eye);
+            for (q = 0; q < 14; q++) {
+                int on = q < 8 ? (b->poke_mask >> q & 1u) : (b->trainer_mask >> (q - 8) & 1u);
+
+                A.sim_rest[k * 14 + q] = bmap_rest_sprite(&r, q, on ? b->size[q] : 0.0f);
+            }
+        }
     }
     A.sim_scene = A.scene;
     A.sim_attacker = att;
@@ -3850,19 +4087,29 @@ static const ClipFrame *play_frame(void)
     memcpy(cf.eye, b->eye, sizeof cf.eye);
     memcpy(cf.at, b->target, sizeof cf.at);
     cf.np = 0;
-    for (k = 0; k < 8; k++) {
-        if (b->poke_mask & (1u << k)) {
-            cf.slot[cf.np] = k;
-            memcpy(cf.pos[cf.np], b->poke[k], sizeof cf.pos[0]);
-            cf.np++;
+    for (k = 0; k < 14; k++) {
+        int q = cf.np;
+
+        if (!(k < 8 ? b->poke_mask & (1u << k) : b->trainer_mask & (1u << (k - 8))) || (b->vanish_mask & (1u << k))) {
+            continue;                   /* not on the field, or hidden (the send-out's wait) */
         }
-    }
-    for (k = 0; k < 6; k++) {
-        if (b->trainer_mask & (1u << k)) {
-            cf.slot[cf.np] = 8 + k;
-            memcpy(cf.pos[cf.np], b->trainer[k], sizeof cf.pos[0]);
-            cf.np++;
+        cf.slot[q] = k;
+        memcpy(cf.pos[q], k < 8 ? b->poke[k] : b->trainer[k - 8], sizeof cf.pos[0]);
+        /* the scripts' size: a Pokemon's over its size at rest (the
+         * camera's fake taken out, as the game does), a trainer's as is */
+        if (k < 8 && A.sim_rest != NULL) {
+            float rest = A.sim_rest[i * 14 + k];
+
+            cf.size[q] = b->size[k] / (rest > 0.05f ? rest : 1.0f);
+        } else {
+            cf.size[q] = b->size[k];
         }
+        cf.alpha[q] = b->alpha[k];
+        cf.fade[q] = b->fade[k];
+        cf.fade_color[q] = b->fade_color[k];
+        cf.anim[q] = b->anim[k];
+        cf.anim_t[q] = b->anim_t[k];
+        cf.np++;
     }
     return &cf;
 }
@@ -3980,7 +4227,7 @@ static void preview_in_game(int play)
     _putenv_s("EIDOS_DEBUG_LEVEL", "50");
     _putenv_s("EIDOS_DEBUG_ITEMS", "4:30,3:30,2:30,17:20,26:20,25:20,23:10,28:10,27:10");
     _putenv_s("EIDOS_DEBUG_UNLOCK", "1");
-    if (A.scene >= 3 && !play) {
+    if (A.scene >= 3 && A.scene < SCENE_COUNT && !play) {
         snprintf(v, sizeof v, "0:%d:0", A.scene - 2);
         _putenv_s("EIDOS_DEBUG_MOVES", v);
     }
@@ -4362,6 +4609,7 @@ int main(int argc, char **argv)
     A.tr_foe_id = -2;
     A.tr_own_gender = -2;
     A.tr_ally_id = -2;
+    A.an_foe.key = A.an_own.key = -1;
     A.gender = -1;
     sprite_load(&A.foe, SPECIES_FOE, 0);
     sprite_load(&A.own, SPECIES_OWN, 1);

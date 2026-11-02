@@ -22,8 +22,15 @@
 extern void bw_arm7_backup_set_path(const char *path) BW_SLOTS_WEAK;
 extern void bw_arm7_backup_switch_path(const char *path) BW_SLOTS_WEAK;
 extern void *SAVE_CONTROL_Get(void) BW_SLOTS_WEAK;
+/* Where the game keeps its save control pointer (_pSaveControl):
+ * SAVE_CONTROL_Get halts the game when there is none (between a soft reset
+ * and the next boot). */
+extern void *bw_dsref__pSaveControl BW_SLOTS_WEAK;
 extern int SAVE_CONTROL_Reload(void *saveControl) BW_SLOTS_WEAK;
 extern int SYSTEM_DATA_IsActive(void *saveControl) BW_SLOTS_WEAK;
+extern void bw_arm7_backup_hold(int on) BW_SLOTS_WEAK;
+extern u32  bw_arm7_backup_writes(void) BW_SLOTS_WEAK;
+extern int  bw_arm7_backup_dirty(void) BW_SLOTS_WEAK;
 
 /* The game's SaveControl (src/game/arm9/save_control.c): isNewGame at 0,
  * hasFlashSave at 1. */
@@ -281,25 +288,90 @@ int bw_slots_flip(int d)
     return 0;
 }
 
+/* A new game not saved yet: its slot (0: none) and the slot before it.
+ * Until the game's first completed save the chip holds its writes in
+ * memory, so New Game makes no file and slot.txt keeps the save before
+ * (bw_slots_frame commits, bw_slots_dropped goes back). */
+static int g_pending;
+static int g_prev;
+static int g_released;          /* the hold is off; waiting for the file   */
+static u32 g_writes_before;
+
+static void hold_new_game(int n, int prev)
+{
+    g_pending = n;
+    g_prev = prev;
+    if (bw_arm7_backup_hold != NULL) {
+        bw_arm7_backup_hold(1);
+    }
+}
+
 int bw_slots_new_game(void)
 {
-    int n;
+    int n, cur = bw_slots_current();
 
     /* Free means no file: a file the game would not load (marked active,
      * a new game left unsaved) is kept, for recovery, and never written
      * over by a new game. */
-    if (!bw_slots_used(bw_slots_current())) {
+    if (!bw_slots_used(cur)) {
+        hold_new_game(cur, cur);
         return 0;                   /* the slot in force is free already */
     }
     for (n = 1; n <= BW_SLOTS_MAX; n++) {
         if (!bw_slots_used(n)) {
-            set_current(n);
+            g_current = n;          /* slot.txt waits for the first save */
             apply(1);
             reload(0);
+            hold_new_game(n, cur);
             return 1;
         }
     }
     return 0;                       /* every slot is used: the game warns */
+}
+
+void bw_slots_frame(void)
+{
+    unsigned char *sc;
+
+    if (g_pending == 0) {
+        return;
+    }
+    sc = &bw_dsref__pSaveControl != NULL && bw_dsref__pSaveControl != NULL
+         ? *(unsigned char **)bw_dsref__pSaveControl : NULL;
+    if (!g_released && sc != NULL && sc[SAVE_CONTROL_HAS_SAVE] && !sc[SAVE_CONTROL_IS_NEW_GAME]) {
+        /* the first completed save: the held writes go to the slot's file */
+        g_released = 1;
+        g_writes_before = bw_arm7_backup_writes != NULL ? bw_arm7_backup_writes() : 0;
+        if (bw_arm7_backup_hold != NULL) {
+            bw_arm7_backup_hold(0);
+        }
+    }
+    /* slot.txt names the slot only once its file is on the disk: while the
+     * write keeps failing the slot in force stays as it was */
+    if (g_released && bw_arm7_backup_writes != NULL && bw_arm7_backup_writes() != g_writes_before
+        && (bw_arm7_backup_dirty == NULL || !bw_arm7_backup_dirty())) {
+        set_current(g_pending);
+        g_pending = 0;
+        g_released = 0;
+        fprintf(stderr, "eidos: save: the new game is saved in slot %d\n", g_current);
+    }
+}
+
+void bw_slots_dropped(void)
+{
+    if (g_pending != 0 && g_released && bw_arm7_backup_writes != NULL
+        && bw_arm7_backup_writes() != g_writes_before) {
+        set_current(g_pending);     /* its file reached the disk after all */
+        g_pending = 0;
+        g_released = 0;
+        return;
+    }
+    if (g_pending != 0) {
+        g_current = g_prev;         /* the save in force before New Game */
+        g_pending = 0;
+        g_released = 0;
+        apply(0);
+    }
 }
 
 /* New Game with every slot used: the player chooses the save it replaces

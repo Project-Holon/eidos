@@ -369,7 +369,15 @@ static struct {
      * empty; the blur takes the picture from before the app opened. */
     GLuint frozen;
     int fw, fh, frozen_ok;
+    /* Window pixels at the bottom the world leaves free (a phone's hint
+     * bar, taller than the system's home indicator): the world is drawn
+     * above them, at the window's width and the rest of its height. */
+    int bottom;
 } g_one;
+
+/* The world's viewport in the window: g_vp_y up from the bottom while the
+ * world is drawn (0 into an off-screen target). */
+static int g_vp_y;
 
 static GLuint compile(EidosGl *g, GLenum type, const char *src)
 {
@@ -1056,7 +1064,7 @@ static void draw_frame(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
     if (g == NULL || out_w <= 0 || out_h <= 0) {
         return;
     }
-    glViewport(0, 0, out_w, out_h);
+    glViewport(0, g_vp_y, out_w, out_h);
     glClearColor(g_frame_clear, g_frame_clear, g_frame_clear, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
     g->glBindVertexArray(g->vao);
@@ -1178,6 +1186,12 @@ void eidos_gl_one_set(EidosGl *g, int on, int world, int screen,
 
 /* The canvas: uploaded when the caller says its picture changed (rgba not
  * NULL), shown in `rect` (window pixels); rect NULL hides it. */
+void eidos_gl_one_bottom(EidosGl *g, int px)
+{
+    (void)g;
+    g_one.bottom = px > 0 ? px : 0;
+}
+
 void eidos_gl_one_canvas(EidosGl *g, const unsigned char *rgba, int w, int h,
                          const SDL_Rect *rect)
 {
@@ -1205,14 +1219,28 @@ void eidos_gl_one_canvas(EidosGl *g, const unsigned char *rgba, int w, int h,
     }
 }
 
-/* Non-zero when the last 3D frame was rendered at out_w x out_h and belongs
- * to `screen`: the world path can use it one to one. */
+/* Non-zero when the last 3D frame belongs to `screen` and has out_w x
+ * out_h's shape, at that size or fewer pixels (a phone draws the 3D with
+ * fewer rows, platform.c rows_3d): the world path stretches it over the
+ * window. */
 int eidos_gl_3d_matches(const EidosGl *g, int screen, int out_w, int out_h)
 {
-    (void)out_w;
-    (void)out_h;
-    return g != NULL && g->s3d == screen && g->fb[0].color != 0 &&
-           g->fb[0].w > 0 && g->fb[0].h > 0;
+    long fw, fh, err;
+
+    if (g == NULL || g->s3d != screen || g->fb[0].color == 0) {
+        return 0;
+    }
+    fw = g->fb[0].w;
+    fh = g->fb[0].h;
+    if (fw <= 0 || fh <= 0) {
+        return 0;
+    }
+    err = fw * out_h - fh * out_w;
+    if (err < 0) {
+        err = -err;
+    }
+    return fw <= out_w && fh <= out_h &&
+           err <= (out_w > out_h ? out_w : out_h);
 }
 
 static float ndc_x(int x, int w) { return 2.f * (float)x / (float)w - 1.f; }
@@ -1275,7 +1303,7 @@ static void one_blur(EidosGl *g, int out_w, int out_h)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
     g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, out_w, out_h);
+    glViewport(0, g_vp_y, out_w, out_h);
     g->glUniform2f(g_one.b_dir, 0.f, step);
     g->glUniform1f(g_one.b_tint, 1.f - 0.55f * a);
     glBindTexture(GL_TEXTURE_2D, g_one.btex[1]);
@@ -1299,7 +1327,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         /* an app opening or closing over the world, the world not drawn:
          * the last picture of it stands */
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, out_w, out_h);
+        glViewport(0, g_vp_y, out_w, out_h);
         g->glBindVertexArray(g->vao);
         g->glUseProgram(g_one.progb);
         g->glUniform1i(g_one.b_src, 0);
@@ -1318,7 +1346,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
          * in between, an evolution after a Rare Candy): a plain dark
          * ground, not the app's own DS screen behind its modal */
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, out_w, out_h);
+        glViewport(0, g_vp_y, out_w, out_h);
         glClearColor(0.04f, 0.04f, 0.05f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
         return;
@@ -1350,7 +1378,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
     if (use_w) {
         static const GLfloat sent[3] = { 84.f / 255.f, 168.f / 255.f, 52.f / 255.f };
 
-        glViewport(0, 0, out_w, out_h);
+        glViewport(0, blur ? 0 : g_vp_y, out_w, out_h);
         glClearColor(0.f, 0.f, 0.f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
         g->glBindVertexArray(g->vao);
@@ -1413,7 +1441,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, out_w, out_h, 0);
+            glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, g_vp_y, out_w, out_h, 0);
             g_one.fw = out_w;
             g_one.fh = out_h;
             g_one.frozen_ok = 1;
@@ -1432,7 +1460,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         if (1.f - (float)g_one.dark / 16.f < tint) {
             tint = 1.f - (float)g_one.dark / 16.f;
         }
-        glViewport(0, 0, out_w, out_h);
+        glViewport(0, g_vp_y, out_w, out_h);
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
         g->glBindVertexArray(g->vao);
         g->glUseProgram(g_one.progb);
@@ -1456,7 +1484,15 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         /* around it, black as the game's brightness has it: a fade to
          * white whitens the whole window, not only the DS rectangle */
         g_frame_clear = g_one.no_fade ? 0.f : (g_one.bd[0] + g_one.bd[1] + g_one.bd[2]) / 3.f;
-        draw_frame(g, out_w, out_h, d);
+        {
+            int vy = g_vp_y;
+
+            if (blur) {
+                g_vp_y = 0;             /* into the blur target */
+            }
+            draw_frame(g, out_w, out_h, d);
+            g_vp_y = vy;
+        }
         g_frame_clear = 0.f;
     }
     if (blur) {
@@ -1501,7 +1537,18 @@ static void draw_scene(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         return;
     }
     if (g_one.world) {
-        one_world(g, out_w, out_h, dst);
+        int b = g_one.bottom > 0 && g_one.bottom < out_h / 2 ? g_one.bottom : 0;
+
+        if (b > 0) {
+            /* the strip under the world, which the hint bar covers */
+            g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, out_w, out_h);
+            glClearColor(0.f, 0.f, 0.f, 1.f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+        g_vp_y = b;
+        one_world(g, out_w, out_h - b, dst);
+        g_vp_y = 0;
     } else {
         draw_frame(g, out_w, out_h, dst);
     }

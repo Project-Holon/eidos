@@ -59,10 +59,20 @@ int eidos_ui_enabled(void)
     return g_enabled;
 }
 
+extern void g2d_hw_hide_main_bgs(u32 mask) __attribute__((weak));
+extern void bw_ui_text_set_own(int on) __attribute__((weak));
+
 void eidos_ui_set_enabled(int on)
 {
     if (on != g_enabled) {
         g_enabled = on;
+        /* the game draws its own text windows again (engine/ui/textbox.c) */
+        if (g2d_hw_hide_main_bgs != NULL) {
+            g2d_hw_hide_main_bgs(0);
+        }
+        if (bw_ui_text_set_own != NULL) {
+            bw_ui_text_set_own(0);
+        }
         eidos_ui_reset();
         bw_input_set_host_mask(0);      /* every button the game's again */
     }
@@ -679,6 +689,40 @@ static void debug_party(void)
     }
 }
 
+/* The save file cannot be written (a folder the system refuses, a full
+ * disk): the game believes it saved, but the progress is only in memory.
+ * A warning shows at the top of the window for a few seconds, so the
+ * player knows not to quit (sdk/arm7/fs.c retries on its own); it shows
+ * again if writes fail again after one succeeds. */
+extern u32 bw_arm7_backup_failures(void) __attribute__((weak));
+
+#define SAVE_NOTICE_FRAMES 480u
+
+static void save_failing_notice(EidosUiCtx *c)
+{
+    static u32 shown;               /* frames it has been up this time      */
+    const char *msg = "The save could not be written to storage. Do not close the game.";
+    int w, x, a;
+
+    if (bw_arm7_backup_failures == NULL || bw_arm7_backup_failures() < 2u) {
+        shown = 0;                  /* written: the next failure shows it again */
+        return;
+    }
+    /* up for eight seconds, the last one fading; it does not stay over
+     * the game while the writer keeps retrying */
+    if (shown >= SAVE_NOTICE_FRAMES) {
+        return;
+    }
+    shown++;
+    a = shown + 60u > SAVE_NOTICE_FRAMES ? (int)(SAVE_NOTICE_FRAMES - shown) * 245 / 60 : 245;
+    w = ui_text_w(msg, UI_FONT_LARGE) + 24;
+    x = (c->canvas->w - w) / 2;
+    ui_panel(c, x, 22, w, 22, UI_CUT_TL | UI_CUT_BR, 5, 0x3A0A10u, 0xE04050u, a);
+    if (a > 120) {
+        ui_text(c, x + 12, 22 + ui_text_y(22, UI_FONT_LARGE), msg, UI_WHITE, 0x200508u, UI_FONT_LARGE, 1);
+    }
+}
+
 /* Tests: EIDOS_DEBUG_WARP="zone x y z dir" (map units, dir 0 up
  * 1 down 2 left 3 right) warps the player there through the game's own
  * map change, once the field has run 60 frames with no event. */
@@ -724,6 +768,187 @@ static void debug_warp(void)
     if (ev != NULL) {
         GAMESYSTEM_SetEvent(gs, ev);
         fprintf(stderr, "eidos: debug warp to zone %u (%.0f, %.0f, %.0f)\n", z, (double)x, (double)y, (double)zz);
+    }
+}
+
+/* Tests: EIDOS_DEBUG_SCRIPT="ID" runs the game's script ID (a global
+ * script: the vending machine's 10400, the shared ones from 2000) as the
+ * game starts a script, its work values first set from the "VAR=VALUE"
+ * pairs after the ID (hex: "2801 8000=11 8001=1" gives a Potion through the
+ * shared item script), once the field has run 90 frames with no event
+ * (after EIDOS_DEBUG_WARP's arrival when both are set), so a test reaches
+ * a screen the story puts far away. */
+extern void *ov010_SCRIPT_SYS_CreateScriptEventSimple(void *gsys, u16 scriptId, void *target, int reserved)
+    __attribute__((weak));
+extern void *ov010_SCRIPT_SYS_GetEventScriptWork(void *event) __attribute__((weak));
+extern int ov010_SCRIPT_WORK_SetWorkValue(void *work, u32 id, int value) __attribute__((weak));
+
+static void debug_script(void)
+{
+    static int done, wait;
+    const char *what = getenv("EIDOS_DEBUG_SCRIPT");
+    u8 *gs;
+    void *ev;
+
+    if (done || what == NULL || &bw_dsref__GameSystemGlobal == NULL || GAMESYSTEM_SetEvent == NULL
+        || GAMESYSTEM_GetEvent == NULL || ov010_SCRIPT_SYS_CreateScriptEventSimple == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    if (gs == NULL || *(void **)(gs + 0x20) == NULL || GAMESYSTEM_GetEvent(gs) != NULL) {
+        wait = 0;
+        return;
+    }
+    if (++wait < (getenv("EIDOS_DEBUG_WARP") != NULL ? 330 : 90)) {
+        return;
+    }
+    done = 1;
+    ev = ov010_SCRIPT_SYS_CreateScriptEventSimple(gs, (u16)atoi(what), NULL, 0);
+    if (ev != NULL && ov010_SCRIPT_SYS_GetEventScriptWork != NULL && ov010_SCRIPT_WORK_SetWorkValue != NULL) {
+        const char *p = strchr(what, ' ');
+        void *sw = ov010_SCRIPT_SYS_GetEventScriptWork(ev);
+        unsigned var, val;
+        int n;
+
+        while (p != NULL && sw != NULL && sscanf(p, " %x=%x%n", &var, &val, &n) == 2) {
+            ov010_SCRIPT_WORK_SetWorkValue(sw, var, (int)val);
+            p += n;
+        }
+    }
+    if (ev != NULL) {
+        GAMESYSTEM_SetEvent(gs, ev);
+        fprintf(stderr, "eidos: debug script %s\n", what);
+    }
+}
+
+/* Tests: EIDOS_DEBUG_OPEN opens a screen the story puts far away, through
+ * the game's own events, once the field has run 90 frames with no event:
+ *   "clear N"     the game clear (EVENT_GAMECLEAR_Create): the Hall of
+ *                 Fame, the staff roll and the save after them
+ *   "trade N S"   in-game trade N for party slot S (FLD_TRADE_CreateEvent)
+ *   "relearn S"   the move relearner for party slot S (as
+ *                 SCRCMD_PROC_CallMoveRelearn opens it)
+ *   "tvt N"       Xtransceiver story call N (as SCRCMD_PROC_CallValueScreen)
+ *   "egg S"       party slot S becomes an Egg and hatches (the hatching the
+ *                 field's step check starts, SYMBOL_MAP_CreatePokeEventTask)
+ *   "box M"       the PC's boxes in mode M (as the PC's script command opens
+ *                 them: 0 organize, 1 withdraw, 2 deposit, ...)
+ * The save these run on is a test copy: the game clear saves. */
+extern void *ov010_EVENT_GAMECLEAR_Create(void *gsys, u32 mode) __attribute__((weak));
+extern void *ov021_FLD_TRADE_CreateEvent(void *gsys, u32 tradeId, u32 partyIndex) __attribute__((weak));
+extern void *ov010_WAZA_OSHIE_CreateMoveList(void *mon, u32 heapId) __attribute__((weak));
+extern void *ov010_WAZA_OSHIE_Create(u32 heapId) __attribute__((weak));
+extern void *FIELD_STATUS_CreateSubProcCallbackEvent(void *gsys, void *fieldMap, u32 overlayId, void *procData,
+                                                     void *procWork, void (*callback)(void *), void *callbackWork)
+    __attribute__((weak));
+extern void *ov010_SYMBOL_MAP_CreatePokeEventTask(void *gsys, void *fieldMap, void *poke) __attribute__((weak));
+extern void *bw_dsref_ov010_gMoveRelearnProcData __attribute__((weak));
+extern void *bw_dsref_ov021_d_021EF78C __attribute__((weak));        /* ov170's ProcData */
+extern void *FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(void *gsys, void *fieldMap, u32 overlayId, void *procData,
+                                                           void *procWork, void (*callback)(void *), void *callbackWork)
+    __attribute__((weak));
+extern void *GAME_DATA_GetBoxManager(void *gd) __attribute__((weak));
+extern void *GFL_HEAP_Alloc(u32 heapId, u32 size, int clear, const char *site, u16 tag) __attribute__((weak));
+extern void *GAME_DATA_GetSaveControl(void *gd) __attribute__((weak));
+extern void *SYSTEM_DATA_GetConfig(void *save) __attribute__((weak));
+extern void *ZUKAN_SAVE_GetFromGameData(void *gd) __attribute__((weak));
+extern u32 ZUKAN_SAVE_IsNationalDexEnabled(void *zukan) __attribute__((weak));
+extern void *bw_dsref_ov010_gLocalTvtSysProcData __attribute__((weak));
+
+static void debug_open_done(void *arg)
+{
+    (void)arg;
+}
+
+static void debug_open(void)
+{
+    static int done, wait;
+    static struct { u16 value; u16 pad; void *gameData; } tvt;
+    struct BoxParamDbg {
+        void *gameData, *boxSave, *party, *myItem, *myStatus;
+        int linkMode;
+        void *config;
+        u32 natDex;
+        void *picker;
+        int mode;
+        u16 result;
+        u8 box, slot;
+    } *boxp;                            /* BoxParam (ov170/box2_param_types.h) */
+    const char *what = getenv("EIDOS_DEBUG_OPEN");
+    unsigned a = 0, b2 = 0;
+    u8 *gs, *fm, *gd;
+    void *ev = NULL;
+
+    if (done || what == NULL || &bw_dsref__GameSystemGlobal == NULL || GAMESYSTEM_SetEvent == NULL
+        || GAMESYSTEM_GetEvent == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    fm = gs != NULL ? *(u8 **)(gs + 0x20) : NULL;
+    if (fm == NULL || GAMESYSTEM_GetEvent(gs) != NULL) {
+        wait = 0;
+        return;
+    }
+    if (++wait < (getenv("EIDOS_DEBUG_WARP") != NULL ? 330 : 90)) {
+        return;
+    }
+    done = 1;
+    gd = *(u8 **)(gs + 0x1C);
+    if (sscanf(what, "clear %u", &a) == 1 && ov010_EVENT_GAMECLEAR_Create != NULL) {
+        ev = ov010_EVENT_GAMECLEAR_Create(gs, a);
+    } else if (sscanf(what, "trade %u %u", &a, &b2) == 2 && ov021_FLD_TRADE_CreateEvent != NULL) {
+        ev = ov021_FLD_TRADE_CreateEvent(gs, a, b2);
+    } else if (sscanf(what, "relearn %u", &a) == 1 && ov010_WAZA_OSHIE_CreateMoveList != NULL
+               && ov010_WAZA_OSHIE_Create != NULL && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
+               && GAME_DATA_GetMyParty != NULL && POKEPARTY_GetMember != NULL
+               && &bw_dsref_ov010_gMoveRelearnProcData != NULL) {
+        void *mon = POKEPARTY_GetMember(GAME_DATA_GetMyParty(gd), a);
+        u8 *param = (u8 *)ov010_WAZA_OSHIE_Create(4);
+
+        /* MoveRelearnParam: mon 0x00, myStatus 0x04, flags 0x08,
+         * gameSystem 0x0C, relearnMoves 0x10, enabled 0x19 */
+        *(void **)(param + 0x00) = mon;
+        *(void **)(param + 0x04) = GAME_DATA_GetMyStatus != NULL ? GAME_DATA_GetMyStatus(gd) : NULL;
+        *(u32 *)(param + 0x08) = 0;
+        *(void **)(param + 0x0C) = gs;
+        *(void **)(param + 0x10) = ov010_WAZA_OSHIE_CreateMoveList(mon, 4);
+        param[0x19] = 1;
+        ev = FIELD_STATUS_CreateSubProcCallbackEvent(gs, fm, 173, bw_dsref_ov010_gMoveRelearnProcData, param,
+                                                     debug_open_done, NULL);
+    } else if (sscanf(what, "tvt %u", &a) == 1 && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
+               && &bw_dsref_ov010_gLocalTvtSysProcData != NULL) {
+        tvt.value = (u16)a;
+        tvt.gameData = gd;
+        ev = FIELD_STATUS_CreateSubProcCallbackEvent(gs, fm, 174, bw_dsref_ov010_gLocalTvtSysProcData, &tvt,
+                                                     debug_open_done, NULL);
+    } else if (sscanf(what, "box %u", &a) == 1 && FIELD_STATUS_CreateSubProcNoFadeCallbackEvent != NULL
+               && &bw_dsref_ov021_d_021EF78C != NULL && GAME_DATA_GetBoxManager != NULL && GAME_DATA_GetMyItem != NULL
+               && GAME_DATA_GetSaveControl != NULL && SYSTEM_DATA_GetConfig != NULL && GFL_HEAP_Alloc != NULL) {
+        /* on the game's heap, as the PC's script command puts it (the
+         * recipes read it as a game pointer) */
+        boxp = (struct BoxParamDbg *)GFL_HEAP_Alloc(4, sizeof(*boxp), 1, "debug_open", 0);
+        boxp->gameData = gd;
+        boxp->boxSave = GAME_DATA_GetBoxManager(gd);
+        boxp->party = GAME_DATA_GetMyParty(gd);
+        boxp->myItem = GAME_DATA_GetMyItem(gd);
+        boxp->myStatus = GAME_DATA_GetMyStatus(gd);
+        boxp->config = SYSTEM_DATA_GetConfig(GAME_DATA_GetSaveControl(gd));
+        boxp->natDex = ZUKAN_SAVE_GetFromGameData != NULL && ZUKAN_SAVE_IsNationalDexEnabled != NULL
+                       ? ZUKAN_SAVE_IsNationalDexEnabled(ZUKAN_SAVE_GetFromGameData(gd)) : 0;
+        boxp->mode = (int)a;
+        ev = FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(gs, fm, 170, bw_dsref_ov021_d_021EF78C, boxp,
+                                                           debug_open_done, NULL);
+    } else if (sscanf(what, "egg %u", &a) == 1 && ov010_SYMBOL_MAP_CreatePokeEventTask != NULL
+               && GAME_DATA_GetMyParty != NULL && POKEPARTY_GetMember != NULL && POKE_TOOL_SetPartyValue != NULL) {
+        void *mon = POKEPARTY_GetMember(GAME_DATA_GetMyParty(gd), a);
+        POKE_TOOL_SetPartyValue(mon, 0x4C, 1);          /* an Egg */
+        ev = ov010_SYMBOL_MAP_CreatePokeEventTask(gs, fm, mon);
+    }
+    if (ev != NULL) {
+        GAMESYSTEM_SetEvent(gs, ev);
+        fprintf(stderr, "eidos: debug open %s\n", what);
+    } else {
+        fprintf(stderr, "eidos: debug open %s: not available\n", what);
     }
 }
 
@@ -1039,6 +1264,8 @@ void eidos_ui_game_frame(void)
         debug_party();
         debug_warp();
         debug_battle();
+        debug_script();
+        debug_open();
     }
 
     for (i = 0; i < n; i++) {
@@ -1384,9 +1611,28 @@ static void read_mouse(const EidosUiFrame *in)
 
 static const EidosUiFrame *g_in;
 
+/* Set by a recipe's match for this frame: the canvas takes the DS scale. */
+static int g_ds_scale_req;
+
+void eidos_ui_want_ds_scale(void)
+{
+    g_ds_scale_req = 1;
+}
+
 const EidosUiFrame *eidos_ui_frame_in(void)
 {
     return g_in;
+}
+
+/* What the system covers on each side, in canvas pixels (rounded up, so
+ * nothing to read or touch reaches under it). */
+static void set_safe(const EidosUiFrame *in)
+{
+    g_ctx.safe_l = in->safe_l > 0 ? (in->safe_l + g_k - 1) / g_k : 0;
+    g_ctx.safe_t = in->safe_t > 0 ? (in->safe_t + g_k - 1) / g_k : 0;
+    g_ctx.safe_r = in->safe_r > 0 ? (in->safe_r + g_k - 1) / g_k : 0;
+    g_ctx.safe_b = in->safe_b > 0 ? (in->safe_b + g_k - 1) / g_k : 0;
+    g_ctx.bar_top = -1;
 }
 
 void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
@@ -1405,6 +1651,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     w = (in->win_w + g_k - 1) / g_k;
     h = (in->win_h + g_k - 1) / g_k;
     ui_begin(&g_ctx, &g_canvas, w, h, g_k);
+    set_safe(in);
     read_mouse(in);
     g_want_text = 0;
     g_want_objs = 0;
@@ -1465,16 +1712,26 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             }
         }
     }
-    if (r != NULL && r->round_scale) {
-        int k = (in->win_h + 135) / 270;
+    if (r != NULL && (r->round_scale || g_ds_scale_req)) {
+        /* round_scale: the window's height over 270, rounded; a scene that
+         * shows the game's text (eidos_ui_want_ds_scale): the DS screen's
+         * own scale, so the letters are as big as the game's */
+        int k = g_ds_scale_req ? in->win_h / 192 : (in->win_h + 135) / 270;
 
         if (k > g_k) {
             g_k = k;
             w = (in->win_w + g_k - 1) / g_k;
             h = (in->win_h + g_k - 1) / g_k;
             ui_begin(&g_ctx, &g_canvas, w, h, g_k);
+            set_safe(in);
             read_mouse(in);
         }
+    }
+    g_ds_scale_req = 0;
+    /* a recipe that draws the game's text windows itself leaves them out
+     * of the screen again this frame (engine/ui/textbox.c) */
+    if (g2d_hw_hide_main_bgs != NULL) {
+        g2d_hw_hide_main_bgs(0);
     }
     /* the pictures kept from earlier frames, at this canvas's size (the
      * scale changed with the scene): the crossfades still find them */
@@ -1551,6 +1808,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             fflush(stderr);
         }
         r->run(&g_ctx, view, &f);
+        save_failing_notice(&g_ctx);
         if (getenv("EIDOS_UI_TRACE") != NULL) {
             fprintf(stderr, "eidos: ui trace %u done\n", (unsigned)in->frame);
             fflush(stderr);
@@ -1655,6 +1913,10 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     g_text_wanted = g_want_text;
     g_objs_wanted = g_want_objs;
     bw_input_set_host_mask(g_take);
+    /* a phone's taller hint bar lies over the world, as on a computer: the
+     * world keeps the whole window, so it does not move as bars come and
+     * go (view->bottom stays 0) */
+    view->bottom = 0;
     ring_apply(&g_ctx);
     fade_apply(&g_canvas);
     keep_prev(&g_canvas);

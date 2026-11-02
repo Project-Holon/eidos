@@ -79,7 +79,25 @@ struct EidosUiCtx {
     EidosUiCanvas *canvas;
     int ox, oy;             /* origin: (0, 0) of the piece being drawn    */
     EidosUiRect clip;       /* canvas pixels                              */
+    /* What the system covers on each side of the canvas, in canvas
+     * pixels (EidosUiFrame's safe_*, set each frame; 0 on a desktop). */
+    int safe_l, safe_t, safe_r, safe_b;
+    /* The top of a bottom hint bar made taller by safe_b this frame, in
+     * canvas pixels (-1: none): the world is drawn above it. */
+    int bar_top;
 };
+
+/* The height of the hint bar on the bottom edge: 17, and on a phone the
+ * height the system covers there too.  A screen's contents end at
+ * canvas height - ui_bar_h. */
+int ui_bar_h(const EidosUiCtx *c);
+/* A bar of height h asked for at y: when it belongs on the bottom edge
+ * (y at canvas height - h, or - ui_bar_h), the top of the bar that
+ * reaches the edge, taller by safe_b, with its height in *bh; else y and
+ * h.  The bar's contents sit in its middle. */
+int ui_bottom_bar(const EidosUiCtx *c, int y, int h, int *bh);
+/* The left inset for a piece drawn from the canvas's left edge. */
+int ui_safe_left(const EidosUiCtx *c);
 
 /* Start a frame: size the canvas to w x h at scale k and clear it. */
 void ui_begin(EidosUiCtx *c, EidosUiCanvas *canvas, int w, int h, int k);
@@ -149,6 +167,10 @@ int  ui_keycap_w(const char *label);
  * (ui_mon_front_anim, ui_item_icon) or its OBJ layer (eidos_ui_want_objs). */
 void ui_blit_screen(EidosUiCtx *c, int x, int y, const u8 *screen,
                     int sx, int sy, int w, int h, int k, int key);
+
+/* A text of the game's banks (a/0/0/<arc>, member, entry) as UTF-8, read
+ * through the file layer; "" when it cannot be read (recipe_menus.c). */
+const char *ui_game_text(int arc, int member, u32 idx);
 
 /* The game's own images, decoded on first use; NULL when unavailable. */
 const UiImage *ui_item_icon(u16 item);

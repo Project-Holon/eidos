@@ -54,6 +54,9 @@ void eidos_gl_one_set(EidosGl *gl, int on, int world, int screen,
  * this world is the one to keep that picture of (EidosUiView.keep_world). */
 void eidos_gl_one_canvas(EidosGl *gl, const unsigned char *rgba, int w, int h,
                          const SDL_Rect *rect);
+/* Window pixels at the bottom the world leaves free (EidosUiView.bottom):
+ * it is drawn above them; 0 for the whole window. */
+void eidos_gl_one_bottom(EidosGl *gl, int px);
 int  eidos_gl_3d_matches(const EidosGl *gl, int screen, int out_w, int out_h);
 
 /* The GPU 3D rasteriser (plat_gl3d.c).  has3d is false when the optional part
@@ -90,6 +93,10 @@ void eidos_gl_view_free(EidosGl *gl, unsigned tex);
 void eidos_gl_view_begin(EidosGl *gl, int win_w, int win_h, unsigned rgb);
 void eidos_gl_view_draw(EidosGl *gl, unsigned tex, int mode, int x, int y, int w, int h, int flip,
                         const int *clip);
+/* A straight sprite (as mode 1), its colours faded fade[3] (0..1) of the
+ * way to fade[0..2] and blended at `alpha` (0..1). */
+void eidos_gl_view_draw_fx(EidosGl *gl, unsigned tex, int x, int y, int w, int h, const int *clip,
+                           const float fade[4], float alpha);
 int eidos_gl_view_read(EidosGl *gl, unsigned char *rgba);
 void eidos_gl_view_end(EidosGl *gl);
 

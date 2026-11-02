@@ -613,12 +613,12 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (pw > 520) {
         pw = 520;
     }
-    ph = ch - 17 - 10;
+    ph = ch - ui_bar_h(c) - 10;
     if (ph > 262) {
         ph = 262;
     }
     px = (cw - pw) / 2;
-    py = (ch - 17 - ph) / 2;
+    py = (ch - ui_bar_h(c) - ph) / 2;
     ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
     snprintf(cnt, sizeof(cnt), "%d / %d", s.len, s.maxlen);
     ui_header(c, px + 1, py + 1, pw - 2, "NAME", kind_sub(s.kind), cnt, acc);
@@ -819,7 +819,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 
     /* hints: each one presses its key */
-    ui_hints(c, ch - 17, cw, hint_pairs, 4, hint_keys);
+    ui_hints(c, ch - ui_bar_h(c), cw, hint_pairs, 4, hint_keys);
 
     /* a right click is B (delete); a click outside the panel does nothing here */
     if (eidos_ui_right_click() && allow) {
@@ -921,9 +921,9 @@ static void xt_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 
     pw = imin(cwid - 12, 440);
-    ph = imin(imin(ch - 17 - 12, 250), 22 + 6 + imax(shown, 3) * rowh + 2 * pad + 4);
+    ph = imin(imin(ch - ui_bar_h(c) - 12, 250), 22 + 6 + imax(shown, 3) * rowh + 2 * pad + 4);
     px = (cwid - pw) / 2;
-    py = (ch - 17 - ph) / 2;
+    py = (ch - ui_bar_h(c) - ph) / 2;
     ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
     snprintf(cnt, sizeof(cnt), "%d nearby", shown);
     ui_header(c, px + 1, py + 1, pw - 2, "XTRANSCEIVER", NULL, cnt, UI_CYAN);
@@ -999,7 +999,7 @@ static void xt_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         y += rowh;
     }
 
-    ui_hints(c, ch - 17, cwid, pairs, 2, keys);
+    ui_hints(c, ch - ui_bar_h(c), cwid, pairs, 2, keys);
     if (eidos_ui_right_click()) {
         eidos_ui_tap(236, 180, 3);
     }

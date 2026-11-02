@@ -26,6 +26,16 @@ typedef struct BcamFrame {
     unsigned poke_mask;     /* bit n set: poke[n] is valid (the slot is on the field) */
     float trainer[6][3];    /* the trainers, slots 8..13 (9 the foe's, 8 the player's) */
     unsigned trainer_mask;  /* bit n set: trainer[n] is on the field */
+    /* each sprite on the field, by slot 0..13: */
+    float size[14];         /* the size the scripts give it (McssWork shadowScale, 1 full) */
+    unsigned char alpha[14];        /* 0..31 (31 opaque)                              */
+    unsigned char fade[14];         /* its palette faded 0..16 of the way to ...      */
+    unsigned short fade_color[14];  /* ... this colour (BGR555)                       */
+    unsigned char anim[14];         /* the multi-cell animation an effect set (0 the
+                                       sprite's own; 1 a trainer's throw) ...         */
+    unsigned short anim_t[14];      /* ... and the game frames since it was set       */
+    unsigned vanish_mask;   /* bit n set: sprite n is hidden (the send-out hides
+                               the Pokemon until the ball opens)                      */
 } BcamFrame;
 
 enum {
@@ -33,8 +43,12 @@ enum {
     BCAM_WILD_INTRO,        /* the wild battle entry (id unused) */
     BCAM_TRAINER_INTRO,     /* the trainer battle entry (id unused) */
     BCAM_IDLE,              /* the idle drift: id 0..5 one of the six camera moves, -1 all in turn */
-    BCAM_TRAINER_MID        /* a trainer coming back mid-battle to speak (a leader's last
+    BCAM_TRAINER_MID,       /* a trainer coming back mid-battle to speak (a leader's last
                                Pokemon): its slide in and out (id unused) */
+    BCAM_SWITCH,            /* the player switches Pokemon: the recall of the one on the
+                               field (effect 59), then the throw of the next (effect 60) */
+    BCAM_BALL               /* the player throws a ball at the wild foe (effect 9): id the
+                               ball's item number (0: the Poke Ball), three shakes, no catch */
 };
 
 /*

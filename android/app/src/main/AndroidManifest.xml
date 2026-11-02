@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- eidos on Android: SDL3's activity, which loads libSDL3.so and the
-     program, libmain.so.  The game draws with OpenGL ES 3.0. -->
+<!-- eidos on Android: SDL3's activity (EidosActivity, which tells the game
+     only the edges that cover it), loading libSDL3.so and the program,
+     libmain.so.  The game draws with OpenGL ES 3.0. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     android:installLocation="auto">
 
@@ -17,11 +18,12 @@
 
     <application android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="true"
         android:theme="@style/AppTheme"
         android:enableOnBackInvokedCallback="false"
         android:hardwareAccelerated="true" >
-        <activity android:name="org.libsdl.app.SDLActivity"
+        <activity android:name="org.projectholon.eidos.EidosActivity"
             android:label="@string/app_name"
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"

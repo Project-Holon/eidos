@@ -85,6 +85,7 @@ extern const char *bw_mod_savedata_namespace(void) BW_PORT_WEAK;
 extern void        bw_mod_net_frame(void) BW_PORT_WEAK;
 extern void        bw_mp_frame(void) BW_PORT_WEAK;
 extern void        bw_link_frame(void) BW_PORT_WEAK;
+extern void        bw_slots_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_timer_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_avatar_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_handoff_frame(void) BW_PORT_WEAK;
@@ -245,6 +246,9 @@ void bw_mod_frame_tick(void)
     bw_mp_frame();
 
     /* A Link session's end turns the radio off (sdk/link.h). */
+    if (bw_slots_frame != NULL) {
+        bw_slots_frame();               /* a new game's first save (sdk/save_slots.c) */
+    }
     if (bw_link_frame != NULL) {
         bw_link_frame();
     }

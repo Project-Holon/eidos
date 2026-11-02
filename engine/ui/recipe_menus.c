@@ -30,6 +30,7 @@
  * one of these screens.
  */
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +42,8 @@
 #include "ui_lang.h"
 #include "assets.h"
 #include "input.h"
+#include "textbox.h"
+#include "choice_list.h"
 #include "overlay.h"
 #include "plat_thread.h"
 #include "port.h"
@@ -309,8 +312,9 @@ static Modal modal_rect(const EidosUiCtx *c, int fw_pct, int wmin, int wmax,
                         int fh_pct, int hmin, int hmax, int hneed)
 {
     Modal m;
-    int cw = c->canvas->w, ch = c->canvas->h;
-    int avail = ch - 17;
+    /* inside the safe area, above the hint bar (lifted by safe_b) */
+    int cw = c->canvas->w - c->safe_l - c->safe_r, ch = c->canvas->h;
+    int avail = ch - ui_bar_h(c) - c->safe_t;
 
     m.w = clampi(cw * fw_pct / 100, wmin, wmax);
     m.h = clampi(ch * fh_pct / 100 - 17, hmin, hmax);
@@ -323,8 +327,8 @@ static Modal modal_rect(const EidosUiCtx *c, int fw_pct, int wmin, int wmax,
     if (m.h > avail - 4) {
         m.h = avail - 4;
     }
-    m.x = (cw - m.w) / 2;
-    m.y = (avail - m.h) / 2;
+    m.x = c->safe_l + (cw - m.w) / 2;
+    m.y = c->safe_t + (avail - m.h) / 2;
     return m;
 }
 
@@ -356,7 +360,8 @@ static void pill(EidosUiCtx *c, int x, int y, int w, int h, const char *label,
  * index of the hint clicked this frame, or -1. */
 static int hint_bar(EidosUiCtx *c, const EidosUiFrame *in, const char *const *pairs, int n)
 {
-    int y = c->canvas->h - 17, i, x = 6, hit = -1;
+    int bh, y = ui_bottom_bar(c, c->canvas->h - ui_bar_h(c), 17, &bh), i, x = 6 + ui_safe_left(c);
+    int hit = -1;
 
     (void)in;
     ui_hints(c, y, c->canvas->w, pairs, n, NULL);
@@ -371,7 +376,7 @@ static int hint_bar(EidosUiCtx *c, const EidosUiFrame *in, const char *const *pa
         r.x = x - 2;
         r.y = y;
         r.w = kw + 4 + aw + 4;
-        r.h = 17;
+        r.h = bh;
         if (eidos_ui_hit(r) & EIDOS_UI_CLICK) {
             hit = i;
         }
@@ -640,6 +645,12 @@ static const char *game_text(int arc, int member, u32 idx, const char *name)
     return s->text;
 }
 
+/* The game's text for the other recipes (kit.h). */
+const char *ui_game_text(int arc, int member, u32 idx)
+{
+    return game_text(arc, member, idx, NULL);
+}
+
 /* Replace the line breaks of a text by spaces (the kit wraps by itself). */
 static void flatten(const char *s, char *out, int max)
 {
@@ -700,7 +711,7 @@ static int wrapped(EidosUiCtx *c, int x, int y, int width, int step, int font,
  * are hit regions, so the press must have begun and ended outside. */
 static int outside_click(const EidosUiCtx *c, Modal m)
 {
-    int cw = c->canvas->w, ch = c->canvas->h - 17;
+    int cw = c->canvas->w, ch = c->canvas->h - ui_bar_h(c);
     EidosUiRect r[4];
     int i, hit = 0;
 
@@ -927,7 +938,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 
     /* the modal */
     /* a canvas too short for the help box shows the rows alone */
-    compact = c->canvas->h - 17 - 6 < 193;
+    compact = c->canvas->h - ui_bar_h(c) - 6 < 193;
     m = modal_rect(c, 80, 320, 440, 86, compact ? 158 : 193, compact ? 158 : 193,
                    compact ? 158 : 193);
     ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
@@ -1187,7 +1198,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             wrapped(c, m.x + 26, m.y + (m.h - bh) / 2 + 7, m.w - 52, 15, UI_FONT_LARGE, flat,
                     UI_WHITE, UI_EDGE, 4);
         }
-        hr.x = 0; hr.y = 0; hr.w = c->canvas->w; hr.h = c->canvas->h - 17;
+        hr.x = 0; hr.y = 0; hr.w = c->canvas->w; hr.h = c->canvas->h - ui_bar_h(c);
         if ((eidos_ui_hit(hr) & EIDOS_UI_CLICK) != 0 && rs == 5) {
             press_key(BW_KEY_A);
         }
@@ -1389,7 +1400,7 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     gd = game_data();
     misc = (gd != NULL && GAME_DATA_GetMiscSave != NULL) ? GAME_DATA_GetMiscSave(gd) : NULL;
 
-    compact = c->canvas->h - 17 - 6 < 196;
+    compact = c->canvas->h - ui_bar_h(c) - 6 < 196;
     m = modal_rect(c, 60, 260, 320, 80, compact ? 162 : 196, 220, compact ? 162 : 196);
     ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, "SAVE", NULL, NULL, UI_SKY);
@@ -2291,7 +2302,7 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     back_face = ci.kind == CK_CARD && ci.back;
 
-    compact = c->canvas->h - 17 - 6 < 190;
+    compact = c->canvas->h - ui_bar_h(c) - 6 < 190;
     m = modal_rect(c, 72, 300, 380, 80, compact ? 146 : 190, 220, compact ? 146 : 190);
     ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 12, 0x06281Fu, UI_CARD, 248);
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, "TRAINER CARD", back_face ? "RECORDS" : NULL, NULL, UI_CARD);
@@ -2573,6 +2584,2033 @@ static const EidosUiRecipe recipe_wireless = {
     "wireless", wireless_match, wireless_run, wireless_reset, 0
 };
 
+/* ------------------------------------------------------------------ */
+/* Geonet                                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Geonet (overlay 219, ov219/beacon_detail.c, the globe in the Pokemon
+ * Centers' upper floor) as one screen (mock-up "geonet"): the globe fills
+ * the window, the game's windows are the interface's system boxes (the
+ * upper screen's on the top left, the lower screen's along the bottom),
+ * and View and Quit are tiles with their keys (X, B).  The pointer held
+ * on the globe is the stylus there, so the globe turns as the game turns
+ * it for a drag.  The game's own windows and its grid are left out of the
+ * screen (g2d_hw_hide_main_bgs: BG2 and BG3 of the engine with the 3D).
+ *
+ * BeaconDetailWork: bmp18 0xC018, bmp1C 0xC01C, bmp40 0xC040 (BmpWins).
+ */
+#define GEO_OVERLAY 219
+
+extern void g2d_hw_hide_main_bgs(u32 mask) MN_WEAK;
+
+static int geonet_match(void)
+{
+    if (app_work(GEO_OVERLAY) == NULL) {
+        return 0;
+    }
+    eidos_ui_want_ds_scale();
+    return 1;
+}
+
+static int geo_win_live(const u8 *w)
+{
+    return w != NULL && (rd16(w, 0) & 0x7FFFu) == 0x7FB2u;
+}
+
+/* A battle-sheet tile with a key: the strip, the label, the keycap. */
+static int geo_tile(EidosUiCtx *c, int x, int y, int w, const char *label, const char *key, int lit)
+{
+    EidosUiRect r;
+    int st, rr, h = 21;
+    u32 col = lit ? 0x008BACu : UI_EDGE2;
+
+    r.x = x; r.y = y; r.w = w; r.h = h;
+    st = eidos_ui_hit(r);
+    if (st & EIDOS_UI_HOVER) {
+        lit = 1;
+        col = 0x008BACu;
+    }
+    ui_panel(c, x, y - (lit ? 1 : 0), w, h, UI_CUT_TL | UI_CUT_BR, 5, lit ? 0x05343Eu : UI_BODY,
+             lit ? 0x008BACu : UI_EDGE, 242);
+    for (rr = 3; rr < h - 3; rr++) {
+        int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+        if (left < 6) {
+            ui_fill(c, x + left, y - (lit ? 1 : 0) + rr, 6 - left, 1, col, 255);
+        }
+    }
+    ui_text(c, x + 12, y - (lit ? 1 : 0) + ui_text_y(h, UI_FONT_LARGE), label, UI_WHITE, 0x313131u,
+            UI_FONT_LARGE, 1);
+    ui_keycap(c, x + w - 6 - ui_keycap_w(key), y - (lit ? 1 : 0) + 4, key);
+    return st;
+}
+
+static void geonet_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    const u8 *w = (const u8 *)app_work(GEO_OVERLAY);
+    const u8 *wins[3];
+    int cw = c->canvas->w, ch = c->canvas->h, i, bw, bottom_top = ch - 4;
+    float s = (float)ch / 192.0f;
+    float ox = ((float)cw - 256.0f * s) * 0.5f;
+    EidosUiRect all;
+
+    view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = 1.0f;
+    if (w == NULL) {
+        return;
+    }
+    if (g2d_hw_hide_main_bgs != NULL) {
+        g2d_hw_hide_main_bgs(0x4u | 0x8u);  /* the windows and the grid */
+    }
+    wins[0] = rdp(w, 0xC018);
+    wins[1] = rdp(w, 0xC01C);
+    wins[2] = rdp(w, 0xC040);
+    bw = (int)(256.0f * s) - 8;
+    if (bw > cw - 8) {
+        bw = cw - 8;
+    }
+    /* the lower screen's windows first, along the bottom; the upper
+     * screen's on the top left */
+    for (i = 0; i < 3; i++) {
+        const u8 *b = wins[i];
+
+        if (!geo_win_live(b) || b[2] >= 4) {
+            continue;
+        }
+        bottom_top -= b[6] * 8 + 10;
+        ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, (cw - bw) / 2, bottom_top, bw, b, -1, -1);
+        bottom_top -= 4;
+    }
+    {
+        int y = 4;
+
+        for (i = 0; i < 3; i++) {
+            const u8 *b = wins[i];
+
+            if (!geo_win_live(b) || b[2] < 4) {
+                continue;
+            }
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, 4, y, b[5] * 8 + 20, b, -1, -1);
+            y += b[6] * 8 + 14;
+        }
+    }
+    {
+        /* View (X) and Quit (B) */
+        int tw = ui_text_w("Quit", UI_FONT_LARGE) + 44, vw = ui_text_w("View", UI_FONT_LARGE) + 44;
+        int x = (cw + bw) / 2 - tw, y = bottom_top - 24;
+
+        if (geo_tile(c, x, y, tw, "Quit", "B", 0) & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_B, 2);
+        }
+        x -= vw + 4;
+        if (geo_tile(c, x, y, vw, "View", "X", 1) & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_X, 2);
+        }
+    }
+    /* the pointer held on the globe is the stylus there */
+    all.x = 0; all.y = 0; all.w = cw; all.h = bottom_top - 26;
+    if (in->mouse.down && (eidos_ui_hit(all) & EIDOS_UI_HOVER)) {
+        int mx, my, tx, ty;
+
+        if (eidos_ui_mouse_pos(&mx, &my)) {
+            tx = (int)(((float)mx - ox) / s);
+            ty = (int)((float)my / s);
+            if (tx >= 0 && tx < 256 && ty >= 0 && ty < 192) {
+                eidos_ui_tap(tx, ty, 2);
+            }
+        }
+    }
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void geonet_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_geonet = {
+    "geonet", geonet_match, geonet_run, geonet_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* The Entree (the Entralink's Monolith)                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Entree's first screen (overlay 71, ov071/monolith_title.c) as a
+ * window over the blurred Entralink (mock-up "entree"): the title, Receive
+ * Pass Power, Check Status and Back as battle-style tiles.  A tile taps the
+ * game's own button, so the game opens what it opens for the stylus; its
+ * keys work as they did.  The Pass Power list and the status follow
+ * (pass_power_run, entree_status_run).
+ *
+ * MonolithToolWork (ov071/monolith_tool_types.h): currentScreen 0x134.
+ * Its words: a/0/0/2 file 69 (0 the title, 2 and 3 the two buttons).
+ */
+#define MONO_OVERLAY 71
+#define MONO_TITLE   0          /* currentScreen: the first screen        */
+#define MONO_POWER   2          /* the Pass Power list                    */
+#define MONO_STATUS  3          /* the Entree's status                    */
+
+static int entree_match(void)
+{
+    const u8 *w = (const u8 *)app_work(MONO_OVERLAY);
+
+    if (w == NULL) {
+        return 0;
+    }
+    if (getenv("EIDOS_UI_ENTREE_LOG") != NULL) {
+        static int last = -1;
+
+        if (w[0x134] != last) {
+            fprintf(stderr, "eidos: ui entree screen %d\n", w[0x134]);
+            last = w[0x134];
+        }
+    }
+    return w[0x134] == MONO_TITLE || w[0x134] == MONO_POWER || w[0x134] == MONO_STATUS;
+}
+
+/* A battle sheet tile; returns its hit state. */
+static int sheet_tile_hit(EidosUiCtx *c, int x, int y, int w, int h, const char *label, int lit)
+{
+    EidosUiRect r;
+    int st, rr;
+    u32 col;
+
+    r.x = x; r.y = y; r.w = w; r.h = h;
+    st = eidos_ui_hit(r);
+    lit = lit || (st & EIDOS_UI_HOVER);
+    col = lit ? 0x008BACu : UI_EDGE2;
+    ui_panel(c, x, y - (lit ? 1 : 0), w, h, UI_CUT_TL | UI_CUT_BR, 5, lit ? 0x05343Eu : UI_BODY,
+             lit ? 0x008BACu : UI_EDGE, 242);
+    for (rr = 3; rr < h - 3; rr++) {
+        int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+        if (left < 6) {
+            ui_fill(c, x + left, y - (lit ? 1 : 0) + rr, 6 - left, 1, col, 255);
+        }
+    }
+    ui_text(c, x + 12, y - (lit ? 1 : 0) + ui_text_y(h, UI_FONT_LARGE), label, UI_WHITE, 0x313131u,
+            UI_FONT_LARGE, 1);
+    return st;
+}
+
+static void entree_title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Choose", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    int cw = c->canvas->w, ch = c->canvas->h, mw, mh = 150, mx, my;
+    char name[24] = "";
+    const char *title;
+    void *gd = game_data();
+
+    (void)in;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = 1.0f;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+    if (gd != NULL && GAME_DATA_GetMyStatus != NULL && MYSTATUS_GetName != NULL) {
+        units_utf8(MYSTATUS_GetName(GAME_DATA_GetMyStatus(gd)), 8, name, (int)sizeof name);
+    }
+    title = game_text(2, 69, 0, name);
+    mw = cw - 40 < 300 ? cw - 40 : 300;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh) / 2;
+    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    ui_text(c, mx + 12, my + 6, title[0] != '\0' ? title : "ENTREE", 0x62BEFFu, 0x313131u, UI_FONT_SMALL, 1);
+    ui_fill(c, mx + 10, my + 19, mw - 20, 1, 0x103C5Au, 255);
+    {
+        /* the keys move the window's own cursor (the game's is on its
+         * lower screen); A presses the tile under it */
+        static int focus;
+        u32 k = eidos_ui_keys_pressed();
+        int i, pick = -1;
+        const char *labels[3];
+
+        labels[0] = game_text(2, 69, 2, NULL);
+        labels[1] = game_text(2, 69, 3, NULL);
+        labels[2] = "Back";
+        eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_A);
+        if (k & BW_KEY_UP) focus = (focus + 2) % 3;
+        if (k & BW_KEY_DOWN) focus = (focus + 1) % 3;
+        if (k & BW_KEY_A) pick = focus;
+        for (i = 0; i < 3; i++) {
+            int st = sheet_tile_hit(c, mx + 12, my + 30 + 36 * i, mw - 24, 30, labels[i],
+                                    eidos_ui_keys_lit() && i == focus);
+
+            if (st & EIDOS_UI_CLICK) pick = i;
+            if (st & EIDOS_UI_HOVER) focus = i;
+        }
+        if (pick == 0) eidos_ui_tap(128, 58, 3);
+        if (pick == 1) eidos_ui_tap(128, 115, 3);
+        if (pick == 2) eidos_ui_press(BW_KEY_B, 2);
+    }
+    if (ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys) < 0) {
+        /* the hints press their own keys */
+    }
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* The inner screens' parts (the Entree, the Survey Radar)             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The inner screens of the Entree and the Survey Radar (mock-ups
+ * "pass_power", "entree_status", "survey_list", "survey_report"): a dark
+ * window over the blurred world, the game's own words copied out of its
+ * windows (ui_letters: its font, its language, what it printed), battle
+ * tiles for what can be chosen.  The keys stay the game's; a click taps
+ * the game's own button or moves its cursor with its keys, so the game
+ * does what it does for the stylus or the pad.
+ */
+#define IN_TITLE   0x62BEFFu    /* the window's title                     */
+#define IN_MBODY   0x060E1Au
+#define IN_MEDGE   0x103C5Au
+#define IN_HL      0x008BACu
+#define IN_SHADOW  0x313131u
+#define IN_HEAD    28           /* the title and its rule                  */
+
+/* The work of the proc on top of a ProcSys (current 0x08; Proc work
+ * 0x14), NULL before it has one. */
+static void *proc_work_of(void *procsys)
+{
+    void *cur = procsys != NULL ? rdp(procsys, 0x08) : NULL;
+
+    return cur != NULL ? rdp(cur, 0x14) : NULL;
+}
+
+/* The Bmp of a BmpWin, NULL when the window is not live. */
+static const void *win_bmp_of(const void *win)
+{
+    return win != NULL ? ui_bmpwin_bmp(win) : NULL;
+}
+
+/* The window over the world, its title the game's words when they are
+ * printed. */
+static void in_window(EidosUiCtx *c, int x, int y, int w, int h, const void *title_bmp)
+{
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 10, IN_MBODY, IN_MEDGE, 245);
+    if (title_bmp != NULL) {
+        ui_letters(c, title_bmp, x + 12, y + 5, IN_TITLE, IN_SHADOW, NULL, NULL);
+    }
+    ui_fill(c, x + 10, y + IN_HEAD - 4, w - 20, 1, IN_MEDGE, 255);
+}
+
+/* A panel for words that are only read. */
+static void in_panel(EidosUiCtx *c, int x, int y, int w, int h)
+{
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY2, UI_EDGE, 255);
+}
+
+/* A battle tile (recipe_battle.c sheet_tile): the strip down the left,
+ * the chosen one tinted, edged and lifted a pixel.  Returns the hit state;
+ * *dy gets the lift for what is drawn on it. */
+static int in_tile(EidosUiCtx *c, int x, int y, int w, int h, int lit, int *dy)
+{
+    EidosUiRect r;
+    int st, rr, lift;
+    u32 col;
+
+    r.x = x; r.y = y; r.w = w; r.h = h;
+    st = eidos_ui_hit(r);
+    lit = lit || (st & EIDOS_UI_HOVER);
+    lift = lit ? -1 : 0;
+    col = lit ? IN_HL : UI_EDGE2;
+    ui_panel(c, x, y + lift, w, h, UI_CUT_TL | UI_CUT_BR, 5, lit ? 0x05343Eu : UI_BODY,
+             lit ? IN_HL : UI_EDGE, 242);
+    for (rr = 3; rr < h - 3; rr++) {
+        int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+        if (left < 6) {
+            ui_fill(c, x + left, y + lift + rr, 6 - left, 1, col, 255);
+        }
+    }
+    if (dy != NULL) {
+        *dy = lift;
+    }
+    return st;
+}
+
+/* A tile labelled with the game's printed words (a Bmp), or with `text`
+ * when it has none. */
+static int in_tile_words(EidosUiCtx *c, int x, int y, int w, int h, const void *bmp, const char *text,
+                         int lit, int dim)
+{
+    int dy, bw, bh, st = in_tile(c, x, y, w, h, lit, &dy);
+    u32 ink = dim ? UI_GREY : UI_WHITE;
+
+    if (bmp != NULL && ui_letters(NULL, bmp, 0, 0, 0, 0, &bw, &bh)) {
+        ui_letters(c, bmp, x + 12, y + dy + (h - bh) / 2, ink, IN_SHADOW, NULL, NULL);
+    } else if (text != NULL) {
+        ui_text(c, x + 12, y + dy + ui_text_y(h, UI_FONT_LARGE), text, ink, IN_SHADOW, UI_FONT_LARGE, 1);
+    }
+    return st;
+}
+
+/* A system box holding a text of the game's banks (lines split at '\n'),
+ * h high. */
+static void in_sys_text(EidosUiCtx *c, int x, int y, int w, int h, const char *s)
+{
+    char line[160];
+    int n = 0, ly = y + 6;
+
+    ui_textbox_frame(c, UI_TEXTBOX_SYSTEM, x, y, w, h);
+    for (;; s++) {
+        if (*s == '\n' || *s == '\0') {
+            line[n] = '\0';
+            ui_text(c, x + 12, ly, line, UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
+            ly += 16;
+            n = 0;
+            if (*s == '\0') {
+                break;
+            }
+        } else if (n < (int)sizeof line - 1) {
+            line[n++] = *s;
+        }
+    }
+}
+
+/* The centre of rectangle i of a game touch table ({top, bottom, left,
+ * right} bytes); 0 when it is not a rectangle. */
+static int touch_rect_mid(const u8 *table, int i, int *x, int *y)
+{
+    const u8 *r = table + 4 * i;
+
+    if (r[0] == 0xFF || r[0] == 0xFE || r[1] <= r[0] || r[3] <= r[2]) {
+        return 0;
+    }
+    *x = (r[2] + r[3]) / 2;
+    *y = (r[0] + r[1]) / 2;
+    return 1;
+}
+
+static void tap_rect(const u8 *table, int i)
+{
+    int x, y;
+
+    if (touch_rect_mid(table, i, &x, &y)) {
+        eidos_ui_tap(x, y, 3);
+    }
+}
+
+/* A left or right arrow in a tile, a hit region of its own. */
+static int in_arrow(EidosUiCtx *c, int x, int y, int h, int right, int lit)
+{
+    EidosUiRect r;
+    int st, i, cy = y + h / 2;
+    u32 col;
+
+    r.x = x; r.y = y; r.w = 16; r.h = h;
+    st = eidos_ui_hit(r);
+    col = (lit || (st & EIDOS_UI_HOVER)) ? UI_WHITE : IN_HL;
+    for (i = 0; i < 5; i++) {
+        int xx = right ? x + 6 + i : x + 10 - i;
+
+        ui_fill(c, xx, cy - (4 - i), 1, 2 * (4 - i) + 1, col, 255);
+    }
+    return st;
+}
+
+static void in_view(EidosUiView *view)
+{
+    view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = 1.0f;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+}
+
+/*
+ * The Pass Power list (ov071/monolith_power.c, the list on the lower
+ * screen, the information on the upper): the powers as tiles on the left,
+ * the current power and the chosen one's text on the right, the game's
+ * message as a system box under the window and its YES / NO beside it.
+ *
+ * MonolithListWork (sub proc): entryBitmaps 0x024, entryDisabled 0x1B4,
+ * entryCount 0x27C (rows 1 .. count - 2 are powers), messageWindow 0x280,
+ * titleWindow 0x284, messagePrinter 0x294 (non-zero while a message is
+ * up), cursor 0x2F4 (0xFFFF none), yesNoMenu 0x310 (a TaskMenuWork).
+ * MonolithInfoWork (top proc): windows[3] 0x00 (the header, the current
+ * power, the chosen power's text).  YES / NO: a/0/0/2 file 69, 30 and 31.
+ */
+#define MONO_ROWS     5         /* tiles shown at once                    */
+#define MONO_NONE     0xFFFFu
+
+static int g_pp_target = -1;    /* the row the keys are moving to          */
+static int g_pp_pick;           /* then A                                   */
+static int g_pp_wait;
+static int g_pp_first = 1;      /* the first row shown                      */
+static int g_pp_seen = -1;      /* the game's cursor last frame             */
+
+/* Moves the game's cursor to g_pp_target with its keys (one press every
+ * few frames), then presses A when a pick was asked. */
+static void pp_drive(const u8 *l)
+{
+    int cur = (int)rd32(l, 0x2F4);
+
+    if (g_pp_target < 0) {
+        return;
+    }
+    if (rdp(l, 0x294) != NULL || rdp(l, 0x310) != NULL) {
+        g_pp_target = -1;
+        return;
+    }
+    if (g_pp_wait > 0) {
+        g_pp_wait--;
+        return;
+    }
+    g_pp_wait = 4;
+    if (cur == (int)MONO_NONE || cur < g_pp_target) {
+        eidos_ui_press(BW_KEY_DOWN, 2);
+    } else if (cur > g_pp_target) {
+        eidos_ui_press(BW_KEY_UP, 2);
+    } else {
+        if (g_pp_pick) {
+            eidos_ui_press(BW_KEY_A, 2);
+        }
+        g_pp_target = -1;
+        g_pp_pick = 0;
+    }
+}
+
+static void pass_power_run(EidosUiCtx *c, const u8 *w)
+{
+    static const char *const hints[] = { "A", "Choose", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    const u8 *l = (const u8 *)proc_work_of(rdp(w, 0x130));
+    const u8 *top = (const u8 *)proc_work_of(rdp(w, 0x12C));
+    int cw = c->canvas->w, ch = c->canvas->h;
+    int mw = cw - 24 < 460 ? cw - 24 : 460;
+    int tw = 168, body = MONO_ROWS * 32 - 4, mh = IN_HEAD + body + 10;
+    int mx = (cw - mw) / 2, my = (ch - 17 - mh - 48) / 2;
+    int count, cur, i, msg, menu, rx, rw, y;
+    EidosUiRect wheel;
+
+    if (my < 4) my = 4;
+    if (l == NULL || (count = l[0x27C]) < 3 || count > 50) {
+        in_window(c, mx, my, mw, mh, NULL);
+        return;
+    }
+    cur = (int)rd32(l, 0x2F4);
+    msg = rdp(l, 0x294) != NULL;
+    menu = rdp(l, 0x310) != NULL;
+    in_window(c, mx, my, mw, mh, win_bmp_of(rdp(l, 0x284)));
+
+    /* the list: keep the game's cursor in view when it moves; the wheel
+     * scrolls the tiles */
+    if (cur != g_pp_seen && cur != (int)MONO_NONE) {
+        if (cur < g_pp_first) g_pp_first = cur;
+        if (cur >= g_pp_first + MONO_ROWS) g_pp_first = cur - MONO_ROWS + 1;
+    }
+    g_pp_seen = cur;
+    wheel.x = mx; wheel.y = my; wheel.w = tw + 12; wheel.h = mh;
+    g_pp_first -= eidos_ui_wheel(wheel);
+    if (g_pp_first > count - 1 - MONO_ROWS) g_pp_first = count - 1 - MONO_ROWS;
+    if (g_pp_first < 1) g_pp_first = 1;
+    for (i = 0; i < MONO_ROWS; i++) {
+        int row = g_pp_first + i, st;
+
+        if (row > count - 2) {
+            break;
+        }
+        st = in_tile_words(c, mx + 12, my + IN_HEAD + 32 * i, tw, 28, rdp(l, 0x24 + 4 * (u32)row), NULL,
+                           row == cur, rd32(l, 0x1B4 + 4 * (u32)row) != 0);
+        if (!msg && !menu && (st & EIDOS_UI_CLICK)) {
+            g_pp_target = row;
+            g_pp_pick = 1;
+            g_pp_wait = 0;
+        }
+    }
+    if (count - 2 > MONO_ROWS) {
+        /* where the shown rows sit in the list */
+        int bh = body * MONO_ROWS / (count - 2), by = body * (g_pp_first - 1) / (count - 2);
+
+        ui_fill(c, mx + 12 + tw + 3, my + IN_HEAD, 2, body, UI_EDGE, 255);
+        ui_fill(c, mx + 12 + tw + 3, my + IN_HEAD + by, 2, bh, IN_HL, 255);
+    }
+
+    /* the current power and the chosen one's words, from the upper screen */
+    rx = mx + 12 + tw + 10;
+    rw = mx + mw - 12 - rx;
+    y = my + IN_HEAD;
+    if (top != NULL) {
+        const void *h0 = win_bmp_of(rdp(top, 0x00)), *h1 = win_bmp_of(rdp(top, 0x04));
+        const void *h2 = win_bmp_of(rdp(top, 0x08));
+        int a0 = 0, a1 = 0, a2 = 0, bw;
+
+        ui_letters(NULL, h0, 0, 0, 0, 0, &bw, &a0);
+        ui_letters(NULL, h1, 0, 0, 0, 0, &bw, &a1);
+        ui_letters(NULL, h2, 0, 0, 0, 0, &bw, &a2);
+        in_panel(c, rx, y, rw, 10 + a0 + 6 + a1 + 8);
+        ui_letters(c, h0, rx + 10, y + 6, UI_GREY, IN_SHADOW, NULL, NULL);
+        ui_letters(c, h1, rx + 10, y + 6 + a0 + 6, UI_WHITE, IN_SHADOW, NULL, NULL);
+        y += 10 + a0 + 6 + a1 + 8 + 4;
+        if (a2 > 0) {
+            in_panel(c, rx, y, rw, a2 + 14);
+            ui_letters(c, h2, rx + 10, y + 7, UI_WHITE, IN_SHADOW, NULL, NULL);
+        }
+    }
+    if (in_tile_words(c, rx, my + IN_HEAD + body - 26, rw, 26, NULL, "Back", 0, 0)
+        & EIDOS_UI_CLICK) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+
+    /* the game's message under the window; YES / NO beside it */
+    if (msg) {
+        const void *mwin = rdp(l, 0x280);
+        int bh = ui_textbox_h(mwin), bw = menu ? mw - 96 : mw, by = my + mh + 4;
+
+        if (bh > 0) {
+            EidosUiRect r;
+
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, mx, by, bw, mwin, -1, -1);
+            r.x = mx; r.y = by; r.w = bw; r.h = bh;
+            if (!menu && (eidos_ui_hit(r) & EIDOS_UI_CLICK)) {
+                eidos_ui_press(BW_KEY_A, 2);
+            }
+        }
+        if (menu) {
+            const u8 *tm = (const u8 *)rdp(l, 0x310);
+            int tcur = tm[0x00], j;
+
+            for (j = 0; j < 2; j++) {
+                const char *lab = game_text(2, 69, 30u + (u32)j, NULL);
+                int st = in_tile_words(c, mx + mw - 92, by + 22 * j, 92, 20, NULL,
+                                       lab[0] != '\0' ? lab : (j == 0 ? "YES" : "NO"),
+                                       eidos_ui_keys_lit() && tcur == j, 0);
+
+                if (st & EIDOS_UI_CLICK) {
+                    /* TaskMenuWork init 0x20: charPosX 0x30, charPosY 0x31,
+                     * width 0x32, height 0x33 (posType 0: the top left) */
+                    eidos_ui_tap(tm[0x30] * 8 + tm[0x32] * 4, tm[0x31] * 8 + tm[0x33] * 8 * j + tm[0x33] * 4, 3);
+                }
+            }
+        }
+    }
+    pp_drive(l);
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+/*
+ * The Entree's status (ov071/monolith_title.c, MonolithToolStats on the
+ * lower screen): its six windows (the title, the total level, the two
+ * versions' levels, the time, the missions, the Pass Powers) in two
+ * panels, and Back.
+ */
+static void entree_status_run(EidosUiCtx *c, const u8 *w)
+{
+    static const char *const hints[] = { "B", "Back" };
+    static const u32 keys[] = { BW_KEY_B };
+    const u8 *s = (const u8 *)proc_work_of(rdp(w, 0x130));
+    int cw = c->canvas->w, ch = c->canvas->h;
+    int mw = cw - 24 < 360 ? cw - 24 : 360;
+    int hh[6] = { 0 }, i, bw, pa, pb, mh, mx, my, y;
+    const void *b[6];
+
+    for (i = 0; i < 6; i++) {
+        b[i] = s != NULL ? win_bmp_of(rdp(s, 4 * (u32)i)) : NULL;
+        if (b[i] != NULL) {
+            ui_letters(NULL, b[i], 0, 0, 0, 0, &bw, &hh[i]);
+        }
+    }
+    pa = 8 + hh[1] + 6 + hh[2] + 8;
+    pb = 8 + hh[3] + 5 + hh[4] + 5 + hh[5] + 8;
+    mh = IN_HEAD + pa + 6 + pb + 6 + 26 + 10;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh) / 2;
+    in_window(c, mx, my, mw, mh, b[0]);
+    y = my + IN_HEAD;
+    in_panel(c, mx + 12, y, mw - 24, pa);
+    ui_letters(c, b[1], mx + 22, y + 8, UI_WHITE, IN_SHADOW, NULL, NULL);
+    ui_letters(c, b[2], mx + 22, y + 8 + hh[1] + 6, UI_WHITE, IN_SHADOW, NULL, NULL);
+    y += pa + 6;
+    in_panel(c, mx + 12, y, mw - 24, pb);
+    ui_letters(c, b[3], mx + 22, y + 8, UI_WHITE, IN_SHADOW, NULL, NULL);
+    ui_letters(c, b[4], mx + 22, y + 8 + hh[3] + 5, UI_WHITE, IN_SHADOW, NULL, NULL);
+    ui_letters(c, b[5], mx + 22, y + 8 + hh[3] + 5 + hh[4] + 5, UI_WHITE, IN_SHADOW, NULL, NULL);
+    y += pb + 6;
+    if (in_tile_words(c, mx + 12, y, mw - 24, 26, NULL, "Back", eidos_ui_keys_lit(), 0)
+        & EIDOS_UI_CLICK) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 1, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void entree_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    const u8 *w = (const u8 *)app_work(MONO_OVERLAY);
+
+    if (w == NULL) {
+        return;
+    }
+    if (w[0x134] == MONO_TITLE) {
+        entree_title_run(c, view, in);
+        return;
+    }
+    in_view(view);
+    if (w[0x134] == MONO_POWER) {
+        pass_power_run(c, w);
+    } else {
+        g_pp_target = -1;
+        entree_status_run(c, w);
+    }
+}
+
+static void entree_reset(void)
+{
+    g_pp_target = -1;
+    g_pp_seen = -1;
+}
+
+static const EidosUiRecipe recipe_entree = {
+    "entree", entree_match, entree_run, entree_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* The Survey Radar                                                    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Survey Radar's first screen (overlay 217, ov217/research_top.c) as
+ * a window over the blurred field (mock-up "survey"): the title, Select a
+ * Survey and Check Survey Results as battle-style tiles that tap the
+ * game's own buttons; the keys move the window's cursor and A presses it;
+ * B or a right click leaves.  The survey list and the report follow
+ * (survey_list_run, survey_report_run).
+ *
+ * The first screen is the proc's step RS_TOP (its menu, waiting).
+ */
+#define RS_OVERLAY 217
+#define RS_LIST    202          /* the proc's step: the survey list       */
+#define RS_REPORT  203          /* the survey report                      */
+
+static int g_survey_top = 201;      /* the step of the first screen: main, its menu */
+
+static int survey_step(void)
+{
+    void *gs = game_system(), *cur;
+
+    if (gs == NULL || (cur = current_proc(gs)) == NULL || (int)rd32(cur, 0x04) != RS_OVERLAY) {
+        return -1;
+    }
+    return (int)rd32(cur, 0x08) * 100 + (int)rd32(cur, 0x0C);
+}
+
+static int survey_match(void)
+{
+    int st;
+
+    if (app_work(RS_OVERLAY) == NULL) {
+        return 0;
+    }
+    st = survey_step();
+    if (getenv("EIDOS_UI_SURVEY_LOG") != NULL) {
+        static int last = -99;
+
+        if (st != last) {
+            fprintf(stderr, "eidos: ui survey step %d\n", st);
+            last = st;
+        }
+    }
+    return st == g_survey_top || st == RS_LIST || st == RS_REPORT;
+}
+
+static void survey_top_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Choose", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    static int focus;
+    int cw = c->canvas->w, ch = c->canvas->h, mw, mh = 114, mx, my, i, pick = -1;
+    u32 k = eidos_ui_keys_pressed();
+    const char *labels[2];
+
+    (void)in;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = 1.0f;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+    labels[0] = "Select a Survey";
+    labels[1] = "Check Survey Results";
+    mw = cw - 40 < 300 ? cw - 40 : 300;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh) / 2;
+    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    ui_text(c, mx + 12, my + 6, "SURVEY RADAR", 0x62BEFFu, 0x313131u, UI_FONT_SMALL, 1);
+    ui_fill(c, mx + 10, my + 19, mw - 20, 1, 0x103C5Au, 255);
+    eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_A);
+    if (k & BW_KEY_UP) focus = (focus + 1) % 2;
+    if (k & BW_KEY_DOWN) focus = (focus + 1) % 2;
+    if (k & BW_KEY_A) pick = focus;
+    for (i = 0; i < 2; i++) {
+        int st = sheet_tile_hit(c, mx + 12, my + 30 + 38 * i, mw - 24, 32, labels[i],
+                                eidos_ui_keys_lit() && i == focus);
+
+        if (st & EIDOS_UI_CLICK) pick = i;
+        if (st & EIDOS_UI_HOVER) focus = i;
+    }
+    if (pick == 0) eidos_ui_tap(128, 63, 3);
+    if (pick == 1) eidos_ui_tap(128, 119, 3);
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+/*
+ * The survey list (ov217/research_list.c, the proc's step 202): the
+ * surveys as tiles, the game's words under the window as a system box;
+ * once one is chosen, its title, its text and its three questions, the
+ * game's question and CONFIRM / CANCEL.
+ *
+ * ResearchList (graphObject, ResearchProc 0x14): state 0x1C, selection
+ * 0x2C (0 confirm, 1 cancel), entryCount 0x30, cursorSlot 0x32,
+ * touchRects 0x58 (rectangle 0 CONFIRM, 1 CANCEL, 3 + i survey i),
+ * entryLabels[10] 0xB4, labels[7] 0xDC (0 title, 1 hint, 2 survey
+ * title, 3 its text, 4 .. 6 its questions).  BgTextLabel: window 0x18,
+ * visible 0x1C.  States: 1 and 2 choosing (touch, keys), 7 .. 10 the
+ * chosen survey (8 touch, 10 keys), 12 starting.  Words: a/0/0/2 file
+ * 169 (6 the question, 7 CONFIRM, 8 CANCEL, 9 the survey is starting).
+ */
+#define SL_ROWS    5
+
+static const void *label_bmp(const u8 *lab, int need_visible)
+{
+    if (lab == NULL || (need_visible && rd32(lab, 0x1C) == 0)) {
+        return NULL;
+    }
+    return win_bmp_of(rdp(lab, 0x18));
+}
+
+static const void *label_win(const u8 *lab)
+{
+    return lab != NULL ? rdp(lab, 0x18) : NULL;
+}
+
+static void survey_list_run(EidosUiCtx *c, const u8 *l)
+{
+    static const char *const hints[] = { "A", "Choose", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    int cw = c->canvas->w, ch = c->canvas->h;
+    int mw = cw - 24 < 460 ? cw - 24 : 460;
+    int state = (int)rd32(l, 0x1C), count = l[0x30], chosen = state >= 7 && state <= 10;
+    int mh, mx, my, i, y, rows;
+    const u8 *labs = l + 0xDC;
+
+    if (count > 10) count = 10;
+    rows = count < SL_ROWS ? count : SL_ROWS;
+    if (chosen) {
+        /* the chosen survey: its title, its text, its questions */
+        const void *t = label_bmp(rdp(labs, 4 * 2), 0), *d = label_bmp(rdp(labs, 4 * 3), 0);
+        int th = 0, dh = 0, qh[3] = { 0 }, bw, bh = 44;
+
+        ui_letters(NULL, t, 0, 0, 0, 0, &bw, &th);
+        ui_letters(NULL, d, 0, 0, 0, 0, &bw, &dh);
+        for (i = 0; i < 3; i++) {
+            ui_letters(NULL, label_bmp(rdp(labs, 4 * (u32)(4 + i)), 0), 0, 0, 0, 0, &bw, &qh[i]);
+        }
+        mh = IN_HEAD + 8 + th + 8 + dh + 10 + (qh[0] + qh[1] + qh[2] + 12) + 14;
+        mx = (cw - mw) / 2;
+        my = (ch - 17 - mh - 4 - bh) / 2;
+        if (my < 4) my = 4;
+        in_window(c, mx, my, mw, mh, label_bmp(rdp(labs, 0), 0));
+        y = my + IN_HEAD + 6;
+        ui_letters(c, t, mx + 14, y, IN_TITLE, IN_SHADOW, NULL, NULL);
+        y += th + 8;
+        ui_letters(c, d, mx + 14, y, UI_WHITE, IN_SHADOW, NULL, NULL);
+        y += dh + 10;
+        in_panel(c, mx + 12, y, mw - 24, qh[0] + qh[1] + qh[2] + 12 + 4);
+        y += 6;
+        for (i = 0; i < 3; i++) {
+            ui_fill(c, mx + 22, y + qh[i] / 2 - 1, 3, 3, IN_HL, 255);
+            ui_letters(c, label_bmp(rdp(labs, 4 * (u32)(4 + i)), 0), mx + 30, y, UI_LIGHT, IN_SHADOW, NULL, NULL);
+            y += qh[i] + 4;
+        }
+        y = my + mh + 4;
+        in_sys_text(c, mx, y, mw - 112, bh, game_text(2, 169, 6, NULL));
+        for (i = 0; i < 2; i++) {
+            const char *lab = game_text(2, 169, 7u + (u32)i, NULL);
+            int st = in_tile_words(c, mx + mw - 108, y + 23 * i, 108, 21, NULL,
+                                   lab[0] != '\0' ? lab : (i == 0 ? "CONFIRM" : "CANCEL"),
+                                   state == 10 && (int)rd32(l, 0x2C) == i, 0);
+
+            if ((st & EIDOS_UI_CLICK) && (state == 8 || state == 10)) {
+                tap_rect(l + 0x58, i);
+            }
+        }
+    } else {
+        int bh = ui_textbox_h(label_win(rdp(labs, 4 * 1)));
+        int sel = state == 2 ? l[0x32] : -1;
+        static int first;
+
+        mh = IN_HEAD + rows * 32 + 26 + 4 + 10;
+        mx = (cw - mw) / 2;
+        my = (ch - 17 - mh - 4 - (bh > 0 ? bh : 44)) / 2;
+        if (my < 4) my = 4;
+        in_window(c, mx, my, mw, mh, label_bmp(rdp(labs, 0), 0));
+        if (sel >= 0) {
+            if (sel < first) first = sel;
+            if (sel >= first + SL_ROWS) first = sel - SL_ROWS + 1;
+        }
+        if (first > count - rows) first = count - rows;
+        if (first < 0) first = 0;
+        for (i = 0; i < rows; i++) {
+            int e = first + i;
+            int st = in_tile_words(c, mx + 12, my + IN_HEAD + 32 * i, mw - 24, 28,
+                                   label_bmp(rdp(l, 0xB4 + 4 * (u32)e), 0), NULL, e == sel, 0);
+
+            if ((st & EIDOS_UI_CLICK) && (state == 1 || state == 2)) {
+                int tx, ty;
+
+                /* the game's own rectangle for the survey, when it is on
+                 * its screen */
+                if (touch_rect_mid(l + 0x58, 3 + e, &tx, &ty) && ty >= 24 && ty <= 168) {
+                    eidos_ui_tap(tx, ty, 3);
+                }
+            }
+        }
+        y = my + IN_HEAD + rows * 32 + 4;
+        if (in_tile_words(c, mx + 12, y, mw - 24, 26, NULL, "Back", 0, 0) & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_B, 2);
+        }
+        if (state == 12 || state == 13) {
+            in_sys_text(c, mx, my + mh + 4, mw, 26, game_text(2, 169, 9, NULL));
+        } else if (bh > 0) {
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, mx, my + mh + 4, mw, label_win(rdp(labs, 4 * 1)), -1, -1);
+        }
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+/*
+ * The survey report (ov217/research_graph.c, the proc's step 203): the
+ * survey and its question on the left with the rows the game moves
+ * through (the question, the display mode, check the results), the
+ * game's circle graph on the right as it draws it, with its words.
+ *
+ * ResearchGraph (detailObject, ResearchProc 0x18): state 0x20 (2 input
+ * by touch, 3 by keys), cursorIndex 0x34 (0 the question, 1 and 2 an
+ * answer, 3 the display mode, 4 check the results), touchRects 0x2FE
+ * (rectangle 7 check the results), label[9] 0x344 (0 the title, 1 and
+ * 2 the survey, 3 the question, 4 an answer, 6 the display mode, 7 not
+ * done yet, 8 updating).  Words: a/0/0/2 file 169, 20 check the results.
+ */
+static int g_rp_target = -1;    /* the row the keys are moving to          */
+static u32 g_rp_key;            /* then this key                            */
+static int g_rp_wait, g_rp_time;
+
+static void rp_drive(const u8 *g)
+{
+    int state = (int)rd32(g, 0x20), cur = (int)rd32(g, 0x34);
+
+    if (g_rp_target < 0) {
+        return;
+    }
+    if (++g_rp_time > 120) {
+        g_rp_target = -1;             /* a row the game does not offer    */
+        return;
+    }
+    if (g_rp_wait > 0) {
+        g_rp_wait--;
+        return;
+    }
+    g_rp_wait = 4;
+    if (state == 2) {
+        eidos_ui_press(BW_KEY_A, 2);    /* the pad takes over from touch   */
+        g_rp_wait = 8;
+    } else if (state == 3) {
+        if (cur != g_rp_target) {
+            eidos_ui_press(BW_KEY_DOWN, 2);
+        } else {
+            if (g_rp_key != 0) {
+                eidos_ui_press(g_rp_key, 2);
+            }
+            g_rp_target = -1;
+        }
+    }
+}
+
+static void rp_go(int row, u32 key)
+{
+    g_rp_target = row;
+    g_rp_key = key;
+    g_rp_wait = 0;
+    g_rp_time = 0;
+}
+
+/* The report's circle graph as a radar, R pixels round at (cx, cy): a
+ * dark disc with rings, a cross and a turning sweep in the interface's
+ * blue, and over it what the game draws in its circle ((6, 46) .. (116,
+ * 156) of the lower screen: the slices, the outline, the centre), its
+ * backdrop (the colour at the square's corner) left out. */
+static u32 mix_rgb(u32 a, u32 b, int t)
+{
+    int r = (int)((a >> 16) & 255) + ((int)((b >> 16) & 255) - (int)((a >> 16) & 255)) * t / 256;
+    int g = (int)((a >> 8) & 255) + ((int)((b >> 8) & 255) - (int)((a >> 8) & 255)) * t / 256;
+    int bl = (int)(a & 255) + ((int)(b & 255) - (int)(a & 255)) * t / 256;
+
+    return (u32)r << 16 | (u32)g << 8 | (u32)bl;
+}
+
+static void radar(EidosUiCtx *c, int cx, int cy, int R, const u8 *screen, u32 frame)
+{
+    const int sr = 55, sx = 61, sy = 101;
+    const u8 *k = screen != NULL ? screen + ((size_t)(sy - sr) * 256 + (size_t)(sx - sr)) * 4 : NULL;
+    float sweep = (float)(frame % 240) / 240.0f * 6.2831853f;
+    int dx, dy;
+
+    for (dy = -R - 2; dy <= R + 2; dy++) {
+        for (dx = -R - 2; dx <= R + 2; dx++) {
+            float d = sqrtf((float)(dx * dx + dy * dy));
+            u32 col;
+            int t;
+
+            if (d > (float)R + 2.0f) {
+                continue;
+            }
+            if (d > (float)R) {
+                ui_fill(c, cx + dx, cy + dy, 1, 1, IN_HL, 255);     /* the rim */
+                continue;
+            }
+            col = 0x061826u;
+            if (fabsf(d - (float)R / 3.0f) < 0.6f || fabsf(d - (float)R * 2.0f / 3.0f) < 0.6f
+                || dx == 0 || dy == 0) {
+                col = 0x0E3A52u;
+            }
+            {
+                /* the sweep and its fading trail */
+                float a = atan2f((float)dy, (float)dx) - sweep;
+
+                while (a < 0.0f) a += 6.2831853f;
+                while (a >= 6.2831853f) a -= 6.2831853f;
+                if (a > 5.5f) {
+                    t = (int)((a - 5.5f) / 0.7831853f * 150.0f);
+                    col = mix_rgb(col, IN_HL, t);
+                }
+            }
+            if (screen != NULL) {
+                int gx = sx + dx * sr / R, gy2 = sy + dy * sr / R;
+                const u8 *p = screen + ((size_t)gy2 * 256 + (size_t)gx) * 4;
+
+                if (p[0] != k[0] || p[1] != k[1] || p[2] != k[2]) {
+                    col = (u32)p[0] << 16 | (u32)p[1] << 8 | p[2];
+                }
+            }
+            ui_fill(c, cx + dx, cy + dy, 1, 1, col, 255);
+        }
+    }
+}
+
+static void survey_report_run(EidosUiCtx *c, const u8 *g, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "LEFT", "Change", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_LEFT, BW_KEY_B };
+    int cw = c->canvas->w, ch = c->canvas->h;
+    int mw = cw - 24 < 460 ? cw - 24 : 460;
+    int mh = ch - 17 - 8 < 240 ? ch - 17 - 8 : 240;
+    int mx = (cw - mw) / 2, my = (ch - 17 - mh) / 2;
+    int lw = mw / 2 + 10, state = (int)rd32(g, 0x20), cur = state == 3 ? (int)rd32(g, 0x34) : -1;
+    int y, h1 = 0, h2 = 0, bw, dy, st, i;
+    const u8 *labs = g + 0x344;
+    const void *b1 = label_bmp(rdp(labs, 4), 0), *b2 = label_bmp(rdp(labs, 8), 0);
+
+    in_window(c, mx, my, mw, mh, label_bmp(rdp(labs, 0), 0));
+    y = my + IN_HEAD;
+    ui_letters(NULL, b1, 0, 0, 0, 0, &bw, &h1);
+    ui_letters(NULL, b2, 0, 0, 0, 0, &bw, &h2);
+    in_panel(c, mx + 12, y, lw - 12, 8 + h1 + 4 + h2 + 8);
+    ui_letters(c, b1, mx + 22, y + 8, UI_WHITE, IN_SHADOW, NULL, NULL);
+    ui_letters(c, b2, mx + 22, y + 8 + h1 + 4, UI_LIGHT, IN_SHADOW, NULL, NULL);
+    y += 8 + h1 + 4 + h2 + 8 + 4;
+
+    /* the question, its arrows change it */
+    st = in_tile_words(c, mx + 12, y, lw - 12, 28, NULL, NULL, cur == 0, 0);
+    {
+        const void *q = label_bmp(rdp(labs, 12), 0);
+        int qw = 0, qh = 0;
+
+        ui_letters(NULL, q, 0, 0, 0, 0, &qw, &qh);
+        ui_letters(c, q, mx + 12 + (lw - 12 - qw) / 2, y + (cur == 0 ? -1 : 0) + (28 - qh) / 2, UI_WHITE,
+                   IN_SHADOW, NULL, NULL);
+    }
+    if (in_arrow(c, mx + 16, y, 28, 0, 0) & EIDOS_UI_CLICK) {
+        rp_go(0, BW_KEY_LEFT);
+    } else if (in_arrow(c, mx + lw - 20, y, 28, 1, 0) & EIDOS_UI_CLICK) {
+        rp_go(0, BW_KEY_RIGHT);
+    } else if (st & EIDOS_UI_CLICK) {
+        rp_go(0, 0);
+    }
+    y += 32;
+
+    /* the display mode: a click changes it */
+    {
+        const void *m = label_bmp(rdp(labs, 24), 0);
+        int mh2 = 0;
+
+        ui_letters(NULL, m, 0, 0, 0, 0, &bw, &mh2);
+        if (mh2 < 20) mh2 = 20;
+        st = in_tile(c, mx + 12, y, lw - 12, mh2 + 10, cur == 3, &dy);
+        ui_letters(c, m, mx + 24, y + dy + 5, UI_WHITE, IN_SHADOW, NULL, NULL);
+        if (st & EIDOS_UI_CLICK) {
+            rp_go(3, BW_KEY_RIGHT);
+        }
+        y += mh2 + 14;
+    }
+    {
+        const char *lab = game_text(2, 169, 20, NULL);
+
+        if (in_tile_words(c, mx + 12, y, lw - 12, 26, NULL, lab[0] != '\0' ? lab : "Check the survey results",
+                          cur == 4, 0) & EIDOS_UI_CLICK) {
+            tap_rect(g + 0x2FE, 7);
+        }
+        y += 30;
+    }
+    if (in_tile_words(c, mx + 12, y, lw - 12, 24, NULL, "Back", 0, 0) & EIDOS_UI_CLICK) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+
+    /* the game's graph, as it draws it, as a radar, and its words */
+    {
+        int px = mx + lw + 6, pw = mx + mw - 12 - px, ph = my + mh - 10 - (my + IN_HEAD);
+        int gy = my + IN_HEAD + 10, texts = 0, R;
+
+        in_panel(c, px, my + IN_HEAD, pw, ph);
+        for (i = 4; i <= 8; i++) {
+            int tw2 = 0, th2 = 0;
+
+            if (i != 6 && ui_letters(NULL, label_bmp(rdp(labs, 4 * (u32)i), 1), 0, 0, 0, 0, &tw2, &th2)) {
+                texts += th2 + 4;
+            }
+        }
+        R = (pw - 24 < ph - 20 - texts ? pw - 24 : ph - 20 - texts) / 2;
+        if (R > 30) {
+            radar(c, px + pw / 2, gy + R, R, in->screen_rgba[1], in->frame);
+            gy += 2 * R + 8;
+        }
+        for (i = 4; i <= 8; i++) {
+            const void *t = label_bmp(rdp(labs, 4 * (u32)i), 1);
+            int tw2 = 0, th2 = 0;
+
+            if (i == 6 || t == NULL || !ui_letters(NULL, t, 0, 0, 0, 0, &tw2, &th2)) {
+                continue;
+            }
+            ui_letters(c, t, px + (pw - tw2) / 2, gy, UI_WHITE, IN_SHADOW, NULL, NULL);
+            gy += th2 + 4;
+        }
+    }
+    rp_drive(g);
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void survey_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    const u8 *w = (const u8 *)app_work(RS_OVERLAY);
+    int st = survey_step();
+
+    if (w == NULL) {
+        return;
+    }
+    if (st == g_survey_top) {
+        survey_top_run(c, view, in);
+        return;
+    }
+    in_view(view);
+    if (st == RS_LIST && rdp(w, 0x14) != NULL && rd32(rdp(w, 0x14), 0x1C) != 0) {
+        survey_list_run(c, (const u8 *)rdp(w, 0x14));
+    } else if (st == RS_REPORT && rdp(w, 0x18) != NULL && rd32(rdp(w, 0x18), 0x20) != 0) {
+        survey_report_run(c, (const u8 *)rdp(w, 0x18), in);
+    } else {
+        g_rp_target = -1;
+    }
+}
+
+static void survey_reset(void)
+{
+    g_rp_target = -1;
+}
+
+static const EidosUiRecipe recipe_survey = {
+    "survey", survey_match, survey_run, survey_reset, 0
+};
+
+
+/* ------------------------------------------------------------------ */
+/* The town map and Fly                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The town map (overlay 72, ov072/townmap.c: Fly's "Fly to where?" and the
+ * Town Map item; mock-up "town_map") as one window over the blurred world:
+ * the game's own map from its lower screen, three quarters of its size,
+ * with its cursor, routes and towns as it draws them; on the right the
+ * town under the cursor in the game's words (its upper screen: the name,
+ * the description, the places in it); the prompt as the title.  The map
+ * is the stylus: a press on it taps the game's map there (a town is
+ * chosen, a drag scrolls).  Fly (A), Zoom and Back tap or press what the
+ * game offers; the keys are the game's.
+ *
+ * TownMapWork (ov072/townmap_types.h): selection.box.win 0xB0 (the upper
+ * screen: name, description, places), panel.win 0xC4 (the prompt),
+ * hoverTown 0x134.  The lower screen's bar: zoom (177, 179), back
+ * (243, 179).
+ */
+#define TM_OVERLAY 72
+#define TM_MAP_H   168          /* the map above the game's bar           */
+
+static int townmap_match(void)
+{
+    return app_work(TM_OVERLAY) != NULL;
+}
+
+static void townmap_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Fly", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    const u8 *w = (const u8 *)app_work(TM_OVERLAY);
+    int cw = c->canvas->w, ch = c->canvas->h;
+    int mapw = 256 * 3 / 4, maph = TM_MAP_H * 3 / 4;
+    int mw = cw - 16 < 480 ? cw - 16 : 480;
+    int iw = 0, ih = 0, mh, mx, my, rx, rw, y, left_h, right_h;
+    const void *info;
+    EidosUiRect r;
+
+    in_view(view);
+    if (w == NULL) {
+        return;
+    }
+    info = win_bmp_of(rdp(w, 0xB0));
+    ui_letters(NULL, info, 0, 0, 0, 0, &iw, &ih);
+    left_h = maph + 4 + 4 + 24;
+    right_h = ih + 16;
+    mh = IN_HEAD + (left_h > right_h ? left_h : right_h) + 10;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh) / 2;
+    if (my < 2) my = 2;
+    in_window(c, mx, my, mw, mh, win_bmp_of(rdp(w, 0xC4)));
+    /* the game's map */
+    ui_panel(c, mx + 10, my + IN_HEAD, mapw + 4, maph + 4, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, UI_EDGE, 255);
+    if (in->screen_rgba[1] != NULL) {
+        int dx, dy;
+
+        for (dy = 0; dy < maph; dy++) {
+            for (dx = 0; dx < mapw; dx++) {
+                const u8 *p = in->screen_rgba[1] + ((size_t)(dy * 4 / 3) * 256 + (size_t)(dx * 4 / 3)) * 4;
+
+                ui_fill(c, mx + 12 + dx, my + IN_HEAD + 2 + dy, 1, 1, (u32)p[0] << 16 | (u32)p[1] << 8 | p[2], 255);
+            }
+        }
+    }
+    r.x = mx + 12; r.y = my + IN_HEAD + 2; r.w = mapw; r.h = maph;
+    if (in->mouse.down && (eidos_ui_hit(r) & EIDOS_UI_HOVER)) {
+        int px, py;
+
+        if (eidos_ui_mouse_pos(&px, &py)) {
+            eidos_ui_tap((px - r.x) * 4 / 3, (py - r.y) * 4 / 3, 2);
+        }
+    }
+    /* Fly, Zoom and Back under the map */
+    y = my + IN_HEAD + maph + 8;
+    {
+        int tw = (mapw + 4 - 8) / 3;
+
+        if (in_tile_words(c, mx + 10, y, tw, 24, NULL, "Fly", rdp(w, 0x134) != NULL && eidos_ui_keys_lit(), 0)
+            & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_A, 2);
+        }
+        if (in_tile_words(c, mx + 10 + tw + 4, y, tw, 24, NULL, "Zoom", 0, 0) & EIDOS_UI_CLICK) {
+            eidos_ui_tap(177, 179, 3);
+        }
+        if (in_tile_words(c, mx + 10 + 2 * (tw + 4), y, tw, 24, NULL, "Back", 0, 0) & EIDOS_UI_CLICK) {
+            eidos_ui_tap(243, 179, 3);
+        }
+    }
+    /* the town under the cursor, in the game's words (its upper screen) */
+    rx = mx + 10 + mapw + 4 + 8;
+    rw = mx + mw - 10 - rx;
+    in_panel(c, rx, my + IN_HEAD, rw, mh - IN_HEAD - 10);
+    if (ih > 0) {
+        EidosUiRect saved;
+
+        ui_push(c, 0, 0, &saved);
+        ui_clip(c, rx + 2, my + IN_HEAD + 2, rw - 4, mh - IN_HEAD - 14);
+        ui_letters(c, info, rx + (iw < rw - 12 ? (rw - iw) / 2 : 6), my + IN_HEAD + 8, UI_WHITE, IN_SHADOW, NULL, NULL);
+        ui_pop(c, 0, 0, &saved);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void townmap_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_townmap = {
+    "townmap", townmap_match, townmap_run, townmap_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* After a catch: the Pokedex registration and the nickname question   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * After a catch (overlay 92's battle return pushes overlay 207,
+ * ov207/zukan_toroku_graphic.c and zukan_nickname.c; mock-up
+ * "catch_nickname"): over the held picture of the battle, the caught
+ * Pokemon's card (its picture, number, name and types, REGISTERED when it
+ * is new to the Pokedex) and the game's question in the battle's message
+ * box, its YES and NO as the battle's tiles.  A tile taps the game's own
+ * button (the battle input's yes/no, 127,56 and 127,104); the keys are the
+ * game's.
+ *
+ * EventBattleReturnWork (ov092): caughtMon 0x08, catchArgs 0x0C
+ * (wasAlreadyCaught first), procSys 0x40.  ZukanTorokuWork (ov207):
+ * nickname 0x24.  ZukanNicknameWork: bmpWin 0x24 (the question), input
+ * 0x54 (the yes/no).
+ */
+extern u32 POKE_TOOL_GetPartyValue(void *pp, u32 paramId, u32 arg) MN_WEAK;
+
+static const u8 *catch_work(const u8 **ret)
+{
+    void *gs = game_system(), *cur, *inner;
+    const u8 *rw;
+
+    *ret = NULL;
+    if (gs == NULL || (cur = current_proc(gs)) == NULL || rd32(cur, 0x04) != 92 || (rw = rdp(cur, 0x14)) == NULL) {
+        return NULL;
+    }
+    inner = rdp(rw, 0x40) != NULL ? rdp(rdp(rw, 0x40), 0x08) : NULL;
+    if (inner == NULL || rd32(inner, 0x04) != 207 || rd32(inner, 0x08) < 2u) {
+        return NULL;
+    }
+    *ret = rw;
+    return (const u8 *)rdp(inner, 0x14);
+}
+
+static int catch_match(void)
+{
+    const u8 *rw, *tw = catch_work(&rw);
+
+    return tw != NULL && rdp(tw, 0x24) != NULL;
+}
+
+static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Choose", "B", "No" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    const u8 *rw, *tw = catch_work(&rw), *nk;
+    int cw = c->canvas->w, ch = c->canvas->h, species = 0, t1 = -1, t2 = -1;
+    int px, py, pw = 280, ph = 136, bx, by, bw, bh, i;
+    char name[32] = "", num[16];
+    void *mon;
+
+    (void)in;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+    if (tw == NULL || (nk = (const u8 *)rdp(tw, 0x24)) == NULL) {
+        return;
+    }
+    mon = rdp(rw, 0x08);
+    if (mon != NULL && POKE_TOOL_GetPartyValue != NULL) {
+        species = (int)POKE_TOOL_GetPartyValue(mon, 5, 0);
+    }
+    /* the card */
+    px = (cw - pw) / 2;
+    py = (ch - 17 - 70 - ph) / 2;
+    if (py < 4) py = 4;
+    ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 9, IN_MBODY, IN_MEDGE, 240);
+    if (rd32(rw, 0x0C) == 0) {
+        ui_text(c, px + 10, py + 4, "REGISTERED", IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+    }
+    ui_fill(c, px + 8, py + 17, pw - 16, 1, IN_MEDGE, 255);
+    if (species > 0 && species < 700) {
+        ui_mon_front_draw(c, (u16)species, 0, in->frame, px + 8, py + 20, 110, 110);
+        ui_species_name(species, name, (int)sizeof name);
+        ui_species_types(species, &t1, &t2);
+        snprintf(num, sizeof num, "No. %03d", species);
+        ui_text(c, px + 128, py + 36, num, UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+        ui_text(c, px + 128, py + 50, name, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 2);
+        if (t1 >= 0) ui_type_tag(c, px + 128, py + 90, 56, t1);
+        if (t2 >= 0 && t2 != t1) ui_type_tag(c, px + 190, py + 90, 56, t2);
+    }
+    /* the question in the battle's box, YES and NO */
+    bw = cw - 16 < 300 ? cw - 16 : 300;
+    bh = ui_textbox_h(rdp(nk, 0x24));
+    bx = (cw - bw) / 2;
+    by = ch - 17 - 6 - (bh > 0 ? bh : 42);
+    if (bh > 0) {
+        ui_panel(c, bx, by, bw, bh, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 235);
+        ui_letters(c, ui_bmpwin_bmp(rdp(nk, 0x24)), bx + 12, by + 7, UI_WHITE, UI_GREY, NULL, NULL);
+    }
+    if (rdp(nk, 0x54) != NULL) {
+        static const char *const yn[2] = { "YES", "NO" };
+        static const int tap_y[2] = { 56, 104 };
+
+        for (i = 0; i < 2; i++) {
+            if (sheet_tile_hit(c, bx + bw - 90, by - 4 - 2 * 26 + i * 26, 90, 23, yn[i], 0) & EIDOS_UI_CLICK) {
+                eidos_ui_tap(127, tap_y[i], 3);
+            }
+        }
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+}
+
+static void catch_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_catch = {
+    "catch", catch_match, catch_run, catch_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* The move relearner and the move tutors                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The move relearner (overlay 173, ov173/poke_summary_main.c, opened by
+ * SCRCMD_PROC_CallMoveRelearn; the tutors open the same screen; mock-up
+ * "move_relearn"): a window with the moves the Pokemon can learn as tiles
+ * (type, name, PP), the chosen one's power, accuracy and text on the
+ * right, the game's question as a system box and its YES / NO as a list.
+ * A tile taps the game's own row when it is on the game's screen, else
+ * the keys move the game's cursor there; the keys stay the game's.
+ *
+ * PokeSummaryWork (ov173/poke_summary_types.h): mon 0x000 (PokeSummaryMon:
+ * moveList 0x10, selectedIndex 0x14, scrollIndex 0x16), moveCount 0x1B8,
+ * msgWindow 0x1C0, taskMenu 0x1E0.  The lower screen: rows at
+ * (128, 80 + 24 * row), back (232, 180).  Move data: WAZA_TOOL_GetParam
+ * (0 type, 3 power, 4 accuracy, 5 PP); names a/0/0/2 file 203, texts 202.
+ */
+#define RL_OVERLAY 173
+#define RL_ROWS    6
+
+extern u32 WAZA_TOOL_GetParam(u32 move, u32 param) MN_WEAK;
+
+static int g_rl_target = -1, g_rl_wait;
+
+static int relearn_match(void)
+{
+    const u8 *w = (const u8 *)app_work(RL_OVERLAY);
+
+    return w != NULL && rdp(w, 0x000) != NULL && rdp(rdp(w, 0x000), 0x10) != NULL;
+}
+
+static void relearn_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Learn", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    static int first;
+    const u8 *w = (const u8 *)app_work(RL_OVERLAY), *mon;
+    const u16 *moves;
+    int cw = c->canvas->w, ch = c->canvas->h;
+    int mw = cw - 24 < 460 ? cw - 24 : 460, mh = IN_HEAD + RL_ROWS * 30 + 8;
+    int mx = (cw - mw) / 2, my, lw, rx, rw, count, sel, scroll, i, y;
+    char name[40], line[48];
+
+    (void)in;
+    in_view(view);
+    if (w == NULL || (mon = (const u8 *)rdp(w, 0x000)) == NULL || (moves = (const u16 *)rdp(mon, 0x10)) == NULL) {
+        return;
+    }
+    count = w[0x1B8];
+    if (count <= 0 || count > 64) {
+        for (count = 0; count < 64 && moves[count] != 0 && moves[count] != 0xFFFFu; count++) {
+        }
+    }
+    sel = (int)rd16(mon, 0x14);
+    scroll = (int)rd16(mon, 0x16);
+    my = (ch - 17 - mh - 48) / 2;
+    if (my < 4) my = 4;
+    in_window(c, mx, my, mw, mh, NULL);
+    ui_text(c, mx + 12, my + 6, "REMEMBER A MOVE", IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+    lw = mw * 11 / 20;
+    if (sel < first) first = sel;
+    if (sel >= first + RL_ROWS) first = sel - RL_ROWS + 1;
+    if (first > count - RL_ROWS) first = count - RL_ROWS;
+    if (first < 0) first = 0;
+    for (i = 0; i < RL_ROWS && first + i < count; i++) {
+        int row = first + i, mv = moves[row], st, dy, type;
+        const char *nm = ui_move_name_modern(mv);
+
+        st = in_tile(c, mx + 12, my + IN_HEAD + 30 * i, lw - 12, 26, row == sel, &dy);
+        snprintf(name, sizeof name, "%s", nm != NULL ? nm : ui_game_text(2, 203, (u32)mv));
+        ui_text(c, mx + 24, my + IN_HEAD + 30 * i + dy + ui_text_y(26, UI_FONT_LARGE), name, UI_WHITE, IN_SHADOW,
+                UI_FONT_LARGE, 1);
+        type = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)mv, 0) : 0;
+        ui_type_tag(c, mx + lw - 12 - 50, my + IN_HEAD + 30 * i + dy + 7, 46, type);
+        if (st & EIDOS_UI_CLICK) {
+            if (row >= scroll && row < scroll + 4) {
+                eidos_ui_tap(128, 80 + 24 * (row - scroll), 3);
+            } else {
+                g_rl_target = row;
+                g_rl_wait = 0;
+            }
+        }
+    }
+    /* the chosen move: its numbers and its text */
+    rx = mx + lw + 6;
+    rw = mx + mw - 12 - rx;
+    y = my + IN_HEAD;
+    if (sel >= 0 && sel < count) {
+        int mv = moves[sel], pw, ac, pp;
+        char desc[400];
+
+        pw = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)mv, 3) : 0;
+        ac = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)mv, 4) : 0;
+        pp = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)mv, 5) : 0;
+        in_panel(c, rx, y, rw, RL_ROWS * 30 - 34);
+        ui_text(c, rx + 10, y + 6, "POWER", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+        snprintf(line, sizeof line, "%s", pw > 1 ? "" : "---");
+        if (pw > 1) snprintf(line, sizeof line, "%d", pw);
+        ui_text(c, rx + 50, y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+        ui_text(c, rx + 90, y + 6, "ACC", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+        snprintf(line, sizeof line, "%s", "---");
+        if (ac > 0 && ac <= 100) snprintf(line, sizeof line, "%d", ac);
+        ui_text(c, rx + 116, y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+        ui_text(c, rx + 150, y + 6, "PP", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+        snprintf(line, sizeof line, "%d", pp);
+        ui_text(c, rx + 166, y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+        ui_fill(c, rx + 8, y + 20, rw - 16, 1, UI_EDGE, 255);
+        flatten(ui_game_text(2, 202, (u32)mv), desc, (int)sizeof desc);
+        wrapped(c, rx + 10, y + 26, rw - 20, 13, UI_FONT_SMALL, desc, UI_LIGHT, IN_SHADOW, 6);
+    }
+    if (in_tile_words(c, rx, my + IN_HEAD + RL_ROWS * 30 - 30, rw, 26, NULL, "Back", 0, 0) & EIDOS_UI_CLICK) {
+        eidos_ui_tap(232, 180, 3);
+    }
+    /* the game's question and its YES / NO */
+    {
+        const void *mwin = rdp(w, 0x1C0);
+        int bh = mwin != NULL ? ui_textbox_h(mwin) : 0;
+
+        if (bh > 0) {
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, mx, my + mh + 4, mw, mwin, -1, -1);
+            if (rdp(w, 0x1E0) != NULL) {
+                ui_taskmenu(c, rdp(w, 0x1E0), mx + mw, my + mh, UI_CHOICE_SYSTEM);
+            }
+        }
+    }
+    /* the keys walk the game's cursor to a row off its screen */
+    if (g_rl_target >= 0) {
+        if (g_rl_wait > 0) {
+            g_rl_wait--;
+        } else if (sel < g_rl_target) {
+            eidos_ui_press(BW_KEY_DOWN, 2);
+            g_rl_wait = 4;
+        } else if (sel > g_rl_target) {
+            eidos_ui_press(BW_KEY_UP, 2);
+            g_rl_wait = 4;
+        } else {
+            g_rl_target = -1;
+        }
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void relearn_reset(void)
+{
+    g_rl_target = -1;
+}
+
+static const EidosUiRecipe recipe_relearn = {
+    "relearn", relearn_match, relearn_run, relearn_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* Xtransceiver story calls                                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Xtransceiver's story calls (overlay 174, ov174/local_tvt_sys.c,
+ * opened by SCRCMD_PROC_CallValueScreen; mock-ups "xtransceiver_2" and
+ * "xtransceiver_4"): over the world, each caller's video feed is a card at
+ * the top right, two or four of them in a grid, cut from the game's own
+ * upper screen (each caller fills a half or a quarter of it); the one who
+ * speaks has the blue edge and the signal marks, and the game's words are
+ * a white speech box beside the grid with its tail at the speaker.  The
+ * game's text window is left out of the upper screen so the feeds are
+ * clean.  A click is A, a right click B; the keys stay the game's.
+ *
+ * LocalTvtSys (ov174/local_tvt_sys_shared_types.h): charaCount 0x08 (2 or
+ * 4), activeChara 0x2C (0 when no one speaks), window 0x5C (a BmpWin),
+ * charaIndex 0x88 (the one speaking).
+ */
+#define TVT_OVERLAY 174
+
+static int tvt_match(void)
+{
+    const u8 *w = (const u8 *)app_work(TVT_OVERLAY);
+    int n;
+
+    if (w == NULL) {
+        return 0;
+    }
+    n = (int)rd32(w, 0x08);
+    return n == 2 || n == 4;
+}
+
+static void tvt_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Next" };
+    static const u32 keys[] = { BW_KEY_A };
+    const u8 *w = (const u8 *)app_work(TVT_OVERLAY), *win;
+    int cw = c->canvas->w, ch = c->canvas->h, n, cols, rows, fw, fh, gx, gy, i, spk = -1;
+    int sx = 0, sy = 0;
+    EidosUiRect all;
+
+    in_view(view);
+    if (w == NULL) {
+        return;
+    }
+    n = (int)rd32(w, 0x08);
+    win = (const u8 *)rdp(w, 0x5C);
+    if (win != NULL && g2d_hw_hide_main_bgs != NULL && win[2] < 4) {
+        g2d_hw_hide_main_bgs(1u << win[2]);     /* the game's text window */
+    }
+    if (w[0x88] < n) {
+        spk = w[0x88];                  /* the one speaking (charaIndex) */
+    }
+    cols = 2;
+    rows = n == 4 ? 2 : 1;
+    fw = cw / 5 < 120 ? cw / 5 : 120;
+    fh = n == 4 ? fw * 96 / 128 : fw * 192 / 128;
+    gx = cw - 6 - cols * fw - 4;
+    gy = 6;
+    for (i = 0; i < n; i++) {
+        int x = gx + (i % cols) * (fw + 4), y = gy + (i / cols) * (fh + 4);
+        int srcx = (i % cols) * 128, srcy = n == 4 ? (i / cols) * 96 : 0, srch = n == 4 ? 96 : 192;
+        int lit = i == spk, dx, dy;
+
+        ui_panel(c, x - 3, y - 3, fw + 6, fh + 6, UI_CUT_TL | UI_CUT_BR, 6, IN_MBODY, lit ? IN_HL : IN_MEDGE, 245);
+        if (in->screen_rgba[0] != NULL) {
+            for (dy = 0; dy < fh; dy++) {
+                for (dx = 0; dx < fw; dx++) {
+                    const u8 *p = in->screen_rgba[0]
+                                  + ((size_t)(srcy + dy * srch / fh) * 256 + (size_t)(srcx + dx * 128 / fw)) * 4;
+                    u32 col = (u32)p[0] << 16 | (u32)p[1] << 8 | p[2];
+
+                    if ((dy & 1) != 0) {
+                        col = (col >> 1 & 0x7F7F7Fu) + (col >> 2 & 0x3F3F3Fu) + (col >> 3 & 0x1F1F1Fu);
+                    }
+                    ui_fill(c, x + dx, y + dy, 1, 1, col, 255);
+                }
+            }
+        }
+        if (lit) {
+            int k;
+
+            for (k = 0; k < 3; k++) {
+                ui_fill(c, x + fw - 14 + k * 4, y + 8 - 2 * k, 3, 3 + 2 * k, IN_HL, 255);
+            }
+            sx = x;
+            sy = y + fh / 2;
+        }
+    }
+    /* the game's words beside the grid, the tail at the speaker */
+    if (win != NULL) {
+        int bh = ui_textbox_h(win), bw = gx - 14 < 260 ? gx - 14 : 260, bx = gx - 10 - bw, by;
+
+        if (bh > 0 && bw > 80) {
+            by = spk >= 0 ? sy - bh / 2 : gy;
+            if (by < 6) by = 6;
+            if (spk >= 0) {
+                int t, ty = sy < by + 8 ? by + 8 : sy > by + bh - 8 ? by + bh - 8 : sy;
+
+                for (t = 0; t < 10; t++) {
+                    ui_fill(c, bx + bw - 2 + t, ty - (6 - t * 6 / 10), 1, 2 * (6 - t * 6 / 10) + 1, 0xFFFFFFu, 255);
+                }
+                (void)sx;
+            }
+            ui_textbox_draw(c, UI_TEXTBOX_NARRATION, bx, by, bw, win, -1, -1);
+        }
+    }
+    all.x = 0; all.y = 0; all.w = cw; all.h = ch - ui_bar_h(c);
+    if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+        eidos_ui_press(BW_KEY_A, 2);
+    }
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 1, keys);
+}
+
+static void tvt_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_tvt = {
+    "xtransceiver_story", tvt_match, tvt_run, tvt_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* The ending: the Hall of Fame, the staff roll, The End              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The game clear (ov010 event_gameclear.c) runs the Hall of Fame (overlay
+ * 180), the staff roll (181), the save screen (205) and The End (182);
+ * mock-ups "hall_of_fame" and "credits".
+ *
+ *   Hall of Fame  the game's own presentation (its two screens, each
+ *                 Pokemon as the game shows it) as one picture in the
+ *                 middle, and a card at the right lists the party that
+ *                 enters: icon, name, level.
+ *   staff roll,   the game's two screens are text and pictures on black:
+ *   The End       they are drawn as one column in the middle of the
+ *                 window, the black left out, so the roll runs down the
+ *                 whole height.
+ *
+ * The keys and the touch are the game's (A and B speed up or skip as the
+ * game allows); a click is A.
+ */
+extern void *GAME_DATA_GetMyParty(const void *gd) MN_WEAK;
+extern u32   POKEPARTY_GetCount(const void *party) MN_WEAK;
+extern void *POKEPARTY_GetMember(void *party, u32 pos) MN_WEAK;
+
+static int ending_overlay(void)
+{
+    void *gs = game_system(), *cur;
+    int ov;
+
+    if (gs == NULL || (cur = current_proc(gs)) == NULL || rd32(cur, 0x08) < 2u) {
+        return -1;
+    }
+    ov = (int)rd32(cur, 0x04);
+    return ov == 180 || ov == 181 || ov == 182 ? ov : -1;
+}
+
+static int ending_match(void)
+{
+    return ending_overlay() >= 0;
+}
+
+/* screen s of the game (0 upper, 1 lower) at (x, y), scaled by num/den,
+ * the black left out */
+static void ending_screen(EidosUiCtx *c, const u8 *px, int x, int y, int num, int den, int key_black)
+{
+    int w = 256 * num / den, h = 192 * num / den, dx, dy;
+
+    if (px == NULL) {
+        return;
+    }
+    for (dy = 0; dy < h; dy++) {
+        const u8 *row = px + (size_t)(dy * den / num) * 256 * 4;
+
+        for (dx = 0; dx < w; dx++) {
+            const u8 *p = row + (size_t)(dx * den / num) * 4;
+
+            if (key_black && p[0] < 12 && p[1] < 12 && p[2] < 12) {
+                continue;
+            }
+            ui_fill(c, x + dx, y + dy, 1, 1, (u32)p[0] << 16 | (u32)p[1] << 8 | p[2], 255);
+        }
+    }
+}
+
+static void ending_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    int cw = c->canvas->w, ch = c->canvas->h, ov = ending_overlay();
+    EidosUiRect all;
+
+    view->mode = EIDOS_VIEW_WORLD;
+    view->hide_2d = 1;
+    view->hold_world = 1;
+    ui_fill(c, 0, 0, cw, ch, 0x000000u, 255);
+    if (ov == 180) {
+        /* the game's presentation on its two screens, one column in the
+         * middle of the window */
+        int num = ch * 256 / 384, den = 256, sh = 192 * num / den;
+        void *gd = game_data(), *party = gd != NULL && GAME_DATA_GetMyParty != NULL ? GAME_DATA_GetMyParty(gd) : NULL;
+        int n = party != NULL && POKEPARTY_GetCount != NULL ? (int)POKEPARTY_GetCount(party) : 0, i;
+        int pw = 150, rowh = 34, px2, py2;
+
+        ending_screen(c, in->screen_rgba[0], (cw - 256 * num / den) / 2, (ch - 2 * sh) / 2, num, den, 0);
+        ending_screen(c, in->screen_rgba[1], (cw - 256 * num / den) / 2, (ch - 2 * sh) / 2 + sh, num, den, 0);
+        if (n > 6) n = 6;
+        px2 = cw - 8 - pw;
+        py2 = (ch - (IN_HEAD + n * (rowh + 3) + 8)) / 2;
+        ui_panel(c, px2, py2, pw, IN_HEAD + n * (rowh + 3) + 8, UI_CUT_TL | UI_CUT_BR, 9, IN_MBODY, IN_MEDGE, 225);
+        {
+            const char *t = ui_game_text(2, 154, 16);
+
+            ui_text(c, px2 + 12, py2 + 6, t[0] != '\0' ? t : "HALL OF FAME", IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+        }
+        ui_fill(c, px2 + 10, py2 + IN_HEAD - 4, pw - 20, 1, IN_MEDGE, 255);
+        for (i = 0; i < n && POKEPARTY_GetMember != NULL; i++) {
+            void *pp = POKEPARTY_GetMember(party, (u32)i);
+            int sp = POKE_TOOL_GetPartyValue != NULL ? (int)POKE_TOOL_GetPartyValue(pp, 5, 0) : 0;
+            int lv = POKE_TOOL_GetPartyValue != NULL ? (int)POKE_TOOL_GetPartyValue(pp, 0x9E, 0) : 0;
+            int fm = POKE_TOOL_GetPartyValue != NULL ? (int)POKE_TOOL_GetPartyValue(pp, 0x6F, 0) : 0;
+            int y = py2 + IN_HEAD + i * (rowh + 3);
+            const UiImage *ic = ui_mon_icon((u16)sp, (u8)fm, (in->frame / 16) & 1);
+            char name[32], lvt[12];
+
+            ui_panel(c, px2 + 8, y, pw - 16, rowh, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY2, UI_EDGE, 240);
+            if (ic != NULL) {
+                ui_image(c, px2 + 10, y + 1, ic, 1);
+            }
+            name[0] = '\0';
+            ui_species_name(sp, name, (int)sizeof name);
+            ui_text(c, px2 + 44, y + 3, name, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+            snprintf(lvt, sizeof lvt, "Lv. %d", lv);
+            ui_text(c, px2 + 44, y + 19, lvt, UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+        }
+    } else {
+        /* the roll: the two screens as one column, the black left out */
+        int num = ch * 1000 / 384 * 256 / 1000, den = 256, sh;
+
+        if (num < den / 2) num = den / 2;
+        sh = 192 * num / den;
+        ending_screen(c, in->screen_rgba[0], (cw - 256 * num / den) / 2, (ch - 2 * sh) / 2, num, den, 1);
+        ending_screen(c, in->screen_rgba[1], (cw - 256 * num / den) / 2, (ch - 2 * sh) / 2 + sh, num, den, 1);
+    }
+    all.x = 0; all.y = 0; all.w = cw; all.h = ch;
+    if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+        eidos_ui_press(BW_KEY_A, 2);
+    }
+}
+
+static void ending_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_ending = {
+    "ending", ending_match, ending_run, ending_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* Egg hatching                                                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * An Egg hatching (overlay 215, ov215/egg_demo_*.c; mock-up "egg_hatch"):
+ * the game's own scene (the Egg, its cracks, the flash, the Pokemon) is
+ * the world the window shows, its words are the white box at the bottom, and its yes/no is
+ * a white list at the box's right end.  The game's windows are left out of
+ * its screen.  The keys are the game's; a click on YES or NO moves the
+ * game's cursor there with its keys and presses A, a click elsewhere is A.
+ *
+ * EggDemoWork (ov215/egg_demo_types.h): window 0x58 (the words, a BmpWin
+ * on BG1), bmpMenu 0x78 (the yes/no, BmpMenu: cursor 0x2D).
+ */
+#define EGG_OVERLAY 215
+
+static int egg_match(void)
+{
+    return app_work(EGG_OVERLAY) != NULL;
+}
+
+static void egg_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Next" };
+    static const u32 keys[] = { BW_KEY_A };
+    const u8 *w = (const u8 *)app_work(EGG_OVERLAY), *win, *menu;
+    int cw = c->canvas->w, ch = c->canvas->h, bh = 0, bw, bx, by, i, clicked = 0;
+    EidosUiRect all;
+
+    g_frame = in->frame;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->hide_2d = 0;
+    if (w == NULL) {
+        return;
+    }
+    if (g2d_hw_hide_main_bgs != NULL) {
+        g2d_hw_hide_main_bgs(0x2u);         /* the game's windows: BG1 */
+    }
+    /* the scene: the game's upper screen is the world (its 3D and its
+     * backdrop), the windows left out */
+    /* the words and the yes/no */
+    win = (const u8 *)rdp(w, 0x58);
+    menu = (const u8 *)rdp(w, 0x78);
+    bw = cw - 16 < 300 ? cw - 16 : 300;
+    bx = (cw - bw) / 2;
+    if (win != NULL && (bh = ui_textbox_h(win)) > 0) {
+        by = ch - 17 - 6 - bh;
+        ui_textbox_draw(c, UI_TEXTBOX_NARRATION, bx, by, bw, win, -1, -1);
+        if (menu != NULL && rd32(w, 0x20) == 1) {
+            int cur = menu[0x2D] & 1, lw = 70, lh = 4 + 2 * 18 + 4, lx = bx + bw - lw, ly = by - 3 - lh;
+
+            ui_panel(c, lx, ly, lw, lh, UI_CUT_TL | UI_CUT_BR, 6, 0xFFFFFFu, 0x9698A0u, 255);
+            for (i = 0; i < 2; i++) {
+                EidosUiRect r;
+                const char *lab = ui_game_text(2, 69, 30u + (u32)i);
+                int st, lit;
+
+                r.x = lx + 3; r.y = ly + 4 + i * 18; r.w = lw - 6; r.h = 18;
+                st = eidos_ui_hit(r);
+                lit = (st & EIDOS_UI_HOVER) || (eidos_ui_keys_lit() && i == cur);
+                if (lit) {
+                    ui_panel(c, r.x, r.y - 1, r.w, 18, UI_CUT_TL | UI_CUT_BR, 5, 0xBFE2EAu, IN_HL, 255);
+                    ui_fill(c, r.x + 3, r.y + 2, 3, 12, IN_HL, 255);
+                }
+                ui_text(c, r.x + 10, r.y - (lit ? 1 : 0) + ui_text_y(18, UI_FONT_LARGE),
+                        lab[0] != '\0' ? lab : (i == 0 ? "YES" : "NO"), 0x42424Au, 0xADADB5u, UI_FONT_LARGE, 1);
+                if (st & EIDOS_UI_CLICK) {
+                    clicked = 1;
+                    if (i == cur) {
+                        eidos_ui_press(BW_KEY_A, 2);
+                    } else {
+                        eidos_ui_press(i == 0 ? BW_KEY_UP : BW_KEY_DOWN, 2);
+                        pend_press(BW_KEY_A, 6);
+                    }
+                }
+            }
+        }
+    }
+    pend_pump();
+    all.x = 0; all.y = 0; all.w = cw; all.h = ch - ui_bar_h(c);
+    if (!clicked && (eidos_ui_hit(all) & EIDOS_UI_CLICK)) {
+        eidos_ui_press(BW_KEY_A, 2);
+    }
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 1, keys);
+}
+
+static void egg_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_egg = {
+    "egg_hatch", egg_match, egg_run, egg_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* In-game trades                                                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * An in-game trade's demo (overlay 119, ov119/pokemontrade_*.c, opened by
+ * ov021 fld_trade.c; mock-up "npc_trade"): the game's own scene is the
+ * world the window shows, a card at the top shows the two Pokemon (the one
+ * that leaves and the one that arrives: icon, name, level) with the
+ * arrow between them, and the game's words are the white box at the
+ * bottom (its window left out of the screen).  A click is A.
+ *
+ * The trade's event (FLD_TRADE_EventMain, a parent of the proc's event):
+ * sentMon 0x48, receivedMon 0x4C.  TradeWork (ov119/pokemontrade_types.h):
+ * messageWin 0x71C.
+ */
+#define TRADE_OVERLAY 119
+
+extern int ov021_FLD_TRADE_EventMain(void *event, u32 *seq, void *work) MN_WEAK;
+extern void *GAMESYSTEM_GetEvent(void *gameSystem) MN_WEAK;
+
+static const u8 *trade_event_work(void)
+{
+    void *gs = game_system();
+    const u8 *ev = gs != NULL && GAMESYSTEM_GetEvent != NULL ? (const u8 *)GAMESYSTEM_GetEvent(gs) : NULL;
+    int depth;
+
+    for (depth = 0; ev != NULL && depth < 6; depth++) {
+        if (ov021_FLD_TRADE_EventMain != NULL
+            && (uintptr_t)rd32(ev, 4) == (uintptr_t)ov021_FLD_TRADE_EventMain) {
+            return (const u8 *)rdp(ev, 0x0C);
+        }
+        ev = (const u8 *)rdp(ev, 0);
+    }
+    return NULL;
+}
+
+static int trade_match(void)
+{
+    return app_work(TRADE_OVERLAY) != NULL && trade_event_work() != NULL;
+}
+
+static void trade_mon(EidosUiCtx *c, void *mon, int x, int y, u32 frame)
+{
+    int sp, lv, fm;
+    const UiImage *ic;
+    char name[32], lvt[12];
+
+    if (mon == NULL || POKE_TOOL_GetPartyValue == NULL) {
+        return;
+    }
+    sp = (int)POKE_TOOL_GetPartyValue(mon, 5, 0);
+    lv = (int)POKE_TOOL_GetPartyValue(mon, 0x9E, 0);
+    fm = (int)POKE_TOOL_GetPartyValue(mon, 0x6F, 0);
+    ic = ui_mon_icon((u16)sp, (u8)fm, (frame / 16) & 1);
+    if (ic != NULL) {
+        ui_image(c, x, y, ic, 1);
+    }
+    name[0] = '\0';
+    ui_species_name(sp, name, (int)sizeof name);
+    ui_text(c, x + 34, y + 2, name, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+    snprintf(lvt, sizeof lvt, "Lv. %d", lv);
+    ui_text(c, x + 34, y + 18, lvt, UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+}
+
+static void trade_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Next" };
+    static const u32 keys[] = { BW_KEY_A };
+    const u8 *tw = (const u8 *)app_work(TRADE_OVERLAY), *ew = trade_event_work(), *win;
+    int cw = c->canvas->w, ch = c->canvas->h, pw = 240, px = (cw - pw) / 2, py = 6, i;
+    EidosUiRect all;
+
+    view->mode = EIDOS_VIEW_WORLD;
+    view->hide_2d = 0;
+    if (tw == NULL || ew == NULL) {
+        return;
+    }
+    win = (const u8 *)rdp(tw, 0x71C);
+    if (win != NULL && ui_bmpwin_bmp(win) != NULL && g2d_hw_hide_main_bgs != NULL && win[2] < 4) {
+        g2d_hw_hide_main_bgs(1u << win[2]);
+    }
+    ui_panel(c, px, py, pw, 58, UI_CUT_TL | UI_CUT_BR, 9, IN_MBODY, IN_MEDGE, 235);
+    trade_mon(c, rdp(ew, 0x4C), px + 10, py + 14, in->frame);
+    trade_mon(c, rdp(ew, 0x48), px + pw / 2 + 12, py + 14, in->frame);
+    for (i = 0; i < 5; i++) {
+        ui_fill(c, px + pw / 2 - 6 + i, py + 29 - (4 - i), 1, 2 * (4 - i) + 1, IN_HL, 255);
+    }
+    if (win != NULL && ui_bmpwin_bmp(win) != NULL) {
+        int bh = ui_textbox_h(win), bw = cw - 16 < 300 ? cw - 16 : 300;
+
+        if (bh > 0) {
+            ui_textbox_draw(c, UI_TEXTBOX_NARRATION, (cw - bw) / 2, ch - 17 - 6 - bh, bw, win, -1, -1);
+        }
+    }
+    all.x = 0; all.y = 0; all.w = cw; all.h = ch - ui_bar_h(c);
+    if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+        eidos_ui_press(BW_KEY_A, 2);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 1, keys);
+}
+
+static void trade_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_trade = {
+    "npc_trade", trade_match, trade_run, trade_reset, 0
+};
+
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
-                                                  &recipe_wireless };
-const u32 ui_recipes_menus_count = 4;
+                                                  &recipe_wireless, &recipe_geonet, &recipe_entree,
+                                                  &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_egg, &recipe_trade };
+const u32 ui_recipes_menus_count = 14;

@@ -859,13 +859,40 @@ int ui_keycap(EidosUiCtx *c, int x, int y, const char *label)
     return w;
 }
 
+int ui_bar_h(const EidosUiCtx *c)
+{
+    return 17 + c->safe_b;
+}
+
+int ui_bottom_bar(const EidosUiCtx *c, int y, int h, int *bh)
+{
+    if (c->safe_b > 0 && c->oy + y + h + c->safe_b >= c->canvas->h) {
+        *bh = h + c->safe_b;
+        return c->canvas->h - c->oy - *bh;
+    }
+    *bh = h;
+    return y;
+}
+
+int ui_safe_left(const EidosUiCtx *c)
+{
+    return c->ox <= 0 ? c->safe_l : 0;
+}
+
 int ui_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n,
              const u32 *keys)
 {
-    int i, x = 6;
+    int bh, top = ui_bottom_bar(c, y, 17, &bh), lift = bh - 17, i, x = 6 + ui_safe_left(c);
 
-    ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
-    ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
+    /* On a phone the bar sits on the bottom edge, taller by what the
+     * system covers there, with the keys in its middle and the whole
+     * height to touch. */
+    y = top + lift / 2;
+    if (lift > 0) {
+        c->bar_top = c->oy + top;
+    }
+    ui_fill(c, 0, top, w, bh, UI_BODY2, 235);
+    ui_fill(c, 0, top, w, 1, UI_EDGE, 255);
     for (i = 0; i < n; i++) {
         const char *key = pairs[2 * i], *what = pairs[2 * i + 1];
         int kw = ui_keycap_w(key);
@@ -877,12 +904,12 @@ int ui_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n,
             kw = 13;
         }
         r.x = x - 2;            /* eidos_ui_hit adds the origin */
-        r.y = y;
+        r.y = top;
         r.w = kw + 4 + aw + 4;
-        r.h = 17;
+        r.h = bh;
         state = eidos_ui_hit(r);
         if (state & EIDOS_UI_HOVER) {
-            ui_fill(c, x - 2, y + 1, r.w, 15, UI_EDGE, 255);
+            ui_fill(c, x - 2, top + 1, r.w, bh - 2, UI_EDGE, 255);
         }
         if ((state & EIDOS_UI_CLICK) && keys != NULL && keys[i] != 0) {
             eidos_ui_press(keys[i], 2);
@@ -893,7 +920,7 @@ int ui_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n,
         x = ui_text(c, x, y + 3 + ui_text_y(13, UI_FONT_SMALL), what, UI_LIGHT,
                     UI_EDGE, UI_FONT_SMALL, 1) + 10;
     }
-    return 17;
+    return 17 + lift;
 }
 
 void ui_bar(EidosUiCtx *c, int x, int y, int w, int h, int num, int den)

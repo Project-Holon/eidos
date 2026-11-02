@@ -259,8 +259,17 @@ u32 w2c_env_SDL_GetWindowSizeInPixels(struct w2c_env *e, u32 w, u32 pw, u32 ph)
 
 u32 w2c_env_SDL_GetWindowSafeArea(struct w2c_env *e, u32 w, u32 rect)
 {
+    static SDL_Rect last;
+    SDL_Rect *r = (SDL_Rect *)M(rect);
+    u32 rc;
+
     (void)e;
-    return SDL_GetWindowSafeArea((SDL_Window *)handle_ptr(w), (SDL_Rect *)M(rect));   /* four ints */
+    rc = SDL_GetWindowSafeArea((SDL_Window *)handle_ptr(w), r);     /* four ints */
+    if (rc && (r->x != last.x || r->y != last.y || r->w != last.w || r->h != last.h)) {
+        last = *r;
+        fprintf(stderr, "eidos: safe area now %d,%d %dx%d\n", r->x, r->y, r->w, r->h);
+    }
+    return rc;
 }
 
 u32 w2c_env_SDL_SetWindowSize(struct w2c_env *e, u32 w, u32 x, u32 y)
@@ -284,6 +293,12 @@ u32 w2c_env_SDL_SetWindowPosition(struct w2c_env *e, u32 w, u32 x, u32 y)
 u32 w2c_env_SDL_SetWindowFullscreen(struct w2c_env *e, u32 w, u32 on)
 {
     (void)e;
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_IOS)
+    /* a phone's window stays fullscreen whatever the game's window mode
+     * setting (a desktop's) asks: windowed, Android shows its status and
+     * navigation bars over the game */
+    on = 1;
+#endif
     return SDL_SetWindowFullscreen((SDL_Window *)handle_ptr(w), on != 0);
 }
 
@@ -330,6 +345,15 @@ u32 w2c_env_SDL_GetPointerProperty(struct w2c_env *e, u32 props, u32 name, u32 d
 u32 w2c_env_SDL_StartTextInput(struct w2c_env *e, u32 w)
 {
     (void)e;
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_IOS)
+    /* The name entry's keyboard is the game's own, played by touch.  Text
+     * input on a phone raises the system's keyboard over it (iOS for any
+     * text input, whatever SDL's hints say), so it is only started with a
+     * hardware keyboard to type on. */
+    if (!SDL_HasKeyboard()) {
+        return 1;
+    }
+#endif
     return SDL_StartTextInput((SDL_Window *)handle_ptr(w));
 }
 
@@ -531,7 +555,43 @@ u32 w2c_env_SDL_GL_MakeCurrent(struct w2c_env *e, u32 w, u32 c)
 }
 
 u32 w2c_env_SDL_GL_SetSwapInterval(struct w2c_env *e, u32 n) { (void)e; return SDL_GL_SetSwapInterval((int)n); }
-u32 w2c_env_SDL_GL_SwapWindow(struct w2c_env *e, u32 w) { (void)e; return SDL_GL_SwapWindow((SDL_Window *)handle_ptr(w)); }
+/* EIDOS_FPS: every 120 frames, the frames per second and how much of a
+ * frame went to the game and its drawing calls (between swaps) and to the
+ * swap itself (waiting for the GPU and the display). */
+u32 w2c_env_SDL_GL_SwapWindow(struct w2c_env *e, u32 w)
+{
+    static int on = -1;
+    static Uint64 last, work, swap, start;
+    static int n;
+    Uint64 t0, t1;
+    u32 rc;
+
+    (void)e;
+    if (on < 0) {
+        on = getenv("EIDOS_FPS") != NULL;
+    }
+    if (!on) {
+        return SDL_GL_SwapWindow((SDL_Window *)handle_ptr(w));
+    }
+    t0 = SDL_GetTicksNS();
+    if (last != 0) {
+        work += t0 - last;
+    } else {
+        start = t0;
+    }
+    rc = SDL_GL_SwapWindow((SDL_Window *)handle_ptr(w));
+    t1 = SDL_GetTicksNS();
+    swap += t1 - t0;
+    last = t1;
+    if (++n == 120) {
+        fprintf(stderr, "eidos: fps %.1f, per frame %.2f ms between swaps, %.2f ms in the swap\n",
+                120.0 * 1e9 / (double)(t1 - start), (double)work / 120e6, (double)swap / 120e6);
+        n = 0;
+        work = swap = 0;
+        start = t1;
+    }
+    return rc;
+}
 
 /* ------------------------------------------------------------------ */
 /* Keyboard, mouse, gamepads                                           */
@@ -667,6 +727,31 @@ static void event_to_module(const SDL_Event *ev, u32 out)
     }
 }
 
+/* The game's audio stream (push mode: one at a time).  A phone stops the
+ * sound device when the app goes to the background and does not start it
+ * again on the way back; the game's sound driver keeps time by what the
+ * device plays, so a stopped device stops the game (the title froze after
+ * Press Start, waiting on its sound).  The host starts it again. */
+static SDL_AudioStream *g_audio;
+
+static void app_event(const SDL_Event *ev)
+{
+    switch (ev->type) {
+    case SDL_EVENT_WILL_ENTER_BACKGROUND:
+        fprintf(stderr, "eidos: app to the background\n");
+        break;
+    case SDL_EVENT_DID_ENTER_FOREGROUND:
+        fprintf(stderr, "eidos: app back in front; audio queued %d\n",
+                g_audio != NULL ? SDL_GetAudioStreamQueued(g_audio) : -1);
+        if (g_audio != NULL && !SDL_ResumeAudioStreamDevice(g_audio)) {
+            fprintf(stderr, "eidos: audio resume failed: %s\n", SDL_GetError());
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 u32 w2c_env_SDL_PollEvent(struct w2c_env *e, u32 out)
 {
     SDL_Event ev;
@@ -675,6 +760,7 @@ u32 w2c_env_SDL_PollEvent(struct w2c_env *e, u32 out)
     if (!SDL_PollEvent(&ev)) {
         return 0;
     }
+    app_event(&ev);
     if (out != 0) {
         event_to_module(&ev, out);
     }
@@ -689,6 +775,7 @@ u32 w2c_env_SDL_WaitEventTimeout(struct w2c_env *e, u32 out, u32 ms)
     if (!SDL_WaitEventTimeout(&ev, (Sint32)ms)) {
         return 0;
     }
+    app_event(&ev);
     if (out != 0) {
         event_to_module(&ev, out);
     }
@@ -728,12 +815,16 @@ u32 w2c_env_SDL_OpenAudioDeviceStream(struct w2c_env *e, u32 dev, u32 spec, u32 
         fprintf(stderr, "eidos: an audio callback cannot run in this build (push mode only)\n");
         return 0;
     }
-    return handle_of(SDL_OpenAudioDeviceStream(dev, (const SDL_AudioSpec *)M(spec), NULL, NULL));
+    g_audio = SDL_OpenAudioDeviceStream(dev, (const SDL_AudioSpec *)M(spec), NULL, NULL);
+    return handle_of(g_audio);
 }
 
 void w2c_env_SDL_DestroyAudioStream(struct w2c_env *e, u32 s)
 {
     (void)e;
+    if ((SDL_AudioStream *)handle_ptr(s) == g_audio) {
+        g_audio = NULL;
+    }
     SDL_DestroyAudioStream((SDL_AudioStream *)handle_ptr(s));
     handle_drop(s);
 }

@@ -136,6 +136,7 @@ struct EidosGl {
           uf_aonly, uf_clear;
     GlFb fb[3];                    /* display, DS readback, AA fallback */
     GLint integer_samples;
+    int es;                        /* OpenGL ES (a phone): no 2x fallback AA */
     unsigned read_serial;          /* snapshot serial last read back         */
     GLuint pbo;                    /* async readback target                  */
     int pbo_pending;               /* a readback is in flight in the pbo     */

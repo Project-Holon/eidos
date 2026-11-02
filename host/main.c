@@ -35,6 +35,8 @@
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
 #define HOST_MOBILE 1
 #include <SDL3/SDL_main.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 #include "host.h"
@@ -347,7 +349,25 @@ static char **mobile_args(int *argc)
         pref = "./";
     }
     snprintf(file, sizeof file, "%sstderr.txt", pref);
-    if (getenv("EIDOS_MOBILE_CONSOLE") == NULL && freopen(file, "w", stderr) != NULL) {
+    if (getenv("EIDOS_MOBILE_CONSOLE") == NULL) {
+        /* The output descriptors themselves, which the game's writes go to:
+         * an app started by a tool (xcrun devicectl) has them on a pipe no
+         * one reads, and a full pipe stopped the game in its next message.
+         * The file, or nowhere. */
+        int fd = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+        if (fd < 0) {
+            fd = open("/dev/null", O_WRONLY);
+        }
+        if (fd >= 0) {
+            fflush(stdout);
+            fflush(stderr);
+            dup2(fd, 1);
+            dup2(fd, 2);
+            if (fd > 2) {
+                close(fd);
+            }
+        }
         setvbuf(stderr, NULL, _IONBF, 0);
     }
     snprintf(data, sizeof data, "%sextract", pref);
@@ -362,10 +382,12 @@ static char **mobile_args(int *argc)
     argv[n++] = "--layout";
     argv[n++] = "one";
     argv[n++] = "--window";
-    /* A phone is played by touch: the hints show the DS's own button
+    /* A phone draws with OpenGL ES and is played by touch: the hints show the DS's own button
      * letters (a connected pad still shows its own).  Android's curved
      * screens also get a margin of 2% a side inside the safe area. */
     setenv("EIDOS_TOUCH_DEVICE", "1", 1);
+    /* the 3D renderer's choices for OpenGL ES (engine/platform/plat_gl3d.c) */
+    setenv("EIDOS_GL_ES", "1", 1);
 #if defined(__ANDROID__)
     setenv("EIDOS_EDGE_MARGIN", "2", 1);
 #endif
@@ -394,6 +416,9 @@ static char **mobile_args(int *argc)
     }
     argv[n] = NULL;
     *argc = n;
+#if !defined(__ANDROID__)
+    host_ios_view_setup();
+#endif
     /* the DS screens side by side are wider than tall: landscape only */
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     return argv;

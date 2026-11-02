@@ -56,6 +56,11 @@ void bw_slots_settle(void);
  * save.  1 when it moved to a free slot.
  */
 int  bw_slots_new_game(void);
+/* Each frame: a held new game is written out at its first completed save. */
+void bw_slots_frame(void);
+/* The chip dropped a held new game (a reset before its save): the slot in
+ * force goes back to the save before. */
+void bw_slots_dropped(void);
 
 /*
  * Another save file for the running game, without a restart: the chip
