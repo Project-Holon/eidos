@@ -1,0 +1,50 @@
+/*
+ * engine/ui/choice_list.h -- the game's own choice lists in the interface's
+ * style, for the one-screen view.
+ *
+ * Many of the game's questions are a BmpMenuList (arm9/bmp_menulist.c) in a
+ * window the game draws: a script's list menu and its yes/no in the field,
+ * the professor's yes/no and name lists in the intro.  ui_choice_list
+ * covers that window with a list in the kit's style, at the same place,
+ * with the same rows.
+ *
+ * The game's cursor is the marked row.  It moves only by UP and DOWN
+ * presses, so the game plays its own cursor sound, prints the row's help
+ * and keeps its state.  A row is picked by A.
+ *
+ *   mouse   the cursor follows the pointer; a click picks the row
+ *   finger  a tap on another row moves the cursor there; a tap on the
+ *           cursor's row picks it
+ *   wheel   moves the cursor
+ *
+ * A click or a tap outside the list does nothing (it is not A: that would
+ * pick the row the cursor is on).  B is the caller's: a right click, where
+ * the game takes B.
+ */
+#ifndef EIDOS_UI_CHOICE_LIST_H
+#define EIDOS_UI_CHOICE_LIST_H
+
+#include "ui.h"
+#include "kit.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+ * Draw the list `list` (a BmpMenuList) over its window `win` (a BmpWin).
+ * The DS screen the window is on stands at (ox, oy) in canvas pixels,
+ * `s` canvas pixels per DS pixel.  Returns 1 when the list was drawn, 0
+ * when it cannot be read (nothing drawn).
+ */
+int  ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list, const void *win,
+                    float ox, float oy, float s);
+
+/* No list is open this frame: a pending walk of the cursor is dropped. */
+void ui_choice_list_idle(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

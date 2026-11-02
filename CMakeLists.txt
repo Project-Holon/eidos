@@ -1128,6 +1128,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_pc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_input.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_field.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/choice_list.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_starter.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c

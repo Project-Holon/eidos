@@ -1,0 +1,248 @@
+/*
+ * engine/ui/choice_list.c -- the game's own choice lists in the interface's
+ * style (engine/ui/choice_list.h).
+ *
+ * BmpMenuList (arm9/bmp_menulist.c): items 0x00 (a BmpMenuListItem array:
+ * a Strbuf and a value, 8 bytes each), count 0x10 (u16), rows 0x12 (u16).
+ * Its scroll and row come from BMP_MENULIST_GetPos.  BmpWin
+ * (arm9/bmp_win_types.h): bgLayer 0x02, posX 0x03, posY 0x04, width 0x05,
+ * height 0x06, in tiles.
+ */
+
+#include <stdint.h>
+#include <string.h>
+
+#include "choice_list.h"
+#include "input.h"
+
+#define WEAK __attribute__((weak))
+
+extern void BMP_MENULIST_GetPos(void *menu, u16 *outScroll, u16 *outRow) WEAK;
+extern u16 *STRBUF_GetChars(void *strbuf) WEAK;
+extern u16  STRBUF_GetLength(void *strbuf) WEAK;
+
+#define CHOICE_MAX 32
+
+static u32 rd32(const u8 *p) { u32 v; memcpy(&v, p, 4); return v; }
+static u16 rd16(const u8 *p) { u16 v; memcpy(&v, p, 2); return v; }
+static u8 *rdp(const u8 *p) { return (u8 *)(uintptr_t)rd32(p); }
+
+static int g_target = -1;           /* the row asked for: >= 0 pick it,
+                                       -2 - row: only move the cursor there */
+static const void *g_list;          /* the list it was asked on             */
+static u32 g_key_frame;             /* the last frame a key went in         */
+static int g_hover = -1;            /* the row under the pointer last frame */
+static int g_px, g_py;              /* the pointer last frame               */
+static int g_pick;                  /* the press went down on the cursor's
+                                       row, or on a row the mouse was already
+                                       over: its click picks the row        */
+
+/* The game's 16-bit text as UTF-8; tags are left out. */
+static void units_utf8(const u16 *u, int max, char *out, int n)
+{
+    int i, o = 0;
+
+    for (i = 0; i < max && u[i] != 0xFFFFu && u[i] != 0 && o < n - 4; i++) {
+        u32 ch = u[i];
+
+        if (ch == 0xE000u) {
+            ch = ' ';
+        } else if (ch == 0xF000u) {
+            int argc = i + 2 < max ? (int)u[i + 2] : 0;
+
+            i += 2 + argc;
+            continue;
+        } else if (ch >= 0xD800u && ch < 0xE000u) {
+            continue;
+        }
+        if (ch < 0x80u) {
+            out[o++] = (char)ch;
+        } else if (ch < 0x800u) {
+            out[o++] = (char)(0xC0u | (ch >> 6));
+            out[o++] = (char)(0x80u | (ch & 0x3Fu));
+        } else {
+            out[o++] = (char)(0xE0u | (ch >> 12));
+            out[o++] = (char)(0x80u | ((ch >> 6) & 0x3Fu));
+            out[o++] = (char)(0x80u | (ch & 0x3Fu));
+        }
+    }
+    out[o] = '\0';
+}
+
+static void item_text(const u8 *list, int i, char *out, int n)
+{
+    u8 *items = rdp(list), *sb;
+
+    out[0] = '\0';
+    if (items == NULL || STRBUF_GetChars == NULL || STRBUF_GetLength == NULL) {
+        return;
+    }
+    sb = rdp(items + 8 * i);
+    if (sb != NULL) {
+        u16 len = STRBUF_GetLength(sb);
+        const u16 *u = STRBUF_GetChars(sb);
+
+        if (u != NULL) {
+            units_utf8(u, len, out, n);
+        }
+    }
+}
+
+void ui_choice_list_idle(void)
+{
+    g_target = -1;
+}
+
+int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const void *win_p,
+                   float ox, float oy, float s)
+{
+    const u8 *list = (const u8 *)list_p, *win = (const u8 *)win_p;
+    int cw = c->canvas->w, chh = c->canvas->h;
+    int count, rows, scroll, row, cur;
+    int gx0, gy0, gx1, gy1, pitch, bh, w, h, x, y, i, hover = -1;
+    char text[CHOICE_MAX][48];
+    EidosUiRect r;
+
+    if (list == NULL || win == NULL || BMP_MENULIST_GetPos == NULL) {
+        g_target = -1;
+        return 0;
+    }
+    count = rd16(list + 0x10);
+    rows = rd16(list + 0x12);
+    if (count < 1 || count > CHOICE_MAX || rows < 1) {
+        g_target = -1;
+        return 0;
+    }
+    if (rows > count) {
+        rows = count;
+    }
+    {
+        u16 sc = 0, rw = 0;
+
+        BMP_MENULIST_GetPos((void *)list_p, &sc, &rw);
+        scroll = sc;
+        row = rw;
+    }
+    cur = scroll + row;
+
+    /* the game's window, its frame included, in canvas pixels */
+    gx0 = (int)(ox + (float)((win[3] - 1) * 8) * s);
+    gy0 = (int)(oy + (float)((win[4] - 1) * 8) * s);
+    gx1 = (int)(ox + (float)((win[3] + win[5] + 1) * 8) * s + 0.99f);
+    gy1 = (int)(oy + (float)((win[4] + win[6] + 1) * 8) * s + 0.99f);
+    pitch = (int)(16.0f * s);
+    if (pitch < 22) {
+        pitch = 22;
+    }
+    bh = pitch - 3;
+    w = 0;
+    for (i = 0; i < rows; i++) {
+        int tw;
+
+        item_text(list, scroll + i, text[i], (int)sizeof text[i]);
+        tw = ui_text_w(text[i], UI_FONT_LARGE) + 30;
+        if (tw > w) {
+            w = tw;
+        }
+    }
+    w += 12;
+    h = rows * pitch + 9;
+    if (w < gx1 - gx0) w = gx1 - gx0;
+    if (h < gy1 - gy0) h = gy1 - gy0;
+    x = gx1 - w;
+    y = gy0;
+    if (x + w > cw - 4) x = cw - 4 - w;
+    if (x < 4) x = 4;
+    if (y + h > chh - 4) y = chh - 4 - h;
+    if (y < 4) y = 4;
+
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE2, 245);
+    for (i = 0; i < rows; i++) {
+        r.x = x + 6; r.y = y + 6 + i * pitch; r.w = w - 12; r.h = bh;
+        if (eidos_ui_hit(r) & EIDOS_UI_HOVER) {
+            hover = i;
+        }
+    }
+    {
+        int px = -1, py = -1, pressed = 0, released = 0;
+        int held = eidos_ui_pointer(&px, &py, &pressed, &released);
+        int moved = px != g_px || py != g_py;
+
+        if (pressed) {
+            /* a finger lands where it presses; a mouse was over the row
+             * before it pressed */
+            g_pick = hover >= 0 && (scroll + hover == cur || (hover == g_hover && !moved));
+        }
+        /* the cursor follows a moving mouse; a finger moves it by a tap */
+        if (hover >= 0 && !held && moved && scroll + hover != cur && g_target == -1) {
+            g_target = -2 - (scroll + hover);
+            g_list = list;
+        }
+        g_hover = hover;
+        g_px = px;
+        g_py = py;
+    }
+    for (i = 0; i < rows; i++) {
+        int ry = y + 6 + i * pitch, st, lit = row == i, j;
+
+        r.x = x + 6; r.y = ry; r.w = w - 12; r.h = bh;
+        st = eidos_ui_hit(r);
+        ui_panel(c, r.x, ry, r.w, bh, UI_CUT_TL | UI_CUT_BR, 4,
+                 lit ? UI_CYAN2 : UI_BODY2, lit ? UI_CYAN : UI_EDGE, 255);
+        if (lit) {
+            for (j = 0; j < 4; j++) {       /* the cursor: the field bar's mark */
+                ui_fill(c, r.x + 6 + j, ry + bh / 2 - 4 + j, 1, 9 - 2 * j, UI_WHITE, 255);
+            }
+        }
+        ui_text(c, r.x + 16, ry + ui_text_y(bh, UI_FONT_LARGE), text[i], UI_WHITE,
+                lit ? UI_NAVY : UI_EDGE, UI_FONT_LARGE, 1);
+        if (st & EIDOS_UI_CLICK) {
+            g_target = g_pick ? scroll + i : -2 - (scroll + i);
+            g_list = list;
+        }
+    }
+    /* more rows above or below: the game scrolls its window with the keys */
+    if (count > rows) {
+        if (scroll > 0) {
+            for (i = 0; i < 4; i++) {
+                ui_fill(c, x + w / 2 - i, y + 1 + i, 2 * i + 1, 1, UI_CYAN, 255);
+            }
+        }
+        if (scroll + rows < count) {
+            for (i = 0; i < 4; i++) {
+                ui_fill(c, x + w / 2 - i, y + h - 2 - i, 2 * i + 1, 1, UI_CYAN, 255);
+            }
+        }
+        r.x = x; r.y = y; r.w = w; r.h = h;
+        i = eidos_ui_wheel(r);
+        if (i != 0 && g_target == -1) {
+            int t = cur - i;
+
+            t = t < 0 ? 0 : t >= count ? count - 1 : t;
+            g_target = -2 - t;
+            g_list = list;
+        }
+    }
+
+    /* walk the game's cursor to the asked row, one key every other frame */
+    if (g_target != -1 && g_list == list) {
+        int target = g_target >= 0 ? g_target : -2 - g_target;
+
+        if (in->frame - g_key_frame >= 2u) {
+            g_key_frame = in->frame;
+            if (cur < target) {
+                eidos_ui_press(BW_KEY_DOWN, 1);
+            } else if (cur > target) {
+                eidos_ui_press(BW_KEY_UP, 1);
+            } else {
+                if (g_target >= 0) {
+                    eidos_ui_press(BW_KEY_A, 2);
+                }
+                g_target = -1;
+            }
+        }
+    } else {
+        g_target = -1;
+    }
+    return 1;
+}

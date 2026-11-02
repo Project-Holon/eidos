@@ -178,13 +178,17 @@ static void air_key(char *out, u32 size)
     }
 }
 
+/* The key the join thread uses, made on the game's thread: the activity is
+ * read from the game, whose functions only its own thread may call. */
+static char g_air_join_key[80];
+
 static void air_join_thread(void *arg)
 {
     char key[80];
     int rc;
 
     (void)arg;
-    air_key(key, sizeof key);
+    snprintf(key, sizeof key, "%s", g_air_join_key);
     rc = bw_mod_net_session_air(key);
     if (rc == 0) {
         snprintf(g_air_key, sizeof g_air_key, "%s", key);
@@ -210,6 +214,7 @@ static void air_try(void)
         return;
     g_link.air_last_try = now;
     g_link.air_busy = 1;
+    air_key(g_air_join_key, sizeof g_air_join_key);
     if (bw_thread_start(air_join_thread, NULL) == NULL)
         g_link.air_busy = 0;
 }

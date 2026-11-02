@@ -33,6 +33,7 @@
 #include "ui.h"
 #include "kit.h"
 #include "input.h"
+#include "choice_list.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define TT_WEAK __attribute__((weak))
@@ -1376,6 +1377,140 @@ static u32 screen_ink(const u8 *s)
     return sum;
 }
 
+/* ------------------------------------------------------------------ */
+/* The professor's intro: its choices                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The intro (overlay 204) runs on the new-game proc's own ProcSys
+ * (NewGameIntroWork procSys 0x30, ov088/startmenu_types.h); its proc's
+ * work is the IntroGraphicWork (cmdWork 0x14).  IntroCmdWork
+ * (ov204/intro_types.h): msg 0x18, commands 0x20 (8 IntroCommand
+ * pointers, tag at 0x00), slots 0x40 (12 bytes each).  IntroMsgWork
+ * (ov204/intro_msg.c): the menu's BmpMenuList 0x24, its window 0x38.
+ */
+extern int ov204_INTRO_CMD_CmdAnimMode(char *p, u32 *q) TT_WEAK;
+extern void *bw_dsref_ov204_gIntroCmdCommandTable TT_WEAK;
+typedef void (*TtDataFn)(void);
+extern TtDataFn bw_ovl_code_entry(u32 value) TT_WEAK;
+extern void ov088_STARTMENU_NewGameIntroMain(void) TT_WEAK;
+extern void ov204_INTRO_GRAPHIC_Main(void) TT_WEAK;
+
+/* A code word of the game's data is `fn`: the host function itself (a
+ * pointer the loader relocated) or a DS address that resolves to it. */
+static int code_is(u32 word, const void *fn)
+{
+    if (fn == NULL || word == 0u) {
+        return 0;
+    }
+    if ((uintptr_t)word == (uintptr_t)fn) {
+        return 1;
+    }
+    return bw_ovl_code_entry != NULL && (const void *)bw_ovl_code_entry(word) == fn;
+}
+
+/* The proc runs `main` (its ProcData: init, main, end). */
+static int proc_runs(const TtProc *p, void (*main)(void))
+{
+    return p != NULL && p->data != NULL && code_is(((const u32 *)p->data)[1], (const void *)main);
+}
+
+static u8 *intro_cmd_work(void)
+{
+    TtProc *p = root_proc(), *child;
+    u8 *ngw, *sys, *gw;
+
+    if (p == NULL || p->overlayId != 88 || p->work == NULL
+        || !proc_runs(p, ov088_STARTMENU_NewGameIntroMain)) {
+        return NULL;
+    }
+    ngw = (u8 *)p->work;
+    sys = *(u8 **)(ngw + 0x30);
+    child = sys != NULL ? *(TtProc **)(sys + 0x08) : NULL;
+    if (child == NULL || child->work == NULL || !proc_runs(child, ov204_INTRO_GRAPHIC_Main)) {
+        return NULL;
+    }
+    gw = (u8 *)child->work;
+    return *(u8 **)(gw + 0x14);
+}
+
+/* The gender choice's state words (INTRO_CMD_CmdAnimMode: step, choice 0
+ * boy 1 girl), or NULL when it is not running. */
+static u32 *intro_gender(u8 *cmd)
+{
+    u32 *table;
+    int i;
+
+    if (cmd == NULL || ov204_INTRO_CMD_CmdAnimMode == NULL
+        || &bw_dsref_ov204_gIntroCmdCommandTable == NULL
+        || bw_dsref_ov204_gIntroCmdCommandTable == NULL) {
+        return NULL;
+    }
+    table = (u32 *)bw_dsref_ov204_gIntroCmdCommandTable;
+    for (i = 0; i < 8; i++) {
+        const u32 *q = *(const u32 **)(cmd + 0x20 + 4 * i);
+
+        if (q != NULL && q[0] < 0x40u
+            && code_is(table[q[0]], (const void *)ov204_INTRO_CMD_CmdAnimMode)) {
+            return (u32 *)(cmd + 0x40 + 12 * i);
+        }
+    }
+    return NULL;
+}
+
+/*
+ * The intro's choices by touch.  Returns 1 when a choice is up (the tap is
+ * not A then).  The professor's yes/no and name lists are the game's own
+ * BmpMenuList: the shared choice list (engine/ui/choice_list.h).  The boy
+ * and the girl stand on the left and the right of the screen: a tap on the
+ * one not chosen moves the game's choice there (LEFT or RIGHT, so the game
+ * turns them as for the keys), a tap on the chosen one is A.  A tap
+ * anywhere else does nothing.
+ */
+static int intro_choices(EidosUiCtx *c, const EidosUiFrame *in)
+{
+    u8 *cmd = intro_cmd_work(), *msg;
+    u32 *g;
+    float sc = (float)c->canvas->h / 192.0f;
+    float ox = ((float)c->canvas->w - 256.0f * sc) * 0.5f;
+
+    if (cmd == NULL) {
+        ui_choice_list_idle();
+        return 0;
+    }
+    msg = *(u8 **)(cmd + 0x18);
+    if (msg != NULL && *(void **)(msg + 0x24) != NULL && *(void **)(msg + 0x38) != NULL) {
+        if (ui_choice_list(c, in, *(void **)(msg + 0x24), *(void **)(msg + 0x38), ox, 0.0f, sc)) {
+            if (eidos_ui_right_click()) {
+                eidos_ui_press(BW_KEY_B, 2);
+            }
+            return 1;
+        }
+    }
+    ui_choice_list_idle();
+    g = intro_gender(cmd);
+    if (g != NULL && (g[0] == 1u || g[0] == 4u)) {
+        int side;
+        EidosUiRect r;
+
+        for (side = 0; side < 2; side++) {
+            r.x = (int)(ox + (float)(side * 128) * sc);
+            r.y = 0;
+            r.w = (int)(128.0f * sc);
+            r.h = (int)(144.0f * sc);       /* above the message box */
+            if ((eidos_ui_hit(r) & EIDOS_UI_CLICK) && g[0] == 1u) {
+                if ((u32)side == g[1]) {
+                    eidos_ui_press(BW_KEY_A, 2);
+                } else {
+                    eidos_ui_press(side == 0 ? BW_KEY_LEFT : BW_KEY_RIGHT, 2);
+                }
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
 static void boot_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static int shown = -1;
@@ -1411,7 +1546,9 @@ static void boot_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         int skip = !g_title_passed || (p != NULL && p->overlayId == 179);
         EidosUiRect all = { 0, 0, c->canvas->w, c->canvas->h };
 
-        if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+        if (!skip && intro_choices(c, in)) {
+            /* a choice is up: the taps go to it (intro_choices) */
+        } else if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
             eidos_ui_press(skip ? BW_KEY_START : BW_KEY_A, 2);
         } else if (skip && (eidos_ui_keys_pressed() & BW_KEY_A) != 0u) {
             eidos_ui_press(BW_KEY_START, 2);
