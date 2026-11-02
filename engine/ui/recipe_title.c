@@ -695,9 +695,12 @@ static void menu_reset(void)
 
 static int menu_match(void)
 {
-    if (scene(NULL) != TT_SCENE_MENU) {
+    TtProc *mp = NULL;
+
+    if (scene(&mp) != TT_SCENE_MENU) {
         return 0;
     }
+    (void)mp;   /* the notices are long: they keep the interface's size */
     /* the settings screens of the port keep the DS screens */
     if (bw_mod_title_in_settings != NULL && bw_mod_title_settings_on != NULL &&
         bw_mod_title_settings_on() && bw_mod_title_in_settings()) {
@@ -978,6 +981,64 @@ static void request(int target, int act)
     g_age = 0;
 }
 
+/*
+ * The title menu's yes/no (a BmpMenu, arm9/bmp_menu.c: header.items 0x00,
+ * selected 0x2D) as a list in the system box's style, its right edge at
+ * `right`, its foot at `foot`.  A click on the other row presses UP or
+ * DOWN, on the chosen row A (the game's cursor moves by its own keys).
+ */
+extern u16 *STRBUF_GetChars(void *strbuf) TT_WEAK;
+extern u16  STRBUF_GetLength(void *strbuf) TT_WEAK;
+
+static void title_yes_no(EidosUiCtx *c, const EidosUiFrame *in, const u8 *menu, int right, int foot)
+{
+    const u8 *items = *(const u8 *const *)menu;
+    int sel = menu[0x2D], i, w = 0, rh = 18, h, x, y;
+    char label[2][24];
+
+    (void)in;
+    for (i = 0; i < 2; i++) {
+        const u8 *sb = items != NULL ? *(const u8 *const *)(items + 8 * i) : NULL;
+
+        label[i][0] = '\0';
+        if (sb != NULL && STRBUF_GetChars != NULL && STRBUF_GetLength != NULL) {
+            name_utf8(STRBUF_GetChars((void *)sb), label[i], 24);
+        }
+        if (label[i][0] == '\0') {
+            snprintf(label[i], sizeof label[i], "%s", i == 0 ? "YES" : "NO");
+        }
+        if (ui_text_w(label[i], UI_FONT_LARGE) + 30 > w) {
+            w = ui_text_w(label[i], UI_FONT_LARGE) + 30;
+        }
+    }
+    h = 4 + 2 * rh + 4;
+    x = right - w;
+    y = foot - h;
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
+    for (i = 0; i < 2; i++) {
+        int ry = y + 4 + i * rh, lit = i == sel, st, rr;
+        EidosUiRect r;
+
+        r.x = x + 3; r.y = ry; r.w = w - 6; r.h = rh;
+        st = eidos_ui_hit(r);
+        if (lit) {
+            ui_panel(c, r.x, ry - 1, r.w, rh, UI_CUT_TL | UI_CUT_BR, 5, 0x05343Eu, 0x008BACu, 250);
+            for (rr = 3; rr < rh - 3; rr++) {
+                int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+                if (left < 6) {
+                    ui_fill(c, r.x + left, ry - 1 + rr, 6 - left, 1, 0x008BACu, 255);
+                }
+            }
+        }
+        ui_text(c, r.x + 10, ry - (lit ? 1 : 0) + ui_text_y(rh, UI_FONT_LARGE), label[i],
+                lit ? UI_WHITE : UI_LIGHT, 0x464850u, UI_FONT_LARGE, 1);
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_press(lit ? BW_KEY_A : (i < sel ? BW_KEY_UP : BW_KEY_DOWN), 2);
+        }
+    }
+}
+
 static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     TtProc *p = NULL;
@@ -1028,21 +1089,30 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
     if (state >= 7 && state <= 10) {
-        int dsw = H * 4 / 3, x0 = (W - dsw) / 2;
+        /* the game's questions and notices as the interface's system box
+         * over the menu's floor, dimmed (mock-up n9): the message window
+         * (StartMenuWork windows[13] 0xE8), the information window
+         * (descWindow 0xF0) when it holds text, and the yes/no
+         * (yesNoMenu 0x7C, a BmpMenu: items 0x00, selected 0x2D) as a list
+         * in the same style */
+        const u8 *msgw = *(const u8 *const *)((const char *)work + 0xE8);
+        const u8 *desc = *(const u8 *const *)((const char *)work + 0xF0);
+        const u8 *yn = *(const u8 *const *)((const char *)work + 0x7C);
+        int bw = H * 4 / 3 - 8, bx = (W - bw) / 2, by;
 
-        view->hide_2d = 0;
-        if (x0 > 0) {
-            /* beside the game's window, the menu's own floor */
-            EidosUiRect keep;
-
-            ui_push(c, 0, 0, &keep);
-            ui_clip(c, 0, 0, x0, H);
-            backdrop(c, W, H, (int)in->frame);
-            ui_pop(c, 0, 0, &keep);
-            ui_push(c, 0, 0, &keep);
-            ui_clip(c, W - x0, 0, x0, H);
-            backdrop(c, W, H, (int)in->frame);
-            ui_pop(c, 0, 0, &keep);
+        backdrop(c, W, H, (int)in->frame);
+        ui_fill(c, 0, 0, W, H, 0x000000u, 150);
+        if (desc != NULL && (*(const u16 *)desc & 0x7FFFu) == 0x7FB2u) {
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, bx, 8, bw, desc, -1, -1);
+        }
+        by = H - ui_bar_h(c) - 4 - 42;
+        if (msgw != NULL && (*(const u16 *)msgw & 0x7FFFu) == 0x7FB2u) {
+            by = H - ui_bar_h(c) - 4 - (msgw[6] * 8 + 10);
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, bx, by, bw, msgw, -1, -1);
+        }
+        /* the connect prompt asks at its step 3 (STARTMENU_StateConnectPrompt) */
+        if (yn != NULL && state == 7 && *((const u8 *)work + 0x12A) == 3) {
+            title_yes_no(c, in, yn, bx + bw, by - 2);
         }
         ui_hints(c, H - ui_bar_h(c), W, hints_ask, 2, keys_one);
         return;
