@@ -1406,12 +1406,17 @@ static volatile u32 g_hide_main_bgs;
 
 void g2d_hw_hide_main_bgs(u32 mask)
 {
-    g_hide_main_bgs = mask & 0x1Eu;     /* BG1..BG3 and the OBJs: never the 3D layer */
+    g_hide_main_bgs = mask & 0x1Fu;     /* BG0..BG3 and the OBJs */
 }
 
 static u32 shown_dispcnt(const Engine *e, u32 dispcnt)
 {
-    return e->main ? dispcnt & ~(g_hide_main_bgs << 8) : dispcnt;
+    u32 hide = g_hide_main_bgs;
+
+    if (dispcnt & 8u) {
+        hide &= ~1u;                    /* BG0 is the 3D layer: never taken */
+    }
+    return e->main ? dispcnt & ~(hide << 8) : dispcnt;
 }
 
 int g2d_hw_main_blended_over_3d(void)

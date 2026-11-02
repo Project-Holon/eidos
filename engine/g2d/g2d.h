@@ -1082,7 +1082,7 @@ int g2d_hw_main_graphics_dsmem(const u8 *rgba3d, u8 *out);
  * the 3D layer (G2dFrameDesc.blend_over_3d): when it did not, a compose of
  * the same screen over another 3D layer has the same 2D everywhere. */
 int g2d_hw_main_blended_over_3d(void);
-/* Main-engine BGs (bit n: BGn; BG0 is never taken) and OBJs (bit 4) left
+/* Main-engine BGs (bit n: BGn; BG0 only while it is not the 3D layer) and OBJs (bit 4) left
  * out of the composed screens: windows the port's interface draws itself
  * (the one-screen text boxes, engine/ui/textbox.c; the place-name banner's
  * letters). 0 shows all. */

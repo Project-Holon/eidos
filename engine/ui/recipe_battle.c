@@ -1084,6 +1084,138 @@ static void levelup_draw(EidosUiCtx *c, const Bt *b, int phase)
 #define MSG_FADE_FRAMES 8
 static u32 g_msg_frame;                 /* the last frame with text          */
 
+/*
+ * The Ability plates (mock-up "ability_popup"): when a Pokemon's Ability
+ * shows (Intimidate, Drought, ...) the game slides a plate in with the
+ * Pokemon's name and the Ability (BTLV_SCU_StartNamePlate).  The game's
+ * plate is left out with the rest of its 2D; the interface draws its own,
+ * a dark tile with the blue edge and strip beside that Pokemon's side, with
+ * the game's own printed words.  The words are what the game printed over
+ * the plate's background: the pixels of the plate's bitmap that differ
+ * from the background it was copied from, its letters in colour 1 and
+ * their shadow in 2 (GF_FONT_SetTextColor(1, 2, 0)).
+ *
+ * BtlvScu (BtlvCore.sceneUnit +0x17C): namePlates[2] +0x090, 0x24 each:
+ * bmp +0x04 (18 x 4 tiles, 144 x 32), templatePixels +0x10, isShown bit 0
+ * of +0x22.  Plate 0 is the player's side, 1 the opponent's.
+ */
+static void draw_name_plates(EidosUiCtx *c, const Bt *b)
+{
+    const u8 *scu = b->core != NULL ? rdp(b->core, 0x17C) : NULL;
+    int i, w = c->canvas->w, h = c->canvas->h;
+
+    if (scu == NULL) {
+        return;
+    }
+    for (i = 0; i < 2; i++) {
+        const u8 *pl = scu + 0x90 + 0x24 * i;
+        const u8 *bmp = rdp(pl, 0x04), *tpl = rdp(pl, 0x10), *px;
+        int x, y, xx, yy, x0 = 144, x1 = 0, y0 = 32, y1 = 0, pw, ph = 34;
+
+        if (!(pl[0x22] & 1u) || bmp == NULL || tpl == NULL || (px = rdp(bmp, 0)) == NULL) {
+            continue;
+        }
+        for (yy = 0; yy < 32; yy++) {
+            for (xx = 0; xx < 144; xx++) {
+                int v = msg_px(px, 144, xx, yy);
+
+                if ((v == 1 || v == 2) && v != msg_px(tpl, 144, xx, yy)) {
+                    if (xx < x0) x0 = xx;
+                    if (xx + 1 > x1) x1 = xx + 1;
+                    if (yy < y0) y0 = yy;
+                    if (yy + 1 > y1) y1 = yy + 1;
+                }
+            }
+        }
+        if (x1 <= x0) {
+            continue;                       /* nothing printed yet         */
+        }
+        pw = (x1 - x0) + 26;
+        ph = (y1 - y0) + 10;
+        x = i == 0 ? 6 : w - 6 - pw;
+        y = i == 0 ? h / 2 - 10 : 44;
+        ui_panel(c, x, y, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x008BACu, 240);
+        {
+            int rr;
+
+            for (rr = 3; rr < ph - 3; rr++) {
+                int left = 3 + (rr < 8 ? 8 - rr : 0);
+
+                if (left < 6) {
+                    ui_fill(c, x + left, y + rr, 6 - left, 1, 0x008BACu, 255);
+                }
+            }
+        }
+        for (yy = y0; yy < y1; yy++) {
+            for (xx = x0; xx < x1; xx++) {
+                int v = msg_px(px, 144, xx, yy);
+
+                if ((v == 1 || v == 2) && v != msg_px(tpl, 144, xx, yy)) {
+                    ui_fill(c, x + 14 + xx - x0, y + 5 + yy - y0, 1, 1, v == 1 ? UI_WHITE : 0x464850u, 255);
+                }
+            }
+        }
+    }
+}
+
+/*
+ * The trainer's card (mock-up "trainer_intro"): while the battle opens on a
+ * trainer (the scene unit's step is one of the trainer entries), a card at
+ * the top right with the trainer's class and name, the game's own words:
+ * the class from the trainer class names (a/0/0/2 file 191, by trainer
+ * type) and the name the battle keeps.
+ *
+ * BtlMain trainers[4] +0x020 (0x28 each: name +0x04, a Strbuf;
+ * trainerType +0x08); slot 1 is the opponent.  BtlvScu.mainProc +0x0E4.
+ */
+extern int ov093_BTLV_SCU_ProcEntrySingleTrainer(int *state, void *scu) __attribute__((weak));
+extern int ov093_BTLV_SCU_ProcEntryDoubleTrainerLocal(int *state, void *scu) __attribute__((weak));
+extern int ov093_BTLV_SCU_ProcEntryTriple(int *state, void *scu) __attribute__((weak));
+
+static void draw_trainer_card(EidosUiCtx *c, const Bt *b)
+{
+    const u8 *scu = b->core != NULL ? rdp(b->core, 0x17C) : NULL;
+    const u8 *slot;
+    char name[40];
+    const char *cls;
+    u32 proc;
+    int w = c->canvas->w, pw, x, y = 6;
+
+    if (scu == NULL || b->main == NULL) {
+        return;
+    }
+    proc = rd32(scu, 0xE4);
+    if (!lv_is(proc, ov093_BTLV_SCU_ProcEntrySingleTrainer) && !lv_is(proc, ov093_BTLV_SCU_ProcEntryDoubleTrainerLocal)
+        && !lv_is(proc, ov093_BTLV_SCU_ProcEntryTriple)) {
+        return;
+    }
+    slot = b->main + 0x20 + 0x28;
+    if (!strbuf_text(rdp(slot, 0x04), name, (int)sizeof name)) {
+        return;
+    }
+    cls = ui_game_text(2, 191, rd16(slot, 0x08));
+    pw = ui_text_w(name, UI_FONT_LARGE);
+    if (ui_text_w(cls, UI_FONT_SMALL) > pw) {
+        pw = ui_text_w(cls, UI_FONT_SMALL);
+    }
+    pw += 28;
+    x = w - 6 - pw;
+    ui_panel(c, x, y, pw, 32, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 235);
+    {
+        int rr;
+
+        for (rr = 3; rr < 32 - 3; rr++) {
+            int left = 3 + (rr < 8 ? 8 - rr : 0);
+
+            if (left < 6) {
+                ui_fill(c, x + left, y + rr, 6 - left, 1, 0x008BACu, 255);
+            }
+        }
+    }
+    ui_text(c, x + 14, y + 3, cls, UI_GREY, 0x313131u, UI_FONT_SMALL, 1);
+    ui_text(c, x + 14, y + 14, name, UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
+}
+
 static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static const char *const hints[] = { "A", "Next" };
@@ -1119,6 +1251,8 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         if (lv != LV_NONE) {
             levelup_draw(c, &b, lv);
         }
+        draw_name_plates(c, &b);
+        draw_trainer_card(c, &b);
     } else {
         /* a frame the battle's state is not readable (a screen changing):
          * the last picture stays, and the game's own plates stay hidden */
@@ -3189,7 +3323,31 @@ static int strbuf_text(const u8 *sb, char *out, int cap)
         for (i = 0; i < len; i++) {
             chars[i] = (u16)rd16(sb, 8 + 2 * i);
         }
-        units_to_utf8(chars, (int)len, out, cap);
+        if (chars[0] == 0xF100u) {
+            /* a compressed name (a trainer's): 9-bit codes after the
+             * marker, low bits first, 0x1FF ends it */
+            u16 un[121];
+            u32 bits = 0, nb = 0, n = 0;
+
+            for (i = 1; i < len && n < 120; i++) {
+                bits |= (u32)chars[i] << nb;
+                nb += 16;
+                while (nb >= 9 && n < 120) {
+                    u32 code = bits & 0x1FFu;
+
+                    bits >>= 9;
+                    nb -= 9;
+                    if (code == 0x1FFu) {
+                        i = len;
+                        break;
+                    }
+                    un[n++] = (u16)code;
+                }
+            }
+            units_to_utf8(un, (int)n, out, cap);
+        } else {
+            units_to_utf8(chars, (int)len, out, cap);
+        }
     }
     return out[0] != '\0';
 }
