@@ -284,6 +284,12 @@ u32 w2c_env_SDL_SetWindowPosition(struct w2c_env *e, u32 w, u32 x, u32 y)
 u32 w2c_env_SDL_SetWindowFullscreen(struct w2c_env *e, u32 w, u32 on)
 {
     (void)e;
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_IOS)
+    /* a phone's window stays fullscreen whatever the game's window mode
+     * setting (a desktop's) asks: windowed, Android shows its status and
+     * navigation bars over the game */
+    on = 1;
+#endif
     return SDL_SetWindowFullscreen((SDL_Window *)handle_ptr(w), on != 0);
 }
 
