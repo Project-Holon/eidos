@@ -143,3 +143,31 @@ u32 bw_ui_item_last(u32 *count, u32 *serial)
     if (serial != NULL) *serial = g_item_serial;
     return g_item_got;
 }
+
+/* ------------------------------------------------------------------ */
+/* The field's open list (stubs/ov/patch_ov021_field_msgbg.c)          */
+/* ------------------------------------------------------------------ */
+
+extern u32 bw_input_frame_number(void);
+
+static const void *volatile g_menu_list, *volatile g_menu_win;
+static volatile u32 g_menu_frame;
+
+void bw_ui_field_menu_seen(const void *menuList, const void *bmpWin)
+{
+    g_menu_list = menuList;
+    g_menu_win = bmpWin;
+    g_menu_frame = bw_input_frame_number();
+}
+
+/* The list the game ran in the last two frames, or 0 (the game runs an
+ * open list every frame). */
+int bw_ui_field_menu_now(const void **menuList, const void **bmpWin)
+{
+    if (g_menu_list == NULL || bw_input_frame_number() - g_menu_frame > 2u) {
+        return 0;
+    }
+    *menuList = g_menu_list;
+    *bmpWin = g_menu_win;
+    return 1;
+}

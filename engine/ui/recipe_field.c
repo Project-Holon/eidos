@@ -1168,12 +1168,25 @@ extern int ov021_SCRCMD_MSGWIN_YesNoEventMain(void *ev, int *seq, void *work) __
 
 /* Finds the script's open list and its window (overlay 21's FieldMenuFunc:
  * bmpWin +0x08, menuList +0x10). */
+extern int bw_ui_field_menu_now(const void **menuList, const void **bmpWin) WEAK;
+
 static int choices_now(const FieldNow *f, u8 **list, u8 **win)
 {
     u8 *ev, *work, *fmf = NULL;
     uintptr_t func;
 
     *list = *win = NULL;
+    /* any list the field runs (stubs/ov/patch_ov021_field_msgbg.c): the
+     * Union Room's talk menu, the Battle Subway's, the scripts' */
+    if (bw_ui_field_menu_now != NULL) {
+        const void *l, *w;
+
+        if (bw_ui_field_menu_now(&l, &w) && w != NULL && (rd16((const u8 *)w) & 0x7FFFu) == 0x7FB2u) {
+            *list = (u8 *)l;
+            *win = (u8 *)w;
+            return 1;
+        }
+    }
     if (GAMESYSTEM_GetEvent == NULL) {
         return 0;
     }
@@ -1228,6 +1241,9 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     }
     (void)choices_now(f, &list, &win);
     hide = ui_textbox_field(c, f->fm, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s, win);
+    if (win != NULL && win[2] < 4) {
+        hide |= 1u << win[2];           /* an open list's window: ours shows */
+    }
     item_card(c, f, hide != 0);
     /* the season's scoreboard stays the game's own (the player prefers it) */
     if (banner_shown(f)) {
@@ -1971,8 +1987,12 @@ static int lower_match(void)
         return 0;
     }
     logf_scene("field-lower");
-    if (ui_textbox_field_active(f.fm) || f.mode == 9) {
-        eidos_ui_want_ds_scale();
+    {
+        u8 *l, *w;
+
+        if (ui_textbox_field_active(f.fm) || f.mode == 9 || choices_now(&f, &l, &w)) {
+            eidos_ui_want_ds_scale();
+        }
     }
     return 1;
 }
@@ -1991,6 +2011,15 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     /* the Union Room and the Entralink: their own cards; the other lower
      * screens: the game's screen as a sheet */
+    {
+        u8 *l, *w;
+
+        if (f.mode == 2 && choices_now(&f, &l, &w)) {
+            /* a list is open (the talk menu, a YES / NO): the card would
+             * cover it (field_run drew the list) */
+            return;
+        }
+    }
     own = (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
           || (f.mode == 9 && power_card(c, &f));
     if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
