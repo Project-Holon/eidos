@@ -175,6 +175,7 @@ static const UiLangRow k_ui_lang[] = {
     { 0xB30FFCE0u, "MARK", { "MARQUE", "MARKIERUNG", "SEGNO", "MARCA" } },
     { 0xB3A43630u, "Yes", { "Oui", "Ja", "S\303\254", "S\303\255" } },
     { 0xB42DCFEEu, "PSN", { "PSN", "GIF", "AVV", "ENV" } },
+    { 0xB51D04BAu, "lower", { "min.", "klein", "minusc.", "min\303\272s." } },
     { 0xB67736F4u, "SOUND", { "SON", "TON", "AUDIO", "SONIDO" } },
     { 0xB680A59Eu, "RELEASE", { "REL\303\202CHER", "FREILASSEN", "LIBERA", "LIBERAR" } },
     { 0xB68F707Eu, "POKEMON", { "POK\303\211MON", "POK\303\211MON", "POK\303\211MON", "POK\303\211MON" } },
