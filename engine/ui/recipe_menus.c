@@ -2644,6 +2644,134 @@ static const EidosUiRecipe recipe_geonet = {
     "geonet", geonet_match, geonet_run, geonet_reset, 0
 };
 
+/* ------------------------------------------------------------------ */
+/* The Entree (the Entralink's Monolith)                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Entree's first screen (overlay 71, ov071/monolith_title.c) as a
+ * window over the blurred Entralink (mock-up "entree"): the title, Receive
+ * Pass Power, Check Status and Back as battle-style tiles.  A tile taps the
+ * game's own button, so the game opens what it opens for the stylus; its
+ * keys work as they did.  The other screens of the Entree keep the DS's
+ * screens for now.
+ *
+ * MonolithToolWork (ov071/monolith_tool_types.h): currentScreen 0x134.
+ * Its words: a/0/0/2 file 69 (0 the title, 2 and 3 the two buttons).
+ */
+#define MONO_OVERLAY 71
+#define MONO_TITLE   0          /* currentScreen of the first screen      */
+
+static int entree_match(void)
+{
+    const u8 *w = (const u8 *)app_work(MONO_OVERLAY);
+
+    if (w == NULL) {
+        return 0;
+    }
+    if (getenv("EIDOS_UI_ENTREE_LOG") != NULL) {
+        static int last = -1;
+
+        if (w[0x134] != last) {
+            fprintf(stderr, "eidos: ui entree screen %d\n", w[0x134]);
+            last = w[0x134];
+        }
+    }
+    return w[0x134] == MONO_TITLE;
+}
+
+/* A battle sheet tile; returns its hit state. */
+static int sheet_tile_hit(EidosUiCtx *c, int x, int y, int w, int h, const char *label, int lit)
+{
+    EidosUiRect r;
+    int st, rr;
+    u32 col;
+
+    r.x = x; r.y = y; r.w = w; r.h = h;
+    st = eidos_ui_hit(r);
+    lit = lit || (st & EIDOS_UI_HOVER);
+    col = lit ? 0x008BACu : UI_EDGE2;
+    ui_panel(c, x, y - (lit ? 1 : 0), w, h, UI_CUT_TL | UI_CUT_BR, 5, lit ? 0x05343Eu : UI_BODY,
+             lit ? 0x008BACu : UI_EDGE, 242);
+    for (rr = 3; rr < h - 3; rr++) {
+        int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+        if (left < 6) {
+            ui_fill(c, x + left, y - (lit ? 1 : 0) + rr, 6 - left, 1, col, 255);
+        }
+    }
+    ui_text(c, x + 12, y - (lit ? 1 : 0) + ui_text_y(h, UI_FONT_LARGE), label, UI_WHITE, 0x313131u,
+            UI_FONT_LARGE, 1);
+    return st;
+}
+
+static void entree_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Choose", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    int cw = c->canvas->w, ch = c->canvas->h, mw, mh = 150, mx, my;
+    char name[24] = "";
+    const char *title;
+    void *gd = game_data();
+
+    (void)in;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = 1.0f;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+    if (gd != NULL && GAME_DATA_GetMyStatus != NULL && MYSTATUS_GetName != NULL) {
+        units_utf8(MYSTATUS_GetName(GAME_DATA_GetMyStatus(gd)), 8, name, (int)sizeof name);
+    }
+    title = game_text(2, 69, 0, name);
+    mw = cw - 40 < 300 ? cw - 40 : 300;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh) / 2;
+    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    ui_text(c, mx + 12, my + 6, title[0] != '\0' ? title : "ENTREE", 0x62BEFFu, 0x313131u, UI_FONT_SMALL, 1);
+    ui_fill(c, mx + 10, my + 19, mw - 20, 1, 0x103C5Au, 255);
+    {
+        /* the keys move the window's own cursor (the game's is on its
+         * lower screen); A presses the tile under it */
+        static int focus;
+        u32 k = eidos_ui_keys_pressed();
+        int i, pick = -1;
+        const char *labels[3];
+
+        labels[0] = game_text(2, 69, 2, NULL);
+        labels[1] = game_text(2, 69, 3, NULL);
+        labels[2] = "Back";
+        eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_A);
+        if (k & BW_KEY_UP) focus = (focus + 2) % 3;
+        if (k & BW_KEY_DOWN) focus = (focus + 1) % 3;
+        if (k & BW_KEY_A) pick = focus;
+        for (i = 0; i < 3; i++) {
+            int st = sheet_tile_hit(c, mx + 12, my + 30 + 36 * i, mw - 24, 30, labels[i],
+                                    eidos_ui_keys_lit() && i == focus);
+
+            if (st & EIDOS_UI_CLICK) pick = i;
+            if (st & EIDOS_UI_HOVER) focus = i;
+        }
+        if (pick == 0) eidos_ui_tap(128, 58, 3);
+        if (pick == 1) eidos_ui_tap(128, 115, 3);
+        if (pick == 2) eidos_ui_press(BW_KEY_B, 2);
+    }
+    if (ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys) < 0) {
+        /* the hints press their own keys */
+    }
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void entree_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_entree = {
+    "entree", entree_match, entree_run, entree_reset, 0
+};
+
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
-                                                  &recipe_wireless, &recipe_geonet };
-const u32 ui_recipes_menus_count = 5;
+                                                  &recipe_wireless, &recipe_geonet, &recipe_entree };
+const u32 ui_recipes_menus_count = 6;
