@@ -1219,12 +1219,25 @@ void eidos_gl_one_canvas(EidosGl *g, const unsigned char *rgba, int w, int h,
     }
 }
 
-/* Non-zero when the last 3D frame was rendered at out_w x out_h and belongs
- * to `screen`: the world path can use it one to one. */
+/* Non-zero when the last 3D frame belongs to `screen` and has out_w x
+ * out_h's shape, at that size or fewer pixels (a phone draws the 3D with
+ * fewer rows, platform.c rows_3d): the world path stretches it over the
+ * window. */
 int eidos_gl_3d_matches(const EidosGl *g, int screen, int out_w, int out_h)
 {
-    return g != NULL && g->s3d == screen && g->fb[0].color != 0 &&
-           g->fb[0].w == out_w && g->fb[0].h == out_h;
+    long fw, fh, err;
+
+    if (g == NULL || g->s3d != screen || g->fb[0].color == 0) {
+        return 0;
+    }
+    fw = g->fb[0].w;
+    fh = g->fb[0].h;
+    err = fw * out_h - fh * out_w;
+    if (err < 0) {
+        err = -err;
+    }
+    return fw > 0 && fh > 0 && fw <= out_w && fh <= out_h &&
+           err <= (out_w > out_h ? out_w : out_h);
 }
 
 static float ndc_x(int x, int w) { return 2.f * (float)x / (float)w - 1.f; }

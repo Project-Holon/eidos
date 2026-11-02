@@ -469,6 +469,26 @@ static void out_size(const EidosPlatform *p, int *w, int *h)
     }
 }
 
+/* The most rows the world's 3D is drawn with (0: the window's own).  A
+ * phone's screen has far more rows than a DS scene needs, and filling
+ * them all costs most of a frame there: the phone hosts (EIDOS_GL_ES) draw
+ * the 3D at 720 rows and the world stretches it.  EIDOS_3D_ROWS sets it
+ * anywhere (0: off). */
+static int rows_3d(void)
+{
+    static int rows = -1;
+
+    if (rows < 0) {
+        const char *v = getenv("EIDOS_3D_ROWS");
+
+        rows = v != NULL ? atoi(v) : getenv("EIDOS_GL_ES") != NULL ? 720 : 0;
+        if (rows < 0 || (rows > 0 && rows < 192)) {
+            rows = 192;
+        }
+    }
+    return rows;
+}
+
 /* The world's part of the window: all of it, less the strip a phone's
  * hint bar keeps at the bottom (EidosUiView.bottom). */
 static void world_size(const EidosPlatform *p, int *w, int *h)
@@ -2161,8 +2181,15 @@ static int render_3d_for(EidosPlatform *p, int screen, const struct G3dSnapshot 
             oh = wg.ds.h;
         }
         if (ow > 0 && oh > 0 && ow <= 8192 && oh <= 8192) {
+            int cap = rows_3d();
+
             rw = ow;
             rh = oh;
+            if (cap > 0 && rh > cap) {
+                /* fewer rows, the same shape: the world stretches it */
+                rw = (int)(((long)rw * cap + rh / 2) / rh);
+                rh = cap;
+            }
         }
     }
     return eidos_gl_render3d(p->gl, snap, rw, rh);
