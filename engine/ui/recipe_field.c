@@ -50,6 +50,9 @@
 
 #define WEAK __attribute__((weak))
 
+static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h, const char *key);
+extern void bw_mod_restart(u32 flags) WEAK;
+
 /* The game system's global and the accessors the recipes call. */
 extern void *bw_dsref__GameSystemGlobal WEAK;
 extern void *GAME_DATA_GetMyParty(const void *gd) WEAK;
@@ -928,6 +931,28 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
 
     hint = hint_bar(c, ch - 17, cw, hints, 3);
+    {
+        /* Title screen: what the DS's soft reset does (L + R + START +
+         * SELECT), which a touch screen has no keys for.  A second click
+         * within three seconds confirms: unsaved progress is lost. */
+        static u32 armed_at;
+        int armed = armed_at != 0u && in->frame - armed_at < 180u;
+        int tx = cw - 4;
+        int st = small_button(c, &tx, ch - 17, armed ? "Sure? Unsaved progress is lost" : "Title screen",
+                              17, NULL);
+
+        if (st & EIDOS_UI_CLICK) {
+            if (armed) {
+                armed_at = 0;
+                if (bw_mod_restart != NULL) {
+                    bw_mod_restart(0);
+                }
+            } else {
+                armed_at = in->frame != 0u ? in->frame : 1u;
+            }
+            hint = -2;                      /* not a click on the menu      */
+        }
+    }
 
     /* What a click does. */
     in_panel = 0;
@@ -1376,6 +1401,15 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         e = getenv("EIDOS_UI_FIELD_CGEAR_FULL");
         if (e != NULL && in->frame == (u32)atoi(e) && (f.mode == 0 || f.mode == 8)) {
             g_show_cgear = 2;
+        }
+    }
+    if (getenv("EIDOS_UI_EVENT_LOG") != NULL && GAMESYSTEM_IsEventActive != NULL) {
+        static int last = -1;
+        int ev = GAMESYSTEM_IsEventActive(f.gs) != 0;
+
+        if (ev != last) {
+            fprintf(stderr, "eidos: ui field %u event %d mode %u\n", in->frame, ev, f.mode);
+            last = ev;
         }
     }
     if (g_show_cgear && f.mode != 0 && f.mode != 8) {
