@@ -55,6 +55,7 @@
 static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h, const char *key);
 struct FieldNow;
 static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
+static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldNow *f);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -142,6 +143,8 @@ static void units_to_utf8(const u16 *u, int max, char *out, int n)
 
         if (c == 0xE000u) {
             c = ' ';
+        } else if (c == 0xFFFEu) {                  /* a new line          */
+            c = '\n';
         } else if (c == 0xF000u) {                  /* a tag: skip it       */
             int argc = i + 2 < max ? (int)u[i + 2] : 0;
 
@@ -1810,9 +1813,16 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->hide_2d = capture_bg_shown();
     view->cap_mix = capture_mix();
     view->stretch = encounter_effect();
-    if (lower_sheet(c, in, c->canvas->w, c->canvas->h, 0, 0) < 0) {
-        view->mode = EIDOS_VIEW_FALLBACK;
-        return;
+    {
+        FieldNow f;
+
+        /* the Union Room: its own card; the other lower screens: the
+         * game's screen as a sheet */
+        if (!(field_now(&f) && f.mode == 2 && union_card(c, in, &f))
+            && lower_sheet(c, in, c->canvas->w, c->canvas->h, 0, 0) < 0) {
+            view->mode = EIDOS_VIEW_FALLBACK;
+            return;
+        }
     }
     {
         FieldNow f;
@@ -1827,6 +1837,323 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (right_click(in)) {
         eidos_ui_press(BW_KEY_B, 4);
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The Union Room                                                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Union Room's lower screen (field sub-screen mode 2, ov031
+ * union_subdisp.c) as a card on the right of the world (mock-up u1): the
+ * chat log, the newest lines last, and the game's five buttons under it
+ * (Talk, Battle, Trade, Draw, Spin Trade) as battle-style tiles with the
+ * game's own icons.  A tile taps the game's button where the game drew it,
+ * so the game does what it does for the stylus.
+ *
+ * The card can be put away so it does not hide the room: its Hide tab, or
+ * SELECT, puts it away; a Chat tab at the right edge, or SELECT, brings it
+ * back.  With the keys, SELECT first gives the card the keys: LEFT and
+ * RIGHT move along the tiles, A presses the chosen one, B gives the keys
+ * back to the room; SELECT again puts the card away.
+ *
+ * Records: UnionRoomWork (GAME_COMM_GetWork) chatLog 0x30E0, its entries
+ * 0x24 bytes (name u16[8] 0x00, PMS 0x10, chatCount 0x18, sex 0x20,
+ * chatType 0x21, relation 0x22), newestIndex 0x43C (the absolute index of
+ * the newest line, -1 empty); the line of index i is entry[i % 30].  Fixed
+ * lines are a/0/0/2 file 201 (chatType 1: 6, 2..5: 0..3; 4 FRIEND, 5
+ * PLAYER).  UnionSubdispWork appealNo 0x30 (0: no button held down).
+ */
+extern void *GAMESYSTEM_GetGameComm(const void *gameSystem) WEAK;
+extern void *GAME_COMM_GetWork(const void *comm) WEAK;
+extern void *PMSI_PARAM_ToString(const void *sentence, unsigned int heapId) WEAK;
+extern void  STRBUF_Delete(void *strbuf) WEAK;
+extern u16  *STRBUF_GetChars(void *strbuf) WEAK;
+extern u16   STRBUF_GetLength(void *strbuf) WEAK;
+extern u32   ov021_FIELDMAP_GetHeapId(void *fieldMap) WEAK;
+
+#define UNION_LINES 4
+
+static int g_union_shown = 1;       /* the card is out                      */
+static int g_union_keys;            /* the card has the keys                */
+static int g_union_focus = 1;       /* the tile the keys are on             */
+static int g_union_pressed = -1;    /* the tile last pressed                */
+
+/* A chat sentence's words, made on the game's thread (its heap). */
+typedef struct UnionPms {
+    s32 index;
+    u16 count;
+    char text[96];
+} UnionPms;
+
+static UnionPms g_union_pms[UNION_LINES] = { { -1, 0, "" }, { -1, 0, "" }, { -1, 0, "" }, { -1, 0, "" } };
+static volatile int g_union_pms_busy;
+
+typedef struct UnionPmsJob {
+    void *fm;
+    const u8 *entry;
+    int slot;
+    s32 index;
+} UnionPmsJob;
+
+static UnionPmsJob g_union_job;
+
+static void union_pms_make(void *arg)
+{
+    UnionPmsJob *j = (UnionPmsJob *)arg;
+    void *sb;
+
+    g_union_pms[j->slot].text[0] = '\0';
+    if (PMSI_PARAM_ToString != NULL && ov021_FIELDMAP_GetHeapId != NULL && STRBUF_GetChars != NULL
+        && STRBUF_GetLength != NULL) {
+        sb = PMSI_PARAM_ToString(j->entry + 0x10, ov021_FIELDMAP_GetHeapId(j->fm));
+        if (sb != NULL) {
+            units_to_utf8(STRBUF_GetChars(sb), STRBUF_GetLength(sb), g_union_pms[j->slot].text,
+                          (int)sizeof g_union_pms[j->slot].text);
+            if (STRBUF_Delete != NULL) {
+                STRBUF_Delete(sb);
+            }
+        }
+    }
+    g_union_pms[j->slot].index = j->index;
+    g_union_pms[j->slot].count = rd16(j->entry + 0x18);
+    g_union_pms_busy = 0;
+}
+
+/* The words of chat line `index` (entry `e`), into out. */
+static void union_line_text(void *fm, const u8 *e, s32 index, int slot, char *out, int n)
+{
+    static const u8 fixed[6] = { 0, 6, 0, 1, 2, 3 };
+    u8 type = e[0x21];
+
+    out[0] = '\0';
+    if (type >= 1 && type <= 5) {
+        char *p;
+
+        msg_text(201, fixed[type], out, n);
+        for (p = out; *p != '\0'; p++) {
+            if (*p == '\n') {
+                *p = ' ';
+            }
+        }
+        return;
+    }
+    if (g_union_pms[slot].index == index && g_union_pms[slot].count == rd16(e + 0x18)) {
+        snprintf(out, (size_t)n, "%s", g_union_pms[slot].text);
+        return;
+    }
+    if (!g_union_pms_busy) {
+        g_union_pms_busy = 1;
+        g_union_job.fm = fm;
+        g_union_job.entry = e;
+        g_union_job.slot = slot;
+        g_union_job.index = index;
+        if (!eidos_ui_game_call(union_pms_make, &g_union_job)) {
+            g_union_pms_busy = 0;
+        }
+    }
+}
+
+/* Wraps s into lines of at most w pixels; returns the count. */
+static int union_wrap(const char *s, int w, char lines[][96], int max)
+{
+    int n = 0;
+    char cur[96] = "";
+    const char *p = s;
+
+    while (*p != '\0' && n < max) {
+        char word[48];
+        char t[160];
+        int k = 0;
+
+        while (*p == ' ') {
+            p++;
+        }
+        while (*p != '\0' && *p != ' ' && k < 47) {
+            word[k++] = *p++;
+        }
+        word[k] = '\0';
+        if (k == 0) {
+            break;
+        }
+        snprintf(t, sizeof t, "%s%s%s", cur, cur[0] ? " " : "", word);
+        if (cur[0] != '\0' && ui_text_w(t, UI_FONT_LARGE) > w) {
+            snprintf(lines[n++], 96, "%s", cur);
+            snprintf(cur, sizeof cur, "%s", word);
+        } else {
+            snprintf(cur, sizeof cur, "%s", t);
+        }
+    }
+    if (cur[0] != '\0' && n < max) {
+        snprintf(lines[n++], 96, "%s", cur);
+    }
+    return n;
+}
+
+static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
+{
+    static const char *const names[5] = { "Talk", "Battle", "Trade", "Draw", "Spin" };
+    static const int bx[5] = { 32, 80, 128, 176, 224 };
+    u8 *uw, *log;
+    int cw = c->canvas->w;
+    int pw = cw / 2 - 8 > 196 ? 196 : cw / 2 - 8;
+    int x0 = cw - 6 - pw, top = 22, y, i, tw, chh;
+    s32 newest;
+    u32 keys = eidos_ui_keys_pressed();
+    EidosUiRect r;
+    char text[UNION_LINES][160], wrapped[UNION_LINES][3][96];
+    int nwrap[UNION_LINES], nl = 0;
+    const u8 *ent[UNION_LINES];
+
+    if (GAMESYSTEM_GetGameComm == NULL || GAME_COMM_GetWork == NULL
+        || (uw = (u8 *)GAME_COMM_GetWork(GAMESYSTEM_GetGameComm(f->gs))) == NULL) {
+        return 0;
+    }
+    log = uw + 0x30E0;
+    newest = (s32)rd32(log + 0x43C);
+    eidos_ui_want_objs(1);
+
+    /* SELECT: the card out, then the keys to it, then put away */
+    eidos_ui_take_keys(BW_KEY_SELECT | (g_union_keys ? (BW_KEY_A | BW_KEY_B | BW_KEY_LEFT | BW_KEY_RIGHT
+                                                         | BW_KEY_UP | BW_KEY_DOWN) : 0u));
+    if (keys & BW_KEY_SELECT) {
+        if (!g_union_shown) {
+            g_union_shown = 1;
+            g_union_keys = 1;
+        } else if (!g_union_keys) {
+            g_union_keys = 1;
+        } else {
+            g_union_shown = 0;
+            g_union_keys = 0;
+        }
+    }
+    if (!g_union_shown) {
+        /* the Chat tab at the right edge */
+        int tx = cw - 4;
+        int st = small_button(c, &tx, top + 4, "Chat", 17, "SELECT");
+
+        if (st & EIDOS_UI_CLICK) {
+            g_union_shown = 1;
+        }
+        return 1;
+    }
+
+    /* the lines: up to four, the newest last */
+    for (i = newest; i >= 0 && i > newest - UNION_LINES; i--) {
+        const u8 *e = log + 0x24 * (u32)(i % 30);
+        int k = newest - i;
+
+        ent[k] = e;
+        union_line_text(f->fm, e, i, k, text[k], (int)sizeof text[k]);
+        nwrap[k] = union_wrap(text[k], pw - 20, wrapped[k], 3);
+        nl++;
+    }
+    chh = 22;
+    for (i = 0; i < nl; i++) {
+        chh += 11 + 16 * (nwrap[i] > 0 ? nwrap[i] : 1) + 4;
+    }
+    chh += 2;
+    ui_panel(c, x0, top, pw, chh, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 230);
+    ui_text(c, x0 + 10, top + 4, "UNION ROOM", UI_LIGHT, 0x313131u, UI_FONT_SMALL, 1);
+    ui_fill(c, x0 + 9, top + 17, pw - 18, 1, UI_EDGE, 255);
+    {
+        /* Hide: the card goes away so the room shows */
+        int hx = x0 + pw - 6;
+        int st = small_button(c, &hx, top + 2, "Hide", 13, NULL);
+
+        if (st & EIDOS_UI_CLICK) {
+            g_union_shown = 0;
+            g_union_keys = 0;
+        }
+    }
+    y = top + 21;
+    for (i = nl - 1; i >= 0; i--) {
+        const u8 *e = ent[i];
+        char name[24];
+        int j;
+
+        units_to_utf8((const u16 *)e, 8, name, (int)sizeof name);
+        tw = ui_text(c, x0 + 10, y, name, e[0x20] ? 0xFF8C78u : 0x62BEFFu, 0x313131u, UI_FONT_SMALL, 1);
+        if (e[0x22] == 1 || e[0x22] == 2) {
+            char tag[24];
+
+            msg_text(201, e[0x22] == 1 ? 4 : 5, tag, (int)sizeof tag);
+            ui_text(c, tw + 5, y, tag, UI_GREY, 0x313131u, UI_FONT_SMALL, 1);
+        }
+        y += 11;
+        for (j = 0; j < nwrap[i]; j++) {
+            ui_text(c, x0 + 10, y + ui_text_y(16, UI_FONT_LARGE), wrapped[i][j], UI_WHITE, 0x313131u,
+                    UI_FONT_LARGE, 1);
+            y += 16;
+        }
+        if (nwrap[i] == 0) {
+            y += 16;
+        }
+        y += 4;
+    }
+
+    /* the five buttons */
+    {
+        int tile = (pw - 4 * 3) / 5, by = top + chh + 4;
+        int appeal = f->panel != NULL ? f->panel[0x30] : 0;
+
+        if (g_union_keys) {
+            if (keys & BW_KEY_LEFT) {
+                g_union_focus = (g_union_focus + 4) % 5;
+            }
+            if (keys & BW_KEY_RIGHT) {
+                g_union_focus = (g_union_focus + 1) % 5;
+            }
+            if (keys & BW_KEY_B) {
+                g_union_keys = 0;
+            }
+        }
+        for (i = 0; i < 5; i++) {
+            int lit = i == g_union_pressed && appeal != 0;
+            int focus = g_union_keys && i == g_union_focus;
+            int tx = x0 + i * (tile + 3), ty = by - (lit ? 1 : 0), st, rr;
+            u32 col = lit ? 0x008BACu : UI_EDGE2;
+
+            r.x = tx;
+            r.y = by;
+            r.w = tile;
+            r.h = 34;
+            st = eidos_ui_hit(r);
+            ui_panel(c, tx, ty, tile, 34, UI_CUT_TL | UI_CUT_BR, 5,
+                     lit ? 0x05343Eu : ((st & EIDOS_UI_HOVER) || focus) ? UI_BODY2 : UI_BODY,
+                     lit ? 0x008BACu : focus ? UI_WHITE : UI_EDGE, 240);
+            for (rr = 3; rr < 34 - 3; rr++) {
+                int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+                if (left < 6) {
+                    ui_fill(c, tx + left, ty + rr, 6 - left, 1, col, 255);
+                }
+            }
+            if (in->objs_rgba[1] != NULL) {
+                /* the game's icon, without its button frame */
+                int sx, sy;
+
+                for (sy = 0; sy < 14; sy++) {
+                    for (sx = 0; sx < 16; sx++) {
+                        const u8 *p = in->objs_rgba[1]
+                                      + ((size_t)(175 + sy) * 256 + (size_t)(bx[i] - 8 + sx)) * 4;
+
+                        if (p[3] != 0 && p[0] + p[1] + p[2] > 300) {
+                            ui_fill(c, tx + (tile - 16) / 2 + 2 + sx, ty + 4 + sy, 1, 1,
+                                    (u32)p[0] << 16 | (u32)p[1] << 8 | p[2], 255);
+                        }
+                    }
+                }
+            }
+            ui_text(c, tx + (tile - ui_text_w(names[i], UI_FONT_SMALL)) / 2 + 2, ty + 22, names[i],
+                    lit ? UI_WHITE : UI_LIGHT, 0x313131u, UI_FONT_SMALL, 1);
+            if ((st & EIDOS_UI_CLICK) || (focus && (keys & BW_KEY_A))) {
+                eidos_ui_tap(bx[i], 181, 3);
+                g_union_pressed = i;
+            }
+        }
+    }
+    return 1;
 }
 
 static void lower_reset(void)
