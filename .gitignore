@@ -16,3 +16,11 @@ __pycache__/
 *.log
 extract/
 .DS_Store
+
+# Android (android/build.py) and iOS (ios/build.py) builds
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+build-android/
+build-ios/

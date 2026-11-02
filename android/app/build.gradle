@@ -1,0 +1,49 @@
+// The app is SDL3's SDLActivity, which loads libSDL3.so and libmain.so
+// (the program host/ builds, android/build.py).  Both come from outside
+// the tree, and must come from the same SDL3 release:
+//
+//   -Peidos.sdl=<SDL3 source tree>       its android-project's Java classes
+//   -Peidos.jniLibs=<folder>             <abi>/libSDL3.so and <abi>/libmain.so
+
+plugins {
+    id 'com.android.application'
+}
+
+def sdlSource = project.findProperty('eidos.sdl')
+def jniLibsDir = project.findProperty('eidos.jniLibs')
+if (sdlSource == null || jniLibsDir == null) {
+    throw new GradleException('eidos: build with android/build.py, or pass -Peidos.sdl and -Peidos.jniLibs')
+}
+
+android {
+    namespace = "org.projectholon.eidos"
+    compileSdkVersion 35
+    defaultConfig {
+        applicationId "org.projectholon.eidos"
+        minSdkVersion 26
+        targetSdkVersion 35
+        versionCode 1
+        versionName "1.0"
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    sourceSets.main {
+        java.srcDir "${sdlSource}/android-project/app/src/main/java"
+        jniLibs.srcDir jniLibsDir
+    }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+    lint {
+        abortOnError = false
+    }
+}
