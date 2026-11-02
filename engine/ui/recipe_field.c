@@ -1224,7 +1224,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     u32 zone = 0, t3[3] = { 0, 0, 0 };
     int have_time = 0, comm = 0, last_cmd = 0;
     EidosUiRect bar;
-    int st_bar, x, open_menu = 0, st;
+    int st_bar, x, open_menu = 0, use_item = 0, st;
     int wide = cw >= 400;
     EidosUiRect saved_clip;
 
@@ -1387,6 +1387,15 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (st & EIDOS_UI_HOVER) {
         st_bar = 0;
     }
+    /* Y, the registered item (the Bicycle, the Dowsing Machine): a touch
+     * screen has no key for it */
+    st = small_button(c, &x, 0, "Item", bh, "Y");
+    if (st & EIDOS_UI_CLICK) {
+        use_item = 1;
+    }
+    if (st & EIDOS_UI_HOVER) {
+        st_bar = 0;
+    }
 
     /* the left: the cursor mark and the place */
     {
@@ -1411,6 +1420,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     if ((st_bar & EIDOS_UI_CLICK) || open_menu) {
         eidos_ui_press(BW_KEY_X, 10);
+    }
+    if (use_item) {
+        eidos_ui_press(BW_KEY_Y, 10);
     }
 }
 
