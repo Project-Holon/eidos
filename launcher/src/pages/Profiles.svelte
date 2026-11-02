@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MOBILE } from "../lib/platform";
   import { open } from "@tauri-apps/plugin-dialog";
   import { toast } from "morphe/menu.svelte";
   import {
@@ -153,6 +154,7 @@
               </span>
             </button>
             {#if ov.running.includes(p.name)}<span class="badge ok">Running</span>{/if}
+            {#if !MOBILE}
             <select
               value={p.version}
               aria-label="Version of {p.name}"
@@ -160,14 +162,16 @@
               {#each choices as c}<option value={c}>{versionLabel(c)}</option>{/each}
               {#if !choices.includes(p.version)}<option value={p.version}>{p.version} (not installed)</option>{/if}
             </select>
+            {/if}
             <div class="actions">
-              <button class="quiet outlined" title="Open this profile's folder" onclick={() => openFolder("profile", p.name)}><Icon name="folder" size={15} />Folder</button>
+              {#if !MOBILE}<button class="quiet outlined" title="Open this profile's folder" onclick={() => openFolder("profile", p.name)}><Icon name="folder" size={15} />Folder</button>{/if}
               <button class="quiet outlined" title="Make a copy of this profile" onclick={() => duplicate(p.name)}><Icon name="copy" size={15} />Copy</button>
               {#if p.name !== "Default"}
                 <button class="quiet" title="Rename" onclick={() => ((renaming = p.name), (renameTo = p.name))}><Icon name="edit" size={15} /></button>
                 <button class="quiet danger" title="Delete" onclick={() => askDelete(p.name)}><Icon name="trash" size={15} /></button>
               {/if}
             </div>
+            {#if !MOBILE}
             <div class="data">
               {#if moveAsk?.name === p.name}
                 <span class="path" title={moveAsk.path}>Move the game data to {moveAsk.path}?</span>
@@ -182,6 +186,7 @@
                 <button class="quiet outlined" disabled={!p.dataRoot || busy} onclick={() => run(() => setProfileDataRoot(p.name, ""))}>Use default</button>
               {/if}
             </div>
+            {/if}
             <div class="data">
               <span class="label lang-label">Game</span>
               <select
@@ -220,12 +225,14 @@
         <span>Name</span>
         <input placeholder="Name" bind:value={newName} onkeydown={(e) => e.key === "Enter" && create()} />
       </label>
+      {#if !MOBILE}
       <label class="field">
         <span>Version</span>
         <select bind:value={newVersion}>
           {#each choices as c}<option value={c}>{versionLabel(c)}</option>{/each}
         </select>
       </label>
+      {/if}
       <button class="primary" disabled={!newName.trim()} onclick={create}><Icon name="plus" size={16} />Create</button>
     </div>
   </div>
@@ -287,6 +294,12 @@
     gap: 0.5rem;
     padding-left: 1.55rem;
     font-size: 0.85em;
+  }
+  @media (max-width: 640px) {
+    .data {
+      flex-wrap: wrap;
+      padding-left: 0;
+    }
   }
   .data .label {
     color: var(--muted);

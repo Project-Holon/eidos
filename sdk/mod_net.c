@@ -1095,6 +1095,10 @@ static u32      g_dropped;
  * join and leave, and the end of the session. */
 static BwSessionHandler g_port_handler;
 
+/* The Link's handler: the radio's frames under BW_MOD_NET_LINK_KEY
+ * (sdk/link.c). */
+static BwSessionHandler g_link_handler;
+
 /* The relay's last error (`E <reason> <text>`), for the port: the reason
  * word ("unknown-code" after a relay restart, "removed", "full" and the
  * others) and the relay's own text after it, if any. */
@@ -2712,6 +2716,20 @@ int bw_mod_net_port_send(u32 peer, const void *buf, u32 size)
     return send_keyed(peer, BW_MOD_NET_PORT_KEY, buf, size);
 }
 
+/* The Link's radio frames, under BW_MOD_NET_LINK_KEY. */
+int bw_mod_net_link_send(u32 peer, const void *buf, u32 size)
+{
+    return send_keyed(peer, BW_MOD_NET_LINK_KEY, buf, size);
+}
+
+void bw_mod_net_set_link_handler(BwSessionHandler fn)
+{
+    net_init();
+    bw_mutex_lock(g_lock);
+    g_link_handler = fn;
+    bw_mutex_unlock(g_lock);
+}
+
 void bw_mod_net_set_port_handler(BwSessionHandler fn)
 {
     net_init();
@@ -3127,6 +3145,13 @@ void bw_mod_net_frame(void)
         if (kind == BW_MOD_NET_EV_ENDED) {
             if (g_port_handler != NULL) {
                 g_port_handler(peer, (int)kind, (const void *)data, size);
+            }
+            continue;
+        }
+        if (kind == (u32)BW_SESSION_MESSAGE &&
+            strcmp(key, BW_MOD_NET_LINK_KEY) == 0) {
+            if (g_link_handler != NULL) {
+                g_link_handler(peer, (int)kind, (const void *)data, size);
             }
             continue;
         }

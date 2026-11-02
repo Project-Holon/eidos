@@ -176,6 +176,10 @@ void eidos_ui_set_enabled(int on);
 void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
                     const EidosUiCanvas **canvas);
 
+/* The frame being drawn, for a recipe's match (NULL outside
+ * eidos_ui_frame). */
+const EidosUiFrame *eidos_ui_frame_in(void);
+
 /* The name of the scene the last frame detected ("fallback" when none
  * matched), for logs and tests. */
 const char *eidos_ui_scene_name(void);

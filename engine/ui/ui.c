@@ -1371,12 +1371,21 @@ static void read_mouse(const EidosUiFrame *in)
     }
 }
 
+static const EidosUiFrame *g_in;
+
+const EidosUiFrame *eidos_ui_frame_in(void)
+{
+    return g_in;
+}
+
 void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
                     const EidosUiCanvas **canvas)
 {
     const EidosUiRecipe *r = NULL;
     int w, h;
     u32 i;
+
+    g_in = in;
 
     eidos_ui_mark_active();          /* settings.h: for game-side patches */
     g_k = eidos_ui_scale(in->win_w, in->win_h);

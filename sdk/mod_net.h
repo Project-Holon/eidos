@@ -199,6 +199,12 @@ int  bw_mod_net_port_send(u32 peer, const void *buf, u32 size);
  * runs on the game's frame, like the mods' handlers. */
 void bw_mod_net_set_port_handler(BwSessionHandler fn);
 
+/* The Link's radio frames (sdk/link.c, sdk/arm7/wm.c), under their own key
+ * so neither the multiplayer layer nor a mod sees them. */
+#define BW_MOD_NET_LINK_KEY "eidos:link"
+int  bw_mod_net_link_send(u32 peer, const void *buf, u32 size);
+void bw_mod_net_set_link_handler(BwSessionHandler fn);
+
 /* The host removes a player (`Q`); the player is told `E removed`. */
 int  bw_mod_net_session_remove(u32 peer);
 

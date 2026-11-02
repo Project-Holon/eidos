@@ -33,6 +33,8 @@ extern const EidosUiRecipe *const ui_recipes_field[];
 extern const u32 ui_recipes_field_count;
 extern const EidosUiRecipe *const ui_recipes_boot[];
 extern const u32 ui_recipes_boot_count;
+extern const EidosUiRecipe *const ui_recipes_lower[];
+extern const u32 ui_recipes_lower_count;
 
 const EidosUiRecipeGroup eidos_ui_groups[] = {
     { ui_recipes_settings, &ui_recipes_settings_count },
@@ -48,6 +50,7 @@ const EidosUiRecipeGroup eidos_ui_groups[] = {
     { ui_recipes_starter, &ui_recipes_starter_count },
     { ui_recipes_field, &ui_recipes_field_count },
     { ui_recipes_boot, &ui_recipes_boot_count },
+    { ui_recipes_lower, &ui_recipes_lower_count },   /* last: anything else */
 };
 
 const u32 eidos_ui_group_count = sizeof(eidos_ui_groups) / sizeof(eidos_ui_groups[0]);

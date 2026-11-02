@@ -253,6 +253,8 @@ static int parse_shots(const char *list)
 #include "wizard.h"
 #endif
 #include "mp.h"
+#include "link.h"
+#include "arm7/wm.h"
 #include "save_slots.h"
 
 #ifndef EIDOS_OVERLAYS
@@ -1977,6 +1979,57 @@ static void boot_frame(void *user)
             printf("eidos_boot: multiplayer test: the host starts\n");
             fflush(stdout);
             (void)bw_mp_start();
+        }
+    }
+
+    /* A scripted Link run (sdk/link.h): EIDOS_LINK_TEST=host:<file> hosts a
+     * Link session at frame EIDOS_LINK_TEST_AT (default 300) and writes the
+     * code to the file; EIDOS_LINK_TEST=join:<file> waits for the file and
+     * joins with its code.  EIDOS_LINK_LOG=1 prints the radio's state each
+     * second. */
+    {
+        static int link_test_done;
+        static u64 link_log_at;
+        const char *t = getenv("EIDOS_LINK_TEST");
+        const char *at = getenv("EIDOS_LINK_TEST_AT");
+        u64 n = eidos_frame_count(&run->loop);
+
+        if (t != NULL && !link_test_done &&
+            n >= (at != NULL ? (u64)strtoul(at, NULL, 10) : 300u)) {
+            char code[40];
+            FILE *f;
+
+            if (strncmp(t, "host:", 5) == 0) {
+                int rc = bw_link_host(code, sizeof code);
+
+                printf("eidos_boot: link test: host rc=%d code=%s\n", rc, rc == 0 ? code : "-");
+                if (rc == 0 && (f = fopen(t + 5, "wb")) != NULL) {
+                    fputs(code, f);
+                    fclose(f);
+                }
+                link_test_done = 1;
+            } else if (strncmp(t, "join:", 5) == 0 &&
+                       (f = fopen(t + 5, "rb")) != NULL) {
+                if (fgets(code, sizeof code, f) != NULL) {
+                    int rc = bw_link_join(code);
+
+                    printf("eidos_boot: link test: join rc=%d\n", rc);
+                    link_test_done = 1;
+                }
+                fclose(f);
+            }
+            fflush(stdout);
+        }
+        if (getenv("EIDOS_LINK_LOG") != NULL && bw_link_state() == BW_LINK_OPEN &&
+            n >= link_log_at) {
+            BwWmInfo wi;
+
+            bw_arm7_wm_info(&wi);
+            printf("eidos_boot: link f%llu state=%u aid=%u children=%04x parents=%u sent=%u heard=%u\n",
+                   (unsigned long long)n, wi.state, wi.aid, wi.child_bitmap,
+                   wi.parents_heard, wi.sent, wi.heard);
+            fflush(stdout);
+            link_log_at = n + 60u;
         }
     }
 

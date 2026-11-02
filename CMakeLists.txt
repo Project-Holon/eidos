@@ -522,6 +522,7 @@ set(BW_PXI_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/arm7/mic.c      # microphone, tag 9 (silent)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/arm7/tp.c       # touch panel, tag 6
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/arm7/pad.c      # X, Y, DEBUG, hinge in HW_BUTTON_XY_BUF
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/arm7/wm.c       # wireless manager, tag 10, on a Link's air
 )
 
 set(BW_SDK_SOURCES
@@ -561,6 +562,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_export.c        # a Pokemon's export and import
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_net.c          # the peer sessions and the external control
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mp.c               # multiplayer: the lobby, the start and the pause
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/link.c             # Link sessions: the radio over the relay
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tls_roots.c        # the roots a TLS relay is checked against
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_slots.c       # several single-player saves
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_frame.c        # the mod layer's frame tick
@@ -3156,14 +3158,6 @@ if(BW_HAVE_LIBM)
     target_link_libraries(test_bmap_spots PRIVATE m)
 endif()
 add_test(NAME test_bmap_spots COMMAND test_bmap_spots)
-
-# Link play's relay end (sdk/net_link.c, docs/link-play.md): scanning,
-# joining, data sharing with the network's delay, messages, leaving, over
-# an in-process relay.
-add_executable(test_net_link ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_net_link.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/net_link.c)
-target_include_directories(test_net_link PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sdk)
-add_test(NAME test_net_link COMMAND test_net_link)
 
 # The interface kit's test (engine/ui/kit.c, assets.c, assets_icons.c, assets_sprites.c): the
 # synthetic checks need no game data; the data test needs the data root and

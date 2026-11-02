@@ -12,6 +12,10 @@
  * wireless start fails half way and the beacon pipe it left runs on a work
  * with no data (issue #13).
  *
+ * A Link session (sdk/link.h) turns the console's radio on: the ARM7 then
+ * has a wireless manager (sdk/arm7/wm.c), so the answer is 1 while one is
+ * open, and the C-Gear, the Union Room and the rest start as on a DS.
+ *
  * The other four are the game's, as app_env.c has them.
  */
 
@@ -22,6 +26,7 @@ extern int OS_IsRunOnTwl(void);
 extern const void *OS_GetParentalControlInfoPtr(void);
 extern int OS_IsAgreeEULA(void);
 extern void OS_GetOwnerInfo(void *info);
+extern int bw_link_wireless_on(void);
 
 u32 APP_ENV_IsRunOnTwl(void)
 {
@@ -41,7 +46,7 @@ int APP_ENV_HasParentalControlBits(void)
 
 int APP_ENV_IsWirelessAvailable(void)
 {
-    return 0;
+    return bw_link_wireless_on();
 }
 
 u32 APP_ENV_IsEulaAgreed(void)

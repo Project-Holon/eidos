@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MOBILE } from "../lib/platform";
   import { open } from "@tauri-apps/plugin-dialog";
   import { toast } from "morphe/menu.svelte";
   import {
@@ -103,8 +104,10 @@
     </label>
     <div class="grow"></div>
     <button class="primary" disabled={running} onclick={pickPackage}><Icon name="upload" size={15} />Add .bw file</button>
+    {#if !MOBILE}
     <button disabled={running} onclick={pickFolder}><Icon name="plus" size={15} />Add folder</button>
     <button class="quiet outlined" onclick={() => openFolder("mods", selected)}><Icon name="folder" size={15} />Open folder</button>
+    {/if}
   </div>
   {#if running}<p class="muted">Close the game to change mods.</p>{/if}
 

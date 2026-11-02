@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MOBILE } from "../lib/platform";
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "morphe/menu.svelte";
@@ -256,7 +257,7 @@
       <div class="plays" class:single={!canOne}>
         {#if canOne}
           <!-- Remaster is the main button; Classic is the DS layout -->
-          {#each [["one", "Remaster", "remaster"], ["classic", "Classic", "classic"]] as [layout, label, icon]}
+          {#each MOBILE ? [["one", "Play", "play"]] : [["one", "Remaster", "remaster"], ["classic", "Classic", "classic"]] as [layout, label, icon]}
             <button
               class="play"
               class:primary={layout === "one"}
@@ -388,7 +389,7 @@
       </div>
     <footer>
       <span class="faint small hint">New Game in the title menu takes a free slot.</span>
-      <button class="quiet outlined" onclick={() => openFolder("saves", selected)}><Icon name="folder" size={15} />Open saves folder</button>
+      {#if !MOBILE}<button class="quiet outlined" onclick={() => openFolder("saves", selected)}><Icon name="folder" size={15} />Open saves folder</button>{/if}
     </footer>
   </aside>
 </section>

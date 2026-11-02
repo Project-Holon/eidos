@@ -2,7 +2,7 @@
  * engine/ui/recipe_field.c -- the one-screen recipes for the field: the world, the C-Gear bar, the start menu
  * (engine/ui/ui.h, docs/unified-view-recipes.md).
  *
- * Two recipes, in this priority order:
+ * Three recipes, in this priority order:
  *
  *   field-menu   the X menu (field sub-screen mode 1).  The world stays
  *                visible; the party is a column on the left and the six
@@ -21,11 +21,13 @@
  *                the top: the place name, the time on a slanted tab, the
  *                radio state and the battery.  A click on the bar opens the
  *                menu (the X press); the C-GEAR button shows the game's own
- *                C-Gear, the two DS screens side by side, until a right
- *                click or B.
+ *                C-Gear as a sheet over the world (lower_sheet), the
+ *                pointer as the stylus, until Close, a right click or B.
  *
- * Anything else on the field's lower screen (the save report, the Union
- * Room, the Entralink, dowsing) is not matched and falls back.
+ *   field-lower  the field's other lower screens (the Union Room, the
+ *                Entralink's map, dowsing): the world, and the game's
+ *                lower screen as the same sheet.  The save report has its
+ *                own recipe (engine/ui/recipe_menus.c).
  *
  * The game's state is read the way sdk/mp.c reads it: the game system's
  * global, then the field map, the field sub-screen and the menu by their
@@ -1075,6 +1077,122 @@ static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h,
     return st;
 }
 
+/*
+ * The game's own lower screen as a sheet over the world, in the one-screen
+ * view: the C-Gear (its wireless and IR panels, the survey radar), and the
+ * field's other lower screens (the Union Room's, the Entralink's map).  It
+ * stands at 1x on the right, below the bar, in a frame; the pointer held
+ * on it is the stylus.  With `closable`, a Close tab (or B, or a right
+ * click, which the caller handles) puts it away.  Returns 1 when the tab
+ * was clicked, -1 when the canvas is too small for it (the caller falls
+ * back to the two screens).
+ */
+static int lower_sheet(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch,
+                       int top, int closable)
+{
+    const int w = 256, h = 192;
+    int px, py, mx, my, closed = 0;
+    EidosUiRect r;
+
+    if (in->screen_rgba[1] == NULL || cw < w + 12 || ch < top + h + (closable ? 24 : 8)) {
+        return -1;
+    }
+    px = cw - w - 6;
+    py = top + (ch - top - h) / 2 + (closable ? 8 : 0);
+    ui_fill(c, px - 3, py - 3, w + 6, h + 6, UI_EDGE, 255);
+    ui_fill(c, px - 2, py - 2, w + 4, h + 4, UI_CYAN, 255);
+    ui_fill(c, px - 1, py - 1, w + 2, h + 2, UI_INK, 255);
+    ui_blit_screen(c, px, py, in->screen_rgba[1], 0, 0, w, h, 1, 0);
+    if (closable) {
+        int x = px + w + 3;
+
+        if (small_button(c, &x, py - 3 - 16, "Close", 16, "B") & EIDOS_UI_CLICK) {
+            closed = 1;
+        }
+    }
+    r.x = px;
+    r.y = py;
+    r.w = w;
+    r.h = h;
+    (void)eidos_ui_hit(r);
+    if (in->mouse.down && eidos_ui_mouse_pos(&mx, &my) && mx >= px && my >= py
+        && mx < px + w && my < py + h) {
+        eidos_ui_tap(mx - px, my - py, 2);
+    }
+    return closed;
+}
+
+/*
+ * The C-Gear's drop-down: a short sheet under the bar while the C-Gear is
+ * on, the one-screen stand-in for its lower screen's home.  Three channel
+ * buttons in the C-Gear's own colours (IR red, Online blue, Wireless
+ * orange), each lit while that channel has someone, and a C-Gear button
+ * for the game's whole lower screen (the survey, the settings).  A channel
+ * button taps that channel's hexagon on the game's C-Gear, so the game
+ * opens the app it opens for a stylus (the Wireless and IR apps then take
+ * the window, lower-only).  Returns 1 to close, 2 for the whole C-Gear.
+ */
+static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
+                      int wireless_lit, int online_lit, int on)
+{
+    static const struct {
+        const char *name;
+        u32 colour;
+        int tx, ty;                 /* the hexagon on the game's C-Gear      */
+    } ch[3] = {
+        { "IR", 0xE0384Au, 63, 62 },
+        { "ONLINE", 0x2F7FE8u, 96, 110 },
+        { "WIRELESS", 0xF08A24u, 190, 118 },
+    };
+    const int bw = 76, bhh = 28, gap = 4, pad = 5;
+    int fullw = ui_text_w("C-GEAR", UI_FONT_SMALL) + 14;
+    int w = pad * 2 + 3 * bw + 2 * gap + gap + fullw, h = bhh + pad * 2;
+    int x0 = cw - w - 4, y0 = top + 2, i, res = 0;
+    int lit[3];
+
+    (void)in;
+    lit[0] = 0;
+    lit[1] = online_lit;
+    lit[2] = wireless_lit;
+    if (x0 < 2) {
+        x0 = 2;
+    }
+    ui_panel(c, x0, y0, w, h, UI_CUT_BL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 235);
+    ui_fill(c, x0 + 5, y0 + h - 1, w - 10, 1, UI_CYAN, 255);
+    for (i = 0; i < 3; i++) {
+        int bx = x0 + pad + i * (bw + gap), by = y0 + pad;
+        EidosUiRect r = { bx, by, bw, bhh };
+        int st = eidos_ui_hit(r);
+        u32 col = ch[i].colour;
+        const char *status = lit[i] ? "Someone near" : (on ? "On" : "Off");
+
+        ui_panel(c, bx, by, bw, bhh, UI_CUT_TL | UI_CUT_BR, 4,
+                 (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, lit[i] ? col : UI_EDGE2, 245);
+        ui_fill(c, bx + 4, by + 4, 3, bhh - 8, lit[i] ? col : UI_EDGE2, 255);
+        ui_text(c, bx + 11, by + 3, ch[i].name, lit[i] ? UI_WHITE : UI_LIGHT, UI_EDGE,
+                UI_FONT_SMALL, 1);
+        ui_text(c, bx + 11, by + 15, status, lit[i] ? col : UI_GREY, -1, UI_FONT_SMALL, 1);
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_tap(ch[i].tx, ch[i].ty, 3);
+            res = 1;
+        }
+    }
+    {
+        int bx = x0 + w - pad - fullw, by = y0 + pad;
+        EidosUiRect r = { bx, by, fullw, bhh };
+        int st = eidos_ui_hit(r);
+
+        ui_panel(c, bx, by, fullw, bhh, UI_CUT_TL | UI_CUT_BR, 4,
+                 (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, UI_CYAN2, 245);
+        ui_text(c, bx + 7, by + ui_text_y(bhh, UI_FONT_SMALL), "C-GEAR", UI_WHITE, UI_EDGE,
+                UI_FONT_SMALL, 1);
+        if (st & EIDOS_UI_CLICK) {
+            res = 2;
+        }
+    }
+    return res;
+}
+
 static void battery(EidosUiCtx *c, int x, int y)
 {
     ui_fill(c, x, y + 1, 15, 8, UI_LIGHT, 255);
@@ -1247,18 +1365,41 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->stretch = encounter_effect();
         return;
     }
+    {
+        /* EIDOS_UI_FIELD_CGEAR=<frame>: the C-GEAR button is clicked at
+         * that frame (scripted runs have no pointer) */
+        const char *e = getenv("EIDOS_UI_FIELD_CGEAR");
+
+        if (e != NULL && in->frame == (u32)atoi(e) && (f.mode == 0 || f.mode == 8)) {
+            g_show_cgear = 1;
+        }
+        e = getenv("EIDOS_UI_FIELD_CGEAR_FULL");
+        if (e != NULL && in->frame == (u32)atoi(e) && (f.mode == 0 || f.mode == 8)) {
+            g_show_cgear = 2;
+        }
+    }
     if (g_show_cgear && f.mode != 0 && f.mode != 8) {
         g_show_cgear = 0;                   /* no C-Gear panel here         */
     }
 
-    if (g_show_cgear) {
-        /* The game's own C-Gear: the two screens, the mouse as the stylus. */
+    if (g_show_cgear == 2) {
+        /* The game's own C-Gear as a sheet over the world (lower_sheet);
+         * the two screens side by side only when the canvas is too small. */
         static const char *const hints[] = { "B", "Back" };
         static u32 prev_b;
         int b = (in->buttons & BW_KEY_B) != 0;
+        int shut;
 
-        view->mode = EIDOS_VIEW_FALLBACK;
-        if (hint_bar(c, ch - 17, cw, hints, 1) == 0 || right_click(in) || (b && !prev_b)) {
+        view->mode = EIDOS_VIEW_WORLD;
+        view->keep_world = 1;
+        view->hide_2d = capture_bg_shown();
+        view->cap_mix = capture_mix();
+        shut = lower_sheet(c, in, cw, ch, bh, 1);
+        if (shut < 0) {
+            view->mode = EIDOS_VIEW_FALLBACK;
+            shut = hint_bar(c, ch - 17, cw, hints, 1) == 0;
+        }
+        if (shut || right_click(in) || (b && !prev_b)) {
             g_show_cgear = 0;
         }
         prev_b = (u32)b;
@@ -1374,7 +1515,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (f.mode == 0 || f.mode == 8) {           /* this save has a C-Gear */
         st = small_button(c, &x, 0, "C-GEAR", bh, NULL);
         if (st & EIDOS_UI_CLICK) {
-            g_show_cgear = 1;
+            g_show_cgear = g_show_cgear ? 0 : 1;
             st_bar = 0;
         } else if (st & EIDOS_UI_HOVER) {
             st_bar = 0;
@@ -1418,6 +1559,19 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (g_bar_slide > 0) {
         return;                             /* no clicks while it moves     */
     }
+    if (g_show_cgear == 1) {
+        static u32 prev_b;
+        int b = (in->buttons & BW_KEY_B) != 0;
+        int what = cgear_drop(c, in, cw, bh, comm, comm && last_cmd == 5, comm);
+
+        if (what == 1 || right_click(in) || (b && !prev_b)) {
+            g_show_cgear = 0;
+        } else if (what == 2) {
+            g_show_cgear = 2;
+        }
+        prev_b = (u32)b;
+        return;                             /* the bar's clicks wait        */
+    }
     if ((st_bar & EIDOS_UI_CLICK) || open_menu) {
         eidos_ui_press(BW_KEY_X, 10);
     }
@@ -1437,5 +1591,155 @@ static const EidosUiRecipe recipe_field = {
     "field", field_match, field_run, field_reset, 0
 };
 
-const EidosUiRecipe *const ui_recipes_field[] = { &recipe_menu, &recipe_field };
-const u32 ui_recipes_field_count = 2;
+/* ------------------------------------------------------------------ */
+/* The field's other lower screens                                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * field-lower: the field runs and its lower screen is neither the C-Gear,
+ * the no-gear panel nor the menu (the Union Room, the Entralink's map,
+ * dowsing and the rest the game puts there).  The world fills the window
+ * and the game's lower screen is a sheet over it (lower_sheet), the
+ * pointer as the stylus; a right click is B.  The save report (mode 7) has
+ * its own recipe.
+ */
+static int lower_match(void)
+{
+    FieldNow f;
+
+    if (!field_now(&f) || f.main_state != 1) {
+        return 0;
+    }
+    if (f.mode == 0 || f.mode == 1 || f.mode == 5 || f.mode == 7 || f.mode == 8) {
+        return 0;
+    }
+    logf_scene("field-lower");
+    return 1;
+}
+
+static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    view->mode = EIDOS_VIEW_WORLD;
+    view->keep_world = 1;
+    view->hide_2d = capture_bg_shown();
+    view->cap_mix = capture_mix();
+    view->stretch = encounter_effect();
+    if (lower_sheet(c, in, c->canvas->w, c->canvas->h, 0, 0) < 0) {
+        view->mode = EIDOS_VIEW_FALLBACK;
+        return;
+    }
+    if (right_click(in)) {
+        eidos_ui_press(BW_KEY_B, 4);
+    }
+}
+
+static void lower_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_lower = {
+    "field-lower", lower_match, lower_run, lower_reset, 0
+};
+
+const EidosUiRecipe *const ui_recipes_field[] = { &recipe_menu, &recipe_field, &recipe_lower };
+const u32 ui_recipes_field_count = 3;
+
+/* ------------------------------------------------------------------ */
+/* Apps that use the lower screen alone                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * lower-only, the last recipe of all: no other recipe knows the scene, the
+ * game has blanked the upper screen and draws on the lower one (the
+ * C-Gear's Wireless and IR apps, the Xtransceiver's, their prompts).  The
+ * lower screen fills the window instead of standing small beside a black
+ * one: the largest whole scale that fits, centred, the pointer as the
+ * stylus, a right click B.  It takes the scene after three such frames, so
+ * a fade that darkens the upper screen first does not flicker to it.
+ */
+static int dark_screen(const u8 *s)
+{
+    int x, y;
+
+    for (y = 4; y < 192; y += 9) {
+        for (x = 3; x < 256; x += 7) {
+            const u8 *p = s + ((size_t)y * 256 + (size_t)x) * 4;
+
+            if (p[0] > 12 || p[1] > 12 || p[2] > 12) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+static int busy_screen(const u8 *s)
+{
+    int x, y, n = 0;
+    u32 first = 0;
+
+    for (y = 4; y < 192; y += 9) {
+        for (x = 3; x < 256; x += 7) {
+            const u8 *p = s + ((size_t)y * 256 + (size_t)x) * 4;
+            u32 v = (u32)p[0] << 16 | (u32)p[1] << 8 | p[2];
+
+            if (n++ == 0) {
+                first = v;
+            } else if (v != first) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int g_lower_frames;
+
+static int lower_only_match(void)
+{
+    const EidosUiFrame *in = eidos_ui_frame_in();
+
+    if (in == NULL || in->screen_rgba[0] == NULL || in->screen_rgba[1] == NULL
+        || !dark_screen(in->screen_rgba[0]) || !busy_screen(in->screen_rgba[1])) {
+        g_lower_frames = 0;
+        return 0;
+    }
+    if (++g_lower_frames < 3) {
+        return 0;
+    }
+    logf_scene("lower-only");
+    return 1;
+}
+
+static void lower_only_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    int cw = c->canvas->w, ch = c->canvas->h;
+    float k = (float)ch / 192.0f;
+    int sw = (int)(256.0f * k + 0.5f);
+    int px = (cw - sw) / 2, mx, my;
+
+    /* the game's lower screen is the world screen: the window's height,
+     * centred, nothing of the 3D beside it */
+    view->mode = EIDOS_VIEW_WORLD;
+    view->world_screen = 1;
+    view->ds_only = 1;
+    if (in->mouse.down && eidos_ui_mouse_pos(&mx, &my) && mx >= px && mx < px + sw
+        && my >= 0 && my < ch) {
+        eidos_ui_tap((int)((float)(mx - px) / k), (int)((float)my / k), 2);
+    }
+    if (right_click(in)) {
+        eidos_ui_press(BW_KEY_B, 4);
+    }
+}
+
+static void lower_only_reset(void)
+{
+    g_lower_frames = 0;
+}
+
+static const EidosUiRecipe recipe_lower_only = {
+    "lower-only", lower_only_match, lower_only_run, lower_only_reset, 0
+};
+
+const EidosUiRecipe *const ui_recipes_lower[] = { &recipe_lower_only };
+const u32 ui_recipes_lower_count = 1;

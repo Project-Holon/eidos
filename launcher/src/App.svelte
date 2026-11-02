@@ -11,6 +11,7 @@
     type Overview,
   } from "./lib/backend";
   import Icon from "./lib/Icon.svelte";
+  import { MOBILE } from "./lib/platform";
   import { checkForUpdate, updates } from "./lib/updater.svelte";
   import Home from "./pages/Home.svelte";
   import Profiles from "./pages/Profiles.svelte";
@@ -119,7 +120,7 @@
     <nav aria-label="Pages">
       <h1 class="brand">eidos</h1>
       <div class="links">
-        {#each PAGES as [id, label, icon]}
+        {#each PAGES.filter(([id]) => !(MOBILE && id === "versions")) as [id, label, icon]}
           <button class="row-item" aria-current={page === id} onclick={() => (page = id)}>
             <Icon name={icon} />
             <span>{label}</span>
@@ -235,6 +236,46 @@
   main > :global(*) {
     flex: 1 1 auto;
     min-height: 0;
+  }
+  /* A phone: the pages take the whole width and the links become a bar
+     along the bottom, in thumb's reach. */
+  @media (max-width: 640px) {
+    .shell {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+    }
+    nav {
+      grid-row: 2;
+      flex-direction: row;
+      border-right: none;
+      border-top: 2px solid var(--outline);
+      padding: 0.35rem 0.25rem calc(0.35rem + env(safe-area-inset-bottom));
+    }
+    .brand,
+    .foot {
+      display: none;
+    }
+    .links {
+      flex-direction: row;
+      flex: 1;
+      justify-content: space-around;
+      gap: 0;
+    }
+    .links :global(.row-item) {
+      flex-direction: column;
+      gap: 0.15rem;
+      width: auto;
+      flex: 1;
+      min-width: 0;
+      padding: 0.35rem 0.2rem;
+      font-size: 0.72rem;
+      text-align: center;
+      justify-content: center;
+    }
+    main {
+      grid-row: 1;
+      padding: calc(0.9rem + env(safe-area-inset-top)) 0.9rem 0.9rem;
+    }
   }
   .updating {
     position: fixed;

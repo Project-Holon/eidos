@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { MOBILE } from "../lib/platform";
   import { open } from "@tauri-apps/plugin-dialog";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import ThemePicker from "morphe/ThemePicker.svelte";
@@ -183,7 +184,7 @@
       {/if}
       <div class="inline buttons">
         <span class="muted small grow">Each file is checked against the known good dumps. The files stay where they are.</span>
-        <button disabled={adding} onclick={addFolder}><Icon name="folder" size={15} />Add folder</button>
+        {#if !MOBILE}<button disabled={adding} onclick={addFolder}><Icon name="folder" size={15} />Add folder</button>{/if}
         <button class="primary" disabled={adding} onclick={addFiles}><Icon name="plus" size={15} />{adding ? "Checking" : "Add ROMs"}</button>
       </div>
     </div>
@@ -211,6 +212,7 @@
     </div>
   </div>
 
+  {#if !MOBILE}
   <div class="sec-downloads">
     <h2 class="section-label">Downloads</h2>
     <div class="window block scroll">
@@ -244,6 +246,7 @@
       </div>
     </div>
   </div>
+  {/if}
 </section>
 
 <style>

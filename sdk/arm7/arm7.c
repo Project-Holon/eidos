@@ -27,6 +27,7 @@
 #include <stdint.h>
 
 #include "arm7.h"
+#include "wm.h"
 #include "dsmem.h"
 #include "pxi.h"
 #include "snd.h"
@@ -160,7 +161,7 @@ void bw_arm7_boot(void)
     bw_arm7_snd_init();
     bw_arm7_nvram_init();
     bw_arm7_mic_init();
-    /* No wireless responder: arm7.h says why.                             */
+    bw_arm7_wm_init();      /* wireless: registered only on an air (wm.h) */
     bw_arm7_tp_init();
     bw_arm7_pad_init();
 }
@@ -170,6 +171,7 @@ void bw_arm7_reset(void)
     /* The files the chips stand for get what was written before power-off. */
     bw_arm7_fs_reset();
     bw_arm7_nvram_reset();
+    bw_arm7_wm_reset();
     g_arm7.booted = 0;
     g_arm7.stepping = 0;
     g_arm7.sync_state = SYNC_RX_START;
@@ -190,6 +192,7 @@ void bw_arm7_step(void)
     os_sync_step();
     bw_arm7_snd_step();     /* sound status and alarms, sdk/arm7/snd.h */
     bw_arm7_fs_step();      /* the save file's delayed write            */
+    bw_arm7_wm_step();      /* the radio: the air, beacons, timeouts    */
     g_arm7.stepping = 0;
 }
 

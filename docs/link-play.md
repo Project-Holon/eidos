@@ -1,9 +1,11 @@
 # Link play over metaxy
 
-Status: phase 1 in progress (2026-11-02). `sdk/net_link.c`, the relay end
-(scanning, joining, data sharing with delay, messages, leaving), is built
-and tested by `tests/test_net_link.c` at 0, 50 and 100 ms of one-way delay.
-The device table and the Link session are not built yet.
+Status (2026-11-02): the radio works at the WM level. `sdk/arm7/wm.c`
+answers the game's own WM library as the ARM7 firmware does, and
+`sdk/link.c` carries its frames over metaxy while a Link session is open.
+With two eidos in one session, the C-Gear turns on, scans, and shows the
+other player ("C-Gear Detected: YES" in its Wireless app). A full trade or
+battle between two players is not checked yet.
 
 The DS's local wireless features (trades and battles in the Union Room, the
 Entralink with friends, Battle Subway with a friend, the Musical with
@@ -33,8 +35,12 @@ be replaced:
 | WH / pipe (ov014) | our own `NET_WHPIPE_*` and `WIH_*` | about 40 functions with clear contracts, all read from the decomp |
 | Device table | our own 51-slot table for selectors 0 and 5 | the same functions as the pipe layer, one level higher; the core's calls are what we answer |
 
-**Decision: our own device table, `stubs/net_link_device.c`, returned for
-selectors 0 and 5 while a Link session is open.** The device keeps the radio
+**Decision (revised): the WM layer.**  The device-table cut would leave the
+pipe layer's direct callers (the C-Gear's beacon search, the Entralink's
+beacon status) on a pipe that was never created.  The WM commands are a
+small, fixed protocol that the matched ARM9 library defines exactly, so
+`sdk/arm7/wm.c` answers them and every feature above runs unchanged.  The
+first plan follows for the record: The device keeps the radio
 device's contracts slot by slot (the table below), so the core and every
 feature above it see what they would see on a DS. Infrared (selectors 3, 4)
 follows with the same transport once the radio works.
