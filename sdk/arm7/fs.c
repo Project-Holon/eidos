@@ -140,6 +140,7 @@ static struct {
     char path[1100];
     int path_set;
     u32 writes;                     /* successful file writes               */
+    int hold;                       /* writes stay in memory (save slots)   */
 } g_fs;
 
 /* ------------------------------------------------------------------ */
@@ -203,7 +204,7 @@ int bw_arm7_backup_flush(void)
 {
     const char *path;
 
-    if (!g_fs.dirty)
+    if (!g_fs.dirty || g_fs.hold)
         return 0;
     path = save_path();
     if (path[0] == '\0') {
@@ -425,8 +426,17 @@ void bw_arm7_fs_init(void)
     bw_pxi_arm7_set_callback(BW_PXI_TAG_FS, fs_callback);
 }
 
+extern void bw_slots_dropped(void) __attribute__((weak));
+
 void bw_arm7_fs_reset(void)
 {
+    if (g_fs.hold) {
+        /* a reset before the held new game was saved: nothing is written */
+        g_fs.hold = 0;
+        g_fs.dirty = 0;
+        if (bw_slots_dropped != NULL)
+            bw_slots_dropped();
+    }
     (void)bw_arm7_backup_flush();
     g_fs.type = 0;
     g_fs.expect_arg = 0;
@@ -468,6 +478,7 @@ u32 bw_arm7_fs_init_word(void)
 void bw_arm7_backup_set_path(const char *path)
 {
     (void)bw_arm7_backup_flush();
+    g_fs.hold = 0;                      /* held writes are dropped          */
     if (path == NULL || strlen(path) >= sizeof g_fs.path) {
         g_fs.path_set = 0;
     } else {
@@ -490,6 +501,7 @@ void bw_arm7_backup_switch_path(const char *path)
     long n;
 
     (void)bw_arm7_backup_flush();
+    g_fs.hold = 0;                      /* held writes are dropped          */
     if (path == NULL || strlen(path) >= sizeof g_fs.path) {
         g_fs.path_set = 0;
     } else {
@@ -504,6 +516,16 @@ void bw_arm7_backup_switch_path(const char *path)
         g_fs.loaded = 1;
     }
     g_fs.dirty = 0;
+}
+
+/* While held, the chip's writes stay in memory and no file is written;
+ * releasing writes what changed.  A path change while held drops it: a
+ * new game left before its first save leaves no file behind. */
+void bw_arm7_backup_hold(int on)
+{
+    g_fs.hold = on != 0;
+    if (!g_fs.hold)
+        (void)bw_arm7_backup_flush();
 }
 
 void bw_arm7_backup_set_flush_delay(int seconds)
