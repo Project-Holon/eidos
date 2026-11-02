@@ -3157,6 +3157,14 @@ if(BW_HAVE_LIBM)
 endif()
 add_test(NAME test_bmap_spots COMMAND test_bmap_spots)
 
+# Link play's relay end (sdk/net_link.c, docs/link-play.md): scanning,
+# joining, data sharing with the network's delay, messages, leaving, over
+# an in-process relay.
+add_executable(test_net_link ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_net_link.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/net_link.c)
+target_include_directories(test_net_link PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sdk)
+add_test(NAME test_net_link COMMAND test_net_link)
+
 # The interface kit's test (engine/ui/kit.c, assets.c, assets_icons.c, assets_sprites.c): the
 # synthetic checks need no game data; the data test needs the data root and
 # writes a contact sheet.  The kit's sources are compiled into the test

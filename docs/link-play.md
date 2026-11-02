@@ -1,6 +1,9 @@
 # Link play over metaxy
 
-Status: design (2026-11-02). Nothing of it is built yet.
+Status: phase 1 in progress (2026-11-02). `sdk/net_link.c`, the relay end
+(scanning, joining, data sharing with delay, messages, leaving), is built
+and tested by `tests/test_net_link.c` at 0, 50 and 100 ms of one-way delay.
+The device table and the Link session are not built yet.
 
 The DS's local wireless features (trades and battles in the Union Room, the
 Entralink with friends, Battle Subway with a friend, the Musical with
@@ -80,6 +83,8 @@ fixed block (24 to 110 bytes) goes to everyone. metaxy allows 60 messages per
 second per client, exactly one per frame with no headroom. The device packs
 four frames into one `ds` message (15 messages a second, about 2 KB a second
 per player), and `msg` payloads ride in the same message when one is due.
+The blocks a step hands in are read 12 frames (200 ms) later, which keeps
+the frames moving at 100 ms of one-way delay.
 
 **Delay.** Over the internet a frame arrives several frames late. The device
 keeps a few frames of the shared data in flight: it gives the game frame N's
