@@ -116,7 +116,7 @@ int main(int argc, char **argv)
     int rc;
 
     if (argc < 5) {
-        fprintf(stderr, "usage: bcam_check <data root> <recording> move|wild|trainer|idle <id> [from [att def]]\n");
+        fprintf(stderr, "usage: bcam_check <data root> <recording> move|wild|trainer|idle|switch|ball <id> [from [att def]]\n");
         return 2;
     }
     bw_set_data_root(argv[1]);
@@ -129,6 +129,8 @@ int main(int argc, char **argv)
     if (!strcmp(argv[3], "move"))         kind = BCAM_MOVE;
     else if (!strcmp(argv[3], "wild"))    kind = BCAM_WILD_INTRO;
     else if (!strcmp(argv[3], "trainer")) kind = BCAM_TRAINER_INTRO;
+    else if (!strcmp(argv[3], "switch"))  kind = BCAM_SWITCH;
+    else if (!strcmp(argv[3], "ball"))    kind = BCAM_BALL;
     else                                  kind = BCAM_IDLE;
     id = atoi(argv[4]);
     if (argc > 5) from = atoi(argv[5]);
@@ -147,8 +149,18 @@ int main(int argc, char **argv)
             return 1;
         }
         for (i = 0; i < nsim; i++) {
-            printf("%d %.3f %.3f %.3f %.3f %.3f %.3f\n", i, sim[i].eye[0], sim[i].eye[1], sim[i].eye[2],
+            int k;
+
+            printf("%d %.3f %.3f %.3f %.3f %.3f %.3f", i, sim[i].eye[0], sim[i].eye[1], sim[i].eye[2],
                    sim[i].target[0], sim[i].target[1], sim[i].target[2]);
+            /* each sprite on the field: slot, size, alpha, fade, animation, hidden */
+            for (k = 0; k < 14; k++) {
+                if (k < 8 ? sim[i].poke_mask >> k & 1u : sim[i].trainer_mask >> (k - 8) & 1u) {
+                    printf(" s%d %.3f a%d f%d m%d/%d%s", k, sim[i].size[k], sim[i].alpha[k], sim[i].fade[k],
+                           sim[i].anim[k], sim[i].anim_t[k], sim[i].vanish_mask >> k & 1u ? " hidden" : "");
+                }
+            }
+            putchar('\n');
         }
         return 0;
     }
