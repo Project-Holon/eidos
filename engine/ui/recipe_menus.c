@@ -2772,6 +2772,104 @@ static const EidosUiRecipe recipe_entree = {
     "entree", entree_match, entree_run, entree_reset, 0
 };
 
+/* ------------------------------------------------------------------ */
+/* The Survey Radar                                                    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Survey Radar's first screen (overlay 217, ov217/research_top.c) as
+ * a window over the blurred field (mock-up "survey"): the title, Select a
+ * Survey and Check Survey Results as battle-style tiles that tap the
+ * game's own buttons; the keys move the window's cursor and A presses it;
+ * B or a right click leaves.  The survey list and the results keep the
+ * DS's screens for now.
+ *
+ * The first screen is the proc's step RS_TOP (its menu, waiting).
+ */
+#define RS_OVERLAY 217
+
+static int g_survey_top = 201;      /* the step of the first screen: main, its menu */
+
+static int survey_step(void)
+{
+    void *gs = game_system(), *cur;
+
+    if (gs == NULL || (cur = current_proc(gs)) == NULL || (int)rd32(cur, 0x04) != RS_OVERLAY) {
+        return -1;
+    }
+    return (int)rd32(cur, 0x08) * 100 + (int)rd32(cur, 0x0C);
+}
+
+static int survey_match(void)
+{
+    int st;
+
+    if (app_work(RS_OVERLAY) == NULL) {
+        return 0;
+    }
+    st = survey_step();
+    if (getenv("EIDOS_UI_SURVEY_LOG") != NULL) {
+        static int last = -99;
+
+        if (st != last) {
+            fprintf(stderr, "eidos: ui survey step %d\n", st);
+            last = st;
+        }
+    }
+    return st == g_survey_top;
+}
+
+static void survey_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Choose", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    static int focus;
+    int cw = c->canvas->w, ch = c->canvas->h, mw, mh = 114, mx, my, i, pick = -1;
+    u32 k = eidos_ui_keys_pressed();
+    const char *labels[2];
+
+    (void)in;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = 1.0f;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+    labels[0] = "Select a Survey";
+    labels[1] = "Check Survey Results";
+    mw = cw - 40 < 300 ? cw - 40 : 300;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh) / 2;
+    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    ui_text(c, mx + 12, my + 6, "SURVEY RADAR", 0x62BEFFu, 0x313131u, UI_FONT_SMALL, 1);
+    ui_fill(c, mx + 10, my + 19, mw - 20, 1, 0x103C5Au, 255);
+    eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_A);
+    if (k & BW_KEY_UP) focus = (focus + 1) % 2;
+    if (k & BW_KEY_DOWN) focus = (focus + 1) % 2;
+    if (k & BW_KEY_A) pick = focus;
+    for (i = 0; i < 2; i++) {
+        int st = sheet_tile_hit(c, mx + 12, my + 30 + 38 * i, mw - 24, 32, labels[i],
+                                eidos_ui_keys_lit() && i == focus);
+
+        if (st & EIDOS_UI_CLICK) pick = i;
+        if (st & EIDOS_UI_HOVER) focus = i;
+    }
+    if (pick == 0) eidos_ui_tap(128, 63, 3);
+    if (pick == 1) eidos_ui_tap(128, 119, 3);
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void survey_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_survey = {
+    "survey", survey_match, survey_run, survey_reset, 0
+};
+
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
-                                                  &recipe_wireless, &recipe_geonet, &recipe_entree };
-const u32 ui_recipes_menus_count = 6;
+                                                  &recipe_wireless, &recipe_geonet, &recipe_entree,
+                                                  &recipe_survey };
+const u32 ui_recipes_menus_count = 7;
