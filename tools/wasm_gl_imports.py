@@ -29,7 +29,9 @@ glReadPixels of RGB bytes reads RGBA and keeps three of the four,
 and glColorMaski takes an extension's entry point or, without one, sets
 draw buffer 0 alone.  On iOS the window has no framebuffer 0: SDL's view
 draws into a framebuffer of its own (host_gl_window_fbo), which binding 0
-binds instead.  A desktop context takes none of these paths.
+binds instead.  GL_MAX_INTEGER_SAMPLES, which OpenGL ES has from 3.1 on,
+reads 0 on ES 3.0 (no integer target multisamples) rather than raising
+GL_INVALID_ENUM.  A desktop context takes none of these paths.
 
     wasm_gl_imports.py --sdl-include DIR --names FILE -o OUT.c
 """
@@ -52,7 +54,7 @@ PROTO = re.compile(
 
 SPECIAL = {'glVertexAttribPointer', 'glDrawElements', 'glReadPixels', 'glShaderSource',
            'glMapBuffer', 'glUnmapBuffer', 'glClearDepth', 'glColorMaski',
-           'glBindFramebuffer'}
+           'glBindFramebuffer', 'glGetIntegerv'}
 
 
 def parse(headers):
@@ -262,6 +264,25 @@ void w2c_env_glShaderSource(struct w2c_env *env, u32 shader, u32 count, u32 stri
         }
     }
     fn(shader, (GLsizei)i, s, (const GLint *)gl_ptr(lengths));
+}
+
+void w2c_env_glGetIntegerv(struct w2c_env *env, u32 pname, u32 data)
+{
+    static void (APIENTRY *fn)(GLenum, GLint *);
+
+    (void)env;
+    if (host_gl_es && host_gl_es_version < 31 && pname == 0x9110 /* GL_MAX_INTEGER_SAMPLES */) {
+        GLint zero = 0;
+
+        if (gl_ptr(data) != NULL) {
+            memcpy(gl_ptr(data), &zero, sizeof zero);
+        }
+        return;
+    }
+    if (fn == NULL) {
+        fn = (void (APIENTRY *)(GLenum, GLint *))gl_proc("glGetIntegerv");
+    }
+    fn(pname, (GLint *)gl_ptr(data));
 }
 
 void w2c_env_glBindFramebuffer(struct w2c_env *env, u32 target, u32 fb)

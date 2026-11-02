@@ -70,6 +70,8 @@ w2c_game *host_instance(void);
 /* host/sdl.c: the OpenGL context is OpenGL ES (Android, iOS), which the
  * OpenGL imports translate for (tools/wasm_gl_imports.py). */
 extern int host_gl_es;
+/* its version as major * 10 + minor (30 for OpenGL ES 3.0) */
+extern int host_gl_es_version;
 /* The framebuffer that is the window's: 0, except on iOS, where SDL's view
  * has one of its own (host/sdl.c). */
 extern unsigned host_gl_window_fbo;

@@ -430,6 +430,7 @@ u32 w2c_env_SDL_SetTextureScaleMode(struct w2c_env *e, u32 t, u32 mode)
 /* ------------------------------------------------------------------ */
 
 int host_gl_es;
+int host_gl_es_version;
 unsigned host_gl_window_fbo;
 
 /* The module asks for OpenGL 3.3 core.  Android and iOS have OpenGL ES 3.0
@@ -461,6 +462,14 @@ static void report_gl(void)
 
     fprintf(stderr, "eidos: OpenGL %s (%s)\n", r != NULL ? r : "?", v != NULL ? v : "?");
     host_gl_es = v != NULL && strncmp(v, "OpenGL ES", 9) == 0;
+    if (host_gl_es) {
+        int major = 0, minor = 0;
+
+        /* "OpenGL ES 3.0 <vendor's own>" */
+        if (sscanf(v + 9, " %d.%d", &major, &minor) == 2) {
+            host_gl_es_version = major * 10 + minor;
+        }
+    }
     if (r != NULL && (strstr(r, "llvmpipe") != NULL || strstr(r, "softpipe") != NULL ||
                       strstr(r, "Software") != NULL)) {
         fprintf(stderr, "eidos: this OpenGL draws on the CPU, so the game runs slowly; "
