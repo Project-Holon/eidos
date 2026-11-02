@@ -56,6 +56,7 @@ static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h, 
 struct FieldNow;
 static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
 static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldNow *f);
+static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1818,8 +1819,10 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
         /* the Union Room: its own card; the other lower screens: the
          * game's screen as a sheet */
-        if (!(field_now(&f) && f.mode == 2 && union_card(c, in, &f))
-            && lower_sheet(c, in, c->canvas->w, c->canvas->h, 0, 0) < 0) {
+        int own = field_now(&f) && ((f.mode == 2 && union_card(c, in, &f))
+                                    || (f.mode == 3 && entralink_card(c, in)));
+
+        if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 0, 0) < 0) {
             view->mode = EIDOS_VIEW_FALLBACK;
             return;
         }
@@ -2151,6 +2154,80 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
                 eidos_ui_tap(bx[i], 181, 3);
                 g_union_pressed = i;
             }
+        }
+    }
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* The Entralink                                                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Entralink's lower screen (field sub-screen mode 3, ov018
+ * intrude_subdisp.c) as a card on the right of the world (mock-up
+ * "entralink"): the game's own map, without the DS frame around it, in a
+ * card of the Union Room card's family.  A click or a tap on the map taps
+ * the game's map at the same point, so the game does what it does for the
+ * stylus.  The game's messages there are field windows, drawn as the
+ * interface's boxes by field_text.
+ *
+ * The card goes away and comes back as the Union Room card does: its Hide
+ * tab and a Map tab, or SELECT on the keys, a pad or a keyboard.
+ */
+#define ENTRA_SX 22         /* the map on the game's lower screen          */
+#define ENTRA_SY 26
+#define ENTRA_W  214
+#define ENTRA_H  120
+
+static int g_entra_shown = 1;
+
+static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in)
+{
+    int cw = c->canvas->w;
+    int pw = ENTRA_W + 14, ph = 22 + ENTRA_H + 8;
+    int x0 = cw - 6 - pw, top = 22, st;
+    u32 keys = eidos_ui_keys_pressed();
+    EidosUiRect r;
+
+    if (in->screen_rgba[1] == NULL) {
+        return 0;
+    }
+    eidos_ui_take_keys(BW_KEY_SELECT);
+    if (keys & BW_KEY_SELECT) {
+        g_entra_shown = !g_entra_shown;
+    }
+    if (!g_entra_shown) {
+        int tx = cw - 4;
+
+        st = small_button(c, &tx, top + 4, "Map", 17, "SELECT");
+        if (st & EIDOS_UI_CLICK) {
+            g_entra_shown = 1;
+        }
+        return 1;
+    }
+    ui_panel(c, x0, top, pw, ph, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 230);
+    ui_text(c, x0 + 10, top + 4, "OWN WORLD", UI_LIGHT, 0x313131u, UI_FONT_SMALL, 1);
+    ui_fill(c, x0 + 9, top + 17, pw - 18, 1, UI_EDGE, 255);
+    {
+        int hx = x0 + pw - 6;
+
+        st = small_button(c, &hx, top + 2, "Hide", 13, NULL);
+        if (st & EIDOS_UI_CLICK) {
+            g_entra_shown = 0;
+        }
+    }
+    ui_blit_screen(c, x0 + 7, top + 21, in->screen_rgba[1], ENTRA_SX, ENTRA_SY, ENTRA_W, ENTRA_H, 1, 0);
+    r.x = x0 + 7;
+    r.y = top + 21;
+    r.w = ENTRA_W;
+    r.h = ENTRA_H;
+    st = eidos_ui_hit(r);
+    if (in->mouse.down && (st & EIDOS_UI_HOVER)) {
+        int mx, my;
+
+        if (eidos_ui_mouse_pos(&mx, &my)) {
+            eidos_ui_tap(ENTRA_SX + mx - r.x, ENTRA_SY + my - r.y, 2);
         }
     }
     return 1;
