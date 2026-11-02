@@ -54,6 +54,9 @@ void eidos_gl_one_set(EidosGl *gl, int on, int world, int screen,
  * this world is the one to keep that picture of (EidosUiView.keep_world). */
 void eidos_gl_one_canvas(EidosGl *gl, const unsigned char *rgba, int w, int h,
                          const SDL_Rect *rect);
+/* Window pixels at the bottom the world leaves free (EidosUiView.bottom):
+ * it is drawn above them; 0 for the whole window. */
+void eidos_gl_one_bottom(EidosGl *gl, int px);
 int  eidos_gl_3d_matches(const EidosGl *gl, int screen, int out_w, int out_h);
 
 /* The GPU 3D rasteriser (plat_gl3d.c).  has3d is false when the optional part

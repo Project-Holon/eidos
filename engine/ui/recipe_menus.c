@@ -276,8 +276,9 @@ static Modal modal_rect(const EidosUiCtx *c, int fw_pct, int wmin, int wmax,
                         int fh_pct, int hmin, int hmax, int hneed)
 {
     Modal m;
-    int cw = c->canvas->w, ch = c->canvas->h;
-    int avail = ch - 17;
+    /* inside the safe area, above the hint bar (lifted by safe_b) */
+    int cw = c->canvas->w - c->safe_l - c->safe_r, ch = c->canvas->h;
+    int avail = ch - ui_bar_h(c) - c->safe_t;
 
     m.w = clampi(cw * fw_pct / 100, wmin, wmax);
     m.h = clampi(ch * fh_pct / 100 - 17, hmin, hmax);
@@ -290,8 +291,8 @@ static Modal modal_rect(const EidosUiCtx *c, int fw_pct, int wmin, int wmax,
     if (m.h > avail - 4) {
         m.h = avail - 4;
     }
-    m.x = (cw - m.w) / 2;
-    m.y = (avail - m.h) / 2;
+    m.x = c->safe_l + (cw - m.w) / 2;
+    m.y = c->safe_t + (avail - m.h) / 2;
     return m;
 }
 
@@ -323,7 +324,8 @@ static void pill(EidosUiCtx *c, int x, int y, int w, int h, const char *label,
  * index of the hint clicked this frame, or -1. */
 static int hint_bar(EidosUiCtx *c, const EidosUiFrame *in, const char *const *pairs, int n)
 {
-    int y = c->canvas->h - 17, i, x = 6, hit = -1;
+    int bh, y = ui_bottom_bar(c, c->canvas->h - ui_bar_h(c), 17, &bh), i, x = 6 + ui_safe_left(c);
+    int hit = -1;
 
     (void)in;
     ui_hints(c, y, c->canvas->w, pairs, n, NULL);
@@ -338,7 +340,7 @@ static int hint_bar(EidosUiCtx *c, const EidosUiFrame *in, const char *const *pa
         r.x = x - 2;
         r.y = y;
         r.w = kw + 4 + aw + 4;
-        r.h = 17;
+        r.h = bh;
         if (eidos_ui_hit(r) & EIDOS_UI_CLICK) {
             hit = i;
         }
@@ -667,7 +669,7 @@ static int wrapped(EidosUiCtx *c, int x, int y, int width, int step, int font,
  * are hit regions, so the press must have begun and ended outside. */
 static int outside_click(const EidosUiCtx *c, Modal m)
 {
-    int cw = c->canvas->w, ch = c->canvas->h - 17;
+    int cw = c->canvas->w, ch = c->canvas->h - ui_bar_h(c);
     EidosUiRect r[4];
     int i, hit = 0;
 
@@ -883,7 +885,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 
     /* the modal */
     /* a canvas too short for the help box shows the rows alone */
-    compact = c->canvas->h - 17 - 6 < 193;
+    compact = c->canvas->h - ui_bar_h(c) - 6 < 193;
     m = modal_rect(c, 80, 320, 440, 86, compact ? 158 : 193, compact ? 158 : 193,
                    compact ? 158 : 193);
     ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
@@ -1113,7 +1115,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             wrapped(c, m.x + 26, m.y + (m.h - bh) / 2 + 7, m.w - 52, 15, UI_FONT_LARGE, flat,
                     UI_WHITE, UI_GREY, 4);
         }
-        hr.x = 0; hr.y = 0; hr.w = c->canvas->w; hr.h = c->canvas->h - 17;
+        hr.x = 0; hr.y = 0; hr.w = c->canvas->w; hr.h = c->canvas->h - ui_bar_h(c);
         if ((eidos_ui_hit(hr) & EIDOS_UI_CLICK) != 0 && rs == 5) {
             press_key(BW_KEY_A);
         }
@@ -1307,7 +1309,7 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     gd = game_data();
     misc = (gd != NULL && GAME_DATA_GetMiscSave != NULL) ? GAME_DATA_GetMiscSave(gd) : NULL;
 
-    compact = c->canvas->h - 17 - 6 < 196;
+    compact = c->canvas->h - ui_bar_h(c) - 6 < 196;
     m = modal_rect(c, 60, 260, 320, 80, compact ? 162 : 196, 220, compact ? 162 : 196);
     ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, "SAVE", NULL, NULL, UI_SKY);
@@ -2209,7 +2211,7 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     back_face = ci.kind == CK_CARD && ci.back;
 
-    compact = c->canvas->h - 17 - 6 < 190;
+    compact = c->canvas->h - ui_bar_h(c) - 6 < 190;
     m = modal_rect(c, 72, 300, 380, 80, compact ? 146 : 190, 220, compact ? 146 : 190);
     ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 12, 0x06281Fu, UI_CARD, 248);
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, "TRAINER CARD", back_face ? "RECORDS" : NULL, NULL, UI_CARD);

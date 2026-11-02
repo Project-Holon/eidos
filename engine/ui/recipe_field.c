@@ -287,10 +287,16 @@ static void logf_scene(const char *what)
  * -1. */
 static int hint_bar(EidosUiCtx *c, int y, int w, const char *const *pairs, int n)
 {
-    int i, x = 6, clicked = -1;
+    int bh, top = ui_bottom_bar(c, y, 17, &bh), lift = bh - 17, i, x = 6 + ui_safe_left(c);
+    int clicked = -1;
 
-    ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
-    ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
+    /* on the bottom edge, taller on a phone, the keys in its middle */
+    y = top + lift / 2;
+    if (lift > 0) {
+        c->bar_top = c->oy + top;
+    }
+    ui_fill(c, 0, top, w, bh, UI_BODY2, 235);
+    ui_fill(c, 0, top, w, 1, UI_EDGE, 255);
     for (i = 0; i < n; i++) {
         const char *key = pairs[2 * i], *what = pairs[2 * i + 1];
         int kw = ui_keycap_w(key);
@@ -302,12 +308,12 @@ static int hint_bar(EidosUiCtx *c, int y, int w, const char *const *pairs, int n
             kw = 13;
         }
         r.x = x - 2;
-        r.y = y;
+        r.y = top;
         r.w = kw + 4 + aw + 4;
-        r.h = 17;
+        r.h = bh;
         st = eidos_ui_hit(r);
         if (st & EIDOS_UI_HOVER) {
-            ui_fill(c, x - 2, y + 1, r.w, 15, UI_EDGE, 255);
+            ui_fill(c, x - 2, top + 1, r.w, bh - 2, UI_EDGE, 255);
         }
         if (st & EIDOS_UI_CLICK) {
             clicked = i;
@@ -842,7 +848,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* Layout. */
     colw = clampi(cw * 30 / 100, 118, 168);
     colx = cw - colw - 8;
-    avail = ch - 17 - 16;
+    avail = ch - ui_bar_h(c) - 16;
     bh = n > 0 ? (avail - (n - 1) * gap) / n : 30;
     bh = clampi(bh, 24, 44);
     top = 8 + (avail - (n * bh + (n - 1) * gap)) / 2;
@@ -852,7 +858,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     col_rect.x = colx - 10;
     col_rect.y = 0;
     col_rect.w = colw + 18;
-    col_rect.h = ch - 17;
+    col_rect.h = ch - ui_bar_h(c);
 
     px = 8;
     py = 8;
@@ -930,7 +936,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         draw_button(c, bx, by, colw + (colx - bx), bh, label[i], &g_icons[btn_of[i]], state);
     }
 
-    hint = hint_bar(c, ch - 17, cw, hints, 3);
+    hint = hint_bar(c, ch - ui_bar_h(c), cw, hints, 3);
     {
         /* Title screen: what the DS's soft reset does (L + R + START +
          * SELECT), which a touch screen has no keys for.  A second click
@@ -938,7 +944,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         static u32 armed_at;
         int armed = armed_at != 0u && in->frame - armed_at < 180u;
         int tx = cw - 4;
-        int st = small_button(c, &tx, ch - 17, armed ? "Sure? Unsaved progress is lost" : "Title screen",
+        int st = small_button(c, &tx, ch - ui_bar_h(c), armed ? "Sure? Unsaved progress is lost" : "Title screen",
                               17, NULL);
 
         if (st & EIDOS_UI_CLICK) {
@@ -967,7 +973,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             EidosUiRect hb;
 
             hb.x = 0;
-            hb.y = ch - 17;
+            hb.y = ch - ui_bar_h(c);
             hb.w = cw;
             hb.h = 17;
             in_panel = (eidos_ui_hit(col_rect) & EIDOS_UI_CLICK) != 0 ||
@@ -1431,7 +1437,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         shut = lower_sheet(c, in, cw, ch, bh, 1);
         if (shut < 0) {
             view->mode = EIDOS_VIEW_FALLBACK;
-            shut = hint_bar(c, ch - 17, cw, hints, 1) == 0;
+            shut = hint_bar(c, ch - ui_bar_h(c), cw, hints, 1) == 0;
         }
         if (shut || right_click(in) || (b && !prev_b)) {
             g_show_cgear = 0;
@@ -1521,7 +1527,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     /* the right group, from the right edge; its buttons come first so a
      * click on one is not also a click on the bar */
-    x = cw - 6;
+    x = cw - 6 - c->safe_r;     /* clear of a phone's notch and corners */
     battery(c, x - 17, 3);
     x -= 24;
     {
@@ -1577,9 +1583,10 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         int i;
 
         for (i = 0; i < 4; i++) {
-            ui_fill(c, 5 + i, 4 + i, 1, 9 - 2 * i, UI_CYAN, 255);
+            ui_fill(c, 5 + c->safe_l + i, 4 + i, 1, 9 - 2 * i, UI_CYAN, 255);
         }
-        ui_text(c, 14, ui_text_y(bh, UI_FONT_LARGE), place, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, 14 + c->safe_l, ui_text_y(bh, UI_FONT_LARGE), place, UI_WHITE, UI_EDGE,
+                UI_FONT_LARGE, 1);
     }
     /* the middle: the time on its slanted tab */
     {

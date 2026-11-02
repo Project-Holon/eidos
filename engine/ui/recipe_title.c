@@ -506,21 +506,21 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
     /* the credit, bottom left */
-    ui_text(c, 6, H - 17 - 11, "Developed by GAME FREAK inc.", UI_LIGHT, 0x202020u,
+    ui_text(c, 6, H - ui_bar_h(c) - 11, "Developed by GAME FREAK inc.", UI_LIGHT, 0x202020u,
             UI_FONT_SMALL, 1);
 
     /* click anywhere is START */
     all.x = 0;
     all.y = 0;
     all.w = W;
-    all.h = H - 17;
+    all.h = H - ui_bar_h(c);
     if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
         eidos_ui_press(BW_KEY_START, 2);
         g_started = 1;
         g_started_at = in->frame;
     }
-    ui_fill(c, 0, H - 17, W, 17, UI_BODY2, 255);       /* the 3D carries its own credit */
-    ui_hints(c, H - 17, W, hints, 1, keys);
+    ui_fill(c, 0, H - ui_bar_h(c), W, ui_bar_h(c), UI_BODY2, 255);   /* the 3D carries its own credit */
+    ui_hints(c, H - ui_bar_h(c), W, hints, 1, keys);
     dbg = getenv("EIDOS_TITLE_DEBUG");
     if (dbg != NULL && ((in->frame % 30) == 0 || dbg[0] == '2')) {
         fprintf(stderr, "title: frame %u ws %d vis %d logo %d\n", in->frame,
@@ -1011,7 +1011,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     all.x = 0;
     all.y = 0;
     all.w = W;
-    all.h = H - 17;
+    all.h = H - ui_bar_h(c);
 
     /* the game's own questions and notices (states 7 to 10): its windows stay
      * visible, only the keys are offered.  CONTINUE passes through them for
@@ -1042,7 +1042,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             backdrop(c, W, H, (int)in->frame);
             ui_pop(c, 0, 0, &keep);
         }
-        ui_hints(c, H - 17, W, hints_ask, 2, keys_one);
+        ui_hints(c, H - ui_bar_h(c), W, hints_ask, 2, keys_one);
         return;
     }
     backdrop(c, W, H, (int)in->frame);
@@ -1125,7 +1125,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     /* the layout: two columns on a wide canvas (the logo and the card, the
      * rows), one column otherwise */
-    avail = H - 17 - 12;
+    avail = H - ui_bar_h(c) - 12;
     wide = W * 10 >= H * 15 && n > 0;
     if (g_logo_have) {
         int x0, y0, x1, y1;
@@ -1294,7 +1294,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
-    ui_hints(c, H - 17, W, slots > 1 && card >= 0 ? hints_slots : hints_one,
+    ui_hints(c, H - ui_bar_h(c), W, slots > 1 && card >= 0 ? hints_slots : hints_one,
              slots > 1 && card >= 0 ? 3 : 2, slots > 1 && card >= 0 ? keys_slots : keys_one);
     dbg = getenv("EIDOS_TITLE_DEBUG");
     if (dbg != NULL && (in->frame % 30) == 0) {

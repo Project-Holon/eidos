@@ -418,7 +418,7 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         EidosUiRect all;
 
         pairs[0] = "A"; pairs[1] = "OK";
-        ui_hints(c, ch - 17, cw, pairs, 1, NULL);
+        ui_hints(c, ch - ui_bar_h(c), cw, pairs, 1, NULL);
         all.x = 0; all.y = 0; all.w = cw; all.h = ch;
         if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
             eidos_ui_press(BW_KEY_A, 2);
@@ -472,13 +472,13 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
      * the game asks, YES and NO at the bottom right; the message between
      * them keeps both rooms clear, so it sits the same with or without them */
     if (closeup && sel >= 0 && sel <= 2) {
-        picture_box(c, in->frame, species_of(sel), 10, ch - 17 - 6);
+        picture_box(c, in->frame, species_of(sel), 10, ch - ui_bar_h(c) - 6);
     }
     strbuf_text(rdp(w, PW_STRBUF), msg, (int)sizeof msg);
     mx = 10 + BOX_W + BOX_GAP;
     mw = cw - 2 * mx;
     if (msg[0] != '\0') {
-        message_box(c, mx, ch - 17 - 6, mw, msg);
+        message_box(c, mx, ch - ui_bar_h(c) - 6, mw, msg);
     }
     if (menu) {
         void *tm = rdp(w, PW_TASKMENU);
@@ -488,7 +488,7 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 
         for (i = 0; i < 2; i++) {
             r[i].x = bx;
-            r[i].y = ch - 17 - 6 - 2 * 26 - 4 + i * 30;
+            r[i].y = ch - ui_bar_h(c) - 6 - 2 * 26 - 4 + i * 30;
             r[i].w = BOX_W;
             r[i].h = 26;
             if (eidos_ui_hit(r[i]) & EIDOS_UI_HOVER) {
@@ -511,7 +511,7 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         /* a touch on a hint is its key */
         static const u32 keys[2] = { BW_KEY_A, BW_KEY_B };
 
-        ui_hints(c, ch - 17, cw, pairs, menu ? 2 : 1, keys);
+        ui_hints(c, ch - ui_bar_h(c), cw, pairs, menu ? 2 : 1, keys);
     }
     if (menu && eidos_ui_right_click()) {
         eidos_ui_press(BW_KEY_B, 2);

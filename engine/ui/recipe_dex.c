@@ -416,7 +416,7 @@ static int iclamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v;
 
 static void dex_layout(EidosUiCtx *c, DexLayout *L)
 {
-    int W = c->canvas->w, H = c->canvas->h - 17;
+    int W = c->canvas->w, H = c->canvas->h - ui_bar_h(c);
 
     L->mw = iclamp(W * 9 / 10, imin(W - 8, 300), 560);
     L->mh = iclamp(H * 9 / 10, imin(H - 8, 170), 320);
@@ -446,7 +446,7 @@ typedef struct DexHint {
 
 static void dex_hints(EidosUiCtx *c, const DexHint *h, int n)
 {
-    int i, x = 6, y = c->canvas->h - 17;
+    int i, x = 6, y = c->canvas->h - ui_bar_h(c);
 
     ui_fill(c, 0, y, c->canvas->w, 17, UI_BODY2, 235);
     ui_fill(c, 0, y, c->canvas->w, 1, UI_DEX2, 255);
@@ -476,7 +476,7 @@ static void dex_hints(EidosUiCtx *c, const DexHint *h, int n)
 /* A click outside the modal is B (the tap at the game's back button). */
 static void outside_back(EidosUiCtx *c, const DexLayout *L, int tx, int ty)
 {
-    int W = c->canvas->w, H = c->canvas->h - 17;
+    int W = c->canvas->w, H = c->canvas->h - ui_bar_h(c);
     EidosUiRect r[4] = {
         { 0, 0, W, L->my },
         { 0, L->my + L->mh, W, H - L->my - L->mh },
@@ -931,7 +931,7 @@ static void run_splash(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
     dex_modal(c, &L, "", "");
     ui_text(c, L.bx + (L.bw - ui_text_w("POK\xC3\x89" "DEX", UI_FONT_LARGE) * 3) / 2,
             L.by + L.bh / 2 - 22, "POK\xC3\x89" "DEX", UI_DEX, UI_DEX3, UI_FONT_LARGE, 3);
-    all.x = 0; all.y = 0; all.w = c->canvas->w; all.h = c->canvas->h - 17;
+    all.x = 0; all.y = 0; all.w = c->canvas->w; all.h = c->canvas->h - ui_bar_h(c);
     if (v->kind == DEX_SPLASH && (eidos_ui_hit(all) & EIDOS_UI_CLICK)) {
         eidos_ui_tap(128, 96, 3);
     }

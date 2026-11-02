@@ -1127,7 +1127,7 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         return;
     }
     /* a click anywhere that is not the hints advances the message */
-    full = hit(c, 0, 0, w, c->canvas->h - 17);
+    full = hit(c, 0, 0, w, c->canvas->h - ui_bar_h(c));
     if (full & EIDOS_UI_CLICK) {
         eidos_ui_press(BW_KEY_A, 2);
     }
@@ -2278,9 +2278,9 @@ static Modal modal_rect(const EidosUiCtx *c, int pw, int minw, int maxw, int ph,
     m.w = clampi(cw * pw / 100, minw, maxw);
     m.h = clampi(ch * ph / 100, minh, maxh);
     if (m.w > cw - 8) m.w = cw - 8;
-    if (m.h > ch - 17 - 8) m.h = ch - 17 - 8;
+    if (m.h > ch - ui_bar_h(c) - 8) m.h = ch - ui_bar_h(c) - 8;
     m.x = (cw - m.w) / 2;
-    m.y = (ch - 17 - m.h) / 2;
+    m.y = (ch - ui_bar_h(c) - m.h) / 2;
     return m;
 }
 
@@ -2288,7 +2288,7 @@ static Modal modal_rect(const EidosUiCtx *c, int pw, int minw, int maxw, int ph,
 static void modal_back(EidosUiCtx *c, const Modal *m, const EidosUiFrame *in, int allowed)
 {
     (void)in;
-    int outside = hit(c, 0, 0, c->canvas->w, c->canvas->h - 17) & EIDOS_UI_CLICK;
+    int outside = hit(c, 0, 0, c->canvas->w, c->canvas->h - ui_bar_h(c)) & EIDOS_UI_CLICK;
     int inside = hit(c, m->x, m->y, m->w, m->h) & EIDOS_UI_HOVER;
 
     if (allowed && (eidos_ui_right_click() || (outside && !inside))) {

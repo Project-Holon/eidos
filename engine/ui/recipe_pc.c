@@ -1014,7 +1014,7 @@ static int clampi(int v, int lo, int hi)
  * has 24-pixel cells on a 427-pixel canvas; a larger canvas keeps the same
  * shares), and the party's six rows fill the column's height.
  */
-static void pc_layout(PcLay *l, int cw, int ch)
+static void pc_layout(PcLay *l, int cw, int ch, int bar_h)
 {
     const int m = 6, gap = 5;
     int avail, ph, pw_want, dw_min, dw_max, spare;
@@ -1022,7 +1022,7 @@ static void pc_layout(PcLay *l, int cw, int ch)
     memset(l, 0, sizeof(*l));
     l->cw = cw;
     l->ch = ch;
-    l->hint_y = ch - 17;
+    l->hint_y = ch - bar_h;
     l->y0 = 31;
     l->y1 = ch - 21;
     avail = cw - 2 * m - 2 * gap;
@@ -2151,7 +2151,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     pc_windows(g, w);
     pc_script_run(g, w, in->frame);
     pc_poll_op(g, in->frame);
-    pc_layout(&l, cw, ch);
+    pc_layout(&l, cw, ch, ui_bar_h(c));
     pc_get_mouse(in, k, cw, ch, &mouse);
     head_geom(&l, &hd);
     limit = g->box_limit > 0 ? g->box_limit : 24;
@@ -2628,7 +2628,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         int x, y, bw, bh, cols, mw, mh, rows = (limit + 5) / 6;
 
         boxes_geom(&l, limit, &x, &y, &bw, &bh, &cols, &mw, &mh);
-        ui_fill(c, 0, 0, cw, ch - 17, 0x000000u, 150);
+        ui_fill(c, 0, 0, cw, ch - ui_bar_h(c), 0x000000u, 150);
         ui_panel(c, x, y, bw, bh, UI_CUT_TL | UI_CUT_BR, 8, UI_BODY, UI_SKY, 250);
         ui_text(c, x + 8, y + 5, g_hand >= 0 && g->mode != PC_MODE_ITEMS ? "Place it in which Box?"
                                                                        : "Jump to which Box?",
@@ -2664,7 +2664,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         int mx, my, mw, bh;
 
         menu_geom(&l, g_ov_slot, &mx, &my, &mw, &bh);
-        ui_fill(c, 0, 0, cw, ch - 17, 0x000000u, 150);
+        ui_fill(c, 0, 0, cw, ch - ui_bar_h(c), 0x000000u, 150);
         ui_panel(c, mx - 3, my - 3, mw + 6, 5 * (bh + 1) + 5, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_SKY, 248);
         for (i = 0; i < 5; i++) {
             int by = my + i * (bh + 1), hov = mouse_live && in_rect(mouse.x, mouse.y, mx, by, mw, bh);
@@ -2696,7 +2696,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         (void)pc_mon(g, g_ov_slot, 0, &mm);
         mx = clampi(cw / 2 - mw / 2, 0, cw - mw);
         my = clampi(l.gy + 2 * l.pitch - 8, 20, l.hint_y - mh - 4);
-        ui_fill(c, 0, 0, cw, ch - 17, 0x000000u, 150);
+        ui_fill(c, 0, 0, cw, ch - ui_bar_h(c), 0x000000u, 150);
         ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_SKY, 250);
         ui_text(c, mx + 6, my + 3, "MARKING", UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         for (i = 0; i < 6; i++) {

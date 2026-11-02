@@ -121,6 +121,11 @@ typedef struct EidosUiView {
                                the game draws from a picture of the DS
                                screen (which holds the wide view, squeezed)
                                fills the window as the view it was taken of */
+    int bottom;             /* window pixels at the bottom the world leaves
+                               free for a hint bar on the bottom edge
+                               (filled by eidos_ui_frame on a phone, where
+                               the bar is taller than the home indicator;
+                               0: the world fills the window)               */
     int cap_mix;            /* 0..16: how much of the game's screen capture
                                (the old picture a door blends out over the
                                new world) covers the world; the kept wide
@@ -146,6 +151,11 @@ typedef struct EidosUiMouse {
 
 typedef struct EidosUiFrame {
     int win_w, win_h;       /* the window's drawable size                  */
+    /* What the system covers on each side, in window pixels (a phone's
+     * notch, rounded corners, home indicator; 0 on a desktop).  The
+     * canvas covers the whole window; backgrounds fill it, and only what
+     * is read or touched keeps inside these (EidosUiCtx's safe_*). */
+    int safe_l, safe_t, safe_r, safe_b;
     EidosUiMouse mouse;
     u32 buttons;            /* the player's BW_KEY_* this frame            */
     u32 frame;              /* bw_input_frame_number()                     */

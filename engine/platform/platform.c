@@ -469,6 +469,18 @@ static void out_size(const EidosPlatform *p, int *w, int *h)
     }
 }
 
+/* The world's part of the window: all of it, less the strip a phone's
+ * hint bar keeps at the bottom (EidosUiView.bottom). */
+static void world_size(const EidosPlatform *p, int *w, int *h)
+{
+    int b = p->ui_view.bottom;
+
+    out_size(p, w, h);
+    if (p->layout == EIDOS_LAYOUT_ONE && b > 0 && b < *h / 2) {
+        *h -= b;
+    }
+}
+
 void eidos_platform_viewport(const EidosPlatform *p, EidosViewport *vp)
 {
     EidosScreenPlacement pl;
@@ -1190,7 +1202,13 @@ static void render(EidosPlatform *p)
             EidosWorldGeometry wg;
             SDL_Rect ds;
 
-            eidos_world_geometry(ow, oh, p->ui_view.zoom, &wg);
+            int wh = oh;
+
+            if (p->ui_view.bottom > 0 && p->ui_view.bottom < oh / 2) {
+                wh = oh - p->ui_view.bottom;    /* above a phone's hint bar */
+            }
+            eidos_world_geometry(ow, wh, p->ui_view.zoom, &wg);
+            eidos_gl_one_bottom(p->gl, oh - wh);
             ds.x = wg.ds.x;
             ds.y = wg.ds.y;
             ds.w = wg.ds.w;
@@ -2133,7 +2151,7 @@ static int render_3d_for(EidosPlatform *p, int screen, const struct G3dSnapshot 
     if (world_active(p) && screen == p->ui_view.world_screen) {
         int ow, oh;
 
-        out_size(p, &ow, &oh);
+        world_size(p, &ow, &oh);
         if (p->ui_view.ds_only) {
             /* the DS's own frame: the 3D is the DS rectangle's size */
             EidosWorldGeometry wg;
@@ -2245,11 +2263,11 @@ void eidos_platform_set_ui_canvas(EidosPlatform *p, const struct EidosUiCanvas *
         SDL_Rect r;
         const u8 *up = NULL;
 
-        int sx, sy, sw, sh;
-
-        eidos_platform_safe_area(p, &sx, &sy, &sw, &sh);
-        r.x = sx;                               /* inside the safe area */
-        r.y = sy;
+        /* the whole window: backgrounds fill it, and the interface keeps
+         * what is read or touched inside the safe area itself
+         * (EidosUiFrame's safe_*) */
+        r.x = 0;
+        r.y = 0;
         r.w = c->w * c->k;
         r.h = c->h * c->k;
         if (!p->ui_gen_ok || p->ui_gen != c->generation || p->ui_cw != c->w ||
@@ -2277,7 +2295,7 @@ void eidos_platform_view_scale(const EidosPlatform *p, s32 *kx, s32 *ky)
 
     wg.kx = wg.ky = 4096;
     if (world_active(p) && !p->ui_view.ds_only && !p->ui_view.stretch) {
-        out_size(p, &ow, &oh);
+        world_size(p, &ow, &oh);
         eidos_world_geometry(ow, oh, p->ui_view.zoom, &wg);
     }
     if (kx != NULL) {

@@ -1389,6 +1389,17 @@ const EidosUiFrame *eidos_ui_frame_in(void)
     return g_in;
 }
 
+/* What the system covers on each side, in canvas pixels (rounded up, so
+ * nothing to read or touch reaches under it). */
+static void set_safe(const EidosUiFrame *in)
+{
+    g_ctx.safe_l = in->safe_l > 0 ? (in->safe_l + g_k - 1) / g_k : 0;
+    g_ctx.safe_t = in->safe_t > 0 ? (in->safe_t + g_k - 1) / g_k : 0;
+    g_ctx.safe_r = in->safe_r > 0 ? (in->safe_r + g_k - 1) / g_k : 0;
+    g_ctx.safe_b = in->safe_b > 0 ? (in->safe_b + g_k - 1) / g_k : 0;
+    g_ctx.bar_top = -1;
+}
+
 void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
                     const EidosUiCanvas **canvas)
 {
@@ -1405,6 +1416,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     w = (in->win_w + g_k - 1) / g_k;
     h = (in->win_h + g_k - 1) / g_k;
     ui_begin(&g_ctx, &g_canvas, w, h, g_k);
+    set_safe(in);
     read_mouse(in);
     g_want_text = 0;
     g_want_objs = 0;
@@ -1473,6 +1485,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             w = (in->win_w + g_k - 1) / g_k;
             h = (in->win_h + g_k - 1) / g_k;
             ui_begin(&g_ctx, &g_canvas, w, h, g_k);
+            set_safe(in);
             read_mouse(in);
         }
     }
@@ -1655,6 +1668,14 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     g_text_wanted = g_want_text;
     g_objs_wanted = g_want_objs;
     bw_input_set_host_mask(g_take);
+    /* a phone's taller hint bar on the bottom edge: the world is drawn
+     * above it instead of under it */
+    view->bottom = 0;
+    if (view->mode == EIDOS_VIEW_WORLD && g_ctx.bar_top > 0) {
+        int b = in->win_h - g_ctx.bar_top * g_k;
+
+        view->bottom = b > 0 && b < in->win_h / 2 ? b : 0;
+    }
     ring_apply(&g_ctx);
     fade_apply(&g_canvas);
     keep_prev(&g_canvas);

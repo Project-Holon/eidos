@@ -151,10 +151,10 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     mw = cw * 80 / 100;
     if (mw > 460) mw = 460;
     if (mw < 300) mw = 300;
-    mh = ch - 17 - 16;
+    mh = ch - ui_bar_h(c) - 16;
     if (mh > 270) mh = 270;
     mx = (cw - mw) / 2;
-    my = (ch - 17 - mh) / 2;
+    my = (ch - ui_bar_h(c) - mh) / 2;
     ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
     ui_header(c, mx + 4, my + 4, mw - 8, "SETTINGS", head[0] != '\0' ? head : NULL, NULL, UI_CYAN);
     top = my + 30;
@@ -305,7 +305,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
         }
     }
 
-    ui_hints(c, ch - 17, cw, hints, level == 1 && tabs > 1 ? 3 : 2, hint_keys);
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, level == 1 && tabs > 1 ? 3 : 2, hint_keys);
 
     /* what the mouse asked for: a touch of that row, answered by the
      * screen at its next step (a choice by its place, an arrow as the
@@ -326,7 +326,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     {
         EidosUiRect whole, panel;
 
-        whole.x = 0; whole.y = 0; whole.w = cw; whole.h = ch - 17;
+        whole.x = 0; whole.y = 0; whole.w = cw; whole.h = ch - ui_bar_h(c);
         panel.x = mx; panel.y = my; panel.w = mw; panel.h = mh;
         if (eidos_ui_right_click() ||
             ((eidos_ui_hit(whole) & EIDOS_UI_CLICK) && !(eidos_ui_hit(panel) & EIDOS_UI_HOVER))) {

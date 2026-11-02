@@ -1250,6 +1250,8 @@ int eidos_gl3d_init(EidosGl *g)
     if (glGetError() != GL_NO_ERROR) {
         g->integer_samples = 0;
     }
+    /* the phone hosts draw with OpenGL ES and say so (host/main.c) */
+    g->es = getenv("EIDOS_GL_ES") != NULL;
     g->glGenVertexArrays(1, &g->vao3);
     g->glGenBuffers(1, &g->vbo3);
     g->have3d = 1;
@@ -1993,7 +1995,10 @@ static int render_with_aa(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int
 {
     if (g != NULL && s != NULL && w > 0 && h > 0 &&
         g->integer_samples < MSAA_SAMPLES && (s->disp3dcnt & 0x10u) != 0 &&
-        (long)w * h <= MSAA_MAX_PIXELS) {
+        (long)w * h <= MSAA_MAX_PIXELS && !g->es) {
+        /* (not on a phone: four times a phone screen's pixels every frame
+         * cost more than a frame's time there, and at its density the
+         * resolution already smooths the edges) */
         /* Some GL implementations (including Apple's) cannot multisample
          * integer attachments. Render the complete scene and postprocesses
          * at 2x instead, then average only the normalized colour target. */

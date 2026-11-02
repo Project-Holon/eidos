@@ -129,7 +129,8 @@ if(ANDROID OR IOS)
 endif()
 if(IOS)
     enable_language(OBJC)
-    list(APPEND _host_sources ${CMAKE_CURRENT_SOURCE_DIR}/pick_ios.m)
+    list(APPEND _host_sources ${CMAKE_CURRENT_SOURCE_DIR}/pick_ios.m
+                              ${CMAKE_CURRENT_SOURCE_DIR}/ios_view.m)
     # the app's icon (assets/icon.png at the sizes Info.plist.in names),
     # at the top of the bundle
     file(GLOB _ios_icons ${_root}/ios/icons/*.png)
@@ -187,11 +188,17 @@ target_compile_definitions(eidos PRIVATE
     WASM_RT_SKIP_SIGNAL_RECOVERY=1
     WASM_RT_TRAP_HANDLER=host_trap)
 if(IOS)
-    # iOS refuses an app the 8 GiB of address space the guard pages
-    # reserve (without an entitlement a free team cannot have), so there
-    # the accesses are checked one by one and only the module's own
-    # maximum is reserved; the memory still grows in place (mmap).
-    target_compile_definitions(eidos PRIVATE WASM_RT_MEMCHECK_BOUNDS_CHECK=1)
+    # iOS gives an app 5 GiB of address space, not the 8 GiB wasm2c's guard
+    # pages reserve (more needs an entitlement a free team cannot have).  A
+    # 32-bit address is under 4 GiB, so a copy of the memory runtime that
+    # reserves 4 GiB and 1 GiB for the offsets keeps the guard pages, and no
+    # access is checked one by one.
+    file(READ ${WABT_ROOT}/wasm2c/wasm-rt-mem-impl.c _mem_impl)
+    string(REPLACE "0x200000000ul" "0x140000000ul" _mem_impl "${_mem_impl}")
+    file(WRITE ${CMAKE_BINARY_DIR}/wasm-rt-mem-impl-ios.c "${_mem_impl}")
+    get_target_property(_srcs eidos SOURCES)
+    list(TRANSFORM _srcs REPLACE ".*/wasm2c/wasm-rt-mem-impl\\.c$" "${CMAKE_BINARY_DIR}/wasm-rt-mem-impl-ios.c")
+    set_property(TARGET eidos PROPERTY SOURCES ${_srcs})
 endif()
 # The generated files are large; GCC's assembly between its stages would
 # otherwise go through the temporary folder (hundreds of MB per file).

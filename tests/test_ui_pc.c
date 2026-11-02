@@ -673,7 +673,7 @@ static void test_layout(void)
         PcLay l;
         int cw = k_sizes[s][0] / k_sizes[s][2], ch = k_sizes[s][1] / k_sizes[s][2], i, slot, ci;
 
-        pc_layout(&l, cw, ch);
+        pc_layout(&l, cw, ch, 17);
         CHECK(l.pitch >= 20 && l.pitch <= 48, "the grid cell is a sane size");
         CHECK(l.px + l.pw <= l.bx, "the party column ends before the box");
         CHECK(l.bx + l.bw <= l.dx, "the box ends before the details");
@@ -771,7 +771,7 @@ static void test_mouse(const char *outdir)
 
     set_size(1920, 1080, 4);
     scene_start(2);
-    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k);
+    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k, 17);
     slot_center(&l, 7, &x7, &y7);
     slot_center(&l, 20, &x20, &y20);
     slot_center(&l, SLOT_PARTY0 + 1, &xp, &yp);
@@ -871,7 +871,7 @@ static void test_boxes(const char *outdir)
 
     set_size(1920, 1080, 4);
     scene_start(2);
-    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k);
+    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k, 17);
     slot_center(&l, 7, &x7, &y7);
 
     /* the arrows tap the game's arrows */
@@ -1145,7 +1145,7 @@ static void test_script(void)
         PcLay l;
         int x, y, w, h;
 
-        pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k);
+        pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k, 17);
         h = chip_geom(&l, ACT_SUMMARY, &x, &y, &w);
         click_at(x + w / 2, y + h / 2);
     }
@@ -1186,7 +1186,7 @@ static void test_popups(const char *outdir)
 
     set_size(1920, 1080, 4);
     scene_start(2);
-    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k);
+    pc_layout(&l, g_win_w / g_win_k, g_win_h / g_win_k, 17);
 
     /* the game's list: six buttons, the second one taps the game's second */
     frames_set(1, 0);

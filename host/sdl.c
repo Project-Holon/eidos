@@ -531,7 +531,43 @@ u32 w2c_env_SDL_GL_MakeCurrent(struct w2c_env *e, u32 w, u32 c)
 }
 
 u32 w2c_env_SDL_GL_SetSwapInterval(struct w2c_env *e, u32 n) { (void)e; return SDL_GL_SetSwapInterval((int)n); }
-u32 w2c_env_SDL_GL_SwapWindow(struct w2c_env *e, u32 w) { (void)e; return SDL_GL_SwapWindow((SDL_Window *)handle_ptr(w)); }
+/* EIDOS_FPS: every 120 frames, the frames per second and how much of a
+ * frame went to the game and its drawing calls (between swaps) and to the
+ * swap itself (waiting for the GPU and the display). */
+u32 w2c_env_SDL_GL_SwapWindow(struct w2c_env *e, u32 w)
+{
+    static int on = -1;
+    static Uint64 last, work, swap, start;
+    static int n;
+    Uint64 t0, t1;
+    u32 rc;
+
+    (void)e;
+    if (on < 0) {
+        on = getenv("EIDOS_FPS") != NULL;
+    }
+    if (!on) {
+        return SDL_GL_SwapWindow((SDL_Window *)handle_ptr(w));
+    }
+    t0 = SDL_GetTicksNS();
+    if (last != 0) {
+        work += t0 - last;
+    } else {
+        start = t0;
+    }
+    rc = SDL_GL_SwapWindow((SDL_Window *)handle_ptr(w));
+    t1 = SDL_GetTicksNS();
+    swap += t1 - t0;
+    last = t1;
+    if (++n == 120) {
+        fprintf(stderr, "eidos: fps %.1f, per frame %.2f ms between swaps, %.2f ms in the swap\n",
+                120.0 * 1e9 / (double)(t1 - start), (double)work / 120e6, (double)swap / 120e6);
+        n = 0;
+        work = swap = 0;
+        start = t1;
+    }
+    return rc;
+}
 
 /* ------------------------------------------------------------------ */
 /* Keyboard, mouse, gamepads                                           */

@@ -350,10 +350,12 @@ static char **mobile_args(int *argc)
     argv[n++] = "--layout";
     argv[n++] = "one";
     argv[n++] = "--window";
-    /* A phone is played by touch: the hints show the DS's own button
+    /* A phone draws with OpenGL ES and is played by touch: the hints show the DS's own button
      * letters (a connected pad still shows its own).  Android's curved
      * screens also get a margin of 2% a side inside the safe area. */
     setenv("EIDOS_TOUCH_DEVICE", "1", 1);
+    /* the 3D renderer's choices for OpenGL ES (engine/platform/plat_gl3d.c) */
+    setenv("EIDOS_GL_ES", "1", 1);
 #if defined(__ANDROID__)
     setenv("EIDOS_EDGE_MARGIN", "2", 1);
 #endif
@@ -382,6 +384,9 @@ static char **mobile_args(int *argc)
     }
     argv[n] = NULL;
     *argc = n;
+#if !defined(__ANDROID__)
+    host_ios_view_setup();
+#endif
     /* the DS screens side by side are wider than tall: landscape only */
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     return argv;
