@@ -285,11 +285,14 @@ int bw_slots_new_game(void)
 {
     int n;
 
-    if (!offered(bw_slots_current())) {
+    /* Free means no file: a file the game would not load (marked active,
+     * a new game left unsaved) is kept, for recovery, and never written
+     * over by a new game. */
+    if (!bw_slots_used(bw_slots_current())) {
         return 0;                   /* the slot in force is free already */
     }
     for (n = 1; n <= BW_SLOTS_MAX; n++) {
-        if (!offered(n)) {
+        if (!bw_slots_used(n)) {
             set_current(n);
             apply(1);
             reload(0);
