@@ -189,6 +189,10 @@ typedef struct G2dFrame {
 } G2dFrame;
 
 int  g2d_nanr_parse(G2dNanr *out, const u8 *data, u32 size);
+/* An NMAR (multi-cell animation, magic RAMN): the same bank, each frame's
+ * cell_idx a multi-cell (an NMCR group) and its SRT that multi-cell's move.
+ * Freed with g2d_nanr_free. */
+int  g2d_nmar_parse(G2dNanr *out, const u8 *data, u32 size);
 void g2d_nanr_free(G2dNanr *nanr);
 
 /* 0 on success, -1 when the sequence has no such frame. */

@@ -93,6 +93,10 @@ void eidos_gl_view_free(EidosGl *gl, unsigned tex);
 void eidos_gl_view_begin(EidosGl *gl, int win_w, int win_h, unsigned rgb);
 void eidos_gl_view_draw(EidosGl *gl, unsigned tex, int mode, int x, int y, int w, int h, int flip,
                         const int *clip);
+/* A straight sprite (as mode 1), its colours faded fade[3] (0..1) of the
+ * way to fade[0..2] and blended at `alpha` (0..1). */
+void eidos_gl_view_draw_fx(EidosGl *gl, unsigned tex, int x, int y, int w, int h, const int *clip,
+                           const float fade[4], float alpha);
 int eidos_gl_view_read(EidosGl *gl, unsigned char *rgba);
 void eidos_gl_view_end(EidosGl *gl);
 

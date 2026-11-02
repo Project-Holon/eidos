@@ -200,9 +200,17 @@ The right column:
   with a Pokemon sprite on each side (Single or Double, any species); the
   the intro settings in the left column (Ctrl fine steps, Shift coarse
   ones, a click on a number types it in); a drag on the intro view turns and
-  raises it, a right drag slides and tilts it, the wheel zooms; Play runs a recorded battle camera in the
-  left view (the intro, idle, moves), with the Pokemon where the recording
-  has them;
+  raises it, a right drag slides and tilts it, the wheel zooms; Play runs the battle camera in the left view (the intro,
+  a trainer back mid-battle, idle, moves, your switch, a ball at a wild
+  Pokemon), with the sprites as the game's effect scripts move them
+  (`engine/world/bcam_sim.c`): their place, their size, their fade to a
+  colour and their alpha, hidden while the game hides them, and the
+  trainers' own animation (the throw at the send-out, from the set's
+  multi-cell animation). The game shows the player's trainer only at the
+  battle's send-out (effect 1 adds it, effect 3 throws): a switch is the
+  recall (effect 59) then the send-out (effect 60) with no trainer, and a
+  ball (effect 9) is thrown from below the picture. The ball and the other
+  particles are not drawn;
 - under the two views, the settings of the place: Views (a button for each
   view, Add view copies the one on show and makes it a fixed spot, Delete,
   By spot or By angle, and which view the game takes for the white player
@@ -265,17 +273,36 @@ real 3D, the Pokemon grow and shrink as the camera moves. Some move
 animations switch to true 3D sprites, where the size does follow the
 distance.
 
-`sdk/battle_view.c` wraps `MCSS_Draw` and draws each flat sprite at the
-size its distance gives: its size over its size at rest (the fake), times
-its depth before the game's command camera (where the sizes are right) over
-its depth before the camera drawn with (the foe's position taken back to
-the game's own for the first). The size at rest follows the size while the
-game's camera moves and for a few frames after (a tween's last step comes
-late); with the camera still, a change is the script's own (a withdraw, a
-faint, the send-out's pop) and stays. A sprite that comes from nothing
-grows toward the size the scripts give at that camera: 1 at the command
-camera, 0.5 all the way back (learnt from the scripts while they run). The
-scales are put back after the draw.
+`sdk/battle_view.c` wraps `MCSS_Draw` and draws each flat Pokemon at the
+size its distance gives. A Pokemon has one size in the room
+(`bmap_mon_size`): its depth before the game's command camera, where the
+game's sizes are 1 and where the battle waits for the player. Every frame
+it is drawn at that size over its depth before the camera drawn with
+(the foe's position taken back to the game's own for the first), so the
+intro, the send-out, the command camera and its idle moves all show it at
+the size its distance gives: it never grows or shrinks against the map, and
+the two sides change together when the camera moves. (Mixing a second size
+in toward the intro, the scripts' 0.5, made the player's Pokemon shrink
+while the foe grew as a place's zoomed intro camera pulled back to the
+command camera.) The scripts' fake is taken out: the sprite's size over its
+size at rest (`BmapRest`, `bmap_rest_sprite`). The size at rest follows the
+size while the game's camera moves and for a few frames after (a tween's
+last step comes late); with the camera still, a change is the script's own
+(a withdraw, a faint, the send-out's pop) and shows. A sprite that comes
+from nothing grows toward the size the scripts give at that camera: 1 at
+the command camera, 0.5 all the way back (learnt from the scripts while
+they run). The spot editor's preview runs the same steps on the
+simulator's frames. The scales are put back after.
+
+## Sprite order
+
+The game draws its sprites flat and gives each the depth of its own place
+through the camera drawn with that frame, along the camera's line of sight
+(`MCSS_Draw`), so the nearer one is the one with the smaller depth, and the
+order follows every move of the camera, the idle ones too. The spot editor
+sorts its sprites the same way every frame (`bmap_view_depth`), not by the
+distance from the eye, which put a sprite beside another in front of it
+when the camera stood off to one side.
 
 ## In front of the Pokemon
 

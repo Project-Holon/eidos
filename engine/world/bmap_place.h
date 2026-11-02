@@ -100,20 +100,52 @@ void bmap_camera_view(float eye[3], float target[3], const BmapIntro *cam, float
  * eye to the intro's: 0 at the command camera, 1 at the intro's and beyond
  * (the eye projected on the line between the two). */
 float bmap_intro_progress(const float eye[3]);
+/* How deep a point lies in front of a camera (eye, target): along its line
+ * of sight.  The game's sprites take their depth so (MCSS_Draw: the
+ * sprite's point through the camera, its z), so the nearer of two is the
+ * one with the smaller depth, not the one nearer the eye. */
+float bmap_view_depth(const float eye[3], const float target[3], const float p[3]);
 /* How deep a battle point lies in front of the game's command camera. */
 float bmap_cmd_depth(const float p[3]);
-/* ... and in front of the intro's camera (all the way back). */
-float bmap_far_depth(const float p[3]);
 /*
  * A Pokemon's size in the 3D world, in units of its size at the command
- * camera, for the game's camera at intro progress `prog` (0..1): its
- * command-camera depth at the command camera, `far_size` times its depth
- * before the intro's camera all the way back, and the mix of the two in
- * between.  Drawn at that size before the camera, a Pokemon shows as big as
- * the game makes it at both ends (1 and the scripts' size far back, 0.5),
- * and its size follows the camera, never the scripts' tween of it.
+ * camera: its depth before the game's command camera.  One size for every
+ * camera: drawn at it over its depth before the camera drawn with, a
+ * Pokemon shows as big as the game makes it at the command camera (where
+ * the battle waits for the player, and where the scripts' sizes are 1) and
+ * grows and shrinks with the camera's distance only, as the map around it
+ * does.  The DS's sprites are flat and keep their size whatever the
+ * camera; its scripts fake the distance by tweening the size with the
+ * camera (0.5 far back), and those fakes are taken out (BmapRest).
  */
-float bmap_mon_size(const float p[3], float prog, float far_size);
+float bmap_mon_size(const float p[3]);
+/*
+ * The size at rest of the battle's sprites (McssWork shadowScale): the
+ * scripts tween a sprite's size along with a camera move to fake its
+ * distance; the size at rest follows the size while the game's camera moves
+ * (and a few frames after: a tween's last step comes late), and with the
+ * camera still a change is the script's own (a withdraw, a faint, the
+ * send-out's pop) and shows.  A sprite that comes from nothing grows toward
+ * the size the scripts give at this camera: 1 at the command camera, `far`
+ * all the way back (0.5 in the scripts read so far; learnt from what they
+ * do).  The game (sdk/battle_view.c) and the spot editor's preview run the
+ * same steps.
+ */
+#define BMAP_REST_MAX   16
+#define BMAP_REST_STILL 6           /* a size tween ends a step after its camera */
+typedef struct BmapRest {
+    float rest[BMAP_REST_MAX];      /* by sprite; 0 none (gone)               */
+    float far;                      /* the size at rest all the way back      */
+    float last_eye[3];
+    int still, far_still, moving;
+    float prog;                     /* bmap_intro_progress of the game's eye  */
+} BmapRest;
+/* A new battle: no sprite has a size at rest (`far` is kept). */
+void  bmap_rest_reset(BmapRest *r);
+/* Once a frame, before the sprites: the game's own camera eye. */
+void  bmap_rest_frame(BmapRest *r, const float game_eye[3]);
+/* Sprite i this frame, its size `size` (0: gone): its size at rest. */
+float bmap_rest_sprite(BmapRest *r, int i, float size);
 /* No change at all (zoom 1 or 0, everything else 0). */
 int bmap_intro_none(const BmapIntro *in);
 /* A battle point in the place's battle: the foe's side (z < 0) stretched so

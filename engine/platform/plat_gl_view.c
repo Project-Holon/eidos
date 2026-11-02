@@ -25,23 +25,28 @@ static const char *k_vs_view =
 /* mode 0: a premultiplied 3D picture, its clear pixels left out and the rest
  * shown opaque and unpremultiplied (what eidos_gl_read3d gives the CPU);
  * mode 1: a straight sprite, its clear pixels left out, the rest opaque;
- * mode 2: a straight canvas, blended by its alpha */
+ * mode 2: a straight canvas, blended by its alpha;
+ * mode 3: a straight sprite as mode 1, its colours faded fx.a of the way to
+ * fx.rgb and blended at `alpha` (eidos_gl_view_draw_fx) */
 static const char *k_fs_view =
     "#version 330 core\n"
     "uniform sampler2D tex;\n"
     "uniform int mode;\n"
+    "uniform vec4 fx;\n"
+    "uniform float alpha;\n"
     "in vec2 uv;\n"
     "out vec4 color;\n"
     "void main() {\n"
     "    vec4 c = texture(tex, uv);\n"
     "    if (mode == 2) { color = c; return; }\n"
     "    if (c.a <= 0.0) discard;\n"
+    "    if (mode == 3) { color = vec4(mix(c.rgb, fx.rgb, fx.a), alpha); return; }\n"
     "    color = vec4(mode == 0 ? c.rgb / c.a : c.rgb, 1.0);\n"
     "}\n";
 
 typedef struct GlView {
     GLuint prog, vao;
-    GLint u_rect, u_uvr, u_tex, u_mode;
+    GLint u_rect, u_uvr, u_tex, u_mode, u_fx, u_alpha;
     int win_w, win_h;
     int failed;
 } GlView;
@@ -64,6 +69,8 @@ static int view_init(EidosGl *g)
     v->u_uvr = g->glGetUniformLocation(v->prog, "uvr");
     v->u_tex = g->glGetUniformLocation(v->prog, "tex");
     v->u_mode = g->glGetUniformLocation(v->prog, "mode");
+    v->u_fx = g->glGetUniformLocation(v->prog, "fx");
+    v->u_alpha = g->glGetUniformLocation(v->prog, "alpha");
     g->glGenVertexArrays(1, &v->vao);
     return 0;
 }
@@ -149,6 +156,20 @@ void eidos_gl_view_begin(EidosGl *g, int win_w, int win_h, unsigned rgb)
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
+static float g_fx[4], g_alpha = 1.0f;
+
+void eidos_gl_view_draw_fx(EidosGl *g, unsigned tex, int x, int y, int w, int h, const int *clip, const float fade[4],
+                           float alpha)
+{
+    int i;
+
+    for (i = 0; i < 4; i++) {
+        g_fx[i] = fade[i];
+    }
+    g_alpha = alpha;
+    eidos_gl_view_draw(g, tex, 3, x, y, w, h, 0, clip);
+}
+
 void eidos_gl_view_draw(EidosGl *g, unsigned tex, int mode, int x, int y, int w, int h, int flip,
                         const int *clip)
 {
@@ -164,7 +185,7 @@ void eidos_gl_view_draw(EidosGl *g, unsigned tex, int mode, int x, int y, int w,
     } else {
         glDisable(GL_SCISSOR_TEST);
     }
-    if (mode == 2) {
+    if (mode == 2 || mode == 3) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     } else {
@@ -180,6 +201,10 @@ void eidos_gl_view_draw(EidosGl *g, unsigned tex, int mode, int x, int y, int w,
         g->glUniform4f(v->u_uvr, 0.0f, 0.0f, 1.0f, 1.0f);
     }
     g->glUniform1i(v->u_mode, mode);
+    if (mode == 3) {
+        g->glUniform4f(v->u_fx, g_fx[0], g_fx[1], g_fx[2], g_fx[3]);
+        g->glUniform1f(v->u_alpha, g_alpha);
+    }
     g->glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, (GLuint)tex);
     g->glUniform1i(v->u_tex, 0);
