@@ -59,10 +59,20 @@ int eidos_ui_enabled(void)
     return g_enabled;
 }
 
+extern void g2d_hw_hide_main_bgs(u32 mask) __attribute__((weak));
+extern void bw_ui_text_set_own(int on) __attribute__((weak));
+
 void eidos_ui_set_enabled(int on)
 {
     if (on != g_enabled) {
         g_enabled = on;
+        /* the game draws its own text windows again (engine/ui/textbox.c) */
+        if (g2d_hw_hide_main_bgs != NULL) {
+            g2d_hw_hide_main_bgs(0);
+        }
+        if (bw_ui_text_set_own != NULL) {
+            bw_ui_text_set_own(0);
+        }
         eidos_ui_reset();
         bw_input_set_host_mask(0);      /* every button the game's again */
     }
@@ -1384,6 +1394,14 @@ static void read_mouse(const EidosUiFrame *in)
 
 static const EidosUiFrame *g_in;
 
+/* Set by a recipe's match for this frame: the canvas takes the DS scale. */
+static int g_ds_scale_req;
+
+void eidos_ui_want_ds_scale(void)
+{
+    g_ds_scale_req = 1;
+}
+
 const EidosUiFrame *eidos_ui_frame_in(void)
 {
     return g_in;
@@ -1477,8 +1495,11 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             }
         }
     }
-    if (r != NULL && r->round_scale) {
-        int k = (in->win_h + 135) / 270;
+    if (r != NULL && (r->round_scale || g_ds_scale_req)) {
+        /* round_scale: the window's height over 270, rounded; a scene that
+         * shows the game's text (eidos_ui_want_ds_scale): the DS screen's
+         * own scale, so the letters are as big as the game's */
+        int k = g_ds_scale_req ? in->win_h / 192 : (in->win_h + 135) / 270;
 
         if (k > g_k) {
             g_k = k;
@@ -1488,6 +1509,12 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             set_safe(in);
             read_mouse(in);
         }
+    }
+    g_ds_scale_req = 0;
+    /* a recipe that draws the game's text windows itself leaves them out
+     * of the screen again this frame (engine/ui/textbox.c) */
+    if (g2d_hw_hide_main_bgs != NULL) {
+        g2d_hw_hide_main_bgs(0);
     }
     /* the pictures kept from earlier frames, at this canvas's size (the
      * scale changed with the scene): the crossfades still find them */

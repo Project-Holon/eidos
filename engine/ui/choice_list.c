@@ -93,8 +93,24 @@ void ui_choice_list_idle(void)
     g_target = -1;
 }
 
+#define HL 0x008BACu        /* the interface's highlight (kit UI_CYAN2) */
+
+/* a over b at k/16 */
+static u32 mix16(u32 a, u32 b, int k)
+{
+    u32 o = 0;
+    int sh;
+
+    for (sh = 0; sh < 24; sh += 8) {
+        u32 x = (a >> sh) & 255u, y = (b >> sh) & 255u;
+
+        o |= ((x * (u32)k + y * (u32)(16 - k)) / 16u) << sh;
+    }
+    return o;
+}
+
 int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const void *win_p,
-                   float ox, float oy, float s)
+                   float ox, float oy, float s, int style)
 {
     const u8 *list = (const u8 *)list_p, *win = (const u8 *)win_p;
     int cw = c->canvas->w, chh = c->canvas->h;
@@ -125,16 +141,13 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
     }
     cur = scroll + row;
 
-    /* the game's window, its frame included, in canvas pixels */
-    gx0 = (int)(ox + (float)((win[3] - 1) * 8) * s);
-    gy0 = (int)(oy + (float)((win[4] - 1) * 8) * s);
+    /* the game's window, its frame included, in canvas pixels: the list
+     * stands where the game's stood, at its right edge */
     gx1 = (int)(ox + (float)((win[3] + win[5] + 1) * 8) * s + 0.99f);
-    gy1 = (int)(oy + (float)((win[4] + win[6] + 1) * 8) * s + 0.99f);
-    pitch = (int)(16.0f * s);
-    if (pitch < 22) {
-        pitch = 22;
-    }
-    bh = pitch - 3;
+    gy0 = (int)(oy + (float)((win[4] - 1) * 8) * s);
+    (void)gx0; (void)gy1;
+    pitch = 18;
+    bh = pitch;
     w = 0;
     for (i = 0; i < rows; i++) {
         int tw;
@@ -145,10 +158,7 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
             w = tw;
         }
     }
-    w += 12;
-    h = rows * pitch + 9;
-    if (w < gx1 - gx0) w = gx1 - gx0;
-    if (h < gy1 - gy0) h = gy1 - gy0;
+    h = 4 + rows * pitch + 4;
     x = gx1 - w;
     y = gy0;
     if (x + w > cw - 4) x = cw - 4 - w;
@@ -156,9 +166,16 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
     if (y + h > chh - 4) y = chh - 4 - h;
     if (y < 4) y = 4;
 
-    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE2, 245);
+    /* the panel in the style of the box it answers (mock-ups n9, n3A) */
+    if (style == UI_CHOICE_SYSTEM) {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
+    } else if (style == UI_CHOICE_WHITE) {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0xFFFFFFu, 0x9698A0u, 255);
+    } else {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 235);
+    }
     for (i = 0; i < rows; i++) {
-        r.x = x + 6; r.y = y + 6 + i * pitch; r.w = w - 12; r.h = bh;
+        r.x = x + 3; r.y = y + 4 + i * pitch; r.w = w - 6; r.h = bh;
         if (eidos_ui_hit(r) & EIDOS_UI_HOVER) {
             hover = i;
         }
@@ -183,19 +200,34 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
         g_py = py;
     }
     for (i = 0; i < rows; i++) {
-        int ry = y + 6 + i * pitch, st, lit = row == i, j;
+        int ry = y + 4 + i * pitch, st, lit = row == i;
+        u32 ink, shadow;
 
-        r.x = x + 6; r.y = ry; r.w = w - 12; r.h = bh;
+        r.x = x + 3; r.y = ry; r.w = w - 6; r.h = bh;
         st = eidos_ui_hit(r);
-        ui_panel(c, r.x, ry, r.w, bh, UI_CUT_TL | UI_CUT_BR, 4,
-                 lit ? UI_CYAN2 : UI_BODY2, lit ? UI_CYAN : UI_EDGE, 255);
         if (lit) {
-            for (j = 0; j < 4; j++) {       /* the cursor: the field bar's mark */
-                ui_fill(c, r.x + 6 + j, ry + bh / 2 - 4 + j, 1, 9 - 2 * j, UI_WHITE, 255);
+            /* the battle sheet's chosen tile: tinted with the accent,
+             * edged in it, its strip, raised a pixel */
+            u32 base = style == UI_CHOICE_WHITE ? 0xFFFFFFu : UI_BODY;
+            u32 tintc = style == UI_CHOICE_WHITE ? mix16(HL, base, 4) : mix16(HL, base, 5);
+            int rr;
+
+            ui_panel(c, r.x, ry - 1, r.w, bh, UI_CUT_TL | UI_CUT_BR, 5, tintc, HL, 250);
+            for (rr = 3; rr < bh - 3; rr++) {
+                int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+                if (left < 6) {
+                    ui_fill(c, r.x + left, ry - 1 + rr, 6 - left, 1, HL, 255);
+                }
             }
         }
-        ui_text(c, r.x + 16, ry + ui_text_y(bh, UI_FONT_LARGE), text[i], UI_WHITE,
-                lit ? UI_NAVY : UI_EDGE, UI_FONT_LARGE, 1);
+        if (style == UI_CHOICE_WHITE) {
+            ink = 0x42424Au; shadow = 0xADADB5u;
+        } else {
+            ink = lit ? UI_WHITE : UI_LIGHT; shadow = 0x464850u;
+        }
+        ui_text(c, r.x + 10, ry - (lit ? 1 : 0) + ui_text_y(bh, UI_FONT_LARGE), text[i], ink, shadow,
+                UI_FONT_LARGE, 1);
         if (st & EIDOS_UI_CLICK) {
             g_target = g_pick ? scroll + i : -2 - (scroll + i);
             g_list = list;

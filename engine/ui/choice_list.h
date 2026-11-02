@@ -37,8 +37,11 @@ extern "C" {
  * `s` canvas pixels per DS pixel.  Returns 1 when the list was drawn, 0
  * when it cannot be read (nothing drawn).
  */
+#define UI_CHOICE_DARK   0  /* the interface's dark panel                    */
+#define UI_CHOICE_WHITE  1  /* a person's question: the white box's style    */
+#define UI_CHOICE_SYSTEM 2  /* a system question: the black box's style      */
 int  ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list, const void *win,
-                    float ox, float oy, float s);
+                    float ox, float oy, float s, int style);
 
 /* No list is open this frame: a pending walk of the cursor is dropped. */
 void ui_choice_list_idle(void);

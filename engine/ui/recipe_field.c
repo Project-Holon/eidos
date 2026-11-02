@@ -48,10 +48,13 @@
 #include "dsmem.h"
 #include "input.h"
 #include "choice_list.h"
+#include "textbox.h"
 
 #define WEAK __attribute__((weak))
 
 static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h, const char *key);
+struct FieldNow;
+static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1072,7 +1075,13 @@ static int field_match(void)
      * save (a receptionist's "Would you like to save the game?"): the
      * world, its yes/no as a choice list, the report left out */
     if (f.mode == 0 || f.mode == 5 || f.mode == 7 || f.mode == 8) {
+        u8 *list, *win;
+
         logf_scene("field");
+        /* the game's text at the game's own size */
+        if (ui_textbox_field_active(f.fm) || choices_now(&f, &list, &win)) {
+            eidos_ui_want_ds_scale();
+        }
         return 1;
     }
     return 0;
@@ -1146,16 +1155,45 @@ static int choices_now(const FieldNow *f, u8 **list, u8 **win)
  * over the world's DS screen: the window's height, centred.  Returns 1
  * while one is open (the caller's own clicks on the world wait).
  */
+extern void g2d_hw_hide_main_bgs(u32 mask) WEAK;
+extern void bw_ui_text_set_own(int on) WEAK;
+
+/*
+ * The field's text: its open windows as the interface's text boxes
+ * (engine/ui/textbox.c), the game's own windows and balloon polygons left
+ * out of the screen.  The DS screen stands at the window's height,
+ * centred.  Returns 1 while a window is open.
+ */
+static int field_text(EidosUiCtx *c, const FieldNow *f)
+{
+    u8 *list = NULL, *win = NULL;
+    float s = (float)c->canvas->h / 192.0f;
+    u32 hide;
+
+    if (bw_ui_text_set_own != NULL) {
+        bw_ui_text_set_own(1);
+    }
+    (void)choices_now(f, &list, &win);
+    hide = ui_textbox_field(c, f->fm, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s, win);
+    if (g2d_hw_hide_main_bgs != NULL) {
+        g2d_hw_hide_main_bgs(hide);
+    }
+    return hide != 0;
+}
+
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
 {
     u8 *list, *win;
     float s = (float)c->canvas->h / 192.0f;
+    int style;
 
     if (!choices_now(f, &list, &win)) {
         ui_choice_list_idle();
         return 0;
     }
-    if (!ui_choice_list(c, in, list, win, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s)) {
+    /* the list takes the style of the box it answers */
+    style = ui_textbox_field_kind(f->fm, win) == UI_TEXTBOX_SYSTEM ? UI_CHOICE_SYSTEM : UI_CHOICE_WHITE;
+    if (!ui_choice_list(c, in, list, win, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s, style)) {
         return 0;
     }
     if (right_click(in)) {
@@ -1556,6 +1594,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* While the game's place-name banner shows (it names the same place)
      * or an event runs, the bar slides up out of the way and comes back
      * after. */
+    field_text(c, &f);
     if (field_choices(c, in, &f)) {
         /* a choice list is open: its own clicks (field_choices) */
     } else if (GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0) {
@@ -1758,6 +1797,9 @@ static int lower_match(void)
         return 0;
     }
     logf_scene("field-lower");
+    if (ui_textbox_field_active(f.fm)) {
+        eidos_ui_want_ds_scale();
+    }
     return 1;
 }
 
@@ -1775,8 +1817,11 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     {
         FieldNow f;
 
-        if (field_now(&f) && field_choices(c, in, &f)) {
-            return;
+        if (field_now(&f)) {
+            field_text(c, &f);
+            if (field_choices(c, in, &f)) {
+                return;
+            }
         }
     }
     if (right_click(in)) {

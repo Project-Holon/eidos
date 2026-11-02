@@ -189,6 +189,11 @@ void eidos_ui_set_enabled(int on);
 void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
                     const EidosUiCanvas **canvas);
 
+/* From a recipe's match: this frame's canvas takes the DS screen's own
+ * scale (the window's height over 192), so text the recipe shows in the
+ * game's letters is as big as the game shows it (engine/ui/textbox.c). */
+void eidos_ui_want_ds_scale(void);
+
 /* The frame being drawn, for a recipe's match (NULL outside
  * eidos_ui_frame). */
 const EidosUiFrame *eidos_ui_frame_in(void);

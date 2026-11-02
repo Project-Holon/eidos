@@ -1,0 +1,121 @@
+/*
+ * sdk/ui_text.c -- what the one-screen text boxes (engine/ui/textbox.c)
+ * need from the field's talk balloons (stubs/ov/patch_ov021_talkmsgwin.c).
+ *
+ * The balloons are overlay 21's TalkMsgWinSys: a text window on a BG and a
+ * balloon with a tail drawn as a 3D polygon.  While the interface draws the
+ * text boxes itself, the game's balloon polygons are left out
+ * (bw_ui_text_own), and the screen point each balloon's tail aims at, the
+ * one the game works out every frame, is kept here so the interface's
+ * balloon points its tail at the same speaker.
+ */
+
+#include <stddef.h>
+
+#include "types.h"
+
+#define TALK_MAX 32
+
+typedef struct TalkTarget {
+    const void *win;
+    int x, y;
+    u32 stamp;
+} TalkTarget;
+
+static TalkTarget g_targets[TALK_MAX];
+static volatile int g_own;
+static u32 g_stamp;
+
+/* The interface draws the text boxes (1) or the game does (0). */
+void bw_ui_text_set_own(int on)
+{
+    g_own = on != 0;
+}
+
+int bw_ui_text_own(void)
+{
+    return g_own;
+}
+
+/* The game worked out where window `win`'s tail aims (DS screen pixels). */
+void bw_ui_talk_target(const void *win, int x, int y)
+{
+    int i, slot = -1, oldest = 0;
+
+    g_stamp++;
+    for (i = 0; i < TALK_MAX; i++) {
+        if (g_targets[i].win == win) {
+            slot = i;
+            break;
+        }
+        if (g_targets[i].stamp < g_targets[oldest].stamp) {
+            oldest = i;
+        }
+    }
+    if (slot < 0) {
+        slot = oldest;
+    }
+    g_targets[slot].win = win;
+    g_targets[slot].x = x;
+    g_targets[slot].y = y;
+    g_targets[slot].stamp = g_stamp;
+}
+
+/* Where window `win`'s tail aims: 1 when the game has said. */
+int bw_ui_talk_target_get(const void *win, int *x, int *y)
+{
+    int i;
+
+    for (i = 0; i < TALK_MAX; i++) {
+        if (g_targets[i].win == win && win != NULL) {
+            *x = g_targets[i].x;
+            *y = g_targets[i].y;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* The field's framed windows (stubs/ov/patch_ov021_field_msgbg.c)      */
+/* ------------------------------------------------------------------ */
+
+#define FIELD_WIN_MAX 16
+
+static const void *g_field_wins[FIELD_WIN_MAX];
+
+void bw_ui_field_win_add(const void *bmpWin)
+{
+    int i;
+
+    for (i = 0; i < FIELD_WIN_MAX; i++) {
+        if (g_field_wins[i] == NULL || g_field_wins[i] == bmpWin) {
+            g_field_wins[i] = bmpWin;
+            return;
+        }
+    }
+}
+
+void bw_ui_field_win_remove(const void *bmpWin)
+{
+    int i;
+
+    for (i = 0; i < FIELD_WIN_MAX; i++) {
+        if (g_field_wins[i] == bmpWin) {
+            g_field_wins[i] = NULL;
+        }
+    }
+}
+
+/* The open windows, in the order made; returns how many. */
+int bw_ui_field_wins(const void **out, int max)
+{
+    int i, n = 0;
+
+    for (i = 0; i < FIELD_WIN_MAX && n < max; i++) {
+        if (g_field_wins[i] != NULL) {
+            out[n++] = g_field_wins[i];
+        }
+    }
+    return n;
+}

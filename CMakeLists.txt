@@ -577,6 +577,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_loader.c     # the loader: the library, the host table, the handlers
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_wasm.c       # code mods built for wasm (WAMR, docs/mod-code-wasm.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_title.c     # title menu hook state (docs/hooks.md)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ui_text.c       # the one-screen text boxes and the talk balloons
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_fixed.c  # the place's move for an effect script's fixed points
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/field_fade.c  # the door fade-in's step (stubs/ov/patch_ov021_event_fieldmap_control.c)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_text.c           # the port's text path: the sink that shows a queued message
@@ -1129,6 +1130,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_input.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_field.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/choice_list.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/textbox.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_starter.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
