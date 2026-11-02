@@ -119,6 +119,31 @@ static void load_file(u32 id)
     char path[1100];
     u32 k;
 
+    /* EIDOS_LANG_AUDIT (sdk/langmap.c): every overlay laid out once, so
+     * the audit sees them all, not only the ones this run loads */
+    {
+        static int audited;
+
+        if (!audited && getenv("EIDOS_LANG_AUDIT") != NULL && bw_lang_active()) {
+            u32 i, n, sz;
+
+            audited = 1;
+            for (i = 0; i < OVL_MAX; i++) {
+                const BwOverlayDesc *d = bw_overlay_desc(i);
+                u8 *b, *eng;
+
+                snprintf(rel, sizeof(rel), "overlays_dec/y9_%04lu.bin", (unsigned long)i);
+                if (d == NULL || extract_path(path, sizeof(path), rel) != 0
+                    || (b = read_whole(path, &n)) == NULL) {
+                    continue;
+                }
+                eng = bw_lang_relayout_overlay(i, d->ram_address, d->ram_size, b, n, &sz);
+                free(eng);
+                free(b);
+            }
+        }
+    }
+
     f->tried = 1;
     for (k = 0; k < 2 && f->bytes == NULL; k++) {
         snprintf(rel, sizeof(rel), "%sy9_%04lu.bin", dirs[k], (unsigned long)id);

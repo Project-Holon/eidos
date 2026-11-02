@@ -362,7 +362,86 @@ static int to_english_any_overlay(u32 word, u32 *out)
     return (int)found;
 }
 
-static void translate_words(u8 *img, u32 size, int region)
+#include "langmap_bytes.h"
+
+/* EIDOS_LANG_AUDIT=<English Black's extract> (tools/langmap_bytes.py): the
+ * English image of the region translate_words is working on, so a word the
+ * translation would change while English Black holds the very same bytes
+ * there is reported (and left alone): data that only looks like an
+ * address. */
+static u8 *g_audit_eng;
+static u32 g_audit_size;
+
+static u8 *read_file(const char *path, u32 *size)
+{
+    FILE *fp = fopen(path, "rb");
+    long n;
+    u8 *b;
+
+    if (fp == NULL) {
+        return NULL;
+    }
+    fseek(fp, 0, SEEK_END);
+    n = ftell(fp);
+    rewind(fp);
+    b = n > 0 ? (u8 *)malloc((size_t)n) : NULL;
+    if (b != NULL && fread(b, 1, (size_t)n, fp) != (size_t)n) {
+        free(b);
+        b = NULL;
+    }
+    fclose(fp);
+    *size = b != NULL ? (u32)n : 0;
+    return b;
+}
+
+static void audit_load(int region)
+{
+    const char *root = getenv("EIDOS_LANG_AUDIT");
+    char path[1100];
+
+    free(g_audit_eng);
+    g_audit_eng = NULL;
+    g_audit_size = 0;
+    if (root == NULL) {
+        return;
+    }
+    if (region < 0) {
+        snprintf(path, sizeof path, "%s/arm9_dec.bin", root);
+    } else {
+        snprintf(path, sizeof path, "%s/overlays_dec/y9_%04d.bin", root, region);
+    }
+    g_audit_eng = read_file(path, &g_audit_size);
+}
+
+/* Whether the word at English address `addr` of `region` is one of the
+ * cartridge's k_byte_words (sorted by code, region, address). */
+static int byte_table(int region, u32 addr)
+{
+    u32 lo = 0, hi = sizeof(k_byte_words) / sizeof(k_byte_words[0]);
+
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2;
+        int c = memcmp(k_byte_words[mid].code, g_code, 4);
+
+        if (c == 0) {
+            c = k_byte_words[mid].region < region ? -1 : k_byte_words[mid].region > region;
+        }
+        if (c == 0) {
+            c = k_byte_words[mid].addr < addr ? -1 : k_byte_words[mid].addr > addr;
+        }
+        if (c == 0) {
+            return 1;
+        }
+        if (c < 0) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return 0;
+}
+
+static void translate_words(u8 *img, u32 size, int region, u32 base)
 {
     u32 i;
 
@@ -370,11 +449,17 @@ static void translate_words(u8 *img, u32 size, int region)
         u32 v = (u32)img[i] | (u32)img[i + 1] << 8 | (u32)img[i + 2] << 16 | (u32)img[i + 3] << 24;
         u32 e;
 
-        if (v < 0x02000000u || v >= 0x02400000u) {
+        if (v < 0x02000000u || v >= 0x02400000u || (g_audit_eng == NULL && byte_table(region, base + i))) {
             continue;
         }
         if ((region >= 0 && to_english_in(v, region, &e)) || to_english_in(v, -1, &e)
             || to_english_any_overlay(v, &e)) {
+            if (e != v && g_audit_eng != NULL && i + 4 <= g_audit_size
+                && memcmp(g_audit_eng + i, img + i, 4) == 0) {
+                fprintf(stderr, "langaudit %s %d 0x%08lX 0x%08lX\n", g_code, region,
+                        (unsigned long)(base + i), (unsigned long)v);
+                continue;
+            }
             if (e != v) {
                 img[i] = (u8)e;
                 img[i + 1] = (u8)(e >> 8);
@@ -419,7 +504,8 @@ u8 *bw_lang_relayout_arm9(const u8 *image, u32 image_size, u32 *size)
     g_tgt_arm9 = keep_copy(image, image_size);
     g_tgt_arm9_size = g_tgt_arm9 != NULL ? image_size : 0;
     relayout(-1, out, ARM9_BASE, end, image, ARM9_BASE, image_size);
-    translate_words(out, end, -1);
+    audit_load(-1);
+    translate_words(out, end, -1, ARM9_BASE);
     *size = end;
     return out;
 }
@@ -451,7 +537,8 @@ u8 *bw_lang_relayout_overlay(u32 id, u32 eng_base, u32 eng_size, const u8 *file,
         g_tgt_ovl_size[id] = g_tgt_ovl[id] != NULL ? file_size : 0;
     }
     relayout((int)id, out, eng_base, eng_size, file, tgt_base, file_size);
-    translate_words(out, eng_size, (int)id);
+    audit_load((int)id);
+    translate_words(out, eng_size, (int)id, eng_base);
     *size = eng_size;
     return out;
 }
