@@ -41,9 +41,13 @@ const char *bw_link_end_reason(void);
 /* Players in the session, this one included (0 when off).                 */
 u32  bw_link_players(void);
 
-/* 1 while the console's radio is on: the game's
- * APP_ENV_IsWirelessAvailable answers it.                                 */
+/* 1 while the console has a radio: a Link session is open, or a relay is
+ * set (the shared air, joined when the game turns its radio on).  The
+ * game's APP_ENV_IsWirelessAvailable answers it.                          */
 int  bw_link_wireless_on(void);
+
+/* 1 while the console is in one of metaxy's public rooms (the air).      */
+int  bw_link_on_air(void);
 
 /* Each frame, on the game's thread: notices the end of the session.      */
 void bw_link_frame(void);

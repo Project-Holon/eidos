@@ -99,18 +99,24 @@ blocks once every peer's frame N has arrived, and the game waits a frame
 when the radio drops a frame. Trades and battles wait for both sides and do
 not notice. The Entralink and the Musical move a little later than on a DS.
 
-## The Link session
+## The shared air (no codes)
 
-Co-op multiplayer joiners have no save of their own. Trades and battles need
-each player's own save, so Link is its own session type in the title menu's
-Multiplayer screen: "Link" (each player plays their own save, the radio
-features see the others) beside "Co-op". A Link session is a metaxy session
-with the key `link` and no host-save rules. While it is open:
+Link play works like a DS's radio: nobody hosts and nobody types a code.
+While a relay is set, the game is told it has wireless
+(`APP_ENV_IsWirelessAvailable`), and when it turns its radio on (the WM is
+initialised: the C-Gear on, the Union Room, the Entralink) `sdk/link.c`
+joins metaxy's shared air in the background with an `A` frame
+(metaxy `docs/SPEC.md`, section 4a). metaxy puts the player in the fullest
+public room of the key `bw:<eidos version>:radio`, up to `air_room` players
+(8), which stands for the radio's range; everyone in the room hears
+everyone else's beacons. When the game turns its radio off, the player
+leaves. `EIDOS_NO_LINK=1` keeps the radio off.
 
-- `APP_ENV_IsWirelessAvailable` answers yes again (stubs/game_app_env.c
-  answers no today, which keeps the C-Gear's wireless off);
-- `NET_DEVICE_TABLE_Select(0 or 5)` gives the Link device;
-- the C-Gear's nearby players are the session's players.
+A session with a code (`bw_link_host`, `bw_link_join`) still exists for
+tests (`EIDOS_LINK_TEST`) and private play.
+
+Next: the activity in the key (the Union Room, the Entralink, the field),
+so a player meets others doing the same thing; IR paired the same way.
 
 ## Phases
 

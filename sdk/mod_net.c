@@ -2548,7 +2548,42 @@ int bw_mod_net_session_host(char *code_out, u32 size)
  * `session_join`: the port connects to the relay and asks it to link this
  * player to the session the code names.
  */
+/* A join (`J` with a code) or the shared air (`A` with a room key,
+ * metaxy's public rooms): the same handshake, the relay's answer is a
+ * join's. */
+static int session_enter(char kind, const char *code);
+
 int bw_mod_net_session_join(const char *code)
+{
+    return session_enter(BW_MOD_NET_MSG_JOIN, code);
+}
+
+int bw_mod_net_session_air(const char *key)
+{
+    return session_enter('A', key);
+}
+
+int bw_mod_net_air_move(const char *key)
+{
+    char payload[256];
+    int n, rc = BW_MOD_NET_E_NO_SESSION;
+
+    net_init();
+    if (key == NULL || key[0] == '\0') {
+        return BW_MOD_NET_E_ARG;
+    }
+    bw_mutex_lock(g_lock);
+    if (g_session.running) {
+        n = snprintf(payload, sizeof(payload), "%s %s %s %s", BW_MOD_NET_PROTO,
+                     g_session.token, key, g_player[0] != '\0' ? g_player : "player");
+        rc = (n > 0 && (size_t)n < sizeof(payload) &&
+              relay_send('A', payload, (u32)n) == 0) ? BW_MOD_NET_OK : BW_MOD_NET_E_IO;
+    }
+    bw_mutex_unlock(g_lock);
+    return rc;
+}
+
+static int session_enter(char kind, const char *code)
 {
     const BwModNetTransport *t;
     char payload[256];
@@ -2562,7 +2597,11 @@ int bw_mod_net_session_join(const char *code)
     if (code == NULL) {
         return BW_MOD_NET_E_ARG;
     }
-    code_clean(clean, sizeof(clean), code);
+    if (kind == 'A') {
+        copy_text(clean, sizeof(clean), code);       /* a key, kept as is */
+    } else {
+        code_clean(clean, sizeof(clean), code);
+    }
     if (clean[0] == '\0') {
         return BW_MOD_NET_E_ARG;
     }
@@ -2608,7 +2647,7 @@ int bw_mod_net_session_join(const char *code)
         bw_mutex_unlock(g_lock);
         return BW_MOD_NET_E_ARG;
     }
-    if (relay_send(BW_MOD_NET_MSG_JOIN, payload, (u32)n) != 0) {
+    if (relay_send(kind, payload, (u32)n) != 0) {
         bw_mutex_unlock(g_lock);
         return BW_MOD_NET_E_IO;
     }
@@ -2663,7 +2702,7 @@ int bw_mod_net_session_join(const char *code)
     g_session.running = 1;
     /* a host whose connection dropped joins its own code again as peer 1,
      * and is the host again */
-    g_session.hosting = (g_session.self == 1u);
+    g_session.hosting = kind != 'A' && (g_session.self == 1u);
     copy_text(g_session.code, sizeof(g_session.code), clean);
     if (g_session.name[0] == '\0') {
         copy_text(g_session.name, sizeof(g_session.name),

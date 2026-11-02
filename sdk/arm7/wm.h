@@ -32,6 +32,9 @@ typedef struct BwWmAir {
     int (*send)(void *user, const u8 *bytes, u32 n);
     /* The next message heard, 1 when there was one, 0 when none.         */
     int (*recv)(void *user, u8 *bytes, u32 cap, u32 *n);
+    /* The game turned its radio on (WM initialised) or off (WM ended);
+     * NULL when the air does not care.                                     */
+    void (*power)(void *user, int on);
 } BwWmAir;
 
 /*

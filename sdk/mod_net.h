@@ -177,6 +177,10 @@ typedef struct BwModNetTransport {
  */
 int  bw_mod_net_session_host(char *code_out, u32 size);
 int  bw_mod_net_session_join(const char *code);
+/* The shared air (metaxy's public rooms, docs/link-play.md): join the
+ * fullest room of `key`, or move the running air session to another key. */
+int  bw_mod_net_session_air(const char *key);
+int  bw_mod_net_air_move(const char *key);
 void bw_mod_net_session_leave(void);
 int  bw_mod_net_session_send(u32 peer, const void *buf, u32 size);
 

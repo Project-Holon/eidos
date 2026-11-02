@@ -1087,6 +1087,8 @@ static void command(u8 *cmd)
         initial_status(rd32(cmd + 16));
         set_state(apiid == API_INITIALIZE ? ST_IDLE : ST_STOP);
         post_basic(apiid, ERR_SUCCESS);
+        if (g_wm.has_air && g_wm.air.power != NULL)
+            g_wm.air.power(g_wm.air.user, 1);
         break;
     case API_DISABLE:
         set_state(ST_READY);
@@ -1107,8 +1109,11 @@ static void command(u8 *cmd)
         break;
     case API_END:
         drop_all_links(1);
+        flush();
         set_state(ST_READY);
         post_basic(apiid, ERR_SUCCESS);
+        if (g_wm.has_air && g_wm.air.power != NULL)
+            g_wm.air.power(g_wm.air.user, 0);
         break;
     case API_SET_P_PARAM: {
         const u8 *pp = host_of(rd32(cmd + 4));

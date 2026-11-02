@@ -1,5 +1,13 @@
 /*
- * sdk/link.c -- Link sessions (sdk/link.h, docs/link-play.md).
+ * sdk/link.c -- Link play: the console's radio on metaxy (sdk/link.h,
+ * docs/link-play.md).
+ *
+ * Two ways onto the air.  The usual one is the shared air: as on a DS, the
+ * radio is simply there; when the game turns it on (WM initialised: the
+ * C-Gear on, the Union Room, the Entralink) this file joins metaxy's public
+ * rooms (`A`, bw:<version>:<activity>) in the background, and when the game
+ * turns it off it leaves.  No code, no host.  The other is a session with a
+ * code (bw_link_host / bw_link_join), for tests and private play.
  *
  * The session is the relay client's (sdk/mod_net.c); this file puts the
  * console's radio (sdk/arm7/wm.c) on it.  The radio's air messages go to
@@ -40,7 +48,18 @@ static struct {
     u32 q_head, q_count;
     u32 dropped;
     int was_active;
+    /* the shared air */
+    int air_installed;          /* the radio is on the air (wm.c)          */
+    int air_want;               /* the game's radio is on                  */
+    volatile int air_up;        /* joined a public room                    */
+    volatile int air_busy;      /* a join is running on its thread         */
+    u64 air_last_try;
 } g_link;
+
+static u64 link_ms(void)
+{
+    return bw_clock_ns() / 1000000ull;
+}
 
 static void lock(void)
 {
@@ -104,7 +123,107 @@ static void on_link(u32 peer, int kind, const void *buf, u32 size)
     unlock();
 }
 
-static const BwWmAir k_air = { NULL, air_send, air_recv };
+static void air_power(void *user, int on);
+
+static const BwWmAir k_air = { NULL, air_send, air_recv, air_power };
+
+/* ------------------------------------------------------------------ */
+/* The shared air                                                      */
+/* ------------------------------------------------------------------ */
+
+/* The room key: players on the same eidos version share rooms. */
+static void air_key(char *out, u32 size)
+{
+    char *c;
+
+    snprintf(out, size, "bw:%s:radio", bw_mp_version());
+    /* the relay takes A-Z a-z 0-9 . : _ - in a key (a build's "+hash") */
+    for (c = out; *c != 0; c++) {
+        if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9')
+              || *c == '.' || *c == ':' || *c == '_' || *c == '-'))
+            *c = '-';
+    }
+}
+
+static void air_join_thread(void *arg)
+{
+    char key[80];
+    int rc;
+
+    (void)arg;
+    air_key(key, sizeof key);
+    rc = bw_mod_net_session_air(key);
+    if (rc == 0) {
+        g_link.air_up = 1;
+        fprintf(stderr, "eidos: link: on the air (%s)\n", key);
+    } else {
+        fprintf(stderr, "eidos: link: the air is not reachable (%d)\n", rc);
+    }
+    g_link.air_busy = 0;
+}
+
+static void air_try(void)
+{
+    u64 now = link_ms();
+
+    if (g_link.state == BW_LINK_OPEN || g_link.air_up || g_link.air_busy || !g_link.air_want)
+        return;
+    if (bw_mp_state() != BW_MP_OFF && bw_mp_state() != BW_MP_ENDED)
+        return;
+    if (bw_mod_net_session_active())
+        return;                     /* a mod's session holds the relay      */
+    if (g_link.air_last_try != 0 && now - g_link.air_last_try < 15000u)
+        return;
+    g_link.air_last_try = now;
+    g_link.air_busy = 1;
+    if (bw_thread_start(air_join_thread, NULL) == NULL)
+        g_link.air_busy = 0;
+}
+
+static void air_power(void *user, int on)
+{
+    (void)user;
+    g_link.air_want = on;
+    if (on) {
+        g_link.air_last_try = 0;
+        air_try();
+    } else if (g_link.air_up && g_link.state != BW_LINK_OPEN) {
+        g_link.air_up = 0;
+        bw_mod_net_session_leave();
+    }
+}
+
+/* The radio is there whenever a relay is: the console joins the air when
+ * the game turns its radio on.  EIDOS_NO_LINK=1 keeps it off. */
+static int air_allowed(void)
+{
+    const char *off = getenv("EIDOS_NO_LINK");
+
+    if (off != NULL && off[0] != '\0' && off[0] != '0')
+        return 0;
+    if (bw_mp_state() != BW_MP_OFF && bw_mp_state() != BW_MP_ENDED)
+        return 0;
+    return bw_mod_net_relay()[0] != '\0';
+}
+
+static void air_install(void)
+{
+    u8 mac[6];
+
+    if (g_link.air_installed)
+        return;
+    lock();
+    if (g_link.q == NULL)
+        g_link.q = (Msg *)calloc(QUEUE_MAX, sizeof(Msg));
+    g_link.q_head = 0;
+    g_link.q_count = 0;
+    unlock();
+    bw_link_mac(mac);
+    memcpy(bw_ds_ptr(BW_FW_MAC_ADDR), mac, 6);
+    bw_mod_net_set_link_handler(on_link);
+    bw_arm7_wm_set_air(&k_air);
+    g_link.air_installed = 1;
+}
 
 /* ------------------------------------------------------------------ */
 /* The MAC address                                                     */
@@ -194,6 +313,10 @@ int bw_link_host(char *code, u32 size)
         return -1;
     if (g_link.state == BW_LINK_OPEN)
         bw_link_leave();
+    if (g_link.air_up) {
+        g_link.air_up = 0;
+        bw_mod_net_session_leave();
+    }
     rc = bw_mod_net_session_host(got, sizeof got);
     if (rc != 0)
         return rc;
@@ -215,6 +338,10 @@ int bw_link_join(const char *code)
         return -1;
     if (g_link.state == BW_LINK_OPEN)
         bw_link_leave();
+    if (g_link.air_up) {
+        g_link.air_up = 0;
+        bw_mod_net_session_leave();
+    }
     rc = bw_mod_net_session_join(code);
     if (rc != 0)
         return rc;
@@ -242,6 +369,13 @@ void bw_link_leave(void)
 
 void bw_link_frame(void)
 {
+    if (g_link.air_installed && g_link.state != BW_LINK_OPEN) {
+        if (g_link.air_up && !bw_mod_net_session_active()) {
+            g_link.air_up = 0;         /* the relay dropped us: try again    */
+        }
+        air_try();
+        return;
+    }
     if (g_link.state != BW_LINK_OPEN)
         return;
     if (!bw_mod_net_session_active()) {
@@ -264,5 +398,15 @@ u32 bw_link_players(void)
 
 int bw_link_wireless_on(void)
 {
-    return g_link.state == BW_LINK_OPEN && bw_arm7_wm_has_air();
+    if (g_link.state == BW_LINK_OPEN)
+        return bw_arm7_wm_has_air();
+    if (!air_allowed())
+        return 0;
+    air_install();
+    return 1;
+}
+
+int bw_link_on_air(void)
+{
+    return g_link.air_up;
 }
