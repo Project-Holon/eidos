@@ -737,6 +737,56 @@ static void debug_warp(void)
     }
 }
 
+/* Tests: EIDOS_DEBUG_SCRIPT="ID" runs the game's script ID (a global
+ * script: the vending machine's 10400, the shared ones from 2000) as the
+ * game starts a script, its work values first set from the "VAR=VALUE"
+ * pairs after the ID (hex: "2801 8000=11 8001=1" gives a Potion through the
+ * shared item script), once the field has run 90 frames with no event
+ * (after EIDOS_DEBUG_WARP's arrival when both are set), so a test reaches
+ * a screen the story puts far away. */
+extern void *ov010_SCRIPT_SYS_CreateScriptEventSimple(void *gsys, u16 scriptId, void *target, int reserved)
+    __attribute__((weak));
+extern void *ov010_SCRIPT_SYS_GetEventScriptWork(void *event) __attribute__((weak));
+extern int ov010_SCRIPT_WORK_SetWorkValue(void *work, u32 id, int value) __attribute__((weak));
+
+static void debug_script(void)
+{
+    static int done, wait;
+    const char *what = getenv("EIDOS_DEBUG_SCRIPT");
+    u8 *gs;
+    void *ev;
+
+    if (done || what == NULL || &bw_dsref__GameSystemGlobal == NULL || GAMESYSTEM_SetEvent == NULL
+        || GAMESYSTEM_GetEvent == NULL || ov010_SCRIPT_SYS_CreateScriptEventSimple == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    if (gs == NULL || *(void **)(gs + 0x20) == NULL || GAMESYSTEM_GetEvent(gs) != NULL) {
+        wait = 0;
+        return;
+    }
+    if (++wait < (getenv("EIDOS_DEBUG_WARP") != NULL ? 330 : 90)) {
+        return;
+    }
+    done = 1;
+    ev = ov010_SCRIPT_SYS_CreateScriptEventSimple(gs, (u16)atoi(what), NULL, 0);
+    if (ev != NULL && ov010_SCRIPT_SYS_GetEventScriptWork != NULL && ov010_SCRIPT_WORK_SetWorkValue != NULL) {
+        const char *p = strchr(what, ' ');
+        void *sw = ov010_SCRIPT_SYS_GetEventScriptWork(ev);
+        unsigned var, val;
+        int n;
+
+        while (p != NULL && sw != NULL && sscanf(p, " %x=%x%n", &var, &val, &n) == 2) {
+            ov010_SCRIPT_WORK_SetWorkValue(sw, var, (int)val);
+            p += n;
+        }
+    }
+    if (ev != NULL) {
+        GAMESYSTEM_SetEvent(gs, ev);
+        fprintf(stderr, "eidos: debug script %s\n", what);
+    }
+}
+
 /* EIDOS_DEBUG_BATTLE="wild SPECIES LEVEL" or "trainer ID" (the spot
  * editor's Preview in game, tools/spot-editor; EIDOS_DEBUG_FOES replaces
  * the trainer's team, as EIDOS_DEBUG_PARTY the player's): starts that battle through
@@ -1049,6 +1099,7 @@ void eidos_ui_game_frame(void)
         debug_party();
         debug_warp();
         debug_battle();
+        debug_script();
     }
 
     for (i = 0; i < n; i++) {

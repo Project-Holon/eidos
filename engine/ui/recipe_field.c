@@ -57,6 +57,10 @@ struct FieldNow;
 static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
 static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldNow *f);
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
+static int power_card(EidosUiCtx *c, const struct FieldNow *f);
+static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
+static void season_card(EidosUiCtx *c, const struct FieldNow *f);
+static int season_shown(const struct FieldNow *f);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1056,6 +1060,9 @@ extern void *FIELDMAP_GetPlaceName(void *fieldMap) __attribute__((weak));
  * player has no menu then, and the bar keeps out of the way. */
 extern int GAMESYSTEM_IsEventActive(void *gameSystem) __attribute__((weak));
 
+static int banner_shown(const FieldNow *f);
+static void place_banner(EidosUiCtx *c, const FieldNow *f);
+
 static int banner_shown(const FieldNow *f)
 {
     const u8 *pn;
@@ -1065,6 +1072,51 @@ static int banner_shown(const FieldNow *f)
     }
     pn = (const u8 *)FIELDMAP_GetPlaceName(f->fm);
     return pn != NULL && rd32(pn + 0x3C) != 0;
+}
+
+/*
+ * The place-name banner (mock-up "place_banner"): while the game shows its
+ * banner for a new zone (FieldPlaceName.state +0x3C not 0), the bar is away
+ * and a banner of the interface's own drops in at the top left with the
+ * zone's name in large letters (the bar's own words: a/0/0/2 file 0x59);
+ * the game's banner (BG3 and its flying letters) is left out of the screen
+ * (field_text).  It slides in over its first frames (frame +0x42 of the
+ * first state) and out as the game's leaves.
+ */
+static void place_banner(EidosUiCtx *c, const FieldNow *f)
+{
+    const u8 *pn = FIELDMAP_GetPlaceName != NULL ? (const u8 *)FIELDMAP_GetPlaceName(f->fm) : NULL;
+    char place[64];
+    int w, x, y = 4, h = 40, k = 2, frame, slide;
+    u32 zone;
+
+    if (pn == NULL || ZONEDATA_GetPlaceNameId == NULL) {
+        return;
+    }
+    zone = rd16(pn + 0x46);
+    place[0] = '\0';
+    msg_text(0x59, ZONEDATA_GetPlaceNameId(zone), place, (int)sizeof(place));
+    if (place[0] == '\0') {
+        return;
+    }
+    w = ui_text_w(place, UI_FONT_LARGE) * k + 34;
+    frame = rd16(pn + 0x42);
+    slide = frame < 12 ? (12 - frame) * (w + 8) / 12 : 0;
+    x = 4 - slide;
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 8, 0x000000u, 0x464850u, 235);
+    {
+        int rr;
+
+        for (rr = 3; rr < h - 3; rr++) {
+            int left = 3 + (rr < 10 ? 10 - rr : 0);
+
+            if (left < 6) {
+                ui_fill(c, x + left, y + rr, 6 - left, 1, 0x008BACu, 255);
+            }
+        }
+    }
+    ui_text(c, x + 14, y + 4, place, UI_WHITE, 0x464850u, UI_FONT_LARGE, k);
+    ui_fill(c, x + 14, y + h - 5, w - 28, 1, 0x008BACu, 255);
 }
 
 static int field_match(void)
@@ -1179,10 +1231,168 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     }
     (void)choices_now(f, &list, &win);
     hide = ui_textbox_field(c, f->fm, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s, win);
+    item_card(c, f, hide != 0);
+    season_card(c, f);
+    if (banner_shown(f)) {
+        hide |= 0x8u | 0x10u;           /* the game's banner: BG3, its letters */
+    }
+    if (season_shown(f)) {
+        hide |= 0x8u;                   /* the game's scoreboard: BG3        */
+    }
     if (g2d_hw_hide_main_bgs != NULL) {
         g2d_hw_hide_main_bgs(hide);
     }
     return hide != 0;
+}
+
+/*
+ * The item a script just gave (mock-up "item_get"): while the game's
+ * "obtained" message is up, a card above it with the item's icon, its
+ * name and its pocket (the Bag's own words).  The script command that puts
+ * the item in the Bag tells the port which one (bw_ui_item_got,
+ * stubs/ov/patch_ov021_scrcmd_trainer_audio_item.c); the card shows from
+ * that moment until the message closes.
+ */
+extern u32 bw_ui_item_last(u32 *count, u32 *serial) WEAK;
+extern void FILE_UTIL_ReadString(void *dst, u32 entry, u32 heap) WEAK;
+extern u32 FILE_UTIL_GetItemParam(u32 item, u32 param, u32 heap) WEAK;
+extern u32 ov021_FIELDMAP_GetHeapId(void *fieldMap) WEAK;
+
+typedef struct ItemCard {
+    u32 serial;             /* the item the card is for                    */
+    u32 item;
+    u32 pocket;
+    char name[48];
+    volatile int ready;
+    void *fm;
+} ItemCard;
+
+static ItemCard g_item_card;
+static u32 g_item_seen;     /* the item serial last frame                 */
+static u32 g_item_age;      /* frames since it changed                    */
+static int g_item_show;     /* this message is the item's                 */
+static int g_item_text;     /* a message was up last frame                */
+
+typedef struct ItemStr { u16 capacity, length; u32 magic; u16 chars[64]; } ItemStr;
+
+static void item_card_make(void *arg)
+{
+    ItemCard *k = (ItemCard *)arg;
+    ItemStr s;
+    u32 heap = ov021_FIELDMAP_GetHeapId != NULL ? ov021_FIELDMAP_GetHeapId(k->fm) : 0;
+
+    k->name[0] = '\0';
+    if (FILE_UTIL_ReadString != NULL) {
+        s.capacity = 64;
+        s.length = 0;
+        s.magic = 0xB6F8D2ECu;
+        s.chars[0] = 0xFFFFu;
+        FILE_UTIL_ReadString(&s, k->item, heap);
+        units_to_utf8(s.chars, 64, k->name, (int)sizeof k->name);
+    }
+    k->pocket = FILE_UTIL_GetItemParam != NULL ? FILE_UTIL_GetItemParam(k->item, 5, heap) : 99u;
+    k->ready = 1;
+}
+
+static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
+{
+    u32 serial = 0, item;
+    int cw = c->canvas->w, ch = c->canvas->h, w, x, y;
+    const UiImage *ic;
+    const char *pocket;
+
+    if (bw_ui_item_last == NULL) {
+        return;
+    }
+    item = bw_ui_item_last(NULL, &serial);
+    /* the item's message is the one that opens soon after the item went
+     * into the Bag (the script prints it next) */
+    if (serial != g_item_seen) {
+        g_item_seen = serial;
+        g_item_age = 0;
+        g_item_show = text_up;
+    } else if (g_item_age < 100000u) {
+        g_item_age++;
+    }
+    if (text_up && !g_item_text) {
+        g_item_show = g_item_age < 240u;
+    }
+    g_item_text = text_up;
+    if (!text_up || !g_item_show || item == 0 || item > 0x400) {
+        return;
+    }
+    if (g_item_card.serial != serial) {
+        g_item_card.serial = serial;
+        g_item_card.item = item;
+        g_item_card.ready = 0;
+        g_item_card.fm = f->fm;
+        if (!eidos_ui_game_call(item_card_make, &g_item_card)) {
+            g_item_card.serial = 0;
+            return;
+        }
+    }
+    if (!g_item_card.ready) {
+        return;
+    }
+    pocket = g_item_card.pocket < 5 ? ui_game_text(2, 0x37, g_item_card.pocket) : "";
+    ic = ui_item_icon((u16)item);
+    w = ui_text_w(g_item_card.name, UI_FONT_LARGE);
+    if (ui_text_w(pocket, UI_FONT_SMALL) > w) w = ui_text_w(pocket, UI_FONT_SMALL);
+    w += 50;
+    x = (cw - w) / 2;
+    y = ch - 4 - 42 - 8 - 34;           /* above the box at the bottom      */
+    ui_panel(c, x, y, w, 34, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
+    ui_panel(c, x + 4, y + 3, 28, 28, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, 0x008BACu, 255);
+    if (ic != NULL) {
+        ui_image(c, x + 6, y + 5, ic, 1);
+    }
+    ui_text(c, x + 38, y + 2, g_item_card.name, UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
+    ui_text(c, x + 38, y + 20, pocket, 0x008BACu, 0x313131u, UI_FONT_SMALL, 1);
+}
+
+/*
+ * The season card (mock-up "season"): when a new season starts the game
+ * shows it on its electric scoreboard (ov020 el_scoreboard.c, an event the
+ * field's fade runs).  While that event runs, a card in the middle shows
+ * the season in the game's words (a/0/0/2 file 0, 30 + season) with
+ * Deerling in that season's form.
+ *
+ * ElScoreboardWork (ov020/el_scoreboard_types.h): targetSeason 0x14.
+ */
+extern int ov020_EL_SCOREBOARD_EventMain(void *ev, int *seq, void *work) WEAK;
+
+static int season_shown(const FieldNow *f)
+{
+    const u8 *ev = GAMESYSTEM_GetEvent != NULL ? (const u8 *)GAMESYSTEM_GetEvent(f->gs) : NULL;
+
+    return ev != NULL && ov020_EL_SCOREBOARD_EventMain != NULL
+           && (uintptr_t)rd32(ev + 4) == (uintptr_t)ov020_EL_SCOREBOARD_EventMain;
+}
+
+static void season_card(EidosUiCtx *c, const FieldNow *f)
+{
+    const u8 *ev = GAMESYSTEM_GetEvent != NULL ? (const u8 *)GAMESYSTEM_GetEvent(f->gs) : NULL;
+    const u8 *work;
+    int cw = c->canvas->w, ch = c->canvas->h, mw = 220, mh = 150, x, y, season, k = 2;
+    const UiImage *ic;
+    const char *name;
+
+    if (ev == NULL || ov020_EL_SCOREBOARD_EventMain == NULL
+        || (uintptr_t)rd32(ev + 4) != (uintptr_t)ov020_EL_SCOREBOARD_EventMain || (work = rdp(ev + 0x0C)) == NULL) {
+        return;
+    }
+    season = work[0x14] & 3;
+    name = ui_game_text(2, 0, 30u + (u32)season);
+    x = (cw - mw) / 2;
+    y = (ch - mh) / 2;
+    ui_panel(c, x, y, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    ic = ui_mon_icon(585, (u8)season, 0);
+    if (ic != NULL) {
+        ui_image(c, x + (mw - ic->w * 3) / 2, y + 2, ic, 3);
+    }
+    ui_text(c, x + (mw - ui_text_w(name, UI_FONT_LARGE) * k) / 2, y + 102, name, UI_WHITE, 0x313131u,
+            UI_FONT_LARGE, k);
+    ui_fill(c, x + 24, y + mh - 8, mw - 48, 1, 0x008BACu, 255);
 }
 
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
@@ -1633,6 +1843,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     } else {
         g_bar_slide = g_bar_slide > 2 ? g_bar_slide - 2 : 0;
     }
+    if (banner_shown(&f)) {
+        place_banner(c, &f);
+    }
     if (g_bar_slide >= bh + 1) {
         return;
     }
@@ -1809,7 +2022,7 @@ static int lower_match(void)
         return 0;
     }
     logf_scene("field-lower");
-    if (ui_textbox_field_active(f.fm)) {
+    if (ui_textbox_field_active(f.fm) || f.mode == 9) {
         eidos_ui_want_ds_scale();
     }
     return 1;
@@ -1829,10 +2042,76 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     /* the Union Room and the Entralink: their own cards; the other lower
      * screens: the game's screen as a sheet */
-    own = (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in));
+    own = (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
+          || (f.mode == 9 && power_card(c, &f));
     if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The C-Gear's power                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The C-Gear's power on/off question (field sub-screen mode 9, ov035
+ * c_gear_power_onoff.c; mock-up "cgear_prompt"): the question as a system
+ * box at the bottom, the game's note above it, its YES / NO as a system
+ * list.  The game takes no keys for that menu, so the list's own cursor
+ * moves with them and A taps the row.  After the answer the game waits for
+ * a touch on its message: a click on the box is that touch.
+ *
+ * CGearPowerOnOffWork (ov035/c_gear_power_onoff_types.h): messageWindow
+ * 0x18, menuWindow 0x1C (the note), taskMenu 0x44.
+ */
+static int power_card(EidosUiCtx *c, const FieldNow *f)
+{
+    const u8 *w = f->panel;
+    const void *msg, *note;
+    void *menu;
+    int cw = c->canvas->w, ch = c->canvas->h, bh, bw, x, y, nw = 0, nh = 0;
+
+    if (w == NULL) {
+        return 0;
+    }
+    msg = rdp(w + 0x18);
+    note = rdp(w + 0x1C);
+    menu = rdp(w + 0x44);
+    {
+        int mw2 = 0, mh2 = 0;
+
+        /* the box as tall as the words (the game's window has room for a
+         * longer message) */
+        if (!ui_letters(NULL, ui_bmpwin_bmp(msg), 0, 0, 0, 0, &mw2, &mh2)) {
+            return 1;                   /* nothing printed yet             */
+        }
+        bh = mh2 + 14;
+        bw = cw - 8 < 256 ? cw - 8 : 256;
+        x = (cw - bw) / 2;
+        y = ch - 4 - bh;
+        ui_textbox_frame(c, UI_TEXTBOX_SYSTEM, x, y, bw, bh);
+        ui_letters(c, ui_bmpwin_bmp(msg), x + 12, y + 7, UI_WHITE, 0x464850u, NULL, NULL);
+    }
+    if (note != NULL && ui_letters(NULL, ui_bmpwin_bmp(note), 0, 0, 0, 0, &nw, &nh)) {
+        /* the note: a quieter panel above the box, at its left */
+        ui_panel(c, x, y - nh - 18, nw + 20, nh + 14, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 220);
+        ui_letters(c, ui_bmpwin_bmp(note), x + 10, y - nh - 11, UI_LIGHT, 0x464850u, NULL, NULL);
+    }
+    if (menu != NULL) {
+        ui_taskmenu(c, menu, x + bw, y - 3, UI_CHOICE_SYSTEM);
+    } else {
+        EidosUiRect r;
+
+        r.x = x; r.y = y; r.w = bw; r.h = bh;
+        if (eidos_ui_hit(r) & EIDOS_UI_CLICK) {
+            eidos_ui_tap(128, 96, 2);
+        }
+    }
+    g_card.x = x;
+    g_card.y = y - nh - 18;
+    g_card.w = bw;
+    g_card.h = ch - g_card.y;
+    return 1;
 }
 
 /* ------------------------------------------------------------------ */

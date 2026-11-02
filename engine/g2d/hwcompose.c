@@ -1406,7 +1406,7 @@ static volatile u32 g_hide_main_bgs;
 
 void g2d_hw_hide_main_bgs(u32 mask)
 {
-    g_hide_main_bgs = mask & 0xEu;      /* BG1..BG3: never the 3D layer */
+    g_hide_main_bgs = mask & 0x1Eu;     /* BG1..BG3 and the OBJs: never the 3D layer */
 }
 
 static u32 shown_dispcnt(const Engine *e, u32 dispcnt)

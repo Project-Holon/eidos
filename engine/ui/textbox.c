@@ -38,6 +38,7 @@
 #define WEAK __attribute__((weak))
 
 extern void *ov021_FIELDMAP_GetMsgBg(void *fieldMap) WEAK;
+extern void *ov021_FIELDMAP_GetInfoWindow(void *fieldMap) WEAK;
 extern int  bw_ui_talk_target_get(const void *win, int *x, int *y) WEAK;
 extern int  bw_ui_field_wins(const void **out, int max) WEAK;
 
@@ -75,6 +76,10 @@ typedef struct WinBmp {
                                exclusive); top > bottom when blank          */
     int right;              /* the last column that holds anything + 1     */
     int left;               /* the first column that holds anything        */
+    u16 letters;            /* the colours that are letters (bit per index;
+                               the rest are their shadows): a word the game
+                               prints in another colour (an item's name in
+                               blue) is one of these besides `ink`         */
 } WinBmp;
 
 static int bmp_scan(const u8 *bmp, WinBmp *b)
@@ -134,6 +139,33 @@ static int bmp_scan(const u8 *bmp, WinBmp *b)
             b->ink = ab >= ba ? c1 : c2;
         }
     }
+    {
+        /* every colour: a letter has its shadow right of, below or
+         * diagonally from it; a shadow has its letter left of or above it */
+        int as_letter[16] = { 0 }, as_shadow[16] = { 0 };
+
+        for (y = 0; y + 1 < b->h; y++) {
+            for (x = 0; x + 1 < b->w; x++) {
+                int v = bmp_px(b->px, b->w, x, y);
+                int r = bmp_px(b->px, b->w, x + 1, y), d = bmp_px(b->px, b->w, x, y + 1);
+
+                if (v == b->ground) {
+                    continue;
+                }
+                if (r != b->ground && r != v) { as_letter[v]++; as_shadow[r]++; }
+                if (d != b->ground && d != v) { as_letter[v]++; as_shadow[d]++; }
+            }
+        }
+        b->letters = 0;
+        for (i = 0; i < 16; i++) {
+            if (i != b->ground && cnt[i] > 0 && as_letter[i] > as_shadow[i]) {
+                b->letters |= (u16)(1u << i);
+            }
+        }
+        if (b->ink >= 0) {
+            b->letters |= (u16)(1u << b->ink);
+        }
+    }
     b->top = b->h;
     b->bottom = 0;
     b->left = b->w;
@@ -164,13 +196,18 @@ static int win_bmp(const u8 *bmpwin, WinBmp *b)
 static void draw_letters(EidosUiCtx *c, const WinBmp *b, int x, int y, u32 ink, u32 shadow)
 {
     int xx, yy;
+    /* a word in another colour: the interface's accent, light on a dark
+     * box, dark on a white one */
+    u32 accent = ((ink >> 16) & 255u) > 160u ? 0x7FD0FFu : 0x007A9Cu;
 
     for (yy = 0; yy < b->h; yy++) {
         for (xx = 0; xx < b->w; xx++) {
             int v = bmp_px(b->px, b->w, xx, yy);
 
             if (v != b->ground) {
-                ui_fill(c, x + xx, y + yy, 1, 1, v == b->ink ? ink : shadow, 255);
+                u32 col = v == b->ink ? ink : (b->letters >> v) & 1u ? accent : shadow;
+
+                ui_fill(c, x + xx, y + yy, 1, 1, col, 255);
             }
         }
     }
@@ -413,6 +450,16 @@ u32 ui_textbox_field(EidosUiCtx *c, void *fm, float ox, float oy, float s, const
     u32 hide;
     int n = field_wins(fm, w, 8, &hide, skip), i;
     int cw = c->canvas->w, ch = c->canvas->h;
+    const u8 *info = NULL;
+
+    /* the information window (the money a vending machine or a shop
+     * counter shows: FIELDMAP_GetInfoWindow, a FieldMsgWin whose BmpWin is
+     * at +0x00) is a card at the top right, the way the bar shows status */
+    if (ov021_FIELDMAP_GetInfoWindow != NULL) {
+        const u8 *iw = (const u8 *)ov021_FIELDMAP_GetInfoWindow(fm);
+
+        info = iw != NULL ? rdp(iw) : NULL;
+    }
 
     for (i = 0; i < n; i++) {
         const u8 *bw = w[i].bmpwin;
@@ -431,6 +478,10 @@ u32 ui_textbox_field(EidosUiCtx *c, void *fm, float ox, float oy, float s, const
         if (x < 4) x = 4;
         if (y + bw[6] * 8 + 10 > ch - 4) y = ch - 4 - (bw[6] * 8 + 10);
         if (y < 4) y = 4;
+        if (bw == info) {
+            x = cw - 4 - bwid;
+            y = 4;
+        }
         if (w[i].kind == UI_TEXTBOX_BALLOON && bw_ui_talk_target_get != NULL) {
             int px, py;
 

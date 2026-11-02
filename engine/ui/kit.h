@@ -168,6 +168,10 @@ int  ui_keycap_w(const char *label);
 void ui_blit_screen(EidosUiCtx *c, int x, int y, const u8 *screen,
                     int sx, int sy, int w, int h, int k, int key);
 
+/* A text of the game's banks (a/0/0/<arc>, member, entry) as UTF-8, read
+ * through the file layer; "" when it cannot be read (recipe_menus.c). */
+const char *ui_game_text(int arc, int member, u32 idx);
+
 /* The game's own images, decoded on first use; NULL when unavailable. */
 const UiImage *ui_item_icon(u16 item);
 const UiImage *ui_mon_icon(u16 species, u8 form, int frame);

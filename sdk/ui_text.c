@@ -119,3 +119,27 @@ int bw_ui_field_wins(const void **out, int max)
     }
     return n;
 }
+
+/* ------------------------------------------------------------------ */
+/* The item a script just gave (stubs/ov/patch_ov021_scrcmd_trainer_audio_item.c) */
+/* ------------------------------------------------------------------ */
+
+static volatile u32 g_item_got, g_item_count, g_item_serial;
+
+void bw_ui_item_got(u32 item, u32 count, int added)
+{
+    if (added) {
+        g_item_got = item;
+        g_item_count = count;
+        g_item_serial++;
+    }
+}
+
+/* The last item a script put in the Bag and a number that changes with
+ * every new one (0 when none yet). */
+u32 bw_ui_item_last(u32 *count, u32 *serial)
+{
+    if (count != NULL) *count = g_item_count;
+    if (serial != NULL) *serial = g_item_serial;
+    return g_item_got;
+}

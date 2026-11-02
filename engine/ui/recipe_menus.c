@@ -611,6 +611,12 @@ static const char *game_text(int arc, int member, u32 idx, const char *name)
     return s->text;
 }
 
+/* The game's text for the other recipes (kit.h). */
+const char *ui_game_text(int arc, int member, u32 idx)
+{
+    return game_text(arc, member, idx, NULL);
+}
+
 /* Replace the line breaks of a text by spaces (the kit wraps by itself). */
 static void flatten(const char *s, char *out, int max)
 {
@@ -3662,7 +3668,124 @@ static const EidosUiRecipe recipe_survey = {
     "survey", survey_match, survey_run, survey_reset, 0
 };
 
+
+/* ------------------------------------------------------------------ */
+/* The town map and Fly                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The town map (overlay 72, ov072/townmap.c: Fly's "Fly to where?" and the
+ * Town Map item; mock-up "town_map") as one window over the blurred world:
+ * the game's own map from its lower screen, three quarters of its size,
+ * with its cursor, routes and towns as it draws them; on the right the
+ * town under the cursor in the game's words (its upper screen: the name,
+ * the description, the places in it); the prompt as the title.  The map
+ * is the stylus: a press on it taps the game's map there (a town is
+ * chosen, a drag scrolls).  Fly (A), Zoom and Back tap or press what the
+ * game offers; the keys are the game's.
+ *
+ * TownMapWork (ov072/townmap_types.h): selection.box.win 0xB0 (the upper
+ * screen: name, description, places), panel.win 0xC4 (the prompt),
+ * hoverTown 0x134.  The lower screen's bar: zoom (177, 179), back
+ * (243, 179).
+ */
+#define TM_OVERLAY 72
+#define TM_MAP_H   168          /* the map above the game's bar           */
+
+static int townmap_match(void)
+{
+    return app_work(TM_OVERLAY) != NULL;
+}
+
+static void townmap_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Fly", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    const u8 *w = (const u8 *)app_work(TM_OVERLAY);
+    int cw = c->canvas->w, ch = c->canvas->h;
+    int mapw = 256 * 3 / 4, maph = TM_MAP_H * 3 / 4;
+    int mw = cw - 16 < 480 ? cw - 16 : 480;
+    int iw = 0, ih = 0, mh, mx, my, rx, rw, y, left_h, right_h;
+    const void *info;
+    EidosUiRect r;
+
+    in_view(view);
+    if (w == NULL) {
+        return;
+    }
+    info = win_bmp_of(rdp(w, 0xB0));
+    ui_letters(NULL, info, 0, 0, 0, 0, &iw, &ih);
+    left_h = maph + 4 + 4 + 24;
+    right_h = ih + 16;
+    mh = IN_HEAD + (left_h > right_h ? left_h : right_h) + 10;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh) / 2;
+    if (my < 2) my = 2;
+    in_window(c, mx, my, mw, mh, win_bmp_of(rdp(w, 0xC4)));
+    /* the game's map */
+    ui_panel(c, mx + 10, my + IN_HEAD, mapw + 4, maph + 4, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, UI_EDGE, 255);
+    if (in->screen_rgba[1] != NULL) {
+        int dx, dy;
+
+        for (dy = 0; dy < maph; dy++) {
+            for (dx = 0; dx < mapw; dx++) {
+                const u8 *p = in->screen_rgba[1] + ((size_t)(dy * 4 / 3) * 256 + (size_t)(dx * 4 / 3)) * 4;
+
+                ui_fill(c, mx + 12 + dx, my + IN_HEAD + 2 + dy, 1, 1, (u32)p[0] << 16 | (u32)p[1] << 8 | p[2], 255);
+            }
+        }
+    }
+    r.x = mx + 12; r.y = my + IN_HEAD + 2; r.w = mapw; r.h = maph;
+    if (in->mouse.down && (eidos_ui_hit(r) & EIDOS_UI_HOVER)) {
+        int px, py;
+
+        if (eidos_ui_mouse_pos(&px, &py)) {
+            eidos_ui_tap((px - r.x) * 4 / 3, (py - r.y) * 4 / 3, 2);
+        }
+    }
+    /* Fly, Zoom and Back under the map */
+    y = my + IN_HEAD + maph + 8;
+    {
+        int tw = (mapw + 4 - 8) / 3;
+
+        if (in_tile_words(c, mx + 10, y, tw, 24, NULL, "Fly", rdp(w, 0x134) != NULL && eidos_ui_keys_lit(), 0)
+            & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_A, 2);
+        }
+        if (in_tile_words(c, mx + 10 + tw + 4, y, tw, 24, NULL, "Zoom", 0, 0) & EIDOS_UI_CLICK) {
+            eidos_ui_tap(177, 179, 3);
+        }
+        if (in_tile_words(c, mx + 10 + 2 * (tw + 4), y, tw, 24, NULL, "Back", 0, 0) & EIDOS_UI_CLICK) {
+            eidos_ui_tap(243, 179, 3);
+        }
+    }
+    /* the town under the cursor, in the game's words (its upper screen) */
+    rx = mx + 10 + mapw + 4 + 8;
+    rw = mx + mw - 10 - rx;
+    in_panel(c, rx, my + IN_HEAD, rw, mh - IN_HEAD - 10);
+    if (ih > 0) {
+        EidosUiRect saved;
+
+        ui_push(c, 0, 0, &saved);
+        ui_clip(c, rx + 2, my + IN_HEAD + 2, rw - 4, mh - IN_HEAD - 14);
+        ui_letters(c, info, rx + (iw < rw - 12 ? (rw - iw) / 2 : 6), my + IN_HEAD + 8, UI_WHITE, IN_SHADOW, NULL, NULL);
+        ui_pop(c, 0, 0, &saved);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void townmap_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_townmap = {
+    "townmap", townmap_match, townmap_run, townmap_reset, 0
+};
+
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
                                                   &recipe_wireless, &recipe_geonet, &recipe_entree,
-                                                  &recipe_survey };
-const u32 ui_recipes_menus_count = 7;
+                                                  &recipe_survey, &recipe_townmap };
+const u32 ui_recipes_menus_count = 8;

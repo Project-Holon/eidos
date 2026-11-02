@@ -278,3 +278,130 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
     }
     return 1;
 }
+
+/* ------------------------------------------------------------------ */
+/* The game's touch menus (APP_TASKMENU)                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * TaskMenuWork (arm9/app_taskmenu.c): cursorPos 0x00 (u8), isDisableKey
+ * 0x10, itemWork 0x1C (TaskMenuItem, 0x0C each: a Strbuf first), and the
+ * template at 0x20: itemNum 0x24 (u8), posType 0x2C, charPosX 0x30,
+ * charPosY 0x31, width 0x32, height 0x33 (characters; posType not 0: the
+ * position is the bottom right).
+ */
+static int g_tm_focus;              /* our own row when the game takes no keys */
+static const void *g_tm_menu;
+
+int ui_taskmenu_count(const void *menu)
+{
+    int n = menu != NULL ? ((const u8 *)menu)[0x24] : 0;
+
+    return n > 0 && n <= 8 ? n : 0;
+}
+
+void ui_taskmenu_tap(const void *menu_p, int i)
+{
+    const u8 *m = (const u8 *)menu_p;
+    int n = ui_taskmenu_count(menu_p), cx, cy, w, h, px, py;
+
+    if (n == 0 || i < 0 || i >= n) {
+        return;
+    }
+    cx = m[0x30];
+    cy = m[0x31];
+    w = m[0x32] != 0 ? m[0x32] : 13;
+    h = m[0x33] != 0 ? m[0x33] : 3;
+    px = rd32(m + 0x2C) != 0 ? cx - w : cx;
+    py = rd32(m + 0x2C) != 0 ? cy - h * n : cy;
+    eidos_ui_tap(px * 8 + w * 4, py * 8 + 8 * h * i + h * 4, 3);
+}
+
+int ui_taskmenu(EidosUiCtx *c, void *menu_p, int right, int bottom, int style)
+{
+    const u8 *m = (const u8 *)menu_p;
+    int n = ui_taskmenu_count(menu_p), i, w = 0, h, x, y, cur, keys_off, pick = -1;
+    char text[8][48];
+    u32 k = eidos_ui_keys_pressed();
+    EidosUiRect r;
+
+    if (n == 0) {
+        return 0;
+    }
+    for (i = 0; i < n; i++) {
+        u8 *items = rdp(m + 0x1C), *sb = items != NULL ? rdp(items + 0x0C * i) : NULL;
+        int tw;
+
+        text[i][0] = '\0';
+        if (sb != NULL && STRBUF_GetChars != NULL && STRBUF_GetLength != NULL && STRBUF_GetChars(sb) != NULL) {
+            units_utf8(STRBUF_GetChars(sb), STRBUF_GetLength(sb), text[i], (int)sizeof text[i]);
+        }
+        tw = ui_text_w(text[i], UI_FONT_LARGE) + 30;
+        if (tw > w) w = tw;
+    }
+    if (w < 60) w = 60;
+    h = 4 + n * 18 + 4;
+    x = right - w;
+    y = bottom - h;
+    if (menu_p != g_tm_menu) {
+        g_tm_menu = menu_p;
+        g_tm_focus = m[0x00] < n ? m[0x00] : 0;
+    }
+    /* the game moves its own cursor with the keys, unless it takes none
+     * (then the keys move ours and A taps the row) */
+    keys_off = rd32(m + 0x10) != 0;
+    if (keys_off) {
+        eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_A);
+        if (k & BW_KEY_UP) g_tm_focus = (g_tm_focus + n - 1) % n;
+        if (k & BW_KEY_DOWN) g_tm_focus = (g_tm_focus + 1) % n;
+        if (k & BW_KEY_A) pick = g_tm_focus;
+        cur = g_tm_focus;
+    } else {
+        cur = m[0x00];
+    }
+    if (style == UI_CHOICE_SYSTEM) {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
+    } else if (style == UI_CHOICE_WHITE) {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0xFFFFFFu, 0x9698A0u, 255);
+    } else {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 235);
+    }
+    for (i = 0; i < n; i++) {
+        int ry = y + 4 + i * 18, st, lit, rr;
+        u32 ink, shadow;
+
+        r.x = x + 3; r.y = ry; r.w = w - 6; r.h = 18;
+        st = eidos_ui_hit(r);
+        if (st & EIDOS_UI_HOVER) {
+            g_tm_focus = i;
+        }
+        lit = (st & EIDOS_UI_HOVER) || (eidos_ui_keys_lit() && i == cur);
+        if (lit) {
+            u32 base = style == UI_CHOICE_WHITE ? 0xFFFFFFu : UI_BODY;
+
+            ui_panel(c, r.x, ry - 1, r.w, 18, UI_CUT_TL | UI_CUT_BR, 5,
+                     mix16(HL, base, style == UI_CHOICE_WHITE ? 4 : 5), HL, 250);
+            for (rr = 3; rr < 18 - 3; rr++) {
+                int left = 3 + (rr < 7 ? 7 - rr : 0);
+
+                if (left < 6) {
+                    ui_fill(c, r.x + left, ry - 1 + rr, 6 - left, 1, HL, 255);
+                }
+            }
+        }
+        if (style == UI_CHOICE_WHITE) {
+            ink = 0x42424Au; shadow = 0xADADB5u;
+        } else {
+            ink = lit ? UI_WHITE : UI_LIGHT; shadow = 0x464850u;
+        }
+        ui_text(c, r.x + 10, ry - (lit ? 1 : 0) + ui_text_y(18, UI_FONT_LARGE), text[i], ink, shadow,
+                UI_FONT_LARGE, 1);
+        if (st & EIDOS_UI_CLICK) {
+            pick = i;
+        }
+    }
+    if (pick >= 0) {
+        ui_taskmenu_tap(menu_p, pick);
+    }
+    return 1;
+}

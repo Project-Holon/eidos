@@ -46,6 +46,20 @@ int  ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list, const voi
 /* No list is open this frame: a pending walk of the cursor is dropped. */
 void ui_choice_list_idle(void);
 
+/*
+ * The game's touch menus (APP_TASKMENU: the yes/no of the C-Gear's power,
+ * the PC, the Entree and others), drawn as a list in `style` whose bottom
+ * right corner is (right, bottom), with the game's own labels.  A click or
+ * a tap taps the game's row where the game put it, so the game does what
+ * it does for the stylus.  The keys are the game's when it takes them;
+ * when it takes none (isDisableKey), UP and DOWN move the list's own
+ * cursor and A taps that row.  Returns 1 when the menu was drawn.
+ */
+int  ui_taskmenu(EidosUiCtx *c, void *menu, int right, int bottom, int style);
+/* Its row count (0 when it cannot be read) and a tap on row i. */
+int  ui_taskmenu_count(const void *menu);
+void ui_taskmenu_tap(const void *menu, int i);
+
 #ifdef __cplusplus
 }
 #endif
