@@ -92,6 +92,9 @@ typedef struct EidosUiView {
                                after eidos_ui_frame, how much: 1..16 as it
                                eases in and out
                                (behind a modal)                            */
+    int lower_only;         /* non-zero: an app that shows the lower screen
+                               alone (the upper one is off on purpose): its
+                               fades are read from the lower screen       */
     int hide_2d;            /* non-zero: the world screen's 2D layers are
                                not shown (the recipe redraws them)          */
     int no_fade;            /* non-zero: the game's fade to black is not

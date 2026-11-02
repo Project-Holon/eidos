@@ -1164,7 +1164,7 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
         EidosUiRect r = { bx, by, bw, bhh };
         int st = eidos_ui_hit(r);
         u32 col = ch[i].colour;
-        const char *status = lit[i] ? "Someone near" : (on ? "On" : "Off");
+        const char *status = on ? "On" : "Off";
 
         ui_panel(c, bx, by, bw, bhh, UI_CUT_TL | UI_CUT_BR, 4,
                  (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, lit[i] ? col : UI_EDGE2, 245);
@@ -1723,6 +1723,7 @@ static void lower_only_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame 
     view->mode = EIDOS_VIEW_WORLD;
     view->world_screen = 1;
     view->ds_only = 1;
+    view->lower_only = 1;
     if (in->mouse.down && eidos_ui_mouse_pos(&mx, &my) && mx >= px && mx < px + sw
         && my >= 0 && my < ch) {
         eidos_ui_tap((int)((float)(mx - px) / k), (int)((float)my / k), 2);

@@ -38,6 +38,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "assets.h"
 #include "input.h"
 #include "overlay.h"
@@ -105,6 +106,9 @@ extern u32    POKE_TOOL_GetPartyValue(void *pp, u32 param, u32 arg) MN_WEAK;
 extern u8     APP_TASKMENU_GetCursorPos(const void *menu) MN_WEAK;
 extern s16    CLACT_GetActorSurfacePosAxis(const void *actor, u32 space, u32 axis) MN_WEAK;
 extern void   STRBUF_ToChars(void *strbuf, u16 *out, u32 max) MN_WEAK;
+extern void  *GAMESYSTEM_GetGameComm(const void *gs) MN_WEAK;
+extern int    INTRUDE_COMM_GetRequestState(void *comm) MN_WEAK;
+extern int    INTRUDE_COMM_CountEventPeers(void *comm) MN_WEAK;
 
 /* The overlay functions the Options screen's state is compared with
  * (the overlay link's names: ovNNN_<function>). */
@@ -2332,5 +2336,162 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
 static const EidosUiRecipe recipe_card = { "card", card_match, card_run, card_reset, 0 };
 
-const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card };
-const u32 ui_recipes_menus_count = 3;
+/* ------------------------------------------------------------------ */
+/* The C-Gear's Wireless app                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * wireless: the C-Gear's Wireless app (overlay 122, the game's
+ * INTRUDE_COMM_VIEW, src/game/ov122/intrude_comm_view.c).  The game draws
+ * it on the lower screen alone; here it is a panel over the blurred field:
+ * the Entralink and the Xtransceiver as two tiles, and the app's three
+ * facts (the Union Room's players, a wireless distribution, a C-Gear
+ * nearby) with the game's own words.  A tile taps the game's button, so
+ * the game does what it does for a stylus; Back, B and a click outside tap
+ * the game's return button.
+ *
+ * The app's work (IntrudeCommView, 0x3A8 bytes): state 0x08, args 0x344
+ * (IntrudeCommViewArgs: active 0x10, 2 while a friend calls), icaAnime
+ * (the game system) 0x354, selectedRow 0x35C, peerTimer 0x364 (bit 5: a
+ * distribution), peerSum 0x36C (the Union Room's players), newLogSeen
+ * 0x374 (a C-Gear seen), exitStarted 0x38C.  Its text is a/0/0/2 member
+ * 23 (24 in Japanese): 2 Union Room, 3 the player count, 4 Wireless Distribution, 5 YES,
+ * 6 NO, 12 C-Gear Detected.
+ */
+#define WL_OVERLAY 122
+
+static int g_wl_sel;
+
+static int wireless_match(void)
+{
+    void *w = app_work(WL_OVERLAY);
+
+    return w != NULL && rdp(w, 0x344) != NULL && rd32(w, 0x38C) == 0;
+}
+
+static const char *wl_text(u32 idx, const char *fallback)
+{
+    const char *t = game_text(2, 23, idx, NULL);
+
+    return t[0] != '\0' ? t : fallback;
+}
+
+static void wireless_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const struct {
+        const char *name, *what;
+        u32 accent, accent2;
+        int tx, ty;
+    } tiles[2] = {
+        { "ENTRALINK", "Go to the Entralink.", 0x63DE31u, 0x1F5A12u, 67, 63 },
+        { "XTRANSCEIVER", "Call a registered friend.", 0xF08A24u, 0x6A3A0Cu, 187, 63 },
+    };
+    void *w = app_work(WL_OVERLAY);
+    void *args, *gs, *comm;
+    Modal m;
+    int i, x, y, tw, th, hit, mode = 0, calling;
+    char buf[64];
+    static const char *const hints[] = { "A", "Choose", "B", "Back" };
+
+    g_frame = in->frame;
+    pend_pump();
+    view->mode = EIDOS_VIEW_WORLD;
+    view->blur = 1;
+    view->hold_world = 1;      /* an app: the field is not running */
+    view->lower_only = 1;
+    if (w == NULL) {
+        return;
+    }
+    args = rdp(w, 0x344);
+    gs = rdp(w, 0x354);
+    comm = (gs != NULL && GAMESYSTEM_GetGameComm != NULL) ? GAMESYSTEM_GetGameComm(gs) : NULL;
+    if (comm != NULL && INTRUDE_COMM_GetRequestState != NULL) {
+        mode = INTRUDE_COMM_GetRequestState(comm);
+    }
+    calling = args != NULL && rd32(args, 0x10) == 2;
+
+    m = modal_rect(c, 62, 280, 380, 0, 157, 157, 157);
+    ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
+    ui_header(c, m.x + 4, m.y + 4, m.w - 8, "WIRELESS", NULL, NULL, UI_CYAN);
+
+    /* the two tiles */
+    x = m.x + 10;
+    y = m.y + 30;
+    tw = (m.w - 20 - 8) / 2;
+    th = 54;
+    for (i = 0; i < 2; i++) {
+        EidosUiRect rr = { x + i * (tw + 8), y, tw, th };
+        int st = eidos_ui_hit(rr), on = (g_wl_sel == i) || (st & EIDOS_UI_HOVER);
+        const char *sub = tiles[i].what;
+
+        if (i == 0 && mode == 2 && INTRUDE_COMM_CountEventPeers != NULL) {
+            snprintf(buf, sizeof buf, "%d in the Entralink.", INTRUDE_COMM_CountEventPeers(comm));
+            sub = buf;
+        } else if (i == 0 && mode == 3) {
+            sub = "Someone invites you.";
+        } else if (i == 1 && calling) {
+            sub = "A friend is calling.";
+        }
+        ui_panel(c, rr.x, rr.y, rr.w, rr.h, CUT_DEF, 8, on ? tiles[i].accent2 : UI_BODY2,
+                 on ? tiles[i].accent : UI_EDGE, 250);
+        ui_fill(c, rr.x + 6, rr.y + 8, 4, rr.h - 16, tiles[i].accent, 255);
+        box_text(c, rr.x + 12, rr.y + 8, rr.w - 16, 17, ui_tr(tiles[i].name), UI_WHITE, UI_EDGE,
+                 UI_FONT_LARGE, 0, 2);
+        box_text(c, rr.x + 12, rr.y + 28, rr.w - 16, 15, ui_tr(sub),
+                 (i == 0 && mode >= 2) || (i == 1 && calling) ? tiles[i].accent : UI_LIGHT, -1,
+                 UI_FONT_SMALL, 0, 2);
+        if (st & EIDOS_UI_HOVER) {
+            g_wl_sel = i;
+        }
+        if (st & EIDOS_UI_CLICK) {
+            tap(tiles[i].tx, tiles[i].ty);
+        }
+    }
+    y += th + 8;
+
+    /* the app's facts, in the game's words */
+    {
+        char n[16];
+
+        snprintf(n, sizeof n, "%u", rd32(w, 0x36C));
+        info_line(c, m.x + 10, y, m.w - 20, wl_text(2, "Union Room"), n);
+        y += 17;
+        info_line(c, m.x + 10, y, m.w - 20, wl_text(4, "Wireless Distribution"),
+                  (rd32(w, 0x364) & 32u) ? wl_text(5, "YES") : wl_text(6, "NO"));
+        y += 17;
+        info_line(c, m.x + 10, y, m.w - 20, wl_text(12, "C-Gear Detected"),
+                  rd32(w, 0x374) ? wl_text(5, "YES") : wl_text(6, "NO"));
+    }
+
+    /* keys: left and right choose, A takes the tile, B goes back */
+    {
+        u32 edge = eidos_ui_keys_pressed();
+
+        if (edge & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
+            g_wl_sel ^= 1;
+        }
+        if (edge & BW_KEY_A) {
+            tap(tiles[g_wl_sel].tx, tiles[g_wl_sel].ty);
+        }
+        hit = hint_bar(c, in, hints, 2);
+        if (hit == 0) {
+            tap(tiles[g_wl_sel].tx, tiles[g_wl_sel].ty);
+        }
+        if (hit == 1 || (edge & BW_KEY_B) || eidos_ui_right_click() || outside_click(c, m)) {
+            tap(224, 177);
+        }
+    }
+}
+
+static void wireless_reset(void)
+{
+    g_wl_sel = 0;
+}
+
+static const EidosUiRecipe recipe_wireless = {
+    "wireless", wireless_match, wireless_run, wireless_reset, 0
+};
+
+const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
+                                                  &recipe_wireless };
+const u32 ui_recipes_menus_count = 4;

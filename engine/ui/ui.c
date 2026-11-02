@@ -287,12 +287,20 @@ u32 eidos_ui_keys_pressed(void)
  * How dark the game has faded the screens (0..16): the master brightness
  * going down, or the darken effect (BLDCNT, BLDY), on either engine.
  */
+static int g_lower_only;         /* this frame's view: lower screen alone */
+
 static u32 game_darkness(void)
 {
     u32 e, best = 0;
+    /* POWCNT1 bit 15: the main engine is on the upper screen */
+    u32 lower = (bw_io_read16(0x04000304u) & 0x8000u) ? 1u : 0u;
 
     for (e = 0; e < 2; e++) {
         u32 base = e == 0 ? 0x04000000u : 0x04001000u;
+
+        if (g_lower_only && e != lower) {
+            continue;               /* the upper screen is off on purpose */
+        }
         u32 mb = bw_io_read16(base + 0x6Cu), f = 0;
 
         if (((mb >> 14) & 3u) == 2u) {
@@ -420,7 +428,10 @@ static void app_state(u32 *ov, u32 *seq, u32 *child_ov, u32 *child_seq)
 
 static void leave_check(EidosUiView *view)
 {
-    u32 dark = game_darkness();
+    u32 dark;
+
+    g_lower_only = view->lower_only;
+    dark = game_darkness();
 
     {
         /* the world's own screen (the main engine) only: a scene change
