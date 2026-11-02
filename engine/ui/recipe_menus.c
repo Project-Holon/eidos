@@ -2389,7 +2389,7 @@ static void wireless_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     void *w = app_work(WL_OVERLAY);
     void *args, *gs, *comm;
     Modal m;
-    int i, x, y, tw, th, hit, mode = 0, calling;
+    int i, x, y, tw, th, hit, mode = 0;
     char buf[64];
     static const char *const hints[] = { "A", "Choose", "B", "Back" };
 
@@ -2403,12 +2403,12 @@ static void wireless_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
         return;
     }
     args = rdp(w, 0x344);
+    (void)args;
     gs = rdp(w, 0x354);
     comm = (gs != NULL && GAMESYSTEM_GetGameComm != NULL) ? GAMESYSTEM_GetGameComm(gs) : NULL;
     if (comm != NULL && INTRUDE_COMM_GetRequestState != NULL) {
         mode = INTRUDE_COMM_GetRequestState(comm);
     }
-    calling = args != NULL && rd32(args, 0x10) == 2;
 
     m = modal_rect(c, 62, 280, 380, 0, 157, 157, 157);
     ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
@@ -2421,24 +2421,25 @@ static void wireless_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     th = 54;
     for (i = 0; i < 2; i++) {
         EidosUiRect rr = { x + i * (tw + 8), y, tw, th };
-        int st = eidos_ui_hit(rr), on = (g_wl_sel == i) || (st & EIDOS_UI_HOVER);
-        const char *sub = tiles[i].what;
+        /* the Xtransceiver needs a camera and a microphone the port does
+         * not have: its tile is greyed out and does nothing */
+        int off = i == 1;
+        int st = off ? 0 : eidos_ui_hit(rr), on = !off && ((g_wl_sel == i) || (st & EIDOS_UI_HOVER));
+        const char *sub = off ? "Not available." : tiles[i].what;
 
         if (i == 0 && mode == 2 && INTRUDE_COMM_CountEventPeers != NULL) {
             snprintf(buf, sizeof buf, "%d in the Entralink.", INTRUDE_COMM_CountEventPeers(comm));
             sub = buf;
         } else if (i == 0 && mode == 3) {
             sub = "Someone invites you.";
-        } else if (i == 1 && calling) {
-            sub = "A friend is calling.";
         }
         ui_panel(c, rr.x, rr.y, rr.w, rr.h, CUT_DEF, 8, on ? tiles[i].accent2 : UI_BODY2,
                  on ? tiles[i].accent : UI_EDGE, 250);
-        ui_fill(c, rr.x + 6, rr.y + 8, 4, rr.h - 16, tiles[i].accent, 255);
-        box_text(c, rr.x + 12, rr.y + 8, rr.w - 16, 17, ui_tr(tiles[i].name), UI_WHITE, UI_EDGE,
-                 UI_FONT_LARGE, 0, 2);
+        ui_fill(c, rr.x + 6, rr.y + 8, 4, rr.h - 16, off ? UI_EDGE2 : tiles[i].accent, 255);
+        box_text(c, rr.x + 12, rr.y + 8, rr.w - 16, 17, ui_tr(tiles[i].name),
+                 off ? UI_EDGE2 : UI_WHITE, UI_EDGE, UI_FONT_LARGE, 0, 2);
         box_text(c, rr.x + 12, rr.y + 28, rr.w - 16, 15, ui_tr(sub),
-                 (i == 0 && mode >= 2) || (i == 1 && calling) ? tiles[i].accent : UI_LIGHT, -1,
+                 off ? UI_EDGE2 : ((i == 0 && mode >= 2) ? tiles[i].accent : UI_LIGHT), -1,
                  UI_FONT_SMALL, 0, 2);
         if (st & EIDOS_UI_HOVER) {
             g_wl_sel = i;
@@ -2463,13 +2464,11 @@ static void wireless_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
                   rd32(w, 0x374) ? wl_text(5, "YES") : wl_text(6, "NO"));
     }
 
-    /* keys: left and right choose, A takes the tile, B goes back */
+    /* keys: A takes the Entralink, B goes back */
     {
         u32 edge = eidos_ui_keys_pressed();
 
-        if (edge & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
-            g_wl_sel ^= 1;
-        }
+        g_wl_sel = 0;           /* the Entralink is the one tile that works */
         if (edge & BW_KEY_A) {
             tap(tiles[g_wl_sel].tx, tiles[g_wl_sel].ty);
         }
