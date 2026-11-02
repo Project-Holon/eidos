@@ -25,6 +25,8 @@ extern void *SAVE_CONTROL_Get(void) BW_SLOTS_WEAK;
 extern int SAVE_CONTROL_Reload(void *saveControl) BW_SLOTS_WEAK;
 extern int SYSTEM_DATA_IsActive(void *saveControl) BW_SLOTS_WEAK;
 extern void bw_arm7_backup_hold(int on) BW_SLOTS_WEAK;
+extern u32  bw_arm7_backup_writes(void) BW_SLOTS_WEAK;
+extern int  bw_arm7_backup_dirty(void) BW_SLOTS_WEAK;
 
 /* The game's SaveControl (src/game/arm9/save_control.c): isNewGame at 0,
  * hasFlashSave at 1. */
@@ -288,6 +290,8 @@ int bw_slots_flip(int d)
  * (bw_slots_frame commits, bw_slots_dropped goes back). */
 static int g_pending;
 static int g_prev;
+static int g_released;          /* the hold is off; waiting for the file   */
+static u32 g_writes_before;
 
 static void hold_new_game(int n, int prev)
 {
@@ -328,13 +332,21 @@ void bw_slots_frame(void)
     if (g_pending == 0 || SAVE_CONTROL_Get == NULL || (sc = (unsigned char *)SAVE_CONTROL_Get()) == NULL) {
         return;
     }
-    if (sc[SAVE_CONTROL_HAS_SAVE] && !sc[SAVE_CONTROL_IS_NEW_GAME]) {
-        /* the first completed save: the slot's file and slot.txt */
-        set_current(g_pending);
-        g_pending = 0;
+    if (!g_released && sc[SAVE_CONTROL_HAS_SAVE] && !sc[SAVE_CONTROL_IS_NEW_GAME]) {
+        /* the first completed save: the held writes go to the slot's file */
+        g_released = 1;
+        g_writes_before = bw_arm7_backup_writes != NULL ? bw_arm7_backup_writes() : 0;
         if (bw_arm7_backup_hold != NULL) {
             bw_arm7_backup_hold(0);
         }
+    }
+    /* slot.txt names the slot only once its file is on the disk: while the
+     * write keeps failing the slot in force stays as it was */
+    if (g_released && bw_arm7_backup_writes != NULL && bw_arm7_backup_writes() != g_writes_before
+        && (bw_arm7_backup_dirty == NULL || !bw_arm7_backup_dirty())) {
+        set_current(g_pending);
+        g_pending = 0;
+        g_released = 0;
         fprintf(stderr, "eidos: save: the new game is saved in slot %d\n", g_current);
     }
 }
@@ -344,6 +356,7 @@ void bw_slots_dropped(void)
     if (g_pending != 0) {
         g_current = g_prev;         /* the save in force before New Game */
         g_pending = 0;
+        g_released = 0;
         apply(0);
     }
 }

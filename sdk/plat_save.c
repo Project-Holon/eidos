@@ -181,8 +181,11 @@ int bw_plat_mkdirs(const char *path)
             if (buf[i - 1] == ':' || buf[i - 1] == '/' || buf[i - 1] == '\\')
                 continue;
             buf[i] = '\0';
-            if (bw_plat_path_kind(buf) != BW_PATH_DIR && make_one(buf) != 0)
-                return -1;
+            /* an ancestor that cannot be made is let be: on iOS the
+             * sandbox's own parents exist but can be neither looked at nor
+             * made; a real failure shows at the last step */
+            if (bw_plat_path_kind(buf) != BW_PATH_DIR)
+                (void)make_one(buf);
             buf[i] = c;
         }
     }

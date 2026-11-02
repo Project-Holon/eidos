@@ -140,6 +140,7 @@ static struct {
     char path[1100];
     int path_set;
     u32 writes;                     /* successful file writes               */
+    u32 failures;                   /* failed writes since the last success */
     int hold;                       /* writes stay in memory (save slots)   */
 } g_fs;
 
@@ -214,10 +215,16 @@ int bw_arm7_backup_flush(void)
         return -1;
     }
     if (bw_save_write_atomic(path, g_fs.image, g_fs.image_size) != 0) {
-        fprintf(stderr, "eidos: backup: cannot write %s; will retry\n", path);
+        if (g_fs.failures++ == 0) {
+            fprintf(stderr, "eidos: backup: cannot write %s; will retry\n", path);
+        }
         g_fs.changed_at = time(NULL);
         return -1;
     }
+    if (g_fs.failures != 0) {
+        fprintf(stderr, "eidos: backup: written %s after %u failed tries\n", path, g_fs.failures);
+    }
+    g_fs.failures = 0;
     g_fs.dirty = 0;
     g_fs.writes++;
     return 0;
@@ -554,4 +561,11 @@ int bw_arm7_backup_dirty(void)
 u32 bw_arm7_backup_writes(void)
 {
     return g_fs.writes;
+}
+
+/* Failed file writes since the last one that worked: the save is only in
+ * memory while this is not 0 (the interface warns the player). */
+u32 bw_arm7_backup_failures(void)
+{
+    return g_fs.failures;
 }

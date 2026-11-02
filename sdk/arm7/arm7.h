@@ -188,6 +188,7 @@ const u8 *bw_arm7_backup_image(u32 *size);
 u32  bw_arm7_backup_type(void);     /* identified CARDBackupType, 0 = none  */
 int  bw_arm7_backup_dirty(void);
 u32  bw_arm7_backup_writes(void);   /* file writes so far                   */
+u32  bw_arm7_backup_failures(void); /* failed writes since the last success */
 void bw_arm7_backup_switch_path(const char *path); /* another file, live  */
 /* Hold the chip's writes in memory (1), or write them out (0): a new game
  * makes no file until it is saved (sdk/save_slots.c). */
