@@ -387,6 +387,10 @@ static char **mobile_args(int *argc)
 #if !defined(__ANDROID__)
     host_ios_view_setup();
 #endif
+    /* the name entry's keyboard is the game's own, played by touch: the
+     * system's on-screen keyboard stays down (a hardware keyboard still
+     * types) */
+    SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, "0");
     /* the DS screens side by side are wider than tall: landscape only */
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     return argv;
