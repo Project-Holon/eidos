@@ -1243,7 +1243,13 @@ int eidos_gl3d_init(EidosGl *g)
     g->glGenFramebuffers(1, &g->fb[0].fbo);
     g->glGenFramebuffers(1, &g->fb[1].fbo);
     g->glGenFramebuffers(1, &g->fb[2].fbo);
+    /* OpenGL ES 3.0 has no GL_MAX_INTEGER_SAMPLES (3.1 does): an error
+     * there means none, and must not fail the whole 3D renderer */
+    g->integer_samples = 0;
     glGetIntegerv(GL_MAX_INTEGER_SAMPLES, &g->integer_samples);
+    if (glGetError() != GL_NO_ERROR) {
+        g->integer_samples = 0;
+    }
     g->glGenVertexArrays(1, &g->vao3);
     g->glGenBuffers(1, &g->vbo3);
     g->have3d = 1;
@@ -1514,6 +1520,9 @@ static int msaa_target(EidosGl *g, GlFb *f, int w, int h)
 
         glGetIntegerv(GL_MAX_SAMPLES, &any);
         glGetIntegerv(GL_MAX_INTEGER_SAMPLES, &integer);
+        if (glGetError() != GL_NO_ERROR) {
+            integer = 0;            /* OpenGL ES 3.0: no multisampled IDs */
+        }
         samples = any < integer ? any : integer;
     }
     if (samples < MSAA_SAMPLES || (long)w * (long)h > MSAA_MAX_PIXELS) {
