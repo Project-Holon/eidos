@@ -961,6 +961,9 @@ void bmap_battle_camera(float eye[3], float target[3], const BmapScene *s)
         bmap_camera_view(eye, target, &s->cam, 1.0f - w);   /* the intro's camera is its own */
     }
     intro_shift(eye, target, &s->intro, w);
+    if (eye[1] < 1.8f) {
+        eye[1] = 1.8f;
+    }
 }
 
 void bmap_place(BmapScene *s, float px, float pz, unsigned facing)

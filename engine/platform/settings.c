@@ -43,6 +43,8 @@ static const char *const k_offon[] = { "off", "on" };
 static const char *const k_backdrops[] = { "real map", "original" };
 static const char *const k_outlines[] = { "off", "thin" };
 static const char *const k_transitions[] = { "original", "fast", "seamless" };
+static const char *const k_text_speeds[] = { "slow", "normal", "fast" };
+static const char *const k_battle_styles[] = { "shift", "set" };
 static const char *const k_pad_icons[] = {
     "auto", "xbox360", "xboxone", "ps3", "ps4", "ps5", "switch", "gamecube", "steamdeck"
 };
@@ -86,6 +88,12 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, 0, k_transitions, "", 0, NULL },
     { "Display", "gpu_2d", "2D on the GPU", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       1, k_offon, "", 0, NULL },
+    { "Game", "text_speed", "Text speed", EIDOS_OPTKIND_CHOICE, 0, 2, 1,
+      1, k_text_speeds, "", 0, NULL },
+    { "Game", "battle_scene", "Battle scene", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
+      0, k_offon, "", 0, NULL },
+    { "Game", "battle_style", "Battle style", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
+      0, k_battle_styles, "", 0, NULL },
 };
 
 /* sdk/field_fade.c reads this option by number */
@@ -435,8 +443,58 @@ static int apply_option_group(int id)
     case EIDOS_OPT_OUTLINES:
         apply_outlines();
         return 0;
+    case EIDOS_OPT_TEXT_SPEED:
+    case EIDOS_OPT_BATTLE_SCENE:
+    case EIDOS_OPT_BATTLE_STYLE:
+        eidos_settings_sync_to_game(id, g_cur.v[id]);
+        return 0;
     default:
         return 0;
+    }
+}
+
+extern void *SAVE_CONTROL_Get(void) __attribute__((weak));
+extern void *SYSTEM_DATA_GetConfig(void *save) __attribute__((weak));
+extern void CONFIG_SetTextSpeed(void *cfg, unsigned int speed) __attribute__((weak));
+extern void CONFIG_SetBattleScene(void *cfg, unsigned int scene) __attribute__((weak));
+extern void CONFIG_SetBattleStyle(void *cfg, unsigned int style) __attribute__((weak));
+extern unsigned int CONFIG_GetTextSpeed(void *cfg) __attribute__((weak));
+extern unsigned int CONFIG_GetBattleScene(void *cfg) __attribute__((weak));
+extern unsigned int CONFIG_GetBattleStyle(void *cfg) __attribute__((weak));
+
+void eidos_settings_sync_from_game(void)
+{
+    if (SAVE_CONTROL_Get != NULL && SYSTEM_DATA_GetConfig != NULL) {
+        void *sc = SAVE_CONTROL_Get();
+        if (sc != NULL) {
+            void *cfg = SYSTEM_DATA_GetConfig(sc);
+            if (cfg != NULL) {
+                if (CONFIG_GetTextSpeed != NULL)
+                    g_cur.v[EIDOS_OPT_TEXT_SPEED] = (int)CONFIG_GetTextSpeed(cfg);
+                if (CONFIG_GetBattleScene != NULL)
+                    g_cur.v[EIDOS_OPT_BATTLE_SCENE] = (int)CONFIG_GetBattleScene(cfg);
+                if (CONFIG_GetBattleStyle != NULL)
+                    g_cur.v[EIDOS_OPT_BATTLE_STYLE] = (int)CONFIG_GetBattleStyle(cfg);
+            }
+        }
+    }
+}
+
+void eidos_settings_sync_to_game(int id, int v)
+{
+    if (SAVE_CONTROL_Get != NULL && SYSTEM_DATA_GetConfig != NULL) {
+        void *sc = SAVE_CONTROL_Get();
+        if (sc != NULL) {
+            void *cfg = SYSTEM_DATA_GetConfig(sc);
+            if (cfg != NULL) {
+                if (id == EIDOS_OPT_TEXT_SPEED && CONFIG_SetTextSpeed != NULL)
+                    CONFIG_SetTextSpeed(cfg, (unsigned int)v);
+                if (id == EIDOS_OPT_BATTLE_SCENE && CONFIG_SetBattleScene != NULL)
+                    CONFIG_SetBattleScene(cfg, (unsigned int)v);
+                if (id == EIDOS_OPT_BATTLE_STYLE && CONFIG_SetBattleStyle != NULL)
+                    CONFIG_SetBattleStyle(cfg, (unsigned int)v);
+            }
+        }
     }
 }
 
@@ -2569,8 +2627,8 @@ int eidos_settings_internal_scale(void)
     }
     eidos_platform_viewport(g_plat, &vp);
     return eidos_resolution_fit_cap(
-        &vp, k_options[EIDOS_OPT_DISPLAY_RESOLUTION].max,
-        eidos_platform_gpu3d(g_plat) ? EIDOS_RESOLUTION_MAX
+        &vp, 2,
+        eidos_platform_gpu3d(g_plat) ? k_options[EIDOS_OPT_DISPLAY_RESOLUTION].max
                                      : EIDOS_RESOLUTION_FIT_CAP);
 }
 
@@ -2654,3 +2712,5 @@ int eidos_ui_active(void)
 {
     return g_ui_ran && bw_input_frame_number() - g_ui_ran_at <= 4u;
 }
+
+

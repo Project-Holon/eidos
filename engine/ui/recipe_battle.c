@@ -363,6 +363,22 @@ static void dbg_stage(const char *what, const void *p)
     }
 }
 
+static int is_encounter_active(void)
+{
+    u32 id;
+    if (bw_overlay_is_loaded == NULL) {
+        return 0;
+    }
+    for (id = 73; id <= 83; id++) {
+        if (bw_overlay_is_loaded(id)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int g_battle_intro_done = 0;
+
 static int bt_read(Bt *b)
 {
     u32 *slot;
@@ -378,7 +394,11 @@ static int bt_read(Bt *b)
     memset(&g_bt, 0, sizeof(g_bt));
     g_bt.frame = stamp;
     if (!bw_overlay_is_loaded(93) || !bw_overlay_is_loaded(94)) {
+        g_battle_intro_done = 0;
         goto done;
+    }
+    if (is_encounter_active()) {
+        g_battle_intro_done = 0;
     }
     slot = (u32 *)bw_ds_try_ptr(DS_GBTLVEFF);
     if (slot == NULL) {
@@ -957,9 +977,10 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
             if (v == ground) {
                 continue;
             }
+            int is_text = (v == ink);
             ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1,
                     hit[yy][xx] == 1 ? mcol : hit[yy][xx] == 2 ? mdark
-                                                               : v == ink ? UI_WHITE : UI_GREY,
+                    : is_text ? UI_WHITE : 0x383838u,
                     255);
             any = 1;
         }
@@ -1095,34 +1116,42 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->mode = EIDOS_VIEW_WORLD;
     (void)in;
     tap_reset();
-    /* The game's own plates and message box are not shown: the interface
-     * draws the plates from the battle's state and the message from the
-     * game's own window, so the screen looks the same as in the menus. */
+    /* The game's own plates and message box are not shown once Pokemon are on
+     * the field: the interface draws the plates from the battle's state and the
+     * message from the game's own window. During the intro / encounter cut-in,
+     * the 2D overlays (VS graphic, trainer cut-in, intro banner) stay visible. */
     if (bt_read(&b) && b.core != NULL) {
         Shell sh;
-        int mw, lv;
+        int mw, lv, intro;
         u32 now = bw_input_frame_number(), since;
 
-        view->hide_2d = 1;
         shell_layout(c, &b, &sh);
-        mw = sh.px - 6 - 6;
-        shell_draw(c, &b, &sh, NULL, 0);
-        if (draw_battle_message(c, &b, 6, h - 17 - 6 - 40, mw, 40)) {
-            g_msg_frame = now;
-        } else if ((since = now - g_msg_frame) < MSG_HOLD_FRAMES + MSG_FADE_FRAMES) {
-            int a = since < MSG_HOLD_FRAMES ? 225
-                    : 225 * (int)(MSG_HOLD_FRAMES + MSG_FADE_FRAMES - since) / MSG_FADE_FRAMES;
-
-            ui_panel(c, 6, h - 17 - 6 - 40, mw, 40, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, a);
+        if (sh.n > 0 || b.screen > 0) {
+            g_battle_intro_done = 1;
         }
-        lv = levelup_phase(&b);
-        if (lv != LV_NONE) {
-            levelup_draw(c, &b, lv);
+        intro = !g_battle_intro_done || is_encounter_active();
+        view->hide_2d = !intro;
+        if (!intro) {
+            mw = sh.px - 6 - 6;
+            shell_draw(c, &b, &sh, NULL, 0);
+            if (draw_battle_message(c, &b, 6, h - 17 - 6 - 40, mw, 40)) {
+                g_msg_frame = now;
+            } else if ((since = now - g_msg_frame) < MSG_HOLD_FRAMES + MSG_FADE_FRAMES) {
+                int a = since < MSG_HOLD_FRAMES ? 225
+                        : 225 * (int)(MSG_HOLD_FRAMES + MSG_FADE_FRAMES - since) / MSG_FADE_FRAMES;
+
+                ui_panel(c, 6, h - 17 - 6 - 40, mw, 40, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, a);
+            }
+            lv = levelup_phase(&b);
+            if (lv != LV_NONE) {
+                levelup_draw(c, &b, lv);
+            }
         }
     } else {
         /* a frame the battle's state is not readable (a screen changing):
-         * the last picture stays, and the game's own plates stay hidden */
-        view->hide_2d = 1;
+         * the last picture stays, keeping 2D visible during intro/encounter */
+        int intro = !g_battle_intro_done || is_encounter_active();
+        view->hide_2d = !intro;
         eidos_ui_hold_canvas();
         return;
     }
@@ -1361,7 +1390,7 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
 
         if (own || !draw_battle_message(c, b, 6, my, mw, 40)) {
             ui_panel(c, 6, my, mw, 40, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
-            ui_text(c, 16, my + ui_text_y(40, UI_FONT_LARGE), prompt, UI_WHITE, UI_GREY,
+            ui_text(c, 16, my + ui_text_y(40, UI_FONT_LARGE), prompt, UI_WHITE, UI_EDGE,
                     UI_FONT_LARGE, 1);
         }
     }
@@ -3091,7 +3120,7 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
         snprintf(msg, sizeof(msg), "%s", label(MSG_PLIST_UI, (u32)msg_id, "Choose a Pok\xC3\xA9mon.",
                                               buf, sizeof(buf)));
         ui_panel(c, ix, msg_y, iw, msg_h, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 235);
-        ui_text(c, ix + 10, msg_y + ui_text_y(msg_h, UI_FONT_LARGE), msg, UI_WHITE, UI_GREY,
+        ui_text(c, ix + 10, msg_y + ui_text_y(msg_h, UI_FONT_LARGE), msg, UI_WHITE, UI_EDGE,
                 UI_FONT_LARGE, 1);
         {
             int st = push_button(c, ix + iw - 54, iy + ih - 18, 54, 18, "BACK", UI_GREY, !menu_open);

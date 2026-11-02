@@ -80,7 +80,7 @@ static int proc_overlay(void *proc)
 
 static void *proc_work(void *proc, int overlay)
 {
-    if (proc == NULL || proc_overlay(proc) != overlay || (int)rd32(proc, 0x08) < 2) {
+    if (proc == NULL || proc_overlay(proc) != overlay || (int)rd32(proc, 0x08) < 1) {
         return NULL;
     }
     return rdp(proc, 0x14);
@@ -92,24 +92,27 @@ static void *proc_work(void *proc, int overlay)
 
 static void *game_proc_top(void)
 {
+    u32 gs_addr;
     void *gs;
 
     if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL) {
         return NULL;
     }
-    memcpy(&gs, bw_dsref__GameSystemGlobal, sizeof(gs));
+    gs_addr = rd32(bw_dsref__GameSystemGlobal, 0);
+    gs = gs_addr != 0 ? bw_ds_try_ptr(gs_addr) : NULL;
     return gs != NULL ? procsys_top(rdp(gs, 0x08)) : NULL;
 }
 
 /* The new game's intro keeps its own proc stack in its work (+0x30). */
 static void *intro_proc_top(void)
 {
-    void *root, *work, *data;
+    void *root = NULL, *work, *data;
 
-    if (&g_ProcSys != NULL) {
+    if (&g_ProcSys != NULL && g_ProcSys != NULL) {
         root = g_ProcSys;
     } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
-        memcpy(&root, bw_dsref_g_ProcSys, sizeof(root));
+        u32 addr = rd32(bw_dsref_g_ProcSys, 0);
+        root = addr != 0 ? bw_ds_try_ptr(addr) : NULL;
     } else {
         return NULL;
     }
@@ -130,12 +133,13 @@ static void *intro_proc_top(void)
  * keyboard there (engine/platform/mod_options_proc.c, kb_open). */
 static void *global_proc_top(void)
 {
-    void *root;
+    void *root = NULL;
 
-    if (&g_ProcSys != NULL) {
+    if (&g_ProcSys != NULL && g_ProcSys != NULL) {
         root = g_ProcSys;
     } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
-        memcpy(&root, bw_dsref_g_ProcSys, sizeof(root));
+        u32 addr = rd32(bw_dsref_g_ProcSys, 0);
+        root = addr != 0 ? bw_ds_try_ptr(addr) : NULL;
     } else {
         return NULL;
     }
@@ -144,15 +148,27 @@ static void *global_proc_top(void)
 
 static void *find_scene_work(int overlay)
 {
-    void *w = proc_work(game_proc_top(), overlay);
+    void *proc;
 
-    if (w == NULL && overlay == OV_NAMEIN) {
-        w = proc_work(intro_proc_top(), overlay);
+    for (proc = game_proc_top(); proc != NULL; proc = rdp(proc, 0x18)) {
+        void *w = proc_work(proc, overlay);
+        if (w != NULL) {
+            return w;
+        }
     }
-    if (w == NULL && overlay == OV_NAMEIN) {
-        w = proc_work(global_proc_top(), overlay);
+    for (proc = intro_proc_top(); proc != NULL; proc = rdp(proc, 0x18)) {
+        void *w = proc_work(proc, overlay);
+        if (w != NULL) {
+            return w;
+        }
     }
-    return w;
+    for (proc = global_proc_top(); proc != NULL; proc = rdp(proc, 0x18)) {
+        void *w = proc_work(proc, overlay);
+        if (w != NULL) {
+            return w;
+        }
+    }
+    return NULL;
 }
 
 /* ------------------------------------------------------------------ */

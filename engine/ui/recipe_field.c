@@ -52,6 +52,8 @@
 
 /* The game system's global and the accessors the recipes call. */
 extern void *bw_dsref__GameSystemGlobal WEAK;
+extern void *bw_ds_try_ptr(u32 addr) WEAK;
+extern int   bw_overlay_is_loaded(u32 id) WEAK;
 extern void *GAME_DATA_GetMyParty(const void *gd) WEAK;
 extern u32   POKEPARTY_GetCount(const void *party) WEAK;
 extern void *POKEPARTY_GetMember(void *party, u32 pos) WEAK;
@@ -1241,12 +1243,38 @@ static int capture_mix(void)
  * ENCEFF_ModelSceneEventMain, ov075's screen texture). */
 extern int ov021_FIELDMAP_GetDrawMode(void *fieldMap) __attribute__((weak));
 
+static int is_encounter_active(void)
+{
+    u32 id;
+    if (bw_overlay_is_loaded == NULL) {
+        return 0;
+    }
+    for (id = 73; id <= 83; id++) {
+        if (bw_overlay_is_loaded(id)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int encounter_effect(void)
 {
-    void *gs = (&bw_dsref__GameSystemGlobal != NULL && bw_dsref__GameSystemGlobal != NULL)
-               ? *(void **)bw_dsref__GameSystemGlobal : NULL;
-    void *fm = gs != NULL ? *(void **)((u8 *)gs + 0x20) : NULL;
+    u32 *p;
+    u8 *gs;
+    void *fm;
 
+    if (is_encounter_active()) {
+        return 1;
+    }
+    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL) {
+        return 0;
+    }
+    p = (u32 *)bw_dsref__GameSystemGlobal;
+    gs = bw_ds_try_ptr != NULL ? (u8 *)bw_ds_try_ptr(*p) : (u8 *)*(void **)bw_dsref__GameSystemGlobal;
+    if (gs == NULL) {
+        return 0;
+    }
+    fm = bw_ds_try_ptr != NULL ? bw_ds_try_ptr(*(u32 *)(gs + 0x20)) : *(void **)(gs + 0x20);
     return fm != NULL && ov021_FIELDMAP_GetDrawMode != NULL && ov021_FIELDMAP_GetDrawMode(fm) == 2;
 }
 
@@ -1358,11 +1386,12 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
          * (a zone change, a door): the world alone, no bar, so nothing
          * flashes; while the game shows no wide world (a door shows a
          * capture of its screen) its last picture stands, faded */
+        int enc = encounter_effect();
         view->mode = EIDOS_VIEW_WORLD;
         view->keep_world = 1;
-        view->hide_2d = capture_bg_shown();
-        view->cap_mix = capture_mix();
-        view->stretch = encounter_effect();
+        view->hide_2d = enc ? 0 : capture_bg_shown();
+        view->cap_mix = enc ? 0 : capture_mix();
+        view->stretch = enc;
         return;
     }
     {
@@ -1406,11 +1435,12 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         return;
     }
 
+    int enc = encounter_effect();
     view->mode = EIDOS_VIEW_WORLD;
     view->keep_world = 1;
-    view->hide_2d = capture_bg_shown();
-    view->cap_mix = capture_mix();
-    view->stretch = encounter_effect();
+    view->hide_2d = enc ? 0 : capture_bg_shown();
+    view->cap_mix = enc ? 0 : capture_mix();
+    view->stretch = enc;
 
     /* While the game's place-name banner shows (it names the same place)
      * or an event runs, the bar slides up out of the way and comes back
@@ -1619,11 +1649,12 @@ static int lower_match(void)
 
 static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
+    int enc = encounter_effect();
     view->mode = EIDOS_VIEW_WORLD;
     view->keep_world = 1;
-    view->hide_2d = capture_bg_shown();
-    view->cap_mix = capture_mix();
-    view->stretch = encounter_effect();
+    view->hide_2d = enc ? 0 : capture_bg_shown();
+    view->cap_mix = enc ? 0 : capture_mix();
+    view->stretch = enc;
     if (lower_sheet(c, in, c->canvas->w, c->canvas->h, 0, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
         return;

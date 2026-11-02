@@ -1069,8 +1069,8 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         unsigned n = pass == 1 && g_bd.n_piece > 0 ? g_bd.n_piece : sc->nd;
         int sorted = pass == 1 && g_bd.n_piece > 0;
 
-        if (sorted && !(g_bd.idx_ok && g_bd.idx_eye[0] == b->eye[0] &&
-                        g_bd.idx_eye[1] == b->eye[1] && g_bd.idx_eye[2] == b->eye[2])) {
+        if (sorted && !(g_bd.idx_ok && fabsf(g_bd.idx_eye[0] - b->eye[0]) < 0.05f &&
+                        fabsf(g_bd.idx_eye[1] - b->eye[1]) < 0.05f && fabsf(g_bd.idx_eye[2] - b->eye[2]) < 0.05f)) {
             /* the see-through parts far to near from this camera, as one
              * index buffer (the back and the front pass share it) */
             for (i = 0; i < g_bd.n_piece; i++) {
@@ -2032,10 +2032,27 @@ int eidos_gl_render3d(EidosGl *g, const G3dSnapshot *s, int w, int h)
     return render_with_aa(g, &g->fb[0], s, w, h);
 }
 
+static unsigned char k_unpremul_tab[256][256];
+static int k_unpremul_ready = 0;
+
+static void init_unpremul(void)
+{
+    int a, c;
+    if (k_unpremul_ready) return;
+    for (a = 1; a < 256; a++) {
+        for (c = 0; c < 256; c++) {
+            unsigned v = ((unsigned)c * 255u + (unsigned)a / 2u) / (unsigned)a;
+            k_unpremul_tab[a][c] = (unsigned char)(v > 255u ? 255u : v);
+        }
+    }
+    k_unpremul_ready = 1;
+}
+
 static void unpremultiply(const unsigned char *raw, unsigned char *out,
                           int w, int h)
 {
     int x, y;
+    init_unpremul();
 
     for (y = 0; y < h; y++) {
         const unsigned char *s = raw + (size_t)(h - 1 - y) * (size_t)w * 4u;
@@ -2052,13 +2069,9 @@ static void unpremultiply(const unsigned char *raw, unsigned char *out,
             } else if (a == 0) {
                 d[x * 4 + 0] = d[x * 4 + 1] = d[x * 4 + 2] = d[x * 4 + 3] = 0;
             } else {
-                unsigned c;
-
-                for (c = 0; c < 3; c++) {
-                    unsigned v = (s[x * 4 + c] * 255u + a / 2u) / a;
-
-                    d[x * 4 + c] = (unsigned char)(v > 255u ? 255u : v);
-                }
+                d[x * 4 + 0] = k_unpremul_tab[a][s[x * 4 + 0]];
+                d[x * 4 + 1] = k_unpremul_tab[a][s[x * 4 + 1]];
+                d[x * 4 + 2] = k_unpremul_tab[a][s[x * 4 + 2]];
                 d[x * 4 + 3] = (unsigned char)a;
             }
         }

@@ -179,9 +179,7 @@ endif()
 # per thread) does not apply; a trap ends the program (no recovery across
 # fibers), and guard pages check the memory, which then never moves (the
 # SDL surfaces made from module pixels rely on it, host/sdl.c).
-if(NOT EIDOS_HOST_FPCAST)
-    target_compile_definitions(eidos PRIVATE HOST_INDIRECT_LOG=1)
-endif()
+target_compile_definitions(eidos PRIVATE HOST_INDIRECT_LOG=1)
 target_compile_definitions(eidos PRIVATE
     WASM_RT_NONCONFORMING_UNCHECKED_STACK_EXHAUSTION=1
     WASM_RT_SKIP_SIGNAL_RECOVERY=1

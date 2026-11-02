@@ -102,6 +102,9 @@ enum {
     EIDOS_OPT_GPU_2D,               /* the 2D screens composed by the GPU:
                                        0 off (the CPU), 1 on (the default;
                                        docs/gpu-2d.md)                     */
+    EIDOS_OPT_TEXT_SPEED,           /* 0 slow, 1 normal, 2 fast (vanilla game) */
+    EIDOS_OPT_BATTLE_SCENE,         /* 0 on, 1 off (battle animations)         */
+    EIDOS_OPT_BATTLE_STYLE,         /* 0 shift, 1 set (battle style)           */
     EIDOS_OPT_COUNT
 };
 
@@ -342,6 +345,9 @@ int  eidos_replace_file(const char *from, const char *to);
  */
 void eidos_ui_mark_active(void);
 int  eidos_ui_active(void);
+void eidos_settings_sync_from_game(void);
+void eidos_settings_sync_to_game(int id, int v);
+
 
 #ifdef __cplusplus
 }

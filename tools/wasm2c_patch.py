@@ -21,6 +21,7 @@ OLD = """#define CALL_INDIRECT(table, t, ft, x, ...) \\
    DO_CALL_INDIRECT(table, t, x, __VA_ARGS__))"""
 
 NEW = """/* tools/wasm2c_patch.py: a DS code address becomes its function's index */
+#include <stdio.h>
 u32 host_code_index(u32 x);
 #define HOST_DS_CODE_LO 0x01FF8000u
 #define HOST_DS_CODE_HI 0x02800000u
@@ -43,7 +44,7 @@ void host_indirect_mismatch(const char *caller, void *target);
               ? 1                                                       \\
               : (host_indirect_mismatch(__func__,                       \\
                                         (void *)table.data[x].func), 1)) \\
-       : TRAP(CALL_INDIRECT))
+       : (fprintf(stderr, "CALL_INDIRECT TRAP in %s: x=%u, table.size=%u, func=%p\\n", __func__, (unsigned)(x), (unsigned)(table).size, (x) < (table).size ? (table).data[x].func : NULL), TRAP(CALL_INDIRECT)))
 #endif"""
 
 

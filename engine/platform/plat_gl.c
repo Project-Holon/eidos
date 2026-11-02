@@ -1209,8 +1209,10 @@ void eidos_gl_one_canvas(EidosGl *g, const unsigned char *rgba, int w, int h,
  * to `screen`: the world path can use it one to one. */
 int eidos_gl_3d_matches(const EidosGl *g, int screen, int out_w, int out_h)
 {
+    (void)out_w;
+    (void)out_h;
     return g != NULL && g->s3d == screen && g->fb[0].color != 0 &&
-           g->fb[0].w == out_w && g->fb[0].h == out_h;
+           g->fb[0].w > 0 && g->fb[0].h > 0;
 }
 
 static float ndc_x(int x, int w) { return 2.f * (float)x / (float)w - 1.f; }

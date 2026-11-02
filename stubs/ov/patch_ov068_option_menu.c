@@ -276,6 +276,9 @@ extern int eidos_settings_commit(void);
 #define OPT_LAYOUT_SWAP         7
 #define OPT_SOUND_VOLUME        9
 #define OPT_EXTRAS_INSTANT_TEXT 10
+#define OPT_BATTLE_BACKDROP     11
+#define OPT_BATTLE_PLATFORMS    12
+#define OPT_MOVE_COLOURS        13
 #define OPT_TRANSITIONS         16
 
 /* ------------------------------------------------------------------ */
@@ -329,11 +332,20 @@ static const PortRow k_sound_rows[] = {
 };
 
 static const PortRow k_extras_rows[] = {
+    { "PORT SETTINGS", "Open the complete PC settings\n(controls, display, sound, mods).",
+      -1, ROW_CHOICE, 1, { "OPEN", 0, 0 }, { 0, 0, 0 },
+      0, 0, 0, 0, 0 },
     { "INSTANT TEXT", "Show each page of a message at\nonce, whatever the text speed.",
       OPT_EXTRAS_INSTANT_TEXT, ROW_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 },
       0, 0, 0, 0, 0 },
     { "TRANSITIONS", "Doors and map changes.\nSeamless never goes black.",
       OPT_TRANSITIONS, ROW_CHOICE, 3, { "ORIGINAL", "FAST", "SEAMLESS" }, { 0, 1, 2 },
+      0, 0, 0, 0, 0 },
+    { "BATTLE BACKDROP", "The 3D battlefield scenery.\nReal map renders the room.",
+      OPT_BATTLE_BACKDROP, ROW_CHOICE, 2, { "REAL MAP", "ORIGINAL", 0 }, { 0, 1, 0 },
+      0, 0, 0, 0, 0 },
+    { "MOVE COLOURS", "Move names in battle take their\nelemental type colour.",
+      OPT_MOVE_COLOURS, ROW_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 },
       0, 0, 0, 0, 0 },
 };
 
@@ -600,6 +612,9 @@ static void build_page(int page)
                 make_win(&g.choice[r][c], k_col3_tile[c], ROW_TILE_Y(r), CHOICE3_TILE_W, 2,
                          row->names[c], k_col3_pad[c], font);
             }
+        } else if (row->count == 1) {
+            make_win(&g.choice[r][0], k_col2_tile[1], ROW_TILE_Y(r), CHOICE2_TILE_W, 2,
+                     row->names[0], 0, font);
         } else {
             for (c = 0; c < 2; c++) {
                 make_win(&g.choice[r][c], k_col2_tile[c], ROW_TILE_Y(r), CHOICE2_TILE_W, 2,
@@ -677,6 +692,9 @@ static void port_help(OptionMenuTextBox *box, const char *text)
 
 static int choice_selected(const PortRow *row, int c)
 {
+    if (row->option == -1) {
+        return 0;
+    }
     if (row->kind == ROW_STEP) {
         return c == 1;
     }
@@ -725,7 +743,7 @@ static void port_draw(OptionMenuList *list, int highlight)
                 continue;
             }
             if (a < OPTION_ACTOR_CHOICE_COUNT) {
-                int x = cols == 3 ? k_col3_actor[c] : k_col2_actor[c];
+                int x = cols == 3 ? k_col3_actor[c] : (cols == 1 ? k_col2_actor[1] : k_col2_actor[c]);
 
                 place_actor(list->choiceActors[a++], x, list->scrollY + 24 * r,
                             on ? (sel ? 3 : 2) : (sel ? 0 : 1));
@@ -749,6 +767,14 @@ static void port_draw(OptionMenuList *list, int highlight)
 
 static void port_change(int r, const PortRow *row, int c, int delta)
 {
+    if (row->option == -1) {
+        extern int eidos_ui_options_proc_up;
+        extern void eidos_sui_enter(void);
+        GFL_USE_PlaySeDefaultVolume(OPTION_SE_CURSOR);
+        eidos_ui_options_proc_up = 1;
+        eidos_sui_enter();
+        return;
+    }
     int v = eidos_settings_get(row->option);
 
     if (row->kind == ROW_STEP) {
@@ -808,7 +834,7 @@ static int port_touch(OptionMenuList *list, const OptionMenuPoint *t, int *col)
         }
         *col = -1;
         for (c = 0; c < cols; c++) {
-            int x = cols == 3 ? k_col3_rect[c] : k_col2_rect[c];
+            int x = cols == 3 ? k_col3_rect[c] : (cols == 1 ? k_col2_rect[1] : k_col2_rect[c]);
             int w = cols == 3 ? 48 : 72;
 
             if (t->x >= x && t->x < x + w) {
@@ -1163,6 +1189,14 @@ void OPTION_MENU_UpdateList(OptionMenuList *list, const OptionMenuInput *input,
         BG_SYS_MarkTileDirty(list->mainLayer);
     }
     flash_tick(list);
+    if ((KEY_GetTrg() & (1024 | 2048)) != 0) {
+        extern int eidos_ui_options_proc_up;
+        extern void eidos_sui_enter(void);
+        GFL_USE_PlaySeDefaultVolume(OPTION_SE_CURSOR);
+        eidos_ui_options_proc_up = 1;
+        eidos_sui_enter();
+        return;
+    }
     if (page_input(list, input, helpText)) {
         OPTION_MENU_IsTextDone(helpText);
         OPTION_MENU_ShiftInputTrail(list);
