@@ -1,0 +1,263 @@
+# engine/ui/ui_lang.tsv -- the one-screen interface's own labels in the
+# game's other languages (tools/ui_lang.py writes engine/ui/ui_lang_table.h).
+# Columns, tab separated: English, French, German, Italian, Spanish.  An
+# empty cell keeps the English.  The games' own words where they have one.
+ACCURACY	PRÉCISION	GENAUIGKEIT	PRECISIONE	PRECISIÓN
+ADVENTURE STARTED	DÉBUT DE L'AVENTURE	ABENTEUERBEGINN	INIZIO AVVENTURA	INICIO DE LA AVENTURA
+AREA	ZONE	GEBIET	ZONA	ZONA
+ATTACK	ATTAQUE	ANGRIFF	ATTACCO	ATAQUE
+AUTO	AUTO	AUTO	AUTO	AUTO
+Ability	Talent	Fähigkeit	Abilità	Habilidad
+Amount	Quantité	Anzahl	Quantità	Cantidad
+Arrows	Flèches	Pfeile	Frecce	Flechas
+Attack	Attaque	Angriff	Attacco	Ataque
+BACK	RETOUR	ZURÜCK	INDIETRO	ATRÁS
+BADGES	BADGES	ORDEN	MEDAGLIE	MEDALLAS
+BAG	SAC	BEUTEL	BORSA	MOCHILA
+BATTLE COMPETITION	COMPÉTITIONS	WETTBEWERB	GARE	COMPETICIÓN
+BATTLE ITEMS	OBJETS COMBAT	KAMPFITEMS	STRUMENTI LOTTA	OBJETOS BATALLA
+BATTLE POINTS	POINTS COMBAT	KAMPFPUNKTE	PUNTI LOTTA	PUNTOS BATALLA
+BATTLE	COMBAT	KAMPF	LOTTA	LUCHAR
+BORDER	BORDURE	RAND	BORDO	BORDE
+BOX	BOÎTE	BOX	BOX	CAJA
+BRN	BRU	BRT	SCO	QUE
+BUG	INSECTE	KÄFER	COLEOTTERO	BICHO
+BUY	ACHETER	KAUFEN	COMPRA	COMPRAR
+Back	Retour	Zurück	Indietro	Atrás
+Battle	Combat	Kampf	Lotta	Combate
+Berries	Baies	Beeren	Bacche	Bayas
+Box name?	Nom de la boîte ?	Box-Name?	Nome del box?	¿Nombre de la caja?
+Boxes	Boîtes	Boxen	Box	Cajas
+Busy	Occupé	Belegt	Occupato	Ocupado
+Buy	Acheter	Kaufen	Compra	Comprar
+C-GEAR	C-GEAR	C-GEAR	C-GEAR	C-GEAR
+CANCEL	ANNULER	ABBRECHEN	ANNULLA	CANCELAR
+CANNOT BATTLE	K.O.	KAMPFUNFÄHIG	ESAUSTO	DEBILITADO
+CHECK MOVES	CAPACITÉS	ATTACKEN	MOSSE	MOVIMIENTOS
+CONFIRM	CONFIRMER	BESTÄTIGEN	CONFERMA	CONFIRMAR
+CONTINUE	CONTINUER	FORTSETZEN	CONTINUA	CONTINUAR
+CRY	CRI	RUF	VERSO	GRITO
+Call	Appeler	Anrufen	Chiama	Llamar
+Calling	Appel...	Anruf...	Chiamata...	Llamando...
+Can call	Disponible	Erreichbar	Disponibile	Disponible
+Cancel	Annuler	Abbrechen	Annulla	Cancelar
+Change	Changer	Ändern	Cambia	Cambiar
+Choose a Pokemon.	Choisissez un Pokémon.	Wähle ein Pokémon.	Scegli un Pokémon.	Elige un Pokémon.
+Choose	Choisir	Wählen	Scegli	Elegir
+Circle	Cercle	Kreis	Cerchio	Círculo
+Close	Fermer	Schließen	Chiudi	Cerrar
+Confirm	Confirmer	Bestätigen	Conferma	Confirmar
+Continue	Continuer	Weiter	Continua	Continuar
+DARK	TÉNÈBRES	UNLICHT	BUIO	SINIESTRO
+DEFENSE	DÉFENSE	VERTEIDIGUNG	DIFESA	DEFENSA
+DELETE	EFFACER	LÖSCHEN	CANCELLA	BORRAR
+DEX	DEX	DEX	DEX	DEX
+DISPLAY	AFFICHAGE	ANZEIGE	SCHERMO	PANTALLA
+DOWN	BAS	UNTEN	GIÙ	ABAJO
+DRAGON	DRAGON	DRACHE	DRAGO	DRAGÓN
+Defense	Défense	Verteidigung	Difesa	Defensa
+Delete	Effacer	Löschen	Cancella	Borrar
+Desk	Bureau	Pult	Scrivania	Escritorio
+Diamond	Losange	Raute	Rombo	Rombo
+Doors and map changes. Seamless never goes black.	Portes et changements de carte. Fluide ne passe jamais au noir.	Türen und Kartenwechsel. Nahtlos wird nie schwarz.	Porte e cambi di mappa. Continuo non diventa mai nero.	Puertas y cambios de mapa. Continuo nunca se pone en negro.
+EGG	ŒUF	EI	UOVO	HUEVO
+ELECTRIC	ÉLECTRIK	ELEKTRO	ELETTRO	ELÉCTRICO
+ENTRY	INSCRIPTION	EINTRAG	VOCE	ENTRADA
+EXIT	QUITTER	ENDE	ESCI	SALIR
+EXP	EXP.	E.-P.	ESP.	EXP.
+EXTRAS	EXTRAS	EXTRAS	EXTRA	EXTRAS
+Egg	Œuf	Ei	Uovo	Huevo
+Empty	Vide	Leer	Vuoto	Vacío
+FAST	RAPIDE	SCHNELL	RAPIDO	RÁPIDO
+FIGHT	ATTAQUE	KAMPF	LOTTA	LUCHAR
+FIGHTING	COMBAT	KAMPF	LOTTA	LUCHA
+FIRE	FEU	FEUER	FUOCO	FUEGO
+FLIP	RETOURNER	WENDEN	GIRA	GIRAR
+FLYING	VOL	FLUG	VOLANTE	VOLADOR
+FNT	K.O.	K.O.	K.O.	DEB
+FORGET A MOVE	OUBLIER UNE CAPACITÉ	ATTACKE VERGESSEN	DIMENTICA MOSSA	OLVIDAR MOVIMIENTO
+FORGET	OUBLIER	VERGESSEN	DIMENTICA	OLVIDAR
+FORM	FORME	FORM	FORMA	FORMA
+FRIEND	AMI	FREUND	AMICO	AMIGO
+FRZ	GEL	GEF	CON	CON
+FULL	PLEIN	VOLL	PIENO	COMPLETO
+Flip	Retourner	Wenden	Gira	Girar
+Forget	Oublier	Vergessen	Dimentica	Olvidar
+GAME SYNC SETTINGS	RÉGLAGES GAME SYNC	GAME SYNC-EINSTELLUNGEN	IMPOSTAZIONI GAME SYNC	AJUSTES DE GAME SYNC
+GAME	JEU	SPIEL	GIOCO	JUEGO
+GHOST	SPECTRE	GEIST	SPETTRO	FANTASMA
+GIVE UP	ABANDONNER	AUFGEBEN	RINUNCIA	RENDIRSE
+GRASS	PLANTE	PFLANZE	ERBA	PLANTA
+GREETING	SALUTATION	GRUSS	SALUTO	SALUDO
+GROUND	SOL	BODEN	TERRA	TIERRA
+GYM BADGES	BADGES	ORDEN	MEDAGLIE	MEDALLAS
+Give it a nickname?	Donner un surnom ?	Spitznamen geben?	Dargli un soprannome?	¿Ponerle un mote?
+Give up	Abandonner	Aufgeben	Rinuncia	Rendirse
+HALL OF FAME DEBUT	ENTRÉE AU PANTHÉON	RUHMESHALLE	SALA D'ONORE	HALL DE LA FAMA
+HELD ITEMS	OBJETS TENUS	GETRAGENE ITEMS	STRUMENTI TENUTI	OBJETOS EQUIPADOS
+HP	PV	KP	PS	PS
+HP/PP	PV/PP	KP/AP	PS/PP	PS/PP
+HT	TAILLE	GRÖSSE	ALT.	ALT.
+Heart	Cœur	Herz	Cuore	Corazón
+How do you greet passersby?	Que dire aux passants pour les saluer ?	Wie grüßt du Passanten?	Come saluti i passanti?	¿Cómo saludas a los transeúntes?
+How do you thank passersby?	Que dire aux passants pour les remercier ?	Wie dankst du Passanten?	Come ringrazi i passanti?	¿Cómo das las gracias a los transeúntes?
+How the game window is shown. Full covers the whole screen.	L'affichage de la fenêtre du jeu. Plein écran couvre tout l'écran.	Wie das Spielfenster gezeigt wird. Vollbild füllt den ganzen Bildschirm.	Come viene mostrata la finestra del gioco. Schermo intero copre tutto lo schermo.	Cómo se muestra la ventana del juego. Pantalla completa la ocupa entera.
+ICE	GLACE	EIS	GHIACCIO	HIELO
+ID No.	N° ID	ID-Nr.	N. ID	N.º ID
+IN BATTLE	EN COMBAT	IM KAMPF	IN LOTTA	EN COMBATE
+INFO	INFO	INFO	INFO	INFO
+INSTANT TEXT	TEXTE INSTANTANÉ	SOFORTIGER TEXT	TESTO ISTANTANEO	TEXTO INSTANTÁNEO
+IR	IR	IR	IR	IR
+ITEM	OBJET	ITEM	STRUMENTO	OBJETO
+Info	Info	Info	Info	Info
+It cannot go there.	Impossible de le mettre ici.	Das geht dort nicht.	Non può andare lì.	No puede ir ahí.
+Item	Objet	Item	Strumento	Objeto
+Items	Objets	Items	Strumenti	Objetos
+Its item can't be moved here.	Son objet ne peut pas aller ici.	Sein Item kann nicht hierher.	Il suo strumento non può andare qui.	Su objeto no puede ir aquí.
+Jump to which Box?	Aller à quelle boîte ?	Zu welcher Box?	A quale box andare?	¿Ir a qué caja?
+Key Items	Objets rares	Basis-Items	Strumenti base	Objetos clave
+LAST USED ITEM	DERNIER OBJET UTILISÉ	ZULETZT BENUTZT	ULTIMO STRUMENTO	ÚLTIMO OBJETO
+LEFT	GAUCHE	LINKS	SINISTRA	IZQUIERDA
+Leave	Quitter	Verlassen	Esci	Salir
+List	Liste	Liste	Elenco	Lista
+Looking for someone to call.	Recherche de correspondants...	Suche nach Gesprächspartnern...	Ricerca di qualcuno da chiamare...	Buscando a alguien a quien llamar...
+Lv.	N.	Lv.	Lv.	Nv.
+MARK	MARQUE	MARKIERUNG	SEGNO	MARCA
+MARKING	MARQUAGE	MARKIEREN	SEGNI	MARCAS
+MART	BOUTIQUE	SHOP	BOTTEGA	TIENDA
+MESSAGE	MESSAGE	NACHRICHT	MESSAGGIO	MENSAJE
+MIC TEST	TEST MICRO	MIKROTEST	TEST MICROFONO	PRUEBA MICRÓFONO
+MONEY	ARGENT	GELD	SOLDI	DINERO
+MOVE	DÉPLACER	BEWEGEN	SPOSTA	MOVER
+MOVES	CAPACITÉS	ATTACKEN	MOSSE	MOVIMIENTOS
+MULTIPLAYER	MULTIJOUEUR	MEHRSPIELER	MULTIGIOCATORE	MULTIJUGADOR
+MYSTERY GIFT	CADEAU MYSTÈRE	GEHEIMGESCHEHEN	DONO SEGRETO	REGALO MISTERIOSO
+Medicine	Soins	Medizin	Rimedi	Botiquín
+Menu	Menu	Menü	Menu	Menú
+Move	Déplacer	Bewegen	Sposta	Mover
+NAME	NOM	NAME	NOME	NOMBRE
+NATIONAL	NATIONAL	NATIONAL	NAZIONALE	NACIONAL
+NEW GAME	NOUVELLE PARTIE	NEUES SPIEL	NUOVA PARTITA	NUEVA PARTIDA
+NEW	NOUVEAU	NEU	NUOVO	NUEVO
+NINTENDO WFC SETTINGS	RÉGLAGES NINTENDO WFC	NINTENDO WFC-EINSTELLUNGEN	IMPOSTAZIONI NINTENDO WFC	AJUSTES DE NINTENDO WFC
+NO	NON	NEIN	NO	NO
+NORMAL	NORMAL	NORMAL	NORMALE	NORMAL
+Next	Suivant	Weiter	Avanti	Siguiente
+No data yet.	Pas encore de données.	Noch keine Daten.	Nessun dato.	Aún no hay datos.
+No item used yet	Aucun objet utilisé	Noch kein Item benutzt	Nessuno strumento usato	Ningún objeto usado
+No ribbons.	Aucun ruban.	Keine Bänder.	Nessun fiocco.	Ninguna cinta.
+No	Non	Nein	No	No
+None	Aucun	Keins	Nessuno	Ninguno
+OFF	NON	AUS	NO	NO
+OK	OK	OK	OK	OK
+ON	OUI	AN	SÌ	SÍ
+ONE	UN	EINS	UNO	UNA
+ONLINE	INTERNET	ONLINE	ONLINE	EN LÍNEA
+OPTIONS	OPTIONS	OPTIONEN	OPZIONI	OPCIONES
+ORIGINAL	ORIGINAL	ORIGINAL	ORIGINALE	ORIGINAL
+Only a Pokemon can hold it.	Seul un Pokémon peut le tenir.	Nur ein Pokémon kann es tragen.	Solo un Pokémon può tenerlo.	Solo un Pokémon puede llevarlo.
+Open	Ouvrir	Öffnen	Apri	Abrir
+Order	Ordre	Reihenfolge	Ordine	Orden
+Others	Autres	Andere	Altri	Otros
+Out of range	Hors de portée	Außer Reichweite	Fuori portata	Fuera de alcance
+PAR	PAR	PAR	PAR	PAR
+PARTY	ÉQUIPE	TEAM	SQUADRA	EQUIPO
+PIXEL SCALE	TAILLE DES PIXELS	PIXELGRÖSSE	SCALA PIXEL	ESCALA DE PÍXEL
+PKRS	PKRS	PKRS	PKRS	PKRS
+PLAYER	JOUEUR	SPIELER	GIOCATORE	JUGADOR
+POISON	POISON	GIFT	VELENO	VENENO
+POKEDEX	POKÉDEX	POKÉDEX	POKÉDEX	POKÉDEX
+POKEMON STORAGE	STOCKAGE POKÉMON	POKÉMON-LAGER	BOX POKÉMON	ALMACENAMIENTO
+POKEMON	POKÉMON	POKÉMON	POKÉMON	POKÉMON
+POWER	PUISSANCE	STÄRKE	POTENZA	POTENCIA
+PRESS START	APPUYEZ SUR START	DRÜCKE START	PREMI START	PULSA START
+PSN	PSN	GIF	AVV	ENV
+PSYCHIC	PSY	PSYCHO	PSICO	PSÍQUICO
+Page	Page	Seite	Pagina	Página
+Pick up	Prendre	Nehmen	Prendi	Coger
+Place it in which Box?	Le placer dans quelle boîte ?	In welche Box?	In quale box metterlo?	¿En qué caja dejarlo?
+Pocket	Poche	Tasche	Tasca	Bolsillo
+Prev	Préc.	Zurück	Prec.	Ant.
+Previous	Précédent	Vorherige	Precedente	Anterior
+Put back	Reposer	Zurücklegen	Rimetti	Devolver
+Put down	Poser	Ablegen	Posa	Dejar
+QUIT	QUITTER	BEENDEN	ESCI	SALIR
+Quit	Quitter	Beenden	Esci	Salir
+RECORDS	RECORDS	REKORDE	RECORD	RÉCORDS
+RELEASE	RELÂCHER	FREILASSEN	LIBERA	LIBERAR
+RESTORE	RESTAURER	WIEDERHERSTELLEN	RIPRISTINA	RESTAURAR
+RIBBONS	RUBANS	BÄNDER	FIOCCHI	CINTAS
+RIGHT	DROITE	RECHTS	DESTRA	DERECHA
+RIVAL	RIVAL	RIVALE	RIVALE	RIVAL
+ROCK	ROCHE	GESTEIN	ROCCIA	ROCA
+RUN	FUITE	FLUCHT	FUGA	HUIR
+Recipes	Recettes	Rezepte	Ricette	Recetas
+Register	Enregistrer	Registrieren	Registra	Registrar
+SAVE	SAUVER	SICHERN	SALVA	GUARDAR
+SCREENS	ÉCRANS	BILDSCHIRME	SCHERMI	PANTALLAS
+SEAMLESS	FLUIDE	NAHTLOS	CONTINUO	CONTINUO
+SETTINGS	RÉGLAGES	EINSTELLUNGEN	IMPOSTAZIONI	AJUSTES
+SHIFT	CHANGER	TAUSCHEN	SCAMBIO	CAMBIAR
+SKILLS	COMPÉTENCES	FÄHIGKEITEN	ABILITÀ	HABILIDADES
+SLP	SOM	SLF	SON	DOR
+SOUND	SON	TON	AUDIO	SONIDO
+SP. ATK	ATQ. SPÉ.	SP.-ANG.	ATT. SP.	AT. ESP.
+SP. DEF	DÉF. SPÉ.	SP.-VER.	DIF. SP.	DEF. ESP.
+SPACE	ESPACE	LEERZEICHEN	SPAZIO	ESPACIO
+SPEED	VITESSE	INITIATIVE	VELOCITÀ	VELOCIDAD
+STACKED	EMPILÉS	ÜBEREINANDER	IMPILATI	APILADAS
+STATUS	STATUT	STATUS	STATO	ESTADO
+STEEL	ACIER	STAHL	ACCIAIO	ACERO
+SUMMARY	RÉSUMÉ	BERICHT	INFO	DATOS
+SWAP SCREENS	INVERSER LES ÉCRANS	BILDSCHIRME TAUSCHEN	SCAMBIA SCHERMI	INTERCAMBIAR PANTALLAS
+SWITCH	CHANGER	TAUSCHEN	SCAMBIA	CAMBIAR
+Save	Sauver	Sichern	Salva	Guardar
+Saving... Don't turn off the power.	Sauvegarde... N'éteignez pas la console.	Speichern... Nicht ausschalten.	Salvataggio... Non spegnere.	Guardando... No apagues la consola.
+Search	Rechercher	Suchen	Cerca	Buscar
+Section	Section	Abschnitt	Sezione	Sección
+Select	Choisir	Wählen	Scegli	Elegir
+Shift	Changer	Tauschen	Scambio	Cambiar
+Should a move be deleted...?	Faut-il oublier une capacité ?	Soll eine Attacke vergessen werden?	Dimenticare una mossa?	¿Olvidar un movimiento?
+Show each page of a message at once, whatever the text speed.	Affiche chaque page d'un message d'un coup, quelle que soit la vitesse du texte.	Zeigt jede Seite einer Nachricht sofort, egal wie schnell der Text ist.	Mostra subito ogni pagina di un messaggio, qualunque sia la velocità del testo.	Muestra cada página de un mensaje de golpe, sea cual sea la velocidad del texto.
+Show the bottom screen first.	Affiche d'abord l'écran du bas.	Zeigt zuerst den unteren Bildschirm.	Mostra prima lo schermo inferiore.	Muestra primero la pantalla inferior.
+Sort	Trier	Sortieren	Ordina	Ordenar
+Sp. Atk	Atq. Spé.	Sp.-Ang.	Att. Sp.	At. Esp.
+Sp. Def	Déf. Spé.	Sp.-Ver.	Dif. Sp.	Def. Esp.
+Speed	Vitesse	Initiative	Velocità	Velocidad
+Square	Carré	Quadrat	Quadrato	Cuadrado
+Stack the screens, put them side by side, or show one screen.	Écrans empilés, côte à côte, ou un seul écran.	Bildschirme übereinander, nebeneinander oder nur einer.	Schermi impilati, affiancati o uno solo.	Pantallas apiladas, lado a lado o una sola.
+Star	Étoile	Stern	Stella	Estrella
+Summary	Résumé	Bericht	Info	Datos
+TIME	TEMPS	ZEIT	TEMPO	TIEMPO
+TMs & HMs	CT et CS	TM & VM	MT e MN	MT y MO
+TRAINER CARD	CARTE DRESSEUR	TRAINERPASS	SCHEDA ALLENATORE	FICHA ENTRENADOR
+TRANSITIONS	TRANSITIONS	ÜBERGÄNGE	TRANSIZIONI	TRANSICIONES
+Take item	Prendre l'objet	Item nehmen	Prendi strumento	Coger objeto
+The item could not be moved.	L'objet n'a pas pu être déplacé.	Das Item konnte nicht bewegt werden.	Non è stato possibile spostare lo strumento.	No se pudo mover el objeto.
+The resolution of the 3D. Auto matches the window.	La résolution de la 3D. Auto suit la fenêtre.	Die Auflösung der 3D-Grafik. Auto passt sich dem Fenster an.	La risoluzione del 3D. Auto segue la finestra.	La resolución del 3D. Auto se ajusta a la ventana.
+The size of each DS pixel. Auto fills the window.	La taille de chaque pixel DS. Auto remplit la fenêtre.	Die Größe jedes DS-Pixels. Auto füllt das Fenster.	La dimensione di ogni pixel DS. Auto riempie la finestra.	El tamaño de cada píxel DS. Auto llena la ventana.
+The volume of the music and the sound effects.	Le volume de la musique et des effets sonores.	Die Lautstärke von Musik und Soundeffekten.	Il volume della musica e degli effetti sonori.	El volumen de la música y de los efectos.
+Trainer	Dresseur	Trainer	Allenatore	Entrenador
+Triangle	Triangle	Dreieck	Triangolo	Triángulo
+Type	Type	Typ	Tipo	Tipo
+UNOVA	UNYS	EINALL	UNIMA	TESELIA
+UP	HAUT	OBEN	SU	ARRIBA
+UPPER	MAJ.	GROSS	MAIUSC.	MAYÚS.
+USE	UTILISER	BENUTZEN	USA	USAR
+Use	Utiliser	Benutzen	Usa	Usar
+VOLUME	VOLUME	LAUTSTÄRKE	VOLUME	VOLUMEN
+WATER	EAU	WASSER	ACQUA	AGUA
+WIDE	LARGE	BREIT	LARGO	ANCHO
+WINDOW	FENÊTRE	FENSTER	FINESTRA	VENTANA
+WIRELESS	SANS FIL	DRAHTLOS	WIRELESS	INALÁMBRICO
+WT	POIDS	GEW.	PESO	PESO
+Wait a moment.	Un instant...	Einen Moment...	Un momento...	Un momento...
+What will hatch from this Egg? It will take some time.	Que va-t-il sortir de cet Œuf ? Il faudra du temps.	Was wohl aus diesem Ei schlüpft? Das dauert noch.	Cosa nascerà da quest'Uovo? Ci vorrà del tempo.	¿Qué saldrá de este Huevo? Tardará un tiempo.
+Would you like to make these changes?	Appliquer ces changements ?	Diese Änderungen übernehmen?	Confermare le modifiche?	¿Aplicar estos cambios?
+Would you like to save the game?	Voulez-vous sauvegarder ?	Möchtest du speichern?	Vuoi salvare il gioco?	¿Quieres guardar la partida?
+YES	OUI	JA	SÌ	SÍ
+Yes	Oui	Ja	Sì	Sí
+Your friend's name?	Nom de votre ami ?	Name deines Freundes?	Nome dell'amico?	¿Nombre de tu amigo?
+Your message to passersby?	Votre message aux passants ?	Deine Nachricht an Passanten?	Messaggio per i passanti?	¿Mensaje para los transeúntes?
+Your name?	Votre nom ?	Dein Name?	Il tuo nome?	¿Tu nombre?
+Your rival's name?	Nom de votre rival ?	Name deines Rivalen?	Nome del rivale?	¿Nombre de tu rival?

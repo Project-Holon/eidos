@@ -247,6 +247,8 @@ static int parse_shots(const char *list)
 #include "settings.h"
 #include "setup.h"
 #include "ui.h"
+#include "ui_lang.h"
+#include "langmap.h"
 #include "kit.h"
 #include "wizard.h"
 #endif
@@ -1240,6 +1242,7 @@ static void boot_ui_frame(BootRun *run)
         static u32 n;
         u64 t0 = eidos_platform_now_ns(run->plat), dt;
 
+        ui_lang_set(bw_lang_language());     /* the labels in the game's language */
         eidos_ui_frame(&in, &view, &canvas);
         eidos_platform_text_mode(run->plat, eidos_ui_text_wanted());
         eidos_platform_set_view(run->plat, &view);

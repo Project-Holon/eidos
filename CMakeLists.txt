@@ -1128,6 +1128,8 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_field.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_starter.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c
@@ -2648,6 +2650,8 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_npc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bcam_sim.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c
@@ -3160,6 +3164,7 @@ add_test(NAME test_bmap_spots COMMAND test_bmap_spots)
 # interface layer (eidos_ui_hit, eidos_ui_press), which the test defines.
 add_executable(test_ui_kit ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c
@@ -3177,6 +3182,7 @@ add_test(NAME test_ui_kit COMMAND test_ui_kit ${BW_DATA_ROOT_ABS})
 add_executable(test_ui_input ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c
@@ -3195,6 +3201,7 @@ add_test(NAME test_ui_input COMMAND test_ui_input ${BW_DATA_ROOT_ABS})
 # directory.
 add_executable(test_ui_pc ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_pc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c

@@ -19,6 +19,9 @@
  * and sets the language and the map.  English Black, or no header: the
  * English layout as built, no map. */
 void bw_lang_init(void);
+/* The game's language id (src/game/version.h): 2 English, 3 French, 4
+ * Italian, 5 German, 7 Spanish. */
+int bw_lang_language(void);
 
 /* The cartridge's game code ("IRBO" when unknown). */
 const char *bw_lang_gamecode(void);

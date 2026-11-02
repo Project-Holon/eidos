@@ -52,6 +52,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ui_lang.h"
+
 #include "assets.h"
 #include "kit.h"
 #include "padglyph.h"
@@ -441,7 +443,10 @@ static u32 next_code(const char **sp)
 int ui_text(EidosUiCtx *c, int x, int y, const char *utf8, u32 color,
             s32 shadow, int font, int k)
 {
-    const char *s = utf8;
+    const char *s;
+
+    utf8 = ui_tr(utf8);         /* the label in the game's language */
+    s = utf8;
 
     if (utf8 == NULL) {
         return x;
@@ -491,8 +496,11 @@ int ui_text(EidosUiCtx *c, int x, int y, const char *utf8, u32 color,
 
 int ui_text_w(const char *utf8, int font)
 {
-    const char *s = utf8;
+    const char *s;
     int w = 0;
+
+    utf8 = ui_tr(utf8);
+    s = utf8;
 
     if (utf8 == NULL) {
         return 0;
@@ -528,7 +536,7 @@ static int is_space(char ch)
 int ui_wrap(const char *utf8, int width, int font,
             void (*line)(void *user, const char *start, int len), void *user)
 {
-    const char *p = utf8;
+    const char *p = utf8 = ui_tr(utf8);
     const char *ls = NULL, *le = NULL;      /* the current line            */
     int lines = 0;
 

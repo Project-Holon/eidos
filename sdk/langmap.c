@@ -207,6 +207,11 @@ void bw_lang_init(void)
     }
 }
 
+int bw_lang_language(void)
+{
+    return g_pm_language;
+}
+
 const char *bw_lang_gamecode(void)
 {
     return g_code;
