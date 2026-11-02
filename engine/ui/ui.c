@@ -1896,14 +1896,10 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     g_text_wanted = g_want_text;
     g_objs_wanted = g_want_objs;
     bw_input_set_host_mask(g_take);
-    /* a phone's taller hint bar on the bottom edge: the world is drawn
-     * above it instead of under it */
+    /* a phone's taller hint bar lies over the world, as on a computer: the
+     * world keeps the whole window, so it does not move as bars come and
+     * go (view->bottom stays 0) */
     view->bottom = 0;
-    if (view->mode == EIDOS_VIEW_WORLD && g_ctx.bar_top > 0) {
-        int b = in->win_h - g_ctx.bar_top * g_k;
-
-        view->bottom = b > 0 && b < in->win_h / 2 ? b : 0;
-    }
     ring_apply(&g_ctx);
     fade_apply(&g_canvas);
     keep_prev(&g_canvas);

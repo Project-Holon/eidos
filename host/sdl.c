@@ -727,6 +727,31 @@ static void event_to_module(const SDL_Event *ev, u32 out)
     }
 }
 
+/* The game's audio stream (push mode: one at a time).  A phone stops the
+ * sound device when the app goes to the background and does not start it
+ * again on the way back; the game's sound driver keeps time by what the
+ * device plays, so a stopped device stops the game (the title froze after
+ * Press Start, waiting on its sound).  The host starts it again. */
+static SDL_AudioStream *g_audio;
+
+static void app_event(const SDL_Event *ev)
+{
+    switch (ev->type) {
+    case SDL_EVENT_WILL_ENTER_BACKGROUND:
+        fprintf(stderr, "eidos: app to the background\n");
+        break;
+    case SDL_EVENT_DID_ENTER_FOREGROUND:
+        fprintf(stderr, "eidos: app back in front; audio queued %d\n",
+                g_audio != NULL ? SDL_GetAudioStreamQueued(g_audio) : -1);
+        if (g_audio != NULL && !SDL_ResumeAudioStreamDevice(g_audio)) {
+            fprintf(stderr, "eidos: audio resume failed: %s\n", SDL_GetError());
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 u32 w2c_env_SDL_PollEvent(struct w2c_env *e, u32 out)
 {
     SDL_Event ev;
@@ -735,6 +760,7 @@ u32 w2c_env_SDL_PollEvent(struct w2c_env *e, u32 out)
     if (!SDL_PollEvent(&ev)) {
         return 0;
     }
+    app_event(&ev);
     if (out != 0) {
         event_to_module(&ev, out);
     }
@@ -749,6 +775,7 @@ u32 w2c_env_SDL_WaitEventTimeout(struct w2c_env *e, u32 out, u32 ms)
     if (!SDL_WaitEventTimeout(&ev, (Sint32)ms)) {
         return 0;
     }
+    app_event(&ev);
     if (out != 0) {
         event_to_module(&ev, out);
     }
@@ -788,12 +815,16 @@ u32 w2c_env_SDL_OpenAudioDeviceStream(struct w2c_env *e, u32 dev, u32 spec, u32 
         fprintf(stderr, "eidos: an audio callback cannot run in this build (push mode only)\n");
         return 0;
     }
-    return handle_of(SDL_OpenAudioDeviceStream(dev, (const SDL_AudioSpec *)M(spec), NULL, NULL));
+    g_audio = SDL_OpenAudioDeviceStream(dev, (const SDL_AudioSpec *)M(spec), NULL, NULL);
+    return handle_of(g_audio);
 }
 
 void w2c_env_SDL_DestroyAudioStream(struct w2c_env *e, u32 s)
 {
     (void)e;
+    if ((SDL_AudioStream *)handle_ptr(s) == g_audio) {
+        g_audio = NULL;
+    }
     SDL_DestroyAudioStream((SDL_AudioStream *)handle_ptr(s));
     handle_drop(s);
 }
