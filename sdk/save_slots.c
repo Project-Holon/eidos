@@ -23,6 +23,7 @@ extern void bw_arm7_backup_set_path(const char *path) BW_SLOTS_WEAK;
 extern void bw_arm7_backup_switch_path(const char *path) BW_SLOTS_WEAK;
 extern void *SAVE_CONTROL_Get(void) BW_SLOTS_WEAK;
 extern int SAVE_CONTROL_Reload(void *saveControl) BW_SLOTS_WEAK;
+extern int SYSTEM_DATA_IsActive(void *saveControl) BW_SLOTS_WEAK;
 
 /* The game's SaveControl (src/game/arm9/save_control.c): isNewGame at 0,
  * hasFlashSave at 1. */
@@ -155,6 +156,15 @@ static int reload(int has_save)
         has_save = (r == 1 || r == 2);
         fprintf(stderr, "eidos: save: read again: %s (answer %d)\n",
                 has_save ? "loaded" : "not loaded", r);
+        /* The game's own start-up load (SAVE_CONTROL_Init) takes a save
+         * whose system data is still marked active for none; its reload
+         * does not ask, and the game then played that file as blank data
+         * (zone 0, a panic in the field).  The same rule here. */
+        if (has_save && SYSTEM_DATA_IsActive != NULL && SYSTEM_DATA_IsActive(sc) == 1) {
+            has_save = 0;
+            fprintf(stderr, "eidos: save: that save is marked as still being played; "
+                    "the game takes it for none\n");
+        }
     }
     sc[SAVE_CONTROL_HAS_SAVE] = (unsigned char)(has_save ? 1 : 0);
     sc[SAVE_CONTROL_IS_NEW_GAME] = (unsigned char)(has_save ? 0 : 1);
