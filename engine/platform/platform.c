@@ -93,6 +93,9 @@ struct EidosPlatform {
      * the keyboard's letters are text, not buttons; the arrows still move */
     int text_mode;
     int pad_last;                   /* the last input came from a pad      */
+    int touch_last;                 /* ... from a touch screen (no pad, no
+                                       keys): the hints show the DS's own
+                                       button letters, no brand            */
     int pad_type;                   /* that pad's SDL_GamepadType          */
     int face_default;               /* A, B, X, Y are on the shipped buttons */
     char text[128];
@@ -1506,6 +1509,13 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
         return -1;
     }
     p->owner = SDL_GetCurrentThreadID();
+    {
+        /* a phone starts on its touch screen: the phone hosts set
+         * EIDOS_TOUCH_DEVICE=1 (the module is the same wasm everywhere) */
+        const char *touch = getenv("EIDOS_TOUCH_DEVICE");
+
+        p->touch_last = touch != NULL && touch[0] == '1';
+    }
     p->tex_n[0] = p->tex_n[1] = 1;
     p->layout = cfg->layout == EIDOS_LAYOUT_SIDE_BY_SIDE
                 ? EIDOS_LAYOUT_SIDE_BY_SIDE
@@ -1777,6 +1787,7 @@ int eidos_platform_pump(EidosPlatform *p)
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             p->pad_last = 0;
+            p->touch_last = ev.button.which == SDL_TOUCH_MOUSEID;
             if (ev.button.button == SDL_BUTTON_LEFT) {
                 p->m_pressed = 1;
             } else if (ev.button.button == SDL_BUTTON_RIGHT) {
@@ -1804,6 +1815,7 @@ int eidos_platform_pump(EidosPlatform *p)
             break;
         case SDL_EVENT_KEY_DOWN:
             p->pad_last = 0;
+            p->touch_last = 0;
             if (p->text_mode && !(ev.key.mod & SDL_KMOD_ALT) &&
                 (ev.key.scancode == SDL_SCANCODE_BACKSPACE ||
                  ev.key.scancode == SDL_SCANCODE_RETURN ||
@@ -1850,6 +1862,7 @@ int eidos_platform_pump(EidosPlatform *p)
             break;
         case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
             p->pad_last = 1;
+            p->touch_last = 0;
             p->pad_type = (int)SDL_GetGamepadTypeForID(ev.gbutton.which);
             if (p->cap_state == EIDOS_CAPTURE_PENDING) {
                 p->cap.pad_kind = EIDOS_PADBIND_BUTTON;
@@ -2232,8 +2245,11 @@ void eidos_platform_set_ui_canvas(EidosPlatform *p, const struct EidosUiCanvas *
         SDL_Rect r;
         const u8 *up = NULL;
 
-        r.x = 0;
-        r.y = 0;
+        int sx, sy, sw, sh;
+
+        eidos_platform_safe_area(p, &sx, &sy, &sw, &sh);
+        r.x = sx;                               /* inside the safe area */
+        r.y = sy;
         r.w = c->w * c->k;
         r.h = c->h * c->k;
         if (!p->ui_gen_ok || p->ui_gen != c->generation || p->ui_cw != c->w ||
@@ -2364,6 +2380,9 @@ void eidos_platform_key_names(const EidosPlatform *p, const char *names[12])
         if (p == NULL) {
             continue;
         }
+        if (p->touch_last && !p->pad_last) {
+            continue;               /* touch: the DS's letters (A, B, X...) */
+        }
         if (p->pad_last) {
             for (i = 0; i < p->padmap_count; i++) {
                 EidosPadBinding pb = pad_binding_for(p, &p->padmap[i], p->pad_type);
@@ -2450,6 +2469,51 @@ void eidos_platform_window_size(const EidosPlatform *p, int *w, int *h)
     }
     if (h != NULL) {
         *h = oh;
+    }
+}
+
+/*
+ * The part of the window the interface may use, in the window's pixels: the
+ * system's safe area (SDL_GetWindowSafeArea: a phone's notch, its rounded
+ * corners, the home indicator), less EIDOS_EDGE_MARGIN percent of the width
+ * on each side where a phone's screen curves (the Android host sets it).
+ * The game's picture still fills the whole window; only the bars, hints and
+ * panels keep inside this.  The whole window on a desktop.
+ */
+void eidos_platform_safe_area(const EidosPlatform *p, int *x, int *y, int *w, int *h)
+{
+    int ow = 0, oh = 0, ww = 0, wh = 0, m = 0;
+    SDL_Rect r;
+    const char *edge = getenv("EIDOS_EDGE_MARGIN");
+
+    if (p != NULL) {
+        out_size(p, &ow, &oh);
+    }
+    *x = 0;
+    *y = 0;
+    *w = ow;
+    *h = oh;
+    if (p == NULL || p->window == NULL || ow <= 0 || oh <= 0) {
+        return;
+    }
+    if (SDL_GetWindowSafeArea(p->window, &r) && SDL_GetWindowSize(p->window, &ww, &wh) && ww > 0 && wh > 0
+        && r.w > 0 && r.h > 0 && (r.w < ww || r.h < wh)) {
+        *x = r.x * ow / ww;
+        *y = r.y * oh / wh;
+        *w = r.w * ow / ww;
+        *h = r.h * oh / wh;
+    }
+    if (edge != NULL) {
+        m = ow * atoi(edge) / 100;
+        if (m > 0 && *w > 4 * m) {
+            if (*x < m) {
+                *w -= m - *x;
+                *x = m;
+            }
+            if (*x + *w > ow - m) {
+                *w = ow - m - *x;
+            }
+        }
     }
 }
 

@@ -466,6 +466,9 @@ int  eidos_platform_world_active(const EidosPlatform *p);
 void eidos_platform_view_scale(const EidosPlatform *p, s32 *kx, s32 *ky);
 int  eidos_platform_mouse(const EidosPlatform *p, struct EidosUiMouse *m);
 void eidos_platform_window_size(const EidosPlatform *p, int *w, int *h);
+/* The part of the window the interface may use (the safe area of a phone's
+ * notch and corners), in the window's pixels.                             */
+void eidos_platform_safe_area(const EidosPlatform *p, int *x, int *y, int *w, int *h);
 /* Typing (the one-screen name entry): on, the keyboard's letters, digits,
  * Backspace and Return are text, not game buttons (the arrows still are);
  * take_text hands over what was typed since the last call, UTF-8 with "\b"

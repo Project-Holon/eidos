@@ -1175,8 +1175,21 @@ static void boot_ui_frame(BootRun *run)
     memset(&in, 0, sizeof(in));
     memset(&view, 0, sizeof(view));
     view.zoom = 1.0f;
-    eidos_platform_window_size(run->plat, &in.win_w, &in.win_h);
-    (void)eidos_platform_mouse(run->plat, &in.mouse);
+    {
+        /* the interface lives in the safe area (a phone's notch, its
+         * corners): the pointer is read from its corner */
+        int sx, sy;
+
+        eidos_platform_safe_area(run->plat, &sx, &sy, &in.win_w, &in.win_h);
+        (void)eidos_platform_mouse(run->plat, &in.mouse);
+        if (in.mouse.x >= 0) {
+            in.mouse.x -= sx;
+            in.mouse.y -= sy;
+            if (in.mouse.x < 0 || in.mouse.y < 0 || in.mouse.x >= in.win_w || in.mouse.y >= in.win_h) {
+                in.mouse.x = in.mouse.y = -1;
+            }
+        }
+    }
     in.buttons = eidos_platform_buttons(run->plat);
     in.frame = bw_input_frame_number();
     /* The two screens as the game composed them last frame, at 1x (a

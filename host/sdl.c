@@ -252,6 +252,12 @@ u32 w2c_env_SDL_GetWindowSizeInPixels(struct w2c_env *e, u32 w, u32 pw, u32 ph)
     return SDL_GetWindowSizeInPixels((SDL_Window *)handle_ptr(w), (int *)M(pw), (int *)M(ph));
 }
 
+u32 w2c_env_SDL_GetWindowSafeArea(struct w2c_env *e, u32 w, u32 rect)
+{
+    (void)e;
+    return SDL_GetWindowSafeArea((SDL_Window *)handle_ptr(w), (SDL_Rect *)M(rect));   /* four ints */
+}
+
 u32 w2c_env_SDL_SetWindowSize(struct w2c_env *e, u32 w, u32 x, u32 y)
 {
     (void)e;

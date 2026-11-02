@@ -410,6 +410,7 @@ static int game_press_start_visible(const u8 *screen)
 }
 
 static int g_title_seen;        /* frames since the title began            */
+static int g_title_passed;      /* the title has been up this run           */
 static int g_ps_last;           /* frame + 1 when the game's PRESS START last showed */
 static int g_ps_ref = -1;       /* the frame it last came on */
 static int g_ps_prev;
@@ -440,6 +441,7 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->blur = 0;
     view->hide_2d = 1;
     g_title_seen++;
+    g_title_passed = 1;
 
     /* the logo, from the screen that is not the 3D one */
     logo_capture(other);
@@ -1379,7 +1381,6 @@ static void boot_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static int shown = -1;
     u32 top = screen_ink(in->screen_rgba[0]), bottom = screen_ink(in->screen_rgba[1]);
 
-    (void)c;
     view->mode = EIDOS_VIEW_WORLD;
     view->zoom = 1.0f;
     /* The title program's scenes, the new-game intro among them, are drawn
@@ -1400,6 +1401,21 @@ static void boot_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     if (view->world_screen != shown && in->screen_rgba[shown] != NULL) {
         view->world_screen = shown;
+    }
+    /* Touch and A.  Before the title (the logos, the copyright) and in the
+     * opening cinematic, A and a tap skip as START does.  After it (the
+     * professor's intro, the cutscene after it), a tap is A: the game's
+     * text waits for A, and a touch screen has no A to press. */
+    {
+        TtProc *p = root_proc();
+        int skip = !g_title_passed || (p != NULL && p->overlayId == 179);
+        EidosUiRect all = { 0, 0, c->canvas->w, c->canvas->h };
+
+        if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+            eidos_ui_press(skip ? BW_KEY_START : BW_KEY_A, 2);
+        } else if (skip && (eidos_ui_keys_pressed() & BW_KEY_A) != 0u) {
+            eidos_ui_press(BW_KEY_START, 2);
+        }
     }
 }
 
