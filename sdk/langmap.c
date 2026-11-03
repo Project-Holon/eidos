@@ -16,19 +16,32 @@
 #include <string.h>
 
 #include "langmap.h"
+#include "dsmem.h"
 #include "overlay.h"
 #include "port.h"
 
 typedef struct BwLangRow {
     int region;         /* -1 the ARM9's main RAM, else the overlay id */
     u32 eng_start, eng_end, tgt_start;
+    int owner;          /* the region whose run it is (a reference row:
+                           another region's object this one points at);
+                           -2 owned by none */
 } BwLangRow;
+
+/* One pointer word of a region no run covers: its English value and the
+ * cartridge's (aletheia layout/langmap/word_pairs.tsv). */
+typedef struct BwLangPair {
+    int region;
+    u32 eng, tgt;
+} BwLangPair;
 
 typedef struct BwLangMap {
     const char *gamecode;
     const char *target;
     const BwLangRow *rows;
     u32 count;
+    const BwLangPair *pairs;
+    u32 npairs;
 } BwLangMap;
 
 #include "langmap_table.h"
@@ -39,6 +52,9 @@ static int own_row(const BwLangRow *r)
 {
     const BwOverlayDesc *d;
 
+    if (r->owner >= -1 && r->owner != r->region) {
+        return 0;               /* another region's run (ref_to_english) */
+    }
     if (r->region < 0) {
         return 1;
     }
@@ -446,9 +462,146 @@ static int byte_table(int region, u32 addr)
     return 0;
 }
 
+/*
+ * A word of region `region` that points out of it, by the region's own
+ * reference rows: the runs of the objects it points at, each named by the
+ * region that owns it.  Overlays that share a window can each own a run
+ * over the same cartridge address (ov010's script table points into ov021,
+ * where ov098 and ov133 sit too, shifted otherwise): the one that is loaded
+ * with the region is the one meant, else the shortest run (a long run is an
+ * overlay's whole place, a short one the object itself).
+ */
+static int ref_to_english(u32 word, int region, u32 *out)
+{
+    u32 i, best = 0, span = 0xFFFFFFFFu;
+    int rank = -1;
+
+    for (i = 0; i < g_map->count; i++) {
+        const BwLangRow *r = &g_map->rows[i];
+        u32 len = r->eng_end - r->eng_start;
+        int k;
+
+        if (r->region != region || r->owner == region || r->owner < -1 || word < r->tgt_start
+            || word - r->tgt_start >= len) {
+            continue;
+        }
+        k = r->owner >= 0 && bw_overlay_is_loaded((u32)r->owner) ? 1 : 0;
+        if (k > rank || (k == rank && len < span)) {
+            rank = k;
+            span = len;
+            best = word - r->tgt_start + r->eng_start;
+        }
+    }
+    if (rank < 0) {
+        return 0;
+    }
+    *out = best;
+    return 1;
+}
+
+/* Whether the region's reference rows give `word` more than one English
+ * place (overlays sharing a window): the load decides (pending below). */
+static int ref_ambiguous(u32 word, int region)
+{
+    u32 i, e = 0, n = 0;
+
+    for (i = 0; i < g_map->count; i++) {
+        const BwLangRow *r = &g_map->rows[i];
+        u32 x;
+
+        if (r->region != region || r->owner == region || r->owner < 0 || word < r->tgt_start
+            || word - r->tgt_start >= r->eng_end - r->eng_start) {
+            continue;
+        }
+        x = word - r->tgt_start + r->eng_start;
+        if (n++ > 0 && x != e) {
+            return 1;
+        }
+        e = x;
+    }
+    return 0;
+}
+
+/* The words whose overlay the load decides: the region holding the word,
+ * its English address, its cartridge value. */
+typedef struct BwLangPending { int region; u32 addr, tgt; } BwLangPending;
+static BwLangPending *g_pending;
+static u32 g_npending, g_cap_pending;
+
+static void pending_add(int region, u32 addr, u32 tgt)
+{
+    if (g_npending == g_cap_pending) {
+        u32 cap = g_cap_pending ? g_cap_pending * 2u : 256u;
+        BwLangPending *p = (BwLangPending *)realloc(g_pending, cap * sizeof(*p));
+
+        if (p == NULL) {
+            return;
+        }
+        g_pending = p;
+        g_cap_pending = cap;
+    }
+    g_pending[g_npending].region = region;
+    g_pending[g_npending].addr = addr;
+    g_pending[g_npending].tgt = tgt;
+    g_npending++;
+}
+
+static void pending_forget(int region)
+{
+    u32 i, n = 0;
+
+    for (i = 0; i < g_npending; i++) {
+        if (g_pending[i].region != region) {
+            g_pending[n++] = g_pending[i];
+        }
+    }
+    g_npending = n;
+}
+
+void bw_lang_overlay_loaded(u32 id)
+{
+    u32 i;
+
+    if (g_map == NULL) {
+        return;
+    }
+    for (i = 0; i < g_npending; i++) {
+        const BwLangPending *q = &g_pending[i];
+        u32 e;
+        u8 *p;
+
+        if ((q->region >= 0 && !bw_overlay_is_loaded((u32)q->region))
+            || !ref_to_english(q->tgt, q->region, &e) || (p = (u8 *)bw_ds_ptr(q->addr)) == NULL) {
+            continue;
+        }
+        p[0] = (u8)e;
+        p[1] = (u8)(e >> 8);
+        p[2] = (u8)(e >> 16);
+        p[3] = (u8)(e >> 24);
+    }
+    (void)id;
+}
+
+/* A word no run covers, listed on its own (word_pairs.tsv). */
+static int pair_to_english(u32 word, int region, u32 *out)
+{
+    u32 i;
+
+
+    for (i = 0; i < g_map->npairs; i++) {
+        if (g_map->pairs[i].region == region && g_map->pairs[i].tgt == word) {
+            *out = g_map->pairs[i].eng;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void translate_words(u8 *img, u32 size, int region, u32 base)
 {
     u32 i;
+
+    pending_forget(region);
 
     for (i = 0; i + 4 <= size; i += 4) {
         u32 v = (u32)img[i] | (u32)img[i + 1] << 8 | (u32)img[i + 2] << 16 | (u32)img[i + 3] << 24;
@@ -457,7 +610,14 @@ static void translate_words(u8 *img, u32 size, int region, u32 base)
         if (v < 0x02000000u || v >= 0x02400000u || (g_audit_eng == NULL && byte_table(region, base + i))) {
             continue;
         }
-        if ((region >= 0 && to_english_in(v, region, &e)) || to_english_in(v, -1, &e)
+        /* an exact pair first: it can point into the region's own place
+         * where the own run's shift is not the word's (strings laid out
+         * otherwise) */
+        if (!(region >= 0 && to_english_in(v, region, &e)) && ref_ambiguous(v, region)) {
+            pending_add(region, base + i, v);
+        }
+        if (pair_to_english(v, region, &e) || (region >= 0 && to_english_in(v, region, &e))
+            || ref_to_english(v, region, &e) || to_english_in(v, -1, &e)
             || to_english_any_overlay(v, &e)) {
             if (e != v && g_audit_eng != NULL && i + 4 <= g_audit_size
                 && memcmp(g_audit_eng + i, img + i, 4) == 0) {
@@ -569,6 +729,20 @@ int bw_lang_same_address(u32 english, u32 word)
             return 1;
         }
     }
+    /* a word listed on its own, or another region's run over the place */
+    for (i = 0; i < g_map->npairs; i++) {
+        if (g_map->pairs[i].eng == english && g_map->pairs[i].tgt == word) {
+            return 1;
+        }
+    }
+    for (i = 0; i < g_map->count; i++) {
+        const BwLangRow *r = &g_map->rows[i];
+
+        if (r->owner >= -1 && r->owner != r->region && english >= r->eng_start && english < r->eng_end
+            && english - r->eng_start + r->tgt_start == word) {
+            return 1;
+        }
+    }
     for (i = 0; i < OVL_KEEP; i++) {
         u32 eb, tb, sz;
 
@@ -619,7 +793,8 @@ int bw_lang_to_english(u32 word, int region, u32 *out)
         return 0;
     }
     rows_ready();
-    if (region >= 0 && to_english_in(word, region, out)) {
+    if (pair_to_english(word, region, out) || (region >= 0 && to_english_in(word, region, out))
+        || ref_to_english(word, region, out)) {
         return 1;
     }
     return to_english_in(word, -1, out);
