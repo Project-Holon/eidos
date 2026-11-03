@@ -1299,11 +1299,10 @@ typedef struct ItemCard {
 } ItemCard;
 
 static ItemCard g_item_card;
-static u32 g_item_seen;         /* the item serial last frame                 */
-static u32 g_item_age;          /* frames since it changed                    */
-static int g_item_show;         /* this message is the item's                 */
-static int g_item_wait_close;   /* old text must close before item dialog     */
-static int g_item_dialog_up;    /* the item dialog itself was opened          */
+static u32 g_item_seen;     /* the item serial last frame                 */
+static u32 g_item_age;      /* frames since it changed                    */
+static int g_item_show;     /* this message is the item's                 */
+static int g_item_text;     /* a message was up last frame                */
 
 typedef struct ItemStr { u16 capacity, length; u32 magic; u16 chars[64]; } ItemStr;
 
@@ -1330,7 +1329,6 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
 {
     u32 serial = 0, item;
     int cw = c->canvas->w, ch = c->canvas->h, w, x, y;
-    int card_h = 34, box_h = 42, by;
     const UiImage *ic;
     const char *pocket;
 
@@ -1338,33 +1336,20 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
         return;
     }
     item = bw_ui_item_last(NULL, &serial);
+    /* the item's message is the one that opens soon after the item went
+     * into the Bag (the script prints it next) */
     if (serial != g_item_seen) {
         g_item_seen = serial;
         g_item_age = 0;
-        g_item_show = (item != 0);
-        g_item_wait_close = text_up;
-        g_item_dialog_up = 0;
+        g_item_show = text_up;
     } else if (g_item_age < 100000u) {
         g_item_age++;
     }
-
-    if (g_item_wait_close) {
-        if (!text_up) {
-            g_item_wait_close = 0;
-        }
-    } else {
-        if (text_up) {
-            g_item_dialog_up = 1;
-        } else if (g_item_dialog_up) {
-            g_item_show = 0;
-            g_item_dialog_up = 0;
-        }
+    if (text_up && !g_item_text) {
+        g_item_show = g_item_age < 240u;
     }
-
-    if (g_item_age > 360u && !text_up) {
-        g_item_show = 0;
-    }
-    if (!g_item_show || item == 0 || item > 0x400) {
+    g_item_text = text_up;
+    if (!text_up || !g_item_show || item == 0 || item > 0x400) {
         return;
     }
     if (g_item_card.serial != serial) {
@@ -1382,22 +1367,18 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
     }
     pocket = g_item_card.pocket < 5 ? ui_game_text(2, 0x37, g_item_card.pocket) : "";
     ic = ui_item_icon((u16)item);
-    w = cw - 8 < 256 ? cw - 8 : 256;
+    w = ui_text_w(g_item_card.name, UI_FONT_LARGE);
+    if (ui_text_w(pocket, UI_FONT_SMALL) > w) w = ui_text_w(pocket, UI_FONT_SMALL);
+    w += 50;
     x = (cw - w) / 2;
-    by = ch - 4 - box_h;
-    y = by - 8 - card_h;
-
-    ui_panel(c, x, y, w, card_h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
+    y = ch - 4 - 42 - 8 - 34;           /* above the box at the bottom      */
+    ui_panel(c, x, y, w, 34, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
     ui_panel(c, x + 4, y + 3, 28, 28, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, 0x008BACu, 255);
     if (ic != NULL) {
         ui_image(c, x + 6, y + 5, ic, 1);
     }
     ui_text(c, x + 38, y + 2, g_item_card.name, UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
     ui_text(c, x + 38, y + 20, pocket, 0x008BACu, 0x313131u, UI_FONT_SMALL, 1);
-
-    if (!text_up) {
-        ui_textbox_frame(c, UI_TEXTBOX_NARRATION, x, by, w, box_h);
-    }
 }
 
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)

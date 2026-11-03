@@ -451,10 +451,7 @@ static const char *k_fsb =
     "    if (u_atm.w > 0.0) {\n"
     "        /* the far part fades into the sky before the map ends */\n"
     "        float f = smoothstep(u_atm.z, u_atm.w, length(v_pos.xz - u_atm.xy));\n"
-    "        if (u_sky.r >= 0.0) {\n"
-    "            c.rgb = mix(c.rgb, u_sky, f);\n"
-    "        }\n"
-    "        a *= (1.0 - f);\n"
+    "        c.rgb = mix(c.rgb, u_sky, f);\n"
     "    }\n"
     "    o = vec4(c.rgb * a, a);\n"
     "}\n";
@@ -1077,15 +1074,9 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         g->glUniform4f(g_bd.u_atm, at[0], at[1], at[2], at[3]);
         float sk[3];
 
-        if (sc != NULL && sc->indoor) {
-            sk[0] = -1.0f;
-            sk[1] = -1.0f;
-            sk[2] = -1.0f;
-        } else {
-            sk[0] = (float)b->sky[0] / 255.0f;
-            sk[1] = (float)b->sky[1] / 255.0f;
-            sk[2] = (float)b->sky[2] / 255.0f;
-        }
+        sk[0] = (float)b->sky[0] / 255.0f;
+        sk[1] = (float)b->sky[1] / 255.0f;
+        sk[2] = (float)b->sky[2] / 255.0f;
         g->glUniform3fv(g_bd.u_sky, 1, sk);
     }
     g->glUniform3fv(g_bd.u_eye, 1, b->eye);

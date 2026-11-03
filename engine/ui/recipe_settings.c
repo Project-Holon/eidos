@@ -112,6 +112,10 @@ static const char *fit(char *buf, size_t n, const char *s, int maxw, int font)
 
 /* engine/ui/recipe_input.c */
 extern int eidos_ui_name_entry_up(void);
+extern int eidos_ui_overlay_68_up(void);
+extern void eidos_ui_overlay_68_sync_exit(void);
+
+static int s_overlay68_closing = 0;
 
 static int settings_match(void)
 {
@@ -120,6 +124,13 @@ static int settings_match(void)
     if (eidos_ui_name_entry_up()) {
         return 0;
     }
+    if (eidos_ui_overlay_68_up()) {
+        if (s_overlay68_closing) {
+            return 0;
+        }
+        return 1;
+    }
+    s_overlay68_closing = 0;
     return bw_mod_title_in_settings() || eidos_ui_options_proc_up;
 }
 
@@ -138,6 +149,15 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     char head[48], value[48], label[48];
     int target = -1, target_choice = -1, target_adj = 0, target_zone = -1;
     int first = 0, shown = 0, total = 0;
+
+    if (eidos_ui_overlay_68_up()) {
+        if (!eidos_ui_options_proc_up) {
+            eidos_sui_enter();
+            eidos_ui_options_proc_up = 1;
+        }
+        eidos_ui_take_keys(BW_KEY_GAME);
+        view->hold_world = 1;
+    }
 
     tabs = eidos_sui_tab_count();
     tab = eidos_sui_tab();
@@ -332,17 +352,44 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
 
         whole.x = 0; whole.y = 0; whole.w = cw; whole.h = ch - ui_bar_h(c);
         panel.x = mx; panel.y = my; panel.w = mw; panel.h = mh;
-        if (eidos_ui_right_click() ||
-            ((eidos_ui_hit(whole) & EIDOS_UI_CLICK) && !(eidos_ui_hit(panel) & EIDOS_UI_HOVER))) {
-            q_clear();
-            q_push(BW_KEY_B, 1);
-        }
-        if (eidos_ui_wheel(panel) != 0) {
-            int w = eidos_ui_wheel(panel);
+        if (!bw_mod_title_in_settings()) {
+            static u32 s_last_buttons = 0;
+            u32 pressed = in->buttons & ~s_last_buttons;
+            u32 held = in->buttons;
+            s_last_buttons = in->buttons;
 
-            q_push(w > 0 ? BW_KEY_UP : BW_KEY_DOWN, w > 0 ? w : -w);
+            if (eidos_ui_right_click() ||
+                ((eidos_ui_hit(whole) & EIDOS_UI_CLICK) && !(eidos_ui_hit(panel) & EIDOS_UI_HOVER))) {
+                pressed |= BW_KEY_B;
+            }
+            if (eidos_ui_wheel(panel) != 0) {
+                int w = eidos_ui_wheel(panel);
+                pressed |= (w > 0 ? BW_KEY_UP : BW_KEY_DOWN);
+            }
+            int r = eidos_sui_input(pressed, held);
+            if (r & EIDOS_SUI_EXIT) {
+                eidos_sui_leave();
+                eidos_ui_options_proc_up = 0;
+                if (eidos_ui_overlay_68_up()) {
+                    s_overlay68_closing = 1;
+                    eidos_ui_overlay_68_sync_exit();
+                    eidos_ui_press(BW_KEY_B, 4);
+                }
+                return;
+            }
+        } else {
+            if (eidos_ui_right_click() ||
+                ((eidos_ui_hit(whole) & EIDOS_UI_CLICK) && !(eidos_ui_hit(panel) & EIDOS_UI_HOVER))) {
+                q_clear();
+                q_push(BW_KEY_B, 1);
+            }
+            if (eidos_ui_wheel(panel) != 0) {
+                int w = eidos_ui_wheel(panel);
+
+                q_push(w > 0 ? BW_KEY_UP : BW_KEY_DOWN, w > 0 ? w : -w);
+            }
+            q_step(in->frame);
         }
-        q_step(in->frame);
     }
 }
 
