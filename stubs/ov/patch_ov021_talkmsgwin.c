@@ -43,6 +43,8 @@ typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
 
+struct BmpWin;
+
 typedef struct VecFx32 {
     int x, y, z;
 } VecFx32;
@@ -53,7 +55,7 @@ typedef struct TalkMsgWin {
     u8 frameType;                   /* 0x03 */
     u32 tailMode;                   /* 0x04 */
     void *printStream;              /* 0x08 */
-    void *bmpWin;                   /* 0x0C */
+    struct BmpWin *bmpWin;          /* 0x0C */
     const VecFx32 *targetPos;       /* 0x10 */
     u8 pad14[0x1A - 0x14];
     u16 anchorIndex;                /* 0x1A */
@@ -84,7 +86,7 @@ extern void bw_ui_talk_target(const void *win, int x, int y);
 
 void VEC_Subtract(const VecFx32 *a, const VecFx32 *b, VecFx32 *out);
 void TALKMSGWIN_DrawBalloonShape(TalkMsgWinSys *sys, TalkMsgWin *win, int tailOnly);
-void TALKMSGWIN_DrawFrameByType(const void *style, void *bmpWin, u8 frameType, u32 tailSide);
+void TALKMSGWIN_DrawFrameByType(const void *style, struct BmpWin *bmpWin, u8 frameType, u32 tailSide);
 int  TALKMSGWIN_ProjectToWorld(const VecFx32 *relPos, int *screenX, int *screenY, VecFx32 *outWorld);
 void TALKMSGWIN_GetAnchorWindowPoint(TalkMsgWin *win, TalkMsgWin *anchor, int *screenX, int *screenY, VecFx32 *outWorld);
 int  TALKMSGWIN_CalcTail(TalkMsgWin *win, int targetX, int targetY, VecFx32 *outBaseA, VecFx32 *outBaseB);
@@ -169,10 +171,7 @@ u32 TALKMSGWIN_UpdateShape(TalkMsgWinSys *sys, TalkMsgWin *win)
 /* Plain framed windows                                                */
 /* ------------------------------------------------------------------ */
 
-struct BmpWin;
-
 struct BmpWin *TALKMSGWIN_AddBmpWin(TalkMsgWinSys *sys, u8 x, u8 y, u8 width, u8 height);
-void TALKMSGWIN_DrawFrameByType(const void *style, struct BmpWin *bmpWin, u8 frameType, u32 tailSide);
 void TALKMSGWIN_ClearFrame(const void *style, struct BmpWin *bmpWin);
 int  BMP_WIN_Delete(struct BmpWin *bmpWin);
 

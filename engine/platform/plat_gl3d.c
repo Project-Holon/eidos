@@ -478,6 +478,11 @@ typedef struct BdPiece {
 #define BD_CORE_CUT 0.99f
 #define BD_SOFT_ONLY(d) ((d)->alpha >= 31u)
 
+typedef struct BdBound {
+    float center[3];
+    float radius;
+} BdBound;
+
 typedef struct Gl3dBackdrop {
     GLuint prog, vao, vbo, ibo;
     GLint u_r[4], u_pivot, u_bb, u_atm, u_sky, u_eye, u_foc, u_fog, u_fogc, u_tex, u_texture, u_alpha, u_cut, u_cut_hi;
@@ -497,6 +502,8 @@ typedef struct Gl3dBackdrop {
     unsigned *at;               /* where each piece in the order starts    */
     float idx_eye[3];           /* the camera the ibo was sorted for       */
     int idx_ok;
+    BdBound *bounds;            /* bounding sphere per draw for frustum culling */
+    unsigned n_bounds;
 } Gl3dBackdrop;
 
 static Gl3dBackdrop g_bd;
@@ -523,6 +530,9 @@ static void backdrop_free_scene(int keep_tex)
     free(g_bd.dist);
     free(g_bd.idx);
     free(g_bd.at);
+    free(g_bd.bounds);
+    g_bd.bounds = NULL;
+    g_bd.n_bounds = 0;
     g_bd.at = NULL;
     g_bd.piece = NULL;
     g_bd.order = NULL;
@@ -815,6 +825,44 @@ static void backdrop_upload(EidosGl *g, const BmapScene *sc)
         }
         g_bd.reach = fminf(fminf(-x0, x1), fminf(7.0f - z0, z1 - 7.0f));
     }
+    free(g_bd.bounds);
+    g_bd.bounds = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof(BdBound)) : NULL;
+    g_bd.n_bounds = sc->nd;
+    if (g_bd.bounds != NULL) {
+        unsigned d_i, v_i;
+        for (d_i = 0; d_i < sc->nd; d_i++) {
+            const BmapDraw *d = &sc->d[d_i];
+            float min_x = 1e9f, max_x = -1e9f;
+            float min_y = 1e9f, max_y = -1e9f;
+            float min_z = 1e9f, max_z = -1e9f;
+            for (v_i = 0; v_i < d->count && d->first + v_i < sc->nv; v_i++) {
+                const BmapVertex *v = &sc->v[d->first + v_i];
+                if (v->x < min_x) min_x = v->x;
+                if (v->x > max_x) max_x = v->x;
+                if (v->y < min_y) min_y = v->y;
+                if (v->y > max_y) max_y = v->y;
+                if (v->z < min_z) min_z = v->z;
+                if (v->z > max_z) max_z = v->z;
+            }
+            if (d->count > 0 && min_x <= max_x) {
+                float cx = (min_x + max_x) * 0.5f;
+                float cy = (min_y + max_y) * 0.5f;
+                float cz = (min_z + max_z) * 0.5f;
+                float rx = max_x - cx;
+                float ry = max_y - cy;
+                float rz = max_z - cz;
+                g_bd.bounds[d_i].center[0] = cx;
+                g_bd.bounds[d_i].center[1] = cy;
+                g_bd.bounds[d_i].center[2] = cz;
+                g_bd.bounds[d_i].radius = sqrtf(rx * rx + ry * ry + rz * rz);
+            } else {
+                g_bd.bounds[d_i].center[0] = 0.0f;
+                g_bd.bounds[d_i].center[1] = 0.0f;
+                g_bd.bounds[d_i].center[2] = 0.0f;
+                g_bd.bounds[d_i].radius = 1e9f;
+            }
+        }
+    }
     backdrop_pieces(sc);
     g->glBindVertexArray(g_bd.vao);
     g->glBindBuffer(GL_ARRAY_BUFFER, g_bd.vbo);
@@ -979,12 +1027,16 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
 {
     const BmapScene *sc = (const BmapScene *)b->scene;
     float r[4][4];
+    float fwd[3];
     unsigned pass, i;
     /* the field plays its animations a frame a field frame (60 a second) */
     unsigned uv_frame = (unsigned)(SDL_GetTicks() * 60u / 1000u);
     int uv_set = 1;
 
     if (g_bd.prog == 0 || sc == NULL || sc->nv == 0) {
+        return;
+    }
+    if (front && !b->front_only && b->n_poke == 0) {
         return;
     }
     if (g_bd.scene != sc || g_bd.gen != b->scene_gen) {
@@ -995,6 +1047,10 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         }
     }
     backdrop_matrix(b, r);
+    fwd[0] = b->target[0] - b->eye[0];
+    fwd[1] = b->target[1] - b->eye[1];
+    fwd[2] = b->target[2] - b->eye[2];
+    vnorm(fwd);
     g->glUseProgram(g_bd.prog);
     g->glBindVertexArray(g_bd.vao);
     g->glBindBuffer(GL_ARRAY_BUFFER, g_bd.vbo);
@@ -1056,7 +1112,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(0.0f, 1.0f); /* no slope term: it pushed far, grazing triangles over the near map */
     g->glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    for (pass = 0; pass < 2; pass++) {
+    for (pass = 0; pass < (g_bd.n_piece > 0 ? 2 : 1); pass++) {
         if (pass == 1) {
             glEnable(GL_BLEND);
             g->glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,
@@ -1101,11 +1157,13 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         for (i = 0; i < n; i++) {
             const BmapDraw *d;
             unsigned first, count, run = 1;
+            unsigned d_idx;
 
             if (sorted) {
                 const BdPiece *pc = &g_bd.piece[g_bd.order[i]];
 
-                d = &sc->d[pc->draw];
+                d_idx = pc->draw;
+                d = &sc->d[d_idx];
                 first = pc->first;
                 count = pc->count;
                 /* the next triangles in the order that come from the same
@@ -1114,9 +1172,27 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                     run++;
                 }
             } else {
+                d_idx = i;
                 d = &sc->d[i];
                 first = d->first;
                 count = d->count;
+            }
+            if (g_bd.bounds != NULL && d_idx < g_bd.n_bounds) {
+                const BdBound *bd = &g_bd.bounds[d_idx];
+                float tcx = bd->center[0] - b->eye[0];
+                float tcy = bd->center[1] - b->eye[1];
+                float tcz = bd->center[2] - b->eye[2];
+                float cam_dist = fwd[0] * tcx + fwd[1] * tcy + fwd[2] * tcz;
+                /* Culling behind camera */
+                if (cam_dist < -bd->radius) {
+                    i += run - 1;
+                    continue;
+                }
+                /* Culling beyond fog/atmosphere view distance */
+                if (g_bd.reach > 40.0f && cam_dist > g_bd.reach * 1.5f + bd->radius) {
+                    i += run - 1;
+                    continue;
+                }
             }
             /* the depth pass also takes the solid texels of a draw whose
              * soft edges blend later */
@@ -1991,11 +2067,13 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
     return glGetError() == GL_NO_ERROR ? 0 : -1;
 }
 
+#define AA_MAX_SS_PIXELS (1280 * 720)
+
 static int render_with_aa(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
 {
     if (g != NULL && s != NULL && w > 0 && h > 0 &&
         g->integer_samples < MSAA_SAMPLES && (s->disp3dcnt & 0x10u) != 0 &&
-        (long)w * h <= MSAA_MAX_PIXELS && !g->es) {
+        (long)w * h <= AA_MAX_SS_PIXELS && !g->es) {
         /* (not on a phone: four times a phone screen's pixels every frame
          * cost more than a frame's time there, and at its density the
          * resolution already smooths the edges) */

@@ -2301,7 +2301,7 @@ static int model_pose(Model *md, Buf bca, int frame)
 /* The models a gym's field gimmick adds on top of the map (bmap_gimmick.c:
  * curtains, doors, ...), in their initial state.  Each is a BMD0 from the
  * gimmick's archive, placed at its world position like a building. */
-static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
+static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz, float reach)
 {
     const BmapGimmickModel *gm;
     unsigned n = bmap_gimmick_models(zone, &gm), i;
@@ -2313,6 +2313,10 @@ static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
         float t[3];
         Aff place;
         int rc;
+
+        if (fabsf(gm[i].x - px) > reach || fabsf(gm[i].z - pz) > reach) {
+            continue;
+        }
 
         memset(&tb, 0, sizeof tb);
         if (arc_load(c, gm[i].arc, gm[i].model, &mb) != 0) {
@@ -2817,6 +2821,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     pcx = (unsigned)(px / CELL_UNITS);
     pcz = (unsigned)(pz / CELL_UNITS);
     (void)pcx; (void)pcz;
+    float reach = s->indoor ? (CELL_UNITS * 2.0f) : REACH;
     for (cell = 0; cell < w * h; cell++) {
         unsigned chunk = rd32(mb, 8u + cell * 4u);
         int cx = (int)(cell % w), cz = (int)(cell / w);
@@ -2829,7 +2834,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         }
         dx = x0 - px > px - (x0 + CELL_UNITS) ? x0 - px : px - (x0 + CELL_UNITS);
         dz = z0 - pz > pz - (z0 + CELL_UNITS) ? z0 - pz : pz - (z0 + CELL_UNITS);
-        if (dx > REACH || dz > REACH) {
+        if (dx > reach || dz > reach) {
             continue;
         }
         if (mode == 1u) {
@@ -2847,7 +2852,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
             goto out;
         }
     }
-    if (add_gimmicks(c, zone, px, pz) != 0) {
+    if (add_gimmicks(c, zone, px, pz, reach) != 0) {
         goto out;
     }
     s->clear[0] = c->lights.clear[0]; s->clear[1] = c->lights.clear[1]; s->clear[2] = c->lights.clear[2];
