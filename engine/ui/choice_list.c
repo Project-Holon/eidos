@@ -319,6 +319,12 @@ void ui_taskmenu_tap(const void *menu_p, int i)
 
 int ui_taskmenu(EidosUiCtx *c, void *menu_p, int right, int bottom, int style)
 {
+    return ui_taskmenu_labels(c, menu_p, right, bottom, style, NULL);
+}
+
+int ui_taskmenu_labels(EidosUiCtx *c, void *menu_p, int right, int bottom, int style,
+                       const char *const *labels)
+{
     const u8 *m = (const u8 *)menu_p;
     int n = ui_taskmenu_count(menu_p), i, w = 0, h, x, y, cur, keys_off, pick = -1;
     char text[8][48];
@@ -333,7 +339,12 @@ int ui_taskmenu(EidosUiCtx *c, void *menu_p, int right, int bottom, int style)
         int tw;
 
         text[i][0] = '\0';
-        if (sb != NULL && STRBUF_GetChars != NULL && STRBUF_GetLength != NULL && STRBUF_GetChars(sb) != NULL) {
+        if (labels != NULL) {
+            if (labels[i] != NULL) {
+                strncpy(text[i], labels[i], sizeof text[i] - 1);
+                text[i][sizeof text[i] - 1] = '\0';
+            }
+        } else if (sb != NULL && STRBUF_GetChars != NULL && STRBUF_GetLength != NULL && STRBUF_GetChars(sb) != NULL) {
             units_utf8(STRBUF_GetChars(sb), STRBUF_GetLength(sb), text[i], (int)sizeof text[i]);
         }
         tw = ui_text_w(text[i], UI_FONT_LARGE) + 30;

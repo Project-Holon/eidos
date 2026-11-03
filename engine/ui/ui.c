@@ -31,6 +31,7 @@
 #include "input.h"
 #include "textbox.h"
 #include "settings.h"
+#include "overlay.h"
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -840,6 +841,9 @@ static void debug_script(void)
  *                 field's step check starts, SYMBOL_MAP_CreatePokeEventTask)
  *   "box M"       the PC's boxes in mode M (as the PC's script command opens
  *                 them: 0 organize, 1 withdraw, 2 deposit, ...)
+ *   "ltrade"      the Union Room's link trade with no partner (its own
+ *                 offline path: the game takes the first offer as the
+ *                 partner's), for the trade screen's tests
  * The save these run on is a test copy: the game clear saves. */
 extern void *ov010_EVENT_GAMECLEAR_Create(void *gsys, u32 mode) __attribute__((weak));
 extern void *ov021_FLD_TRADE_CreateEvent(void *gsys, u32 tradeId, u32 partyIndex) __attribute__((weak));
@@ -861,6 +865,7 @@ extern void *SYSTEM_DATA_GetConfig(void *save) __attribute__((weak));
 extern void *ZUKAN_SAVE_GetFromGameData(void *gd) __attribute__((weak));
 extern u32 ZUKAN_SAVE_IsNationalDexEnabled(void *zukan) __attribute__((weak));
 extern void *bw_dsref_ov010_gLocalTvtSysProcData __attribute__((weak));
+extern void *POKEPARTY_Create(u32 heap) __attribute__((weak));
 
 static void debug_open_done(void *arg)
 {
@@ -945,6 +950,19 @@ static void debug_open(void)
         boxp->mode = (int)a;
         ev = FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(gs, fm, 170, bw_dsref_ov021_d_021EF78C, boxp,
                                                            debug_open_done, NULL);
+    } else if (strcmp(what, "ltrade") == 0 && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
+               && GFL_HEAP_Alloc != NULL
+               && POKEPARTY_Create != NULL) {
+        /* ClubTradeParam (ov006/event_wificlub_types.h): gameData 0x14,
+         * party 0x1C; the trade reads up to 0x40 of it */
+        u8 *param = (u8 *)GFL_HEAP_Alloc(4, 0x40, 1, "debug_open", 0);
+
+        *(void **)(param + 0x14) = gd;
+        *(void **)(param + 0x1C) = POKEPARTY_Create(4);
+        /* gPokemonTradeProcData (ov119 0x021E7608, the Union Room's ProcData:
+         * ov012 binds its own name for it only while ov012 is loaded) */
+        ev = FIELD_STATUS_CreateSubProcCallbackEvent(gs, fm, 119, (void *)(uintptr_t)0x021E7608u, param,
+                                                     debug_open_done, NULL);
     } else if (sscanf(what, "makeegg %u", &a) == 1 && GAME_DATA_GetMyParty != NULL && POKEPARTY_GetMember != NULL
                && POKE_TOOL_SetPartyValue != NULL) {
         /* party slot S becomes an Egg, nothing more (a Spin Trade needs one) */
@@ -962,6 +980,82 @@ static void debug_open(void)
         fprintf(stderr, "eidos: debug open %s\n", what);
     } else {
         fprintf(stderr, "eidos: debug open %s: not available\n", what);
+    }
+}
+
+/* Tests: "ltrade" runs the trade's offline path, which the retail game
+ * never takes for the Union Room (state 1): it skips the step that loads
+ * the box icons' graphics (StepLoadBoxIconGfx, on the linked path only),
+ * so the test loads them as that step would before the boxes are drawn.
+ * TradeWork: stepFunc 0x5EC, vramBuf 0x1184. */
+extern void ov119_POKETRADE_PROC_StepSendBoxInfo(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_2D_LoadBoxIconGfx(void *p, int box) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepSendAddOffer(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepAddSelectedOffer(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepSendApplyAddOffer(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepApplyAddOffer(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StepWipeToBrowse(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StepResolveConfirm(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StepOpenConfirmMenu(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StepResolveReplies(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepWaitCursorSync(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StoreRemoteOffer(void *p, int i, void *src) __attribute__((weak));
+
+static void debug_ltrade(void)
+{
+    const char *what = getenv("EIDOS_DEBUG_OPEN");
+    u8 *gs, *ps, *cur, *w;
+    int b;
+
+    if (what == NULL || strcmp(what, "ltrade") != 0 || &bw_dsref__GameSystemGlobal == NULL
+        || ov119_POKETRADE_PROC_StepSendBoxInfo == NULL || ov119_POKETRADE_2D_LoadBoxIconGfx == NULL
+        || !bw_overlay_is_loaded(119)) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    ps = gs != NULL ? *(u8 **)(gs + 0x08) : NULL;
+    cur = ps != NULL ? *(u8 **)(ps + 0x08) : NULL;
+    if (cur == NULL || *(u32 *)(cur + 0x04) != 119u || (w = *(u8 **)(cur + 0x14)) == NULL) {
+        return;
+    }
+    /* no partner: its name is the player's, its offers the player's own */
+    *(void **)(w + 0x834) = *(void **)(w + 0x830);
+    if (ov119_POKETRADE_NEGO_StoreRemoteOffer != NULL
+        && *(uintptr_t *)(w + 0x5EC) == (uintptr_t)ov119_POKETRADE_NEGO_StepWipeToBrowse) {
+        for (b = 0; b < 3; b++) {
+            void *own = *(void **)(w + 0xFD8 + 4u * (u32)b), *peer = *(void **)(w + 0xFD8 + 12u + 4u * (u32)b);
+
+            if (own != NULL && peer == NULL && *(int *)(w + 0xFA4 + 4u * (u32)b) != -1) {
+                ov119_POKETRADE_NEGO_StoreRemoteOffer(w, b, own);
+            }
+        }
+    }
+    /* the steps that send to the partner wait for the link; offline they
+     * go on as a sent message would */
+    {
+        static void (*const pairs[][2])(void *) = {
+            { ov119_POKETRADE_PROC_StepSendAddOffer, ov119_POKETRADE_PROC_StepAddSelectedOffer },
+            { ov119_POKETRADE_PROC_StepSendApplyAddOffer, ov119_POKETRADE_PROC_StepApplyAddOffer },
+            /* both chose (offline the link's id is not 0 or 1) */
+            { ov119_POKETRADE_NEGO_StepResolveConfirm, ov119_POKETRADE_NEGO_StepOpenConfirmMenu },
+        };
+        u32 i;
+
+        for (i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {
+            if (pairs[i][0] != NULL && *(uintptr_t *)(w + 0x5EC) == (uintptr_t)pairs[i][0]) {
+                *(uintptr_t *)(w + 0x5EC) = (uintptr_t)pairs[i][1];
+            }
+        }
+    }
+    /* both agreed to trade (choice[] 0x11E0: 13 each) */
+    if (ov119_POKETRADE_NEGO_StepResolveReplies != NULL && ov119_POKETRADE_PROC_StepWaitCursorSync != NULL
+        && *(uintptr_t *)(w + 0x5EC) == (uintptr_t)ov119_POKETRADE_NEGO_StepResolveReplies && w[0x11E0] == 13) {
+        *(uintptr_t *)(w + 0x5EC) = (uintptr_t)ov119_POKETRADE_PROC_StepWaitCursorSync;
+    }
+    if (*(uintptr_t *)(w + 0x5EC) == (uintptr_t)ov119_POKETRADE_PROC_StepSendBoxInfo && *(void **)(w + 0x1184) == NULL) {
+        for (b = 0; b <= 24; b++) {
+            ov119_POKETRADE_2D_LoadBoxIconGfx(w, b);
+        }
     }
 }
 
@@ -1363,6 +1457,7 @@ void eidos_ui_game_frame(void)
         debug_battle();
         debug_script();
         debug_open();
+        debug_ltrade();
         debug_seek(bw_input_frame_number());
     }
 

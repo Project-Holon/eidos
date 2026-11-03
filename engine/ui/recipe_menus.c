@@ -418,7 +418,7 @@ static void tap(int x, int y)
  * the file layer, so a mod's text shows) and enciphered the way the game's
  * banks are (docs/ASSETS.md, tools/assets/text.py). */
 typedef struct Bank { int arc, member; u8 *data; u32 size; } Bank;
-static Bank g_bank[8];
+static Bank g_bank[32];
 static int g_nbank;
 
 static const Bank *bank_get(int arc, int member)
@@ -434,7 +434,7 @@ static const Bank *bank_get(int arc, int member)
             return g_bank[i].data != NULL ? &g_bank[i] : NULL;
         }
     }
-    if (g_nbank >= 8) {
+    if (g_nbank >= (int)(sizeof g_bank / sizeof g_bank[0])) {
         return NULL;
     }
     b = &g_bank[g_nbank++];
@@ -4907,8 +4907,689 @@ static const EidosUiRecipe recipe_guru2_lobby = {
     "union_spin_lobby", lobby_match, lobby_run, lobby_reset, 0
 };
 
-const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
+/* ------------------------------------------------------------------ */
+/* Link trades (the Union Room)                                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Union Room's link trade (overlay 119, ov119/pokemontrade_proc.c and
+ * pokemontrade_nego.c; mock-up "union_trade"): one window over the
+ * blurred room.  The left column holds the two offers (up to three
+ * Pokemon each) and the four feelings the game sends; the right column is
+ * the box being browsed, the party first and then the boxes, in the order
+ * the game's strip of icons runs.  The game's words are the system box
+ * under the window and its lists (SHOW / CANCEL, YES / NO, TRADE /
+ * SUMMARY / CANCEL) are the game's own, drawn as lists.
+ *
+ * The game does the work: a click on a Pokemon taps its icon on the
+ * game's strip (the stylus picks it and opens its summary), a feeling
+ * taps the game's feeling, the arrows are L and R (the strip snaps to the
+ * next box), START is the game's button that ends the choice.  When the
+ * game shows a Pokemon's summary the right column shows it; when both
+ * offers are made the right column shows the Pokemon under the game's
+ * cursor and a click on an offer taps that offer.  The trade itself (the
+ * game's 3D scene) is the world, with the two Pokemon on a card.
+ *
+ * TradeWork (ov119/pokemontrade_types.h): stepFunc 0x5EC, monBuf[2]
+ * 0x5DC, partyBoxId 0x630 (the number of boxes: the party's index),
+ * gridOriginX 0x63C (the strip's length), taskMenu 0x64C, messageWin
+ * 0x71C, boxManager 0x828 (the box save), playerStatus 0x834 (the
+ * partner), partyData 0x838, cursorSlot 0xF74 (a column of the strip),
+ * cursorColumn 0xF78 (its row), peerSelectedSlot 0xF94, peerSelectedBox
+ * 0xF98, offerSlot[2][3] 0xFA4, offerBox[2][3] 0xFBC, offerMon[2][3]
+ * 0xFD8 (side 0 the player's, side 1 the partner's), scrollX 0x107C
+ * (s16), cursorIndex 0x10A0, records[] 0x11FC (per slot: u16 species,
+ * u8 form, u8 sex; the party first, then 30 per box).
+ */
+#define UT_STEP        0x5ECu
+#define UT_MONBUF      0x5DCu
+#define UT_PARTY_BOX   0x630u
+#define UT_ORIGIN      0x63Cu
+#define UT_TASKMENU    0x64Cu
+#define UT_MSGWIN      0x71Cu
+#define UT_BOXES       0x828u
+#define UT_PEER        0x834u
+#define UT_PARTY       0x838u
+#define UT_CUR_SLOT    0xF74u
+#define UT_CUR_ROW     0xF78u
+#define UT_SEL_SLOT    0xF94u
+#define UT_SEL_BOX     0xF98u
+#define UT_OFFER_SLOT  0xFA4u
+#define UT_OFFER_BOX   0xFBCu
+#define UT_OFFER_MON   0xFD8u
+#define UT_SCROLL      0x107Cu
+#define UT_CUR_INDEX   0x10A0u
+#define UT_RECORDS     0x11FCu
+
+enum { UT_SCENE, UT_BROWSE, UT_SUMMARY, UT_CHOOSE };
+
+/* The game's steps and the screen each one shows; a step not listed is
+ * the trade's own scene (the 3D demo, the questions after it). */
+#define UT_STEPS(X) \
+    X(PROC_StepRestartNetSession, UT_BROWSE) X(PROC_StepAfterWipeLoadBox, UT_BROWSE) \
+    X(PROC_StepWaitNetSync22, UT_BROWSE) X(PROC_StepLoadBoxIconGfx, UT_BROWSE) \
+    X(PROC_StepSendBoxInfo, UT_BROWSE) X(PROC_StepBuildMarkingTable, UT_BROWSE) \
+    X(PROC_StepBuildTradeRecord, UT_BROWSE) X(PROC_StepSendTradeData, UT_BROWSE) \
+    X(PROC_StepWaitSyncThenWipe, UT_BROWSE) X(PROC_StepBeginWipeToRestore, UT_BROWSE) \
+    X(PROC_StepWaitThenRestoreScene, UT_BROWSE) X(PROC_StepRestoreBrowseScene, UT_BROWSE) \
+    X(PROC_StepRebuildTradeScene, UT_BROWSE) X(PROC_StepWaitKeyThenBrowse, UT_BROWSE) \
+    X(PROC_StepBrowseGrid, UT_BROWSE) X(PROC_StepTouchbarAction, UT_BROWSE) \
+    X(PROC_StepWaitIconFlight, UT_BROWSE) X(PROC_StepWaitBrowseRelease, UT_BROWSE) \
+    X(PROC_StepClearPeerSelection, UT_BROWSE) X(PROC_StepRebuildBrowseScene, UT_BROWSE) \
+    X(PROC_StepAddSelectedOffer, UT_BROWSE) X(PROC_StepSendAddOffer, UT_BROWSE) \
+    X(PROC_StepApplyAddOffer, UT_BROWSE) X(PROC_StepSendApplyAddOffer, UT_BROWSE) \
+    X(PROC_StepWaitKeyAfterMessage, UT_BROWSE) X(PROC_ShowCancelMessage, UT_BROWSE) \
+    X(PROC_ShowSelectMessage, UT_BROWSE) X(PROC_StepConfirmSendOffer, UT_BROWSE) \
+    X(PROC_StepSendOfferConfirm, UT_BROWSE) X(PROC_HideTouchbarButtons, UT_BROWSE) \
+    X(PROC_StepWaitTouchReleasePeer, UT_BROWSE) X(PROC_StepResetForNewRound, UT_BROWSE) \
+    X(PROC_StepResetGrid, UT_BROWSE) X(PROC_StepEnterBrowsing, UT_BROWSE) \
+    X(PROC_StepBeginBrowse, UT_BROWSE) \
+    X(NEGO_StepSendOfferRemoval, UT_BROWSE) X(NEGO_StepWaitTouchRelease, UT_BROWSE) \
+    X(NEGO_StepShowCancelMessage, UT_BROWSE) X(NEGO_StepOpenCancelMenu, UT_BROWSE) \
+    X(NEGO_StepCancelMenuChoice, UT_BROWSE) X(NEGO_StepBeginFinalWait, UT_BROWSE) \
+    X(NEGO_StepWaitFinalMessage, UT_BROWSE) X(NEGO_StepOpenFinalAgreeMenu, UT_BROWSE) \
+    X(NEGO_StepFinalAgreeMenuChoice, UT_BROWSE) X(NEGO_StepBeginFinalReady, UT_BROWSE) \
+    X(NEGO_StepSendFinalReady, UT_BROWSE) X(NEGO_StepSendFinalAgree, UT_BROWSE) \
+    X(NEGO_StepResolveFinalAgree, UT_BROWSE) X(NEGO_StepSendReady, UT_BROWSE) \
+    X(NEGO_StepWaitReadySync, UT_BROWSE) \
+    X(PROC_StepOpenPeerSummary, UT_SUMMARY) X(PROC_StepPeerSummaryMenu, UT_SUMMARY) \
+    X(PROC_ShowPeerSummary, UT_SUMMARY) \
+    X(NEGO_StepWipeToBrowse, UT_CHOOSE) X(NEGO_StepWaitWipeToBrowse, UT_CHOOSE) \
+    X(NEGO_StepBuildBrowseScene, UT_CHOOSE) X(NEGO_StepWaitWipeBrowse, UT_CHOOSE) \
+    X(NEGO_StepShowNoOfferMessage, UT_CHOOSE) X(NEGO_StepWaitInputAfterMessage, UT_CHOOSE) \
+    X(NEGO_StepBrowseOffersMain, UT_CHOOSE) X(NEGO_StepWaitSelectionDelay, UT_CHOOSE) \
+    X(NEGO_StepBrowseOffers, UT_CHOOSE) X(NEGO_StepOpenSummaryFromBrowse, UT_CHOOSE) \
+    X(NEGO_StepReturnFromSummary, UT_CHOOSE) \
+    X(NEGO_StepSendOfferIndex, UT_CHOOSE) X(NEGO_StepSendOfferMon, UT_CHOOSE) \
+    X(NEGO_StepOpenOfferActionMenu, UT_CHOOSE) X(NEGO_StepOfferActionChoice, UT_CHOOSE) \
+    X(NEGO_StepBeginConfirm, UT_CHOOSE) X(NEGO_StepSendConfirm, UT_CHOOSE) \
+    X(NEGO_StepResolveConfirm, UT_CHOOSE) X(NEGO_StepOpenConfirmMenu, UT_CHOOSE) \
+    X(NEGO_StepConfirmMenuChoice, UT_CHOOSE) X(NEGO_StepShowWaitMessageA, UT_CHOOSE) \
+    X(NEGO_StepShowWaitMessageB, UT_CHOOSE) X(NEGO_StepWaitMessageThenWipe, UT_CHOOSE) \
+    X(NEGO_StepRebuildSceneAfterWipe, UT_CHOOSE) X(NEGO_StepOpenQuitMenu, UT_CHOOSE) \
+    X(NEGO_StepQuitMenuChoice, UT_CHOOSE) X(NEGO_StepWaitReplyKey, UT_CHOOSE) \
+    X(NEGO_StepResolveReplies, UT_CHOOSE) X(NEGO_StepSendReply, UT_CHOOSE) \
+    X(NEGO_StepWaitReplySync, UT_CHOOSE) X(NEGO_StepSendCancelReply, UT_CHOOSE) \
+    X(NEGO_StepWaitCancelSync, UT_CHOOSE) X(NEGO_StepSendDeclineConfirm, UT_CHOOSE) \
+    X(NEGO_StepBeginDeclineConfirm, UT_CHOOSE) X(NEGO_StepDeclineMenuChoice, UT_CHOOSE) \
+    X(NEGO_StepOpenDeclineMenu, UT_CHOOSE)
+
+#define UT_DECL(n, ph) extern void ov119_POKETRADE_##n(void *p) MN_WEAK;
+UT_STEPS(UT_DECL)
+#undef UT_DECL
+#define UT_FN(n, ph) ov119_POKETRADE_##n,
+static void (*const ut_fns[])(void *) = { UT_STEPS(UT_FN) };
+#undef UT_FN
+#define UT_PH(n, ph) ph,
+static const u8 ut_phases[] = { UT_STEPS(UT_PH) };
+#undef UT_PH
+
+extern u32   POKE_TOOL_GetBoxValue(void *bp, u32 param, u32 arg) MN_WEAK;
+extern void *BOX_SAVEDATA_GetPokemon(void *boxes, u32 box, u32 slot) MN_WEAK;
+extern void *BOX_SAVEDATA_GetHeader(void *boxes) MN_WEAK;
+
+static const u8 *ut_work(void)
+{
+    const u8 *w = (const u8 *)app_work(TRADE_OVERLAY);
+
+    return w != NULL && trade_event_work() == NULL ? w : NULL;
+}
+
+static int ut_phase(const u8 *w)
+{
+    uintptr_t fn = (uintptr_t)rd32(w, UT_STEP);
+    u32 i;
+
+    for (i = 0; i < sizeof ut_phases; i++) {
+        if (ut_fns[i] != NULL && (uintptr_t)ut_fns[i] == fn) {
+            return ut_phases[i];
+        }
+    }
+    return UT_SCENE;
+}
+
+static int ut_step_is(const u8 *w, void (*fn)(void *))
+{
+    return fn != NULL && (uintptr_t)rd32(w, UT_STEP) == (uintptr_t)fn;
+}
+
+/* A Pokemon as the window shows it. */
+typedef struct UtMon {
+    int exists, egg, species, form, gender, level, item, ability;
+    int moves[4];
+    char nick[40];
+} UtMon;
+
+/* Read from a party Pokemon (party != 0: the offers) or a box one. */
+static int ut_mon(void *mon, int party, UtMon *m)
+{
+    u32 (*get)(void *, u32, u32) = party ? POKE_TOOL_GetPartyValue : POKE_TOOL_GetBoxValue;
+    u16 name[16];
+    int i;
+
+    memset(m, 0, sizeof *m);
+    if (mon == NULL || get == NULL || get(mon, 0xA9, 0) == 0) {     /* a species */
+        return 0;
+    }
+    m->exists = 1;
+    m->species = (int)get(mon, PARAM_SPECIES, 0);
+    m->egg = get(mon, PARAM_IS_EGG, 0) != 0;
+    m->form = (int)get(mon, PARAM_FORM, 0);
+    m->gender = (int)get(mon, 0x6E, 0);
+    m->level = (int)get(mon, PARAM_LEVEL, 0);
+    m->item = (int)get(mon, 0x06, 0);
+    m->ability = (int)get(mon, 0x0A, 0);
+    for (i = 0; i < 4; i++) {
+        m->moves[i] = (int)get(mon, 0x36u + (u32)i, 0);
+    }
+    memset(name, 0xFF, sizeof name);
+    (void)get(mon, 0x74, (u32)(uintptr_t)name);
+    units_utf8(name, 12, m->nick, (int)sizeof m->nick);
+    return 1;
+}
+
+/* The Pokemon in a slot of a box (box == partyBoxId: the party). */
+static int ut_slot_mon(const u8 *w, int box, int slot, UtMon *m)
+{
+    void *mon = NULL;
+
+    if (box < 0 || slot < 0) {
+        return ut_mon(NULL, 0, m);
+    }
+    if (box == (int)rd32(w, UT_PARTY_BOX)) {
+        void *party = rdp(w, UT_PARTY);
+
+        if (party != NULL && POKEPARTY_GetCount != NULL && POKEPARTY_GetMember != NULL
+            && slot < (int)POKEPARTY_GetCount(party)) {
+            return ut_mon(POKEPARTY_GetMember(party, (u32)slot), 1, m);
+        }
+        return ut_mon(NULL, 0, m);
+    }
+    if (BOX_SAVEDATA_GetPokemon != NULL && slot < 30) {
+        mon = BOX_SAVEDATA_GetPokemon(rdp(w, UT_BOXES), (u32)box, (u32)slot);
+    }
+    return ut_mon(mon, 0, m);
+}
+
+static const UiImage *ut_icon(const UtMon *m, u32 frame)
+{
+    if (m->egg) {
+        return ui_mon_icon(m->species == 490 ? 651 : 650, 0, (frame / 16) & 1);
+    }
+    return ui_mon_icon((u16)m->species, (u8)m->form, (frame / 16) & 1);
+}
+
+/* The box the strip shows most of (its middle): -1 the party, else the
+ * box (ov119 POKETRADE_2D_GetScrollColumn: the party's two columns, then
+ * 160 pixels a box). */
+static int ut_page(const u8 *w)
+{
+    int origin = (int)rd32(w, UT_ORIGIN), x = (s16)rd16(w, UT_SCROLL) + 128;
+
+    if (origin > 0) {
+        x %= origin;
+        if (x < 0) {
+            x += origin;
+        }
+    }
+    return x < 96 ? -1 : (x - 96) / 160;
+}
+
+/* Where the game draws a slot's icon on its strip (bottom screen pixels,
+ * the icon's middle; ov119 POKETRADE_2D_UpdateBoxIconPositions). */
+static int ut_slot_x(const u8 *w, int box, int slot)
+{
+    int origin = (int)rd32(w, UT_ORIGIN), x;
+
+    if (box < 0) {
+        x = (slot % 2) == 0 ? 0x1C : 0x3C;
+    } else {
+        x = box * 160 + (slot % 6) * 24 + 0x14 + 0x60;
+    }
+    x -= (s16)rd16(w, UT_SCROLL);
+    if (origin > 0) {
+        while (x < -16) {
+            x += origin;
+        }
+        while (x >= origin - 16) {
+            x -= origin;
+        }
+    }
+    return x;
+}
+
+/* The four feelings, as the game draws them on its screen (kept once
+ * seen: the game hides them under its lists). */
+static u8 g_ut_feel_px[4][24 * 24 * 4];
+static UiImage g_ut_feel[4];
+
+static void ut_grab_feelings(const EidosUiFrame *in)
+{
+    const u8 *o = in->objs_rgba[1];
+    int i, x, y, n;
+
+    eidos_ui_want_objs(1);
+    if (o == NULL) {
+        return;
+    }
+    for (i = 0; i < 4; i++) {
+        if (g_ut_feel[i].rgba != NULL) {
+            continue;
+        }
+        for (n = 0, y = 0; y < 24; y++) {
+            for (x = 0; x < 24; x++) {
+                const u8 *s = o + ((size_t)(144 + y) * 256 + (size_t)(8 + i * 24 + x)) * 4;
+
+                memcpy(&g_ut_feel_px[i][(y * 24 + x) * 4], s, 4);
+                n += s[3] != 0;
+            }
+        }
+        if (n > 40) {
+            g_ut_feel[i].w = 24;
+            g_ut_feel[i].h = 24;
+            g_ut_feel[i].rgba = g_ut_feel_px[i];
+        }
+    }
+}
+
+/* An offer's tile: the Pokemon's icon and level, or its number. */
+static int ut_tile(EidosUiCtx *c, int x, int y, void *mon, int n, int lit, u32 frame)
+{
+    UtMon m;
+    EidosUiRect r;
+    int st, full = ut_mon(mon, 1, &m);
+
+    r.x = x; r.y = y; r.w = 48; r.h = 38;
+    st = eidos_ui_hit(r);
+    lit = lit || (full && (st & EIDOS_UI_HOVER));
+    ui_panel(c, x, y, 48, 38, UI_CUT_TL | UI_CUT_BR, 5, full ? 0x05343Eu : UI_BODY,
+             lit ? UI_WHITE : full ? IN_HL : UI_EDGE, 255);
+    if (full) {
+        const UiImage *ic = ut_icon(&m, frame);
+        char lv[16];
+
+        if (ic != NULL) {
+            ui_image(c, x + 8, y - 4, ic, 1);
+        }
+        if (!m.egg) {
+            snprintf(lv, sizeof lv, "%s%d", ui_tr("Lv."), m.level);
+            ui_text(c, x + (48 - ui_text_w(lv, UI_FONT_SMALL)) / 2, y + 26, lv, UI_WHITE, IN_SHADOW,
+                    UI_FONT_SMALL, 1);
+        }
+    } else {
+        char d[4];
+
+        snprintf(d, sizeof d, "%d", n + 1);
+        ui_text(c, x + (48 - ui_text_w(d, UI_FONT_LARGE)) / 2, y + 11, d, UI_EDGE2, IN_SHADOW, UI_FONT_LARGE, 1);
+    }
+    return st;
+}
+
+/* A Pokemon's card: its picture, name, level, types, ability, item and
+ * moves; menu_room keeps that much of the bottom right for the game's
+ * list. */
+static void ut_card(EidosUiCtx *c, int x, int y, int w, int h, const UtMon *m, int menu_room, u32 frame)
+{
+    int ix = x + 6, iy = y + 5, i, t1, t2;
+    char lv[16];
+
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 255);
+    if (!m->exists) {
+        return;
+    }
+    {
+        int nx = ui_text(c, ix, iy, m->egg ? "Egg" : m->nick, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+
+        if (!m->egg) {
+            ui_gender(c, nx + 3, iy, m->gender, UI_FONT_LARGE);
+            snprintf(lv, sizeof lv, "%s %d", ui_tr("Lv."), m->level);
+            ui_text(c, x + w - 6 - ui_text_w(lv, UI_FONT_SMALL), iy + 2, lv, UI_LIGHT, IN_SHADOW, UI_FONT_SMALL, 1);
+        }
+    }
+    iy += 17;
+    ui_panel(c, ix, iy, 64, 64, UI_CUT_TL | UI_CUT_BR, 5, 0x0B1E34u, UI_EDGE, 255);
+    if (m->egg) {
+        const UiImage *ic = ut_icon(m, frame);
+
+        if (ic != NULL) {
+            ui_image(c, ix + 16, iy + 16, ic, 1);
+        }
+        return;
+    }
+    {
+        EidosUiRect saved;
+
+        ui_push(c, 0, 0, &saved);
+        ui_clip(c, ix + 1, iy + 1, 62, 62);
+        ui_mon_front_draw(c, (u16)m->species, 0, frame, ix + 1, iy + 1, 62, 62);
+        ui_pop(c, 0, 0, &saved);
+    }
+    {
+        int tx = ix + 70, tw = x + w - 6 - tx;
+
+        ui_species_types(m->species, &t1, &t2);
+        ui_type_tag(c, tx, iy, 46, t1);
+        if (t2 != t1) {
+            ui_type_tag(c, tx + 50, iy, 46, t2);
+        }
+        ui_info_row(c, tx, iy + 18, tw, ui_tr("Ability"), ui_game_text(2, 182, (u32)m->ability));
+        ui_info_row(c, tx, iy + 36, tw, ui_tr("Item"),
+                    m->item > 0 ? ui_game_text(2, 54, (u32)m->item) : ui_tr("None"));
+    }
+    iy += menu_room > 0 ? 66 : 69;
+    /* the moves: two by two, or one column beside the game's list */
+    for (i = 0; i < 4 && iy + 12 <= y + h - 3; i++) {
+        int one = menu_room > 0, cwid = one ? w - 12 - menu_room - 4 : (w - 12) / 2 - 1;
+        int cx = one ? ix : ix + (i % 2) * (cwid + 2);
+        const char *mv = m->moves[i] > 0 ? ui_move_name_modern(m->moves[i]) : "-----";
+
+        if (mv == NULL) {
+            mv = ui_game_text(2, 203, (u32)m->moves[i]);
+        }
+        ui_panel(c, cx, iy, cwid, 12, UI_CUT_TL | UI_CUT_BR, 2, UI_BODY, UI_EDGE, 255);
+        ui_text(c, cx + 4, iy + ui_text_y(12, UI_FONT_SMALL), mv,
+                m->moves[i] > 0 ? UI_WHITE : UI_EDGE2, IN_SHADOW, UI_FONT_SMALL, 1);
+        if (one || i % 2 == 1) {
+            iy += one ? 13 : 14;
+        }
+    }
+}
+
+/* The box pane: the page's name with its arrows, and its Pokemon. */
+static void ut_box(EidosUiCtx *c, const u8 *w, int gx, int gy, u32 frame)
+{
+    int page = ut_page(w), i, nslot = page < 0 ? 6 : 30, cols = page < 0 ? 2 : 6;
+    int box = page < 0 ? (int)rd32(w, UT_PARTY_BOX) : page;
+    int cur_slot = (int)rd32(w, UT_CUR_SLOT), cur_row = (int)rd32(w, UT_CUR_ROW);
+    char name[48];
+    EidosUiRect r;
+
+    name[0] = '\0';
+    if (page < 0) {
+        snprintf(name, sizeof name, "%s", ui_tr("PARTY"));
+    } else if (BOX_SAVEDATA_GetHeader != NULL) {
+        const u8 *h = (const u8 *)BOX_SAVEDATA_GetHeader(rdp(w, UT_BOXES));
+        u16 u[21];
+        int k;
+
+        if (h != NULL) {
+            for (k = 0; k < 20; k++) {
+                u[k] = (u16)rd16(h, 4u + (u32)page * 40u + 2u * (u32)k);
+            }
+            u[20] = 0xFFFF;
+            units_utf8(u, 20, name, (int)sizeof name);
+        }
+    }
+    ui_panel(c, gx, gy, 180, 14, UI_CUT_TL | UI_CUT_BR, 3, UI_BODY2, UI_EDGE, 255);
+    ui_text(c, gx + (180 - ui_text_w(name, UI_FONT_SMALL)) / 2, gy + 2, name, UI_WHITE, IN_SHADOW, UI_FONT_SMALL, 1);
+    for (i = 0; i < 2; i++) {
+        int st, ax = i == 0 ? gx : gx + 180 - 18, k;
+
+        r.x = ax; r.y = gy; r.w = 18; r.h = 14;
+        st = eidos_ui_hit(r);
+        for (k = 0; k < 4; k++) {
+            int tx = i == 0 ? ax + 7 + k : ax + 10 - k;
+
+            ui_fill(c, tx, gy + 7 - k, 1, 2 * k + 1, (st & EIDOS_UI_HOVER) ? UI_WHITE : UI_CYAN, 255);
+        }
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_press(i == 0 ? BW_KEY_L : BW_KEY_R, 2);
+        }
+    }
+    /* the party in two columns in the middle, as the game lays it out */
+    for (i = 0; i < nslot; i++) {
+        int col = i % cols, row = i / cols, cx = gx + (page < 0 ? 60 : 0) + col * 30, cy = gy + 16 + row * 26, st, lit, off = 0, k;
+        const u8 *rec = w + UT_RECORDS + 4u * (u32)(page < 0 ? i : page * 30 + 6 + i);
+        const UiImage *ic;
+        int sp = (int)rd16(rec, 0);
+
+        if (sp == 0) {
+            continue;
+        }
+        r.x = cx; r.y = cy; r.w = 30; r.h = 26;
+        st = eidos_ui_hit(r);
+        for (k = 0; k < 3; k++) {
+            off |= (int)rd32(w, UT_OFFER_SLOT + 4u * (u32)k) == i && (int)rd32(w, UT_OFFER_BOX + 4u * (u32)k) == box;
+        }
+        /* the game's own cursor (keys): a column of the strip and its row */
+        lit = eidos_ui_keys_lit() && UI_GetInputMode != NULL && UI_GetInputMode() == 0
+              && ((page < 0 && cur_slot < 2 && cur_slot + cur_row * 2 == i)
+                  || (page >= 0 && cur_slot >= 2 && (cur_slot - 2) / 6 == page
+                      && (cur_slot - 2) % 6 == col && cur_row == row));
+        if (off || lit || (st & EIDOS_UI_HOVER)) {
+            ui_panel(c, cx + 1, cy + 1, 28, 24, UI_CUT_TL | UI_CUT_BR, 4, off ? 0x05343Eu : UI_BODY2,
+                     (lit || (st & EIDOS_UI_HOVER)) ? UI_WHITE : IN_HL, 255);
+        }
+        ic = sp == 650 ? ui_mon_icon(650, 0, 0)
+                       : ui_mon_icon((u16)sp, rec[2], (lit || (st & EIDOS_UI_HOVER)) ? (int)((frame / 8) & 1) : 0);
+        if (ic != NULL) {
+            ui_image(c, cx - 1, cy - 6, ic, 1);
+        }
+        if (st & EIDOS_UI_CLICK) {
+            int dx = ut_slot_x(w, page, i), dy = 0x20 + (page < 0 ? i / 2 : i / 6) * 24;
+
+            if (dx >= 6 && dx < 250) {
+                eidos_ui_tap(dx, dy, 3);
+            }
+        }
+    }
+}
+
+static int ut_match(void)
+{
+    const u8 *w = ut_work();
+    static u32 last;
+
+    if (debug_on() && (w != NULL ? rd32(w, UT_STEP) : 1u) != last) {
+        last = w != NULL ? rd32(w, UT_STEP) : 1u;
+        fprintf(stderr, "eidos: ut step %08X at %u\n", (unsigned)last, (unsigned)bw_input_frame_number());
+    }
+    return w != NULL;
+}
+
+extern void ov119_POKETRADE_PROC_StepMenuChoice(void *p) MN_WEAK;
+
+/* The game's list: the trade frees its words once the list has drawn
+ * them (ov119 POKETRADE_SAVE_OpenTaskMenuAt), so its labels are read from
+ * its bank (a/0/0/2 member 159; 157 on a Japanese cartridge, not read
+ * here) by the entries the step opened. */
+static void ut_menu(EidosUiCtx *c, const u8 *w, void *tm, int right, int bottom)
+{
+    int ids[3] = { 24, 25, -1 }, i, n = ui_taskmenu_count(tm);
+    const char *labels[3];
+
+    if (n == 3) {
+        ids[0] = 4; ids[1] = 3; ids[2] = 5;             /* TRADE, SUMMARY, CANCEL */
+    } else if (ut_step_is(w, ov119_POKETRADE_PROC_StepPeerSummaryMenu)) {
+        ids[0] = 2; ids[1] = 5;                         /* SHOW, CANCEL */
+    } else if (ut_step_is(w, ov119_POKETRADE_PROC_StepMenuChoice)) {
+        ids[0] = 0; ids[1] = 5;
+    } else if (ut_step_is(w, ov119_POKETRADE_NEGO_StepQuitMenuChoice)) {
+        ids[0] = 3; ids[1] = 5;
+    } else if (ut_step_is(w, ov119_POKETRADE_NEGO_StepConfirmMenuChoice)) {
+        ids[0] = 4; ids[1] = 5;
+    }
+    for (i = 0; i < 3; i++) {
+        labels[i] = ids[i] >= 0 ? ui_game_text(2, 159, (u32)ids[i]) : "";
+    }
+    ui_taskmenu_labels(c, tm, right, bottom, UI_CHOICE_SYSTEM, labels);
+}
+
+/* The trade's own scene (the 3D demo and what follows it): the world, a
+ * card with the two Pokemon, the game's words and lists. */
+static void ut_scene(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, const u8 *w)
+{
+    static const char *const hints[] = { "A", "Next" };
+    static const u32 keys[] = { BW_KEY_A };
+    int cw = c->canvas->w, ch = c->canvas->h, pw = 240, px = (cw - pw) / 2, py = 6, i, by = ch - 17 - 6;
+    const u8 *win = (const u8 *)rdp(w, UT_MSGWIN);
+    void *tm = rdp(w, UT_TASKMENU);
+    EidosUiRect all;
+
+    view->mode = EIDOS_VIEW_WORLD;
+    view->hide_2d = 0;
+    if (win != NULL && ui_bmpwin_bmp(win) != NULL && g2d_hw_hide_main_bgs != NULL && win[2] < 4) {
+        g2d_hw_hide_main_bgs(1u << win[2]);
+    }
+    if (rdp(w, UT_MONBUF) != NULL && rdp(w, UT_MONBUF + 4u) != NULL && POKE_TOOL_GetPartyValue != NULL
+        && POKE_TOOL_GetPartyValue(rdp(w, UT_MONBUF), 0xA9, 0) != 0) {
+        ui_panel(c, px, py, pw, 58, UI_CUT_TL | UI_CUT_BR, 9, IN_MBODY, IN_MEDGE, 235);
+        trade_mon(c, rdp(w, UT_MONBUF + 4u), px + 10, py + 14, in->frame);
+        trade_mon(c, rdp(w, UT_MONBUF), px + pw / 2 + 12, py + 14, in->frame);
+        for (i = 0; i < 5; i++) {
+            ui_fill(c, px + pw / 2 - 8 + i, py + 25 - (4 - i), 1, 2 * (4 - i) + 1, IN_HL, 255);
+            ui_fill(c, px + pw / 2 + 4 - i, py + 35 - (4 - i), 1, 2 * (4 - i) + 1, IN_HL, 255);
+        }
+    }
+    if (win != NULL && ui_bmpwin_bmp(win) != NULL && ui_textbox_h(win) > 0) {
+        int bw = cw - 16 < 300 ? cw - 16 : 300;
+
+        by -= ui_textbox_h(win);
+        ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, (cw - bw) / 2, by, bw, win, -1, -1);
+        if (tm != NULL) {
+            ut_menu(c, w, tm, (cw + bw) / 2, by - 3);
+        }
+    } else if (tm != NULL) {
+        ut_menu(c, w, tm, cw - 8, by);
+    }
+    all.x = 0; all.y = 0; all.w = cw; all.h = ch - ui_bar_h(c);
+    if (tm == NULL && (eidos_ui_hit(all) & EIDOS_UI_CLICK)) {
+        eidos_ui_press(BW_KEY_A, 2);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 1, keys);
+}
+
+static void ut_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const browse_hints[] = { "A", "Choose", "B", "Back", "L R", "Box", "START", "Done" };
+    static const u32 browse_keys[] = { BW_KEY_A, BW_KEY_B, BW_KEY_R, BW_KEY_START };
+    static const char *const pick_hints[] = { "A", "Choose", "B", "Back" };
+    static const u32 pick_keys[] = { BW_KEY_A, BW_KEY_B };
+    const u8 *w = ut_work(), *msg;
+    void *tm;
+    int cw = c->canvas->w, ch = c->canvas->h, mw = 370, mh = IN_HEAD + 154, mx, my, bh = 0, phase, i, side;
+    int x0, y0, gx, offered = 0, cur_index;
+    char line[64], who[32];
+
+    if (w == NULL) {
+        return;
+    }
+    phase = ut_phase(w);
+    if (phase == UT_SCENE) {
+        ut_scene(c, view, in, w);
+        return;
+    }
+    view->mode = EIDOS_VIEW_WORLD;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+    msg = (const u8 *)rdp(w, UT_MSGWIN);
+    tm = rdp(w, UT_TASKMENU);
+    if (msg != NULL && win_bmp_of(msg) != NULL) {
+        bh = ui_textbox_h(msg);
+    }
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh - (bh > 0 ? bh + 6 : 0)) / 2;
+    if (my < 4) {
+        my = 4;
+    }
+    who[0] = '\0';
+    if (rdp(w, UT_PEER) != NULL && MYSTATUS_GetName != NULL) {
+        units_utf8(MYSTATUS_GetName(rdp(w, UT_PEER)), 8, who, (int)sizeof who);
+    }
+    in_window(c, mx, my, mw, mh, NULL);
+    ui_text(c, mx + 12, my + 7, ui_tr("TRADE"), IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+    ui_text(c, mx + mw - 12 - ui_text_w(who, UI_FONT_SMALL), my + 7, who, UI_LIGHT, IN_SHADOW, UI_FONT_SMALL, 1);
+    x0 = mx + 12;
+    y0 = my + IN_HEAD;
+    gx = x0 + 156 + 10;
+    cur_index = phase == UT_CHOOSE ? (int)rd32(w, UT_CUR_INDEX) : -1;
+    /* the offers: the player's, then the partner's */
+    for (side = 0; side < 2; side++) {
+        int ly = y0 + side * 52;
+
+        snprintf(line, sizeof line, "%s", ui_tr(side == 0 ? "YOUR OFFER" : "PARTNER'S OFFER"));
+        ui_text(c, x0, ly, line, side == 0 ? IN_TITLE : UI_LIGHT, IN_SHADOW, UI_FONT_SMALL, 1);
+        for (i = 0; i < 3; i++) {
+            u32 o = (u32)(side * 3 + i) * 4u;
+            void *mon = (int)rd32(w, UT_OFFER_SLOT + o) != -1 ? rdp(w, UT_OFFER_MON + o) : NULL;
+            /* the game's list of the offers: the partner's 0..2, the
+             * player's 3..5 (ov119 gBrowseOffersHitArea) */
+            int idx = side == 0 ? 3 + i : i;
+            int st = ut_tile(c, x0 + i * 52, ly + 10, mon, i, cur_index == idx, in->frame);
+
+            offered |= side == 0 && mon != NULL;
+            if (phase == UT_CHOOSE && mon != NULL && (st & EIDOS_UI_CLICK)) {
+                eidos_ui_tap(idx < 3 ? 64 : 192, 46 + 48 * (idx % 3), 3);
+            }
+        }
+    }
+    /* the feelings */
+    ui_text(c, x0, y0 + 104, ui_tr("SEND A FEELING"), UI_LIGHT, IN_SHADOW, UI_FONT_SMALL, 1);
+    if (ut_step_is(w, ov119_POKETRADE_PROC_StepBrowseGrid)) {
+        ut_grab_feelings(in);
+    }
+    for (i = 0; i < 4; i++) {
+        EidosUiRect r;
+        int st, fx = x0 + i * 40, fy = y0 + 114;
+
+        r.x = fx; r.y = fy; r.w = 36; r.h = 22;
+        st = ut_step_is(w, ov119_POKETRADE_PROC_StepBrowseGrid) ? eidos_ui_hit(r) : 0;
+        ui_panel(c, fx, fy, 36, 22, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY, (st & EIDOS_UI_HOVER) ? UI_WHITE : UI_EDGE, 255);
+        if (g_ut_feel[i].rgba != NULL) {
+            ui_image(c, fx + 6, fy - 1, &g_ut_feel[i], 1);
+        }
+        if (st & EIDOS_UI_CLICK) {
+            eidos_ui_tap(8 + i * 24 + 12, 156, 3);
+        }
+    }
+    /* the right column: the box, or the Pokemon the game shows */
+    if (phase == UT_BROWSE) {
+        ut_box(c, w, gx, y0, in->frame);
+    } else {
+        UtMon m;
+
+        if (phase == UT_SUMMARY) {
+            ut_slot_mon(w, (int)rd32(w, UT_SEL_BOX), (int)rd32(w, UT_SEL_SLOT), &m);
+        } else {
+            int idx = cur_index >= 0 && cur_index < 6 ? cur_index : 0, row = idx / 3, col = idx % 3;
+            u32 o = (u32)((1 - row) * 3 + col) * 4u;
+
+            ut_mon((int)rd32(w, UT_OFFER_SLOT + o) != -1 ? rdp(w, UT_OFFER_MON + o) : NULL, 1, &m);
+        }
+        ut_card(c, gx, y0, 180, mh - IN_HEAD - 10, &m, tm != NULL ? 76 : 0, in->frame);
+    }
+    /* the game's words and lists */
+    if (bh > 0) {
+        int by = my + mh + 6;
+
+        ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, mx, by, mw, msg, -1, -1);
+        if (tm != NULL) {
+            ut_menu(c, w, tm, mx + mw, by - 3);
+        }
+    } else if (tm != NULL) {
+        ut_menu(c, w, tm, gx + 180 - 2, my + mh - 12);
+    }
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+    if (phase == UT_BROWSE) {
+        ui_hints(c, ch - ui_bar_h(c), cw, browse_hints, offered ? 4 : 3, browse_keys);
+    } else {
+        ui_hints(c, ch - ui_bar_h(c), cw, pick_hints, 2, pick_keys);
+    }
+}
+
+static void ut_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_union_trade = {
+    "union_trade", ut_match, ut_run, ut_reset, 0
+};
+
+const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_union_trade, &recipe_options, &recipe_save, &recipe_card,
                                                   &recipe_wireless, &recipe_geonet, &recipe_entree,
                                                   &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_egg, &recipe_trade, &recipe_oekaki, &recipe_guru2,
                                                   &recipe_guru2_lobby };
-const u32 ui_recipes_menus_count = 17;
+const u32 ui_recipes_menus_count = 18;

@@ -10,7 +10,7 @@ Each release's notes on GitHub start with its section here
 - **New Screens**: Pokédex search, catching and nicknaming, town map and Fly, move relearner, Egg hatching, in-game trades, Xtransceiver calls (up to four people), Hall of Fame and credits, trainer card, Entree Forest and Pass Powers, Survey Radar, PC box list and marking.
 - **Field Windows**: Money, items received and place names have their own cards; the season card stays the game's.
 - **Battle**: Ability pop-ups and the trainer intro are drawn as plates.
-- **Union Room & Battle Subway**: Drawing, Spin Trade (lobby, Egg list, spinner) and the Battle Subway's Pokémon entry list are one-screen.
+- **Union Room & Battle Subway**: Trading (offers, boxes, feelings, summaries), drawing, Spin Trade (lobby, Egg list, spinner) and the Battle Subway's Pokémon entry list are one-screen.
 
 ### Saves
 - **First Save**: A New Game writes no file until you save; the save goes to its own slot.
