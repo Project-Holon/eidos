@@ -216,12 +216,19 @@ void eidos_ui_overlay_68_sync_exit(void)
         int sty = eidos_settings_get(EIDOS_OPT_BATTLE_STYLE);
         u8 *saved = (u8 *)work + 0x248;
         u8 *curr = (u8 *)work + 0x18C;
-        saved[0] = (u8)spd;
-        saved[1] = (u8)scn;
-        saved[2] = (u8)sty;
+        void *cfg = *(void **)(curr + 8);
         curr[0] = (u8)spd;
         curr[1] = (u8)scn;
         curr[2] = (u8)sty;
+        memcpy(saved, curr, 6);
+        if (cfg != NULL) {
+            extern void CONFIG_SetTextSpeed(void *cfg, unsigned int speed) __attribute__((weak));
+            extern void CONFIG_SetBattleScene(void *cfg, unsigned int scene) __attribute__((weak));
+            extern void CONFIG_SetBattleStyle(void *cfg, unsigned int style) __attribute__((weak));
+            if (CONFIG_SetTextSpeed != NULL) CONFIG_SetTextSpeed(cfg, (unsigned int)spd);
+            if (CONFIG_SetBattleScene != NULL) CONFIG_SetBattleScene(cfg, (unsigned int)scn);
+            if (CONFIG_SetBattleStyle != NULL) CONFIG_SetBattleStyle(cfg, (unsigned int)sty);
+        }
     }
 }
 

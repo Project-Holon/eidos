@@ -1341,15 +1341,21 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
     if (serial != g_item_seen) {
         g_item_seen = serial;
         g_item_age = 0;
-        g_item_show = text_up;
+        g_item_show = 1;
     } else if (g_item_age < 100000u) {
         g_item_age++;
     }
     if (text_up && !g_item_text) {
         g_item_show = g_item_age < 240u;
     }
+    if (g_item_text && !text_up) {
+        g_item_show = 0;
+    }
     g_item_text = text_up;
-    if (!text_up || !g_item_show || item == 0 || item > 0x400) {
+    if (!g_item_show || item == 0 || item > 0x400) {
+        return;
+    }
+    if (!text_up && g_item_age >= 240u) {
         return;
     }
     if (g_item_card.serial != serial) {
@@ -1915,8 +1921,12 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     ui_fill(c, 0, 0, cw, bh, UI_INK, st_bar & EIDOS_UI_HOVER ? 205 : 170);
     ui_fill(c, 0, bh, cw, 1, UI_EDGE, 200);
 
-    /* the right group, from the right edge; its buttons come first so a
-     * click on one is not also a click on the bar */
+    /* the middle: the time on its slanted tab */
+    int tw = ui_text_w("00:00", UI_FONT_LARGE) + 24;
+    int clock_left = cw / 2 - tw / 2;
+    int clock_right = cw / 2 + tw / 2;
+
+    /* the right group, from the right edge: battery and wireless/IR */
     x = cw - 6 - c->safe_r;     /* clear of a phone's notch and corners */
     battery(c, x - 17, 3);
     x -= 24;
@@ -1929,10 +1939,10 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         lit[1] = comm && last_cmd == 5;
         lit[2] = comm && last_cmd == 1;
         for (i = 0; i < 3; i++) {
-            int tw = wide ? ui_text_w(names[i], UI_FONT_SMALL) : 0;
+            int ntw = wide ? ui_text_w(names[i], UI_FONT_SMALL) : 0;
             int ty = ui_text_y(bh, UI_FONT_SMALL);
 
-            x -= tw;
+            x -= ntw;
             if (wide) {
                 ui_text(c, x, ty, names[i], lit[i] ? UI_WHITE : UI_EDGE2, -1, UI_FONT_SMALL, 1);
             }
@@ -1941,31 +1951,41 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             x -= 6;
         }
     }
-    x -= 4;
-    if (f.mode == 0 || f.mode == 8) {           /* this save has a C-Gear */
-        st = small_button(c, &x, 0, "C-GEAR", bh, NULL);
+
+    /* right of clock: Menu (X) */
+    {
+        int kw = ui_keycap_w("X");
+        int tmw = ui_text_w("Menu", UI_FONT_SMALL);
+        int menu_w = tmw + 10 + (kw > 0 ? (kw < 13 ? 13 : kw) + 3 : 0);
+        int xm = clock_right + 4 + menu_w;
+        st = small_button(c, &xm, 0, "Menu", bh, "X");
         if (st & EIDOS_UI_CLICK) {
-            g_show_cgear = g_show_cgear ? 0 : 1;
-            st_bar = 0;
-        } else if (st & EIDOS_UI_HOVER) {
+            open_menu = 1;
+        }
+        if (st & EIDOS_UI_HOVER) {
             st_bar = 0;
         }
     }
-    st = small_button(c, &x, 0, "Menu", bh, "X");
-    if (st & EIDOS_UI_CLICK) {
-        open_menu = 1;
-    }
-    if (st & EIDOS_UI_HOVER) {
-        st_bar = 0;
-    }
-    /* Y, the registered item (the Bicycle, the Dowsing Machine): a touch
-     * screen has no key for it */
-    st = small_button(c, &x, 0, "Item", bh, "Y");
-    if (st & EIDOS_UI_CLICK) {
-        use_item = 1;
-    }
-    if (st & EIDOS_UI_HOVER) {
-        st_bar = 0;
+
+    /* left of clock: Item (Y) and C-GEAR */
+    {
+        int xl = clock_left - 4;
+        st = small_button(c, &xl, 0, "Item", bh, "Y");
+        if (st & EIDOS_UI_CLICK) {
+            use_item = 1;
+        }
+        if (st & EIDOS_UI_HOVER) {
+            st_bar = 0;
+        }
+        if (f.mode == 0 || f.mode == 8) {           /* this save has a C-Gear */
+            st = small_button(c, &xl, 0, "C-GEAR", bh, NULL);
+            if (st & EIDOS_UI_CLICK) {
+                g_show_cgear = g_show_cgear ? 0 : 1;
+                st_bar = 0;
+            } else if (st & EIDOS_UI_HOVER) {
+                st_bar = 0;
+            }
+        }
     }
 
     /* the left: the cursor mark and the place */
@@ -1978,14 +1998,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_text(c, 14 + c->safe_l, ui_text_y(bh, UI_FONT_LARGE), place, UI_WHITE, UI_EDGE,
                 UI_FONT_LARGE, 1);
     }
-    /* the middle: the time on its slanted tab */
-    {
-        int tw = ui_text_w("00:00", UI_FONT_LARGE) + 24;
-
-        bar_trapezoid(c, cw / 2, tw, bh - 1, st_bar & EIDOS_UI_HOVER);
-        ui_text(c, cw / 2 - ui_text_w(clock, UI_FONT_LARGE) / 2,
-                ui_text_y(bh - 1, UI_FONT_LARGE), clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
-    }
+    bar_trapezoid(c, cw / 2, tw, bh - 1, st_bar & EIDOS_UI_HOVER);
+    ui_text(c, cw / 2 - ui_text_w(clock, UI_FONT_LARGE) / 2,
+            ui_text_y(bh - 1, UI_FONT_LARGE), clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
     ui_pop(c, 0, -g_bar_slide, &saved_clip);
     if (g_bar_slide > 0) {
         return;                             /* no clicks while it moves     */

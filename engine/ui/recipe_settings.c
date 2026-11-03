@@ -207,6 +207,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
                 /* straight to the section, as a touch: one step, one sound */
                 q_clear();
                 eidos_sui_request_tab(i);
+                eidos_ui_sound(0x548);
             }
             tx += tw + 3;
         }
@@ -261,6 +262,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
                     target = i;
                     target_choice = j - active;
                     target_zone = j;
+                    eidos_ui_sound(0x548);
                 }
             }
         } else if ((pctl = eidos_sui_row_pad(i, keyname, sizeof(keyname))) >= 0) {
@@ -297,14 +299,15 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
                 ui_text(c, rr.x + (aw - ui_text_w("\xE2\x86\x92", UI_FONT_LARGE)) / 2,
                         ry + ui_text_y(rowh, UI_FONT_LARGE), "\xE2\x86\x92",
                         (rs & EIDOS_UI_HOVER) ? UI_WHITE : UI_CYAN, -1, UI_FONT_LARGE, 1);
-                if (ls & EIDOS_UI_CLICK) { target = i; target_adj = -1; }
-                if (rs & EIDOS_UI_CLICK) { target = i; target_adj = 1; }
+                if (ls & EIDOS_UI_CLICK) { target = i; target_adj = -1; eidos_ui_sound(0x548); }
+                if (rs & EIDOS_UI_CLICK) { target = i; target_adj = 1; eidos_ui_sound(0x548); }
             }
             ui_text(c, vx, ry + ui_text_y(rowh, UI_FONT_LARGE), v, UI_LIGHT, UI_EDGE,
                     UI_FONT_LARGE, 1);
         }
         if ((st & EIDOS_UI_CLICK) && target < 0) {
             target = i;
+            eidos_ui_sound(0x548);
         }
     }
     if (total > shown && shown > 0) {
@@ -366,14 +369,18 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
                 int w = eidos_ui_wheel(panel);
                 pressed |= (w > 0 ? BW_KEY_UP : BW_KEY_DOWN);
             }
+            if (pressed & (BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_A | BW_KEY_L | BW_KEY_R)) {
+                eidos_ui_sound(0x548);
+            }
             int r = eidos_sui_input(pressed, held);
             if (r & EIDOS_SUI_EXIT) {
                 eidos_sui_leave();
                 eidos_ui_options_proc_up = 0;
+                eidos_ui_sound(0x551);
                 if (eidos_ui_overlay_68_up()) {
                     s_overlay68_closing = 1;
                     eidos_ui_overlay_68_sync_exit();
-                    eidos_ui_press(BW_KEY_B, 4);
+                    eidos_ui_tap(148, 180, 4);
                 }
                 return;
             }

@@ -1180,6 +1180,10 @@ void OPTION_MENU_UpdateList(OptionMenuList *list, const OptionMenuInput *input,
                             OptionMenuTextBox *helpText, struct OptionMenuScreen *screen,
                             struct OptionMenuButtons *buttons)
 {
+    extern int eidos_ui_options_proc_up;
+    if (eidos_ui_options_proc_up) {
+        return;
+    }
     (void)buttons;
     g.screen = screen;
     g.font = helpText->font;
@@ -1278,8 +1282,10 @@ void OPTION_MENU_DrawList(OptionMenuList *list, int highlight)
  * heap is checked for leaks when it is deleted (OPTION_MENU_Exit). */
 void OPTION_MENU_ExitList(OptionMenuList *list)
 {
+    extern int eidos_ui_options_proc_up;
     int i;
 
+    eidos_ui_options_proc_up = 0;
     drop_page();
     for (i = 0; i < BAR_COUNT; i++) {
         drop_win(&g.bar[i]);

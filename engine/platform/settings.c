@@ -453,7 +453,7 @@ static int apply_option_group(int id)
     }
 }
 
-extern void *SAVE_CONTROL_Get(void) __attribute__((weak));
+extern void *bw_dsref__pSaveControl __attribute__((weak));
 extern void *SYSTEM_DATA_GetConfig(void *save) __attribute__((weak));
 extern void CONFIG_SetTextSpeed(void *cfg, unsigned int speed) __attribute__((weak));
 extern void CONFIG_SetBattleScene(void *cfg, unsigned int scene) __attribute__((weak));
@@ -462,39 +462,40 @@ extern unsigned int CONFIG_GetTextSpeed(void *cfg) __attribute__((weak));
 extern unsigned int CONFIG_GetBattleScene(void *cfg) __attribute__((weak));
 extern unsigned int CONFIG_GetBattleStyle(void *cfg) __attribute__((weak));
 
+static void *get_game_config_safe(void)
+{
+    if (&bw_dsref__pSaveControl != NULL && bw_dsref__pSaveControl != NULL) {
+        void *sc = *(void **)bw_dsref__pSaveControl;
+        if (sc != NULL && SYSTEM_DATA_GetConfig != NULL) {
+            return SYSTEM_DATA_GetConfig(sc);
+        }
+    }
+    return NULL;
+}
+
 void eidos_settings_sync_from_game(void)
 {
-    if (SAVE_CONTROL_Get != NULL && SYSTEM_DATA_GetConfig != NULL) {
-        void *sc = SAVE_CONTROL_Get();
-        if (sc != NULL) {
-            void *cfg = SYSTEM_DATA_GetConfig(sc);
-            if (cfg != NULL) {
-                if (CONFIG_GetTextSpeed != NULL)
-                    g_cur.v[EIDOS_OPT_TEXT_SPEED] = (int)CONFIG_GetTextSpeed(cfg);
-                if (CONFIG_GetBattleScene != NULL)
-                    g_cur.v[EIDOS_OPT_BATTLE_SCENE] = (int)CONFIG_GetBattleScene(cfg);
-                if (CONFIG_GetBattleStyle != NULL)
-                    g_cur.v[EIDOS_OPT_BATTLE_STYLE] = (int)CONFIG_GetBattleStyle(cfg);
-            }
-        }
+    void *cfg = get_game_config_safe();
+    if (cfg != NULL) {
+        if (CONFIG_GetTextSpeed != NULL)
+            g_cur.v[EIDOS_OPT_TEXT_SPEED] = (int)CONFIG_GetTextSpeed(cfg);
+        if (CONFIG_GetBattleScene != NULL)
+            g_cur.v[EIDOS_OPT_BATTLE_SCENE] = (int)CONFIG_GetBattleScene(cfg);
+        if (CONFIG_GetBattleStyle != NULL)
+            g_cur.v[EIDOS_OPT_BATTLE_STYLE] = (int)CONFIG_GetBattleStyle(cfg);
     }
 }
 
 void eidos_settings_sync_to_game(int id, int v)
 {
-    if (SAVE_CONTROL_Get != NULL && SYSTEM_DATA_GetConfig != NULL) {
-        void *sc = SAVE_CONTROL_Get();
-        if (sc != NULL) {
-            void *cfg = SYSTEM_DATA_GetConfig(sc);
-            if (cfg != NULL) {
-                if (id == EIDOS_OPT_TEXT_SPEED && CONFIG_SetTextSpeed != NULL)
-                    CONFIG_SetTextSpeed(cfg, (unsigned int)v);
-                if (id == EIDOS_OPT_BATTLE_SCENE && CONFIG_SetBattleScene != NULL)
-                    CONFIG_SetBattleScene(cfg, (unsigned int)v);
-                if (id == EIDOS_OPT_BATTLE_STYLE && CONFIG_SetBattleStyle != NULL)
-                    CONFIG_SetBattleStyle(cfg, (unsigned int)v);
-            }
-        }
+    void *cfg = get_game_config_safe();
+    if (cfg != NULL) {
+        if (id == EIDOS_OPT_TEXT_SPEED && CONFIG_SetTextSpeed != NULL)
+            CONFIG_SetTextSpeed(cfg, (unsigned int)v);
+        if (id == EIDOS_OPT_BATTLE_SCENE && CONFIG_SetBattleScene != NULL)
+            CONFIG_SetBattleScene(cfg, (unsigned int)v);
+        if (id == EIDOS_OPT_BATTLE_STYLE && CONFIG_SetBattleStyle != NULL)
+            CONFIG_SetBattleStyle(cfg, (unsigned int)v);
     }
 }
 
