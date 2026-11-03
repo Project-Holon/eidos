@@ -1231,6 +1231,18 @@ extern void bw_ui_text_set_own(int on) WEAK;
  * out of the screen.  The DS screen stands at the window's height,
  * centred.  Returns 1 while a window is open.
  */
+/* For before-and-after pictures only: EIDOS_UI_PLAIN_FIELD leaves the
+ * game's own windows, lists, banners and lower cards on the field. */
+static int plain_field(void)
+{
+    static int plain = -1;
+
+    if (plain < 0) {
+        plain = getenv("EIDOS_UI_PLAIN_FIELD") != NULL;
+    }
+    return plain;
+}
+
 static int field_text(EidosUiCtx *c, const FieldNow *f)
 {
     u8 *list = NULL, *win = NULL;
@@ -1782,8 +1794,10 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* While the game's place-name banner shows (it names the same place)
      * or an event runs, the bar slides up out of the way and comes back
      * after. */
-    field_text(c, &f);
-    if (field_choices(c, in, &f)) {
+    if (!plain_field()) {
+        field_text(c, &f);
+    }
+    if (!plain_field() && field_choices(c, in, &f)) {
         /* a choice list is open: its own clicks (field_choices) */
     } else if (GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0) {
         /* An event (a talk, a scene): the game's speech bubbles go on
@@ -1809,7 +1823,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     } else {
         g_bar_slide = g_bar_slide > 2 ? g_bar_slide - 2 : 0;
     }
-    if (banner_shown(&f)) {
+    if (banner_shown(&f) && !plain_field()) {
         place_banner(c, &f);
     }
     if (g_bar_slide >= bh + 1) {
@@ -2021,7 +2035,7 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             return;
         }
     }
-    own = (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
+    own = plain_field() ? 0 : (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
           || (f.mode == 9 && power_card(c, &f));
     if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
