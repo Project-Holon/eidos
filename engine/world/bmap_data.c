@@ -2812,7 +2812,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     if (player_area == NULL) {
         goto out;
     }
-    s->indoor = player_area->indoor;
+    s->indoor = player_area->indoor || (w <= 2 && h <= 2);
     load_lights(c, player_area->light_type, hour, minute);
     pcx = (unsigned)(px / CELL_UNITS);
     pcz = (unsigned)(pz / CELL_UNITS);

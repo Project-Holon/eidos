@@ -1460,6 +1460,9 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         if (1.f - (float)g_one.dark / 16.f < tint) {
             tint = 1.f - (float)g_one.dark / 16.f;
         }
+        if (g_one.mix > 0 && 1.f - (float)g_one.mix / 16.f < tint) {
+            tint = 1.f - (float)g_one.mix / 16.f;
+        }
         glViewport(0, g_vp_y, out_w, out_h);
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
         g->glBindVertexArray(g->vao);

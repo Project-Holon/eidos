@@ -66,6 +66,13 @@ extern u32 POKE_TOOL_GetLevelMinExp(struct PokemonParam *pp)
     __attribute__((weak));
 extern u32 POKE_TOOL_GetExpForLevel(u16 species, u16 form, u16 level)
     __attribute__((weak));
+extern int bw_battle_view_indoor(void)
+    __attribute__((weak));
+
+static float battle_view_zoom(void)
+{
+    return (bw_battle_view_indoor != NULL && bw_battle_view_indoor()) ? 0.92f : 1.0f;
+}
 
 /* ------------------------------------------------------------------ */
 /* Small helpers                                                       */
@@ -1270,6 +1277,7 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     Bt b;
 
     view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = battle_view_zoom();
     (void)in;
     tap_reset();
     /* The game's own plates and message box are not shown once Pokemon are on
@@ -1954,6 +1962,7 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         return;
     }
     view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = battle_view_zoom();
     view->hide_2d = 1;
     shell_layout(c, &b, &sh);
     chooser_corners(c, &b);
@@ -2090,6 +2099,7 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     view->hide_2d = 1;
     view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = battle_view_zoom();
     shell_layout(c, &b, &sh);
     poke = rdp(b.core, 0xBC);
     if (!gptr_ok(poke)) {
@@ -2214,6 +2224,7 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     view->hide_2d = 1;
     view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = battle_view_zoom();
     shell_layout(c, &b, &sh);
     cw = sh.pw;
     x = sh.px;
@@ -2667,6 +2678,7 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
     view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = battle_view_zoom();
     view->blur = 1;
     m = modal_rect(c, 80, 300, 440, 82, 180, 250);
     modal_frame(c, &m, "BAG", "BATTLE", "", UI_PINK, 0x3C0A1Au, UI_RED);
@@ -3216,6 +3228,7 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
     pl_read(plist, &v);
     sig = pl_sig(&v);
     view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = battle_view_zoom();
     view->blur = 1;
     m = modal_rect(c, 84, 320, 460, 84, 190, 260);
     sub = v.mode == 6 || v.mode == 7 ? "FORGET A MOVE" : v.list_type == 3 ? "ITEM" : "SWITCH";
@@ -3430,6 +3443,7 @@ static void choice_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         return;
     }
     view->mode = EIDOS_VIEW_WORLD;
+    view->zoom = battle_view_zoom();
     view->hide_2d = 1;
     /* the two answers: the choice's own strings (the core's task work) */
     if (!strbuf_text(rdp(b.core, 0x2C), text[0], sizeof(text[0]))) {

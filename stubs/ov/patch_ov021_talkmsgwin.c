@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov021/talkmsgwin.c TALKMSGWIN_DrawEntry TALKMSGWIN_UpdateShape
+ * patches: src/game/ov021/talkmsgwin.c TALKMSGWIN_DrawEntry TALKMSGWIN_UpdateShape TALKMSGWIN_DrawEntryFrame TALKMSGWIN_RedrawEntryFrame TALKMSGWIN_DrawBalloonShape
  *
  * The field's talk balloons under the one-screen text boxes
  * (engine/ui/textbox.c, sdk/ui_text.c).
@@ -8,6 +8,10 @@
  * opens, its tail once shown).  While the interface draws the text boxes
  * itself (bw_ui_text_own), the polygon is left out; the window's text is
  * still printed by the game, which the interface copies.
+ *
+ * TALKMSGWIN_DrawEntryFrame and TALKMSGWIN_RedrawEntryFrame draw the native 2D
+ * frame tiles into bmpWin. While bw_ui_text_own() is active, these are silenced
+ * so that original balloons do not flash when dialog ends.
  *
  * TALKMSGWIN_UpdateShape works out, every frame, the screen point a
  * balloon's tail aims at (the speaker, or the window it answers).  It
@@ -38,7 +42,11 @@ typedef struct VecFx32 {
 
 typedef struct TalkMsgWin {
     u16 state;                      /* 0x00 */
-    u8 pad02[0x10 - 0x02];
+    u8 isPlain;                     /* 0x02 */
+    u8 frameType;                   /* 0x03 */
+    u32 tailMode;                   /* 0x04 */
+    void *printStream;              /* 0x08 */
+    void *bmpWin;                   /* 0x0C */
     const VecFx32 *targetPos;       /* 0x10 */
     u8 pad14[0x1A - 0x14];
     u16 anchorIndex;                /* 0x1A */
@@ -67,6 +75,7 @@ extern void bw_ui_talk_target(const void *win, int x, int y);
 
 void VEC_Subtract(const VecFx32 *a, const VecFx32 *b, VecFx32 *out);
 void TALKMSGWIN_DrawBalloonShape(TalkMsgWinSys *sys, TalkMsgWin *win, int tailOnly);
+void TALKMSGWIN_DrawFrameByType(const void *style, void *bmpWin, u8 frameType, u32 tailSide);
 int  TALKMSGWIN_ProjectToWorld(const VecFx32 *relPos, int *screenX, int *screenY, VecFx32 *outWorld);
 void TALKMSGWIN_GetAnchorWindowPoint(TalkMsgWin *win, TalkMsgWin *anchor, int *screenX, int *screenY, VecFx32 *outWorld);
 int  TALKMSGWIN_CalcTail(TalkMsgWin *win, int targetX, int targetY, VecFx32 *outBaseA, VecFx32 *outBaseB);
@@ -90,6 +99,30 @@ void TALKMSGWIN_DrawEntry(TalkMsgWinSys *sys, TalkMsgWin *win)
     default:
         break;
     }
+}
+
+void TALKMSGWIN_DrawBalloonShape(TalkMsgWinSys *sys, TalkMsgWin *win, int tailOnly)
+{
+    (void)sys;
+    (void)win;
+    (void)tailOnly;
+    /* When modern UI is active, 3D balloon polygons are completely suppressed */
+}
+
+void TALKMSGWIN_DrawEntryFrame(TalkMsgWinSys *sys, TalkMsgWin *win)
+{
+    if (bw_ui_text_own()) {
+        return;
+    }
+    TALKMSGWIN_DrawFrameByType(sys->param, win->bmpWin, win->frameType, 0);
+}
+
+void TALKMSGWIN_RedrawEntryFrame(TalkMsgWinSys *sys, TalkMsgWin *win)
+{
+    if (bw_ui_text_own()) {
+        return;
+    }
+    TALKMSGWIN_DrawFrameByType(sys->param, win->bmpWin, win->frameType, (u32)win->tailSide);
 }
 
 u32 TALKMSGWIN_UpdateShape(TalkMsgWinSys *sys, TalkMsgWin *win)

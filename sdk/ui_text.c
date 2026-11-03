@@ -23,7 +23,7 @@ typedef struct TalkTarget {
 } TalkTarget;
 
 static TalkTarget g_targets[TALK_MAX];
-static volatile int g_own;
+static volatile int g_own = 1;
 static u32 g_stamp;
 
 /* The interface draws the text boxes (1) or the game does (0). */

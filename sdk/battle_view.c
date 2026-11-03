@@ -249,6 +249,11 @@ int bw_battle_view_active(void)
            && real_map();
 }
 
+int bw_battle_view_indoor(void)
+{
+    return g_cur != NULL && g_cur->s.indoor;
+}
+
 /*
  * The part of a sprite polygon its texture fills (alpha above 0), on screen
  * (NDC): the texels' box in s, t, carried to the screen by the affine map
