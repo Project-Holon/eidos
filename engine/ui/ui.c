@@ -841,6 +841,9 @@ static void debug_script(void)
  *                 field's step check starts, SYMBOL_MAP_CreatePokeEventTask)
  *   "box M"       the PC's boxes in mode M (as the PC's script command opens
  *                 them: 0 organize, 1 withdraw, 2 deposit, ...)
+ *   "union"       into the Union Room, as its receptionist's script does
+ *                 (EVENT_MAPCHANGE_CreateFixedZoneEvent: the room and its
+ *                 link; the C-Gear's wireless must be on)
  *   "ltrade"      the Union Room's link trade with no partner (its own
  *                 offline path: the game takes the first offer as the
  *                 partner's), for the trade screen's tests
@@ -866,6 +869,7 @@ extern void *ZUKAN_SAVE_GetFromGameData(void *gd) __attribute__((weak));
 extern u32 ZUKAN_SAVE_IsNationalDexEnabled(void *zukan) __attribute__((weak));
 extern void *bw_dsref_ov010_gLocalTvtSysProcData __attribute__((weak));
 extern void *POKEPARTY_Create(u32 heap) __attribute__((weak));
+extern void *ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent(void *gsys, void *fieldMap) __attribute__((weak));
 
 static void debug_open_done(void *arg)
 {
@@ -950,6 +954,8 @@ static void debug_open(void)
         boxp->mode = (int)a;
         ev = FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(gs, fm, 170, bw_dsref_ov021_d_021EF78C, boxp,
                                                            debug_open_done, NULL);
+    } else if (strcmp(what, "union") == 0 && ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent != NULL) {
+        ev = ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent(gs, fm);
     } else if (strcmp(what, "ltrade") == 0 && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
                && GFL_HEAP_Alloc != NULL
                && POKEPARTY_Create != NULL) {

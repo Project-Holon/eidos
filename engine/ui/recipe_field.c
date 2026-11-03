@@ -1712,7 +1712,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     u32 zone = 0, t3[3] = { 0, 0, 0 };
     int have_time = 0, comm = 0, last_cmd = 0;
     EidosUiRect bar;
-    int st_bar, x, open_menu = 0, use_item = 0, st;
+    int st_bar, x, open_menu = 0, use_item = 0, st, choosing;
     int wide = cw >= 400;
     EidosUiRect saved_clip;
 
@@ -1797,7 +1797,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (!plain_field()) {
         field_text(c, &f);
     }
-    if (!plain_field() && field_choices(c, in, &f)) {
+    choosing = !plain_field() && field_choices(c, in, &f);
+    if (choosing) {
         /* a choice list is open: its own clicks (field_choices) */
     } else if (GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0) {
         /* An event (a talk, a scene): the game's speech bubbles go on
@@ -1817,8 +1818,10 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
      * the bar is simply there, fading in with the menu fading out. */
     if (in->frame - g_menu_last_frame <= 90u && !banner_shown(&f)) {
         g_bar_slide = 0;
-    } else if (banner_shown(&f) || (GAMESYSTEM_IsEventActive != NULL
-                                    && GAMESYSTEM_IsEventActive(f.gs) != 0)) {
+    } else if (banner_shown(&f) || choosing || (GAMESYSTEM_IsEventActive != NULL
+                                               && GAMESYSTEM_IsEventActive(f.gs) != 0)) {
+        /* a list (the Union Room's talk menu runs with no event) can
+         * reach the top of the screen: the bar makes room for it too */
         g_bar_slide = g_bar_slide + 3 < bh + 1 ? g_bar_slide + 3 : bh + 1;
     } else {
         g_bar_slide = g_bar_slide > 2 ? g_bar_slide - 2 : 0;
