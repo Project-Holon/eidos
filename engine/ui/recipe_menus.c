@@ -214,8 +214,8 @@ void eidos_ui_overlay_68_sync_exit(void)
         int spd = eidos_settings_get(EIDOS_OPT_TEXT_SPEED);
         int scn = eidos_settings_get(EIDOS_OPT_BATTLE_SCENE);
         int sty = eidos_settings_get(EIDOS_OPT_BATTLE_STYLE);
-        u8 *saved = (u8 *)work + 0x24C;
-        u8 *curr = (u8 *)work + 0x190;
+        u8 *saved = (u8 *)work + 0x248;
+        u8 *curr = (u8 *)work + 0x18C;
         saved[0] = (u8)spd;
         saved[1] = (u8)scn;
         saved[2] = (u8)sty;

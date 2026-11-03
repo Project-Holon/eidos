@@ -65,7 +65,11 @@ static void *rdp(const void *p, u32 off)
     if (bw_ds_try_ptr != NULL) {
         return bw_ds_try_ptr(address);
     }
+#if UINTPTR_MAX == UINT32_MAX
     return (void *)(uintptr_t)address;
+#else
+    return NULL;
+#endif
 }
 
 /* Proc: data 0x00, overlayId 0x04, seq 0x08, work 0x14.  ProcSys: current 0x08. */
@@ -102,27 +106,20 @@ static void *proc_work(void *proc, int overlay)
 
 static void *game_proc_top(void)
 {
+    u32 gs_addr = 0;
     void *gs = NULL;
 
     if (&bw_dsref__GameSystemGlobal != NULL && bw_dsref__GameSystemGlobal != NULL) {
-        void *p = *(void **)bw_dsref__GameSystemGlobal;
-        if (p != NULL) {
-            u32 addr = (u32)(uintptr_t)p;
-            if (bw_ds_try_ptr != NULL && (addr >> 24) == 0x02) {
-                gs = bw_ds_try_ptr(addr);
-            }
-            if (gs == NULL) {
-                gs = p;
-            }
-        }
+        gs_addr = rd32(bw_dsref__GameSystemGlobal, 0);
     }
-    if (gs == NULL && bw_ds_try_ptr != NULL) {
+    if (gs_addr == 0 && bw_ds_try_ptr != NULL) {
         void *slot = bw_ds_try_ptr(0x02146248u);
         if (slot != NULL) {
-            u32 gs_addr = rd32(slot, 0);
-            gs = bw_ds_try_ptr(gs_addr);
-            if (gs == NULL) gs = (void *)(uintptr_t)gs_addr;
+            gs_addr = rd32(slot, 0);
         }
+    }
+    if (gs_addr != 0 && bw_ds_try_ptr != NULL) {
+        gs = bw_ds_try_ptr(gs_addr);
     }
     return gs != NULL ? procsys_top(rdp(gs, 0x08)) : NULL;
 }
@@ -133,24 +130,19 @@ static void *global_procsys_root(void)
 
     if (&g_ProcSys != NULL && g_ProcSys != NULL) {
         root = g_ProcSys;
-    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
-        void *p = *(void **)bw_dsref_g_ProcSys;
-        if (p != NULL) {
-            u32 addr = (u32)(uintptr_t)p;
-            if (bw_ds_try_ptr != NULL && (addr >> 24) == 0x02) {
-                root = bw_ds_try_ptr(addr);
-            }
-            if (root == NULL) {
-                root = p;
+    } else {
+        u32 addr = 0;
+        if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+            addr = rd32(bw_dsref_g_ProcSys, 0);
+        }
+        if (addr == 0 && bw_ds_try_ptr != NULL) {
+            void *slot = bw_ds_try_ptr(0x02146990u);
+            if (slot != NULL) {
+                addr = rd32(slot, 0);
             }
         }
-    }
-    if (root == NULL && bw_ds_try_ptr != NULL) {
-        void *slot = bw_ds_try_ptr(0x02146990u);
-        if (slot != NULL) {
-            u32 addr = rd32(slot, 0);
+        if (addr != 0 && bw_ds_try_ptr != NULL) {
             root = bw_ds_try_ptr(addr);
-            if (root == NULL) root = (void *)(uintptr_t)addr;
         }
     }
     return root;

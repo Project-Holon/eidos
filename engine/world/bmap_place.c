@@ -2006,6 +2006,9 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     }
     float ca, sa;
     float gy, k = BMAP_PLACE_K, th[6];
+    if (s != NULL && s->indoor && !sp->field) {
+        k = BMAP_PLACE_K * 1.5f;
+    }
     unsigned i, nd0;
     unsigned char *done;
     const unsigned char *grass;

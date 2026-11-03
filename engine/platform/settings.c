@@ -85,7 +85,7 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
     { "Display", "outlines", "3D outlines", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       0, k_outlines, "", 0, NULL },
     { "Extras", "transitions", "Map transitions", EIDOS_OPTKIND_CHOICE, 0, 2,
-      1, 2, k_transitions, "", 0, NULL },
+      1, 0, k_transitions, "", 0, NULL },
     { "Display", "gpu_2d", "2D on the GPU", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       1, k_offon, "", 0, NULL },
     { "Game", "text_speed", "Text speed", EIDOS_OPTKIND_CHOICE, 0, 2, 1,

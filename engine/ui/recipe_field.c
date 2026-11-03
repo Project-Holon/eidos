@@ -1303,6 +1303,7 @@ static u32 g_item_seen;     /* the item serial last frame                 */
 static u32 g_item_age;      /* frames since it changed                    */
 static int g_item_show;     /* this message is the item's                 */
 static int g_item_text;     /* a message was up last frame                */
+static int g_item_text_seen;/* dialog was seen for this item              */
 
 typedef struct ItemStr { u16 capacity, length; u32 magic; u16 chars[64]; } ItemStr;
 
@@ -1336,20 +1337,24 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
         return;
     }
     item = bw_ui_item_last(NULL, &serial);
-    /* the item's message is the one that opens soon after the item went
-     * into the Bag (the script prints it next) */
     if (serial != g_item_seen) {
         g_item_seen = serial;
         g_item_age = 0;
-        g_item_show = text_up;
+        g_item_show = (item != 0);
+        g_item_text_seen = text_up;
     } else if (g_item_age < 100000u) {
         g_item_age++;
     }
-    if (text_up && !g_item_text) {
-        g_item_show = g_item_age < 240u;
+    if (text_up) {
+        g_item_text_seen = 1;
+    } else if (g_item_text_seen) {
+        g_item_show = 0;
+    }
+    if (g_item_age > 360u && !text_up) {
+        g_item_show = 0;
     }
     g_item_text = text_up;
-    if (!text_up || !g_item_show || item == 0 || item > 0x400) {
+    if (!g_item_show || item == 0 || item > 0x400) {
         return;
     }
     if (g_item_card.serial != serial) {

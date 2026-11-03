@@ -452,6 +452,7 @@ static const char *k_fsb =
     "        /* the far part fades into the sky before the map ends */\n"
     "        float f = smoothstep(u_atm.z, u_atm.w, length(v_pos.xz - u_atm.xy));\n"
     "        c.rgb = mix(c.rgb, u_sky, f);\n"
+    "        a *= (1.0 - f * 0.95);\n"
     "    }\n"
     "    o = vec4(c.rgb * a, a);\n"
     "}\n";
@@ -811,8 +812,10 @@ static void backdrop_upload(EidosGl *g, const BmapScene *sc)
                         : t->flip_t ? GL_MIRRORED_REPEAT : GL_REPEAT);
     }
     {
-        /* the half-width of the placed map around the player tile */
-        float x0 = 0.0f, x1 = 0.0f, z0 = 7.0f, z1 = 7.0f;
+        /* the half-width of the placed map around the room/player center */
+        float cx = sc->indoor ? 0.15f : 0.0f;
+        float cz = sc->indoor ? 0.15f : 7.0f;
+        float x0 = cx, x1 = cx, z0 = cz, z1 = cz;
         unsigned n;
 
         for (n = 0; n < sc->nv; n++) {
@@ -823,7 +826,7 @@ static void backdrop_upload(EidosGl *g, const BmapScene *sc)
             z0 = v->z < z0 ? v->z : z0;
             z1 = v->z > z1 ? v->z : z1;
         }
-        g_bd.reach = fminf(fminf(-x0, x1), fminf(7.0f - z0, z1 - 7.0f));
+        g_bd.reach = fminf(fminf(cx - x0, x1 - cx), fminf(cz - z0, z1 - cz));
     }
     free(g_bd.bounds);
     g_bd.bounds = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof(BdBound)) : NULL;
@@ -1058,11 +1061,16 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         g->glUniform4f(g_bd.u_r[i], r[i][0], r[i][1], r[i][2], r[i][3]);
     }
     {
-        float at[4] = { 0.0f, 7.0f, 0.0f, 0.0f };
+        float cx = (sc != NULL && sc->indoor) ? 0.15f : 0.0f;
+        float cz = (sc != NULL && sc->indoor) ? 0.15f : 7.0f;
+        float at[4] = { cx, cz, 0.0f, 0.0f };
 
         if (g_bd.reach > 40.0f) {
             at[2] = 0.45f * g_bd.reach;
             at[3] = 0.97f * g_bd.reach;
+        } else if (g_bd.reach > 2.0f) {
+            at[2] = 0.80f * g_bd.reach;
+            at[3] = 0.98f * g_bd.reach;
         }
         g->glUniform4f(g_bd.u_atm, at[0], at[1], at[2], at[3]);
         float sk[3];
