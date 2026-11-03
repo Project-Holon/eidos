@@ -577,7 +577,7 @@ static int party_match(void)
     }
     /* The plain list and the use-an-item list; the list that teaches a
      * move, the battle order list and the like keep the DS screens. */
-    if (v.mode != 0 && v.mode != 5 && v.mode != 8 && v.mode != 21 && v.mode != 22
+    if (v.mode != 0 && v.mode != 1 && v.mode != 5 && v.mode != 8 && v.mode != 21 && v.mode != 22
         && v.mode != 23 && rds32(v.work, PL_RESTORE18) == 0) {
         return 0;
     }
@@ -586,6 +586,8 @@ static int party_match(void)
      * ("... did not learn ...", "... forgot ..."); PL_RESTORE18 the same
      * on the way through mode 3; modes 22 and 23: the Pokemon a battle
      * facility enters (the Battle Subway), with CONFIRM and CANCEL;
+     * mode 1: the Pokemon a link battle enters (the Union Room's
+     * Colosseum), with CONFIRM alone;
      * mode 21: the Egg the Spin Trade takes (no back button) */
     return 1;
 }
@@ -626,7 +628,7 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
         if (v->mode == 21) {
             idx = 0xA2;                 /* What will you do with the Egg? */
         } else if (first == 0 || first == 3 || first == 6 || (first >= 16 && first <= 19)
-            || v->mode == 22 || v->mode == 23) {
+            || v->mode == 1 || v->mode == 22 || v->mode == 23) {
             idx = 18;
         } else {
             idx = 19;
@@ -736,7 +738,7 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     sel_mon = (v.selected >= 0 && v.selected <= 5) ? plate_mon(&v, v.selected) : NULL;
 
-    entry = v.mode == 22 || v.mode == 23;
+    entry = v.mode == 1 || v.mode == 22 || v.mode == 23;
     if (entry) {
         const void *reg = rdp(v.arg, PA_REGULATION);
 
@@ -978,17 +980,18 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
         if (entry && v.phase == 2) {
             /* CONFIRM and CANCEL, the game's two buttons (touch rects
-             * 96..176 and 176..255 on rows 168..191; keys: slots 6 and 7) */
-            int b;
+             * 96..176 and 176..255 on rows 168..191; keys: slots 6 and 7);
+             * a link battle has CONFIRM alone, in CANCEL's place */
+            int b, nb = v.mode == 1 ? 1 : 2;
 
-            for (b = 0; b < 2; b++) {
+            for (b = 0; b < nb; b++) {
                 EidosUiRect rr;
                 char bt[24];
                 int hit, lit;
 
                 rr.w = 68;
                 rr.h = 18;
-                rr.x = mx + mw - 8 - (2 - b) * (rr.w + 4) + 4;
+                rr.x = mx + mw - 8 - (nb - b) * (rr.w + 4) + 4;
                 rr.y = my + mh - 6 - 30 + 6;
                 hit = eidos_ui_hit(rr);
                 lit = (hit & EIDOS_UI_HOVER) || (v.selected == 6 + b && v.touch_mode == 0 && eidos_ui_keys_lit());
@@ -999,7 +1002,7 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                         rr.y + ui_text_y(rr.h, UI_FONT_SMALL), bt, UI_WHITE, UI_EDGE,
                         UI_FONT_SMALL, 1);
                 if (hit & EIDOS_UI_CLICK) {
-                    eidos_ui_tap(b == 0 ? 136 : 216, 180, 3);
+                    eidos_ui_tap(b == 0 && nb == 2 ? 136 : 216, 180, 3);
                 }
             }
         }

@@ -49,6 +49,7 @@
 #include "input.h"
 #include "choice_list.h"
 #include "textbox.h"
+#include "overlay.h"
 
 #define WEAK __attribute__((weak))
 
@@ -1243,6 +1244,11 @@ static int plain_field(void)
     return plain;
 }
 
+extern int ov012_UNION_MAIN_IsIdle(void *gameSystem) WEAK;
+
+/* A text box of the field is up this frame (field_text drew it). */
+static int g_text_up;
+
 static int field_text(EidosUiCtx *c, const FieldNow *f)
 {
     u8 *list = NULL, *win = NULL;
@@ -1794,8 +1800,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* While the game's place-name banner shows (it names the same place)
      * or an event runs, the bar slides up out of the way and comes back
      * after. */
+    g_text_up = 0;
     if (!plain_field()) {
-        field_text(c, &f);
+        g_text_up = field_text(c, &f);
     }
     choosing = !plain_field() && field_choices(c, in, &f);
     if (choosing) {
@@ -2035,6 +2042,12 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         if (f.mode == 2 && choices_now(&f, &l, &w)) {
             /* a list is open (the talk menu, a YES / NO): the card would
              * cover it (field_run drew the list) */
+            return;
+        }
+        if (f.mode == 2 && (g_text_up || (ov012_UNION_MAIN_IsIdle != NULL && bw_overlay_is_loaded(12)
+                                           && ov012_UNION_MAIN_IsIdle(f.gs) == 0))) {
+            /* a talk runs (a request, with the battle's rule card the game
+             * draws on its screen): the card steps aside until it ends */
             return;
         }
     }
