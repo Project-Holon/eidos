@@ -50,8 +50,21 @@ write`) to make the draft. No other secret is needed.
    failed run leaves no tag behind (fix, push, run again).  Pushing a tag
    (`git tag vx.y.z`, `git push origin vx.y.z`) still works too.
 5. Wait for the workflow. Open the draft release, read the notes, check the
-   file list (the nine files below), try at least the Windows zip,
+   file list (the files below), try at least the Windows zip,
    and publish.
+
+A test build before the release: the same run with "prerelease" set to a
+suffix (`pre.1`) instead of "release".  It tags `vx.y.z-pre.1`, drafts the
+release marked as a pre-release, and its launcher carries version
+`x.y.z-pre.1`.  GitHub's "latest" skips pre-releases, so no launcher
+updates itself to it and no Play button picks it; a player sees it in
+Versions only with *Settings > Updates > Show test builds in Versions* on.
+When it is good, run the release itself on the same commit (it does not
+turn into the release).
+
+The phones' files come from the Linux job's game module: the Android APK is
+a debug build (installable as it is, signed with the runner's debug key), the
+iOS IPA is not signed (a sideloading tool signs it).
 
 ## What each package holds
 

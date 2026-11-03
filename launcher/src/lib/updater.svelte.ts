@@ -84,6 +84,19 @@ export async function setAutoUpdate(on: boolean): Promise<void> {
   await invoke<void>("set_auto_update", { on });
 }
 
+/// Whether test builds (pre-releases) are listed with the releases.
+export async function preReleases(): Promise<boolean> {
+  try {
+    return await invoke<boolean>("get_pre_releases");
+  } catch {
+    return false;
+  }
+}
+
+export async function setPreReleases(on: boolean): Promise<void> {
+  await invoke<void>("set_pre_releases", { on });
+}
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error("no answer from the update server")), ms);

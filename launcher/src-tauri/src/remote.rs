@@ -127,6 +127,10 @@ pub fn list(layout: &Layout, repo: &str, token: Option<&str>) -> Result<Vec<Rele
 /// every version, at their download addresses.
 fn guessed(repo: &str, tag: &str, title: String, updated: String) -> Release {
     let ver = tag.trim_start_matches(['v', 'V']);
+    // a test build's tag (v0.2.0-pre.1) is a pre-release: the feed does
+    // not say so, the tag does; its files carry the version alone
+    let prerelease = ver.contains('-');
+    let ver = ver.split('-').next().unwrap_or(ver);
     let names = [
         format!("eidos-{ver}-windows.zip"),
         format!("eidos-{ver}-macos.zip"),
@@ -137,7 +141,7 @@ fn guessed(repo: &str, tag: &str, title: String, updated: String) -> Release {
         tag_name: tag.to_string(),
         name: Some(title),
         draft: false,
-        prerelease: false,
+        prerelease,
         published_at: Some(updated),
         body: None,
         assets: names
@@ -220,6 +224,17 @@ mod tests {
         assert_eq!(e[0].0, "v0.1.2");
         assert_eq!(e[0].1, "eidos 0.1.2");
         assert_eq!(e[1].1, "eidos & 0.1.1");
+    }
+
+    #[test]
+    fn guessed_prerelease() {
+        let r = guessed("o/r", "v0.2.0-pre.1", "t".into(), "u".into());
+        assert!(r.prerelease);
+        assert!(releases::pick_asset(&r, "eidos-*-windows.zip")
+            .unwrap()
+            .browser_download_url
+            .ends_with("/v0.2.0-pre.1/eidos-0.2.0-windows.zip"));
+        assert!(!guessed("o/r", "v0.2.0", "t".into(), "u".into()).prerelease);
     }
 
     #[test]

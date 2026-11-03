@@ -17,7 +17,7 @@
     type RomView,
   } from "../lib/backend";
   import Icon from "../lib/Icon.svelte";
-  import { autoUpdate, checkForUpdate, setAutoUpdate, updates } from "../lib/updater.svelte";
+  import { autoUpdate, checkForUpdate, preReleases, setAutoUpdate, setPreReleases, updates } from "../lib/updater.svelte";
 
   let { ov, onRefresh }: { ov: Overview; onRefresh: () => Promise<void> | void } = $props();
 
@@ -30,6 +30,8 @@
   let clearToken = $state(false);
   let auto = $state(true);
   autoUpdate().then((on) => (auto = on));
+  let pre = $state(false);
+  preReleases().then((on) => (pre = on));
   let roms = $state<RomView[]>([]);
   let adding = $state(false);
   let dropping = $state(false);
@@ -208,6 +210,10 @@
       <label class="inline check">
         <input type="checkbox" bind:checked={auto} onchange={() => setAutoUpdate(auto)} />
         Update on start
+      </label>
+      <label class="inline check">
+        <input type="checkbox" bind:checked={pre} onchange={() => setPreReleases(pre)} />
+        Show test builds in Versions
       </label>
     </div>
   </div>

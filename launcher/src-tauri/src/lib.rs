@@ -176,6 +176,8 @@ async fn move_profile_data(app: State<'_, App>, name: String, to: String) -> R<S
 #[tauri::command]
 async fn list_remote(app: State<'_, App>) -> R<Vec<Remote>> {
     let s = app.settings();
+    // test builds only when the player asked for them (Settings > Updates)
+    let s2_pre = s.pre_releases;
     let installed = versions::installed(&app.layout);
     let pattern = versions::asset_pattern(std::env::consts::OS);
     let layout = app.layout.clone();
@@ -186,6 +188,7 @@ async fn list_remote(app: State<'_, App>) -> R<Vec<Remote>> {
     .map_err(|e| e.to_string())??;
     Ok(list
         .iter()
+        .filter(|r| s2_pre || !r.prerelease)
         .map(|r| {
             let asset = releases::pick_asset(r, pattern);
             let sums = releases::pick_asset(r, "SHA256SUMS");
@@ -789,6 +792,19 @@ fn get_auto_update(app: State<App>) -> bool {
 }
 
 #[tauri::command]
+fn get_pre_releases(app: State<App>) -> bool {
+    app.settings().pre_releases
+}
+
+#[tauri::command]
+fn set_pre_releases(app: State<App>, on: bool) -> R<()> {
+    let mut s = app.settings.lock().unwrap();
+    s.pre_releases = on;
+    s.save(&app.layout.settings_file())
+        .map_err(|e| format!("Could not save the settings: {e}"))
+}
+
+#[tauri::command]
 fn set_auto_update(app: State<App>, on: bool) -> R<()> {
     let mut s = app.settings.lock().unwrap();
     s.auto_update = on;
@@ -884,6 +900,8 @@ pub fn run() {
             player_art,
             get_auto_update,
             set_auto_update,
+            get_pre_releases,
+            set_pre_releases,
             set_profile_language,
             set_profile_game,
             add_roms,

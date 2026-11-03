@@ -5,6 +5,11 @@
 #                                                job passes, tags v<version> on
 #                                                that commit and drafts a release
 #   git tag v0.1.0 && git push origin v0.1.0     builds, packages, drafts a release
+#   Actions > release > Run workflow, "prerelease" pre.1
+#                                                the same, tagged v<version>-pre.1
+#                                                and drafted as a pre-release (a
+#                                                test build: the launchers'
+#                                                updates and "latest" skip it)
 #   Actions > release > Run workflow             builds and packages; no release
 #
 # Secret: ALETHEIA_TOKEN, a token that can read the private aletheia
@@ -26,6 +31,10 @@ on:
         description: "Make the release: when every job passes, tag v<version> on this commit and draft it"
         type: boolean
         default: false
+      prerelease:
+        description: "Make a test build instead: a suffix such as pre.1 (tag v<version>-pre.1, drafted as a pre-release)"
+        type: string
+        default: ""
       draft:
         description: "Also make a draft release (tag name v<version>-test)"
         type: boolean
@@ -33,7 +42,7 @@ on:
       only:
         description: "Build only part (a tag builds everything)"
         type: choice
-        options: [all, launchers, windows, linux, macos]
+        options: [all, launchers, windows, linux, macos, phones]
         default: all
 
 permissions:
@@ -53,6 +62,10 @@ jobs:
     outputs:
       version: ${{ steps.m.outputs.version }}
       pin: ${{ steps.m.outputs.pin }}
+      # the release's tag, and the launcher's version (a test build's
+      # carries its suffix, so the real release still counts as newer)
+      tag: ${{ steps.m.outputs.tag }}
+      launcher_version: ${{ steps.m.outputs.launcher_version }}
     steps:
       - uses: actions/checkout@v4
       - id: m
@@ -65,12 +78,26 @@ jobs:
             echo "tag ${GITHUB_REF_NAME} does not match CMakeLists.txt version ${version}"
             exit 1
           fi
-          # a release run makes the tag itself: stop now if it is taken
-          if [ "${{ inputs.release }}" = true ] &&
-             git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null; then
-            echo "v${version} is already tagged: raise the version in CMakeLists.txt"
+          pre="${{ inputs.prerelease }}"
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            tag="${GITHUB_REF_NAME}"; lver="$version"
+          elif [ -n "$pre" ]; then
+            echo "$pre" | grep -Eq '^[0-9A-Za-z.]+$' || { echo "prerelease suffix: letters, digits and dots"; exit 1; }
+            tag="v${version}-${pre}"; lver="${version}-${pre}"
+          elif [ "${{ inputs.release }}" = true ]; then
+            tag="v${version}"; lver="$version"
+          else
+            tag="v${version}-test"; lver="$version"
+          fi
+          # a release or test-build run makes the tag itself: stop now if it
+          # is taken
+          if { [ "${{ inputs.release }}" = true ] || [ -n "$pre" ]; } &&
+             git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
+            echo "${tag} is already tagged: raise the version in CMakeLists.txt or the suffix"
             exit 1
           fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "launcher_version=$lver" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "pin=$pin" >> "$GITHUB_OUTPUT"
           echo "eidos $version, aletheia $pin"
@@ -256,6 +283,13 @@ jobs:
           name: package-linux
           path: dist/*.AppImage
           if-no-files-found: error
+      # the game module, the same for every platform: the phones' jobs
+      # build their programs from it
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module
+          path: build64/module/eidos_boot.wasm
+          if-no-files-found: error
 
   # ------------------------------------------------------------------ macOS
   macos:
@@ -335,7 +369,7 @@ jobs:
       - name: The release's version
         shell: bash
         env:
-          VERSION: ${{ needs.meta.outputs.version }}
+          VERSION: ${{ needs.meta.outputs.launcher_version }}
         run: |
           node -e '
             const fs = require("fs");
@@ -369,7 +403,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.version }}
-          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format(inputs.release && 'v{0}' || 'v{0}-test', needs.meta.outputs.version) }}
+          TAG: ${{ needs.meta.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
           mkdir -p out
@@ -432,7 +466,7 @@ jobs:
       - name: The release's version
         shell: bash
         env:
-          VERSION: ${{ needs.meta.outputs.version }}
+          VERSION: ${{ needs.meta.outputs.launcher_version }}
         run: |
           node -e '
             const fs = require("fs");
@@ -466,7 +500,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.version }}
-          TAG: ${{ github.ref_type == 'tag' && github.ref_name || format(inputs.release && 'v{0}' || 'v{0}-test', needs.meta.outputs.version) }}
+          TAG: ${{ needs.meta.outputs.tag }}
           REPO: ${{ github.repository }}
         run: |
           mkdir -p out
@@ -504,17 +538,108 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  # ----------------------------------------------------------------- Phones
+  # Android and iOS (android/README.md, ios/README.md): the Linux job's game
+  # module, compiled into each phone's program.
+  android:
+    name: android
+    needs: [meta, linux]
+    if: ${{ !cancelled() && needs.linux.result == 'success' && (!inputs.only || inputs.only == 'all' || inputs.only == 'phones') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      EIDOS_SDL_CACHE: ${{ github.workspace }}/.cache/sdl
+      EIDOS_WASM_CACHE: ${{ github.workspace }}/.cache/wasm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/download-artifact@v4
+        with:
+          name: module
+          path: module
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: deps-android-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wasm.py') }}
+      - name: Packages
+        run: sudo apt-get install -y ninja-build
+      - name: Fetch SDL3's source and the wasm toolchain (each is checked against a recorded SHA-256)
+        run: |
+          python3 tools/fetch_sdl.py --flavor source
+          python3 tools/fetch_wasm.py
+      # the debug build: signed with a debug key, so it installs as it is
+      # (a release build needs the project's own key)
+      - name: Build the APK
+        run: python3 android/build.py --module module/eidos_boot.wasm --build-dir build-android --jobs 4
+      - name: Name it
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/*.apk "dist/eidos-${{ needs.meta.outputs.version }}-android.apk"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-android
+          path: dist/*.apk
+          if-no-files-found: error
+
+  ios:
+    name: ios
+    needs: [meta, linux]
+    if: ${{ !cancelled() && needs.linux.result == 'success' && (!inputs.only || inputs.only == 'all' || inputs.only == 'phones') }}
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      EIDOS_SDL_CACHE: ${{ github.workspace }}/.cache/sdl
+      EIDOS_WASM_CACHE: ${{ github.workspace }}/.cache/wasm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: module
+          path: module
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: deps-ios-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wasm.py') }}
+      - name: Packages
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install ninja
+      - name: Fetch SDL3's source and the wasm toolchain (each is checked against a recorded SHA-256)
+        run: |
+          python3 tools/fetch_sdl.py --flavor source
+          python3 tools/fetch_wasm.py
+      - name: Build the app (for devices)
+        run: python3 ios/build.py --module module/eidos_boot.wasm --build-dir build-ios --device --jobs 4
+      # an .ipa is the app in a Payload folder, zipped; not signed, so a
+      # sideloading tool signs it with the player's own Apple ID
+      - name: The IPA (unsigned)
+        run: |
+          mkdir -p dist stage/Payload
+          ditto build-ios/eidos.app stage/Payload/eidos.app
+          (cd stage && zip -qry "../dist/eidos-${{ needs.meta.outputs.version }}-ios.ipa" Payload)
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-ios
+          path: dist/*.ipa
+          if-no-files-found: error
+
   # ---------------------------------------------------------------- Release
   release:
     name: draft release
-    needs: [meta, windows, linux, macos, launcher, launcher-unix]
-    # a release run (the "release" input) needs every job to have passed
+    needs: [meta, windows, linux, macos, launcher, launcher-unix, android, ios]
+    # a release or test-build run needs every job to have passed
     if: >-
       !cancelled() && needs.windows.result == 'success' &&
       needs.launcher.result == 'success' &&
       (github.ref_type == 'tag' || inputs.draft ||
-       (inputs.release && needs.linux.result == 'success' &&
-        needs.macos.result == 'success' && needs.launcher-unix.result == 'success'))
+       ((inputs.release || inputs.prerelease != '') && needs.linux.result == 'success' &&
+        needs.macos.result == 'success' && needs.launcher-unix.result == 'success' &&
+        needs.android.result == 'success' && needs.ios.result == 'success'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -526,10 +651,11 @@ jobs:
       - name: Checksums and notes
         env:
           VERSION: ${{ needs.meta.outputs.version }}
+          LVERSION: ${{ needs.meta.outputs.launcher_version }}
         run: |
           # latest.json from each launcher's part (none: no signing key)
           if ls dist/updater-*.json >/dev/null 2>&1; then
-            python3 tools/launcher_update_json.py join --version "$VERSION" \
+            python3 tools/launcher_update_json.py join --version "$LVERSION" \
               --notes "eidos launcher ${VERSION}" dist/updater-*.json > dist/latest.json
             rm dist/updater-*.json
             cat dist/latest.json
@@ -541,22 +667,33 @@ jobs:
           python3 tools/package_release.py --self-test
           # the version's changelog (CHANGELOG.md), the downloads this
           # release has, and the notice
-          python3 tools/release_notes.py "$VERSION" --assets dist > notes.md
+          pre=""
+          [ -n "${{ inputs.prerelease }}" ] && pre="--test-build ${{ needs.meta.outputs.tag }}"
+          python3 tools/release_notes.py "$VERSION" --assets dist $pre > notes.md
           cat notes.md
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.meta.outputs.version }}
         run: |
+          tag="${{ needs.meta.outputs.tag }}"; flags=""; title="eidos ${VERSION}"
           if [ "${GITHUB_REF_TYPE}" = tag ]; then
-            tag="${GITHUB_REF_NAME}"; target=""
+            target=""
+          elif [ -n "${{ inputs.prerelease }}" ]; then
+            # a test build: tagged on the commit this run built, marked a
+            # pre-release so GitHub's "latest" (the launchers' updates and
+            # their Play button) skips it
+            target="--verify-tag"; flags="--prerelease"
+            title="eidos ${VERSION} (test build ${{ inputs.prerelease }})"
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${tag}" -f sha="${GITHUB_SHA}"
           elif [ "${{ inputs.release }}" = true ]; then
             # the tag goes on the commit this run built and tested; made
             # with the workflow's token, it starts no second build
-            tag="v${VERSION}"; target="--verify-tag"
+            target="--verify-tag"
             gh api "repos/${GITHUB_REPOSITORY}/git/refs"               -f ref="refs/tags/${tag}" -f sha="${GITHUB_SHA}"
           else
-            tag="v${VERSION}-test"; target="--target ${GITHUB_SHA}"
+            target="--target ${GITHUB_SHA}"
           fi
-          gh release create "$tag" dist/* --draft --title "eidos ${VERSION}" \
+          gh release create "$tag" dist/* --draft $flags --title "$title" \
             --notes-file notes.md $target

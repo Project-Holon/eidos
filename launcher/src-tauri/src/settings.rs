@@ -27,6 +27,9 @@ pub struct Settings {
     /// in the web view's storage, so every build of the launcher reads the
     /// same choice.
     pub auto_update: bool,
+    /// Whether test builds (GitHub pre-releases) are listed with the
+    /// releases.  Off: the launcher never shows or offers them.
+    pub pre_releases: bool,
     /// The Black and White ROMs of launchers before the library: read once
     /// into `roms` (`take_old_roms`), then no longer written.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,6 +47,7 @@ impl Default for Settings {
             local_build: None,
             roms: Vec::new(),
             auto_update: true,
+            pre_releases: false,
             rom_black: None,
             rom_white: None,
         }
