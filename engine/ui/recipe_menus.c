@@ -4702,8 +4702,8 @@ static const EidosUiRecipe recipe_oekaki = {
  * system box at the bottom.  The game's
  * text window is left out of its screen.  A, the touch and the keys stay
  * the game's (A stops the spin as the game asks); a click on the scene is A.
- * The recruiting lobby and the Egg list before it keep their own screens
- * (the party list's recipe takes the list).
+ * The recruiting lobby is its own window (recipe_guru2_lobby below); the
+ * Egg list before the spin is the party list's recipe (mode 21).
  *
  * Guru2Entry (ov137/guru2_types.h): session 0x0C.  Guru2Session:
  * playerCount 0x08, gameWork 0x1C (the spinner's Guru2Game, 0 outside it).
@@ -4712,14 +4712,23 @@ static const EidosUiRecipe recipe_oekaki = {
  */
 #define GURU2_OVERLAY 137
 
+/* The work of the proc the Spin Trade runs now on its own proc system
+ * (Guru2Entry.procHandle, +0x20): the lobby, the party list, the spinner. */
+static const u8 *guru2_current(const u8 **sess)
+{
+    const u8 *e = (const u8 *)app_work(GURU2_OVERLAY);
+
+    *sess = e != NULL ? (const u8 *)rdp(e, 0x0C) : NULL;
+    return e != NULL && *sess != NULL ? (const u8 *)proc_work_of(rdp(e, 0x20)) : NULL;
+}
+
 static const u8 *guru2_game(void)
 {
-    const u8 *e = (const u8 *)app_work(GURU2_OVERLAY), *sess;
+    const u8 *sess, *cur = guru2_current(&sess);
 
-    if (e == NULL || (sess = (const u8 *)rdp(e, 0x0C)) == NULL) {
-        return NULL;
-    }
-    return (const u8 *)rdp(sess, 0x1C);
+    /* the session keeps its pointers after the proc ends: only the one
+     * running counts */
+    return cur != NULL && cur == (const u8 *)rdp(sess, 0x1C) ? cur : NULL;
 }
 
 static int guru2_match(void)
@@ -4776,7 +4785,130 @@ static const EidosUiRecipe recipe_guru2 = {
     "union_spin", guru2_match, guru2_run, guru2_reset, 0
 };
 
+/*
+ * The Spin Trade's recruiting lobby (ov137/guru2_receipt.c): one window
+ * over the blurred room with the game's title, the members it lists (its
+ * own printed rows: name and ID), the five places of the spinner with
+ * the members that have joined, the game's words in the system box under
+ * it and its YES / NO.  The keys are the game's (A proceeds, B cancels).
+ *
+ * Guru2Session.lobbyWork 0x20 (Guru2Lobby, ov137/ov137_types.h):
+ * memberWindow 0xD0, messageWindow 0xD4, titleWindow 0xDC, yesNoMenu 0xE8
+ * (a BmpMenu: cursor 0x2D), memberActor[5] 0x9C, actorState[5] 0x160
+ * (2 shown).
+ */
+static const u8 *guru2_lobby(void)
+{
+    const u8 *sess, *cur = guru2_current(&sess);
+
+    return cur != NULL && cur == (const u8 *)rdp(sess, 0x20) ? cur : NULL;
+}
+
+static int lobby_match(void)
+{
+    const u8 *l = guru2_lobby();
+
+    return l != NULL && win_bmp_of(rdp(l, 0xDC)) != NULL;
+}
+
+static void lobby_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Proceed", "B", "Cancel" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    const u8 *l = guru2_lobby(), *menu;
+    const void *title, *members, *msg;
+    int cw = c->canvas->w, ch = c->canvas->h, mw = 320, mh = IN_HEAD + 104, mx, my, i, bh = 0;
+
+    (void)in;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->blur = 1;
+    view->hold_world = 1;
+    view->hide_2d = 1;
+    if (l == NULL) {
+        return;
+    }
+    title = win_bmp_of(rdp(l, 0xDC));
+    members = win_bmp_of(rdp(l, 0xD0));
+    msg = rdp(l, 0xD4);
+    if (mw > cw - 16) {
+        mw = cw - 16;
+    }
+    if (msg != NULL && win_bmp_of(msg) != NULL) {
+        bh = ui_textbox_h(msg);
+    }
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh - (bh > 0 ? bh + 6 : 0)) / 2;
+    if (my < 4) {
+        my = 4;
+    }
+    in_window(c, mx, my, mw, mh, title);
+    /* the members, as the game prints them */
+    in_panel(c, mx + 10, my + IN_HEAD, 170, mh - IN_HEAD - 10);
+    if (members != NULL) {
+        ui_letters(c, members, mx + 16, my + IN_HEAD + 4, UI_WHITE, IN_SHADOW, NULL, NULL);
+    }
+    /* the spinner's five places, the joined ones lit */
+    {
+        int cx = mx + 180 + (mw - 180) / 2, cy = my + IN_HEAD + (mh - IN_HEAD - 10) / 2;
+        static const int ox[5] = { 0, 29, 18, -18, -29 }, oy[5] = { -30, -9, 24, 24, -9 };
+
+        for (i = 0; i < 5; i++) {
+            int on = rdp(l, 0x9C + 4u * (u32)i) != NULL && rd32(l, 0x160 + 4u * (u32)i) == 2;
+
+            ui_ellipse(c, cx + ox[i] - 11, cy + oy[i] - 11, 22, 22, on ? IN_HL : UI_BODY, on ? UI_WHITE : UI_EDGE, 255);
+        }
+    }
+    if (bh > 0) {
+        int by = my + mh + 6;
+
+        ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, mx, by, mw, msg, -1, -1);
+        menu = (const u8 *)rdp(l, 0xE8);
+        if (menu != NULL) {
+            int cur = menu[0x2D] & 1, lw = 70, lh = 4 + 2 * 18 + 4, lx = mx + mw - lw, ly = by - 3 - lh;
+
+            ui_panel(c, lx, ly, lw, lh, UI_CUT_TL | UI_CUT_BR, 6, 0xFFFFFFu, 0x9698A0u, 255);
+            for (i = 0; i < 2; i++) {
+                EidosUiRect r;
+                const char *lab = ui_game_text(2, 69, 30u + (u32)i);
+                int st, lit;
+
+                r.x = lx + 3; r.y = ly + 4 + i * 18; r.w = lw - 6; r.h = 18;
+                st = eidos_ui_hit(r);
+                lit = (st & EIDOS_UI_HOVER) || (eidos_ui_keys_lit() && i == cur);
+                if (lit) {
+                    ui_panel(c, r.x, r.y - 1, r.w, 18, UI_CUT_TL | UI_CUT_BR, 5, 0xBFE2EAu, IN_HL, 255);
+                    ui_fill(c, r.x + 3, r.y + 2, 3, 12, IN_HL, 255);
+                }
+                ui_text(c, r.x + 10, r.y - (lit ? 1 : 0) + ui_text_y(18, UI_FONT_LARGE),
+                        lab[0] != '\0' ? lab : (i == 0 ? "YES" : "NO"), 0x42424Au, 0xADADB5u, UI_FONT_LARGE, 1);
+                if (st & EIDOS_UI_CLICK) {
+                    if (i == cur) {
+                        eidos_ui_press(BW_KEY_A, 2);
+                    } else {
+                        eidos_ui_press(i == 0 ? BW_KEY_UP : BW_KEY_DOWN, 2);
+                        pend_press(BW_KEY_A, 6);
+                    }
+                }
+            }
+        }
+    }
+    pend_pump();
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+}
+
+static void lobby_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_guru2_lobby = {
+    "union_spin_lobby", lobby_match, lobby_run, lobby_reset, 0
+};
+
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_options, &recipe_save, &recipe_card,
                                                   &recipe_wireless, &recipe_geonet, &recipe_entree,
-                                                  &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_egg, &recipe_trade, &recipe_oekaki, &recipe_guru2 };
-const u32 ui_recipes_menus_count = 16;
+                                                  &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_egg, &recipe_trade, &recipe_oekaki, &recipe_guru2,
+                                                  &recipe_guru2_lobby };
+const u32 ui_recipes_menus_count = 17;

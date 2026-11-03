@@ -113,6 +113,7 @@ static const void *top_proc(void)
 /* The evolution scene's work (ov195 Scene) while it is the app on top. */
 #define EVO_OVERLAY     195
 #define BTL_RETURN_OVERLAY 92
+#define GURU2_OVERLAY   137
 #define SC_STATE        0x028
 #define SC_YESNO        0x09C
 #define SC_TCB          0x0A0
@@ -154,6 +155,13 @@ static const void *app_work(int overlay, const void **proc_out, const void **arg
         /* the scene loads the summary's overlay itself and pushes the
          * proc with no overlay (-1) */
         loaded = p != NULL && rds32(p, 0x04) == -1 && bw_overlay_is_loaded(overlay);
+    }
+    /* the Spin Trade (overlay 137) runs the party list and the summary on
+     * a proc system of its own (Guru2Entry.procHandle, +0x20) */
+    if (p != NULL && rds32(p, 0x04) == GURU2_OVERLAY && overlay != GURU2_OVERLAY && rdp(p, 0x14) != NULL) {
+        const void *ps = rdp(rdp(p, 0x14), 0x20);
+
+        p = ps != NULL ? rdp(ps, 0x08) : NULL;
     }
     if (p == NULL || (rds32(p, 0x04) != overlay && !loaded) || rds32(p, 0x08) < 2) {
         return NULL;
@@ -569,15 +577,16 @@ static int party_match(void)
     }
     /* The plain list and the use-an-item list; the list that teaches a
      * move, the battle order list and the like keep the DS screens. */
-    if (v.mode != 0 && v.mode != 5 && v.mode != 8 && v.mode != 22 && v.mode != 23
-        && rds32(v.work, PL_RESTORE18) == 0) {
+    if (v.mode != 0 && v.mode != 5 && v.mode != 8 && v.mode != 21 && v.mode != 22
+        && v.mode != 23 && rds32(v.work, PL_RESTORE18) == 0) {
         return 0;
     }
     /* mode 8: the list back from the summary's "forget a move" after an
      * item taught one (a Rare Candy's level), with the game's message
      * ("... did not learn ...", "... forgot ..."); PL_RESTORE18 the same
      * on the way through mode 3; modes 22 and 23: the Pokemon a battle
-     * facility enters (the Battle Subway), with CONFIRM and CANCEL */
+     * facility enters (the Battle Subway), with CONFIRM and CANCEL;
+     * mode 21: the Egg the Spin Trade takes (no back button) */
     return 1;
 }
 
@@ -614,7 +623,9 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
         const void *menu = rdp(v->work, PL_MENU);
         u32 first = (menu != NULL && rd32(menu, PM_COUNT) & 0xFF) ? rd16(menu, PM_IDS) : 0;
 
-        if (first == 0 || first == 3 || first == 6 || (first >= 16 && first <= 19)
+        if (v->mode == 21) {
+            idx = 0xA2;                 /* What will you do with the Egg? */
+        } else if (first == 0 || first == 3 || first == 6 || (first >= 16 && first <= 19)
             || v->mode == 22 || v->mode == 23) {
             idx = 18;
         } else {
@@ -624,7 +635,7 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
     }
     case 3: idx = 11; break;
     case 2:
-        idx = v->mode == 5 ? 13 : 9;
+        idx = v->mode == 5 ? 13 : (v->mode == 21 ? 0xA3 : 9);
         break;
     default:
         break;
@@ -787,15 +798,19 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             u32 hp = plate_hp(&v, i, mon), maxhp = pv(mon, P_MAXHP);
             u16 species = (u16)pv(mon, P_SPECIES);
             int egg = pv(mon, P_IS_EGG) != 0;
-            const UiImage *icon = ui_mon_icon(species, (u8)pv(mon, P_FORM),
+            const UiImage *icon = ui_mon_icon(egg ? (u16)(species == 490 ? 651 : 650) : species,
+                                              egg ? 0 : (u8)pv(mon, P_FORM),
                                               sel ? (int)((in->frame / 24) & 1) : 0);
 
-            mon_nick(mon, nick, (int)sizeof nick);
+            if (egg) {
+                /* the game's word for an Egg (the species bank's 650),
+                 * as its plate prints it */
+                (void)msg_text(BANK_SPECIES, 650, nick, (int)sizeof nick, 0);
+            } else {
+                mon_nick(mon, nick, (int)sizeof nick);
+            }
             if (egg) {
                 ui_party_row(c, x, y, colw, i, nick, 2, 0, 0, 0, icon, sel);
-                /* an egg shows no level and no HP: cover the numbers */
-                ui_fill(c, x + 40, y + 14, colw - 46, 14, sel ? UI_NAVY2 : UI_NAVY, 255);
-                ui_fill(c, x + colw - 48, y + 2, 42, 12, sel ? UI_NAVY2 : UI_NAVY, 255);
             } else {
                 int lvw;
                 char lv[16];

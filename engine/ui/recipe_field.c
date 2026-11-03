@@ -895,7 +895,8 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         const PartyLine *l = &party[i];
         EidosUiRect r;
         int st;
-        const UiImage *ic = l->egg ? NULL : ui_mon_icon((u16)l->species, (u8)l->form, 0);
+        const UiImage *ic = l->egg ? ui_mon_icon(l->species == 490 ? 651 : 650, 0, 0)
+                                    : ui_mon_icon((u16)l->species, (u8)l->form, 0);
 
         r.x = px;
         r.y = py + 24 + i * 32;
