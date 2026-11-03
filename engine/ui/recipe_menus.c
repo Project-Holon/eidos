@@ -5588,8 +5588,89 @@ static const EidosUiRecipe recipe_union_trade = {
     "union_trade", ut_match, ut_run, ut_reset, 0
 };
 
-const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_union_trade, &recipe_options, &recipe_save, &recipe_card,
+/* ------------------------------------------------------------------ */
+/* A link battle's VS screen                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The VS screen before a link battle (overlay 213, ov213/comm_btl_demo_*.c:
+ * the two trainers' names and Poke Balls, the VS emblem) is drawn by the
+ * game on its upper screen.  It is the world the window shows, as high as
+ * the window, and each of its rows is carried out to the window's sides in
+ * the colour it has near the screen's edge (its dark backdrop, the line
+ * across the middle), so it fills the window.
+ */
+#define VS_OVERLAY 213
+
+/* In a link battle the VS screen runs on the battle record event's own
+ * proc system (ov008 EVENT_BATTLE_REC_SAVE_ProcMain: its proc work's
+ * procsys 0x00), under a proc of no overlay; the Wi-Fi match pushes it as
+ * the proc on top. */
+static int ds_main_ptr(const void *p)
+{
+    uintptr_t a = (uintptr_t)p;
+
+    return a >= 0x02000000u && a < 0x02400000u;
+}
+
+static int vs_match(void)
+{
+    void *gs, *cur, *w, *ps, *inner;
+
+    if (app_work(VS_OVERLAY) != NULL) {
+        return 1;
+    }
+    if (!MN_GAME || !bw_overlay_is_loaded(VS_OVERLAY) || (gs = game_system()) == NULL
+        || (cur = current_proc(gs)) == NULL || rd32(cur, 0x04) != 0xFFFFFFFFu) {
+        return 0;
+    }
+    w = rdp(cur, 0x14);
+    ps = ds_main_ptr(w) ? rdp(w, 0x00) : NULL;
+    inner = ds_main_ptr(ps) ? rdp(ps, 0x08) : NULL;
+    return ds_main_ptr(inner) && (int)rd32(inner, 0x04) == VS_OVERLAY && rd32(inner, 0x08) >= 2u;
+}
+
+/* A pixel of the screen picture, the 3D's stand-in colour (the GPU draws
+ * the 3D after: a bright green) read as the VS screen's own backdrop. */
+static u32 vs_px(const u8 *p)
+{
+    if (p[1] > 140 && p[0] < 140 && p[2] < 140) {
+        return 0x000010u;
+    }
+    return (u32)p[0] << 16 | (u32)p[1] << 8 | p[2];
+}
+
+static void vs_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    const u8 *scr = in->screen_rgba[0];
+    int cw = c->canvas->w, ch = c->canvas->h, dw = ch * 256 / 192, x0 = (cw - dw) / 2, y;
+
+    view->mode = EIDOS_VIEW_WORLD;
+    view->world_screen = 0;
+    if (scr == NULL || x0 <= 0) {
+        return;
+    }
+    /* each row out to the window's sides in the colour it has a few
+     * pixels in from the screen's edge (the outermost columns are not its
+     * picture): the dark backdrop, the line across the middle */
+    for (y = 0; y < ch; y++) {
+        const u8 *row = scr + (size_t)(y * 192 / ch) * 256 * 4;
+
+        ui_fill(c, 0, y, x0 + 4, 1, vs_px(row + 8 * 4), 255);
+        ui_fill(c, x0 + dw - 4, y, cw - (x0 + dw - 4), 1, vs_px(row + 247 * 4), 255);
+    }
+}
+
+static void vs_reset(void)
+{
+}
+
+static const EidosUiRecipe recipe_vs = {
+    "link_vs", vs_match, vs_run, vs_reset, 0
+};
+
+const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_union_trade, &recipe_vs, &recipe_options, &recipe_save, &recipe_card,
                                                   &recipe_wireless, &recipe_geonet, &recipe_entree,
                                                   &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_egg, &recipe_trade, &recipe_oekaki, &recipe_guru2,
                                                   &recipe_guru2_lobby };
-const u32 ui_recipes_menus_count = 18;
+const u32 ui_recipes_menus_count = 19;
