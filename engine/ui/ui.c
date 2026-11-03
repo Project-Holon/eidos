@@ -1149,6 +1149,153 @@ static void debug_seek(u32 frame)
     next = frame + 14;
 }
 
+/* Tests: EIDOS_DEBUG_MOVE moves the player by the game's own buttons, a
+ * comma-separated list of steps run in order, each from its frame on and
+ * not before the one before it is done:
+ *   "F:face:D"      turn to D (up, down, left, right) without a step
+ *   "F:walk:D:N"    walk N tiles toward D
+ *   "F:tile:X:Z"    walk to tile (X, Z), the longer axis first
+ *   "F:a"           press A (talk to who is in front, read a sign)
+ * F 0 means as soon as the step before is done.  Each step logs where the
+ * player stands when it ends; a walk the player cannot finish (a wall, a
+ * person, an event) stops after 60 frames without a step and says so. */
+extern u16 ov010_FLDMMDL_GetDirDisp(const void *mmdl) __attribute__((weak));
+
+typedef struct DebugMove { u32 frame; int kind, dir, n, x, z; } DebugMove;
+enum { DM_FACE, DM_WALK, DM_TILE, DM_A };
+
+static int dm_dir(const char *s)
+{
+    return strncmp(s, "up", 2) == 0 ? 0 : strncmp(s, "down", 4) == 0 ? 1 : strncmp(s, "left", 4) == 0 ? 2
+         : strncmp(s, "right", 5) == 0 ? 3 : -1;
+}
+
+static void debug_move(u32 frame)
+{
+    static DebugMove steps[64];
+    static int nsteps = -1, cur, started, tx, tz, stuck_since;
+    static s16 last[3];
+    static const u32 keys[4] = { BW_KEY_UP, BW_KEY_DOWN, BW_KEY_LEFT, BW_KEY_RIGHT };
+    static const int ddx[4] = { 0, 0, -1, 1 }, ddz[4] = { -1, 1, 0, 0 };
+    const char *s = getenv("EIDOS_DEBUG_MOVE");
+    u8 *gs, *fm;
+    void *sys, *me;
+    s16 p[3];
+    DebugMove *m;
+
+    if (s == NULL || ov021_FIELDMAP_GetMmdlSys == NULL || ov010_FLDMMDL_SysSearchPlayer == NULL
+        || ov010_FLDMMDL_GetGridNowPos == NULL || ov010_FLDMMDL_GetDirDisp == NULL
+        || &bw_dsref__GameSystemGlobal == NULL) {
+        return;
+    }
+    if (nsteps < 0) {
+        char buf[32];
+
+        nsteps = 0;
+        while (*s != '\0' && nsteps < 64) {
+            const char *e = strchr(s, ',');
+            size_t len = e != NULL ? (size_t)(e - s) : strlen(s);
+            unsigned f = 0;
+            int a = 0, b = 0;
+
+            if (len >= sizeof buf) {
+                len = sizeof buf - 1;
+            }
+            memcpy(buf, s, len);
+            buf[len] = '\0';
+            m = &steps[nsteps];
+            memset(m, 0, sizeof *m);
+            if (sscanf(buf, "%u:face:%*s", &f) == 1 && strstr(buf, ":face:") != NULL) {
+                m->kind = DM_FACE;
+                m->dir = dm_dir(strstr(buf, ":face:") + 6);
+            } else if (sscanf(buf, "%u:tile:%d:%d", &f, &a, &b) == 3) {
+                m->kind = DM_TILE;
+                m->x = a;
+                m->z = b;
+            } else if (strstr(buf, ":walk:") != NULL && sscanf(buf, "%u", &f) == 1) {
+                const char *d = strstr(buf, ":walk:") + 6, *c = strchr(d, ':');
+
+                m->kind = DM_WALK;
+                m->dir = dm_dir(d);
+                m->n = c != NULL ? atoi(c + 1) : 1;
+            } else if (sscanf(buf, "%u:a", &f) == 1 && strstr(buf, ":a") != NULL) {
+                m->kind = DM_A;
+            } else {
+                fprintf(stderr, "eidos: debug move: cannot read '%s'\n", buf);
+                f = 0xFFFFFFFFu;
+            }
+            m->frame = f;
+            if (f != 0xFFFFFFFFu && (m->kind == DM_A || m->kind == DM_TILE || m->dir >= 0)) {
+                nsteps++;
+            }
+            s += len;
+            if (*s == ',') {
+                s++;
+            }
+        }
+    }
+    if (cur >= nsteps || frame < steps[cur].frame) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    fm = gs != NULL ? *(u8 **)(gs + 0x20) : NULL;
+    if (fm == NULL || (sys = ov021_FIELDMAP_GetMmdlSys(fm)) == NULL || (me = ov010_FLDMMDL_SysSearchPlayer(sys)) == NULL) {
+        return;
+    }
+    m = &steps[cur];
+    ov010_FLDMMDL_GetGridNowPos(me, p);
+    if (!started) {
+        started = 1;
+        stuck_since = (int)frame;
+        last[0] = p[0];
+        last[2] = p[2];
+        if (m->kind == DM_WALK) {
+            tx = p[0] + ddx[m->dir] * m->n;
+            tz = p[2] + ddz[m->dir] * m->n;
+        } else {
+            tx = m->x;
+            tz = m->z;
+        }
+    }
+    if (p[0] != last[0] || p[2] != last[2]) {
+        last[0] = p[0];
+        last[2] = p[2];
+        stuck_since = (int)frame;
+    }
+    switch (m->kind) {
+    case DM_A:
+        eidos_ui_press(BW_KEY_A, 3);
+        break;
+    case DM_FACE:
+        if ((int)ov010_FLDMMDL_GetDirDisp(me) != m->dir) {
+            if ((int)frame - stuck_since > 60) {
+                break;
+            }
+            if (((int)frame - stuck_since) % 8 == 0) {
+                eidos_ui_press(keys[m->dir], 2);    /* a tap turns in place */
+            }
+            return;
+        }
+        break;
+    default: {
+        int dx = tx - p[0], dz = tz - p[2], d;
+
+        if ((dx != 0 || dz != 0) && (int)frame - stuck_since <= 60) {
+            d = abs(dx) >= abs(dz) ? (dx > 0 ? 3 : 2) : (dz > 0 ? 1 : 0);
+            eidos_ui_press(keys[d], 2);
+            return;
+        }
+        break;
+    }
+    }
+    fprintf(stderr, "eidos: debug move %d at %u: tile (%d, %d) facing %d%s\n", cur, (unsigned)frame, p[0], p[2],
+            (int)ov010_FLDMMDL_GetDirDisp(me),
+            (m->kind == DM_WALK || m->kind == DM_TILE) && (p[0] != tx || p[2] != tz) ? ", blocked"
+            : m->kind == DM_FACE && (int)ov010_FLDMMDL_GetDirDisp(me) != m->dir ? ", could not turn" : "");
+    cur++;
+    started = 0;
+}
+
 /* EIDOS_DEBUG_BATTLE="wild SPECIES LEVEL" or "trainer ID" (the spot
  * editor's Preview in game, tools/spot-editor; EIDOS_DEBUG_FOES replaces
  * the trainer's team, as EIDOS_DEBUG_PARTY the player's): starts that battle through
@@ -1465,6 +1612,7 @@ void eidos_ui_game_frame(void)
         debug_open();
         debug_ltrade();
         debug_seek(bw_input_frame_number());
+        debug_move(bw_input_frame_number());
     }
 
     for (i = 0; i < n; i++) {
