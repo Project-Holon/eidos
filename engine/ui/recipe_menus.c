@@ -5723,7 +5723,8 @@ static int vs_match(void)
  * the 3D after: a bright green) read as the VS screen's own backdrop. */
 static u32 vs_px(const u8 *p)
 {
-    if (p[1] > 140 && p[0] < 140 && p[2] < 140) {
+    if ((p[1] > 140 && p[0] < 140 && p[2] < 140) ||
+        (p[0] > 230 && p[1] > 230 && p[2] > 230)) {
         return 0x000010u;
     }
     return (u32)p[0] << 16 | (u32)p[1] << 8 | p[2];

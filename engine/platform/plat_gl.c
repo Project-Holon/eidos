@@ -263,7 +263,7 @@ static const char *k_fsw =
      * middle; a panel at the edge is not stretched out */
     "        ivec2 eo = ivec2(sz0.x - 1 - e.x, e.y), ec = ivec2(sz0.x / 2, e.y);\n"
     "        bool rowflat = T == texelFetch(tex, eo, 0).rgb && T == texelFetch(tex, ec, 0).rgb;\n"
-    "        if (T == texelFetch(behind, e, 0).rgb && (max(T.r, max(T.g, T.b)) < 0.03 || rowflat)) {\n"
+    "        if (T == texelFetch(behind, e, 0).rgb && (max(T.r, max(T.g, T.b)) < 0.03 || (rowflat && max(T.r, max(T.g, T.b)) < 0.95))) {\n"
     "            color = vec4(T, 1.0);\n"
     "            return;\n"
     "        }\n"
@@ -275,7 +275,7 @@ static const char *k_fsw =
     "        if (hasz != 0) {\n"
     "            vec3 X = texelFetch(zero, e, 0).rgb;\n"
     "            bool xflat = X == texelFetch(zero, eo, 0).rgb && X == texelFetch(zero, ec, 0).rgb;\n"
-    "            if (T != X && (max(X.r, max(X.g, X.b)) < 0.03 || xflat)) {\n"
+    "            if (T != X && (max(X.r, max(X.g, X.b)) < 0.03 || (xflat && max(X.r, max(X.g, X.b)) < 0.95))) {\n"
     "                float w = clamp((T.g - X.g) / sent.g, 0.0, 1.0);\n"
     "                color = vec4(X + w * P, 1.0);\n"
     "                return;\n"
@@ -1400,8 +1400,10 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         g->glUniform1i(g_one.w_crop, g_one.crop);
         {
             static const GLfloat none[3] = { 0.f, 0.f, 0.f };
+            const GLfloat *bd = (g_one.no_fade || (g_one.bd[0] > 0.8f && g_one.bd[1] > 0.8f && g_one.bd[2] > 0.8f))
+                                ? none : g_one.bd;
 
-            g->glUniform3fv(g_one.w_bd, 1, g_one.no_fade ? none : g_one.bd);
+            g->glUniform3fv(g_one.w_bd, 1, bd);
         }
         g->glUniform3fv(g_one.w_sent, 1, sent);
         g->glActiveTexture(GL_TEXTURE3);
@@ -1484,9 +1486,8 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
 
         memset(d, 0, sizeof(d));
         d[s] = g_one.ds;
-        /* around it, black as the game's brightness has it: a fade to
-         * white whitens the whole window, not only the DS rectangle */
-        g_frame_clear = g_one.no_fade ? 0.f : (g_one.bd[0] + g_one.bd[1] + g_one.bd[2]) / 3.f;
+        /* keep letterbox / window borders black even during white fades */
+        g_frame_clear = 0.f;
         {
             int vy = g_vp_y;
 

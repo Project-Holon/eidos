@@ -838,7 +838,7 @@ static void boot_world_backdrop(BootRun *run, u32 bright)
         u32 c5 = ((u32)c >> (5u * i)) & 31u, c6 = c5 != 0u ? c5 * 2u + 1u : 0u;
 
         if (mode == 1u && f != 0u) {
-            c6 += ((63u - c6) * f) >> 4;
+            /* do not brighten world backdrop to solid white */
         } else if (mode == 2u && f != 0u) {
             c6 -= (c6 * f) >> 4;
         }
