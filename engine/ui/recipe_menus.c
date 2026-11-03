@@ -844,14 +844,11 @@ static int options_page(const void *work)
     return eidos_ui_opt_page >= 0 && eidos_ui_opt_page < PAGE_COUNT ? eidos_ui_opt_page : 0;
 }
 
-int eidos_ui_overlay_68_up(void)
-{
-    return app_work(68) != NULL;
-}
+extern int eidos_ui_options_proc_up;
 
 static int options_match(void)
 {
-    return 0;
+    return app_work(68) != NULL && !eidos_ui_options_proc_up;
 }
 
 static const OptRow *page_rows(int page, int *n)
