@@ -15,6 +15,18 @@ if (sdlSource == null || jniLibsDir == null) {
     throw new GradleException('eidos: build with android/build.py, or pass -Peidos.sdl and -Peidos.jniLibs')
 }
 
+def eidosVersion() {
+    def cm = new File(rootDir, '../CMakeLists.txt').text
+    def m = cm =~ /(?m)^project\(eidos VERSION ([0-9.]+)/
+    return m.find() ? m.group(1) : '0.0.0'
+}
+
+def eidosVersionCode() {
+    def p = eidosVersion().tokenize('.').collect { it as int }
+    while (p.size() < 3) { p << 0 }
+    return p[0] * 10000 + p[1] * 100 + p[2]
+}
+
 android {
     namespace = "org.projectholon.eidos"
     compileSdkVersion 35
@@ -22,14 +34,32 @@ android {
         applicationId "org.projectholon.eidos"
         minSdkVersion 26
         targetSdkVersion 35
-        versionCode 1
-        versionName "1.0"
+        // the game's version (project(eidos VERSION x.y.z) of the top-level
+        // CMakeLists.txt); the code orders them: x * 10000 + y * 100 + z
+        versionCode eidosVersionCode()
+        versionName eidosVersion()
         ndk {
             abiFilters 'arm64-v8a'
         }
     }
+    // the project's own key, when the build is given one (the release
+    // workflow's ANDROID_KEYSTORE secret): every APK it signs updates the
+    // last in place
+    signingConfigs {
+        if (System.getenv('EIDOS_KEYSTORE')) {
+            project {
+                storeFile file(System.getenv('EIDOS_KEYSTORE'))
+                storePassword System.getenv('EIDOS_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('EIDOS_KEY_ALIAS')
+                keyPassword System.getenv('EIDOS_KEY_PASSWORD') ?: System.getenv('EIDOS_KEYSTORE_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (System.getenv('EIDOS_KEYSTORE')) {
+                signingConfig signingConfigs.project
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

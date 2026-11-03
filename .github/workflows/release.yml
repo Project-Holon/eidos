@@ -208,7 +208,7 @@ jobs:
   linux:
     name: linux
     needs: meta
-    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'linux' }}
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'linux' || inputs.only == 'phones' }}
     runs-on: ubuntu-22.04     # the oldest glibc we ship against
     timeout-minutes: 90
     env:
@@ -570,14 +570,29 @@ jobs:
         run: |
           python3 tools/fetch_sdl.py --flavor source
           python3 tools/fetch_wasm.py
-      # the debug build: signed with a debug key, so it installs as it is
-      # (a release build needs the project's own key)
+      # With the project's key (secrets ANDROID_KEYSTORE, base64 of the
+      # keystore; ANDROID_KEYSTORE_PASSWORD; ANDROID_KEY_ALIAS): the release
+      # build, signed with it, so each APK updates the last.  Without: the
+      # debug build, signed with the runner's own debug key (it installs,
+      # but the next one needs the old one removed first).
       - name: Build the APK
-        run: python3 android/build.py --module module/eidos_boot.wasm --build-dir build-android --jobs 4
-      - name: Name it
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE }}
+          EIDOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EIDOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/*.apk "dist/eidos-${{ needs.meta.outputs.version }}-android.apk"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/eidos.keystore"
+            export EIDOS_KEYSTORE="$RUNNER_TEMP/eidos.keystore"
+            python3 android/build.py --module module/eidos_boot.wasm --build-dir build-android --jobs 4 --release
+            cp android/app/build/outputs/apk/release/*.apk "dist/eidos-${{ needs.meta.outputs.version }}-android.apk"
+            rm -f "$EIDOS_KEYSTORE"
+          else
+            echo "::warning::no ANDROID_KEYSTORE secret: the APK is signed with the runner's debug key"
+            python3 android/build.py --module module/eidos_boot.wasm --build-dir build-android --jobs 4
+            cp android/app/build/outputs/apk/debug/*.apk "dist/eidos-${{ needs.meta.outputs.version }}-android.apk"
+          fi
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
