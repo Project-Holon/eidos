@@ -5,6 +5,17 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.0
 
+### One-Screen Mode & UI
+- **Text Boxes**: Speech, narration and system messages are redrawn as one-screen boxes in the game's font; lists, YES / NO and the field's menus (Union Room talk, Battle Subway) are our own lists.
+- **New Screens**: Pokédex search, catching and nicknaming, town map and Fly, move relearner, Egg hatching, in-game trades, Xtransceiver calls (up to four people), Hall of Fame and credits, trainer card, Entree Forest and Pass Powers, Survey Radar, PC box list and marking.
+- **Field Windows**: Money, items received and place names have their own cards; the season card stays the game's.
+- **Battle**: Ability pop-ups and the trainer intro are drawn as plates.
+- **Union Room & Battle Subway**: Drawing, Spin Trade (lobby, Egg list, spinner) and the Battle Subway's Pokémon entry list are one-screen.
+
+### Saves
+- **First Save**: A New Game writes no file until you save; the save goes to its own slot.
+- **Save Warning**: A red warning shows when saves keep failing, and fades after a few seconds.
+
 ### Languages
 - **Every European cartridge plays through battles**: Fixed the move-forget screen crashing (and other screens' windows breaking) on French, German, Italian, Spanish and White cartridges.
 - **Interface in the game's language**: The one-screen interface's labels, buttons and hints follow the cartridge's language (French, German, Italian, Spanish), with the games' own words.
@@ -18,6 +29,9 @@ Each release's notes on GitHub start with its section here
 
 ### Spot editor
 - Drawn with the GPU: about 11 ms a frame at 1440p (was 28), dragging a spot about 20 ms a step (was 65).
+
+### Bug Fixes
+- Fixed crashes when a wild battle opens, in in-game trades, in the Union Room and when the Spin Trade starts.
 
 ## 0.1.9
 
