@@ -653,6 +653,8 @@ jobs:
           VERSION: ${{ needs.meta.outputs.version }}
           LVERSION: ${{ needs.meta.outputs.launcher_version }}
         run: |
+          # the game module the phones' jobs were built from is not a download
+          rm -f dist/eidos_boot.wasm
           # latest.json from each launcher's part (none: no signing key)
           if ls dist/updater-*.json >/dev/null 2>&1; then
             python3 tools/launcher_update_json.py join --version "$LVERSION" \
