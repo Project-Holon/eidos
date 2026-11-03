@@ -57,6 +57,8 @@ typedef struct UiFontData {
     u32  glyph_count, glyph_off;
     int  tried;             /* a load was attempted                        */
     int  ok;
+    u8   ugrave[64];        /* the small font's u-grave, made (small_fix)  */
+    int  has_ugrave;
 } UiFontData;
 
 static UiFontData g_font[3];
@@ -154,6 +156,56 @@ static int font_parse(UiFontData *f, const u8 *data, u32 size)
     return 0;
 }
 
+/*
+ * The small font (member 1) holds Greek and Cyrillic letters in some of
+ * the accented Latin slots the games never print with it: O-umlaut is a
+ * psi, I-circumflex an omicron, C-cedilla a theta, u-grave a zhe.  Those
+ * codes take the font's own nearest letter (its capitals with an accent
+ * are drawn small, as its A-umlaut and U-umlaut are, so the lower case
+ * letter with the same accent stands in), and u-grave is its u-acute with
+ * the accent turned round.
+ */
+static void small_fix(UiFontData *f)
+{
+    static const u16 sub[][2] = {
+        { 0xC2, 0xE2 }, { 0xC3, 0xE3 }, { 0xC5, 'A' }, { 0xC6, 'A' }, { 0xC7, 0xE7 },
+        { 0xCB, 0xEB }, { 0xCE, 0xEE }, { 0xCF, 0xEF }, { 0xD4, 0xF4 }, { 0xD5, 'O' },
+        { 0xD6, 0xF6 }, { 0xD8, 'O' }, { 0xDB, 0xFB }, { 0xDD, 'Y' }, { 0xDE, 'P' },
+        { 0xE5, 'a' }, { 0xE6, 'a' }, { 0xF0, 'd' }, { 0xF5, 'o' }, { 0xF8, 'o' },
+        { 0xFD, 'y' }, { 0xFE, 'p' }, { 0xFF, 'y' },
+    };
+    u32 i, g = f->map[0xFA];
+
+    for (i = 0; i < sizeof sub / sizeof sub[0]; i++) {
+        if (f->map[sub[i][1]] != 0xFFFF) {
+            f->map[sub[i][0]] = f->map[sub[i][1]];
+        }
+    }
+    /* u-grave: u-acute's accent rows (above the letter) mirrored */
+    if (g != 0xFFFF && g < f->glyph_count && (u32)f->cell_size <= sizeof f->ugrave) {
+        const u8 *rec = f->data + f->glyph_off + g * (u32)f->cell_size;
+        int adv = rec[2], x, y, w = adv < f->cell_w ? adv : f->cell_w;
+        u8 *bm = f->ugrave + 3;
+
+        memcpy(f->ugrave, rec, (size_t)f->cell_size);
+        for (y = 0; y < 3 && y < f->cell_h; y++) {
+            int px[32];
+
+            for (x = 0; x < f->cell_w && x < 32; x++) {
+                int i2 = y * f->cell_w + x;
+
+                px[x] = (rec[3 + (i2 * 2 >> 3)] >> (6 - ((i2 & 3) * 2))) & 3;
+            }
+            for (x = 0; x < f->cell_w && x < 32; x++) {
+                int i2 = y * f->cell_w + x, v = x < w - 1 ? px[w - 2 - x] : px[x];
+
+                bm[i2 * 2 >> 3] = (u8)((bm[i2 * 2 >> 3] & ~(3 << (6 - ((i2 & 3) * 2)))) | (v << (6 - ((i2 & 3) * 2))));
+            }
+        }
+        f->has_ugrave = 1;
+    }
+}
+
 int ui_font_load_nftr(int font, const u8 *data, u32 size)
 {
     UiFontData *f;
@@ -180,6 +232,9 @@ int ui_font_load_nftr(int font, const u8 *data, u32 size)
     f->size = size;
     f->tried = 1;
     f->ok = 1;
+    if (font == 1) {
+        small_fix(f);
+    }
     return 0;
 }
 
@@ -201,6 +256,9 @@ static void font_ensure(int font)
         f->data = m;
         f->size = size;
         f->ok = 1;
+        if (font == 1) {
+            small_fix(f);
+        }
     } else {
         free(m);
     }
@@ -228,6 +286,9 @@ int ui_font_glyph(int font, u32 code, UiGlyph *out)
         }
     }
     rec = f->data + f->glyph_off + g * (u32)f->cell_size;
+    if (code == 0xF9u && f->has_ugrave) {
+        rec = f->ugrave;
+    }
     out->bearing = (int)(signed char)rec[0];
     out->adv = rec[2];
     out->cell_w = f->cell_w;
