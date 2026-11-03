@@ -113,6 +113,7 @@ static const void *top_proc(void)
 /* The evolution scene's work (ov195 Scene) while it is the app on top. */
 #define EVO_OVERLAY     195
 #define BTL_RETURN_OVERLAY 92
+#define GURU2_OVERLAY   137
 #define SC_STATE        0x028
 #define SC_YESNO        0x09C
 #define SC_TCB          0x0A0
@@ -154,6 +155,13 @@ static const void *app_work(int overlay, const void **proc_out, const void **arg
         /* the scene loads the summary's overlay itself and pushes the
          * proc with no overlay (-1) */
         loaded = p != NULL && rds32(p, 0x04) == -1 && bw_overlay_is_loaded(overlay);
+    }
+    /* the Spin Trade (overlay 137) runs the party list and the summary on
+     * a proc system of its own (Guru2Entry.procHandle, +0x20) */
+    if (p != NULL && rds32(p, 0x04) == GURU2_OVERLAY && overlay != GURU2_OVERLAY && rdp(p, 0x14) != NULL) {
+        const void *ps = rdp(rdp(p, 0x14), 0x20);
+
+        p = ps != NULL ? rdp(ps, 0x08) : NULL;
     }
     if (p == NULL || (rds32(p, 0x04) != overlay && !loaded) || rds32(p, 0x08) < 2) {
         return NULL;
@@ -494,6 +502,9 @@ static void draw_hints(EidosUiCtx *c, const char *const *pairs, const u32 *keys,
 #define PL_ARG         0x280
 #define PL_LVSTATS     0x124     /* u16[6]: the stats before a level up     */
 #define PL_LVWINDOW    0x130     /* the stats window, while it is open      */
+#define PL_SELCOUNT    0x105     /* u8: Pokemon entered so far (modes 22, 23) */
+/* PokelistArg.regulation (+0x14): u8 minPartySize +2, maxPartySize +3 */
+#define PA_REGULATION  0x14
 /* the six stat ids the window lists (ov091 gPlistStatParamIds) */
 #define PLIST_STAT_IDS 0x021BECE4u
 /* PokelistArg */
@@ -504,6 +515,7 @@ static void draw_hints(EidosUiCtx *c, const char *const *pairs, const u32 *keys,
 #define PP_HP          0x06
 #define PP_ISEGG       0x0C
 #define PP_ISEMPTY     0x14
+#define PP_LABEL       0x1C      /* 0..5 entry order, 6 not entered, 7 banned, 8 none */
 /* PlistMenu */
 #define PM_COUNT       0x00
 #define PM_IDS         0x02
@@ -565,13 +577,18 @@ static int party_match(void)
     }
     /* The plain list and the use-an-item list; the list that teaches a
      * move, the battle order list and the like keep the DS screens. */
-    if (v.mode != 0 && v.mode != 5 && v.mode != 8 && rds32(v.work, PL_RESTORE18) == 0) {
+    if (v.mode != 0 && v.mode != 1 && v.mode != 5 && v.mode != 8 && v.mode != 21 && v.mode != 22
+        && v.mode != 23 && rds32(v.work, PL_RESTORE18) == 0) {
         return 0;
     }
     /* mode 8: the list back from the summary's "forget a move" after an
      * item taught one (a Rare Candy's level), with the game's message
      * ("... did not learn ...", "... forgot ..."); PL_RESTORE18 the same
-     * on the way through mode 3 */
+     * on the way through mode 3; modes 22 and 23: the Pokemon a battle
+     * facility enters (the Battle Subway), with CONFIRM and CANCEL;
+     * mode 1: the Pokemon a link battle enters (the Union Room's
+     * Colosseum), with CONFIRM alone;
+     * mode 21: the Egg the Spin Trade takes (no back button) */
     return 1;
 }
 
@@ -608,7 +625,10 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
         const void *menu = rdp(v->work, PL_MENU);
         u32 first = (menu != NULL && rd32(menu, PM_COUNT) & 0xFF) ? rd16(menu, PM_IDS) : 0;
 
-        if (first == 0 || first == 3 || first == 6 || (first >= 16 && first <= 19)) {
+        if (v->mode == 21) {
+            idx = 0xA2;                 /* What will you do with the Egg? */
+        } else if (first == 0 || first == 3 || first == 6 || (first >= 16 && first <= 19)
+            || v->mode == 1 || v->mode == 22 || v->mode == 23) {
             idx = 18;
         } else {
             idx = 19;
@@ -617,7 +637,7 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
     }
     case 3: idx = 11; break;
     case 2:
-        idx = v->mode == 5 ? 13 : 9;
+        idx = v->mode == 5 ? 13 : (v->mode == 21 ? 0xA3 : 9);
         break;
     default:
         break;
@@ -687,7 +707,7 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     char prompt[160], right[16];
     const void *menu = NULL;
     int menu_n = 0;
-    int click_slot = -1, back_click = 0;
+    int click_slot = -1, back_click = 0, entry;
     static const char *const hints[] = { "A", "Choose", "B", "Back", ARROWS, "Move" };
     static const u32 hint_keys[] = { BW_KEY_A, BW_KEY_B, 0 };
 
@@ -718,8 +738,16 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     sel_mon = (v.selected >= 0 && v.selected <= 5) ? plate_mon(&v, v.selected) : NULL;
 
-    snprintf(right, sizeof right, "%d/6", v.count);
-    ui_header(c, mx + 4, my + 4, mw - 8, "POK\xC3\x89MON", "PARTY", right, UI_SKY);
+    entry = v.mode == 1 || v.mode == 22 || v.mode == 23;
+    if (entry) {
+        const void *reg = rdp(v.arg, PA_REGULATION);
+
+        snprintf(right, sizeof right, "%d/%d", (int)rd8(v.work, PL_SELCOUNT),
+                 reg != NULL ? (int)rd8(reg, 3) : 6);
+    } else {
+        snprintf(right, sizeof right, "%d/6", v.count);
+    }
+    ui_header(c, mx + 4, my + 4, mw - 8, "POK\xC3\x89MON", entry ? "ENTRY" : "PARTY", right, UI_SKY);
 
     /* The slots: two columns, three rows (the game's plate order). */
     colw = (mw - 8 * 2 - 6) / 2;
@@ -772,15 +800,19 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             u32 hp = plate_hp(&v, i, mon), maxhp = pv(mon, P_MAXHP);
             u16 species = (u16)pv(mon, P_SPECIES);
             int egg = pv(mon, P_IS_EGG) != 0;
-            const UiImage *icon = ui_mon_icon(species, (u8)pv(mon, P_FORM),
+            const UiImage *icon = ui_mon_icon(egg ? (u16)(species == 490 ? 651 : 650) : species,
+                                              egg ? 0 : (u8)pv(mon, P_FORM),
                                               sel ? (int)((in->frame / 24) & 1) : 0);
 
-            mon_nick(mon, nick, (int)sizeof nick);
+            if (egg) {
+                /* the game's word for an Egg (the species bank's 650),
+                 * as its plate prints it */
+                (void)msg_text(BANK_SPECIES, 650, nick, (int)sizeof nick, 0);
+            } else {
+                mon_nick(mon, nick, (int)sizeof nick);
+            }
             if (egg) {
                 ui_party_row(c, x, y, colw, i, nick, 2, 0, 0, 0, icon, sel);
-                /* an egg shows no level and no HP: cover the numbers */
-                ui_fill(c, x + 40, y + 14, colw - 46, 14, sel ? UI_NAVY2 : UI_NAVY, 255);
-                ui_fill(c, x + colw - 48, y + 2, 42, 12, sel ? UI_NAVY2 : UI_NAVY, 255);
             } else {
                 int lvw;
                 char lv[16];
@@ -802,6 +834,21 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             if (v.phase == 3 && i == v.swap_src) {
                 ui_text(c, x + colw - 78, y + 3, "MOVE", UI_CYAN, UI_NAVY, UI_FONT_SMALL, 1);
             }
+            if (entry && !egg) {
+                /* the game's label in place of the HP: the entry order,
+                 * NOT ENTERED or BANNED (bank 157: 0x83 + order, 0x81, 0x82) */
+                const void *pl = rdp(v.work, PL_PLATES + 4u * (u32)i);
+                int label = pl != NULL ? rds32(pl, PP_LABEL) : 8;
+                char lt[32];
+
+                if (label >= 0 && label <= 7) {
+                    (void)msg_text(BANK_PARTY, label <= 5 ? 0x83u + (u32)label : (label == 6 ? 0x81u : 0x82u),
+                                   lt, (int)sizeof lt, 0);
+                    ui_fill(c, x + 40, y + 15, colw - 46, 13, sel ? UI_NAVY2 : UI_NAVY, 255);
+                    ui_text(c, x + 40, y + 15, lt, label <= 5 ? UI_SKY : (label == 6 ? UI_GREY : UI_PINK),
+                            UI_EDGE, UI_FONT_SMALL, 1);
+                }
+            }
         }
     }
 
@@ -813,6 +860,9 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
         if (v.switch_enabled && v.phase == 2) {
             msgw -= 52;
+        }
+        if (entry && v.phase == 2) {
+            msgw -= 2 * 72 + 2;
         }
         party_prompt(&v, sel_mon, prompt, (int)sizeof prompt);
         /* a message the game prints (after a Rare Candy, a move to learn):
@@ -927,6 +977,34 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
         if (click_slot >= 0) {
             eidos_ui_tap(k_plate_tap[click_slot][0], k_plate_tap[click_slot][1], 3);
+        }
+        if (entry && v.phase == 2) {
+            /* CONFIRM and CANCEL, the game's two buttons (touch rects
+             * 96..176 and 176..255 on rows 168..191; keys: slots 6 and 7);
+             * a link battle has CONFIRM alone, in CANCEL's place */
+            int b, nb = v.mode == 1 ? 1 : 2;
+
+            for (b = 0; b < nb; b++) {
+                EidosUiRect rr;
+                char bt[24];
+                int hit, lit;
+
+                rr.w = 68;
+                rr.h = 18;
+                rr.x = mx + mw - 8 - (nb - b) * (rr.w + 4) + 4;
+                rr.y = my + mh - 6 - 30 + 6;
+                hit = eidos_ui_hit(rr);
+                lit = (hit & EIDOS_UI_HOVER) || (v.selected == 6 + b && v.touch_mode == 0 && eidos_ui_keys_lit());
+                (void)msg_text(BANK_PARTY, (u32)b, bt, (int)sizeof bt, 0);
+                ui_panel(c, rr.x, rr.y, rr.w, rr.h, UI_CUT_TL | UI_CUT_BR, 4,
+                         lit ? UI_NAVY2 : UI_BODY, lit ? UI_SKY : UI_EDGE, 255);
+                ui_text(c, rr.x + (rr.w - ui_text_w(bt, UI_FONT_SMALL)) / 2,
+                        rr.y + ui_text_y(rr.h, UI_FONT_SMALL), bt, UI_WHITE, UI_EDGE,
+                        UI_FONT_SMALL, 1);
+                if (hit & EIDOS_UI_CLICK) {
+                    eidos_ui_tap(b == 0 && nb == 2 ? 136 : 216, 180, 3);
+                }
+            }
         }
         if (v.switch_enabled && v.phase == 2) {
             EidosUiRect rr;

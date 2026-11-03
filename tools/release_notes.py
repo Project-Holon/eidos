@@ -2,12 +2,13 @@
 """The notes of a GitHub release: the version's changelog, what to download,
 and the notice.
 
-    python tools/release_notes.py VERSION [--assets DIR] > notes.md
+    python tools/release_notes.py VERSION [--assets DIR] [--test-build TAG] > notes.md
 
 VERSION is the release's version (0.1.5).  The changelog section is the one
 headed "## VERSION" in CHANGELOG.md.  --assets names the folder of the
 release's files: a platform's download line is only written when its file is
-there (no macOS line without a macOS build).
+there (no macOS line without a macOS build).  --test-build marks the notes
+as a test build's (a pre-release, tagged TAG).
 """
 
 import argparse
@@ -37,6 +38,12 @@ DOWNLOADS = [
      "`README.txt` inside it has the one Terminal line it needs."),
     ("eidos-{ver}-linux-x86_64.AppImage",
      "Linux: eidos on its own. Make it executable and run it."),
+    ("eidos-{ver}-android.apk",
+     "Android (64-bit ARM, Android 8 or later): install it from the file "
+     "(allow installs from this source when Android asks)."),
+    ("eidos-{ver}-ios.ipa",
+     "iPhone and iPad (iOS 15 or later): not signed. Install it with a "
+     "sideloading tool (AltStore, Sideloadly) and your own Apple ID."),
 ]
 
 NOTICE = (
@@ -73,10 +80,16 @@ def unwrap(text):
     return "\n".join(out)
 
 
-def notes(version, assets):
+def notes(version, assets, test_build=None):
     have = set(os.listdir(assets)) if assets and os.path.isdir(assets) else None
     out = []
     section = changelog_section(version)
+    if test_build:
+        out.append("> **Test build** (%s) of eidos %s, to check the downloads "
+                   "before the release. The launcher does not offer it unless "
+                   "*Settings > Updates > Show test builds in Versions* is on, "
+                   "and it does not update itself to it." % (test_build, version))
+        out.append("")
     out.append("## What's new in %s" % version)
     out.append("")
     out.append(section or "- Fixes and small changes.")
@@ -107,8 +120,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("version")
     ap.add_argument("--assets", help="the folder of the release's files")
+    ap.add_argument("--test-build", help="a test build's tag (the notes say so)")
     args = ap.parse_args()
-    sys.stdout.write(notes(args.version.lstrip("vV"), args.assets))
+    sys.stdout.write(notes(args.version.lstrip("vV"), args.assets, args.test_build))
 
 
 if __name__ == "__main__":

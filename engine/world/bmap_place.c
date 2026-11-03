@@ -2013,9 +2013,6 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     if (s == NULL) {
         return;
     }
-    if (s->indoor && !sp->field) {
-        k = BMAP_PLACE_K * 1.5f;
-    }
     if (getenv("EIDOS_DEBUG_BMAP_K") != NULL) {     /* tests: another scale */
         k = (float)atof(getenv("EIDOS_DEBUG_BMAP_K"));
     }

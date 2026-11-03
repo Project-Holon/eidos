@@ -59,6 +59,7 @@ const answers: Record<string, unknown> = {
   saves: [],
   set_current_save: null,
   get_auto_update: true,
+  get_pre_releases: false,
   rom_library: new URLSearchParams(location.search).has("onelang") ? roms.slice(0, 1) : roms,
 
   add_roms: { library: roms, added: 0, refused: [] },

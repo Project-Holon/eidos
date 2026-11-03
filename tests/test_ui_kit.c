@@ -189,7 +189,7 @@ static void wrap_cb(void *user, const char *s, int len)
 static int test_canvas(void)
 {
     EidosUiCanvas cv;
-    EidosUiCtx c;
+    EidosUiCtx c = { 0 };   /* safe_* and bar_top: a desktop frame */
     EidosUiRect saved;
     u32 gen;
 
@@ -239,7 +239,7 @@ static int test_canvas(void)
 static int test_blend(void)
 {
     EidosUiCanvas cv;
-    EidosUiCtx c;
+    EidosUiCtx c = { 0 };   /* safe_* and bar_top: a desktop frame */
 
     memset(&cv, 0, sizeof cv);
     ui_begin(&c, &cv, 8, 8, 1);
@@ -262,7 +262,7 @@ static int test_blend(void)
 static int test_text(void)
 {
     EidosUiCanvas cv;
-    EidosUiCtx c;
+    EidosUiCtx c = { 0 };   /* safe_* and bar_top: a desktop frame */
     WrapOut w;
     int n, x;
 
@@ -354,7 +354,7 @@ static int test_text(void)
 static int test_panels(void)
 {
     EidosUiCanvas cv;
-    EidosUiCtx c;
+    EidosUiCtx c = { 0 };   /* safe_* and bar_top: a desktop frame */
     int x, y, n;
 
     memset(&cv, 0, sizeof cv);
@@ -411,7 +411,7 @@ static int test_panels(void)
 static int test_pieces(void)
 {
     EidosUiCanvas cv;
-    EidosUiCtx c;
+    EidosUiCtx c = { 0 };   /* safe_* and bar_top: a desktop frame */
     UiImage icon;
     u8 icon_px[24 * 24 * 4];
     const char *pairs[] = { "A", "Select", "B", "Back" };
@@ -563,7 +563,7 @@ static int test_pieces(void)
 static int test_icon_rows(void)
 {
     EidosUiCanvas cv;
-    EidosUiCtx c;
+    EidosUiCtx c = { 0 };   /* safe_* and bar_top: a desktop frame */
     UiImage icon;
     u8 px_buf[16 * 16 * 4];
     int h;
@@ -939,7 +939,7 @@ static void draw_sheet(EidosUiCtx *c)
 static int test_data(const char *root)
 {
     EidosUiCanvas cv;
-    EidosUiCtx c;
+    EidosUiCtx c = { 0 };   /* safe_* and bar_top: a desktop frame */
     UiGlyph g, q;
     const char *path = getenv("UI_KIT_SHEET");
     int i, n, ok = 1;

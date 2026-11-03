@@ -56,6 +56,10 @@ void ui_choice_list_idle(void);
  * cursor and A taps that row.  Returns 1 when the menu was drawn.
  */
 int  ui_taskmenu(EidosUiCtx *c, void *menu, int right, int bottom, int style);
+/* The same with the rows' labels given (labels[0..count-1]): for a game
+ * that frees its menu's words once the menu has drawn them. */
+int  ui_taskmenu_labels(EidosUiCtx *c, void *menu, int right, int bottom, int style,
+                        const char *const *labels);
 /* Its row count (0 when it cannot be read) and a tap on row i. */
 int  ui_taskmenu_count(const void *menu);
 void ui_taskmenu_tap(const void *menu, int i);

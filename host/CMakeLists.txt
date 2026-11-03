@@ -141,11 +141,17 @@ if(ANDROID)
     add_library(eidos SHARED ${_host_sources})
     set_target_properties(eidos PROPERTIES OUTPUT_NAME main)
 elseif(IOS)
+    # the app's version: the game's (project(eidos VERSION ...) of the
+    # top-level CMakeLists.txt)
+    file(STRINGS ${_root}/CMakeLists.txt _ver REGEX "^project[(]eidos VERSION ")
+    string(REGEX REPLACE ".*VERSION ([0-9.]+).*" "\\1" EIDOS_APP_VERSION "${_ver}")
     add_executable(eidos MACOSX_BUNDLE ${_host_sources})
     set_target_properties(eidos PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST ${_root}/ios/Info.plist.in
         MACOSX_BUNDLE_GUI_IDENTIFIER org.projectholon.eidos
         MACOSX_BUNDLE_BUNDLE_NAME eidos
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${EIDOS_APP_VERSION}
+        MACOSX_BUNDLE_BUNDLE_VERSION ${EIDOS_APP_VERSION}
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER org.projectholon.eidos
         XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
         # the icons stay separate PNGs, as Info.plist.in names them

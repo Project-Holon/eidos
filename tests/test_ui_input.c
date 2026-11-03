@@ -271,7 +271,7 @@ static void clear_tap(void)
 
 static int run_recipe(int idx, int w, int h, int k, const char *out, EidosUiCanvas *cv)
 {
-    EidosUiCtx ctx;
+    EidosUiCtx ctx = { 0 };
     EidosUiView view;
     EidosUiFrame in;
     const EidosUiRecipe *r = ui_recipes_input[idx];

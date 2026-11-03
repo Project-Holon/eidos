@@ -43,6 +43,12 @@ u8 *bw_lang_relayout_overlay(u32 id, u32 eng_base, u32 eng_size, const u8 *file,
  * layout. */
 int bw_lang_same_address(u32 english, u32 word);
 
+/* Overlay `id` was just loaded (sdk/overlay.c): the pointer words that
+ * could mean one of several overlays sharing a window (a region's data
+ * pointing at ov021, ov098 or ov133 at the same place) are set to the
+ * loaded one's address, in the regions that are loaded. */
+void bw_lang_overlay_loaded(u32 id);
+
 /* The English Black address where the other cartridge's address `word`
  * was laid out: looked for first in `region` (-1 the ARM9, else that
  * overlay), then in the ARM9.  0 when no row holds it. */

@@ -930,8 +930,12 @@ static int card_draw(EidosUiCtx *c, int x, int y, int w, int h, const SaveInfo *
         snprintf(v[2], sizeof v[2], "%d", info->badges);
         snprintf(v[3], sizeof v[3], "%d", info->seen);
         if (wide) {
-            int cw = gw / 2;
+            int cw = gw / 2, nw = ui_text_w(v[0], UI_FONT_LARGE) + 8;
 
+            /* a long name (seven letters) pushes the second column right */
+            if (nw > cw) {
+                cw = nw;
+            }
             for (k = 0; k < n; k++) {
                 int cx = gx + (k & 1) * cw, cy = gy + (k >> 1) * 29;
 

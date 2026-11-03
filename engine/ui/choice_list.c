@@ -10,6 +10,8 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "choice_list.h"
@@ -256,6 +258,40 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
         }
     }
 
+    /* Tests: EIDOS_DEBUG_PICK="Battle,Battles for two,Confirm" picks the
+     * next named entry when a list holding it opens, as a click would */
+    {
+        static int picked;
+        const char *want = getenv("EIDOS_DEBUG_PICK");
+
+        if (want != NULL && g_target == -1) {
+            const char *p = want;
+            char label[48];
+            int k, n = 0;
+
+            for (k = 0; k < picked && p != NULL; k++) {
+                p = strchr(p, ',');
+                p = p != NULL ? p + 1 : NULL;
+            }
+            while (p != NULL && p[n] != '\0' && p[n] != ',' && n < (int)sizeof label - 1) {
+                label[n] = p[n];
+                n++;
+            }
+            label[n] = '\0';
+            for (k = 0; n > 0 && k < count; k++) {
+                char t[48];
+
+                item_text(list, k, t, (int)sizeof t);
+                if (strcmp(t, label) == 0) {
+                    g_target = k;
+                    g_list = list;
+                    picked++;
+                    fprintf(stderr, "eidos: debug pick '%s' (row %d)\n", label, k);
+                    break;
+                }
+            }
+        }
+    }
     /* walk the game's cursor to the asked row, one key every other frame */
     if (g_target != -1 && g_list == list) {
         int target = g_target >= 0 ? g_target : -2 - g_target;
@@ -319,6 +355,12 @@ void ui_taskmenu_tap(const void *menu_p, int i)
 
 int ui_taskmenu(EidosUiCtx *c, void *menu_p, int right, int bottom, int style)
 {
+    return ui_taskmenu_labels(c, menu_p, right, bottom, style, NULL);
+}
+
+int ui_taskmenu_labels(EidosUiCtx *c, void *menu_p, int right, int bottom, int style,
+                       const char *const *labels)
+{
     const u8 *m = (const u8 *)menu_p;
     int n = ui_taskmenu_count(menu_p), i, w = 0, h, x, y, cur, keys_off, pick = -1;
     char text[8][48];
@@ -333,7 +375,12 @@ int ui_taskmenu(EidosUiCtx *c, void *menu_p, int right, int bottom, int style)
         int tw;
 
         text[i][0] = '\0';
-        if (sb != NULL && STRBUF_GetChars != NULL && STRBUF_GetLength != NULL && STRBUF_GetChars(sb) != NULL) {
+        if (labels != NULL) {
+            if (labels[i] != NULL) {
+                strncpy(text[i], labels[i], sizeof text[i] - 1);
+                text[i][sizeof text[i] - 1] = '\0';
+            }
+        } else if (sb != NULL && STRBUF_GetChars != NULL && STRBUF_GetLength != NULL && STRBUF_GetChars(sb) != NULL) {
             units_utf8(STRBUF_GetChars(sb), STRBUF_GetLength(sb), text[i], (int)sizeof text[i]);
         }
         tw = ui_text_w(text[i], UI_FONT_LARGE) + 30;

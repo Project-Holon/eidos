@@ -202,7 +202,8 @@ const UiImage *ui_mon_icon(u16 species, u8 form, int frame)
     UiOwned *o;
     int slot;
 
-    if (species == 0 || species > 649 || frame < 0 || frame > 1) {
+    /* 650 and 651: the Egg and Manaphy's Egg (members 1307, 1309) */
+    if (species == 0 || species > 651 || frame < 0 || frame > 1) {
         return NULL;
     }
     member = (u32)species * 2 + 7;

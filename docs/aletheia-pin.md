@@ -8,9 +8,17 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `828fe07923eb876f8d94972fe2db045bddf45c65`
-- Date: 2026-10-31
-- Subject: PC builds pick Black or White at run time; pointer words of the size-changed objects
+- Revision: `e3c8c25280ee23515c2b44975ce5565aa86597db`
+- Date: 2026-11-03
+- Subject: langmap: reference rows per owning overlay, rows for every data pointer, word_pairs.tsv
+
+The step from `abdddc9882`: an overlay's reference rows in
+`layout/langmap/<target>.tsv` are now the owning region's own runs, with an
+owner column, and `word_pairs.tsv` lists the pointer words no run covers.
+Before, a reference run could bridge overlays that share a window: German
+ov010's script table pointed into ov021 with ov010's shift, and a script
+command jumped into the middle of a function.  sdk/langmap.c reads a word
+that leaves its region by those rows, the loaded owner first.
 
 The step from `ae14c2cc42`: a PC build picks the cartridge's language
 (`g_pm_language`, b9b2eba6ab) and version (`g_pm_version`) at run time,

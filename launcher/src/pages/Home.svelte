@@ -117,6 +117,15 @@
     }
   }
 
+  // A first start (no version installed, none built here, the profile
+  // following the latest): the latest release installs by itself, once.
+  let autoInstalled = false;
+  $effect(() => {
+    if (autoInstalled || updating || !update || ov.installed.length || ov.localOk) return;
+    autoInstalled = true;
+    installUpdate(update);
+  });
+
   onMount(() => {
     listRemote()
       .then((r) => (remote = r))

@@ -29,7 +29,9 @@
 #include "kit.h"
 #include "dsmem.h"
 #include "input.h"
+#include "textbox.h"
 #include "settings.h"
+#include "overlay.h"
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -216,6 +218,11 @@ int eidos_ui_pointer(int *x, int *y, int *pressed, int *released)
     *y = g_my;
     *pressed = g_pressed;
     *released = g_released;
+    return g_down;
+}
+
+int eidos_ui_held(void)
+{
     return g_down;
 }
 
@@ -829,10 +836,17 @@ static void debug_script(void)
  *   "relearn S"   the move relearner for party slot S (as
  *                 SCRCMD_PROC_CallMoveRelearn opens it)
  *   "tvt N"       Xtransceiver story call N (as SCRCMD_PROC_CallValueScreen)
+ *   "makeegg S"   party slot S becomes an Egg (for a Spin Trade)
  *   "egg S"       party slot S becomes an Egg and hatches (the hatching the
  *                 field's step check starts, SYMBOL_MAP_CreatePokeEventTask)
  *   "box M"       the PC's boxes in mode M (as the PC's script command opens
  *                 them: 0 organize, 1 withdraw, 2 deposit, ...)
+ *   "union"       into the Union Room, as its receptionist's script does
+ *                 (EVENT_MAPCHANGE_CreateFixedZoneEvent: the room and its
+ *                 link; the C-Gear's wireless must be on)
+ *   "ltrade"      the Union Room's link trade with no partner (its own
+ *                 offline path: the game takes the first offer as the
+ *                 partner's), for the trade screen's tests
  * The save these run on is a test copy: the game clear saves. */
 extern void *ov010_EVENT_GAMECLEAR_Create(void *gsys, u32 mode) __attribute__((weak));
 extern void *ov021_FLD_TRADE_CreateEvent(void *gsys, u32 tradeId, u32 partyIndex) __attribute__((weak));
@@ -854,6 +868,8 @@ extern void *SYSTEM_DATA_GetConfig(void *save) __attribute__((weak));
 extern void *ZUKAN_SAVE_GetFromGameData(void *gd) __attribute__((weak));
 extern u32 ZUKAN_SAVE_IsNationalDexEnabled(void *zukan) __attribute__((weak));
 extern void *bw_dsref_ov010_gLocalTvtSysProcData __attribute__((weak));
+extern void *POKEPARTY_Create(u32 heap) __attribute__((weak));
+extern void *ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent(void *gsys, void *fieldMap) __attribute__((weak));
 
 static void debug_open_done(void *arg)
 {
@@ -938,6 +954,27 @@ static void debug_open(void)
         boxp->mode = (int)a;
         ev = FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(gs, fm, 170, bw_dsref_ov021_d_021EF78C, boxp,
                                                            debug_open_done, NULL);
+    } else if (strcmp(what, "union") == 0 && ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent != NULL) {
+        ev = ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent(gs, fm);
+    } else if (strcmp(what, "ltrade") == 0 && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
+               && GFL_HEAP_Alloc != NULL
+               && POKEPARTY_Create != NULL) {
+        /* ClubTradeParam (ov006/event_wificlub_types.h): gameData 0x14,
+         * party 0x1C; the trade reads up to 0x40 of it */
+        u8 *param = (u8 *)GFL_HEAP_Alloc(4, 0x40, 1, "debug_open", 0);
+
+        *(void **)(param + 0x14) = gd;
+        *(void **)(param + 0x1C) = POKEPARTY_Create(4);
+        /* gPokemonTradeProcData (ov119 0x021E7608, the Union Room's ProcData:
+         * ov012 binds its own name for it only while ov012 is loaded) */
+        ev = FIELD_STATUS_CreateSubProcCallbackEvent(gs, fm, 119, (void *)(uintptr_t)0x021E7608u, param,
+                                                     debug_open_done, NULL);
+    } else if (sscanf(what, "makeegg %u", &a) == 1 && GAME_DATA_GetMyParty != NULL && POKEPARTY_GetMember != NULL
+               && POKE_TOOL_SetPartyValue != NULL) {
+        /* party slot S becomes an Egg, nothing more (a Spin Trade needs one) */
+        POKE_TOOL_SetPartyValue(POKEPARTY_GetMember(GAME_DATA_GetMyParty(gd), a), 0x4C, 1);
+        fprintf(stderr, "eidos: debug open %s\n", what);
+        return;
     } else if (sscanf(what, "egg %u", &a) == 1 && ov010_SYMBOL_MAP_CreatePokeEventTask != NULL
                && GAME_DATA_GetMyParty != NULL && POKEPARTY_GetMember != NULL && POKE_TOOL_SetPartyValue != NULL) {
         void *mon = POKEPARTY_GetMember(GAME_DATA_GetMyParty(gd), a);
@@ -950,6 +987,313 @@ static void debug_open(void)
     } else {
         fprintf(stderr, "eidos: debug open %s: not available\n", what);
     }
+}
+
+/* Tests: "ltrade" runs the trade's offline path, which the retail game
+ * never takes for the Union Room (state 1): it skips the step that loads
+ * the box icons' graphics (StepLoadBoxIconGfx, on the linked path only),
+ * so the test loads them as that step would before the boxes are drawn.
+ * TradeWork: stepFunc 0x5EC, vramBuf 0x1184. */
+extern void ov119_POKETRADE_PROC_StepSendBoxInfo(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_2D_LoadBoxIconGfx(void *p, int box) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepSendAddOffer(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepAddSelectedOffer(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepSendApplyAddOffer(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepApplyAddOffer(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StepWipeToBrowse(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StepResolveConfirm(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StepOpenConfirmMenu(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StepResolveReplies(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_PROC_StepWaitCursorSync(void *p) __attribute__((weak));
+extern void ov119_POKETRADE_NEGO_StoreRemoteOffer(void *p, int i, void *src) __attribute__((weak));
+
+static void debug_ltrade(void)
+{
+    const char *what = getenv("EIDOS_DEBUG_OPEN");
+    u8 *gs, *ps, *cur, *w;
+    int b;
+
+    if (what == NULL || strcmp(what, "ltrade") != 0 || &bw_dsref__GameSystemGlobal == NULL
+        || ov119_POKETRADE_PROC_StepSendBoxInfo == NULL || ov119_POKETRADE_2D_LoadBoxIconGfx == NULL
+        || !bw_overlay_is_loaded(119)) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    ps = gs != NULL ? *(u8 **)(gs + 0x08) : NULL;
+    cur = ps != NULL ? *(u8 **)(ps + 0x08) : NULL;
+    if (cur == NULL || *(u32 *)(cur + 0x04) != 119u || (w = *(u8 **)(cur + 0x14)) == NULL) {
+        return;
+    }
+    /* no partner: its name is the player's, its offers the player's own */
+    *(void **)(w + 0x834) = *(void **)(w + 0x830);
+    if (ov119_POKETRADE_NEGO_StoreRemoteOffer != NULL
+        && *(uintptr_t *)(w + 0x5EC) == (uintptr_t)ov119_POKETRADE_NEGO_StepWipeToBrowse) {
+        for (b = 0; b < 3; b++) {
+            void *own = *(void **)(w + 0xFD8 + 4u * (u32)b), *peer = *(void **)(w + 0xFD8 + 12u + 4u * (u32)b);
+
+            if (own != NULL && peer == NULL && *(int *)(w + 0xFA4 + 4u * (u32)b) != -1) {
+                ov119_POKETRADE_NEGO_StoreRemoteOffer(w, b, own);
+            }
+        }
+    }
+    /* the steps that send to the partner wait for the link; offline they
+     * go on as a sent message would */
+    {
+        static void (*const pairs[][2])(void *) = {
+            { ov119_POKETRADE_PROC_StepSendAddOffer, ov119_POKETRADE_PROC_StepAddSelectedOffer },
+            { ov119_POKETRADE_PROC_StepSendApplyAddOffer, ov119_POKETRADE_PROC_StepApplyAddOffer },
+            /* both chose (offline the link's id is not 0 or 1) */
+            { ov119_POKETRADE_NEGO_StepResolveConfirm, ov119_POKETRADE_NEGO_StepOpenConfirmMenu },
+        };
+        u32 i;
+
+        for (i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {
+            if (pairs[i][0] != NULL && *(uintptr_t *)(w + 0x5EC) == (uintptr_t)pairs[i][0]) {
+                *(uintptr_t *)(w + 0x5EC) = (uintptr_t)pairs[i][1];
+            }
+        }
+    }
+    /* both agreed to trade (choice[] 0x11E0: 13 each) */
+    if (ov119_POKETRADE_NEGO_StepResolveReplies != NULL && ov119_POKETRADE_PROC_StepWaitCursorSync != NULL
+        && *(uintptr_t *)(w + 0x5EC) == (uintptr_t)ov119_POKETRADE_NEGO_StepResolveReplies && w[0x11E0] == 13) {
+        *(uintptr_t *)(w + 0x5EC) = (uintptr_t)ov119_POKETRADE_PROC_StepWaitCursorSync;
+    }
+    if (*(uintptr_t *)(w + 0x5EC) == (uintptr_t)ov119_POKETRADE_PROC_StepSendBoxInfo && *(void **)(w + 0x1184) == NULL) {
+        for (b = 0; b <= 24; b++) {
+            ov119_POKETRADE_2D_LoadBoxIconGfx(w, b);
+        }
+    }
+}
+
+/* Tests: EIDOS_DEBUG_SEEK=FRAME walks the player, from that frame on, to
+ * the nearest other person on the map and talks to them (A), as a player
+ * would: one step every few frames toward them, then a turn and A when next
+ * to them.  It stops once an event runs (the talk started).  For link
+ * tests in the Union Room, where the other players wander. */
+extern void *ov021_FIELDMAP_GetMmdlSys(void *fieldMap) __attribute__((weak));
+extern int ov010_FLDMMDL_SysSearchUseMmdl(const void *sys, void **out, u32 *iter) __attribute__((weak));
+extern void *ov010_FLDMMDL_SysSearchPlayer(void *sys) __attribute__((weak));
+extern void ov010_FLDMMDL_GetGridNowPos(const void *mmdl, s16 *out) __attribute__((weak));
+
+static void debug_seek(u32 frame)
+{
+    static u32 next;
+    static int done;
+    const char *at = getenv("EIDOS_DEBUG_SEEK");
+    u8 *gs, *fm;
+    void *sys, *me, *o, *best = NULL;
+    u32 iter = 0;
+    s16 p[3], q[3], b[3] = { 0, 0, 0 };
+    int bd = 1 << 30, dx, dz;
+
+    if (done || at == NULL || frame < (u32)atoi(at) || frame < next || ov021_FIELDMAP_GetMmdlSys == NULL
+        || ov010_FLDMMDL_SysSearchUseMmdl == NULL || ov010_FLDMMDL_SysSearchPlayer == NULL
+        || ov010_FLDMMDL_GetGridNowPos == NULL || &bw_dsref__GameSystemGlobal == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    fm = gs != NULL ? *(u8 **)(gs + 0x20) : NULL;
+    if (fm == NULL || (sys = ov021_FIELDMAP_GetMmdlSys(fm)) == NULL || (me = ov010_FLDMMDL_SysSearchPlayer(sys)) == NULL) {
+        return;
+    }
+    if (GAMESYSTEM_GetEvent != NULL && GAMESYSTEM_GetEvent(gs) != NULL) {
+        if (next != 0) {
+            done = 1;               /* the talk started */
+            fprintf(stderr, "eidos: debug seek: talking\n");
+        }
+        return;
+    }
+    ov010_FLDMMDL_GetGridNowPos(me, p);
+    while (ov010_FLDMMDL_SysSearchUseMmdl(sys, &o, &iter)) {
+        int d;
+
+        if (o == me) {
+            continue;
+        }
+        ov010_FLDMMDL_GetGridNowPos(o, q);
+        d = abs(q[0] - p[0]) + abs(q[2] - p[2]);
+        if (d < bd) {
+            bd = d;
+            best = o;
+            b[0] = q[0];
+            b[2] = q[2];
+        }
+    }
+    if (best == NULL) {
+        return;
+    }
+    dx = b[0] - p[0];
+    dz = b[2] - p[2];
+    if (bd == 1) {
+        u32 dir = dx > 0 ? BW_KEY_RIGHT : dx < 0 ? BW_KEY_LEFT : dz > 0 ? BW_KEY_DOWN : BW_KEY_UP;
+
+        eidos_ui_press(dir, 2);     /* face them */
+        next = frame + 8;
+        done = 0;
+        {
+            static int turned;
+
+            if (ui_textbox_field_active(fm)) {
+                done = 1;           /* the talk is up: its menus follow */
+                fprintf(stderr, "eidos: debug seek: talking\n");
+                return;
+            }
+            if (turned++ > 0) {
+                eidos_ui_press(BW_KEY_A, 3);
+                next = frame + 30;
+            }
+        }
+        return;
+    }
+    eidos_ui_press(abs(dx) >= abs(dz) ? (dx > 0 ? BW_KEY_RIGHT : BW_KEY_LEFT) : (dz > 0 ? BW_KEY_DOWN : BW_KEY_UP), 8);
+    next = frame + 14;
+}
+
+/* Tests: EIDOS_DEBUG_MOVE moves the player by the game's own buttons, a
+ * comma-separated list of steps run in order, each from its frame on and
+ * not before the one before it is done:
+ *   "F:face:D"      turn to D (up, down, left, right) without a step
+ *   "F:walk:D:N"    walk N tiles toward D
+ *   "F:tile:X:Z"    walk to tile (X, Z), the longer axis first
+ *   "F:a"           press A (talk to who is in front, read a sign)
+ * F 0 means as soon as the step before is done.  Each step logs where the
+ * player stands when it ends; a walk the player cannot finish (a wall, a
+ * person, an event) stops after 60 frames without a step and says so. */
+extern u16 ov010_FLDMMDL_GetDirDisp(const void *mmdl) __attribute__((weak));
+
+typedef struct DebugMove { u32 frame; int kind, dir, n, x, z; } DebugMove;
+enum { DM_FACE, DM_WALK, DM_TILE, DM_A };
+
+static int dm_dir(const char *s)
+{
+    return strncmp(s, "up", 2) == 0 ? 0 : strncmp(s, "down", 4) == 0 ? 1 : strncmp(s, "left", 4) == 0 ? 2
+         : strncmp(s, "right", 5) == 0 ? 3 : -1;
+}
+
+static void debug_move(u32 frame)
+{
+    static DebugMove steps[64];
+    static int nsteps = -1, cur, started, tx, tz, stuck_since;
+    static s16 last[3];
+    static const u32 keys[4] = { BW_KEY_UP, BW_KEY_DOWN, BW_KEY_LEFT, BW_KEY_RIGHT };
+    static const int ddx[4] = { 0, 0, -1, 1 }, ddz[4] = { -1, 1, 0, 0 };
+    const char *s = getenv("EIDOS_DEBUG_MOVE");
+    u8 *gs, *fm;
+    void *sys, *me;
+    s16 p[3];
+    DebugMove *m;
+
+    if (s == NULL || ov021_FIELDMAP_GetMmdlSys == NULL || ov010_FLDMMDL_SysSearchPlayer == NULL
+        || ov010_FLDMMDL_GetGridNowPos == NULL || ov010_FLDMMDL_GetDirDisp == NULL
+        || &bw_dsref__GameSystemGlobal == NULL) {
+        return;
+    }
+    if (nsteps < 0) {
+        char buf[32];
+
+        nsteps = 0;
+        while (*s != '\0' && nsteps < 64) {
+            const char *e = strchr(s, ',');
+            size_t len = e != NULL ? (size_t)(e - s) : strlen(s);
+            unsigned f = 0;
+            int a = 0, b = 0;
+
+            if (len >= sizeof buf) {
+                len = sizeof buf - 1;
+            }
+            memcpy(buf, s, len);
+            buf[len] = '\0';
+            m = &steps[nsteps];
+            memset(m, 0, sizeof *m);
+            if (sscanf(buf, "%u:face:%*s", &f) == 1 && strstr(buf, ":face:") != NULL) {
+                m->kind = DM_FACE;
+                m->dir = dm_dir(strstr(buf, ":face:") + 6);
+            } else if (sscanf(buf, "%u:tile:%d:%d", &f, &a, &b) == 3) {
+                m->kind = DM_TILE;
+                m->x = a;
+                m->z = b;
+            } else if (strstr(buf, ":walk:") != NULL && sscanf(buf, "%u", &f) == 1) {
+                const char *d = strstr(buf, ":walk:") + 6, *c = strchr(d, ':');
+
+                m->kind = DM_WALK;
+                m->dir = dm_dir(d);
+                m->n = c != NULL ? atoi(c + 1) : 1;
+            } else if (sscanf(buf, "%u:a", &f) == 1 && strstr(buf, ":a") != NULL) {
+                m->kind = DM_A;
+            } else {
+                fprintf(stderr, "eidos: debug move: cannot read '%s'\n", buf);
+                f = 0xFFFFFFFFu;
+            }
+            m->frame = f;
+            if (f != 0xFFFFFFFFu && (m->kind == DM_A || m->kind == DM_TILE || m->dir >= 0)) {
+                nsteps++;
+            }
+            s += len;
+            if (*s == ',') {
+                s++;
+            }
+        }
+    }
+    if (cur >= nsteps || frame < steps[cur].frame) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    fm = gs != NULL ? *(u8 **)(gs + 0x20) : NULL;
+    if (fm == NULL || (sys = ov021_FIELDMAP_GetMmdlSys(fm)) == NULL || (me = ov010_FLDMMDL_SysSearchPlayer(sys)) == NULL) {
+        return;
+    }
+    m = &steps[cur];
+    ov010_FLDMMDL_GetGridNowPos(me, p);
+    if (!started) {
+        started = 1;
+        stuck_since = (int)frame;
+        last[0] = p[0];
+        last[2] = p[2];
+        if (m->kind == DM_WALK) {
+            tx = p[0] + ddx[m->dir] * m->n;
+            tz = p[2] + ddz[m->dir] * m->n;
+        } else {
+            tx = m->x;
+            tz = m->z;
+        }
+    }
+    if (p[0] != last[0] || p[2] != last[2]) {
+        last[0] = p[0];
+        last[2] = p[2];
+        stuck_since = (int)frame;
+    }
+    switch (m->kind) {
+    case DM_A:
+        eidos_ui_press(BW_KEY_A, 3);
+        break;
+    case DM_FACE:
+        if ((int)ov010_FLDMMDL_GetDirDisp(me) != m->dir) {
+            if ((int)frame - stuck_since > 60) {
+                break;
+            }
+            if (((int)frame - stuck_since) % 8 == 0) {
+                eidos_ui_press(keys[m->dir], 2);    /* a tap turns in place */
+            }
+            return;
+        }
+        break;
+    default: {
+        int dx = tx - p[0], dz = tz - p[2], d;
+
+        if ((dx != 0 || dz != 0) && (int)frame - stuck_since <= 60) {
+            d = abs(dx) >= abs(dz) ? (dx > 0 ? 3 : 2) : (dz > 0 ? 1 : 0);
+            eidos_ui_press(keys[d], 2);
+            return;
+        }
+        break;
+    }
+    }
+    fprintf(stderr, "eidos: debug move %d at %u: tile (%d, %d) facing %d%s\n", cur, (unsigned)frame, p[0], p[2],
+            (int)ov010_FLDMMDL_GetDirDisp(me),
+            (m->kind == DM_WALK || m->kind == DM_TILE) && (p[0] != tx || p[2] != tz) ? ", blocked"
+            : m->kind == DM_FACE && (int)ov010_FLDMMDL_GetDirDisp(me) != m->dir ? ", could not turn" : "");
+    cur++;
+    started = 0;
 }
 
 /* EIDOS_DEBUG_BATTLE="wild SPECIES LEVEL" or "trainer ID" (the spot
@@ -1266,6 +1610,9 @@ void eidos_ui_game_frame(void)
         debug_battle();
         debug_script();
         debug_open();
+        debug_ltrade();
+        debug_seek(bw_input_frame_number());
+        debug_move(bw_input_frame_number());
     }
 
     for (i = 0; i < n; i++) {

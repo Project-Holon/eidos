@@ -1529,6 +1529,9 @@ void ui_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name
     }
     nx = ui_text(c, x + 40, y + 1, name, UI_WHITE, SHADOW_DARK, UI_FONT_LARGE, 1);
     ui_gender(c, nx + 3, y + 1, gender, UI_FONT_LARGE);
+    if (level <= 0) {
+        return;                         /* an Egg: no level and no HP      */
+    }
     {
         int n = level, i = 0, j;
         char t[12];

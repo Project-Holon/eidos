@@ -49,6 +49,7 @@
 #include "input.h"
 #include "choice_list.h"
 #include "textbox.h"
+#include "overlay.h"
 
 #define WEAK __attribute__((weak))
 
@@ -59,8 +60,6 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldN
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
 static int power_card(EidosUiCtx *c, const struct FieldNow *f);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
-static void season_card(EidosUiCtx *c, const struct FieldNow *f);
-static int season_shown(const struct FieldNow *f);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -899,7 +898,8 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         const PartyLine *l = &party[i];
         EidosUiRect r;
         int st;
-        const UiImage *ic = l->egg ? NULL : ui_mon_icon((u16)l->species, (u8)l->form, 0);
+        const UiImage *ic = l->egg ? ui_mon_icon(l->species == 490 ? 651 : 650, 0, 0)
+                                    : ui_mon_icon((u16)l->species, (u8)l->form, 0);
 
         r.x = px;
         r.y = py + 24 + i * 32;
@@ -1172,12 +1172,25 @@ extern int ov021_SCRCMD_MSGWIN_YesNoEventMain(void *ev, int *seq, void *work) __
 
 /* Finds the script's open list and its window (overlay 21's FieldMenuFunc:
  * bmpWin +0x08, menuList +0x10). */
+extern int bw_ui_field_menu_now(const void **menuList, const void **bmpWin) WEAK;
+
 static int choices_now(const FieldNow *f, u8 **list, u8 **win)
 {
     u8 *ev, *work, *fmf = NULL;
     uintptr_t func;
 
     *list = *win = NULL;
+    /* any list the field runs (stubs/ov/patch_ov021_field_msgbg.c): the
+     * Union Room's talk menu, the Battle Subway's, the scripts' */
+    if (bw_ui_field_menu_now != NULL) {
+        const void *l, *w;
+
+        if (bw_ui_field_menu_now(&l, &w) && w != NULL && (rd16((const u8 *)w) & 0x7FFFu) == 0x7FB2u) {
+            *list = (u8 *)l;
+            *win = (u8 *)w;
+            return 1;
+        }
+    }
     if (GAMESYSTEM_GetEvent == NULL) {
         return 0;
     }
@@ -1221,6 +1234,23 @@ extern void bw_ui_text_set_own(int on) WEAK;
  * out of the screen.  The DS screen stands at the window's height,
  * centred.  Returns 1 while a window is open.
  */
+/* For before-and-after pictures only: EIDOS_UI_PLAIN_FIELD leaves the
+ * game's own windows, lists, banners and lower cards on the field. */
+static int plain_field(void)
+{
+    static int plain = -1;
+
+    if (plain < 0) {
+        plain = getenv("EIDOS_UI_PLAIN_FIELD") != NULL;
+    }
+    return plain;
+}
+
+extern int ov012_UNION_MAIN_IsIdle(void *gameSystem) WEAK;
+
+/* A text box of the field is up this frame (field_text drew it). */
+static int g_text_up;
+
 static int field_text(EidosUiCtx *c, const FieldNow *f)
 {
     u8 *list = NULL, *win = NULL;
@@ -1232,13 +1262,13 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     }
     (void)choices_now(f, &list, &win);
     hide = ui_textbox_field(c, f->fm, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s, win);
+    if (win != NULL && win[2] < 4) {
+        hide |= 1u << win[2];           /* an open list's window: ours shows */
+    }
     item_card(c, f, hide != 0);
-    season_card(c, f);
+    /* the season's scoreboard stays the game's own (the player prefers it) */
     if (banner_shown(f)) {
         hide |= 0x8u | 0x10u;           /* the game's banner: BG3, its letters */
-    }
-    if (season_shown(f)) {
-        hide |= 0x8u;                   /* the game's scoreboard: BG3        */
     }
     if (g2d_hw_hide_main_bgs != NULL) {
         g2d_hw_hide_main_bgs(hide);
@@ -1351,51 +1381,6 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
     ui_text(c, x + 38, y + 20, pocket, 0x008BACu, 0x313131u, UI_FONT_SMALL, 1);
 }
 
-/*
- * The season card (mock-up "season"): when a new season starts the game
- * shows it on its electric scoreboard (ov020 el_scoreboard.c, an event the
- * field's fade runs).  While that event runs, a card in the middle shows
- * the season in the game's words (a/0/0/2 file 0, 30 + season) with
- * Deerling in that season's form.
- *
- * ElScoreboardWork (ov020/el_scoreboard_types.h): targetSeason 0x14.
- */
-extern int ov020_EL_SCOREBOARD_EventMain(void *ev, int *seq, void *work) WEAK;
-
-static int season_shown(const FieldNow *f)
-{
-    const u8 *ev = GAMESYSTEM_GetEvent != NULL ? (const u8 *)GAMESYSTEM_GetEvent(f->gs) : NULL;
-
-    return ev != NULL && ov020_EL_SCOREBOARD_EventMain != NULL
-           && (uintptr_t)rd32(ev + 4) == (uintptr_t)ov020_EL_SCOREBOARD_EventMain;
-}
-
-static void season_card(EidosUiCtx *c, const FieldNow *f)
-{
-    const u8 *ev = GAMESYSTEM_GetEvent != NULL ? (const u8 *)GAMESYSTEM_GetEvent(f->gs) : NULL;
-    const u8 *work;
-    int cw = c->canvas->w, ch = c->canvas->h, mw = 220, mh = 150, x, y, season, k = 2;
-    const UiImage *ic;
-    const char *name;
-
-    if (ev == NULL || ov020_EL_SCOREBOARD_EventMain == NULL
-        || (uintptr_t)rd32(ev + 4) != (uintptr_t)ov020_EL_SCOREBOARD_EventMain || (work = rdp(ev + 0x0C)) == NULL) {
-        return;
-    }
-    season = work[0x14] & 3;
-    name = ui_game_text(2, 0, 30u + (u32)season);
-    x = (cw - mw) / 2;
-    y = (ch - mh) / 2;
-    ui_panel(c, x, y, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
-    ic = ui_mon_icon(585, (u8)season, 0);
-    if (ic != NULL) {
-        ui_image(c, x + (mw - ic->w * 3) / 2, y + 2, ic, 3);
-    }
-    ui_text(c, x + (mw - ui_text_w(name, UI_FONT_LARGE) * k) / 2, y + 102, name, UI_WHITE, 0x313131u,
-            UI_FONT_LARGE, k);
-    ui_fill(c, x + 24, y + mh - 8, mw - 48, 1, 0x008BACu, 255);
-}
-
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
 {
     u8 *list, *win;
@@ -1500,7 +1485,7 @@ static int lower_sheet(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch,
     r.w = w;
     r.h = h;
     (void)eidos_ui_hit(r);
-    if (in->mouse.down && eidos_ui_mouse_pos(&mx, &my) && mx >= px && my >= py
+    if (eidos_ui_held() && eidos_ui_mouse_pos(&mx, &my) && mx >= px && my >= py
         && mx < px + w && my < py + h) {
         eidos_ui_tap(mx - px, my - py, 2);
     }
@@ -1761,7 +1746,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     u32 zone = 0, t3[3] = { 0, 0, 0 };
     int have_time = 0, comm = 0, last_cmd = 0;
     EidosUiRect bar;
-    int st_bar, x, open_menu = 0, use_item = 0, st;
+    int st_bar, x, open_menu = 0, use_item = 0, st, choosing;
     int wide = cw >= 400;
     EidosUiRect saved_clip;
 
@@ -1847,8 +1832,12 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* While the game's place-name banner shows (it names the same place)
      * or an event runs, the bar slides up out of the way and comes back
      * after. */
-    field_text(c, &f);
-    if (field_choices(c, in, &f)) {
+    g_text_up = 0;
+    if (!plain_field()) {
+        g_text_up = field_text(c, &f);
+    }
+    choosing = !plain_field() && field_choices(c, in, &f);
+    if (choosing) {
         /* a choice list is open: its own clicks (field_choices) */
     } else if (GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0) {
         /* An event (a talk, a scene): the game's speech bubbles go on
@@ -1868,13 +1857,16 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
      * the bar is simply there, fading in with the menu fading out. */
     if (in->frame - g_menu_last_frame <= 90u && !banner_shown(&f)) {
         g_bar_slide = 0;
-    } else if (banner_shown(&f) || (GAMESYSTEM_IsEventActive != NULL
-                                    && GAMESYSTEM_IsEventActive(f.gs) != 0)) {
+    } else if (banner_shown(&f) || choosing || g_text_up || (GAMESYSTEM_IsEventActive != NULL
+                                               && GAMESYSTEM_IsEventActive(f.gs) != 0)) {
+        /* a list or a text box (the Union Room's talks run with no
+         * event; its battle rule card stands at the top of the screen):
+         * the bar makes room for them too */
         g_bar_slide = g_bar_slide + 3 < bh + 1 ? g_bar_slide + 3 : bh + 1;
     } else {
         g_bar_slide = g_bar_slide > 2 ? g_bar_slide - 2 : 0;
     }
-    if (banner_shown(&f)) {
+    if (banner_shown(&f) && !plain_field()) {
         place_banner(c, &f);
     }
     if (g_bar_slide >= bh + 1) {
@@ -2053,8 +2045,12 @@ static int lower_match(void)
         return 0;
     }
     logf_scene("field-lower");
-    if (ui_textbox_field_active(f.fm) || f.mode == 9) {
-        eidos_ui_want_ds_scale();
+    {
+        u8 *l, *w;
+
+        if (ui_textbox_field_active(f.fm) || f.mode == 9 || choices_now(&f, &l, &w)) {
+            eidos_ui_want_ds_scale();
+        }
     }
     return 1;
 }
@@ -2073,7 +2069,22 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     /* the Union Room and the Entralink: their own cards; the other lower
      * screens: the game's screen as a sheet */
-    own = (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
+    {
+        u8 *l, *w;
+
+        if (f.mode == 2 && choices_now(&f, &l, &w)) {
+            /* a list is open (the talk menu, a YES / NO): the card would
+             * cover it (field_run drew the list) */
+            return;
+        }
+        if (f.mode == 2 && (g_text_up || (ov012_UNION_MAIN_IsIdle != NULL && bw_overlay_is_loaded(12)
+                                           && ov012_UNION_MAIN_IsIdle(f.gs) == 0))) {
+            /* a talk runs (a request, with the battle's rule card the game
+             * draws on its screen): the card steps aside until it ends */
+            return;
+        }
+    }
+    own = plain_field() ? 0 : (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
           || (f.mode == 9 && power_card(c, &f));
     if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
@@ -2296,6 +2307,21 @@ static int union_wrap(const char *s, int w, char lines[][96], int max)
     return n;
 }
 
+/* The cards' window, as the interface's windows (the trade, the Spin
+ * Trade's lobby): navy, cut corners, the title in light blue. */
+#define CARD_BODY   0x060E1Au
+#define CARD_EDGE   0x103C5Au
+#define CARD_TITLE  0x62BEFFu
+#define CARD_HL     0x008BACu
+#define CARD_TILE   0x0B1E34u
+
+static void card_window(EidosUiCtx *c, int x, int y, int w, int h, const char *title)
+{
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 10, CARD_BODY, CARD_EDGE, 240);
+    ui_text(c, x + 12, y + 6, title, CARD_TITLE, 0x313131u, UI_FONT_SMALL, 1);
+    ui_fill(c, x + 10, y + 19, w - 20, 1, CARD_EDGE, 255);
+}
+
 static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
 {
     static const char *const names[5] = { "Talk", "Battle", "Trade", "Draw", "Spin" };
@@ -2359,20 +2385,18 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
         chh += 11 + 16 * (nwrap[i] > 0 ? nwrap[i] : 1) + 4;
     }
     chh += 2;
-    ui_panel(c, x0, top, pw, chh, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 230);
-    ui_text(c, x0 + 10, top + 4, "UNION ROOM", UI_LIGHT, 0x313131u, UI_FONT_SMALL, 1);
-    ui_fill(c, x0 + 9, top + 17, pw - 18, 1, UI_EDGE, 255);
+    card_window(c, x0, top, pw, chh, "UNION ROOM");
     {
         /* Hide: the card goes away so the room shows */
         int hx = x0 + pw - 6;
-        int st = small_button(c, &hx, top + 2, "Hide", 13, NULL);
+        int st = small_button(c, &hx, top + 4, "Hide", 13, NULL);
 
         if (st & EIDOS_UI_CLICK) {
             g_union_shown = 0;
             g_union_keys = 0;
         }
     }
-    y = top + 21;
+    y = top + 23;
     for (i = nl - 1; i >= 0; i--) {
         const u8 *e = ent[i];
         char name[24];
@@ -2423,16 +2447,19 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
             int lit = i == g_union_pressed && appeal != 0;
             int focus = g_union_keys && i == g_union_focus;
             int tx = x0 + i * (tile + 3), ty = by - (lit ? 1 : 0), st, rr;
-            u32 col = lit ? 0x008BACu : UI_EDGE2;
+            u32 col = lit || focus ? CARD_HL : CARD_EDGE;
 
             r.x = tx;
             r.y = by;
             r.w = tile;
             r.h = 34;
             st = eidos_ui_hit(r);
+            if (st & EIDOS_UI_HOVER) {
+                col = CARD_HL;
+            }
             ui_panel(c, tx, ty, tile, 34, UI_CUT_TL | UI_CUT_BR, 5,
-                     lit ? 0x05343Eu : ((st & EIDOS_UI_HOVER) || focus) ? UI_BODY2 : UI_BODY,
-                     lit ? 0x008BACu : focus ? UI_WHITE : UI_EDGE, 240);
+                     lit ? 0x05343Eu : ((st & EIDOS_UI_HOVER) || focus) ? 0x0E2A44u : CARD_TILE,
+                     lit ? CARD_HL : ((st & EIDOS_UI_HOVER) || focus) ? UI_WHITE : CARD_EDGE, 245);
             for (rr = 3; rr < 34 - 3; rr++) {
                 int left = 3 + (rr < 7 ? 7 - rr : 0);
 
@@ -2517,13 +2544,11 @@ static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in)
         }
         return 1;
     }
-    ui_panel(c, x0, top, pw, ph, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 230);
-    ui_text(c, x0 + 10, top + 4, "OWN WORLD", UI_LIGHT, 0x313131u, UI_FONT_SMALL, 1);
-    ui_fill(c, x0 + 9, top + 17, pw - 18, 1, UI_EDGE, 255);
+    card_window(c, x0, top, pw, ph, "OWN WORLD");
     {
         int hx = x0 + pw - 6;
 
-        st = small_button(c, &hx, top + 2, "Hide", 13, NULL);
+        st = small_button(c, &hx, top + 4, "Hide", 13, NULL);
         if (st & EIDOS_UI_CLICK) {
             g_entra_shown = 0;
         }
@@ -2550,7 +2575,7 @@ static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in)
     r.w = ENTRA_DW;
     r.h = ENTRA_DH;
     st = eidos_ui_hit(r);
-    if (in->mouse.down && (st & EIDOS_UI_HOVER)) {
+    if (eidos_ui_held() && (st & EIDOS_UI_HOVER)) {
         int mx, my;
 
         if (eidos_ui_mouse_pos(&mx, &my)) {
@@ -2651,7 +2676,7 @@ static void lower_only_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame 
     view->world_screen = 1;
     view->ds_only = 1;
     view->lower_only = 1;
-    if (in->mouse.down && eidos_ui_mouse_pos(&mx, &my) && mx >= px && mx < px + sw
+    if (eidos_ui_held() && eidos_ui_mouse_pos(&mx, &my) && mx >= px && mx < px + sw
         && my >= 0 && my < ch) {
         eidos_ui_tap((int)((float)(mx - px) / k), (int)((float)my / k), 2);
     }

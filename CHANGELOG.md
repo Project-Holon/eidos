@@ -5,9 +5,28 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.0
 
+### One-Screen Mode & UI
+- **Text Boxes**: Speech, narration and system messages are redrawn as one-screen boxes in the game's font; lists, YES / NO and the field's menus (Union Room talk, Battle Subway) are our own lists.
+- **New Screens**: Pokédex search, catching and nicknaming, town map and Fly, move relearner, Egg hatching, in-game trades, Xtransceiver calls (up to four people), Hall of Fame and credits, trainer card, Entree Forest and Pass Powers, Survey Radar, PC box list and marking.
+- **Field Windows**: Money, items received and place names have their own cards; the season card stays the game's.
+- **Battle**: Ability pop-ups and the trainer intro are drawn as plates.
+- **Union Room & Battle Subway**: Trading (offers, boxes, feelings, summaries), battles (rule card, Pokémon entry, VS screen), drawing, Spin Trade (lobby, Egg list, spinner) and the Battle Subway's Pokémon entry list are one-screen; the Union Room card has the new window style.
+
+### Link Play
+- **Union Room over the internet**: Two eidos players meet in the Union Room through the relay, with no code to type, and can trade and battle as on two DS consoles.
+
+### Phones
+- **Android and iOS**: First builds of eidos for Android (APK) and iPhone (IPA, unsigned: install it with a sideloading tool), one-screen only.
+
+### Saves
+- **First Save**: A New Game writes no file until you save; the save goes to its own slot.
+- **Save Warning**: A red warning shows when saves keep failing, and fades after a few seconds.
+
 ### Languages
 - **Every European cartridge plays through battles**: Fixed the move-forget screen crashing (and other screens' windows breaking) on French, German, Italian, Spanish and White cartridges.
 - **Interface in the game's language**: The one-screen interface's labels, buttons and hints follow the cartridge's language (French, German, Italian, Spanish), with the games' own words.
+- **German Black**: Fixed a crash when loading a save in some places (the Nimbasa City Pokémon Center).
+- **Accented letters**: Ö, Î, Â and other accented capitals no longer show as Greek letters in the small font.
 
 ### Graphics & Performance
 - **GPU drawing**: The DS screens are now composed on the graphics card, including the 3D at full resolution, about 1 to 1.5 ms less CPU per frame (#5). `Settings > Display > GPU drawing` turns it off.
@@ -18,6 +37,10 @@ Each release's notes on GitHub start with its section here
 
 ### Spot editor
 - Drawn with the GPU: about 11 ms a frame at 1440p (was 28), dragging a spot about 20 ms a step (was 65).
+- Shows which battles are double, and previews the trainer's own battle.
+
+### Bug Fixes
+- Fixed crashes when a wild battle opens, in in-game trades, in the Union Room and when the Spin Trade starts.
 
 ## 0.1.9
 

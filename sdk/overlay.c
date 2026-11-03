@@ -46,6 +46,7 @@
 #include "port.h"
 #include "fs.h"
 #include "overlay.h"
+#include "langmap.h"
 
 #define BW_OVL_MAX 1024u
 
@@ -308,6 +309,9 @@ BOOL FS_LoadOverlayImage(BwOverlayInfo *info)
         g_image_hook(d);
     }
     g_loaded[d->id] = 1;
+    /* another cartridge: words that point into a shared window follow
+     * the overlay now there (sdk/langmap.h) */
+    bw_lang_overlay_loaded(d->id);
     return TRUE;
 }
 

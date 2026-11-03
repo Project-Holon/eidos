@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov021/field_msgbg.c FIELD_MSGBG_CreateWindow FIELD_MSGBG_DeleteWindow FIELD_MSGBG_CreateSysFrameWindow FIELD_MSGBG_DeleteSysFrameWindow
+ * patches: src/game/ov021/field_msgbg.c FIELD_MSGBG_CreateWindow FIELD_MSGBG_DeleteWindow FIELD_MSGBG_CreateSysFrameWindow FIELD_MSGBG_DeleteSysFrameWindow FIELD_MSGBG_MenuFuncMain
  *
  * The field's message and system windows, known to the one-screen text
  * boxes (engine/ui/textbox.c, sdk/ui_text.c).
@@ -12,7 +12,14 @@
  * (bw_ui_field_win_remove), so the interface can draw every open window
  * as its own text box.
  *
+ * FIELD_MSGBG_MenuFuncMain runs an open list every frame (every list the
+ * field opens: a script's, the Union Room's talk menu, the Battle Subway's,
+ * the yes/no); it also tells the port which list is open
+ * (bw_ui_field_menu_seen), so the interface draws it as its own.
+ *
  * symbols:
+ *   BMP_MENULIST_Main  0x020200CC  thumb
+ *   FIELD_MSGBG_IsPrintQueFinished  0x0219049C  thumb  ov021
  *   BMP_WIN_Create  0x020450F0  arm
  *   BMP_WIN_Delete  0x020452E8  arm
  *   BMP_WIN_GetBmp  0x02045770  arm
@@ -93,4 +100,33 @@ void FIELD_MSGBG_DeleteSysFrameWindow(struct BmpWin *bmpWin)
     bw_ui_field_win_remove(bmpWin);
     FIELD_MSGBG_ClearSysWindowFrame(bmpWin);
     BMP_WIN_Delete(bmpWin);
+}
+
+/* FieldMenuFunc (src/game/ov021/field_msgbg_types.h): msgBg 0x00, msgPrint
+ * 0x04, bmpWin 0x08, items 0x0C, menuList 0x10. */
+typedef struct FieldMenuFunc {
+    void *msgBg;
+    void *msgPrint;
+    struct BmpWin *bmpWin;
+    void *items;
+    void *menuList;
+} FieldMenuFunc;
+
+extern void bw_ui_field_menu_seen(const void *menuList, const void *bmpWin);
+int FIELD_MSGBG_IsPrintQueFinished(void *msgBg);
+int BMP_MENULIST_Main(void *menuList);
+
+int FIELD_MSGBG_MenuFuncMain(FieldMenuFunc *menu)
+{
+    int result;
+
+    bw_ui_field_menu_seen(menu->menuList, menu->bmpWin);
+    if (FIELD_MSGBG_IsPrintQueFinished(menu->msgBg) == 0)
+        return -1;
+    result = BMP_MENULIST_Main(menu->menuList);
+    if (result == -1)
+        return -1;
+    if (result == -2)
+        return -2;
+    return result;
 }

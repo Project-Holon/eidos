@@ -6,7 +6,10 @@ aletheia's layout/langmap/<target>.tsv maps each run of the English Black
 image to the place it has in another cartridge (Pokemon White, and the
 French, German, Italian and Spanish Black and White): an English address A
 in [english_start, english_end) of a region is A - english_start +
-target_start there.  sdk/langmap.c lays the other cartridge's ARM9 and
+target_start there.  The owner column names the region whose run a row is
+(a reference row: another overlay's object this region points at; '?' when
+no region owns it), and word_pairs.tsv lists single pointer words no run
+covers (English value, cartridge value, per region).  sdk/langmap.c lays the other cartridge's ARM9 and
 overlay images out as English Black's with these rows, so every address
 the port and the matched code know stays right.  Addresses only: no bytes
 of any game.
@@ -35,6 +38,12 @@ def region_id(name):
     raise SystemExit('langmap_c.py: unknown region %r' % name)
 
 
+def owner_id(name):
+    if name in ('', '?'):
+        return -2
+    return region_id(name)
+
+
 def main(argv):
     if len(argv) != 3:
         sys.exit(__doc__)
@@ -49,15 +58,33 @@ def main(argv):
             f = line.rstrip('\n').split('\t')
             if len(f) < 4 or f[0] == 'region':
                 continue
-            rows.append((region_id(f[0]), int(f[1], 16), int(f[2], 16), int(f[3], 16)))
+            owner = owner_id(f[4]) if len(f) > 4 else region_id(f[0])
+            rows.append((region_id(f[0]), int(f[1], 16), int(f[2], 16), int(f[3], 16), owner))
         rows.sort()
         name = 'lm_' + target
         lines.append('static const BwLangRow %s[%d] = {' % (name, len(rows)))
         for r in rows:
-            lines.append('    { %d, 0x%08Xu, 0x%08Xu, 0x%08Xu },' % r)
+            lines.append('    { %d, 0x%08Xu, 0x%08Xu, 0x%08Xu, %d },' % r)
         lines.append('};')
         lines.append('')
-        table.append('    { "%s", "%s", %s, %d },' % (code, target, name, len(rows)))
+        pairs = []
+        wp = os.path.join(root, 'layout', 'langmap', 'word_pairs.tsv')
+        if os.path.exists(wp):
+            for line in open(wp, encoding='utf-8'):
+                f = line.rstrip(chr(10)).split(chr(9))
+                if len(f) < 4 or f[0] != target:
+                    continue
+                pairs.append((region_id(f[1]), int(f[2], 16), int(f[3], 16)))
+        pairs.sort()
+        pname = 'lp_' + target
+        lines.append('static const BwLangPair %s[%d] = {' % (pname, max(len(pairs), 1)))
+        for q in pairs:
+            lines.append('    { %d, 0x%08Xu, 0x%08Xu },' % q)
+        if not pairs:
+            lines.append('    { -3, 0u, 0u },')
+        lines.append('};')
+        lines.append('')
+        table.append('    { "%s", "%s", %s, %d, %s, %d },' % (code, target, name, len(rows), pname, len(pairs)))
     lines.append('static const BwLangMap bw_langmaps[] = {')
     lines.extend(table)
     lines.append('};')
