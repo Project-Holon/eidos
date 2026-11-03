@@ -60,6 +60,7 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldN
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
 static int power_card(EidosUiCtx *c, const struct FieldNow *f);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
+static int g_item_show;
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1136,7 +1137,7 @@ static int field_match(void)
 
         logf_scene("field");
         /* the game's text at the game's own size */
-        if (ui_textbox_field_active(f.fm) || choices_now(&f, &list, &win)) {
+        if (ui_textbox_field_active(f.fm) || choices_now(&f, &list, &win) || g_item_show) {
             eidos_ui_want_ds_scale();
         }
         return 1;
@@ -1301,8 +1302,8 @@ typedef struct ItemCard {
 static ItemCard g_item_card;
 static u32 g_item_seen;     /* the item serial last frame                 */
 static u32 g_item_age;      /* frames since it changed                    */
-static int g_item_show;     /* this message is the item's                 */
 static int g_item_text;     /* a message was up last frame                */
+static int g_item_dialog_up;/* the item dialog itself was opened          */
 
 typedef struct ItemStr { u16 capacity, length; u32 magic; u16 chars[64]; } ItemStr;
 
@@ -1341,21 +1342,22 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
     if (serial != g_item_seen) {
         g_item_seen = serial;
         g_item_age = 0;
-        g_item_show = 1;
+        g_item_show = (item != 0);
+        g_item_dialog_up = 0;
     } else if (g_item_age < 100000u) {
         g_item_age++;
     }
-    if (text_up && !g_item_text) {
-        g_item_show = g_item_age < 240u;
+    if (text_up) {
+        g_item_dialog_up = 1;
+    } else if (g_item_dialog_up) {
+        g_item_show = 0;
+        g_item_dialog_up = 0;
     }
-    if (g_item_text && !text_up) {
+    if (!text_up && g_item_age >= 360u) {
         g_item_show = 0;
     }
     g_item_text = text_up;
     if (!g_item_show || item == 0 || item > 0x400) {
-        return;
-    }
-    if (!text_up && g_item_age >= 240u) {
         return;
     }
     if (g_item_card.serial != serial) {
@@ -1926,6 +1928,23 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int clock_left = cw / 2 - tw / 2;
     int clock_right = cw / 2 + tw / 2;
 
+    /* right of clock: Menu (X) */
+    int menu_end = clock_right;
+    {
+        int kw = ui_keycap_w("X");
+        int tmw = ui_text_w("Menu", UI_FONT_SMALL);
+        int menu_w = tmw + 10 + (kw > 0 ? (kw < 13 ? 13 : kw) + 3 : 0);
+        int xm = clock_right + 6 + menu_w;
+        st = small_button(c, &xm, 0, "Menu", bh, "X");
+        if (st & EIDOS_UI_CLICK) {
+            open_menu = 1;
+        }
+        if (st & EIDOS_UI_HOVER) {
+            st_bar = 0;
+        }
+        menu_end = clock_right + 6 + menu_w;
+    }
+
     /* the right group, from the right edge: battery and wireless/IR */
     x = cw - 6 - c->safe_r;     /* clear of a phone's notch and corners */
     battery(c, x - 17, 3);
@@ -1934,16 +1953,17 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         static const char *const names[3] = { "WIRELESS", "ONLINE", "IR" };
         int lit[3];
         int i;
+        int show_text = wide && (x - 150 > menu_end + 12);
 
         lit[0] = comm;
         lit[1] = comm && last_cmd == 5;
         lit[2] = comm && last_cmd == 1;
         for (i = 0; i < 3; i++) {
-            int ntw = wide ? ui_text_w(names[i], UI_FONT_SMALL) : 0;
+            int ntw = show_text ? ui_text_w(names[i], UI_FONT_SMALL) : 0;
             int ty = ui_text_y(bh, UI_FONT_SMALL);
 
             x -= ntw;
-            if (wide) {
+            if (show_text) {
                 ui_text(c, x, ty, names[i], lit[i] ? UI_WHITE : UI_EDGE2, -1, UI_FONT_SMALL, 1);
             }
             x -= 7;
@@ -1952,52 +1972,45 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
-    /* right of clock: Menu (X) */
-    {
-        int kw = ui_keycap_w("X");
-        int tmw = ui_text_w("Menu", UI_FONT_SMALL);
-        int menu_w = tmw + 10 + (kw > 0 ? (kw < 13 ? 13 : kw) + 3 : 0);
-        int xm = clock_right + 4 + menu_w;
-        st = small_button(c, &xm, 0, "Menu", bh, "X");
-        if (st & EIDOS_UI_CLICK) {
-            open_menu = 1;
-        }
-        if (st & EIDOS_UI_HOVER) {
-            st_bar = 0;
-        }
-    }
-
     /* left of clock: Item (Y) and C-GEAR */
-    {
-        int xl = clock_left - 4;
-        st = small_button(c, &xl, 0, "Item", bh, "Y");
+    int xl = clock_left - 6;
+    st = small_button(c, &xl, 0, "Item", bh, "Y");
+    if (st & EIDOS_UI_CLICK) {
+        use_item = 1;
+    }
+    if (st & EIDOS_UI_HOVER) {
+        st_bar = 0;
+    }
+    if (f.mode == 0 || f.mode == 8) {           /* this save has a C-Gear */
+        st = small_button(c, &xl, 0, "C-GEAR", bh, NULL);
         if (st & EIDOS_UI_CLICK) {
-            use_item = 1;
-        }
-        if (st & EIDOS_UI_HOVER) {
+            g_show_cgear = g_show_cgear ? 0 : 1;
             st_bar = 0;
-        }
-        if (f.mode == 0 || f.mode == 8) {           /* this save has a C-Gear */
-            st = small_button(c, &xl, 0, "C-GEAR", bh, NULL);
-            if (st & EIDOS_UI_CLICK) {
-                g_show_cgear = g_show_cgear ? 0 : 1;
-                st_bar = 0;
-            } else if (st & EIDOS_UI_HOVER) {
-                st_bar = 0;
-            }
+        } else if (st & EIDOS_UI_HOVER) {
+            st_bar = 0;
         }
     }
 
     /* the left: the cursor mark and the place */
     {
         int i;
+        int place_x = 14 + c->safe_l;
+        int avail_w = xl - 6 - place_x;
 
         for (i = 0; i < 4; i++) {
             ui_fill(c, 5 + c->safe_l + i, 4 + i, 1, 9 - 2 * i, UI_CYAN, 255);
         }
-        ui_text(c, 14 + c->safe_l, ui_text_y(bh, UI_FONT_LARGE), place, UI_WHITE, UI_EDGE,
-                UI_FONT_LARGE, 1);
+        if (avail_w > 16 && place[0] != '\0') {
+            EidosUiRect prev_c, text_c;
+            text_c.x = place_x; text_c.y = 0; text_c.w = avail_w; text_c.h = bh;
+            ui_push(c, 0, 0, &prev_c);
+            c->clip = text_c;
+            ui_text(c, place_x, ui_text_y(bh, UI_FONT_LARGE), place, UI_WHITE, UI_EDGE,
+                    UI_FONT_LARGE, 1);
+            ui_pop(c, 0, 0, &prev_c);
+        }
     }
+
     bar_trapezoid(c, cw / 2, tw, bh - 1, st_bar & EIDOS_UI_HOVER);
     ui_text(c, cw / 2 - ui_text_w(clock, UI_FONT_LARGE) / 2,
             ui_text_y(bh - 1, UI_FONT_LARGE), clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
@@ -2031,6 +2044,8 @@ static void field_reset(void)
     g_show_cgear = 0;
     g_bar_slide = BAR_HIDDEN;
     g_stick.on = 0;
+    g_item_show = 0;
+    g_item_dialog_up = 0;
 }
 
 static const EidosUiRecipe recipe_field = {

@@ -558,6 +558,20 @@ static void pending_forget(int region)
     g_npending = n;
 }
 
+/* A word no run covers, listed on its own (word_pairs.tsv). */
+static int pair_to_english(u32 word, int region, u32 *out)
+{
+    u32 i;
+
+    for (i = 0; i < g_map->npairs; i++) {
+        if (g_map->pairs[i].region == region && g_map->pairs[i].tgt == word) {
+            *out = g_map->pairs[i].eng;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void bw_lang_overlay_loaded(u32 id)
 {
     u32 i;
@@ -570,6 +584,9 @@ void bw_lang_overlay_loaded(u32 id)
         u32 e;
         u8 *p;
 
+        if (pair_to_english(q->tgt, q->region, &e)) {
+            continue;
+        }
         if ((q->region >= 0 && !bw_overlay_is_loaded((u32)q->region))
             || !ref_to_english(q->tgt, q->region, &e) || (p = (u8 *)bw_ds_ptr(q->addr)) == NULL) {
             continue;
@@ -579,22 +596,13 @@ void bw_lang_overlay_loaded(u32 id)
         p[2] = (u8)(e >> 16);
         p[3] = (u8)(e >> 24);
     }
-    (void)id;
-}
-
-/* A word no run covers, listed on its own (word_pairs.tsv). */
-static int pair_to_english(u32 word, int region, u32 *out)
-{
-    u32 i;
-
-
-    for (i = 0; i < g_map->npairs; i++) {
-        if (g_map->pairs[i].region == region && g_map->pairs[i].tgt == word) {
-            *out = g_map->pairs[i].eng;
-            return 1;
+    {
+        u32 *p = (u32 *)bw_ds_ptr(0x02171348u);
+        if (p != NULL && (*p == 0x021BB5ECu || *p == 0x021BB4E8u || *p == 0x021BB4C8u)) {
+            *p = 0x021BB5C8u;
         }
     }
-    return 0;
+    (void)id;
 }
 
 static void translate_words(u8 *img, u32 size, int region, u32 base)
@@ -613,7 +621,7 @@ static void translate_words(u8 *img, u32 size, int region, u32 base)
         /* an exact pair first: it can point into the region's own place
          * where the own run's shift is not the word's (strings laid out
          * otherwise) */
-        if (!(region >= 0 && to_english_in(v, region, &e)) && ref_ambiguous(v, region)) {
+        if (!pair_to_english(v, region, &e) && !(region >= 0 && to_english_in(v, region, &e)) && ref_ambiguous(v, region)) {
             pending_add(region, base + i, v);
         }
         if (pair_to_english(v, region, &e) || (region >= 0 && to_english_in(v, region, &e))
