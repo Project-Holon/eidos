@@ -10,6 +10,8 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "choice_list.h"
@@ -256,6 +258,40 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
         }
     }
 
+    /* Tests: EIDOS_DEBUG_PICK="Battle,Battles for two,Confirm" picks the
+     * next named entry when a list holding it opens, as a click would */
+    {
+        static int picked;
+        const char *want = getenv("EIDOS_DEBUG_PICK");
+
+        if (want != NULL && g_target == -1) {
+            const char *p = want;
+            char label[48];
+            int k, n = 0;
+
+            for (k = 0; k < picked && p != NULL; k++) {
+                p = strchr(p, ',');
+                p = p != NULL ? p + 1 : NULL;
+            }
+            while (p != NULL && p[n] != '\0' && p[n] != ',' && n < (int)sizeof label - 1) {
+                label[n] = p[n];
+                n++;
+            }
+            label[n] = '\0';
+            for (k = 0; n > 0 && k < count; k++) {
+                char t[48];
+
+                item_text(list, k, t, (int)sizeof t);
+                if (strcmp(t, label) == 0) {
+                    g_target = k;
+                    g_list = list;
+                    picked++;
+                    fprintf(stderr, "eidos: debug pick '%s' (row %d)\n", label, k);
+                    break;
+                }
+            }
+        }
+    }
     /* walk the game's cursor to the asked row, one key every other frame */
     if (g_target != -1 && g_list == list) {
         int target = g_target >= 0 ? g_target : -2 - g_target;

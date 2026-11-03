@@ -1825,10 +1825,11 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
      * the bar is simply there, fading in with the menu fading out. */
     if (in->frame - g_menu_last_frame <= 90u && !banner_shown(&f)) {
         g_bar_slide = 0;
-    } else if (banner_shown(&f) || choosing || (GAMESYSTEM_IsEventActive != NULL
+    } else if (banner_shown(&f) || choosing || g_text_up || (GAMESYSTEM_IsEventActive != NULL
                                                && GAMESYSTEM_IsEventActive(f.gs) != 0)) {
-        /* a list (the Union Room's talk menu runs with no event) can
-         * reach the top of the screen: the bar makes room for it too */
+        /* a list or a text box (the Union Room's talks run with no
+         * event; its battle rule card stands at the top of the screen):
+         * the bar makes room for them too */
         g_bar_slide = g_bar_slide + 3 < bh + 1 ? g_bar_slide + 3 : bh + 1;
     } else {
         g_bar_slide = g_bar_slide > 2 ? g_bar_slide - 2 : 0;
@@ -2274,6 +2275,21 @@ static int union_wrap(const char *s, int w, char lines[][96], int max)
     return n;
 }
 
+/* The cards' window, as the interface's windows (the trade, the Spin
+ * Trade's lobby): navy, cut corners, the title in light blue. */
+#define CARD_BODY   0x060E1Au
+#define CARD_EDGE   0x103C5Au
+#define CARD_TITLE  0x62BEFFu
+#define CARD_HL     0x008BACu
+#define CARD_TILE   0x0B1E34u
+
+static void card_window(EidosUiCtx *c, int x, int y, int w, int h, const char *title)
+{
+    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 10, CARD_BODY, CARD_EDGE, 240);
+    ui_text(c, x + 12, y + 6, title, CARD_TITLE, 0x313131u, UI_FONT_SMALL, 1);
+    ui_fill(c, x + 10, y + 19, w - 20, 1, CARD_EDGE, 255);
+}
+
 static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
 {
     static const char *const names[5] = { "Talk", "Battle", "Trade", "Draw", "Spin" };
@@ -2337,20 +2353,18 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
         chh += 11 + 16 * (nwrap[i] > 0 ? nwrap[i] : 1) + 4;
     }
     chh += 2;
-    ui_panel(c, x0, top, pw, chh, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 230);
-    ui_text(c, x0 + 10, top + 4, "UNION ROOM", UI_LIGHT, 0x313131u, UI_FONT_SMALL, 1);
-    ui_fill(c, x0 + 9, top + 17, pw - 18, 1, UI_EDGE, 255);
+    card_window(c, x0, top, pw, chh, "UNION ROOM");
     {
         /* Hide: the card goes away so the room shows */
         int hx = x0 + pw - 6;
-        int st = small_button(c, &hx, top + 2, "Hide", 13, NULL);
+        int st = small_button(c, &hx, top + 4, "Hide", 13, NULL);
 
         if (st & EIDOS_UI_CLICK) {
             g_union_shown = 0;
             g_union_keys = 0;
         }
     }
-    y = top + 21;
+    y = top + 23;
     for (i = nl - 1; i >= 0; i--) {
         const u8 *e = ent[i];
         char name[24];
@@ -2401,16 +2415,19 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
             int lit = i == g_union_pressed && appeal != 0;
             int focus = g_union_keys && i == g_union_focus;
             int tx = x0 + i * (tile + 3), ty = by - (lit ? 1 : 0), st, rr;
-            u32 col = lit ? 0x008BACu : UI_EDGE2;
+            u32 col = lit || focus ? CARD_HL : CARD_EDGE;
 
             r.x = tx;
             r.y = by;
             r.w = tile;
             r.h = 34;
             st = eidos_ui_hit(r);
+            if (st & EIDOS_UI_HOVER) {
+                col = CARD_HL;
+            }
             ui_panel(c, tx, ty, tile, 34, UI_CUT_TL | UI_CUT_BR, 5,
-                     lit ? 0x05343Eu : ((st & EIDOS_UI_HOVER) || focus) ? UI_BODY2 : UI_BODY,
-                     lit ? 0x008BACu : focus ? UI_WHITE : UI_EDGE, 240);
+                     lit ? 0x05343Eu : ((st & EIDOS_UI_HOVER) || focus) ? 0x0E2A44u : CARD_TILE,
+                     lit ? CARD_HL : ((st & EIDOS_UI_HOVER) || focus) ? UI_WHITE : CARD_EDGE, 245);
             for (rr = 3; rr < 34 - 3; rr++) {
                 int left = 3 + (rr < 7 ? 7 - rr : 0);
 
@@ -2495,13 +2512,11 @@ static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in)
         }
         return 1;
     }
-    ui_panel(c, x0, top, pw, ph, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 230);
-    ui_text(c, x0 + 10, top + 4, "OWN WORLD", UI_LIGHT, 0x313131u, UI_FONT_SMALL, 1);
-    ui_fill(c, x0 + 9, top + 17, pw - 18, 1, UI_EDGE, 255);
+    card_window(c, x0, top, pw, ph, "OWN WORLD");
     {
         int hx = x0 + pw - 6;
 
-        st = small_button(c, &hx, top + 2, "Hide", 13, NULL);
+        st = small_button(c, &hx, top + 4, "Hide", 13, NULL);
         if (st & EIDOS_UI_CLICK) {
             g_entra_shown = 0;
         }

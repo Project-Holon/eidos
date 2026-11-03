@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov021/talkmsgwin.c TALKMSGWIN_DrawEntry TALKMSGWIN_UpdateShape
+ * patches: src/game/ov021/talkmsgwin.c TALKMSGWIN_DrawEntry TALKMSGWIN_UpdateShape TALKMSGWIN_AddFrameWindow TALKMSGWIN_DeleteFrameWindow
  *
  * The field's talk balloons under the one-screen text boxes
  * (engine/ui/textbox.c, sdk/ui_text.c).
@@ -14,8 +14,15 @@
  * does what the game's does and also hands that point to the port
  * (bw_ui_talk_target), so the interface's balloon aims at the same place.
  *
+ * TALKMSGWIN_AddFrameWindow and TALKMSGWIN_DeleteFrameWindow make and
+ * remove a plain framed window of the talk system (the field's plain
+ * windows: the Union Room's talk and its battle rule card).  Each does what
+ * the game's does and also tells the port the window is there or gone
+ * (bw_ui_field_win_add), so the interface draws it as its own text box.
+ *
  * symbols:
  *   VEC_Subtract  0x0207CA00  arm
+ *   BMP_WIN_Delete  0x020452E8  arm
  *
  * The game's own records
  * ----------------------
@@ -63,6 +70,8 @@ enum {
 };
 
 extern int  bw_ui_text_own(void);
+extern void bw_ui_field_win_add(const void *bmpWin);
+extern void bw_ui_field_win_remove(const void *bmpWin);
 extern void bw_ui_talk_target(const void *win, int x, int y);
 
 void VEC_Subtract(const VecFx32 *a, const VecFx32 *b, VecFx32 *out);
@@ -121,4 +130,32 @@ u32 TALKMSGWIN_UpdateShape(TalkMsgWinSys *sys, TalkMsgWin *win)
         return 1;
     }
     return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Plain framed windows                                                */
+/* ------------------------------------------------------------------ */
+
+struct BmpWin;
+
+struct BmpWin *TALKMSGWIN_AddBmpWin(TalkMsgWinSys *sys, u8 x, u8 y, u8 width, u8 height);
+void TALKMSGWIN_DrawFrameByType(const void *style, struct BmpWin *bmpWin, u8 frameType, u32 tailSide);
+void TALKMSGWIN_ClearFrame(const void *style, struct BmpWin *bmpWin);
+int  BMP_WIN_Delete(struct BmpWin *bmpWin);
+
+struct BmpWin *TALKMSGWIN_AddFrameWindow(TalkMsgWinSys *sys, u8 x, u8 y, u8 width, u8 height, u32 frameType)
+{
+    struct BmpWin *bmpWin;
+
+    bmpWin = TALKMSGWIN_AddBmpWin(sys, x, y, width, height);
+    TALKMSGWIN_DrawFrameByType(sys->param, bmpWin, (u8)frameType, 0);
+    bw_ui_field_win_add(bmpWin);
+    return bmpWin;
+}
+
+void TALKMSGWIN_DeleteFrameWindow(TalkMsgWinSys *sys, struct BmpWin *bmpWin)
+{
+    bw_ui_field_win_remove(bmpWin);
+    TALKMSGWIN_ClearFrame(sys->param, bmpWin);
+    BMP_WIN_Delete(bmpWin);
 }
