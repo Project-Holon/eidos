@@ -92,8 +92,10 @@ int main(void)
     BW_CHECK_EQ("wild, other zone", strcmp(found(318, 0, 786, 718), "none"), 0);
     BW_CHECK_EQ("a trainer row is not a wild one", strcmp(found(7, 0, 11, 30), "T7.7") != 0, 1);
 
-    /* auto: from the player, facing the trainer (west of the player), no turn */
+    /* auto: from the player, facing the trainer (west of the player), no turn
+     * (the row as the table had it before anyone placed or checked it) */
     r->mode = BMAP_SPOT_AUTO;
+    r->ok = 0;
     bmap_spots_spec(r, tile_centre(11), tile_centre(30), 0x0000u, &sp);
     BW_CHECK_EQ("auto: the player's x", (long)sp.px, (long)tile_centre(11));
     BW_CHECK_EQ("auto: faces the trainer", sp.facing, 0x4000);
@@ -242,16 +244,22 @@ int main(void)
     BW_REQUIRE("the default row", bmap_spots_default("T7.7", &d) == 0);
     BW_CHECK_EQ("the default is untouched", d.sx == 100.0f && d.sz == 100.0f, 0);
 
-    /* the defaults: a built-in row that leaves the fields out */
-    BW_REQUIRE("a trainer's default row", bmap_spots_default("T7.1", &d) == 0);
+    /* the defaults: what a row that leaves the fields out takes (built
+     * here: the built-in table carries hand-placed rows) */
+    memset(&d, 0, sizeof d);
+    d.kind = 'T';
+    bmap_spot_defaults(&d);
     BW_CHECK_EQ("trainer: foe closer", (long)(d.foe_dz * 10.0f), (long)(BMAP_SPOT_FOE_DZ_TRAINER * 10.0f));
     BW_CHECK_EQ("trainer: own trainer up", (long)(d.trainer_own[1] * 10.0f), (long)(BMAP_SPOT_OWN_UP * 10.0f));
     BW_CHECK_EQ("trainer: intro side", (long)(d.intro.side * 10.0f), (long)(BMAP_SPOT_INTRO_SIDE * 10.0f));
     BW_CHECK_EQ("trainer: intro tilt", (long)(d.intro.tilt * 10.0f), (long)(BMAP_SPOT_INTRO_TILT * 10.0f));
-    BW_REQUIRE("a wild area's default row", bmap_spots_default("A317.1", &d) == 0);
+    memset(&d, 0, sizeof d);
+    d.kind = 'A';
+    bmap_spot_defaults(&d);
     BW_CHECK_EQ("wild: foe closer", (long)(d.foe_dz * 10.0f), (long)(BMAP_SPOT_FOE_DZ_WILD * 10.0f));
     BW_CHECK_EQ("wild: intro zoom", (long)(d.intro.zoom * 10.0f), (long)(BMAP_SPOT_INTRO_ZOOM * 10.0f));
-    BW_REQUIRE("a trainer's default row again", bmap_spots_default("T7.1", &d) == 0);
+    d.kind = 'T';
+    bmap_spot_defaults(&d);
     BW_CHECK_EQ("trainer: intro zoom", (long)(d.intro.zoom * 10.0f), (long)(BMAP_SPOT_INTRO_ZOOM * 10.0f));
 
     /* a file the editor wrote before the defaults: 0 for "not set" */
