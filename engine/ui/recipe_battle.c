@@ -920,9 +920,16 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
             ground = i;
         }
     }
-    for (i = 0; i < 16; i++) {
-        if (i != ground && cnt[i] > 0 && (ink < 0 || cnt[i] > cnt[ink])) {
-            ink = i;
+    /* the letters are colour 1, their shadow 9 (BTLV_SCU prints with
+     * GF_FONT_SetTextColor(1, 9, 12)); the most used other colour when a
+     * message has no colour 1 */
+    if (ground != 1 && cnt[1] > 0) {
+        ink = 1;
+    } else {
+        for (i = 0; i < 16; i++) {
+            if (i != ground && cnt[i] > 0 && (ink < 0 || cnt[i] > cnt[ink])) {
+                ink = i;
+            }
         }
     }
     if (ink < 0) {
@@ -959,7 +966,7 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
             }
             ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1,
                     hit[yy][xx] == 1 ? mcol : hit[yy][xx] == 2 ? mdark
-                                                               : v == ink ? UI_WHITE : UI_GREY,
+                                                               : v == ink ? UI_WHITE : UI_EDGE,
                     255);
             any = 1;
         }
@@ -1495,7 +1502,7 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
 
         if (own || !draw_battle_message(c, b, 6, my, mw, 40)) {
             ui_panel(c, 6, my, mw, 40, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
-            ui_text(c, 16, my + ui_text_y(40, UI_FONT_LARGE), prompt, UI_WHITE, UI_GREY,
+            ui_text(c, 16, my + ui_text_y(40, UI_FONT_LARGE), prompt, UI_WHITE, UI_EDGE,
                     UI_FONT_LARGE, 1);
         }
     }
@@ -1567,7 +1574,7 @@ static void move_tile(EidosUiCtx *c, int x, int y, int w, int h, int type, const
 
     sheet_tile(c, x, y, w, h, col, sel, enabled);
     ui_text(c, x + 9, y + (font == UI_FONT_LARGE ? 1 : 2), name, enabled ? UI_WHITE : UI_EDGE2,
-            UI_GREY, font, 1);
+            UI_EDGE, font, 1);
     ui_text(c, x + 9, y + h - 11, ui_type_name(type), enabled ? col : UI_EDGE2,
             (s32)dark3(col), UI_FONT_SMALL, 1);
     snprintf(s2, sizeof(s2), "%d/%d", pp, maxpp);
@@ -1886,7 +1893,7 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static const int tap_y[4] = { 84, 167, 167, 171 };
     Bt b;
     Shell sh;
-    int i, hovered = -1, cur, can_back, tw, th = 20, g = 3, x0, y0;
+    int i, hovered = -1, cur, can_back, tw, th = 26, g = 3, x0, y0;
     const char *names[4];
     u32 colors[4] = { UI_FIGHT, UI_BAGY, UI_MON, UI_RUN };
     char run_label[16];
@@ -3225,7 +3232,7 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
         snprintf(msg, sizeof(msg), "%s", label(MSG_PLIST_UI, (u32)msg_id, "Choose a Pok\xC3\xA9mon.",
                                               buf, sizeof(buf)));
         ui_panel(c, ix, msg_y, iw, msg_h, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 235);
-        ui_text(c, ix + 10, msg_y + ui_text_y(msg_h, UI_FONT_LARGE), msg, UI_WHITE, UI_GREY,
+        ui_text(c, ix + 10, msg_y + ui_text_y(msg_h, UI_FONT_LARGE), msg, UI_WHITE, UI_EDGE,
                 UI_FONT_LARGE, 1);
         {
             int st = push_button(c, ix + iw - 54, iy + ih - 18, 54, 18, "BACK", UI_GREY, !menu_open);

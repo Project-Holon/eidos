@@ -38,6 +38,9 @@ extern const u32 ui_recipes_lower_count;
 
 const EidosUiRecipeGroup eidos_ui_groups[] = {
     { ui_recipes_settings, &ui_recipes_settings_count },
+    /* the name entry runs over the app that opened it (the end of a
+     * battle, the boxes, an Egg hatching, ...): before those apps */
+    { ui_recipes_input, &ui_recipes_input_count },
     { ui_recipes_title, &ui_recipes_title_count },
     { ui_recipes_battle, &ui_recipes_battle_count },
     { ui_recipes_bag, &ui_recipes_bag_count },
@@ -46,7 +49,6 @@ const EidosUiRecipeGroup eidos_ui_groups[] = {
     { ui_recipes_party, &ui_recipes_party_count },
     { ui_recipes_menus, &ui_recipes_menus_count },
     { ui_recipes_pc, &ui_recipes_pc_count },
-    { ui_recipes_input, &ui_recipes_input_count },
     { ui_recipes_starter, &ui_recipes_starter_count },
     { ui_recipes_field, &ui_recipes_field_count },
     { ui_recipes_boot, &ui_recipes_boot_count },

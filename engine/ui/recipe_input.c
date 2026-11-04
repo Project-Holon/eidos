@@ -33,6 +33,8 @@
 extern void *bw_dsref__GameSystemGlobal IN_WEAK;
 extern void *bw_dsref_g_ProcSys IN_WEAK;
 extern void *g_ProcSys IN_WEAK;     /* the variable itself, once aletheia defines it */
+extern int ui_species_name(int species, char *out, int cap) IN_WEAK;   /* recipe_dex.c */
+extern const void *bw_ui_namein_now(void) IN_WEAK;                    /* sdk/ui_text.c */
 
 /* ------------------------------------------------------------------ */
 /* Reading the game                                                    */
@@ -144,8 +146,15 @@ static void *global_proc_top(void)
 
 static void *find_scene_work(int overlay)
 {
-    void *w = proc_work(game_proc_top(), overlay);
+    void *w;
 
+    /* the name entry tells where its work is (several apps run it on a
+     * proc stack of their own: stubs/ov/patch_ov194_namein_main.c) */
+    if (overlay == OV_NAMEIN && bw_ui_namein_now != NULL
+        && (w = (void *)bw_ui_namein_now()) != NULL) {
+        return w;
+    }
+    w = proc_work(game_proc_top(), overlay);
     if (w == NULL && overlay == OV_NAMEIN) {
         w = proc_work(intro_proc_top(), overlay);
     }
@@ -171,7 +180,7 @@ static void *find_scene_work(int overlay)
 
 typedef struct NameState {
     void *w;
-    int kind, species, maxlen, len;
+    int kind, species, form, maxlen, len;
     int page, shift, gx, gy, busy;
     u16 text[12];
     const Byte *grid;       /* the current page's member (width, height, cells) */
@@ -194,7 +203,8 @@ static int name_read(NameState *s)
         return 0;
     }
     s->kind = (int)rd32(args, 0x00);
-    s->species = (int)rd32(args, 0x04);
+    s->species = rd16(args, 0x04);      /* NameInArgs (ov010/namein_args.h) */
+    s->form = rd16(args, 0x06) & 0xFF;
     s->maxlen = (int)rd32(args, 0x18);
     s->len = rd16(w, NW_FIELD + 0x1E);
     for (i = 0; i < 11; i++) {
@@ -319,7 +329,7 @@ static void draw_key(EidosUiCtx *c, int x, int y, int w, int h, const char *labe
         ui_fill(c, x + 2, y + 2, w - 4, h - 4, 0xFFFFFF, 40);
     }
     ui_text(c, x + (w - tw) / 2, y + (h - th) / 2 + k - 1 + (k == 1 ? 0 : 0), label, UI_WHITE,
-            cursor ? 0x003C50 : (s32)UI_GREY, font, k);
+            cursor ? 0x003C50 : (s32)UI_EDGE, font, k);
 }
 
 static int g_pressed_key = -1;
@@ -541,7 +551,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int pw, ph, px, py, pad = 8, x0, x1, y;
     int i, n = 0, space_tx = 192, space_ty = 52, space_found = 0;
     NKey keys[MAXKEYS];
-    char buf[64], cnt[16];
+    char buf[64], cnt[16], mon[32];
     int allow;
     static const char *const hint_pairs[] = { "A", "Type", "B", "Delete", "START", "OK", "SELECT", "Page" };
     static const u32 hint_keys[] = { 0x1, 0x2, 0x8, 0x4 };
@@ -605,7 +615,12 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     py = (ch - ui_bar_h(c) - ph) / 2;
     ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
     snprintf(cnt, sizeof(cnt), "%d / %d", s.len, s.maxlen);
-    ui_header(c, px + 1, py + 1, pw - 2, "NAME", kind_sub(s.kind), cnt, acc);
+    if (s.kind == 1 && ui_species_name != NULL
+        && ui_species_name(s.species, mon, (int)sizeof mon) > 0 && mon[0] != '\0') {
+        ui_header(c, px + 1, py + 1, pw - 2, "NICKNAME", mon, cnt, acc);
+    } else {
+        ui_header(c, px + 1, py + 1, pw - 2, "NAME", kind_sub(s.kind), cnt, acc);
+    }
 
     x0 = px + pad;
     x1 = px + pw - pad;
@@ -616,11 +631,16 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     row_a_h = 40;
     img = NULL;
     if (s.kind == 1) {
-        img = ui_mon_icon((u16)s.species, 0, (int)((in->frame / 24) & 1));
+        img = ui_mon_icon((u16)s.species, (u8)s.form, (int)((in->frame / 24) & 1));
     } else if (s.kind == 0) {
         img = ui_overworld(s.species == 1 ? 33 : 0, 0, (int)((in->frame / 10) & 3));
     }
-    if (img != NULL) {
+    if (s.kind == 1 && ui_mon_front_anim((u16)s.species, 0, 0, NULL, NULL) != NULL) {
+        /* the Pokemon being named, as its summary shows it */
+        ui_panel(c, x0, y, icon, icon, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, UI_EDGE, 255);
+        ui_mon_front_draw(c, (u16)s.species, 0, in->frame, x0, y, icon, icon);
+        field_x = x0 + icon + 8;
+    } else if (img != NULL) {
         int ik = imin(3, imax(1, (icon - 4) / imax(imax(img->w, img->h), 1)));
 
         ui_panel(c, x0, y, icon, icon, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, UI_EDGE, 255);

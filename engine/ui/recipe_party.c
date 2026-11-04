@@ -902,7 +902,7 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             ui_panel(c, mx + 8, my + mh - 6 - mh2, msgw, mh2, UI_CUT_TL | UI_CUT_BR, 5,
                      UI_BODY, UI_EDGE, 235);
             ty = ui_text_y(mh2, UI_FONT_LARGE);
-            ui_text(c, mx + 8 + 8, my + mh - 6 - mh2 + ty, prompt, UI_WHITE, UI_GREY,
+            ui_text(c, mx + 8 + 8, my + mh - 6 - mh2 + ty, prompt, UI_WHITE, UI_EDGE,
                     UI_FONT_LARGE, 1);
         }
         if (menu_open && menu != NULL) {
@@ -1225,7 +1225,7 @@ static void draw_card(EidosUiCtx *c, const SummaryView *s, int x, int y, int w, 
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 255);
     mon_nick(s->mon, nick, (int)sizeof nick);
     ty = ui_text_y(16, UI_FONT_LARGE);
-    nx = ui_text(c, x + 6, y + 3 + ty, nick, UI_WHITE, UI_GREY, UI_FONT_LARGE, 1);
+    nx = ui_text(c, x + 6, y + 3 + ty, nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
     if (!s->egg) {
         char lv[16];
 
@@ -1324,7 +1324,7 @@ static void draw_info_page(EidosUiCtx *c, const SummaryView *s, int x, int y, in
     if (s->egg) {
         draw_wrapped(c, x + 8, y + 8, w - 16, 16, 4,
                      "What will hatch from this Egg? It will take some time.",
-                     UI_FONT_LARGE, UI_WHITE, UI_GREY);
+                     UI_FONT_LARGE, UI_WHITE, UI_EDGE);
         return;
     }
     yy = y + 6;
@@ -1358,7 +1358,7 @@ static void draw_info_page(EidosUiCtx *c, const SummaryView *s, int x, int y, in
     /* nature, and where it was met */
     (void)msg_text(BANK_NATURE, pv(s->mon, P_NATURE), val, (int)sizeof val, 0);
     snprintf(tmp, sizeof tmp, "%s nature.", val);
-    ui_text(c, x + 8, yy + ui_text_y(14, UI_FONT_LARGE), tmp, UI_WHITE, UI_GREY,
+    ui_text(c, x + 8, yy + ui_text_y(14, UI_FONT_LARGE), tmp, UI_WHITE, UI_EDGE,
             UI_FONT_LARGE, 1);
     yy += 15;
     {
@@ -1503,7 +1503,7 @@ static void draw_skills_page(EidosUiCtx *c, const SummaryView *s, int x, int y, 
     if (abh >= 22) {
         ui_panel(c, x, yy, colw, abh, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY2, UI_EDGE, 255);
         (void)msg_text(BANK_ABILITY, ability, ab, (int)sizeof ab, 0);
-        ui_text(c, x + 6, yy + 2 + ui_text_y(13, UI_FONT_LARGE), ab, UI_WHITE, UI_GREY,
+        ui_text(c, x + 6, yy + 2 + ui_text_y(13, UI_FONT_LARGE), ab, UI_WHITE, UI_EDGE,
                 UI_FONT_LARGE, 1);
         (void)msg_text(BANK_ABILITY_D, ability, d, (int)sizeof d, 0);
         if (abh >= 34) {
@@ -1602,7 +1602,7 @@ static void draw_ribbon_page(EidosUiCtx *c, const SummaryView *s, int x, int y, 
             int dx = x + listw + 6, dw = w - listw - 12;
 
             (void)msg_text(BANK_RIBBON, rd16(tab, 16u * no + 8), name, (int)sizeof name, 0);
-            draw_wrapped(c, dx, y + 8, dw, 15, 2, name, UI_FONT_LARGE, UI_WHITE, UI_GREY);
+            draw_wrapped(c, dx, y + 8, dw, 15, 2, name, UI_FONT_LARGE, UI_WHITE, UI_EDGE);
             (void)msg_text(BANK_RIBBON, rd16(tab, 16u * no + 10), d, (int)sizeof d, 0);
             draw_wrapped(c, dx, y + 42, dw, 12, (h - 46) / 12, d, UI_FONT_MEDIUM, UI_LIGHT,
                          UI_EDGE);
@@ -2086,9 +2086,16 @@ static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h)
             ground = i;
         }
     }
-    for (i = 0; i < 16; i++) {
-        if (i != ground && cnt[i] > 0 && (ink < 0 || cnt[i] > cnt[ink])) {
-            ink = i;                    /* the letters; the rest is their shadow */
+    /* the letters are colour 1 (the evolution prints with
+     * GF_FONT_SetTextColor(1, 2, 15), and so do most windows); the most
+     * used other colour when the window has no colour 1 */
+    if (ground != 1 && cnt[1] > 0) {
+        ink = 1;
+    } else {
+        for (i = 0; i < 16; i++) {
+            if (i != ground && cnt[i] > 0 && (ink < 0 || cnt[i] > cnt[ink])) {
+                ink = i;
+            }
         }
     }
     if (ink < 0) {
@@ -2100,7 +2107,7 @@ static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h)
             int v = evo_px(px, bw, xx, yy);
 
             if (v != ground) {
-                ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1, v == ink ? UI_WHITE : UI_GREY, 255);
+                ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1, v == ink ? UI_WHITE : UI_EDGE, 255);
             }
         }
     }

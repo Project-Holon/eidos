@@ -19,6 +19,7 @@
 typedef struct TalkTarget {
     const void *win;
     int x, y;
+    int side;           /* the game's tail side (TALKMSGWIN_TAIL_SIDE_*) */
     u32 stamp;
 } TalkTarget;
 
@@ -37,8 +38,9 @@ int bw_ui_text_own(void)
     return g_own;
 }
 
-/* The game worked out where window `win`'s tail aims (DS screen pixels). */
-void bw_ui_talk_target(const void *win, int x, int y)
+/* The game worked out where window `win`'s tail aims (DS screen pixels)
+ * and which side of the window it leaves (TALKMSGWIN_CalcTail). */
+void bw_ui_talk_target(const void *win, int x, int y, int side)
 {
     int i, slot = -1, oldest = 0;
 
@@ -58,11 +60,13 @@ void bw_ui_talk_target(const void *win, int x, int y)
     g_targets[slot].win = win;
     g_targets[slot].x = x;
     g_targets[slot].y = y;
+    g_targets[slot].side = side;
     g_targets[slot].stamp = g_stamp;
 }
 
-/* Where window `win`'s tail aims: 1 when the game has said. */
-int bw_ui_talk_target_get(const void *win, int *x, int *y)
+/* Where window `win`'s tail aims and the side it leaves: 1 when the game
+ * has said. */
+int bw_ui_talk_target_get(const void *win, int *x, int *y, int *side)
 {
     int i;
 
@@ -70,6 +74,7 @@ int bw_ui_talk_target_get(const void *win, int *x, int *y)
         if (g_targets[i].win == win && win != NULL) {
             *x = g_targets[i].x;
             *y = g_targets[i].y;
+            *side = g_targets[i].side;
             return 1;
         }
     }
@@ -170,4 +175,27 @@ int bw_ui_field_menu_now(const void **menuList, const void **bmpWin)
     *menuList = g_menu_list;
     *bmpWin = g_menu_win;
     return 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* The name entry's work (stubs/ov/patch_ov194_namein_main.c)          */
+/* ------------------------------------------------------------------ */
+
+static const void *volatile g_namein_work;
+static volatile u32 g_namein_frame;
+
+void bw_ui_namein_seen(const void *work)
+{
+    g_namein_work = work;
+    g_namein_frame = bw_input_frame_number();
+}
+
+/* The name entry's work (NameinGraphicWork) when its main step ran in the
+ * last two frames, or 0. */
+const void *bw_ui_namein_now(void)
+{
+    if (g_namein_work == NULL || bw_input_frame_number() - g_namein_frame > 2u) {
+        return NULL;
+    }
+    return g_namein_work;
 }

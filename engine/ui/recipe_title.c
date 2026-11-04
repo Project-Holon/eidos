@@ -504,7 +504,7 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 }
             }
             ui_text(c, px + (pw - tw) / 2, y + ui_text_y(ph, UI_FONT_LARGE), s,
-                    UI_WHITE, UI_GREY, UI_FONT_LARGE, 1);
+                    UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         }
     }
     /* the credit, bottom left */
@@ -817,7 +817,7 @@ static void row_draw(EidosUiCtx *c, int x, int y, int w, int h, const char *labe
              selected ? UI_CYAN : sel ? UI_CYAN2 : UI_EDGE, 240);
     ui_fill(c, x + 6, y + 5, 3, h - 10, sel ? UI_WHITE : UI_EDGE2, 255);
     ui_text(c, x + 17, y + ui_text_y(h, font), label, UI_WHITE,
-            sel ? 0x00506Au : UI_GREY, font, 1);
+            sel ? 0x00506Au : UI_EDGE, font, 1);
     if (selected) {
         for (i = 0; i < 5; i++) {
             ui_fill(c, x + w - 15 + i, y + h / 2 - 5 + i, 1, 11 - 2 * i, UI_WHITE, 255);

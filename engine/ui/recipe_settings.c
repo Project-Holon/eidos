@@ -214,7 +214,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
                  sel ? 0x0A283Cu : (is_back ? 0x141418u : ((st & EIDOS_UI_HOVER) ? 0x1C1C1Cu : UI_BODY)),
                  sel ? UI_CYAN : ((st & EIDOS_UI_HOVER) ? UI_EDGE2 : UI_EDGE), 255);
         ui_text(c, mx + 16, ry + ui_text_y(rowh, UI_FONT_LARGE), label,
-                is_back ? UI_GREY : UI_WHITE, sel ? 0x003C50 : (s32)UI_GREY, UI_FONT_LARGE, 1);
+                is_back ? UI_GREY : UI_WHITE, sel ? 0x003C50 : (s32)UI_EDGE, UI_FONT_LARGE, 1);
         nch = eidos_sui_row_choices(i, &active, names);
         if (nch > 0) {
             int cwid = 52, j, cx = mx + 8 + rw - 8 - cwid * nch;

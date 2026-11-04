@@ -54,6 +54,7 @@
 #define WEAK __attribute__((weak))
 
 static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h, const char *key);
+static int small_button_w(const char *label, const char *key);
 struct FieldNow;
 static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
 static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldNow *f);
@@ -559,7 +560,7 @@ static void draw_button(EidosUiCtx *c, int x, int y, int w, int h, const char *l
         ui_pop(c, 0, 0, &saved);
     }
     ui_text(c, x + 6 + ICON_W + 6, y + t + ui_text_y(h - t, UI_FONT_LARGE), label,
-            UI_WHITE, state ? (s32)UI_CYAN_EDGE : (s32)UI_GREY, UI_FONT_LARGE, 1);
+            UI_WHITE, state ? (s32)UI_CYAN_EDGE : (s32)UI_EDGE, UI_FONT_LARGE, 1);
 }
 
 typedef struct PartyLine {
@@ -1415,12 +1416,18 @@ static void bar_trapezoid(EidosUiCtx *c, int cx, int w, int h, int hot)
     ui_fill(c, cx - w / 2 + 5, h, w - 10, 1, UI_CYAN, 255);
 }
 
+/* The width small_button gives a label and its key. */
+static int small_button_w(const char *label, const char *key)
+{
+    int kw = key != NULL ? ui_keycap_w(key) : 0;
+
+    return ui_text_w(label, UI_FONT_SMALL) + 10 + (kw > 0 ? (kw < 13 ? 13 : kw) + 3 : 0);
+}
+
 static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h,
                         const char *key)
 {
-    int kw = key != NULL ? ui_keycap_w(key) : 0;
-    int tw = ui_text_w(label, UI_FONT_SMALL);
-    int w = tw + 10 + (kw > 0 ? (kw < 13 ? 13 : kw) + 3 : 0);
+    int w = small_button_w(label, key);
     EidosUiRect r;
     int st, xx = *x - w;
 
@@ -1719,7 +1726,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int have_time = 0, comm = 0, last_cmd = 0;
     EidosUiRect bar;
     int st_bar, x, open_menu = 0, use_item = 0, st, choosing;
-    int wide = cw >= 400;
+    int wide = cw >= 400, tab_w, tab_l, tab_r;
     EidosUiRect saved_clip;
 
     if (getenv("EIDOS_UI_FIELD_DEBUG") != NULL) {
@@ -1883,25 +1890,47 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     ui_fill(c, 0, 0, cw, bh, UI_INK, st_bar & EIDOS_UI_HOVER ? 205 : 170);
     ui_fill(c, 0, bh, cw, 1, UI_EDGE, 200);
 
-    /* the right group, from the right edge; its buttons come first so a
-     * click on one is not also a click on the bar */
+    /* The time on its slanted tab in the middle, Menu right of it, Item
+     * and the C-Gear left of it: the buttons keep their places whatever
+     * the width, and never run under the time.  Buttons come before the
+     * bar's own click, so a click on one is not also a click on the bar. */
+    tab_w = ui_text_w("00:00", UI_FONT_LARGE) + 24;
+    tab_l = cw / 2 - tab_w / 2;
+    tab_r = cw / 2 + tab_w / 2;
+    x = tab_r + 6 + small_button_w("Menu", "X");
+    st = small_button(c, &x, 0, "Menu", bh, "X");
+    if (st & EIDOS_UI_CLICK) {
+        open_menu = 1;
+    }
+    if (st & EIDOS_UI_HOVER) {
+        st_bar = 0;
+    }
+
+    /* the right group, from the right edge: the battery and the three
+     * link lights, their names only while they clear Menu */
     x = cw - 6 - c->safe_r;     /* clear of a phone's notch and corners */
     battery(c, x - 17, 3);
     x -= 24;
     {
         static const char *const names[3] = { "WIRELESS", "ONLINE", "IR" };
         int lit[3];
-        int i;
+        int i, named = wide, need = 0;
 
+        for (i = 0; i < 3; i++) {
+            need += ui_text_w(names[i], UI_FONT_SMALL) + 13;
+        }
+        if (x - need < tab_r + 6 + small_button_w("Menu", "X") + 8) {
+            named = 0;
+        }
         lit[0] = comm;
         lit[1] = comm && last_cmd == 5;
         lit[2] = comm && last_cmd == 1;
         for (i = 0; i < 3; i++) {
-            int tw = wide ? ui_text_w(names[i], UI_FONT_SMALL) : 0;
+            int tw = named ? ui_text_w(names[i], UI_FONT_SMALL) : 0;
             int ty = ui_text_y(bh, UI_FONT_SMALL);
 
             x -= tw;
-            if (wide) {
+            if (named) {
                 ui_text(c, x, ty, names[i], lit[i] ? UI_WHITE : UI_EDGE2, -1, UI_FONT_SMALL, 1);
             }
             x -= 7;
@@ -1909,7 +1938,17 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             x -= 6;
         }
     }
-    x -= 4;
+
+    /* left of the time: Y, the registered item (the Bicycle, the Dowsing
+     * Machine: a touch screen has no key for it), then the C-Gear */
+    x = tab_l - 6;
+    st = small_button(c, &x, 0, "Item", bh, "Y");
+    if (st & EIDOS_UI_CLICK) {
+        use_item = 1;
+    }
+    if (st & EIDOS_UI_HOVER) {
+        st_bar = 0;
+    }
     if (f.mode == 0 || f.mode == 8) {           /* this save has a C-Gear */
         st = small_button(c, &x, 0, "C-GEAR", bh, NULL);
         if (st & EIDOS_UI_CLICK) {
@@ -1919,41 +1958,28 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             st_bar = 0;
         }
     }
-    st = small_button(c, &x, 0, "Menu", bh, "X");
-    if (st & EIDOS_UI_CLICK) {
-        open_menu = 1;
-    }
-    if (st & EIDOS_UI_HOVER) {
-        st_bar = 0;
-    }
-    /* Y, the registered item (the Bicycle, the Dowsing Machine): a touch
-     * screen has no key for it */
-    st = small_button(c, &x, 0, "Item", bh, "Y");
-    if (st & EIDOS_UI_CLICK) {
-        use_item = 1;
-    }
-    if (st & EIDOS_UI_HOVER) {
-        st_bar = 0;
-    }
 
-    /* the left: the cursor mark and the place */
+    /* the left: the cursor mark and the place, cut off before the
+     * buttons */
     {
-        int i;
+        EidosUiRect saved;
+        int i, px = 14 + c->safe_l;
 
         for (i = 0; i < 4; i++) {
             ui_fill(c, 5 + c->safe_l + i, 4 + i, 1, 9 - 2 * i, UI_CYAN, 255);
         }
-        ui_text(c, 14 + c->safe_l, ui_text_y(bh, UI_FONT_LARGE), place, UI_WHITE, UI_EDGE,
-                UI_FONT_LARGE, 1);
+        if (x - 2 > px) {
+            ui_push(c, 0, 0, &saved);
+            ui_clip(c, px, 0, x - 2 - px, bh);
+            ui_text(c, px, ui_text_y(bh, UI_FONT_LARGE), place, UI_WHITE, UI_EDGE,
+                    UI_FONT_LARGE, 1);
+            ui_pop(c, 0, 0, &saved);
+        }
     }
     /* the middle: the time on its slanted tab */
-    {
-        int tw = ui_text_w("00:00", UI_FONT_LARGE) + 24;
-
-        bar_trapezoid(c, cw / 2, tw, bh - 1, st_bar & EIDOS_UI_HOVER);
-        ui_text(c, cw / 2 - ui_text_w(clock, UI_FONT_LARGE) / 2,
-                ui_text_y(bh - 1, UI_FONT_LARGE), clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
-    }
+    bar_trapezoid(c, cw / 2, tab_w, bh - 1, st_bar & EIDOS_UI_HOVER);
+    ui_text(c, cw / 2 - ui_text_w(clock, UI_FONT_LARGE) / 2,
+            ui_text_y(bh - 1, UI_FONT_LARGE), clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
     ui_pop(c, 0, -g_bar_slide, &saved_clip);
     if (g_bar_slide > 0) {
         return;                             /* no clicks while it moves     */

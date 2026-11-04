@@ -20,6 +20,8 @@
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#elif defined(__linux__) && !defined(__ANDROID__)
+#include <execinfo.h>
 #endif
 
 #include <SDL3/SDL.h>
@@ -182,8 +184,12 @@ void host_indirect_mismatch(const char *caller, void *target)
         seen[n].target = target;
         n++;
     }
+#if defined(_WIN32)
     fprintf(stderr, "indirect: %s -> exe+0x%llx\n", caller,
             (unsigned long long)((char *)target - (char *)GetModuleHandleW(NULL)));
+#else
+    fprintf(stderr, "indirect: %s -> %p\n", caller, target);
+#endif
 }
 #endif
 
@@ -240,6 +246,12 @@ void host_trap(wasm_rt_trap_t code)
             fprintf(stderr, "  frame %2u  exe+0x%llx\n", i,
                     (unsigned long long)((char *)frames[i] - (char *)self));
         }
+    }
+#elif defined(__linux__) && !defined(__ANDROID__)
+    {
+        void *frames[64];
+        int n = backtrace(frames, 64);
+        backtrace_symbols_fd(frames, n, 2);
     }
 #endif
     fflush(stderr);

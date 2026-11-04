@@ -370,7 +370,7 @@ static void msg_line(void *user, const char *s, int len)
     }
     memcpy(line, s, (size_t)len);
     line[len] = 0;
-    ui_text(m->c, m->x, m->y + m->n * 15, line, UI_WHITE, UI_GREY, UI_FONT_LARGE, 1);
+    ui_text(m->c, m->x, m->y + m->n * 15, line, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
     m->n++;
 }
 

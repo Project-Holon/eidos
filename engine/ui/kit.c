@@ -1087,7 +1087,7 @@ void ui_row(EidosUiCtx *c, int x, int y, int w, int h, int selected, int hover,
 void ui_message(EidosUiCtx *c, int x, int y, int w, const char *utf8)
 {
     ui_panel(c, x, y, w, 30, CUT_DEF, 6, UI_BODY, UI_EDGE, 215);
-    ui_text(c, x + 10, y + ui_text_y(30, UI_FONT_LARGE), utf8, UI_WHITE, UI_GREY,
+    ui_text(c, x + 10, y + ui_text_y(30, UI_FONT_LARGE), utf8, UI_WHITE, UI_EDGE,
             UI_FONT_LARGE, 1);
 }
 
@@ -1104,7 +1104,7 @@ void ui_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon
         ui_image(c, x + tx, y + (h - icon->h) / 2, icon, 1);
         tx += icon->w + 4;
     }
-    ui_text(c, x + tx, y + ui_text_y(h, UI_FONT_LARGE), utf8, UI_WHITE, UI_GREY,
+    ui_text(c, x + tx, y + ui_text_y(h, UI_FONT_LARGE), utf8, UI_WHITE, UI_EDGE,
             UI_FONT_LARGE, 1);
 }
 
@@ -1211,7 +1211,7 @@ void ui_field(EidosUiCtx *c, int x, int y, int w, const char *text, int room, u3
     int i, ty = ui_text_y(18, UI_FONT_LARGE), tx;
 
     ui_panel(c, x, y, w, 18, CUT_DEF, 4, UI_BODY, accent, 255);
-    tx = ui_text(c, x + 6, y + ty, text, UI_WHITE, UI_GREY, UI_FONT_LARGE, 1);
+    tx = ui_text(c, x + 6, y + ty, text, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
     ui_fill(c, tx + 1, y + 3, 1, 11, accent, 255);
     for (i = 0; i < room; i++) {
         ui_line(c, tx + 5 + i * 7, y + 13, tx + 9 + i * 7, y + 13, UI_EDGE2, 255);
@@ -1228,7 +1228,7 @@ void ui_key(EidosUiCtx *c, int x, int y, int w, const char *label, int selected,
     ui_panel(c, x, y, w, 16, CUT_DEF, 3, selected ? UI_CYAN2 : UI_BODY2,
              selected ? accent : UI_EDGE, 255);
     ui_text(c, x + (w - tw) / 2, y + ui_text_y(16, UI_FONT_LARGE), label, UI_WHITE,
-            selected ? (s32)SHADOW_SEL : (s32)UI_GREY, UI_FONT_LARGE, 1);
+            selected ? (s32)SHADOW_SEL : (s32)UI_EDGE, UI_FONT_LARGE, 1);
 }
 
 typedef struct DialogLines {
@@ -1240,7 +1240,7 @@ static void dialog_line(void *user, const char *s, int len)
 {
     DialogLines *d = (DialogLines *)user;
 
-    text_n(d->c, d->x, d->y + d->n * 15 + 7, s, len, UI_WHITE, UI_GREY, UI_FONT_LARGE);
+    text_n(d->c, d->x, d->y + d->n * 15 + 7, s, len, UI_WHITE, UI_EDGE, UI_FONT_LARGE);
     d->n++;
 }
 
@@ -1267,7 +1267,7 @@ int ui_dialog(EidosUiCtx *c, int x, int y, int w, const char *msg,
                  sel ? accent : UI_EDGE, 255);
         ui_text(c, bx + (56 - ui_text_w(choices[i], UI_FONT_LARGE)) / 2,
                 y + h - 24 + ui_text_y(18, UI_FONT_LARGE), choices[i], UI_WHITE,
-                sel ? (s32)SHADOW_SEL : (s32)UI_GREY, UI_FONT_LARGE, 1);
+                sel ? (s32)SHADOW_SEL : (s32)UI_EDGE, UI_FONT_LARGE, 1);
         bx -= 6;
     }
     return h;
@@ -1498,7 +1498,7 @@ void ui_menu_row(EidosUiCtx *c, int x, int y, int w, const char *label,
                     0x1E1E1Eu, w / 2);
     }
     ui_icon_well(c, x + 6, y + 2, 22, icon, sel);
-    ui_text(c, x + 34, y + ty, label, UI_WHITE, sel ? (s32)SHADOW_DARK : (s32)UI_GREY,
+    ui_text(c, x + 34, y + ty, label, UI_WHITE, sel ? (s32)SHADOW_DARK : (s32)UI_EDGE,
             UI_FONT_LARGE, 1);
 }
 
@@ -1692,7 +1692,7 @@ void ui_move_row(EidosUiCtx *c, int x, int y, int w, int type, const char *name,
     }
     ui_panel(c, x, y, w, h, CUT_DEF, 6, UI_BODY, selected ? UI_CURSOR : UI_EDGE, 235);
     ui_type_tag(c, x + 5, y + (h - 13) / 2, 42, type);
-    ui_text(c, x + 52, y + ui_text_y(h, UI_FONT_LARGE), name, UI_WHITE, UI_GREY,
+    ui_text(c, x + 52, y + ui_text_y(h, UI_FONT_LARGE), name, UI_WHITE, UI_EDGE,
             UI_FONT_LARGE, 1);
     s[0] = 'P';
     s[1] = 'P';

@@ -992,7 +992,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             count = prow[r].kind == OPT_STEP ? 3 : prow[r].count;
             kind = prow[r].kind;
         }
-        box_text(c, m.x + 8, ry, rw, OPT_ROW_H, label, UI_WHITE, sel ? 0x003C50 : (s32)UI_GREY,
+        box_text(c, m.x + 8, ry, rw, OPT_ROW_H, label, UI_WHITE, sel ? 0x003C50 : (s32)UI_EDGE,
                  UI_FONT_LARGE, 0, 8);
         cell0 = m.x + 8 + rw - 8 - OPT_CELL_W * 3;
         if (count == 2) {
@@ -1122,7 +1122,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 
             ui_panel(c, m.x + 16, m.y + (m.h - bh) / 2, m.w - 32, bh, CUT_DEF, 8, UI_BODY, UI_EDGE2, 255);
             wrapped(c, m.x + 26, m.y + (m.h - bh) / 2 + 7, m.w - 52, 15, UI_FONT_LARGE, flat,
-                    UI_WHITE, UI_GREY, 4);
+                    UI_WHITE, UI_EDGE, 4);
         }
         hr.x = 0; hr.y = 0; hr.w = c->canvas->w; hr.h = c->canvas->h - ui_bar_h(c);
         if ((eidos_ui_hit(hr) & EIDOS_UI_CLICK) != 0 && rs == 5) {
@@ -1328,7 +1328,7 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     y = m.y + 29;
     /* the place and the date */
     ui_text(c, x, y + text_cy(15, UI_FONT_LARGE), place_name(gs, place, (int)sizeof place),
-            UI_WHITE, UI_GREY, UI_FONT_LARGE, 1);
+            UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
     now = time(NULL);
     tm = bw_localtime((long long)now, &tmb) == 0 ? &tmb : NULL;
     if (tm != NULL) {
@@ -1415,7 +1415,7 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         s_save_text[0] = '\0';
     }
     {
-        int lines = wrapped(c, x, y + 1, w, 15, UI_FONT_LARGE, msg, UI_WHITE, UI_GREY, 3);
+        int lines = wrapped(c, x, y + 1, w, 15, UI_FONT_LARGE, msg, UI_WHITE, UI_EDGE, 3);
 
         if (lines < 1) lines = 1;
         y += lines * 15 + 4;
@@ -3879,7 +3879,7 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     by = ch - 17 - 6 - (bh > 0 ? bh : 42);
     if (bh > 0) {
         ui_panel(c, bx, by, bw, bh, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 235);
-        ui_letters(c, ui_bmpwin_bmp(rdp(nk, 0x24)), bx + 12, by + 7, UI_WHITE, UI_GREY, NULL, NULL);
+        ui_letters(c, ui_bmpwin_bmp(rdp(nk, 0x24)), bx + 12, by + 7, UI_WHITE, UI_EDGE, NULL, NULL);
     }
     if (rdp(nk, 0x54) != NULL) {
         static const char *const yn[2] = { "YES", "NO" };
