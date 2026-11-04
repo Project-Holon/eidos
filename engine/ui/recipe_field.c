@@ -1063,6 +1063,13 @@ extern int GAMESYSTEM_IsEventActive(void *gameSystem) __attribute__((weak));
 static int banner_shown(const FieldNow *f);
 static void place_banner(EidosUiCtx *c, const FieldNow *f);
 
+/* FieldPlaceName.state (ov021/field_place_name_types.h): the last one, the
+ * plate blending out over 20 frames */
+#define PLACE_NAME_FADE_OUT 6
+#define PLACE_NAME_OUT_FRAMES 20
+static u32 g_banner_age;    /* interface frames the banner has been up    */
+static u32 g_banner_zone = 0xFFFFFFFFu;   /* the zone it names           */
+
 static int banner_shown(const FieldNow *f)
 {
     const u8 *pn;
@@ -1080,8 +1087,10 @@ static int banner_shown(const FieldNow *f)
  * and a banner of the interface's own drops in at the top left with the
  * zone's name in large letters (the bar's own words: a/0/0/2 file 0x59);
  * the game's banner (BG3 and its flying letters) is left out of the screen
- * (field_text).  It slides in over its first frames (frame +0x42 of the
- * first state) and out as the game's leaves.
+ * (field_text).  It slides in over its first 12 frames on show (counted
+ * here: the game's frame +0x42 starts again at each of its states, and a
+ * slide timed by it came in again at each one) and out over the game's
+ * fade-out (state 6, frame +0x42 of its 20).
  */
 static void place_banner(EidosUiCtx *c, const FieldNow *f)
 {
@@ -1094,6 +1103,10 @@ static void place_banner(EidosUiCtx *c, const FieldNow *f)
         return;
     }
     zone = rd16(pn + 0x46);
+    if (zone != g_banner_zone) {
+        g_banner_zone = zone;               /* another place: it comes in again */
+        g_banner_age = 0;
+    }
     place[0] = '\0';
     msg_text(0x59, ZONEDATA_GetPlaceNameId(zone), place, (int)sizeof(place));
     if (place[0] == '\0') {
@@ -1101,7 +1114,11 @@ static void place_banner(EidosUiCtx *c, const FieldNow *f)
     }
     w = ui_text_w(place, UI_FONT_LARGE) * k + 34;
     frame = rd16(pn + 0x42);
-    slide = frame < 12 ? (12 - frame) * (w + 8) / 12 : 0;
+    slide = g_banner_age < 12u ? (12 - (int)g_banner_age) * (w + 8) / 12 : 0;
+    if (rd32(pn + 0x3C) == PLACE_NAME_FADE_OUT) {
+        slide = (frame < PLACE_NAME_OUT_FRAMES ? frame : PLACE_NAME_OUT_FRAMES) * (w + 8) / PLACE_NAME_OUT_FRAMES;
+    }
+    g_banner_age++;
     x = 4 - slide;
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 8, 0x000000u, 0x464850u, 235);
     {
@@ -1843,6 +1860,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     if (banner_shown(&f) && !plain_field()) {
         place_banner(c, &f);
+    } else {
+        g_banner_age = 0;                   /* the next banner comes in from the start */
+        g_banner_zone = 0xFFFFFFFFu;
     }
     if (g_bar_slide >= bh + 1) {
         return;
@@ -2007,6 +2027,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
 static void field_reset(void)
 {
+    g_banner_age = 0;
+    g_banner_zone = 0xFFFFFFFFu;
     g_show_cgear = 0;
     g_bar_slide = BAR_HIDDEN;
     g_stick.on = 0;
