@@ -589,9 +589,12 @@ void bmap_spots_spec(const BmapSpot *e, float px, float pz, unsigned facing, Bma
     out->reach = BMAP_PLACE_REACH;
     out->foe_level = 1;                 /* the ground levelled, the game's heights */
     out->turn = 1;
+    out->no_back = 1;                   /* no row: placed the auto way */
     if (e == NULL) {
         return;
     }
+    /* a row placed by hand, or checked as it is, keeps its own direction */
+    out->no_back = e->mode == BMAP_SPOT_AUTO && !e->ok;
     out->foe_level = e->foe_level;
     out->foe_dz = e->foe_dz;
     out->intro = e->intro;

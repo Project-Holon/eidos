@@ -42,6 +42,11 @@ Rules that every placement keeps:
   slope or a step), unless a row puts each on its own ground. A spot where
   the two grounds differ by more than a little over a tile gets a high cost.
 - No Pokemon stands on a wall tile or outside the map.
+- An auto placement never looks south, toward where the field camera
+  stands (the backs of buildings and the walls the field never shows): a
+  battle that would is turned round, the own Pokemon on the foe's place,
+  facing back along the same line.  A row placed by hand, or checked as it
+  is, keeps its own direction.
 
 ## Moving the foe
 

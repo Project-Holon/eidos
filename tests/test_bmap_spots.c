@@ -100,6 +100,11 @@ int main(void)
     BW_CHECK_EQ("auto: no turn", sp.turn, 0);
     BW_CHECK_EQ("auto: a trainer's reach", sp.reach, BMAP_PLACE_REACH_TRAINER);
     BW_CHECK_EQ("auto: levelled", sp.foe_level, 1);
+    BW_CHECK_EQ("auto: never toward the field camera", sp.no_back, 1);
+    r->ok = 1;
+    bmap_spots_spec(r, tile_centre(11), tile_centre(30), 0x0000u, &sp);
+    BW_CHECK_EQ("auto, checked: as it is", sp.no_back, 0);
+    r->ok = 0;
 
     /* fixed */
     r->mode = BMAP_SPOT_FIXED;
@@ -117,6 +122,7 @@ int main(void)
     BW_CHECK_EQ("fixed: foe distance", (long)(sp.foe_dz * 10.0f), 25);
     BW_CHECK_EQ("fixed: foe on its ground", sp.foe_level, 0);
     BW_CHECK_EQ("fixed: intro zoom", (long)(sp.intro.zoom * 10.0f), 15);
+    BW_CHECK_EQ("fixed: its own direction", sp.no_back, 0);
 
     /* a safe area: the rectangle, the player's facing, then a set angle */
     r = bmap_spots_get(area);
@@ -200,6 +206,7 @@ int main(void)
     BW_CHECK_EQ("no row: facing", sp.facing, 0x8000);
     BW_CHECK_EQ("no row: reach", sp.reach, BMAP_PLACE_REACH);
     BW_CHECK_EQ("no row: no rectangle", sp.has_rect, 0);
+    BW_CHECK_EQ("no row: never toward the field camera", sp.no_back, 1);
 
     BW_REQUIRE("save", bmap_spots_save() == 0);
     f = fopen(path, "r");

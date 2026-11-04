@@ -66,6 +66,13 @@ typedef struct BmapPlaceSpec {
     int has_ally;           /* a battle beside an ally (its trainer at slot 12) */
     float trainer_ally[3];  /* the ally's sprite moved, and ...                 */
     float trainer_ally_size; /* ... its height                                  */
+    int no_back;            /* the battle never looks south, toward where the
+                               field camera stands: the side of the map the
+                               field never shows (backs of buildings, missing
+                               walls).  A placement facing that way is turned
+                               round: the own Pokemon on the foe's place,
+                               facing back along the same line.  For the auto
+                               placement only (bmap_spots_spec)              */
 } BmapPlaceSpec;
 void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp);
 /* The part of bmap_place_spec that does not depend on where the battle

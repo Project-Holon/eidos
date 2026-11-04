@@ -50,6 +50,9 @@
  * runs at a time, on the worker). */
 static float g_foe_z = FOE_SZ_GAME;
 #define FOE_SZ g_foe_z
+/* BmapPlaceSpec.no_back: a facing is "back" when it is more than about 105
+ * degrees from north (the south half and the two diagonals beside it). */
+#define BACK_COS (-0.25)
 /* the most the ground under the two Pokemon may differ (map units, a
  * little over a tile): a leader one step up on a stage is fine; more and
  * the levelled ground leaves one in the air or in the floor */
@@ -2026,6 +2029,16 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
         px = fminf(fmaxf(px, sp->x0), sp->x1);
         pz = fminf(fmaxf(pz, sp->z0), sp->z1);
     }
+    if (sp->no_back && reach >= 0 && cos(a) < BACK_COS) {
+        /* the battle would look toward the field camera: the same line from
+         * its other end, the own Pokemon where the foe would stand */
+        float fx, fz;
+
+        to_map(FOE_SX, FOE_SZ, px, pz, (float)cos(a), (float)sin(a), k, &fx, &fz);
+        px = fx;
+        pz = fz;
+        a += pi;
+    }
     /* Where the battle stands: every tile within `reach` of the start, the
      * facing and up to `turn` 45-degree steps either side of it (the foe is
      * where the player looks, never beside or behind them).  The world
@@ -2055,6 +2068,10 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
                     double an = a + (double)((n + 1) / 2) * ((n & 1) ? 1.0 : -1.0) * pi / 4.0;
                     float cx = px + (float)dx * 16.0f, cz = pz + (float)dz * 16.0f;
                     float sc;
+
+                    if (sp->no_back && cos(an) < BACK_COS) {
+                        continue;           /* a turn toward the field camera */
+                    }
 
                     if (bmap_tile(s, cx, cz) == BMAP_TILE_BLOCKED) {
                         continue;           /* never on a wall or a table */
@@ -2100,6 +2117,10 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
                         double an = (double)n2 * pi / 4.0;
                         float cca = (float)cos(an), csa = (float)sin(an), ox, oz, fx, fz, sc;
                         int in = 0;
+
+                        if (sp->no_back && cos(an) < BACK_COS) {
+                            continue;       /* toward the field camera */
+                        }
 
                         to_map(0.5f, PLACE_SZ, x, z, cca, csa, k, &ox, &oz);
                         to_map(FOE_SX, FOE_SZ, x, z, cca, csa, k, &fx, &fz);
