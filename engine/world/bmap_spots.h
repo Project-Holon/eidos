@@ -76,6 +76,19 @@ typedef struct BmapSpot {
 #define BMAP_TRAINER_INDOOR 1.15f
 #define BMAP_VIEWS_MAX 8    /* views of a row */
 
+/* The values a row takes where the table leaves a field out ('-'), from the
+ * rows placed by hand in the spot editor (Route 1, Nuvema Town): the foe
+ * closer, the player's own trainer raised, the intro camera to the side and
+ * tilted.  bmap_spot_defaults sets them. */
+#define BMAP_SPOT_FOE_DZ_TRAINER (-8.0f)
+#define BMAP_SPOT_FOE_DZ_WILD    (-5.5f)
+#define BMAP_SPOT_OWN_UP         5.0f
+#define BMAP_SPOT_INTRO_SIDE     1.2f
+#define BMAP_SPOT_INTRO_TILT     4.8f
+
+/* Those values into r (its kind set). */
+void bmap_spot_defaults(BmapSpot *r);
+
 /* The table: the one built in (battle_spots.tsv), then the rows of the
  * user's file over it (the spot editor writes it).  Loaded on first use. */
 void      bmap_spots_set_user_path(const char *path);

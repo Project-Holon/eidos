@@ -763,9 +763,25 @@ def cmd_gen(args):
     print('%d rows: %d trainers, %d areas' % (len(rows), kinds['T'], kinds['A']))
 
 
+# The editor's first line before the defaults (engine/world/bmap_spots.c):
+# every field written out, 0 where nothing was set.
+OLD_USER_HEAD = '# battle spots written by the spot editor: tools/battle_spots.py merge'
+# The fields with a default (bmap_spot_defaults): '-' takes it.
+DEFAULTED = ('fd', 'is', 'it', 'tuy')
+
+
 def cmd_merge(args):
     rows = read_table(TABLE)
     theirs = read_table(args.file)
+    with open(args.file, encoding='utf-8') as f:
+        zeros = f.readline().rstrip('\n') == OLD_USER_HEAD
+    if zeros:
+        # a row nobody placed or checked takes the defaults where it says 0
+        for r in theirs.values():
+            if r['mode'] == 'auto' and r['ok'] in ('0', '-'):
+                for c in DEFAULTED:
+                    if r[c] in ('0', '0.0'):
+                        r[c] = '-'
     n = 0
     ids = {r['id'] for r in theirs.values()}
     for k in [k for k, r in rows.items() if r['id'] in ids and k not in theirs]:

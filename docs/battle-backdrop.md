@@ -236,6 +236,16 @@ or the player (Shift: a tile), Ctrl+Z undoes.
 Every change is written at once to `battle_spots.tsv` beside the game's
 settings file, which the game reads over its built-in table.
 
+A field the table leaves out (`-`) takes its default (`bmap_spot_defaults`,
+from the rows placed by hand on Route 1 and in Nuvema Town): the foe 8
+battle units closer for a trainer and 5.5 for a wild Pokemon, the player's
+own trainer raised by 5, and the intro camera 1.2 to the side and tilted
+by 4.8.  The editor writes `-` for a value at its default, so the row
+follows the default; a value set by hand is written out and kept.  A file
+the editor wrote before the defaults (0 for "not set") takes them only on
+rows still placed the auto way and not checked; `tools/battle_spots.py
+merge` does the same.
+
 ### Camera recordings
 
 Play needs recordings of the game's battle camera, made from the player's

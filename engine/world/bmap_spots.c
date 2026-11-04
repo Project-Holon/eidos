@@ -52,6 +52,14 @@ static int mode_of(const char *f)
                                                                                 : BMAP_SPOT_AUTO;
 }
 
+void bmap_spot_defaults(BmapSpot *r)
+{
+    r->foe_dz = r->kind == 'A' ? BMAP_SPOT_FOE_DZ_WILD : BMAP_SPOT_FOE_DZ_TRAINER;
+    r->trainer_own[1] = BMAP_SPOT_OWN_UP;
+    r->intro.side = BMAP_SPOT_INTRO_SIDE;
+    r->intro.tilt = BMAP_SPOT_INTRO_TILT;
+}
+
 /* One line of the table into r; returns 0 when it is a row. */
 static int parse_row(char *line, BmapSpot *r)
 {
@@ -98,14 +106,15 @@ static int parse_row(char *line, BmapSpot *r)
     r->ax1 = field_int(f[21], r->rx1);
     r->az1 = field_int(f[22], r->rz1);
     r->ok = field_int(f[23], 0);
+    bmap_spot_defaults(r);
     r->foe_level = n > 24 ? field_int(f[24], 1) : 1;
-    r->foe_dz = n > 25 ? field_float(f[25], 0.0f) : 0.0f;
+    r->foe_dz = n > 25 ? field_float(f[25], r->foe_dz) : r->foe_dz;
     r->intro.zoom = n > 26 ? field_float(f[26], 1.0f) : 1.0f;
     r->trainer_id = n > 27 ? field_int(f[27], -1) : -1;
     r->intro.yaw = n > 28 ? field_float(f[28], 0.0f) : 0.0f;
     r->intro.lift = n > 29 ? field_float(f[29], 0.0f) : 0.0f;
-    r->intro.side = n > 30 ? field_float(f[30], 0.0f) : 0.0f;
-    r->intro.tilt = n > 31 ? field_float(f[31], 0.0f) : 0.0f;
+    r->intro.side = n > 30 ? field_float(f[30], r->intro.side) : r->intro.side;
+    r->intro.tilt = n > 31 ? field_float(f[31], r->intro.tilt) : r->intro.tilt;
     r->intro.aim = n > 32 ? field_float(f[32], 0.0f) : 0.0f;
     if (r->intro.zoom <= 0.0f) {
         r->intro.zoom = 1.0f;
@@ -120,8 +129,10 @@ static int parse_row(char *line, BmapSpot *r)
         r->cam.zoom = 1.0f;
     }
     for (i = 0; i < 3; i++) {
+        float own = i == 1 ? BMAP_SPOT_OWN_UP : 0.0f;
+
         r->trainer_foe[i] = n > 39 + i ? field_float(f[39 + i], 0.0f) : 0.0f;
-        r->trainer_own[i] = n > 42 + i ? field_float(f[42 + i], 0.0f) : 0.0f;
+        r->trainer_own[i] = n > 42 + i ? field_float(f[42 + i], own) : own;
     }
     r->view = n > 45 ? field_int(f[45], 0) : 0;
     r->pick_angle = n > 46 ? field_int(f[46], 0) : 0;
@@ -186,9 +197,15 @@ static int new_slot(void)
  * replaces it.  From the user's file (`user`) a row of view 0 also deletes
  * the other views the table has of its id: the file holds the whole table,
  * so a view it lacks was deleted. */
+/* The first line of the user's file as the editor wrote it before the
+ * defaults: every field written out, 0 where nothing was set. */
+#define USER_HEAD_ZEROS "# battle spots written by the spot editor: tools/battle_spots.py merge"
+#define USER_HEAD       "# battle spots written by the spot editor (- takes the default): tools/battle_spots.py merge"
+
 static void load_text(char *text, int user)
 {
     char *line = text;
+    int zeros = user && strncmp(text, USER_HEAD_ZEROS, sizeof USER_HEAD_ZEROS - 1) == 0;
 
     while (line != NULL && *line != '\0') {
         char *next = strchr(line, '\n');
@@ -202,6 +219,17 @@ static void load_text(char *text, int user)
             next[-2] = '\0';
         }
         if (parse_row(line, &r) == 0) {
+            if (zeros && r.mode == BMAP_SPOT_AUTO && !r.ok) {
+                /* a row nobody placed, from a file that wrote 0 for "not
+                 * set": the defaults (a placed or checked row keeps its own) */
+                BmapSpot d = r;
+
+                bmap_spot_defaults(&d);
+                r.foe_dz = r.foe_dz == 0.0f ? d.foe_dz : r.foe_dz;
+                r.trainer_own[1] = r.trainer_own[1] == 0.0f ? d.trainer_own[1] : r.trainer_own[1];
+                r.intro.side = r.intro.side == 0.0f ? d.intro.side : r.intro.side;
+                r.intro.tilt = r.intro.tilt == 0.0f ? d.intro.tilt : r.intro.tilt;
+            }
             if (user && r.view == 0) {
                 int k;
 
@@ -621,8 +649,22 @@ static const char *mode_name(int m)
     return m == BMAP_SPOT_FIXED ? "fixed" : m == BMAP_SPOT_ZONE ? "zone" : "auto";
 }
 
+/* A value as the table writes it: '-' when it is the default (so the row
+ * follows the default), else the number. */
+static const char *val(char *buf, size_t n, float v, float dflt)
+{
+    if (v == dflt) {
+        return "-";
+    }
+    snprintf(buf, n, "%g", (double)v);
+    return buf;
+}
+
 static void save_row(FILE *f, const BmapSpot *r)
 {
+    BmapSpot d = *r;
+    char b0[24], b1[24], b2[24], b3[24];
+
     if (r->kind == 'T') {
         fprintf(f, "%s\tT\t%u\t%s\t%d\t%d\t%d\t%d\t-\t-\t-\t-", r->id, r->zone, r->label, r->tx, r->tz,
                 r->dir, r->range);
@@ -638,14 +680,17 @@ static void save_row(FILE *f, const BmapSpot *r)
     } else {
         fprintf(f, "\t-\t-\t-\t-\t-\t-\t-");
     }
-    fprintf(f, "\t%d\t%d\t%g\t%g\t%d\t%g\t%g\t%g\t%g\t%g", r->ok, r->foe_level, (double)r->foe_dz,
-            (double)r->intro.zoom, r->trainer_id, (double)r->intro.yaw, (double)r->intro.lift,
-            (double)r->intro.side, (double)r->intro.tilt, (double)r->intro.aim);
+    bmap_spot_defaults(&d);
+    fprintf(f, "\t%d\t%d\t%s\t%g\t%d\t%g\t%g\t%s\t%s\t%g", r->ok, r->foe_level,
+            val(b0, sizeof b0, r->foe_dz, d.foe_dz), (double)r->intro.zoom, r->trainer_id,
+            (double)r->intro.yaw, (double)r->intro.lift, val(b1, sizeof b1, r->intro.side, d.intro.side),
+            val(b2, sizeof b2, r->intro.tilt, d.intro.tilt), (double)r->intro.aim);
     fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g", (double)r->cam.zoom, (double)r->cam.yaw, (double)r->cam.lift,
             (double)r->cam.side, (double)r->cam.tilt, (double)r->cam.aim);
-    fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g\t%d\t%d\t%d\t%g\t%g\t%d", (double)r->trainer_foe[0],
+    fprintf(f, "\t%g\t%g\t%g\t%g\t%s\t%g\t%d\t%d\t%d\t%g\t%g\t%d", (double)r->trainer_foe[0],
             (double)r->trainer_foe[1], (double)r->trainer_foe[2], (double)r->trainer_own[0],
-            (double)r->trainer_own[1], (double)r->trainer_own[2], r->view, r->pick_angle,
+            val(b3, sizeof b3, r->trainer_own[1], d.trainer_own[1]), (double)r->trainer_own[2], r->view,
+            r->pick_angle,
             r->trainer_n > 0 ? r->trainer_n : 1, (double)(r->trainer_size > 0.0f ? r->trainer_size : 1.0f),
             (double)(r->trainer_own_size > 0.0f ? r->trainer_own_size : 1.0f), r->doubles);
     if (r->ally_id >= 0) {
@@ -665,7 +710,7 @@ int bmap_spots_save(void)
     if (bmap_spots_user_path()[0] == '\0' || (f = fopen(bmap_spots_user_path(), "wb")) == NULL) {
         return -1;
     }
-    fprintf(f, "# battle spots written by the spot editor: tools/battle_spots.py merge\n");
+    fprintf(f, "%s\n", USER_HEAD);
     for (i = 0; i < g_n; i++) {
         if (g_rows[i].view != 0) {
             continue;

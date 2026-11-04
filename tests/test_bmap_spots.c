@@ -16,7 +16,10 @@
  *     (the angle breaks a tie, or comes first when the row says so), views
  *     are added and deleted;
  *   - a change is written to the user's file and read back over the
- *     built-in row, and the built-in row stays available as the default.
+ *     built-in row, and the built-in row stays available as the default;
+ *   - a field left out takes its default (the foe's distance by kind, the
+ *     own trainer, the intro), a file from before the defaults takes them
+ *     only on rows nobody placed, and the ally's columns are read.
  */
 
 #include <math.h>
@@ -231,6 +234,60 @@ int main(void)
     BW_CHECK_EQ("the last view stays", bmap_spots_view_delete(waiter, 0), -1);
     BW_REQUIRE("the default row", bmap_spots_default("T7.7", &d) == 0);
     BW_CHECK_EQ("the default is untouched", d.sx == 100.0f && d.sz == 100.0f, 0);
+
+    /* the defaults: a built-in row that leaves the fields out */
+    BW_REQUIRE("a trainer's default row", bmap_spots_default("T7.1", &d) == 0);
+    BW_CHECK_EQ("trainer: foe closer", (long)(d.foe_dz * 10.0f), (long)(BMAP_SPOT_FOE_DZ_TRAINER * 10.0f));
+    BW_CHECK_EQ("trainer: own trainer up", (long)(d.trainer_own[1] * 10.0f), (long)(BMAP_SPOT_OWN_UP * 10.0f));
+    BW_CHECK_EQ("trainer: intro side", (long)(d.intro.side * 10.0f), (long)(BMAP_SPOT_INTRO_SIDE * 10.0f));
+    BW_CHECK_EQ("trainer: intro tilt", (long)(d.intro.tilt * 10.0f), (long)(BMAP_SPOT_INTRO_TILT * 10.0f));
+    BW_REQUIRE("a wild area's default row", bmap_spots_default("A317.1", &d) == 0);
+    BW_CHECK_EQ("wild: foe closer", (long)(d.foe_dz * 10.0f), (long)(BMAP_SPOT_FOE_DZ_WILD * 10.0f));
+
+    /* a file the editor wrote before the defaults: 0 for "not set" */
+    f = fopen(path, "w");
+    BW_REQUIRE("an old user's file", f != NULL);
+    fputs("# battle spots written by the spot editor: tools/battle_spots.py merge\n", f);
+    /* nobody placed it: the zeros take the defaults; the ally's columns */
+    fputs("T7.1\tT\t7\tleader\t1\t1\t1\t0\t-\t-\t-\t-\t0\t0\t0\tauto\t-\t-\t-\t-\t-\t-\t-"
+          "\t0\t1\t0\t1\t-1\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t1\t1\t0"
+          "\t7\t0.5\t1.5\t2.5\t1.25\n", f);
+    /* placed by hand: its zeros are its own */
+    fputs("T7.8\tT\t7\twaitress\t1\t1\t1\t0\t-\t-\t-\t-\t0\t0\t0\tfixed\t10\t20\t90\t-\t-\t-\t-"
+          "\t1\t1\t0\t1\t-1\t0\t0\t0\t0\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t1\t1\t0\n", f);
+    fclose(f);
+    bmap_spots_set_user_path(path);
+    r = bmap_spots_get(row_of("T7.1"));
+    BW_CHECK_EQ("old file, not placed: foe", (long)(r->foe_dz * 10.0f), (long)(BMAP_SPOT_FOE_DZ_TRAINER * 10.0f));
+    BW_CHECK_EQ("old file, not placed: own trainer", (long)(r->trainer_own[1] * 10.0f), (long)(BMAP_SPOT_OWN_UP * 10.0f));
+    BW_CHECK_EQ("old file, not placed: intro tilt", (long)(r->intro.tilt * 10.0f), (long)(BMAP_SPOT_INTRO_TILT * 10.0f));
+    BW_CHECK_EQ("the ally's place is read", (long)(r->trainer_ally[1] * 10.0f), 15);
+    BW_CHECK_EQ("the ally's size is read", (long)(r->trainer_ally_size * 100.0f), 125);
+    r = bmap_spots_get(row_of("T7.8"));
+    BW_CHECK_EQ("old file, placed: foe kept", (long)(r->foe_dz * 10.0f), 0);
+    BW_CHECK_EQ("old file, placed: own trainer kept", (long)(r->trainer_own[1] * 10.0f), 0);
+    BW_CHECK_EQ("old file, placed: intro kept", (long)(r->intro.side * 10.0f), 0);
+
+    /* written again: the defaults as '-', the hand-set zeros written out,
+     * and both read back the same */
+    BW_REQUIRE("save over the old file", bmap_spots_save() == 0);
+    f = fopen(path, "r");
+    BW_REQUIRE("the new file", f != NULL);
+    seen = 0;
+    while (fgets(line, sizeof line, f) != NULL) {
+        if (strncmp(line, "T7.1\t", 5) == 0) {
+            seen |= strstr(line, "\tauto\t-\t-\t-\t-\t-\t-\t-\t0\t1\t-\t") != NULL;
+        }
+        if (strncmp(line, "T7.8\t", 5) == 0) {
+            seen |= (strstr(line, "\t1\t1\t0\t1\t") != NULL) << 1;
+        }
+    }
+    fclose(f);
+    BW_CHECK_EQ("a default written as -, a set 0 as 0", seen, 3);
+    bmap_spots_set_user_path(path);
+    BW_CHECK_EQ("read back: the default", (long)(bmap_spots_get(row_of("T7.1"))->foe_dz * 10.0f),
+                (long)(BMAP_SPOT_FOE_DZ_TRAINER * 10.0f));
+    BW_CHECK_EQ("read back: the set 0", (long)(bmap_spots_get(row_of("T7.8"))->foe_dz * 10.0f), 0);
     remove(path);
     BW_REPORT("test_bmap_spots");
 }

@@ -3552,13 +3552,13 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
             remember();
             r->mode = BMAP_SPOT_AUTO;
             r->foe_level = 1;
-            r->foe_dz = 0.0f;
             memset(&r->intro, 0, sizeof r->intro);
             r->intro.zoom = 1.0f;
             memset(&r->cam, 0, sizeof r->cam);
             r->cam.zoom = 1.0f;
             memset(r->trainer_foe, 0, sizeof r->trainer_foe);
             memset(r->trainer_own, 0, sizeof r->trainer_own);
+            bmap_spot_defaults(r);      /* the foe distance, own trainer, intro */
             r->trainer_size = 1.0f;
             r->trainer_own_size = 1.0f;
             memset(r->trainer_ally, 0, sizeof r->trainer_ally);
