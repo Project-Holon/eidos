@@ -781,10 +781,7 @@ else()
         -Wno-shift-negative-value -Wno-misleading-indentation
         # a pointer stored to an int, as mwcc took it (GCC 14 makes it an
         # error)
-        -Wno-int-conversion
-        # a pointer passed where the file's own prototype names another
-        # pointer type, as mwcc took it (GCC 14 makes it an error)
-        -Wno-incompatible-pointer-types)
+        -Wno-int-conversion)
     # With 8-byte pointers, GCC flags every cast between a pointer and a
     # 32-bit integer: 532 sites in the boot's matched files, the
     # pointer-width question docs/pointer-width.md measures (signal C).  They

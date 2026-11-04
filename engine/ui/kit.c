@@ -1267,7 +1267,7 @@ int ui_dialog(EidosUiCtx *c, int x, int y, int w, const char *msg,
                  sel ? accent : UI_EDGE, 255);
         ui_text(c, bx + (56 - ui_text_w(choices[i], UI_FONT_LARGE)) / 2,
                 y + h - 24 + ui_text_y(18, UI_FONT_LARGE), choices[i], UI_WHITE,
-                sel ? (s32)SHADOW_SEL : (s32)UI_GREY, UI_FONT_LARGE, 1);
+                sel ? (s32)SHADOW_SEL : (s32)UI_EDGE, UI_FONT_LARGE, 1);
         bx -= 6;
     }
     return h;
@@ -1498,7 +1498,7 @@ void ui_menu_row(EidosUiCtx *c, int x, int y, int w, const char *label,
                     0x1E1E1Eu, w / 2);
     }
     ui_icon_well(c, x + 6, y + 2, 22, icon, sel);
-    ui_text(c, x + 34, y + ty, label, UI_WHITE, sel ? (s32)SHADOW_DARK : (s32)UI_GREY,
+    ui_text(c, x + 34, y + ty, label, UI_WHITE, sel ? (s32)SHADOW_DARK : (s32)UI_EDGE,
             UI_FONT_LARGE, 1);
 }
 

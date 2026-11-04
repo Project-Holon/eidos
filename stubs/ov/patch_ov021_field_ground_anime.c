@@ -268,9 +268,7 @@ int FIELD_GROUND_ANIME_MainA(struct GameEvent *task, int *state, void *workPtr)
         return 1;
     }
     if (*state != before && eidos_field_transition() != 0) {
-        if (before != GROUND_A_FINISH_ENTRANCE && *state != GROUND_A_END) {
-            return GAME_EVENT_RESULT_AGAIN;     /* the next state, or the event it called, now */
-        }
+        return GAME_EVENT_RESULT_AGAIN;     /* the next state, or the event it called, now */
     }
     return 0;
 }

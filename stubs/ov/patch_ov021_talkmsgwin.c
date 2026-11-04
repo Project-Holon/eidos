@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov021/talkmsgwin.c TALKMSGWIN_DrawEntry TALKMSGWIN_UpdateShape TALKMSGWIN_DrawEntryFrame TALKMSGWIN_RedrawEntryFrame TALKMSGWIN_DrawBalloonShape TALKMSGWIN_AddFrameWindow TALKMSGWIN_DeleteFrameWindow
+ * patches: src/game/ov021/talkmsgwin.c TALKMSGWIN_DrawEntry TALKMSGWIN_UpdateShape TALKMSGWIN_DrawEntryFrame TALKMSGWIN_RedrawEntryFrame TALKMSGWIN_AddFrameWindow TALKMSGWIN_DeleteFrameWindow
  *
  * The field's talk balloons under the one-screen text boxes
  * (engine/ui/textbox.c, sdk/ui_text.c).
@@ -9,14 +9,16 @@
  * itself (bw_ui_text_own), the polygon is left out; the window's text is
  * still printed by the game, which the interface copies.
  *
- * TALKMSGWIN_DrawEntryFrame and TALKMSGWIN_RedrawEntryFrame draw the native 2D
- * frame tiles into bmpWin. While bw_ui_text_own() is active, these are silenced
- * so that original balloons do not flash when dialog ends.
+ * TALKMSGWIN_DrawEntryFrame and TALKMSGWIN_RedrawEntryFrame draw a
+ * balloon's frame tiles on the window's BG.  While the interface draws the
+ * text boxes, the frame is left out too: the BG stays on for a frame or two
+ * after a talk ends, and the game's frame showed there as a flash.
  *
  * TALKMSGWIN_UpdateShape works out, every frame, the screen point a
  * balloon's tail aims at (the speaker, or the window it answers).  It
- * does what the game's does and also hands that point to the port
- * (bw_ui_talk_target), so the interface's balloon aims at the same place.
+ * does what the game's does and also hands that point and the side the
+ * tail leaves to the port (bw_ui_talk_target), so the interface's balloon
+ * has the game's tail.
  *
  * TALKMSGWIN_AddFrameWindow and TALKMSGWIN_DeleteFrameWindow make and
  * remove a plain framed window of the talk system (the field's plain
@@ -43,18 +45,17 @@ typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
 
-struct BmpWin;
-
 typedef struct VecFx32 {
     int x, y, z;
 } VecFx32;
+
+struct BmpWin;
 
 typedef struct TalkMsgWin {
     u16 state;                      /* 0x00 */
     u8 isPlain;                     /* 0x02 */
     u8 frameType;                   /* 0x03 */
-    u32 tailMode;                   /* 0x04 */
-    void *printStream;              /* 0x08 */
+    u8 pad04[0x0C - 0x04];
     struct BmpWin *bmpWin;          /* 0x0C */
     const VecFx32 *targetPos;       /* 0x10 */
     u8 pad14[0x1A - 0x14];
@@ -82,7 +83,7 @@ enum {
 extern int  bw_ui_text_own(void);
 extern void bw_ui_field_win_add(const void *bmpWin);
 extern void bw_ui_field_win_remove(const void *bmpWin);
-extern void bw_ui_talk_target(const void *win, int x, int y);
+extern void bw_ui_talk_target(const void *win, int x, int y, int side);
 
 void VEC_Subtract(const VecFx32 *a, const VecFx32 *b, VecFx32 *out);
 void TALKMSGWIN_DrawBalloonShape(TalkMsgWinSys *sys, TalkMsgWin *win, int tailOnly);
@@ -112,18 +113,10 @@ void TALKMSGWIN_DrawEntry(TalkMsgWinSys *sys, TalkMsgWin *win)
     }
 }
 
-void TALKMSGWIN_DrawBalloonShape(TalkMsgWinSys *sys, TalkMsgWin *win, int tailOnly)
-{
-    (void)sys;
-    (void)win;
-    (void)tailOnly;
-    /* When modern UI is active, 3D balloon polygons are completely suppressed */
-}
-
 void TALKMSGWIN_DrawEntryFrame(TalkMsgWinSys *sys, TalkMsgWin *win)
 {
     if (bw_ui_text_own()) {
-        return;
+        return;                     /* the interface draws the frame */
     }
     TALKMSGWIN_DrawFrameByType(sys->param, win->bmpWin, win->frameType, 0);
 }
@@ -156,8 +149,8 @@ u32 TALKMSGWIN_UpdateShape(TalkMsgWinSys *sys, TalkMsgWin *win)
     } else {
         TALKMSGWIN_GetAnchorWindowPoint(win, &sys->windows[win->anchorIndex], &screenX, &screenY, &tipPos);
     }
-    bw_ui_talk_target(win, screenX, screenY);
     tailSide = TALKMSGWIN_CalcTail(win, screenX, screenY, &tailBaseA, &tailBaseB);
+    bw_ui_talk_target(win, screenX, screenY, tailSide);
     TALKMSGWIN_GetWindowCornerPoints(win, &topLeft, &topRight, &bottomLeft, &bottomRight);
     TALKMSGWIN_BuildShape(sys, win, &tipPos, &tailBaseA, &tailBaseB, &topLeft, &topRight, &bottomLeft, &bottomRight);
     if (win->tailSide != tailSide) {

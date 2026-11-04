@@ -139,18 +139,9 @@ static u32 rd8(const void *p, u32 off)
     return *((const u8 *)p + off);
 }
 
-extern void *bw_ds_try_ptr(u32 addr) MN_WEAK;
-
 static void *rdp(const void *p, u32 off)
 {
-    u32 addr;
-    if (p == NULL) return NULL;
-    addr = rd32(p, off);
-#if UINTPTR_MAX == 0xFFFFFFFFu
-    return (void *)(uintptr_t)addr;
-#else
-    return bw_ds_try_ptr != NULL ? bw_ds_try_ptr(addr) : NULL;
-#endif
+    return (void *)(uintptr_t)rd32(p, off);
 }
 
 static int debug_on(void)
@@ -165,16 +156,10 @@ static int debug_on(void)
 
 static void *game_system(void)
 {
-    u32 addr;
     if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL) {
         return NULL;
     }
-    memcpy(&addr, bw_dsref__GameSystemGlobal, sizeof(u32));
-#if UINTPTR_MAX == 0xFFFFFFFFu
-    return (void *)(uintptr_t)addr;
-#else
-    return bw_ds_try_ptr != NULL ? bw_ds_try_ptr(addr) : NULL;
-#endif
+    return *(void **)bw_dsref__GameSystemGlobal;
 }
 
 /* GameSystem (arm9/ica_anime_shared_types.h): procSys 0x08, event 0x18,
@@ -192,7 +177,7 @@ static void *app_work(int id)
 {
     void *gs, *cur, *work;
 
-    if (!bw_overlay_is_loaded((u32)id)) {
+    if (!MN_GAME || !bw_overlay_is_loaded((u32)id)) {
         return NULL;
     }
     gs = game_system();
@@ -200,36 +185,11 @@ static void *app_work(int id)
         return NULL;
     }
     cur = current_proc(gs);
-    if (cur == NULL || (int)rd32(cur, 0x04) != id || rd32(cur, 0x08) < 1u) {
+    if (cur == NULL || (int)rd32(cur, 0x04) != id || rd32(cur, 0x08) < 2u) {
         return NULL;
     }
     work = rdp(cur, 0x14);
     return work;
-}
-
-void eidos_ui_overlay_68_sync_exit(void)
-{
-    void *work = app_work(68);
-    if (work != NULL) {
-        int spd = eidos_settings_get(EIDOS_OPT_TEXT_SPEED);
-        int scn = eidos_settings_get(EIDOS_OPT_BATTLE_SCENE);
-        int sty = eidos_settings_get(EIDOS_OPT_BATTLE_STYLE);
-        u8 *saved = (u8 *)work + 0x248;
-        u8 *curr = (u8 *)work + 0x18C;
-        void *cfg = *(void **)(curr + 8);
-        curr[0] = (u8)spd;
-        curr[1] = (u8)scn;
-        curr[2] = (u8)sty;
-        memcpy(saved, curr, 6);
-        if (cfg != NULL) {
-            extern void CONFIG_SetTextSpeed(void *cfg, unsigned int speed) __attribute__((weak));
-            extern void CONFIG_SetBattleScene(void *cfg, unsigned int scene) __attribute__((weak));
-            extern void CONFIG_SetBattleStyle(void *cfg, unsigned int style) __attribute__((weak));
-            if (CONFIG_SetTextSpeed != NULL) CONFIG_SetTextSpeed(cfg, (unsigned int)spd);
-            if (CONFIG_SetBattleScene != NULL) CONFIG_SetBattleScene(cfg, (unsigned int)scn);
-            if (CONFIG_SetBattleStyle != NULL) CONFIG_SetBattleStyle(cfg, (unsigned int)sty);
-        }
-    }
 }
 
 static void *game_data(void)
@@ -787,16 +747,10 @@ static const OptRow k_sound[] = {
 };
 
 static const OptRow k_extras[] = {
-    { "PORT SETTINGS", "Open the complete PC settings (controls, gamepad, audio, graphics, mods).",
-      -1, OPT_CHOICE, 1, { "OPEN", 0, 0 }, { 0, 0, 0 }, 0, 0, 0, 0, 0 },
     { "INSTANT TEXT", "Show each page of a message at once, whatever the text speed.",
       EIDOS_OPT_EXTRAS_INSTANT_TEXT, OPT_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 }, 0, 0, 0, 0, 0 },
     { "TRANSITIONS", "Doors and map changes. Seamless never goes black.",
       EIDOS_OPT_TRANSITIONS, OPT_CHOICE, 3, { "ORIGINAL", "FAST", "SEAMLESS" }, { 0, 1, 2 }, 0, 0, 0, 0, 0 },
-    { "BATTLE BACKDROP", "The 3D battlefield scenery. Real map renders the full room.",
-      EIDOS_OPT_BATTLE_BACKDROP, OPT_CHOICE, 2, { "REAL MAP", "ORIGINAL", 0 }, { 0, 1, 0 }, 0, 0, 0, 0, 0 },
-    { "MOVE COLOURS", "Move names in battle take their elemental type colour.",
-      EIDOS_OPT_MOVE_COLOURS, OPT_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 }, 0, 0, 0, 0, 0 },
 };
 
 static const char *const k_page_name[PAGE_COUNT] = { "GAME", "DISPLAY", "SOUND", "EXTRAS" };
@@ -851,14 +805,9 @@ static int options_page(const void *work)
     return eidos_ui_opt_page >= 0 && eidos_ui_opt_page < PAGE_COUNT ? eidos_ui_opt_page : 0;
 }
 
-int eidos_ui_overlay_68_up(void)
-{
-    return app_work(68) != NULL;
-}
-
 static int options_match(void)
 {
-    return 0;
+    return app_work(68) != NULL;
 }
 
 static const OptRow *page_rows(int page, int *n)
@@ -951,24 +900,6 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
     snprintf(title, sizeof title, "%s", game_text(2, 29, 0, NULL)[0] != '\0' ? game_text(2, 29, 0, NULL) : "OPTIONS");
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, title, k_page_name[page], NULL, UI_CYAN);
-    {
-        const char *btn_txt = "ALL SETTINGS";
-        int bw = ui_text_w(btn_txt, UI_FONT_SMALL) + 16;
-        int bx = m.x + m.w - 8 - bw;
-        int by = m.y + 6;
-        EidosUiRect bhr;
-        int bst;
-
-        bhr.x = bx; bhr.y = by; bhr.w = bw; bhr.h = 16;
-        bst = prompt ? 0 : eidos_ui_hit(bhr);
-        pill(c, bx, by, bw, 16, btn_txt, (bst & EIDOS_UI_HOVER) ? 2 : 0, UI_CYAN, UI_CYAN2, UI_FONT_SMALL);
-        if (bst & EIDOS_UI_CLICK) {
-            extern int eidos_ui_options_proc_up;
-            extern void eidos_sui_enter(void);
-            eidos_ui_options_proc_up = 1;
-            eidos_sui_enter();
-        }
-    }
 
     /* tabs on the left, CONFIRM and QUIT on the right */
     tabs_y = m.y + 29;
@@ -1066,8 +997,6 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         cell0 = m.x + 8 + rw - 8 - OPT_CELL_W * 3;
         if (count == 2) {
             cell0 += OPT_CELL_W;
-        } else if (count == 1) {
-            cell0 += OPT_CELL_W * 2;
         }
         /* a row click that misses its choices selects the row: tap its label */
         if ((row_st & EIDOS_UI_CLICK)) {
@@ -1084,9 +1013,6 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 
                 txt = game_text(2, 29, (u32)k_game_choice_msg[ci], NULL);
                 chosen = values[r] == k_game_choice_val[ci];
-            } else if (prow[r].option == -1) {
-                txt = prow[r].names[i];
-                chosen = 0;
             } else if (kind == OPT_STEP) {
                 int v = eidos_settings_get(prow[r].option);
 
@@ -1111,15 +1037,8 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             pill(c, cx + 2, ry + 3, OPT_CELL_W - 4, 13, txt,
                  chosen ? 1 : ((st & EIDOS_UI_HOVER) ? 2 : 0), UI_CYAN, UI_CYAN2, UI_FONT_SMALL);
             if (st & EIDOS_UI_CLICK) {
-                if (page != PAGE_GAME && prow[r].option == -1) {
-                    extern int eidos_ui_options_proc_up;
-                    extern void eidos_sui_enter(void);
-                    eidos_ui_options_proc_up = 1;
-                    eidos_sui_enter();
-                } else {
-                    tap(page == PAGE_GAME || kind == OPT_CHOICE ? choice_tap_x(count, i)
-                                                                 : (i == 0 ? 136 : 232), tapy);
-                }
+                tap(page == PAGE_GAME || kind == OPT_CHOICE ? choice_tap_x(count, i)
+                                                             : (i == 0 ? 136 : 232), tapy);
                 clicked_row = -1;
             }
         }
@@ -1235,12 +1154,6 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
                 }
             }
             tx = choice_tap_x(count, (chosen + 1) % count);
-        } else if (prow[cursor].option == -1) {
-            extern int eidos_ui_options_proc_up;
-            extern void eidos_sui_enter(void);
-            eidos_ui_options_proc_up = 1;
-            eidos_sui_enter();
-            tx = -1;
         } else if (prow[cursor].kind == OPT_STEP) {
             tx = 232;
         } else {
@@ -1252,9 +1165,7 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             }
             tx = choice_tap_x(count, (chosen + 1) % count);
         }
-        if (tx >= 0) {
-            tap(tx, scroll_y + 24 * cursor + 12);
-        }
+        tap(tx, scroll_y + 24 * cursor + 12);
     }
 
     /* B: a right click, or a click outside the modal */
@@ -3968,7 +3879,7 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     by = ch - 17 - 6 - (bh > 0 ? bh : 42);
     if (bh > 0) {
         ui_panel(c, bx, by, bw, bh, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 235);
-        ui_letters(c, ui_bmpwin_bmp(rdp(nk, 0x24)), bx + 12, by + 7, UI_WHITE, UI_GREY, NULL, NULL);
+        ui_letters(c, ui_bmpwin_bmp(rdp(nk, 0x24)), bx + 12, by + 7, UI_WHITE, UI_EDGE, NULL, NULL);
     }
     if (rdp(nk, 0x54) != NULL) {
         static const char *const yn[2] = { "YES", "NO" };
@@ -5723,8 +5634,7 @@ static int vs_match(void)
  * the 3D after: a bright green) read as the VS screen's own backdrop. */
 static u32 vs_px(const u8 *p)
 {
-    if ((p[1] > 140 && p[0] < 140 && p[2] < 140) ||
-        (p[0] > 230 && p[1] > 230 && p[2] > 230)) {
+    if (p[1] > 140 && p[0] < 140 && p[2] < 140) {
         return 0x000010u;
     }
     return (u32)p[0] << 16 | (u32)p[1] << 8 | p[2];

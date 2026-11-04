@@ -2194,8 +2194,13 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             if (g_prev != NULL && g_prev_w == g_canvas.w && g_prev_h == g_canvas.h) {
                 memcpy(g_canvas.rgba, g_prev, (size_t)g_prev_w * (size_t)g_prev_h * 4);
             }
+            /* the game faded its screen to white (the flash before a
+             * battle): the whole window takes it, not a DS-sized box of it
+             * (a fade to black keeps the held picture: an app opening
+             * over the world does not take the game's fades) */
             if (flat_screen(in->screen_rgba[view->world_screen & 1]) == 0xFFFFFFL) {
-                g_fade_left = 0;
+                ui_fill(&g_ctx, 0, 0, g_canvas.w, g_canvas.h, 0xFFFFFFu, 255);
+                g_fade_left = 0;        /* nothing to blend from: it is all white */
             }
             /* an app closed (its proc is ending or gone, its recipe let
              * go): the scene it goes back to (the menu) shows at once, and

@@ -249,11 +249,6 @@ int bw_battle_view_active(void)
            && real_map();
 }
 
-int bw_battle_view_indoor(void)
-{
-    return g_cur != NULL && g_cur->s.indoor;
-}
-
 /*
  * The part of a sprite polygon its texture fills (alpha above 0), on screen
  * (NDC): the texels' box in s, t, carried to the screen by the affine map
@@ -1250,7 +1245,9 @@ void __wrap_G3D_CAMERA_Reset(void *camera)
 {
     uintptr_t gc = (uintptr_t)camera;
 
-    if (g_cur != NULL && gptr_ok(gc) && bw_battle_view_active() && gc == battle_camera()) {
+    if (g_cur != NULL && gptr_ok(gc) && bw_battle_view_active() && gc == battle_camera()
+        && (!bmap_intro_none(&g_cur->s.intro) || g_cur->s.foe_dy != 0.0f || g_cur->s.foe_dz != 0.0f
+            || bmap_place_view_set(&g_cur->s))) {
         int32_t keep[6], v;
         float eye[3], target[3];
         uint32_t i;

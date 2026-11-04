@@ -100,10 +100,10 @@ static const char *const k_axis_neg_short[] = { "LS Left", "LS Up", "RS Left", "
 /* Help text (bottom screen).  Two lines per option id, then fixed texts. */
 static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
     [EIDOS_OPT_DISPLAY_MODE]        = { "The window mode.", "" },
-    [EIDOS_OPT_DISPLAY_PIXEL_SCALE] = { "Scale multiplier of the 2D DS screens.",
-                                        "Auto: sharp scaling to fill window." },
-    [EIDOS_OPT_DISPLAY_RESOLUTION]  = { "Internal resolution of 3D models & scenes.",
-                                        "Auto: native resolution of the window." },
+    [EIDOS_OPT_DISPLAY_PIXEL_SCALE] = { "Size of each DS pixel.",
+                                        "Auto fills the window." },
+    [EIDOS_OPT_DISPLAY_RESOLUTION]  = { "Detail of the 3D.",
+                                        "Auto matches the window." },
     [EIDOS_OPT_LAYOUT_ARRANGEMENT]  = { "How the screens are placed.", "" },
     [EIDOS_OPT_LAYOUT_SWAP]         = { "Swap the two screens.", "" },
     [EIDOS_OPT_LAYOUT_GAP]          = { "Space between the screens.", "" },
@@ -124,10 +124,6 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "never goes black." },
     [EIDOS_OPT_GPU_2D]              = { "The graphics card draws the",
                                         "screens. Off uses the CPU." },
-    [EIDOS_OPT_TEXT_SPEED]          = { "Dialog text speed.", "" },
-    [EIDOS_OPT_BATTLE_SCENE]        = { "Play battle move animations.", "" },
-    [EIDOS_OPT_BATTLE_STYLE]        = { "Shift: prompt to switch Pokemon.",
-                                        "Set: no switch prompt." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -238,9 +234,6 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_OUTLINES]            = "3D outlines",
     [EIDOS_OPT_TRANSITIONS]         = "Map transitions",
     [EIDOS_OPT_GPU_2D]              = "GPU drawing",
-    [EIDOS_OPT_TEXT_SPEED]          = "Text speed",
-    [EIDOS_OPT_BATTLE_SCENE]        = "Battle scene",
-    [EIDOS_OPT_BATTLE_STYLE]        = "Battle style",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -250,13 +243,6 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_DISPLAY_MODE,        0, "Windowed" },
     { EIDOS_OPT_DISPLAY_MODE,        1, "Fullscreen" },
     { EIDOS_OPT_DISPLAY_MODE,        2, "Borderless" },
-    { EIDOS_OPT_TEXT_SPEED,          0, "Slow" },
-    { EIDOS_OPT_TEXT_SPEED,          1, "Normal" },
-    { EIDOS_OPT_TEXT_SPEED,          2, "Fast" },
-    { EIDOS_OPT_BATTLE_SCENE,        0, "On" },
-    { EIDOS_OPT_BATTLE_SCENE,        1, "Off" },
-    { EIDOS_OPT_BATTLE_STYLE,        0, "Shift" },
-    { EIDOS_OPT_BATTLE_STYLE,        1, "Set" },
     { EIDOS_OPT_LAYOUT_ARRANGEMENT,  0, "Stacked" },
     { EIDOS_OPT_LAYOUT_ARRANGEMENT,  1, "Side by side" },
     { EIDOS_OPT_LAYOUT_ARRANGEMENT,  2, "One screen" },
@@ -753,9 +739,6 @@ static void build_rows(void)
         add_row(ROW_OPTION, EIDOS_OPT_SOUND_VOLUME, 0);
         break;
     case TAB_EXTRAS:
-        add_row(ROW_OPTION, EIDOS_OPT_TEXT_SPEED, 0);
-        add_row(ROW_OPTION, EIDOS_OPT_BATTLE_SCENE, 0);
-        add_row(ROW_OPTION, EIDOS_OPT_BATTLE_STYLE, 0);
         add_row(ROW_OPTION, EIDOS_OPT_EXTRAS_INSTANT_TEXT, 0);
         add_row(ROW_OPTION, EIDOS_OPT_TRANSITIONS, 0);
         if (eidos_settings_get(EIDOS_OPT_LAYOUT_ARRANGEMENT) == EIDOS_LAYOUT_ONE) {
@@ -941,7 +924,6 @@ void eidos_sui_enter(void)
     g.rows = rows;               /* the list's own storage is kept */
     g.rowcap = rowcap;
     g_mp_view = MP_VIEW_CHOOSE;
-    eidos_settings_sync_from_game();
     g_mp_only = bw_mod_title_take_multiplayer();
     if (g_mp_only) {
         const char *join = bw_mod_title_take_join();

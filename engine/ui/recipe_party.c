@@ -2086,33 +2086,16 @@ static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h)
             ground = i;
         }
     }
-    {
-        int c1 = -1, c2 = -1, ab = 0, ba = 0;
-
+    /* the letters are colour 1 (the evolution prints with
+     * GF_FONT_SetTextColor(1, 2, 15), and so do most windows); the most
+     * used other colour when the window has no colour 1 */
+    if (ground != 1 && cnt[1] > 0) {
+        ink = 1;
+    } else {
         for (i = 0; i < 16; i++) {
-            if (i == ground || cnt[i] == 0) {
-                continue;
+            if (i != ground && cnt[i] > 0 && (ink < 0 || cnt[i] > cnt[ink])) {
+                ink = i;
             }
-            if (c1 < 0 || cnt[i] > cnt[c1]) {
-                c2 = c1;
-                c1 = i;
-            } else if (c2 < 0 || cnt[i] > cnt[c2]) {
-                c2 = i;
-            }
-        }
-        ink = c1;
-        if (c1 >= 0 && c2 >= 0) {
-            for (yy = 0; yy + 1 < bh; yy++) {
-                for (xx = 0; xx + 1 < bw; xx++) {
-                    int v = evo_px(px, bw, xx, yy);
-                    int r = evo_px(px, bw, xx + 1, yy), d = evo_px(px, bw, xx, yy + 1);
-                    int dd = evo_px(px, bw, xx + 1, yy + 1);
-
-                    if (v == c1 && (r == c2 || d == c2 || dd == c2)) ab++;
-                    if (v == c2 && (r == c1 || d == c1 || dd == c1)) ba++;
-                }
-            }
-            ink = ab >= ba ? c1 : c2;
         }
     }
     if (ink < 0) {
@@ -2124,8 +2107,7 @@ static int game_message(EidosUiCtx *c, u32 since, int x, int y, int w, int h)
             int v = evo_px(px, bw, xx, yy);
 
             if (v != ground) {
-                int is_text = (v == ink);
-                ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1, is_text ? UI_WHITE : 0x383838u, 255);
+                ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1, v == ink ? UI_WHITE : UI_EDGE, 255);
             }
         }
     }

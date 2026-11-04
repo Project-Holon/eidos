@@ -33,7 +33,8 @@
 extern void *bw_dsref__GameSystemGlobal IN_WEAK;
 extern void *bw_dsref_g_ProcSys IN_WEAK;
 extern void *g_ProcSys IN_WEAK;     /* the variable itself, once aletheia defines it */
-extern int bw_overlay_is_loaded(u32 id) IN_WEAK;
+extern int ui_species_name(int species, char *out, int cap) IN_WEAK;   /* recipe_dex.c */
+extern const void *bw_ui_namein_now(void) IN_WEAK;                    /* sdk/ui_text.c */
 
 /* ------------------------------------------------------------------ */
 /* Reading the game                                                    */
@@ -59,17 +60,13 @@ static u16 rd16(const void *p, u32 off)
 
 static void *rdp(const void *p, u32 off)
 {
-    if (p == NULL) return NULL;
+    /* These offsets describe DS records, including four-byte pointers. */
     u32 address = rd32(p, off);
-    if (address == 0) return NULL;
-    if (bw_ds_try_ptr != NULL) {
-        return bw_ds_try_ptr(address);
-    }
-#if UINTPTR_MAX == UINT32_MAX
+    void *host = address != 0 ? bw_ds_try_ptr(address) : NULL;
+
+    if (host != NULL || sizeof(void *) > 4) return host;
+    /* On ILP32 a game heap pointer can also lie outside the DS windows. */
     return (void *)(uintptr_t)address;
-#else
-    return NULL;
-#endif
 }
 
 /* Proc: data 0x00, overlayId 0x04, seq 0x08, work 0x14.  ProcSys: current 0x08. */
@@ -83,136 +80,88 @@ static int proc_overlay(void *proc)
     return proc != NULL ? (int)rd32(proc, 0x04) : -1;
 }
 
+static void *proc_work(void *proc, int overlay)
+{
+    if (proc == NULL || proc_overlay(proc) != overlay || (int)rd32(proc, 0x08) < 2) {
+        return NULL;
+    }
+    return rdp(proc, 0x14);
+}
+
 #define OV_NAMEIN 194
 #define OV_CTVT   172
 #define OV_START  88
 
-static void *proc_work(void *proc, int overlay)
-{
-    if (proc == NULL) return NULL;
-    int ov = proc_overlay(proc);
-    int ok = (ov == overlay);
-    if (!ok && overlay == OV_NAMEIN) {
-        u32 data_addr = rd32(proc, 0x00);
-        if (data_addr == 0x021F5580u) {
-            ok = 1;
-        } else if (ov == -1 && bw_overlay_is_loaded != NULL && bw_overlay_is_loaded(OV_NAMEIN)) {
-            ok = 1;
-        }
-    }
-    if (!ok || (int)rd32(proc, 0x08) < 1) return NULL;
-    return rdp(proc, 0x14);
-}
-
 static void *game_proc_top(void)
 {
-    u32 gs_addr = 0;
-    void *gs = NULL;
+    void *gs;
 
-    if (&bw_dsref__GameSystemGlobal != NULL && bw_dsref__GameSystemGlobal != NULL) {
-        gs_addr = rd32(bw_dsref__GameSystemGlobal, 0);
+    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL) {
+        return NULL;
     }
-    if (gs_addr == 0 && bw_ds_try_ptr != NULL) {
-        void *slot = bw_ds_try_ptr(0x02146248u);
-        if (slot != NULL) {
-            gs_addr = rd32(slot, 0);
-        }
-    }
-    if (gs_addr != 0 && bw_ds_try_ptr != NULL) {
-        gs = bw_ds_try_ptr(gs_addr);
-    }
+    memcpy(&gs, bw_dsref__GameSystemGlobal, sizeof(gs));
     return gs != NULL ? procsys_top(rdp(gs, 0x08)) : NULL;
-}
-
-static void *global_procsys_root(void)
-{
-    void *root = NULL;
-
-    if (&g_ProcSys != NULL && g_ProcSys != NULL) {
-        root = g_ProcSys;
-    } else {
-        u32 addr = 0;
-        if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
-            addr = rd32(bw_dsref_g_ProcSys, 0);
-        }
-        if (addr == 0 && bw_ds_try_ptr != NULL) {
-            void *slot = bw_ds_try_ptr(0x02146990u);
-            if (slot != NULL) {
-                addr = rd32(slot, 0);
-            }
-        }
-        if (addr != 0 && bw_ds_try_ptr != NULL) {
-            root = bw_ds_try_ptr(addr);
-        }
-    }
-    return root;
-}
-
-/* The global proc system's top: the port's settings at the title push the
- * keyboard there (engine/platform/mod_options_proc.c, kb_open). */
-static void *global_proc_top(void)
-{
-    return procsys_top(global_procsys_root());
 }
 
 /* The new game's intro keeps its own proc stack in its work (+0x30). */
 static void *intro_proc_top(void)
 {
-    void *root = procsys_top(global_procsys_root());
-    void *work, *data;
+    void *root, *work, *data;
 
-    if (root == NULL) {
+    if (&g_ProcSys != NULL) {
+        root = g_ProcSys;
+    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+        memcpy(&root, bw_dsref_g_ProcSys, sizeof(root));
+    } else {
         return NULL;
     }
+    root = procsys_top(root);
     work = proc_work(root, OV_START);
     if (work == NULL) {
         return NULL;
     }
     data = rdp(root, 0x00);
     /* the intro's ProcData (ov088 0x021BD818) */
-    if (data == NULL || (bw_ds_try_ptr != NULL && data != bw_ds_try_ptr(0x021BD818u))) {
+    if (data == NULL || data != bw_ds_try_ptr(0x021BD818u)) {
         return NULL;
     }
     return procsys_top(rdp(work, 0x30));
 }
 
+/* The global proc system's top: the port's settings at the title push the
+ * keyboard there (engine/platform/mod_options_proc.c, kb_open). */
+static void *global_proc_top(void)
+{
+    void *root;
+
+    if (&g_ProcSys != NULL) {
+        root = g_ProcSys;
+    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+        memcpy(&root, bw_dsref_g_ProcSys, sizeof(root));
+    } else {
+        return NULL;
+    }
+    return procsys_top(root);
+}
+
 static void *find_scene_work(int overlay)
 {
-    void *proc;
-    int i;
+    void *w;
 
-    for (proc = game_proc_top(), i = 0; proc != NULL && i < 32; proc = rdp(proc, 0x18), i++) {
-        void *w = proc_work(proc, overlay);
-        if (w != NULL) {
-            return w;
-        }
-        int ov = proc_overlay(proc);
-        if (ov == 92 || ov == 170) {
-            void *pw = (int)rd32(proc, 0x08) >= 1 ? rdp(proc, 0x14) : NULL;
-            void *sub_ps = pw != NULL ? rdp(pw, ov == 92 ? 0x40 : 0x04) : NULL;
-            void *sub_p = procsys_top(sub_ps);
-            int j;
-            for (j = 0; sub_p != NULL && j < 16; sub_p = rdp(sub_p, 0x18), j++) {
-                w = proc_work(sub_p, overlay);
-                if (w != NULL) {
-                    return w;
-                }
-            }
-        }
+    /* the name entry tells where its work is (several apps run it on a
+     * proc stack of their own: stubs/ov/patch_ov194_namein_main.c) */
+    if (overlay == OV_NAMEIN && bw_ui_namein_now != NULL
+        && (w = (void *)bw_ui_namein_now()) != NULL) {
+        return w;
     }
-    for (proc = intro_proc_top(), i = 0; proc != NULL && i < 32; proc = rdp(proc, 0x18), i++) {
-        void *w = proc_work(proc, overlay);
-        if (w != NULL) {
-            return w;
-        }
+    w = proc_work(game_proc_top(), overlay);
+    if (w == NULL && overlay == OV_NAMEIN) {
+        w = proc_work(intro_proc_top(), overlay);
     }
-    for (proc = global_proc_top(), i = 0; proc != NULL && i < 32; proc = rdp(proc, 0x18), i++) {
-        void *w = proc_work(proc, overlay);
-        if (w != NULL) {
-            return w;
-        }
+    if (w == NULL && overlay == OV_NAMEIN) {
+        w = proc_work(global_proc_top(), overlay);
     }
-    return NULL;
+    return w;
 }
 
 /* ------------------------------------------------------------------ */
@@ -254,10 +203,9 @@ static int name_read(NameState *s)
         return 0;
     }
     s->kind = (int)rd32(args, 0x00);
-    s->species = (int)rd16(args, 0x04);
-    s->form = (int)(rd16(args, 0x06) & 0xFF);
+    s->species = rd16(args, 0x04);      /* NameInArgs (ov010/namein_args.h) */
+    s->form = rd16(args, 0x06) & 0xFF;
     s->maxlen = (int)rd32(args, 0x18);
-    s->maxlen = s->maxlen > 0 ? s->maxlen : 10;
     s->len = rd16(w, NW_FIELD + 0x1E);
     for (i = 0; i < 11; i++) {
         s->text[i] = rd16(w, NW_FIELD + (u32)i * 2);
@@ -273,10 +221,7 @@ static int name_read(NameState *s)
     idx = s->page < 3 ? s->page : 3 + s->shift;
     s->grid = (const Byte *)rdp(members, (u32)idx * 4);
     if (s->grid == NULL) {
-        s->grid = (const Byte *)rdp(members, 0);
-        if (s->grid == NULL) {
-            return 0;
-        }
+        return 0;
     }
     return 1;
 }
@@ -384,7 +329,7 @@ static void draw_key(EidosUiCtx *c, int x, int y, int w, int h, const char *labe
         ui_fill(c, x + 2, y + 2, w - 4, h - 4, 0xFFFFFF, 40);
     }
     ui_text(c, x + (w - tw) / 2, y + (h - th) / 2 + k - 1 + (k == 1 ? 0 : 0), label, UI_WHITE,
-            cursor ? 0x003C50 : (s32)UI_GREY, font, k);
+            cursor ? 0x003C50 : (s32)UI_EDGE, font, k);
 }
 
 static int g_pressed_key = -1;
@@ -606,7 +551,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int pw, ph, px, py, pad = 8, x0, x1, y;
     int i, n = 0, space_tx = 192, space_ty = 52, space_found = 0;
     NKey keys[MAXKEYS];
-    char buf[64], cnt[16];
+    char buf[64], cnt[16], mon[32];
     int allow;
     static const char *const hint_pairs[] = { "A", "Type", "B", "Delete", "START", "OK", "SELECT", "Page" };
     static const u32 hint_keys[] = { 0x1, 0x2, 0x8, 0x4 };
@@ -623,12 +568,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->world_screen = 0;
     view->zoom = 1.0f;
     view->blur = 1;
-    view->hold_world = 1;
-    view->no_fade = 1;
-    view->hide_2d = 1;
     (void)in;
-
-    ui_fill(c, 0, 0, cw, ch, 0x080C14u, 210);
 
     allow = !s.busy;
 
@@ -675,12 +615,9 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     py = (ch - ui_bar_h(c) - ph) / 2;
     ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
     snprintf(cnt, sizeof(cnt), "%d / %d", s.len, s.maxlen);
-    if (s.kind == 1) {
-        char mon_name[32] = { 0 };
-        if (ui_species_name(s.species, mon_name, sizeof(mon_name)) <= 0 || mon_name[0] == '\0') {
-            snprintf(mon_name, sizeof(mon_name), "POKÉMON");
-        }
-        ui_header(c, px + 1, py + 1, pw - 2, "NICKNAME", mon_name, cnt, acc);
+    if (s.kind == 1 && ui_species_name != NULL
+        && ui_species_name(s.species, mon, (int)sizeof mon) > 0 && mon[0] != '\0') {
+        ui_header(c, px + 1, py + 1, pw - 2, "NICKNAME", mon, cnt, acc);
     } else {
         ui_header(c, px + 1, py + 1, pw - 2, "NAME", kind_sub(s.kind), cnt, acc);
     }
@@ -698,14 +635,10 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     } else if (s.kind == 0) {
         img = ui_overworld(s.species == 1 ? 33 : 0, 0, (int)((in->frame / 10) & 3));
     }
-    if (s.kind == 1) {
+    if (s.kind == 1 && ui_mon_front_anim((u16)s.species, 0, 0, NULL, NULL) != NULL) {
+        /* the Pokemon being named, as its summary shows it */
         ui_panel(c, x0, y, icon, icon, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, UI_EDGE, 255);
-        if (ui_mon_front_anim((u16)s.species, 0, 0, NULL, NULL) != NULL) {
-            ui_mon_front_draw(c, (u16)s.species, 0, in->frame, x0, y, icon, icon);
-        } else if (img != NULL) {
-            int ik = imin(3, imax(1, (icon - 4) / imax(imax(img->w, img->h), 1)));
-            ui_image(c, x0 + (icon - img->w * ik) / 2, y + (icon - img->h * ik) / 2, img, ik);
-        }
+        ui_mon_front_draw(c, (u16)s.species, 0, in->frame, x0, y, icon, icon);
         field_x = x0 + icon + 8;
     } else if (img != NULL) {
         int ik = imin(3, imax(1, (icon - 4) / imax(imax(img->w, img->h), 1)));

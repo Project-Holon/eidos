@@ -28,6 +28,7 @@
  *   Bmp         pixels 0x00, width 0x04, height 0x06
  */
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -39,7 +40,7 @@
 
 extern void *ov021_FIELDMAP_GetMsgBg(void *fieldMap) WEAK;
 extern void *ov021_FIELDMAP_GetInfoWindow(void *fieldMap) WEAK;
-extern int  bw_ui_talk_target_get(const void *win, int *x, int *y) WEAK;
+extern int  bw_ui_talk_target_get(const void *win, int *x, int *y, int *side) WEAK;
 extern int  bw_ui_field_wins(const void **out, int max) WEAK;
 
 static u32 rd32(const u8 *p) { u32 v; memcpy(&v, p, 4); return v; }
@@ -262,61 +263,99 @@ void ui_letters_dump(const void *bmp, const char *path)
 /* The boxes                                                           */
 /* ------------------------------------------------------------------ */
 
-/* A tail from (x0, y0) on a box's edge to (x1, y1), `half` wide at its
- * base, in the box's colours. */
-static void tail(EidosUiCtx *c, int x0, int y0, int x1, int y1, int half, u32 fill, u32 edge)
+/* How far (x, y) lies inside the line through a and b, on the side of
+ * the point o (pixels; negative outside). */
+static float side_in(float ax, float ay, float bx, float by, float ox, float oy, float x, float y)
 {
-    int dx = x1 - x0;
-    int dy = y1 - y0;
-    int adx = dx < 0 ? -dx : dx;
-    int ady = dy < 0 ? -dy : dy;
+    float nx = ay - by, ny = bx - ax, len = sqrtf(nx * nx + ny * ny);
+    float d;
 
-    if (ady >= adx) {
-        int steps = ady, i;
-        int dir = dy > 0 ? 1 : -1;
+    if (len <= 0.0f) {
+        return 1e9f;
+    }
+    d = (nx * (x - ax) + ny * (y - ay)) / len;
+    return nx * (ox - ax) + ny * (oy - ay) < 0.0f ? -d : d;
+}
 
-        if (steps < 2) {
-            return;
-        }
-        /* Erase the box's border at the base (into the box by 2px) so the tail and bubble merge */
-        for (i = -2; i <= 0; i++) {
-            int y = y0 + dir * i;
-            ui_fill(c, x0 - half + 1, y, 2 * half - 1, 1, fill, 255);
-        }
-        for (i = 0; i <= steps; i++) {
-            int y = y0 + dir * i;
-            int cx = x0 + dx * i / steps;
-            int hw = half - half * i / steps;
+/* The game's balloon tail (TALKMSGWIN_DrawBalloonShape): a triangle from
+ * two base points (a, b) on the box to the point the game aims it at (t).
+ * Its two long sides take the box's edge colour; inside the box (bx, by,
+ * bw, bh) it is the box's fill, so box and tail are one shape (the game's
+ * frame has a notch there). */
+static void tail(EidosUiCtx *c, int bx, int by, int bw, int bh, float ax, float ay,
+                 float b2x, float b2y, float tx, float ty, u32 fill, u32 edge)
+{
+    int x0 = (int)floorf(fminf(fminf(ax, b2x), tx)), x1 = (int)ceilf(fmaxf(fmaxf(ax, b2x), tx));
+    int y0 = (int)floorf(fminf(fminf(ay, b2y), ty)), y1 = (int)ceilf(fmaxf(fmaxf(ay, b2y), ty));
+    int x, y;
 
-            ui_fill(c, cx - hw - 1, y, 2 * hw + 3, 1, UI_INK, 255);
-            ui_fill(c, cx - hw, y, 2 * hw + 1, 1, edge, 255);
-            if (hw > 0) {
-                ui_fill(c, cx - hw + 1, y, 2 * hw - 1, 1, fill, 255);
+    for (y = y0; y <= y1; y++) {
+        int run = -1;
+        u32 run_col = 0;
+
+        for (x = x0; x <= x1 + 1; x++) {
+            float px = (float)x + 0.5f, py = (float)y + 0.5f;
+            int has = 0;
+            u32 col = 0;
+
+            if (x <= x1) {
+                float da = side_in(ax, ay, tx, ty, b2x, b2y, px, py);
+                float db = side_in(b2x, b2y, tx, ty, ax, ay, px, py);
+                float dc = side_in(ax, ay, b2x, b2y, tx, ty, px, py);
+                int in_box = x >= bx && x < bx + bw && y >= by && y < by + bh;
+
+                if (da >= -0.5f && db >= -0.5f && dc >= -0.5f) {
+                    has = 1;
+                    col = in_box || (da >= 1.0f && db >= 1.0f) ? fill : edge;
+                }
+            }
+            if (run >= 0 && (!has || col != run_col)) {
+                ui_fill(c, run, y, x - run, 1, run_col, 255);
+                run = -1;
+            }
+            if (has && run < 0) {
+                run = x;
+                run_col = col;
             }
         }
-    } else {
-        int steps = adx, i;
-        int dir = dx > 0 ? 1 : -1;
+    }
+}
 
-        if (steps < 2) {
-            return;
-        }
-        /* Erase the box's border at the base (into the box by 2px) so the tail and bubble merge */
-        for (i = -2; i <= 0; i++) {
-            int x = x0 + dir * i;
-            ui_fill(c, x, y0 - half + 1, 1, 2 * half - 1, fill, 255);
-        }
-        for (i = 0; i <= steps; i++) {
-            int x = x0 + dir * i;
-            int cy = y0 + dy * i / steps;
-            int hw = half - half * i / steps;
+/* The game's tail base for a side (TALKMSGWIN_CalcTail, on the frame box
+ * x, y, w, h): 16 pixels wide at the middle of the side it leaves, or 64
+ * pixels in from a corner for a window whose tail keeps to one edge.
+ * 0 when the side has no tail. */
+static int tail_base(int side, int x, int y, int w, int h, float *ax, float *ay, float *bx, float *by)
+{
+    int base = w >= 16 && h >= 16 ? 16 : h;
 
-            ui_fill(c, x, cy - hw - 1, 1, 2 * hw + 3, UI_INK, 255);
-            ui_fill(c, x, cy - hw, 1, 2 * hw + 1, edge, 255);
-            if (hw > 0) {
-                ui_fill(c, x, cy - hw + 1, 1, 2 * hw - 1, fill, 255);
-            }
-        }
+    switch (side) {
+    case 1:                             /* TALKMSGWIN_TAIL_SIDE_TOP          */
+    case 2:                             /* TALKMSGWIN_TAIL_SIDE_BOTTOM       */
+        *ax = (float)(x + w / 2 - base / 2);
+        *bx = (float)(x + w / 2 + base / 2);
+        *ay = *by = (float)(side == 1 ? y + 3 : y + h - 3);
+        return 1;
+    case 3:                             /* TALKMSGWIN_TAIL_SIDE_LEFT         */
+    case 4:                             /* TALKMSGWIN_TAIL_SIDE_RIGHT        */
+        *ax = *bx = (float)(side == 3 ? x + 1 : x + w - 1);
+        *ay = (float)(y + h / 2 - base / 2);
+        *by = (float)(y + h / 2 + base / 2);
+        return 1;
+    case 5:                             /* TALKMSGWIN_TAIL_SIDE_TOP_LEFT     */
+    case 7:                             /* TALKMSGWIN_TAIL_SIDE_BOTTOM_LEFT  */
+        *ax = (float)(x + 0x40);
+        *bx = (float)(x + 0x50);
+        *ay = *by = (float)(side == 5 ? y + 4 : y + h - 4);
+        return 1;
+    case 6:                             /* TALKMSGWIN_TAIL_SIDE_TOP_RIGHT    */
+    case 8:                             /* TALKMSGWIN_TAIL_SIDE_BOTTOM_RIGHT */
+        *ax = (float)(x + w - 0x50);
+        *bx = (float)(x + w - 0x40);
+        *ay = *by = (float)(side == 6 ? y + 4 : y + h - 4);
+        return 1;
+    default:
+        return 0;
     }
 }
 
@@ -355,8 +394,8 @@ int ui_textbox_h(const void *bmpwin)
     return b.h + 10;
 }
 
-void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *bmpwin,
-                     int tail_x, int tail_y)
+static void textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *bmpwin,
+                         int tail_x, int tail_y, int tail_side)
 {
     WinBmp b;
     int h, tx, ty;
@@ -372,61 +411,14 @@ void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *b
         fill = TB_PAPER; edge = TB_PEDGE; ink = TB_INK; shadow = TB_INKSH;
     }
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, fill, edge, 255);
-    if (kind == UI_TEXTBOX_BALLOON && tail_x >= 0 && tail_y >= 0) {
-        int bx = tail_x;
-        if (w >= 48) {
-            if (bx < x + 24) bx = x + 24;
-            if (bx > x + w - 24) bx = x + w - 24;
-        } else {
-            bx = x + w / 2;
-        }
+    if (kind == UI_TEXTBOX_BALLOON && tail_x >= 0) {
+        /* the tail over the box, so it opens the box's edge where it
+         * leaves; none when the point it aims at is inside the box */
+        float ax, ay, bx, by;
 
-        if (tail_y >= y + h) {
-            int y0 = y + h - 1;
-            int dy = tail_y - y0;
-            if (dy >= 6) {
-                int tip_y = tail_y - 6;
-                if (tip_y > y0 + 40) tip_y = y0 + 40;
-                if (tip_y < y0 + 12) tip_y = y0 + 12;
-                int tip_x = bx + (tail_x - bx) * (tip_y - y0) / dy;
-                tail(c, bx, y0, tip_x, tip_y, 8, fill, edge);
-            }
-        } else if (tail_y <= y) {
-            int y0 = y;
-            int dy = y0 - tail_y;
-            if (dy >= 6) {
-                int tip_y = tail_y + 6;
-                if (tip_y < y0 - 40) tip_y = y0 - 40;
-                if (tip_y > y0 - 12) tip_y = y0 - 12;
-                int tip_x = bx + (tail_x - bx) * (y0 - tip_y) / dy;
-                tail(c, bx, y0, tip_x, tip_y, 8, fill, edge);
-            }
-        } else if (tail_x < x) {
-            int x0 = x;
-            int dx = x0 - tail_x;
-            if (dx >= 6) {
-                int by = tail_y;
-                if (by < y + 16) by = y + 16;
-                if (by > y + h - 16) by = y + h - 16;
-                int tip_x = tail_x + 6;
-                if (tip_x < x0 - 40) tip_x = x0 - 40;
-                if (tip_x > x0 - 12) tip_x = x0 - 12;
-                int tip_y = by + (tail_y - by) * (x0 - tip_x) / dx;
-                tail(c, x0, by, tip_x, tip_y, 8, fill, edge);
-            }
-        } else if (tail_x >= x + w) {
-            int x0 = x + w - 1;
-            int dx = tail_x - x0;
-            if (dx >= 6) {
-                int by = tail_y;
-                if (by < y + 16) by = y + 16;
-                if (by > y + h - 16) by = y + h - 16;
-                int tip_x = tail_x - 6;
-                if (tip_x > x0 + 40) tip_x = x0 + 40;
-                if (tip_x < x0 + 12) tip_x = x0 + 12;
-                int tip_y = by + (tail_y - by) * (tip_x - x0) / dx;
-                tail(c, x0, by, tip_x, tip_y, 8, fill, edge);
-            }
+        if (tail_base(tail_side, x, y, w, h, &ax, &ay, &bx, &by)
+            && !(tail_x >= x && tail_x < x + w && tail_y >= y && tail_y < y + h)) {
+            tail(c, x, y, w, h, ax, ay, bx, by, (float)tail_x, (float)tail_y, fill, edge);
         }
     }
     if (kind == UI_TEXTBOX_SYSTEM) {
@@ -435,6 +427,14 @@ void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *b
     tx = x + (kind == UI_TEXTBOX_SYSTEM ? 10 : 8);
     ty = y + 5;
     draw_letters(c, &b, tx, ty, ink, shadow);
+}
+
+void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *bmpwin,
+                     int tail_x, int tail_y)
+{
+    (void)tail_x;
+    (void)tail_y;
+    textbox_draw(c, kind, x, y, w, bmpwin, -1, -1, 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -550,7 +550,7 @@ u32 ui_textbox_field(EidosUiCtx *c, void *fm, float ox, float oy, float s, const
         int gy = (int)(oy + (float)((bw[4] - 1) * 8) * s);
         int gw = (int)((float)((bw[5] + 2) * 8) * s);
         int bwid = bw[5] * 8 + 16;
-        int x, y, tx = -1, ty = -1;
+        int x, y, tx = -1, ty = -1, side = 0;
 
         /* the game's place, the box as wide as the game's (not less than
          * its letters need), kept on the screen */
@@ -568,12 +568,12 @@ u32 ui_textbox_field(EidosUiCtx *c, void *fm, float ox, float oy, float s, const
         if (w[i].kind == UI_TEXTBOX_BALLOON && bw_ui_talk_target_get != NULL) {
             int px, py;
 
-            if (w[i].talkwin != NULL && bw_ui_talk_target_get(w[i].talkwin, &px, &py)) {
+            if (w[i].talkwin != NULL && bw_ui_talk_target_get(w[i].talkwin, &px, &py, &side)) {
                 tx = (int)(ox + (float)px * s);
                 ty = (int)(oy + (float)py * s);
             }
         }
-        ui_textbox_draw(c, w[i].kind, x, y, bwid, bw, tx, ty);
+        textbox_draw(c, w[i].kind, x, y, bwid, bw, tx, ty, side);
     }
     return hide;
 }

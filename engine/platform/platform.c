@@ -17,7 +17,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <math.h>
 
 #include "icon_rgba.h"
 #include "input.h"
@@ -2182,28 +2181,14 @@ static int render_3d_for(EidosPlatform *p, int screen, const struct G3dSnapshot 
             oh = wg.ds.h;
         }
         if (ow > 0 && oh > 0 && ow <= 8192 && oh <= 8192) {
-            int scale = eidos_settings_get(EIDOS_OPT_DISPLAY_RESOLUTION);
             int cap = rows_3d();
-            if (scale > 0) {
-                int target_h = (int)SCREEN_H * scale;
-                int target_w = (int)roundf((float)ow * (float)target_h / (float)oh);
-                if (target_w < (int)SCREEN_W * scale) {
-                    target_w = (int)SCREEN_W * scale;
-                }
-                if (target_h > oh || target_w > ow) {
-                    target_w = ow;
-                    target_h = oh;
-                }
-                rw = target_w;
-                rh = target_h;
-            } else {
-                rw = ow;
-                rh = oh;
-                if (cap > 0 && rh > cap) {
-                    /* fewer rows, the same shape: the world stretches it */
-                    rw = (int)(((long)rw * cap + rh / 2) / rh);
-                    rh = cap;
-                }
+
+            rw = ow;
+            rh = oh;
+            if (cap > 0 && rh > cap) {
+                /* fewer rows, the same shape: the world stretches it */
+                rw = (int)(((long)rw * cap + rh / 2) / rh);
+                rh = cap;
             }
         }
     }

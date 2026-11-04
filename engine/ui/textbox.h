@@ -17,9 +17,10 @@ extern "C" {
 #define UI_TEXTBOX_SYSTEM    2  /* black with the strip: the PC, the save   */
 
 /* One box at (x, y), w wide, holding the letters of the game's window
- * `bmpwin` (a BmpWin); a balloon's tail aims at (tail_x, tail_y) when
- * tail_x >= 0.  Canvas pixels; the letters are drawn one canvas pixel per
- * DS pixel (the canvas at the DS scale, eidos_ui_want_ds_scale). */
+ * `bmpwin` (a BmpWin).  Canvas pixels; the letters are drawn one canvas
+ * pixel per DS pixel (the canvas at the DS scale, eidos_ui_want_ds_scale).
+ * The two tail arguments are unused (-1): only the field's balloons have a
+ * tail (ui_textbox_field). */
 void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *bmpwin,
                      int tail_x, int tail_y);
 

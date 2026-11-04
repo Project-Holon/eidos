@@ -478,9 +478,10 @@ typedef struct BdPiece {
 #define BD_CORE_CUT 0.99f
 #define BD_SOFT_ONLY(d) ((d)->alpha >= 31u)
 
+/* A sphere around one draw's triangles (for a billboard, around its pivot,
+ * so it holds the triangles whichever way they turn) */
 typedef struct BdBound {
-    float center[3];
-    float radius;
+    float c[3], r;
 } BdBound;
 
 typedef struct Gl3dBackdrop {
@@ -502,8 +503,7 @@ typedef struct Gl3dBackdrop {
     unsigned *at;               /* where each piece in the order starts    */
     float idx_eye[3];           /* the camera the ibo was sorted for       */
     int idx_ok;
-    BdBound *bounds;            /* bounding sphere per draw for frustum culling */
-    unsigned n_bounds;
+    BdBound *bound;             /* one sphere per draw (sc->nd), or NULL   */
 } Gl3dBackdrop;
 
 static Gl3dBackdrop g_bd;
@@ -530,9 +530,8 @@ static void backdrop_free_scene(int keep_tex)
     free(g_bd.dist);
     free(g_bd.idx);
     free(g_bd.at);
-    free(g_bd.bounds);
-    g_bd.bounds = NULL;
-    g_bd.n_bounds = 0;
+    free(g_bd.bound);
+    g_bd.bound = NULL;
     g_bd.at = NULL;
     g_bd.piece = NULL;
     g_bd.order = NULL;
@@ -811,10 +810,8 @@ static void backdrop_upload(EidosGl *g, const BmapScene *sc)
                         : t->flip_t ? GL_MIRRORED_REPEAT : GL_REPEAT);
     }
     {
-        /* the half-width of the placed map around the room/player center */
-        float cx = sc->indoor ? 0.15f : 0.0f;
-        float cz = sc->indoor ? 0.15f : 7.0f;
-        float x0 = cx, x1 = cx, z0 = cz, z1 = cz;
+        /* the half-width of the placed map around the player tile */
+        float x0 = 0.0f, x1 = 0.0f, z0 = 7.0f, z1 = 7.0f;
         unsigned n;
 
         for (n = 0; n < sc->nv; n++) {
@@ -825,44 +822,41 @@ static void backdrop_upload(EidosGl *g, const BmapScene *sc)
             z0 = v->z < z0 ? v->z : z0;
             z1 = v->z > z1 ? v->z : z1;
         }
-        g_bd.reach = fminf(fminf(cx - x0, x1 - cx), fminf(cz - z0, z1 - cz));
+        g_bd.reach = fminf(fminf(-x0, x1), fminf(7.0f - z0, z1 - 7.0f));
     }
-    free(g_bd.bounds);
-    g_bd.bounds = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof(BdBound)) : NULL;
-    g_bd.n_bounds = sc->nd;
-    if (g_bd.bounds != NULL) {
-        unsigned d_i, v_i;
-        for (d_i = 0; d_i < sc->nd; d_i++) {
-            const BmapDraw *d = &sc->d[d_i];
-            float min_x = 1e9f, max_x = -1e9f;
-            float min_y = 1e9f, max_y = -1e9f;
-            float min_z = 1e9f, max_z = -1e9f;
-            for (v_i = 0; v_i < d->count && d->first + v_i < sc->nv; v_i++) {
-                const BmapVertex *v = &sc->v[d->first + v_i];
-                if (v->x < min_x) min_x = v->x;
-                if (v->x > max_x) max_x = v->x;
-                if (v->y < min_y) min_y = v->y;
-                if (v->y > max_y) max_y = v->y;
-                if (v->z < min_z) min_z = v->z;
-                if (v->z > max_z) max_z = v->z;
+    free(g_bd.bound);
+    g_bd.bound = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof *g_bd.bound) : NULL;
+    if (g_bd.bound != NULL) {
+        unsigned d, k;
+
+        for (d = 0; d < sc->nd; d++) {
+            const BmapDraw *dr = &sc->d[d];
+            BdBound *bb = &g_bd.bound[d];
+            float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+            float r2 = 0.0f;
+
+            for (k = 0; k < dr->count && dr->first + k < sc->nv; k++) {
+                const BmapVertex *v = &sc->v[dr->first + k];
+
+                lo[0] = fminf(lo[0], v->x); hi[0] = fmaxf(hi[0], v->x);
+                lo[1] = fminf(lo[1], v->y); hi[1] = fmaxf(hi[1], v->y);
+                lo[2] = fminf(lo[2], v->z); hi[2] = fmaxf(hi[2], v->z);
             }
-            if (d->count > 0 && min_x <= max_x) {
-                float cx = (min_x + max_x) * 0.5f;
-                float cy = (min_y + max_y) * 0.5f;
-                float cz = (min_z + max_z) * 0.5f;
-                float rx = max_x - cx;
-                float ry = max_y - cy;
-                float rz = max_z - cz;
-                g_bd.bounds[d_i].center[0] = cx;
-                g_bd.bounds[d_i].center[1] = cy;
-                g_bd.bounds[d_i].center[2] = cz;
-                g_bd.bounds[d_i].radius = sqrtf(rx * rx + ry * ry + rz * rz);
-            } else {
-                g_bd.bounds[d_i].center[0] = 0.0f;
-                g_bd.bounds[d_i].center[1] = 0.0f;
-                g_bd.bounds[d_i].center[2] = 0.0f;
-                g_bd.bounds[d_i].radius = 1e9f;
+            if (lo[0] > hi[0]) {
+                bb->c[0] = bb->c[1] = bb->c[2] = 0.0f;
+                bb->r = 1e30f;          /* no triangles: never left out    */
+                continue;
             }
+            for (k = 0; k < 3; k++) {
+                bb->c[k] = dr->billboard ? dr->pivot[k] : 0.5f * (lo[k] + hi[k]);
+            }
+            for (k = 0; k < dr->count && dr->first + k < sc->nv; k++) {
+                const BmapVertex *v = &sc->v[dr->first + k];
+                float dx = v->x - bb->c[0], dy = v->y - bb->c[1], dz = v->z - bb->c[2];
+
+                r2 = fmaxf(r2, dx * dx + dy * dy + dz * dz);
+            }
+            bb->r = sqrtf(r2);
         }
     }
     backdrop_pieces(sc);
@@ -1028,17 +1022,14 @@ static void front_depth_clear(const G3dBackdrop *b, const float r[4][4])
 static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
 {
     const BmapScene *sc = (const BmapScene *)b->scene;
-    float r[4][4];
-    float fwd[3];
+    float r[4][4], fwd[3];
+    float atm[4] = { 0.0f, 7.0f, 0.0f, 0.0f };   /* the far map's fade (u_atm) */
     unsigned pass, i;
     /* the field plays its animations a frame a field frame (60 a second) */
     unsigned uv_frame = (unsigned)(SDL_GetTicks() * 60u / 1000u);
     int uv_set = 1;
 
     if (g_bd.prog == 0 || sc == NULL || sc->nv == 0) {
-        return;
-    }
-    if (front && !b->front_only && b->n_poke == 0) {
         return;
     }
     if (g_bd.scene != sc || g_bd.gen != b->scene_gen) {
@@ -1049,9 +1040,9 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         }
     }
     backdrop_matrix(b, r);
-    fwd[0] = b->target[0] - b->eye[0];
-    fwd[1] = b->target[1] - b->eye[1];
-    fwd[2] = b->target[2] - b->eye[2];
+    for (i = 0; i < 3; i++) {
+        fwd[i] = b->target[i] - b->eye[i];
+    }
     vnorm(fwd);
     g->glUseProgram(g_bd.prog);
     g->glBindVertexArray(g_bd.vao);
@@ -1060,18 +1051,11 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         g->glUniform4f(g_bd.u_r[i], r[i][0], r[i][1], r[i][2], r[i][3]);
     }
     {
-        float cx = (sc != NULL && sc->indoor) ? 0.15f : 0.0f;
-        float cz = (sc != NULL && sc->indoor) ? 0.15f : 7.0f;
-        float at[4] = { cx, cz, 0.0f, 0.0f };
-
         if (g_bd.reach > 40.0f) {
-            at[2] = 0.45f * g_bd.reach;
-            at[3] = 0.97f * g_bd.reach;
-        } else if (sc != NULL && sc->indoor && g_bd.reach > 2.0f) {
-            at[2] = 0.94f * g_bd.reach;
-            at[3] = 0.99f * g_bd.reach;
+            atm[2] = 0.45f * g_bd.reach;
+            atm[3] = 0.97f * g_bd.reach;
         }
-        g->glUniform4f(g_bd.u_atm, at[0], at[1], at[2], at[3]);
+        g->glUniform4f(g_bd.u_atm, atm[0], atm[1], atm[2], atm[3]);
         float sk[3];
 
         sk[0] = (float)b->sky[0] / 255.0f;
@@ -1119,7 +1103,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(0.0f, 1.0f); /* no slope term: it pushed far, grazing triangles over the near map */
     g->glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    for (pass = 0; pass < (g_bd.n_piece > 0 ? 2 : 1); pass++) {
+    for (pass = 0; pass < 2; pass++) {
         if (pass == 1) {
             glEnable(GL_BLEND);
             g->glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,
@@ -1132,8 +1116,8 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         unsigned n = pass == 1 && g_bd.n_piece > 0 ? g_bd.n_piece : sc->nd;
         int sorted = pass == 1 && g_bd.n_piece > 0;
 
-        if (sorted && !(g_bd.idx_ok && fabsf(g_bd.idx_eye[0] - b->eye[0]) < 0.05f &&
-                        fabsf(g_bd.idx_eye[1] - b->eye[1]) < 0.05f && fabsf(g_bd.idx_eye[2] - b->eye[2]) < 0.05f)) {
+        if (sorted && !(g_bd.idx_ok && g_bd.idx_eye[0] == b->eye[0] &&
+                        g_bd.idx_eye[1] == b->eye[1] && g_bd.idx_eye[2] == b->eye[2])) {
             /* the see-through parts far to near from this camera, as one
              * index buffer (the back and the front pass share it) */
             for (i = 0; i < g_bd.n_piece; i++) {
@@ -1163,14 +1147,13 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         }
         for (i = 0; i < n; i++) {
             const BmapDraw *d;
-            unsigned first, count, run = 1;
-            unsigned d_idx;
+            unsigned first, count, run = 1, di;
 
             if (sorted) {
                 const BdPiece *pc = &g_bd.piece[g_bd.order[i]];
 
-                d_idx = pc->draw;
-                d = &sc->d[d_idx];
+                di = pc->draw;
+                d = &sc->d[di];
                 first = pc->first;
                 count = pc->count;
                 /* the next triangles in the order that come from the same
@@ -1179,24 +1162,21 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                     run++;
                 }
             } else {
-                d_idx = i;
+                di = i;
                 d = &sc->d[i];
                 first = d->first;
                 count = d->count;
             }
-            if (g_bd.bounds != NULL && d_idx < g_bd.n_bounds) {
-                const BdBound *bd = &g_bd.bounds[d_idx];
-                float tcx = bd->center[0] - b->eye[0];
-                float tcy = bd->center[1] - b->eye[1];
-                float tcz = bd->center[2] - b->eye[2];
-                float cam_dist = fwd[0] * tcx + fwd[1] * tcy + fwd[2] * tcz;
-                /* Culling behind camera */
-                if (cam_dist < -bd->radius) {
-                    i += run - 1;
-                    continue;
-                }
-                /* Culling beyond fog/atmosphere view distance */
-                if (g_bd.reach > 40.0f && cam_dist > g_bd.reach * 1.5f + bd->radius) {
+            /* a draw wholly behind the camera, or wholly past where the far
+             * map has faded into the sky (u_atm), is not sent */
+            if (g_bd.bound != NULL && di < sc->nd) {
+                const BdBound *bb = &g_bd.bound[di];
+                float depth = fwd[0] * (bb->c[0] - b->eye[0]) + fwd[1] * (bb->c[1] - b->eye[1])
+                              + fwd[2] * (bb->c[2] - b->eye[2]);
+                float ax = bb->c[0] - atm[0], az = bb->c[2] - atm[1];
+
+                if (depth < -bb->r
+                    || (atm[3] > 0.0f && sqrtf(ax * ax + az * az) - bb->r > atm[3])) {
                     i += run - 1;
                     continue;
                 }
@@ -2074,13 +2054,11 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
     return glGetError() == GL_NO_ERROR ? 0 : -1;
 }
 
-#define AA_MAX_SS_PIXELS (1280 * 720)
-
 static int render_with_aa(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
 {
     if (g != NULL && s != NULL && w > 0 && h > 0 &&
         g->integer_samples < MSAA_SAMPLES && (s->disp3dcnt & 0x10u) != 0 &&
-        (long)w * h <= AA_MAX_SS_PIXELS && !g->es) {
+        (long)w * h <= MSAA_MAX_PIXELS && !g->es) {
         /* (not on a phone: four times a phone screen's pixels every frame
          * cost more than a frame's time there, and at its density the
          * resolution already smooths the edges) */
@@ -2122,27 +2100,33 @@ int eidos_gl_render3d(EidosGl *g, const G3dSnapshot *s, int w, int h)
     return render_with_aa(g, &g->fb[0], s, w, h);
 }
 
-static unsigned char k_unpremul_tab[256][256];
-static int k_unpremul_ready = 0;
+/* c * 255 / a, rounded, for every alpha and colour (unpremultiply) */
+static unsigned char g_unpremul[256][256];
+static int g_unpremul_ready;
 
-static void init_unpremul(void)
+static void unpremul_table(void)
 {
-    int a, c;
-    if (k_unpremul_ready) return;
-    for (a = 1; a < 256; a++) {
-        for (c = 0; c < 256; c++) {
-            unsigned v = ((unsigned)c * 255u + (unsigned)a / 2u) / (unsigned)a;
-            k_unpremul_tab[a][c] = (unsigned char)(v > 255u ? 255u : v);
+    unsigned a, c;
+
+    if (g_unpremul_ready) {
+        return;
+    }
+    for (a = 1; a < 256u; a++) {
+        for (c = 0; c < 256u; c++) {
+            unsigned v = (c * 255u + a / 2u) / a;
+
+            g_unpremul[a][c] = (unsigned char)(v > 255u ? 255u : v);
         }
     }
-    k_unpremul_ready = 1;
+    g_unpremul_ready = 1;
 }
 
 static void unpremultiply(const unsigned char *raw, unsigned char *out,
                           int w, int h)
 {
     int x, y;
-    init_unpremul();
+
+    unpremul_table();
 
     for (y = 0; y < h; y++) {
         const unsigned char *s = raw + (size_t)(h - 1 - y) * (size_t)w * 4u;
@@ -2159,9 +2143,9 @@ static void unpremultiply(const unsigned char *raw, unsigned char *out,
             } else if (a == 0) {
                 d[x * 4 + 0] = d[x * 4 + 1] = d[x * 4 + 2] = d[x * 4 + 3] = 0;
             } else {
-                d[x * 4 + 0] = k_unpremul_tab[a][s[x * 4 + 0]];
-                d[x * 4 + 1] = k_unpremul_tab[a][s[x * 4 + 1]];
-                d[x * 4 + 2] = k_unpremul_tab[a][s[x * 4 + 2]];
+                d[x * 4 + 0] = g_unpremul[a][s[x * 4 + 0]];
+                d[x * 4 + 1] = g_unpremul[a][s[x * 4 + 1]];
+                d[x * 4 + 2] = g_unpremul[a][s[x * 4 + 2]];
                 d[x * 4 + 3] = (unsigned char)a;
             }
         }

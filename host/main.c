@@ -20,7 +20,7 @@
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#elif defined(__linux__)
+#elif defined(__linux__) && !defined(__ANDROID__)
 #include <execinfo.h>
 #endif
 
@@ -247,7 +247,7 @@ void host_trap(wasm_rt_trap_t code)
                     (unsigned long long)((char *)frames[i] - (char *)self));
         }
     }
-#elif defined(__linux__)
+#elif defined(__linux__) && !defined(__ANDROID__)
     {
         void *frames[64];
         int n = backtrace(frames, 64);
