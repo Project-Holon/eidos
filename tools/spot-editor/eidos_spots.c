@@ -257,6 +257,8 @@ typedef struct App {
     int tab;                        /* the view on show: TAB_COMMAND, TAB_INTRO, TAB_FIELD */
     int last_move;                  /* the move scene played last */
     int insp_scroll, insp_h;        /* the inspector: scrolled by, its height */
+    int prog_open, prog_scroll;     /* the Progress sheet: shown, scrolled by rows */
+    int prog_btn;                   /* the pointer is on the Progress button     */
     int size_custom;                /* the trainer's Size shows its slider (Custom) */
     /* Preview: the game itself, played inside the middle view (spots_embed.c) */
     EidosEmbedShm *emb;             /* the shared picture and input, NULL when none */
@@ -2845,6 +2847,123 @@ static void setting(int id, int x, int y, int w, const char *label, const char *
     }
 }
 
+/* ---- the Progress sheet ---- */
+
+/* The places in the order the story reaches them, then after the credits,
+ * then the extras; a name is a label's part before its ':'.  An entry
+ * starting with '#' is a section title. */
+static const char *const k_story[] = {
+    "#Story",
+    "Nuvema Town", "Route 1", "Accumula Town", "Route 2", "Striaton City", "Striaton Gym",
+    "Dreamyard", "Route 3", "Wellspring Cave", "Nacrene City", "Nacrene Gym",
+    "Pinwheel Forest", "Castelia Gate", "Castelia City", "Castelia Gym", "Route 4",
+    "Desert Resort", "Relic Castle", "Nimbasa City", "Nimbasa Gym", "Route 5",
+    "Driftveil City", "Driftveil Gym", "Cold Storage", "Route 6", "Mistralton Cave",
+    "Chargestone Cave", "Mistralton City", "Mistralton Gym", "Route 7", "Celestial Tower",
+    "Twist Mountain", "Icirrus City", "Icirrus Gym", "Dragonspiral Tower", "Route 8",
+    "Moor of Icirrus", "Tubeline Bridge", "Route 9", "Shopping Mall", "Opelucid City",
+    "Opelucid Gym", "Route 10", "Victory Road", "Pok\xC3\xA9mon League", "N's Castle",
+    "#After the credits",
+    "Route 11", "Village Bridge", "Route 12", "Lacunosa Town", "Route 13", "Giant Chasm",
+    "Undella Town", "Undella Bay", "Route 14", "Abundant Shrine", "Route 15", "Bridge Gate",
+    "Route 16", "Lostlorn Forest", "Route 17", "Route 18", "P2 Laboratory",
+    "Challenger's Cave",
+    "#Extras",
+    "Black City", "White Forest", "Rumination Field", "Guidance Chamber", "Trial Chamber",
+    "Liberty Garden", "Unity Tower",
+};
+#define N_STORY ((int)(sizeof k_story / sizeof k_story[0]))
+
+/* Whether row r's place is `name` (the label up to its ':'). */
+static int place_is(const BmapSpot *r, const char *name)
+{
+    size_t n = strlen(name);
+
+    return strncmp(r->label, name, n) == 0 && r->label[n] == ':';
+}
+
+/* The sheet's box: under the top bar, at the right. */
+static void progress_box(int *x, int *y, int *w, int *h)
+{
+    *w = U(560);
+    *x = A.W - U(16) - *w;
+    *y = TOP_H + U(4);
+    *h = A.H - *y - U(16);
+}
+
+/* The sheet over everything (drawn last): one line a place with its
+ * trainers and wild areas checked out of all, counted from the table as it
+ * is now.  A click on a place goes to its first row not checked yet. */
+static void draw_progress(void)
+{
+    int x, y, w, h, rowh = U(26), i, line = 0, shown, first;
+    int ctd = U(300), ctt = U(370), cwd = U(440), cwt = U(510);
+
+    if (!A.prog_open) {
+        return;
+    }
+    progress_box(&x, &y, &w, &h);
+    if (A.released && !hover(x, y, w, h) && !A.prog_btn) {
+        A.prog_open = 0;                /* a click outside closes it */
+        return;
+    }
+    shown = (h - U(64)) / rowh;
+    if (hover(x, y, w, h) && A.wheel != 0) {
+        A.prog_scroll -= A.wheel * 3;
+    }
+    A.prog_scroll = A.prog_scroll > N_STORY - shown ? N_STORY - shown : A.prog_scroll;
+    A.prog_scroll = A.prog_scroll < 0 ? 0 : A.prog_scroll;
+    ui_fill(&C, x, y, w, h, C_PANEL, 255);
+    outline(x, y, w, h, C_LINE);
+    text(x + U(12), y + U(30), C_MUTED, "Place");
+    text(x + ctd, y + U(10), C_MUTED, "Trainers");
+    text(x + cwd, y + U(10), C_MUTED, "Wild areas");
+    text(x + ctd, y + U(30), C_MUTED, "Done");
+    text(x + ctt, y + U(30), C_MUTED, "All");
+    text(x + cwd, y + U(30), C_MUTED, "Done");
+    text(x + cwt, y + U(30), C_MUTED, "All");
+    ui_fill(&C, x + U(8), y + U(54), w - U(16), 1, C_LINE, 255);
+    first = A.prog_scroll;
+    for (i = first; i < N_STORY && line < shown; i++, line++) {
+        int ly = y + U(60) + line * rowh, k, td = 0, tt = 0, wd = 0, wt = 0, go = -1, go_any = -1;
+        const char *name = k_story[i];
+
+        if (name[0] == '#') {
+            text(x + U(12), ly + U(6), C_ACCENT, "%s", name + 1);
+            continue;
+        }
+        for (k = 0; k < bmap_spots_count(); k++) {
+            const BmapSpot *r = bmap_spots_get(k);
+
+            if (r->view != 0 || !place_is(r, name)) {
+                continue;
+            }
+            if (r->kind == 'T') {
+                tt++;
+                td += r->ok != 0;
+            } else {
+                wt++;
+                wd += r->ok != 0;
+            }
+            go_any = go_any < 0 ? k : go_any;
+            go = go < 0 && !r->ok ? k : go;
+        }
+        if (hover(x + U(4), ly, w - U(8), rowh)) {
+            ui_fill(&C, x + U(4), ly, w - U(8), rowh, C_PANEL2, 255);
+            if (A.released && go_any >= 0) {
+                select_row(go >= 0 ? go : go_any);
+                A.prog_open = 0;
+                return;
+            }
+        }
+        text(x + U(12), ly + U(6), td + wd == tt + wt && tt + wt > 0 ? C_GOOD : C_TEXT, "%s", name);
+        text(x + ctd, ly + U(6), tt > 0 && td == tt ? C_GOOD : C_TEXT, "%d", td);
+        text(x + ctt, ly + U(6), C_MUTED, "%d", tt);
+        text(x + cwd, ly + U(6), wt > 0 && wd == wt ? C_GOOD : C_TEXT, "%d", wd);
+        text(x + cwt, ly + U(6), C_MUTED, "%d", wt);
+    }
+}
+
 /* ---- the top bar ---- */
 
 static void draw_top(int LW, int IW)
@@ -2887,6 +3006,13 @@ static void draw_top(int LW, int IW)
             save_now();
             refilter();
         }
+    }
+    /* the Progress sheet: every place in story order, checked out of all */
+    rx -= chip_w("Progress") + U(8);
+    A.prog_btn = hover(rx, U(15), chip_w("Progress"), U(30));
+    if (button(rx, U(15), chip_w("Progress"), U(30), "Progress", A.prog_open)) {
+        A.prog_open = !A.prog_open;
+        A.prog_scroll = 0;
     }
     /* what happened last */
     if (A.status[0] != '\0' && SDL_GetTicks() - A.status_at < 4000) {
@@ -3823,6 +3949,7 @@ static void gpu_flush(const char *shot)
 
 static void frame(void)
 {
+    struct { int mx, my, released, pressed, rpressed, wheel, on; } hold = { 0, 0, 0, 0, 0, 0, 0 };
     int LW, IW;
     Uint64 t0 = SDL_GetPerformanceCounter();
     static int prof = -1;
@@ -3841,6 +3968,23 @@ static void frame(void)
     IW = A.W * 25 / 100;
     IW = IW < U(400) ? U(400) : IW > U(500) ? U(500) : IW;
     ui_begin(&C, &A.canvas, A.W, A.H, 1);
+    {
+        /* under the open Progress sheet, nothing else takes the pointer */
+        int px, py, pw, ph;
+
+        progress_box(&px, &py, &pw, &ph);
+        if (A.prog_open && hover(px, py, pw, ph)) {
+            hold.mx = A.mx;
+            hold.my = A.my;
+            hold.released = A.released;
+            hold.pressed = A.pressed;
+            hold.rpressed = A.rpressed;
+            hold.wheel = A.wheel;
+            hold.on = 1;
+            A.mx = A.my = -100000;
+            A.released = A.pressed = A.rpressed = A.wheel = 0;
+        }
+    }
     map_input();
     ow_input();
     view_input(0);
@@ -3850,6 +3994,15 @@ static void frame(void)
     draw_places(0, TOP_H, LW, A.H - TOP_H);
     draw_inspector(A.W - IW, TOP_H, IW, A.H - TOP_H);
     draw_top(LW, IW);
+    if (hold.on) {
+        A.mx = hold.mx;
+        A.my = hold.my;
+        A.released = hold.released;
+        A.pressed = hold.pressed;
+        A.rpressed = hold.rpressed;
+        A.wheel = hold.wheel;
+    }
+    draw_progress();
     slider_release();
     gpu_flush(g_shot_path);
     if (prof) {

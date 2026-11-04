@@ -232,6 +232,12 @@ The right column:
   turn, the wheel to zoom, Field camera to go back; the season and the time
   of day.
 
+The top bar's Progress button opens a sheet of every place in the order
+the story reaches it (then after the credits, then the extras): its
+trainers and wild areas checked out of all, counted from the table as it
+is, so it follows each Mark checked.  A click on a place goes to its first
+row not checked yet.
+
 On the map: drag moves the fixed spot or the player, right drag turns
 toward the pointer (Shift: 45-degree steps), Shift+drag draws the safe
 area, the wheel zooms, a middle drag pans. Keys: PgDn and PgUp (or Tab)
