@@ -250,6 +250,9 @@ int main(void)
     BW_CHECK_EQ("trainer: intro tilt", (long)(d.intro.tilt * 10.0f), (long)(BMAP_SPOT_INTRO_TILT * 10.0f));
     BW_REQUIRE("a wild area's default row", bmap_spots_default("A317.1", &d) == 0);
     BW_CHECK_EQ("wild: foe closer", (long)(d.foe_dz * 10.0f), (long)(BMAP_SPOT_FOE_DZ_WILD * 10.0f));
+    BW_CHECK_EQ("wild: intro zoom", (long)(d.intro.zoom * 10.0f), (long)(BMAP_SPOT_INTRO_ZOOM * 10.0f));
+    BW_REQUIRE("a trainer's default row again", bmap_spots_default("T7.1", &d) == 0);
+    BW_CHECK_EQ("trainer: intro zoom", (long)(d.intro.zoom * 10.0f), (long)(BMAP_SPOT_INTRO_ZOOM * 10.0f));
 
     /* a file the editor wrote before the defaults: 0 for "not set" */
     f = fopen(path, "w");
@@ -268,6 +271,7 @@ int main(void)
     BW_CHECK_EQ("old file, not placed: foe", (long)(r->foe_dz * 10.0f), (long)(BMAP_SPOT_FOE_DZ_TRAINER * 10.0f));
     BW_CHECK_EQ("old file, not placed: own trainer", (long)(r->trainer_own[1] * 10.0f), (long)(BMAP_SPOT_OWN_UP * 10.0f));
     BW_CHECK_EQ("old file, not placed: intro tilt", (long)(r->intro.tilt * 10.0f), (long)(BMAP_SPOT_INTRO_TILT * 10.0f));
+    BW_CHECK_EQ("old file, not placed: intro zoom", (long)(r->intro.zoom * 10.0f), (long)(BMAP_SPOT_INTRO_ZOOM * 10.0f));
     BW_CHECK_EQ("the ally's place is read", (long)(r->trainer_ally[1] * 10.0f), 15);
     BW_CHECK_EQ("the ally's size is read", (long)(r->trainer_ally_size * 100.0f), 125);
     r = bmap_spots_get(row_of("T7.8"));
@@ -295,6 +299,20 @@ int main(void)
     BW_CHECK_EQ("read back: the default", (long)(bmap_spots_get(row_of("T7.1"))->foe_dz * 10.0f),
                 (long)(BMAP_SPOT_FOE_DZ_TRAINER * 10.0f));
     BW_CHECK_EQ("read back: the set 0", (long)(bmap_spots_get(row_of("T7.8"))->foe_dz * 10.0f), 0);
+
+    /* a file from before the trainers' intro zoom default: 1 written out */
+    f = fopen(path, "w");
+    BW_REQUIRE("a format 2 file", f != NULL);
+    fputs("# battle spots written by the spot editor (- takes the default): tools/battle_spots.py merge\n", f);
+    fputs("T7.1\tT\t7\tleader\t1\t1\t1\t0\t-\t-\t-\t-\t0\t0\t0\tauto\t-\t-\t-\t-\t-\t-\t-"
+          "\t0\t1\t-\t1\t-1\t0\t0\t-\t-\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t-\t0\t0\t0\t1\t1\t1\t0\n", f);
+    fputs("T7.8\tT\t7\twaitress\t1\t1\t1\t0\t-\t-\t-\t-\t0\t0\t0\tfixed\t10\t20\t90\t-\t-\t-\t-"
+          "\t1\t1\t-\t1\t-1\t0\t0\t-\t-\t0\t1\t0\t0\t0\t0\t0\t0\t0\t0\t0\t-\t0\t0\t0\t1\t1\t1\t0\n", f);
+    fclose(f);
+    bmap_spots_set_user_path(path);
+    BW_CHECK_EQ("format 2, not placed: intro zoom default", (long)(bmap_spots_get(row_of("T7.1"))->intro.zoom * 10.0f),
+                (long)(BMAP_SPOT_INTRO_ZOOM * 10.0f));
+    BW_CHECK_EQ("format 2, placed: its 1 kept", (long)(bmap_spots_get(row_of("T7.8"))->intro.zoom * 10.0f), 10);
     remove(path);
     BW_REPORT("test_bmap_spots");
 }

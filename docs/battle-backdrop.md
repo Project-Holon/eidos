@@ -157,9 +157,29 @@ gen` builds it:
 - Wild areas: the tiles with the encounter flag (bit 18 of the attribute
   word: grass, cave floor, sand, water), in zones with an encounter table,
   grouped into patches. Land and water are separate patches.
+- Story fights: a battle command in a zone's scripts (a rival, a grunt, a
+  legendary). The row stands at the character whose script holds the
+  command.
 - For each row, a walk from the zone's entrances (its warps and its edges)
   gives the tile the player most likely reaches first, and the way they
   face there. The editor shows the battle from that place first.
+
+### Story fights
+
+Many story fights are not where a character's script sits. A trigger tile,
+the map load or another script starts the scene, and the script walks,
+adds or places people before the battle command. For these,
+`SCENE_PLACES` in `tools/battle_spots.py` gives each row the opponent's
+tile and facing and the player's tile at the battle command. The values
+come from running each fight's script as the game does: the start
+(trigger, character or map load), the calls and jumps taken, the objects
+added (`AddMmdl`), placed (`InitMmdlGridPosition`) and walked
+(`StartMmdlAnime` movement lists) up to `StartTrainerBattle`. Where the
+script only turns the character to the player, the player's tile is the
+side of the character nearest the way in.
+
+`STORY_PHANTOMS` lists rows that a byte scan of the scripts found but that
+no script path reaches. Each of those trainers has its own sight-line row.
 
 Each row has a mode:
 
@@ -251,12 +271,13 @@ settings file, which the game reads over its built-in table.
 A field the table leaves out (`-`) takes its default (`bmap_spot_defaults`,
 from the rows placed by hand on Route 1 and in Nuvema Town): the foe 8
 battle units closer for a trainer and 5.5 for a wild Pokemon, the player's
-own trainer raised by 5, and the intro camera 1.2 to the side and tilted
-by 4.8.  The editor writes `-` for a value at its default, so the row
+own trainer raised by 5, the intro camera 1.2 to the side and tilted by
+4.8, and an intro zoom of 4.5.  The editor writes `-` for a value at its default, so the row
 follows the default; a value set by hand is written out and kept.  A file
 the editor wrote before the defaults (0 for "not set") takes them only on
 rows still placed the auto way and not checked; `tools/battle_spots.py
-merge` does the same.
+merge` does the same.  A file from before the intro zoom default
+wrote 1 there; such a row, auto and not checked, takes 4.5.
 
 ### Camera recordings
 

@@ -58,6 +58,7 @@ void bmap_spot_defaults(BmapSpot *r)
     r->trainer_own[1] = BMAP_SPOT_OWN_UP;
     r->intro.side = BMAP_SPOT_INTRO_SIDE;
     r->intro.tilt = BMAP_SPOT_INTRO_TILT;
+    r->intro.zoom = BMAP_SPOT_INTRO_ZOOM;
 }
 
 /* One line of the table into r; returns 0 when it is a row. */
@@ -109,7 +110,7 @@ static int parse_row(char *line, BmapSpot *r)
     bmap_spot_defaults(r);
     r->foe_level = n > 24 ? field_int(f[24], 1) : 1;
     r->foe_dz = n > 25 ? field_float(f[25], r->foe_dz) : r->foe_dz;
-    r->intro.zoom = n > 26 ? field_float(f[26], 1.0f) : 1.0f;
+    r->intro.zoom = n > 26 ? field_float(f[26], r->intro.zoom) : r->intro.zoom;
     r->trainer_id = n > 27 ? field_int(f[27], -1) : -1;
     r->intro.yaw = n > 28 ? field_float(f[28], 0.0f) : 0.0f;
     r->intro.lift = n > 29 ? field_float(f[29], 0.0f) : 0.0f;
@@ -117,7 +118,7 @@ static int parse_row(char *line, BmapSpot *r)
     r->intro.tilt = n > 31 ? field_float(f[31], r->intro.tilt) : r->intro.tilt;
     r->intro.aim = n > 32 ? field_float(f[32], 0.0f) : 0.0f;
     if (r->intro.zoom <= 0.0f) {
-        r->intro.zoom = 1.0f;
+        r->intro.zoom = BMAP_SPOT_INTRO_ZOOM;
     }
     r->cam.zoom = n > 33 ? field_float(f[33], 1.0f) : 1.0f;
     r->cam.yaw = n > 34 ? field_float(f[34], 0.0f) : 0.0f;
@@ -198,14 +199,17 @@ static int new_slot(void)
  * the other views the table has of its id: the file holds the whole table,
  * so a view it lacks was deleted. */
 /* The first line of the user's file as the editor wrote it before the
- * defaults: every field written out, 0 where nothing was set. */
+ * defaults: every field written out, 0 where nothing was set; then before
+ * the intro zoom default: 1 written out where it was not set. */
 #define USER_HEAD_ZEROS "# battle spots written by the spot editor: tools/battle_spots.py merge"
-#define USER_HEAD       "# battle spots written by the spot editor (- takes the default): tools/battle_spots.py merge"
+#define USER_HEAD_ZOOM1 "# battle spots written by the spot editor (- takes the default): tools/battle_spots.py merge"
+#define USER_HEAD       "# battle spots written by the spot editor, format 3 (- takes the default): tools/battle_spots.py merge"
 
 static void load_text(char *text, int user)
 {
     char *line = text;
     int zeros = user && strncmp(text, USER_HEAD_ZEROS, sizeof USER_HEAD_ZEROS - 1) == 0;
+    int zoom1 = zeros || (user && strncmp(text, USER_HEAD_ZOOM1, sizeof USER_HEAD_ZOOM1 - 1) == 0);
 
     while (line != NULL && *line != '\0') {
         char *next = strchr(line, '\n');
@@ -229,6 +233,11 @@ static void load_text(char *text, int user)
                 r.trainer_own[1] = r.trainer_own[1] == 0.0f ? d.trainer_own[1] : r.trainer_own[1];
                 r.intro.side = r.intro.side == 0.0f ? d.intro.side : r.intro.side;
                 r.intro.tilt = r.intro.tilt == 0.0f ? d.intro.tilt : r.intro.tilt;
+            }
+            if (zoom1 && r.mode == BMAP_SPOT_AUTO && !r.ok && r.intro.zoom == 1.0f) {
+                /* a place nobody placed, from a file that wrote its intro
+                 * zoom out as 1: the default */
+                r.intro.zoom = BMAP_SPOT_INTRO_ZOOM;
             }
             if (user && r.view == 0) {
                 int k;
@@ -528,7 +537,7 @@ int bmap_spots_view_add(int i, int from)
     BmapSpot r;
 
     load();
-    if (bmap_spots_view_count(i) >= BMAP_VIEWS_MAX || (k = bmap_spots_view_at(i, from)) < 0) {
+    if ((k = bmap_spots_view_at(i, from)) < 0) {
         return -1;
     }
     for (at = 0; at < g_n; at++) {
@@ -666,7 +675,7 @@ static const char *val(char *buf, size_t n, float v, float dflt)
 static void save_row(FILE *f, const BmapSpot *r)
 {
     BmapSpot d = *r;
-    char b0[24], b1[24], b2[24], b3[24];
+    char b0[24], b1[24], b2[24], b3[24], b4[24];
 
     if (r->kind == 'T') {
         fprintf(f, "%s\tT\t%u\t%s\t%d\t%d\t%d\t%d\t-\t-\t-\t-", r->id, r->zone, r->label, r->tx, r->tz,
@@ -684,8 +693,8 @@ static void save_row(FILE *f, const BmapSpot *r)
         fprintf(f, "\t-\t-\t-\t-\t-\t-\t-");
     }
     bmap_spot_defaults(&d);
-    fprintf(f, "\t%d\t%d\t%s\t%g\t%d\t%g\t%g\t%s\t%s\t%g", r->ok, r->foe_level,
-            val(b0, sizeof b0, r->foe_dz, d.foe_dz), (double)r->intro.zoom, r->trainer_id,
+    fprintf(f, "\t%d\t%d\t%s\t%s\t%d\t%g\t%g\t%s\t%s\t%g", r->ok, r->foe_level,
+            val(b0, sizeof b0, r->foe_dz, d.foe_dz), val(b4, sizeof b4, r->intro.zoom, d.intro.zoom), r->trainer_id,
             (double)r->intro.yaw, (double)r->intro.lift, val(b1, sizeof b1, r->intro.side, d.intro.side),
             val(b2, sizeof b2, r->intro.tilt, d.intro.tilt), (double)r->intro.aim);
     fprintf(f, "\t%g\t%g\t%g\t%g\t%g\t%g", (double)r->cam.zoom, (double)r->cam.yaw, (double)r->cam.lift,

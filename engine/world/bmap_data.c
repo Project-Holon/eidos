@@ -3040,8 +3040,12 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
             continue;
         }
         if (mode == 1u) {
+            /* a cell of no zone (0xFFFFFFFF: the filler ground between
+             * places, Accumula's south-west) keeps the player's area; its
+             * +1 wrapped to 0 and read area 0, whose textures it lacks, so
+             * the ground there was a hole */
             cz_zone = rd32(mb, 8u + w * h * 4u + cell * 4u);
-            if ((size_t)(cz_zone + 1u) * 48u <= hb.n) {
+            if (cz_zone != 0xFFFFFFFFu && (size_t)cz_zone * 48u + 48u <= hb.n) {
                 carea = rd16(hb, cz_zone * 48u + 2u);
             }
         }

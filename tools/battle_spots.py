@@ -69,6 +69,73 @@ DOUBLE_GRASS = {0x06, 0x07, 0x09, 0x22}
 WFBC_WILD = {424}
 LEADER_CODES = {85, 86, 87, 88, 89, 90, 91, 162, 178, 179}
 # NPC dir codes: 0 up (-z), 1 down (+z), 2 left (-x), 3 right (+x)
+# Story fights placed from their scenes (docs/battle-backdrop.md, "Story
+# fights"): row id -> the opponent's tile and dir, and the player's tile at
+# the battle command (None: the side of the opponent nearest the way in, as
+# for a character one talks to).  Read off each fight's script as the game
+# runs it: the trigger, character or map load that starts it, the calls and
+# jumps it takes, the objects it adds, places and walks (StartMmdlAnime,
+# AddMmdl, InitMmdlGridPosition) up to StartTrainerBattle.  Without this the
+# table put a fight whose script nobody stands on at the map's entrance.
+SCENE_PLACES = {
+    # a character one talks to, whose script is not its own row
+    'T18.s33a': (13, 11, 0, None),      # Nacrene Gym quiz: School Kid (entry 5)
+    'T18.s33b': (6, 3, 0, None),        # Nacrene Gym quiz: Scientist (entry 6)
+    'T23.s5b': (3, 3, 0, None),         # Nacrene house: the Lass
+    'T29.s21': (38, 24, 1, None),       # Castelia Gym: the Harlequin in the honey (object 7)
+    'T30.s7': (15, 17, 1, None),        # Castelia: the Dancer
+    'T37.s4': (17, 22, 1, None),        # Castelia: the Dancer
+    'T121.s11': (40, 1, 0, None),       # Opelucid Gym: the Veteran
+    'T193.s12a': (5, 7, 1, None),       # Cold Storage: the four grunts
+    'T193.s12b': (4, 9, 0, None),
+    'T193.s12c': (5, 8, 2, None),
+    'T193.s12d': (5, 9, 0, None),
+    'T237.0b': (4, 3, 1, None),         # Liberty Garden: Victini
+    'T239.s5': (4, 2, 0, None),         # P2 Laboratory: the Scientist
+    'T254.s12': (15, 155, 1, None),     # Tubeline Bridge: the Biker on the bridge
+    'T255.s20': (77, 47, 1, None),      # Village Bridge: the Baker
+    'T278.0b': (16, 39, 1, None),       # N's Castle: Reshiram / Zekrom at the stone
+    'T278.s16': (16, 49, 0, None),      # N's Castle: Ghetsis
+    'T321.s21a': (741, 562, 1, None),   # Route 3: the Twins
+    'T335.6': (7, 4, 2, None),          # Guidance Chamber: Cobalion
+    'T396.s13': (6, 6, 3, None),        # Nuvema: Bianca in her house
+    'T412.s3': (716, 307, 1, None),     # Undella: the Riches
+    # scenes: someone walks up (or is placed) before the fight
+    'T16.s17': (644, 583, 1, (644, 584)),       # Nacrene: N is added above and walks down
+    'T31.5': (12, 33, 0, (12, 32)),             # Castelia: the grunt that steps up to you
+    'T62.s21': (430, 468, 1, (430, 469)),       # Nimbasa: the grunts by the ferris wheel
+    'T63.s17a': (16, 14, 1, (16, 15)),          # Nimbasa Gym: the coaster stop ambush (object 4)
+    'T63.s17b': (49, 39, 1, (49, 40)),          # Nimbasa Gym: the coaster stop ambush (object 0)
+    'T64.s7': (54, 15, 3, (55, 15)),            # Nimbasa: the script places you at (55, 15) facing west
+    'T96.s16': (165, 405, 2, (164, 405)),       # Driftveil: Bianca walks in from the east
+    'T144.s6': (16, 8, 1, (16, 9)),             # Pokemon League: Alder
+    'T152.s7a': (27, 9, 1, (27, 10)),           # Dreamyard: the grunts
+    'T152.s7b': (27, 9, 1, (27, 10)),
+    'T155.26': (43, 30, 1, (43, 31)),           # Pinwheel Forest: you step up 2, the grunt down 1
+    'T155.s15': (60, 74, 0, (60, 73)),          # Pinwheel Forest: the grunt at the south trigger
+    'T167.0': (10, 7, 3, (11, 7)),              # Relic Castle: the grunt walks 4 east to you
+    'T195.s8': (68, 13, 2, (67, 13)),           # Chargestone Cave: you step east and fight at once
+    'T197.5': (16, 47, 1, (16, 48)),            # Chargestone Cave: two grunts close in on you
+    'T197.5b': (15, 48, 3, (16, 48)),
+    'T198.3': (144, 209, 0, (144, 208)),        # Twist Mountain: Cheren walks up 5
+    'T212.s8a': (12, 12, 2, (11, 12)),          # Dragonspiral Tower: the grunts around you
+    'T212.s8b': (11, 13, 0, (11, 12)),
+    'T237.0': (4, 8, 1, (4, 9)),                # Liberty Garden: the grunt walks down 2
+    'T278.0': (16, 13, 1, (16, 14)),            # N's Castle: N steps down 1, you up 1
+    'T319.10': (784, 615, 0, (784, 614)),       # Route 2: Bianca runs up from the south-west
+    'T321.s21b': (718, 563, 2, (717, 563)),     # Route 3: Cheren walks west to you
+    'T324.0': (23, 6, 3, (24, 6)),              # Wellspring Cave: the grunts (Cheren beside you)
+    'T324.0b': (23, 6, 3, (24, 6)),
+    'T326.s13': (430, 584, 1, (430, 585)),      # Route 4: Cheren comes down to you
+    'T329.s11a': (373, 437, 2, (372, 437)),     # Route 5: Cheren
+    'T329.s11b': (358, 435, 1, (358, 437)),     # Route 5: the two kids, with Cheren beside you
+    'T345.s8': (242, 180, 3, (243, 180)),       # Route 8: Bianca walks up to the trigger
+    'T355.8': (476, 118, 3, (477, 118)),        # Route 10: Cheren
+    'T397.28': (786, 657, 1, (786, 658)),       # Accumula: N, after the Plasma speech
+}
+# Rows a byte scan found but no script path reaches (the trainer's real
+# fight is its sight-line row: T152.10, T155.13, T321.9).
+STORY_PHANTOMS = {'T23.s5a', 'T42.0', 'T149.s9'}
 DIRV = {0: (0, -1), 1: (0, 1), 2: (-1, 0), 3: (1, 0)}
 
 
@@ -631,8 +698,41 @@ def analyse(rom):
                     rows.append(dict(id='A%d.1' % z, kind='A', zone=z, label='%s: area 1' % name,
                                      rx0=min(xs), rz0=min(zs), rx1=max(xs), rz1=max(zs),
                                      px=px, pz=pz, pf=0, mode='auto'))
+    rows = apply_scenes(rom, rows)
     mark_doubles(rom, rows)
     return rows
+
+
+def apply_scenes(rom, rows):
+    """SCENE_PLACES over the rows, STORY_PHANTOMS left out."""
+    out = []
+    reached = {}
+    for r in rows:
+        if r['id'] in STORY_PHANTOMS:
+            continue
+        sc = SCENE_PLACES.get(r['id'])
+        if sc is not None:
+            z = r['zone']
+            tx, tz, d, me = sc
+            if me is None:
+                if z not in reached:
+                    tiles = rom.tiles(z)
+                    _npcs, warps = rom.event_file(z)
+                    reached[z] = (tiles, reach(tiles, warps)[0])
+                tiles, dist = reached[z]
+                vx, vz = DIRV[d]
+                near = [(tx + vx, tz + vz)] + [(tx + dx, tz + dz) for dx, dz in DIRV.values()]
+                near = [t for t in near if walk_cost(tiles.get(t)) is not None] or [(tx + vx, tz + vz)]
+                me = min(near, key=lambda t: dist.get(t, 1 << 30))
+            fx, fz = tx - me[0], tz - me[1]
+            px, pz = tile_center(me)
+            r = dict(r, tx=tx, tz=tz, dir=d, px=px, pz=pz,
+                     pf=facing_deg(fx, fz) if (fx, fz) in DIRV.values() else facing_deg(-DIRV[d][0], -DIRV[d][1]))
+        out.append(r)
+    missing = set(SCENE_PLACES) - {r['id'] for r in out}
+    if missing:
+        raise SystemExit('SCENE_PLACES names rows the table does not have: %s' % ', '.join(sorted(missing)))
+    return out
 
 
 def sight_line(tiles, r):
@@ -766,6 +866,8 @@ def cmd_gen(args):
 # The editor's first line before the defaults (engine/world/bmap_spots.c):
 # every field written out, 0 where nothing was set.
 OLD_USER_HEAD = '# battle spots written by the spot editor: tools/battle_spots.py merge'
+# before the intro zoom default: 1 written out where it was not set
+ZOOM1_USER_HEAD = '# battle spots written by the spot editor (- takes the default): tools/battle_spots.py merge'
 # The fields with a default (bmap_spot_defaults): '-' takes it.
 DEFAULTED = ('fd', 'is', 'it', 'tuy')
 
@@ -774,7 +876,13 @@ def cmd_merge(args):
     rows = read_table(TABLE)
     theirs = read_table(args.file)
     with open(args.file, encoding='utf-8') as f:
-        zeros = f.readline().rstrip('\n') == OLD_USER_HEAD
+        head = f.readline().rstrip('\n')
+    zeros = head == OLD_USER_HEAD
+    if head in (OLD_USER_HEAD, ZOOM1_USER_HEAD):
+        # a place nobody placed or checked takes the intro zoom default
+        for r in theirs.values():
+            if r['mode'] == 'auto' and r['ok'] in ('0', '-') and r['iz'] in ('1', '1.0'):
+                r['iz'] = '-'
     if zeros:
         # a row nobody placed or checked takes the defaults where it says 0
         for r in theirs.values():

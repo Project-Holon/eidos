@@ -1559,10 +1559,17 @@ static void battle_only(void)
             BTL_SETUP_SetupTrainerSingle(bs, gd, &sit, a1, 4);
         }
     } else if (sscanf(what, "wild %u %u", &a1, &a2) >= 1 && BTL_SETUP_SetupWild != NULL && POKEPARTY_Create != NULL) {
+        /* "wild SPECIES LEVEL 2": a double, two of the species (dark grass,
+         * FIELD_ENCOUNT_InitParam's rule) */
         void *wild = POKEPARTY_Create(4);
+        unsigned count = 1;
 
+        (void)sscanf(what, "wild %*u %*u %u", &count);
         (void)POKEPARTY_Add(wild, POKE_TOOL_Create((u16)a1, (u16)a2, 0, 4));
-        BTL_SETUP_SetupWild(bs, gd, wild, &sit, 0, 4);
+        if (count == 2u) {
+            (void)POKEPARTY_Add(wild, POKE_TOOL_Create((u16)a1, (u16)a2, 0, 4));
+        }
+        BTL_SETUP_SetupWild(bs, gd, wild, &sit, count == 2u ? 1u : 0u, 4);
     } else {
         return;
     }

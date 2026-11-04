@@ -239,6 +239,8 @@ typedef struct App {
     float *sim_rest;                /* each frame's size at rest of slots 0..13 (BmapRest) */
     TrAnim an_foe, an_own;          /* the trainers' pictures, animated     */
     int doubles;                    /* show a double battle (the trainer's)  */
+    int dark_single;                /* dark grass shown as a single (the top
+                                       bar's switch, kept for every such area) */
     int idle_ticks;                 /* event waits without an event since the last draw */
     Sprite hero[4];                 /* the player, facing up, down, left, right */
     float hero_h;                   /* its height (map units)                */
@@ -404,6 +406,18 @@ static int ci_contains(const char *hay, const char *needle)
     return 0;
 }
 
+static int story_rank(const BmapSpot *r);
+
+/* The list in story order (the Progress sheet's), the table's order within
+ * a place; places the sheet does not name last. */
+static int by_story(const void *a, const void *b)
+{
+    int ia = *(const int *)a, ib = *(const int *)b;
+    int ra = story_rank(bmap_spots_get(ia)), rb = story_rank(bmap_spots_get(ib));
+
+    return ra != rb ? (ra < rb ? -1 : 1) : (ia < ib ? -1 : ia > ib);
+}
+
 static void refilter(void)
 {
     int n = bmap_spots_count(), i;
@@ -441,6 +455,9 @@ static void refilter(void)
         if (keep) {
             A.vis[A.nvis++] = i;
         }
+    }
+    if (A.vis != NULL && A.nvis > 1) {
+        qsort(A.vis, (size_t)A.nvis, sizeof *A.vis, by_story);
     }
 }
 
@@ -481,15 +498,25 @@ static int vis_pos(int row)
 static void sprite_load(Sprite *sp, int species, int back);
 static int trainer_lead(int tid);
 
+static void last_place_keep(const BmapSpot *r);
+static int g_opened;                    /* the start's own select_row calls done */
+
 static void select_row(int row)
 {
+    static int had_row;
     BmapSpot *r;
+    int same_place;
 
     if (row < 0 || row >= bmap_spots_count()) {
         return;
     }
+    same_place = had_row && first_view(A.row) == first_view(row);
+    had_row = 1;
     A.row = row;
     r = cur();
+    if (g_opened) {
+        last_place_keep(bmap_spots_get(first_view(row)));
+    }
     A.tx = r->px;
     A.tz = r->pz;
     A.tf = r->pf;
@@ -499,15 +526,17 @@ static void select_row(int row)
     /* the still views show the battle as it runs: the trainers have left
      * (the Trainers chip shows them, and so does a change to their
      * offsets; the played intro and mid-battle scenes show them as the
-     * game does) */
-    A.show_tr = 0;
-    A.hide_mon = 0;
+     * game does); the Trainers chip stays as set from place to place,
+     * another view of the same place keeps the Pokemon button too */
+    if (!same_place) {
+        A.hide_mon = 0;
+    }
     A.size_custom = 0;
     A.tr_foe_id = -2;
     /* the battle shown as it is fought there: two Pokemon a side where it
      * is a double one (the trainer's own, two trainers together, the
      * grass's), else one */
-    A.doubles = r->doubles;
+    A.doubles = r->doubles && !(r->kind == 'A' && A.dark_single);
     A.battle[0].dirty = A.battle[1].dirty = 1;
     if (r->kind == 'T' && r->trainer_id >= 0 && r->trainer_id < 100000) {
         int lead = trainer_lead(r->trainer_id);
@@ -699,6 +728,26 @@ static int row_height(const BmapSpot *r, float *y)
     for (i = 0; i < A.nnpc; i++) {
         if (!A.npcs[i].resident && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
             *y = A.npcs[i].y;
+            return 1;
+        }
+    }
+    /* a story scene's fight (SCENE_PLACES, tools/battle_spots.py): the
+     * opponent walked there, no header stands on the tile; the floor of the
+     * nearest character within 8 tiles (the lowest surface can be a plane
+     * under the map, Accumula's) */
+    {
+        int best = -1, bd = 8 * 8 + 1;
+
+        for (i = 0; i < A.nnpc; i++) {
+            int dx = A.npcs[i].gx - r->tx, dz = A.npcs[i].gz - r->tz;
+
+            if (!A.npcs[i].resident && dx * dx + dz * dz < bd) {
+                bd = dx * dx + dz * dz;
+                best = i;
+            }
+        }
+        if (best >= 0) {
+            *y = A.npcs[best].y;
             return 1;
         }
     }
@@ -1395,8 +1444,12 @@ static int gender_read(void)
     gender_path(path, sizeof path);
     f = fopen(path, "r");
     if (f != NULL) {
-        if (fscanf(f, "player=%d", &g) != 1 || (g != 0 && g != 1)) {
-            g = -1;
+        char line[128];
+
+        while (fgets(line, sizeof line, f) != NULL) {
+            if (sscanf(line, "player=%d", &c) == 1 && (c == 0 || c == 1)) {
+                g = c;
+            }
         }
         fclose(f);
     }
@@ -1416,6 +1469,30 @@ static int gender_read(void)
     return g == 1 ? 1 : 0;
 }
 
+/* The place shown last (spot_editor.ini, "place=ID"): the editor opens on
+ * it.  Empty when none was kept. */
+static char g_last_place[48];
+
+static void last_place_read(void)
+{
+    char path[700], line[128];
+    FILE *f;
+
+    g_last_place[0] = '\0';
+    gender_path(path, sizeof path);
+    f = fopen(path, "r");
+    if (f == NULL) {
+        return;
+    }
+    while (fgets(line, sizeof line, f) != NULL) {
+        if (strncmp(line, "place=", 6) == 0) {
+            snprintf(g_last_place, sizeof g_last_place, "%.47s", line + 6);
+            g_last_place[strcspn(g_last_place, "\r\n")] = '\0';
+        }
+    }
+    fclose(f);
+}
+
 static void gender_write(void)
 {
     char path[700];
@@ -1424,9 +1501,27 @@ static void gender_write(void)
     gender_path(path, sizeof path);
     f = fopen(path, "w");
     if (f != NULL) {
-        fprintf(f, "player=%d\n", A.gender);
+        if (A.gender >= 0) {
+            fprintf(f, "player=%d\n", A.gender);
+        }
+        if (g_last_place[0] != '\0') {
+            fprintf(f, "place=%s\n", g_last_place);
+        }
         fclose(f);
     }
+}
+
+/* Keep row r's place as the one to open on next time. */
+static void last_place_keep(const BmapSpot *r)
+{
+    if (r == NULL || strcmp(r->id, g_last_place) == 0) {
+        return;
+    }
+    snprintf(g_last_place, sizeof g_last_place, "%s", r->id);
+    if (A.gender < 0) {
+        A.gender = gender_read();       /* written back with it */
+    }
+    gender_write();
 }
 
 /* The ally's picture: its back, from a/0/7/3 (0 and 1 the player's, 2
@@ -2407,9 +2502,14 @@ static void draw_battle_view(int i)
         }
         if (A.show_tr) {
             /* the trainers at their own slots (8 yours, 9 the foe's), with
-             * the Pokemon unless those are hidden */
+             * the Pokemon unless those are hidden: yours (and an ally) in
+             * the intro camera, the foe's in the command camera */
             for (a = 1; a >= 0; a--) {
                 const Sprite *t = a ? &A.tr_foe : &A.tr_own;
+
+                if ((a == 0) != (i == 1)) {
+                    continue;
+                }
 
                 /* the player's own trainer at its slot in the room, as the
                  * game draws it (sdk/battle_view.c, own_trainer_point): the
@@ -2427,7 +2527,7 @@ static void draw_battle_view(int i)
                     n++;
                 }
             }
-            if (A.tr_ally.rgba != NULL && n < 16 && bcam_sim_slot(12, p[n]) == 0) {
+            if (i == 1 && A.tr_ally.rgba != NULL && n < 16 && bcam_sim_slot(12, p[n]) == 0) {
                 /* your ally at its own slot (12), beside you */
                 sp[n] = &A.tr_ally;
                 kind[n] = 3;
@@ -2440,7 +2540,7 @@ static void draw_battle_view(int i)
                  * (to 4.24), the game's own numbers */
                 const BmapSpot *rr = cur();
 
-                if (rr != NULL && rr->kind == 'T' && A.tr_foe.rgba != NULL && n < 16
+                if (i == 0 && rr != NULL && rr->kind == 'T' && A.tr_foe.rgba != NULL && n < 16
                     && trainer_speaks_mid(rr->trainer_id)) {
                     p[n][0] = 3021.0f / 4096.0f + 22528.0f / 4096.0f - 8192.0f / 4096.0f;
                     p[n][1] = 1638.0f / 4096.0f;
@@ -2892,6 +2992,19 @@ static int place_is(const BmapSpot *r, const char *name)
     return strncmp(r->label, name, n) == 0 && r->label[n] == ':';
 }
 
+/* Row r's place in k_story (N_STORY when the sheet does not name it). */
+static int story_rank(const BmapSpot *r)
+{
+    int i;
+
+    for (i = 0; i < N_STORY; i++) {
+        if (k_story[i][0] != '#' && place_is(r, k_story[i])) {
+            return i;
+        }
+    }
+    return N_STORY;
+}
+
 /* The sheet's box: under the top bar, at the right. */
 static void progress_box(int *x, int *y, int *w, int *h)
 {
@@ -3033,6 +3146,24 @@ static void draw_top(int LW, int IW)
     if (button(rx, U(15), chip_w("Progress"), U(30), "Progress", A.prog_open)) {
         A.prog_open = !A.prog_open;
         A.prog_scroll = 0;
+    }
+    /* dark grass (a wild area marked double): a wild battle there is a
+     * single or, 40 times in 100, a double (FIELD_ENCOUNT_InitParam), with
+     * the same camera; the switch shows either, and Preview plays the one
+     * on show */
+    if (r != NULL && r->kind == 'A' && r->doubles) {
+        rx -= chip_w("Double") + U(16);
+        if (chip(rx, U(15), "Double", A.doubles)) {
+            A.doubles = 1;
+            A.dark_single = 0;
+            A.battle[0].dirty = A.battle[1].dirty = 1;
+        }
+        rx -= chip_w("Single") + U(4);
+        if (chip(rx, U(15), "Single", !A.doubles)) {
+            A.doubles = 0;
+            A.dark_single = 1;
+            A.battle[0].dirty = A.battle[1].dirty = 1;
+        }
     }
     /* what happened last */
     if (A.status[0] != '\0' && SDL_GetTicks() - A.status_at < 4000) {
@@ -3482,6 +3613,12 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
             remember();
             memset(in, 0, sizeof *in);
             in->zoom = 1.0f;
+            if (A.tab == TAB_INTRO) {
+                BmapSpot d = *r;
+
+                bmap_spot_defaults(&d);     /* the intro's own defaults */
+                *in = d.intro;
+            }
             save_now();
             say(A.tab == TAB_INTRO ? "Intro camera reset" : "Camera reset");
         }
@@ -3501,8 +3638,17 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
                 r = cur();
             }
             bx += U(40);
+            /* as many views as wanted: the numbers wrap to the next line */
+            if (bx + U(34) > x + w && v + 1 < nv) {
+                bx = x;
+                y += U(36);
+            }
         }
-        if (nv < BMAP_VIEWS_MAX && chip(bx, y, "Add", 0)) {
+        if (bx + chip_w("Add") + U(6) + chip_w("Delete") > x + w) {
+            bx = x;
+            y += U(36);
+        }
+        if (chip(bx, y, "Add", 0)) {
             int nr = bmap_spots_view_add(A.row, vn);
 
             if (nr >= 0) {
@@ -4374,7 +4520,8 @@ static void preview_in_game(int play)
     } else if (r->kind == 'T' && r->trainer_id >= 0) {
         snprintf(v, sizeof v, "trainer %d", r->trainer_id);
     } else {
-        snprintf(v, sizeof v, "wild %d 50", A.species[0]);
+        /* dark grass: the double or the single, as the switch shows it */
+        snprintf(v, sizeof v, "wild %d 50 %d", A.species[0], A.doubles ? 2 : 1);
     }
     _putenv_s("EIDOS_DEBUG_BATTLE", v);
     {
@@ -4799,6 +4946,10 @@ int main(int argc, char **argv)
         }
     }
     refilter();
+    last_place_read();
+    if (place == NULL && g_last_place[0] != '\0') {
+        place = g_last_place;           /* the place shown last */
+    }
     select_row(0);
     if (place != NULL) {
         for (i = 0; i < bmap_spots_count(); i++) {
@@ -4807,6 +4958,7 @@ int main(int argc, char **argv)
             }
         }
     }
+    g_opened = 1;                       /* from now on a place shown is kept */
     A.play = 0;
     A.play_at = -1;
     A.scene = 3;                        /* move 1 */

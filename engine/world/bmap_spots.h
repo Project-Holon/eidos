@@ -74,7 +74,6 @@ typedef struct BmapSpot {
     float trainer_ally_size; /* the ally's height (1 the base)                  */
 } BmapSpot;
 #define BMAP_TRAINER_INDOOR 1.15f
-#define BMAP_VIEWS_MAX 8    /* views of a row */
 
 /* The values a row takes where the table leaves a field out ('-'), from the
  * rows placed by hand in the spot editor (Route 1, Nuvema Town): the foe
@@ -85,6 +84,7 @@ typedef struct BmapSpot {
 #define BMAP_SPOT_OWN_UP         5.0f
 #define BMAP_SPOT_INTRO_SIDE     1.2f
 #define BMAP_SPOT_INTRO_TILT     4.8f
+#define BMAP_SPOT_INTRO_ZOOM      4.5f
 
 /* Those values into r (its kind set). */
 void bmap_spot_defaults(BmapSpot *r);
@@ -113,7 +113,7 @@ int       bmap_spots_view_count(int i);
 int       bmap_spots_view_at(int i, int v);
 int       bmap_spots_pick_view(int i, float px, float pz, unsigned facing);
 /* A new view of row i, a copy of view `from`; returns its table index, or
- * -1 when the row has BMAP_VIEWS_MAX.  The table keeps every index. */
+ * -1 when the table is full.  The table keeps every index. */
 int       bmap_spots_view_add(int i, int from);
 /* Delete view v of the row (the last one stays); returns 0 when done. */
 int       bmap_spots_view_delete(int i, int v);
