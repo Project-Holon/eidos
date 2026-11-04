@@ -1165,64 +1165,6 @@ static void draw_name_plates(EidosUiCtx *c, const Bt *b)
     }
 }
 
-/*
- * The trainer's card (mock-up "trainer_intro"): while the battle opens on a
- * trainer (the scene unit's step is one of the trainer entries), a card at
- * the top right with the trainer's class and name, the game's own words:
- * the class from the trainer class names (a/0/0/2 file 191, by trainer
- * type) and the name the battle keeps.
- *
- * BtlMain trainers[4] +0x020 (0x28 each: name +0x04, a Strbuf;
- * trainerType +0x08); slot 1 is the opponent.  BtlvScu.mainProc +0x0E4.
- */
-extern int ov093_BTLV_SCU_ProcEntrySingleTrainer(int *state, void *scu) __attribute__((weak));
-extern int ov093_BTLV_SCU_ProcEntryDoubleTrainerLocal(int *state, void *scu) __attribute__((weak));
-extern int ov093_BTLV_SCU_ProcEntryTriple(int *state, void *scu) __attribute__((weak));
-
-static void draw_trainer_card(EidosUiCtx *c, const Bt *b)
-{
-    const u8 *scu = b->core != NULL ? rdp(b->core, 0x17C) : NULL;
-    const u8 *slot;
-    char name[40];
-    const char *cls;
-    u32 proc;
-    int w = c->canvas->w, pw, x, y = 6;
-
-    if (scu == NULL || b->main == NULL) {
-        return;
-    }
-    proc = rd32(scu, 0xE4);
-    if (!lv_is(proc, ov093_BTLV_SCU_ProcEntrySingleTrainer) && !lv_is(proc, ov093_BTLV_SCU_ProcEntryDoubleTrainerLocal)
-        && !lv_is(proc, ov093_BTLV_SCU_ProcEntryTriple)) {
-        return;
-    }
-    slot = b->main + 0x20 + 0x28;
-    if (!strbuf_text(rdp(slot, 0x04), name, (int)sizeof name)) {
-        return;
-    }
-    cls = ui_game_text(2, 191, rd16(slot, 0x08));
-    pw = ui_text_w(name, UI_FONT_LARGE);
-    if (ui_text_w(cls, UI_FONT_SMALL) > pw) {
-        pw = ui_text_w(cls, UI_FONT_SMALL);
-    }
-    pw += 28;
-    x = w - 6 - pw;
-    ui_panel(c, x, y, pw, 32, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 235);
-    {
-        int rr;
-
-        for (rr = 3; rr < 32 - 3; rr++) {
-            int left = 3 + (rr < 8 ? 8 - rr : 0);
-
-            if (left < 6) {
-                ui_fill(c, x + left, y + rr, 6 - left, 1, 0x008BACu, 255);
-            }
-        }
-    }
-    ui_text(c, x + 14, y + 3, cls, UI_GREY, 0x313131u, UI_FONT_SMALL, 1);
-    ui_text(c, x + 14, y + 14, name, UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
-}
-
 static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static const char *const hints[] = { "A", "Next" };
@@ -1259,7 +1201,6 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             levelup_draw(c, &b, lv);
         }
         draw_name_plates(c, &b);
-        draw_trainer_card(c, &b);
     } else {
         /* a frame the battle's state is not readable (a screen changing):
          * the last picture stays, and the game's own plates stay hidden */
