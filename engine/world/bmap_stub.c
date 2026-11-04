@@ -189,3 +189,26 @@ float bmap_ground_y(const BmapScene *s, float x, float z)
     (void)s; (void)x; (void)z;
     return 0.0f;
 }
+
+/* Black City and White Forest blocks: none in this build. */
+void bmap_set_wfbc(const BmapWfbc *w)
+{
+    (void)w;
+}
+
+int bmap_wfbc_grid(unsigned zone, const unsigned char *npc_ids, int n, unsigned player_id, BmapWfbc *out)
+{
+    (void)zone;
+    (void)npc_ids;
+    (void)n;
+    (void)player_id;
+    (void)out;
+    return -1;
+}
+
+int bmap_wfbc_full(unsigned zone, BmapWfbc *out)
+{
+    (void)zone;
+    (void)out;
+    return -1;
+}

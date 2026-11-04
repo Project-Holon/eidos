@@ -147,6 +147,27 @@ int   bmap_tile(const BmapScene *s, float x, float z);
 int   bmap_tile_encounter(const BmapScene *s, float x, float z);
 #define BMAP_TILE_ENCOUNTER 0x10    /* bmap_data.c: the flag beside the class */
 
+/* Black City (zone 0) and White Forest (zone 424): their buildings and
+ * trees are not in their maps.  The field picks 8x8-tile blocks for an 8x8
+ * grid over the place's 2x2 cells from the save (ov021 field_wfbc.c
+ * FIELD_WFBC_BLOCK_BuildGrid: the residents, the player's id) and stamps each
+ * block's buildings and walk tiles into the map (FIELD_WFBC_PatchLandData,
+ * land_data_patch.c: a/1/5/6 member = block id). */
+typedef struct BmapWfbc {
+    unsigned char type[8][8];       /* 0xFF: no block on the cell             */
+    unsigned char ox[8][8], oz[8][8];   /* the cell within its block (0 its origin) */
+    unsigned short block[8][8];     /* the a/1/5/6 member                    */
+} BmapWfbc;
+/* The grid the game builds for these residents (their record numbers, the
+ * a/1/5/4 members) and this player id.  0 on success; -1 for another zone. */
+int  bmap_wfbc_grid(unsigned zone, const unsigned char *npc_ids, int n, unsigned player_id, BmapWfbc *out);
+/* The grid of a place with ten residents, as the spot editor shows it
+ * (bmap_npc_add_residents' records: Black City 0 to 9, White Forest 15 to 24). */
+int  bmap_wfbc_full(unsigned zone, BmapWfbc *out);
+/* The grid the next bmap_build of zone 0 or 424 stamps (the save's, from the
+ * battle backdrop); NULL or none set: the full one.  Taken by that build. */
+void bmap_set_wfbc(const BmapWfbc *w);
+
 #ifdef __cplusplus
 }
 #endif

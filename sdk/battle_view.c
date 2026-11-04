@@ -156,6 +156,8 @@ typedef struct BvJob {
     BwThread *thread;
     int reach;                      /* EIDOS_DEBUG_BMAP_AT: 0 the table, < 0 the
                                        spot as given, > 0 a search that far */
+    BmapWfbc wfbc;                  /* Black City / White Forest: the save's blocks */
+    int has_wfbc;
 } BvJob;
 
 typedef struct BvFrame {
@@ -565,6 +567,7 @@ static void job_main(void *arg)
             j->done = 1;
             return;
         }
+        bmap_set_wfbc(j->has_wfbc ? &j->wfbc : NULL);     /* else a full place */
         j->rc = bmap_build(&b->s, j->zone, j->px, j->pz, j->season, j->hour, j->minute);
         if (j->rc != 0) {
             free(b);
@@ -590,6 +593,55 @@ static void job_main(void *arg)
     bmap_place_spec(&p->s, &j->spec);
     j->placed = p;
     j->done = 1;
+}
+
+/* Black City and White Forest: the blocks the field built from the save
+ * (FIELDMAP_SetupWfbc: the union info by the field's map mode; WfbcData
+ * cityType +0x02 (0 Black City, 1 White Forest), playerId +0x04, ten residents of 0x18 bytes from +0x08: present in the
+ * low nibble of +0x00, the record +0x01, mood +0x02, and when the high
+ * nibble is set eight u16 ids from +0x04 of which one must be 0xFFFF,
+ * EVENT_FIELD_PROCLINK_IsReturnEntryValid). */
+extern void *GAME_DATA_GetMoveModelSys(const void *gd) WEAK;
+extern uint32_t FIELD_STATUS_GetMapMode(void *fs) WEAK;
+extern void *GAME_DATA_GetSecondUnionInfo(void *gd) WEAK;
+extern void *GAME_DATA_GetUnionInfo(void *gd, uint32_t index) WEAK;
+
+static int read_wfbc(uintptr_t gd, unsigned zone, BmapWfbc *out)
+{
+    unsigned char ids[10];
+    uintptr_t data;
+    void *fs;
+    int i, n = 0;
+
+    if ((zone != 0u && zone != 424u) || !gptr_ok(gd) || GAME_DATA_GetMoveModelSys == NULL
+        || FIELD_STATUS_GetMapMode == NULL || GAME_DATA_GetSecondUnionInfo == NULL
+        || GAME_DATA_GetUnionInfo == NULL) {
+        return -1;
+    }
+    fs = GAME_DATA_GetMoveModelSys((const void *)gd);
+    data = fs != NULL && FIELD_STATUS_GetMapMode(fs) == 0u ? (uintptr_t)GAME_DATA_GetSecondUnionInfo((void *)gd)
+                                                           : (uintptr_t)GAME_DATA_GetUnionInfo((void *)gd, 0);
+    if (!gptr_ok(data) || rd16(data, 2) != (zone == 0u ? 0u : 1u)) {
+        return -1;                      /* another city's save: the full place */
+    }
+    for (i = 0; i < 10; i++) {
+        uintptr_t p = data + 8u + (uintptr_t)i * 0x18u;
+        unsigned head = rd8(p, 0), id = rd8(p, 1), mood = rd8(p, 2);
+        int ok = (head & 15u) != 0 && id < 30u && mood <= 100u;
+
+        if (ok && (head >> 4) != 0u) {
+            int k, any = 0;
+
+            for (k = 0; k < 8; k++) {
+                any |= rd16(p, 4u + 2u * (unsigned)k) == 0xFFFFu;
+            }
+            ok = any;
+        }
+        if (ok) {
+            ids[n++] = (unsigned char)id;
+        }
+    }
+    return bmap_wfbc_grid(zone, ids, n, rd32(data, 4), out);
 }
 
 /* Where the battle began, from GameData (the player's work) and the setup. */
@@ -637,6 +689,7 @@ static int read_place(uintptr_t eff, BvJob *j)
         j->hour = (int)rd8(setup, SIT_HOUR);
         j->minute = (int)rd8(setup, SIT_MINUTE);
     }
+    j->has_wfbc = read_wfbc(gd, j->zone, &j->wfbc) == 0;
     {
         /* The spot editor's Preview in game (and tests): EIDOS_DEBUG_BMAP_AT="zone x z facing season hour
          * [reach [y]]" stages the backdrop at another place */

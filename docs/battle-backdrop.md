@@ -13,6 +13,7 @@ camera.
 | `sdk/battle_view.c` | Wraps the game's scenery draws. At the first battle frame it reads where the battle started (zone, position, facing, season, time) and starts a worker thread. It hands the camera and the scene to the renderer each frame. |
 | `engine/world/bmap_data.c` | Builds the scene: the ground chunks, buildings and placed objects around the player, with lit vertex colours and textures from the ROM archives. It also keeps the game's walk grid (which tiles are floor, wall, water or outside the map, and which have wild encounters) and a ground index for heights. |
 | `engine/world/bmap_gimmick.c` | Adds the gym puzzle models (doors, curtains and the like) that the field places through its gimmick code. |
+| `engine/world/bmap_data.c` (Black City, White Forest) | Their buildings and trees are not in their maps: the game stamps 8x8-tile blocks chosen from the save into them (ov021 `field_wfbc.c`, `land_data_patch.c`). `bmap_wfbc_grid` chooses the blocks the same way (the residents, the player's id) and the build stamps them, buildings and walk tiles. A battle takes the save's; the spot editor shows the place full. |
 | `engine/world/bmap_place.c` | Moves the scene into battle space: the spot under the own Pokemon, the angle, one fixed scale. It can search near a start point for a clear spot. |
 | `engine/world/bmap_spots.c` | The spot table: one row for each place a battle can start, and how its battle is placed. |
 | `engine/platform/plat_gl3d.c` | Draws the scene behind the game's polygons. |

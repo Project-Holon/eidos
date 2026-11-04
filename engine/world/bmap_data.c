@@ -2019,6 +2019,202 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
 }
 
 /* ------------------------------------------------------------------ */
+/* Black City and White Forest blocks                                  */
+/* ------------------------------------------------------------------ */
+
+static BmapWfbc g_wfbc;
+static int g_wfbc_set;
+
+void bmap_set_wfbc(const BmapWfbc *w)
+{
+    g_wfbc_set = w != NULL;
+    if (w != NULL) {
+        g_wfbc = *w;
+    }
+}
+
+/* A whole archive member, malloc'd (NULL when missing). */
+static u8 *wfbc_member(const char *path, u32 id, long *size)
+{
+    BwArcFile arc;
+    long n;
+    u8 *buf;
+
+    *size = 0;
+    if (bw_arc_open(&arc, path) != 0) {
+        return NULL;
+    }
+    n = bw_arc_member_size(&arc, id);
+    buf = n > 0 ? (u8 *)malloc((size_t)n) : NULL;
+    if (buf != NULL && bw_arc_read_member(&arc, id, buf, (u32)n) != n) {
+        free(buf);
+        buf = NULL;
+    }
+    bw_arc_close(&arc);
+    *size = buf != NULL ? n : 0;
+    return buf;
+}
+
+/* MATH_Rand32 (NitroSDK): the 64-bit linear congruence, the top word scaled
+ * to max */
+static u32 wfbc_rand(unsigned long long *x, u32 max)
+{
+    *x = 0x5D588B656C078965ULL * *x + 0x269EC3ULL;
+    return max != 0u ? (u32)(((*x >> 32) * (unsigned long long)max) >> 32) : (u32)(*x >> 32);
+}
+
+int bmap_wfbc_grid(unsigned zone, const unsigned char *npc_ids, int n, unsigned player_id, BmapWfbc *out)
+{
+    long tsize = 0, rsize;
+    u8 *table, *rec;
+    u32 range = 1, id_sum = 0, rec_sum = 0;
+    unsigned long long x;
+    int i, gx, gz;
+
+    if (zone != 0u && zone != 424u) {
+        return -1;
+    }
+    /* the block table (sBlockTableMemberIds: 30 Black City, 31 White Forest):
+     * an 8x8 layout of 2-byte cells (offsets, type), then u32 ids[type][16] */
+    table = wfbc_member("a/1/5/4", zone == 0u ? 30u : 31u, &tsize);
+    if (table == NULL || tsize < 128 + 64) {
+        free(table);
+        return -1;
+    }
+    /* FIELD_WFBC_BLOCK_InitRand */
+    for (i = 0; i < n; i++) {
+        rec = wfbc_member("a/1/5/4", npc_ids[i], &rsize);
+        if (rec != NULL && rsize >= 0x30) {
+            rec_sum += rd16((Buf){ rec, (size_t)rsize }, 0x2E);
+        }
+        free(rec);
+        id_sum += npc_ids[i];
+    }
+    if (n > 0) {
+        range = rec_sum + 2u;
+    }
+    x = player_id;
+    memset(out, 0, sizeof *out);
+    /* FIELD_WFBC_BLOCK_BuildGrid */
+    for (gz = 0; gz < 8; gz++) {
+        for (gx = 0; gx < 8; gx++) {
+            u8 pos = table[(gz * 8 + gx) * 2], type = table[(gz * 8 + gx) * 2 + 1];
+            int ox = pos & 15, oz = pos >> 4;
+
+            out->type[gz][gx] = type;
+            out->ox[gz][gx] = (unsigned char)ox;
+            out->oz[gz][gx] = (unsigned char)oz;
+            if (type == 0xFFu) {
+                continue;
+            }
+            if (ox != 0 || oz != 0) {
+                out->block[gz][gx] = out->block[gz - oz][gx - ox];
+            } else {
+                u32 variant = (u32)(u8)((u8)id_sum + (u8)(gx + gz)) / (u32)((gx + 3) + (gz + 1)) % 2u;
+                u32 index = (u32)(n * 8) / 10u + wfbc_rand(&x, range);
+                size_t at = 128u + ((size_t)type * 16u + (index >= 8u ? 7u : index) + variant * 8u) * 4u;
+
+                out->block[gz][gx] = at + 4u <= (size_t)tsize ? (unsigned short)rd32((Buf){ table, (size_t)tsize }, at)
+                                                              : 0u;
+            }
+        }
+    }
+    free(table);
+    return 0;
+}
+
+int bmap_wfbc_full(unsigned zone, BmapWfbc *out)
+{
+    unsigned char ids[10];
+    int i;
+
+    for (i = 0; i < 10; i++) {
+        ids[i] = (unsigned char)((zone == 0u ? 0 : 15) + i);
+    }
+    return bmap_wfbc_grid(zone, ids, 10, 0u, out);
+}
+
+/* The blocks on the grid cells of matrix cell (cx, cz): each block's walk
+ * tiles over the cell's (LAND_DATA_PATCH_OverwriteAttr: a tile's word at
+ * +0x14 of its 0x18 bytes), and at a block's origin its buildings
+ * (LAND_DATA_PATCH_AddBuildModels: 16-byte entries as a chunk's, moved by
+ * the cell's place in the chunk). */
+static int add_wfbc(Ctx *c, Area *ar, const BmapWfbc *g, int cx, int cz)
+{
+    float center[2] = { (float)cx * CELL_UNITS + CELL_UNITS / 2.0f, (float)cz * CELL_UNITS + CELL_UNITS / 2.0f };
+    WalkChunk *w = NULL;
+    char bkey[40];
+    unsigned i;
+    int gx, gz, rc = 0;
+
+    for (i = 0; i < c->nwalk; i++) {
+        if (c->walk[i].cx == cx && c->walk[i].cz == cz) {
+            w = &c->walk[i];
+        }
+    }
+    snprintf(bkey, sizeof bkey, "b%d_%u", ar->indoor, ar->id);
+    for (gz = cz * 4; gz < cz * 4 + 4 && gz < 8 && rc == 0; gz++) {
+        for (gx = cx * 4; gx < cx * 4 + 4 && gx < 8 && rc == 0; gx++) {
+            Blob b;
+            Buf bb;
+            u32 attr, bm, pw, tx, tz, k, count;
+            int dx = (gx * 8) & 31, dz = (gz * 8) & 31;
+
+            if (g->type[gz][gx] == 0xFFu || arc_load(c, "a/1/5/6", g->block[gz][gx], &b) != 0) {
+                continue;
+            }
+            bb = bb_of(&b);
+            attr = rd16(bb, 0);
+            bm = rd16(bb, 2);
+            pw = attr + 2u <= bb.n ? rd16(bb, attr) : 0u;
+            for (tz = 0; w != NULL && pw != 0u && tz < 8u; tz++) {
+                for (tx = 0; tx < 8u; tx++) {
+                    size_t at = attr + 4u + ((g->ox[gz][gx] * 8u + tx) + (g->oz[gz][gx] * 8u + tz) * pw) * 0x18u + 0x14u;
+                    u32 a, t;
+                    u8 cls;
+
+                    if (at + 4u > bb.n) {
+                        continue;
+                    }
+                    a = rd32(bb, at) & 0x7FFFFFFFu;
+                    t = a & 0xFFFFu;
+                    cls = water_terrain(t) ? BMAP_TILE_WATER : (a >> 16) & 1u ? BMAP_TILE_BLOCKED : BMAP_TILE_OPEN;
+                    w->cls[(dz + (int)tz) * 32 + dx + (int)tx] = (u8)(cls | ((a >> 16) & 4u ? BMAP_TILE_ENCOUNTER : 0u));
+                }
+            }
+            if (g->ox[gz][gx] == 0u && g->oz[gz][gx] == 0u && bm + 4u <= bb.n && ar->nb > 0u) {
+                count = rd32(bb, bm);
+                for (k = 0; k < count && bm + 4u + (k + 1u) * 16u <= bb.n; k++) {
+                    size_t at = bm + 4u + (size_t)k * 16u;
+                    u32 id = rd16(bb, at + 14);
+                    unsigned mi;
+                    float t[3];
+                    Aff place;
+
+                    id = ((id & 0xFFu) << 8) | (id >> 8);
+                    for (mi = 0; mi < ar->nb && ar->bids[mi] != id; mi++) {
+                    }
+                    if (mi >= ar->nb) {
+                        continue;
+                    }
+                    t[0] = center[0] + (float)rds32(bb, at) / 4096.0f + (float)dx * TILE;
+                    t[1] = (float)rds32(bb, at + 4) / 4096.0f;
+                    t[2] = center[1] - (float)rds32(bb, at + 8) / 4096.0f + (float)dz * TILE;
+                    place = aff_yaw((float)rd16(bb, at + 12) / 65536.0f, t);
+                    c->obj++;
+                    rc = add_model(c, &ar->bmodels[mi], bkey, bb_of(&ar->btex), &place, 2, &ar->banims[mi]);
+                    if (rc != 0) {
+                        break;
+                    }
+                }
+            }
+            blob_free(&b);
+        }
+    }
+    return rc;
+}
+
+/* ------------------------------------------------------------------ */
 /* Gym gimmick models                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -2779,10 +2975,22 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     Buf hb, mb;
     unsigned pcx, pcz, area, matrix_id, mode, w, h, cell;
     unsigned i;
-    int rc = -1;
+    int rc = -1, wfbc_on = 0;
     Area *player_area;
+    BmapWfbc wfbc;
 
     memset(s, 0, sizeof *s);
+    /* Black City and White Forest: the save's blocks (bmap_set_wfbc) or a
+     * full place */
+    if (zone == 0u || zone == 424u) {
+        if (g_wfbc_set) {
+            wfbc = g_wfbc;
+            wfbc_on = 1;
+        } else {
+            wfbc_on = bmap_wfbc_full(zone, &wfbc) == 0;
+        }
+    }
+    g_wfbc_set = 0;
     if (c == NULL) {
         return -1;
     }
@@ -2843,6 +3051,9 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         }
         c->cur_far = (u8)(dx > NEAR_REACH || dz > NEAR_REACH);
         if (add_chunk(c, ar, chunk, cx, cz) != 0) {
+            goto out;
+        }
+        if (wfbc_on && cx < 2 && cz < 2 && add_wfbc(c, ar, &wfbc, cx, cz) != 0) {
             goto out;
         }
     }
