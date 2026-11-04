@@ -2956,7 +2956,17 @@ static void draw_progress(void)
                 return;
             }
         }
-        text(x + U(12), ly + U(6), td + wd == tt + wt && tt + wt > 0 ? C_GOOD : C_TEXT, "%s", name);
+        if (tt + wt > 0 && td + wd == tt + wt) {
+            /* all of the place checked: crossed out, still there to click */
+            text(x + U(12), ly + U(6), C_MUTED, "%s", name);
+            text(x + ctd, ly + U(6), C_MUTED, "%d", td);
+            text(x + ctt, ly + U(6), C_MUTED, "%d", tt);
+            text(x + cwd, ly + U(6), C_MUTED, "%d", wd);
+            text(x + cwt, ly + U(6), C_MUTED, "%d", wt);
+            ui_fill(&C, x + U(10), ly + U(6) + 5 * FK, cwt + U(24) - U(10), FK > 2 ? 2 : 1, C_MUTED, 255);
+            continue;
+        }
+        text(x + U(12), ly + U(6), C_TEXT, "%s", name);
         text(x + ctd, ly + U(6), tt > 0 && td == tt ? C_GOOD : C_TEXT, "%d", td);
         text(x + ctt, ly + U(6), C_MUTED, "%d", tt);
         text(x + cwd, ly + U(6), wt > 0 && wd == wt ? C_GOOD : C_TEXT, "%d", wd);
