@@ -55,7 +55,7 @@ static int mode_of(const char *f)
 /* One line of the table into r; returns 0 when it is a row. */
 static int parse_row(char *line, BmapSpot *r)
 {
-    char *f[52];
+    char *f[56];
     int n = 0, i;
     char *p = line;
 
