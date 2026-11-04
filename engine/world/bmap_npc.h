@@ -32,6 +32,9 @@ typedef struct BmapNpc {
     int gx, gz;             /* the header's tile                                */
     unsigned obj_code;
     int is_trainer;         /* event type 1 */
+    int resident;           /* a Black City or White Forest resident (the save
+                               places them, bmap_npc_add_residents): y is not
+                               known, the ground under it is               */
 } BmapNpc;
 
 /* The NPCs of `zone` (grid placed ones; rail placed ones are left out).  On
@@ -49,6 +52,15 @@ int  bmap_npc_picture(unsigned obj_code, int dir, unsigned char **rgba, int *w, 
  * placed.  Returns 0 when every model was added. */
 int  bmap_npc_add_models(BmapScene *s, const BmapNpc *npcs, int n);
 void bmap_npc_free(BmapNpc *npcs, int count);
+/* Black City (zone 0) and White Forest (zone 424) have no people in their
+ * event files: the save's residents are placed by the game (ov020
+ * field_wfbc_data_local.c) on the ten tiles of a table in a/1/5/4 (member
+ * 0x22 Black City, 0x23 White Forest), each with the object code of its
+ * record (members 0 to 29).  This appends ten residents on those tiles, as
+ * the place looks once it is full: one record each, in order (Black City
+ * records 0 to 9, White Forest 15 to 24), for a tool that has no save (the
+ * spot editor).  0 on success, also for any other zone (nothing added). */
+int  bmap_npc_add_residents(unsigned zone, BmapNpc **npcs, int *count);
 
 #ifdef __cplusplus
 }

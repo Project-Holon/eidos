@@ -335,6 +335,56 @@ int bmap_npc_add_models(BmapScene *s, const BmapNpc *npcs, int n)
     return bad;
 }
 
+int bmap_npc_add_residents(unsigned zone, BmapNpc **npcs, int *count)
+{
+    long psize = 0, tsize = 0, rsize = 0;
+    u8 *params, *table, *rec;
+    BmapNpc *list;
+    int first, i, n = *count;
+
+    if (zone != 0u && zone != 424u) {
+        return 0;
+    }
+    table = member("a/1/5/4", zone == 0u ? 0x22u : 0x23u, &tsize);
+    params = member("a/0/4/8", 0, &psize);
+    list = (BmapNpc *)realloc(*npcs, (size_t)(n + 10) * sizeof *list);
+    if (table == NULL || tsize < 20 || params == NULL || list == NULL) {
+        free(table);
+        free(params);
+        if (list != NULL) {
+            *npcs = list;
+        }
+        return -1;
+    }
+    *npcs = list;
+    first = zone == 0u ? 0 : 15;
+    for (i = 0; i < 10; i++) {
+        BmapNpc *p = &list[n];
+
+        rec = member("a/1/5/4", (u32)(first + i), &rsize);
+        if (rec == NULL || rsize < 2) {
+            free(rec);
+            continue;
+        }
+        memset(p, 0, sizeof *p);
+        p->gx = table[2 * i];
+        p->gz = table[2 * i + 1];
+        p->x = (float)p->gx * 16.0f + 8.0f;
+        p->z = (float)p->gz * 16.0f + 8.0f;
+        p->dir = 1;                     /* facing down, as the header's 0 */
+        p->model_file = p->model_tex = -1;
+        p->obj_code = rd16(rec);
+        p->resident = 1;
+        free(rec);
+        load_picture(p, params, psize);
+        n++;
+    }
+    free(table);
+    free(params);
+    *count = n;
+    return 0;
+}
+
 void bmap_npc_free(BmapNpc *npcs, int count)
 {
     int i;

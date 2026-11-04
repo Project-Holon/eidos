@@ -657,6 +657,8 @@ static void load_npcs(unsigned zone)
             A.npcs = NULL;
             A.nnpc = 0;
         }
+        /* Black City and White Forest as they look full: their residents */
+        (void)bmap_npc_add_residents(zone, &A.npcs, &A.nnpc);
         A.npc_zone = zone;
     }
 }
@@ -687,7 +689,7 @@ static int row_height(const BmapSpot *r, float *y)
     }
     load_npcs(r->zone);
     for (i = 0; i < A.nnpc; i++) {
-        if (A.npcs[i].is_trainer && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
+        if (A.npcs[i].is_trainer && !A.npcs[i].resident && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
             *y = A.npcs[i].y;
             return 1;
         }
@@ -695,7 +697,7 @@ static int row_height(const BmapSpot *r, float *y)
     /* a leader: its battle starts from a script, the header does not call
      * it a trainer; whoever stands on the row's tile */
     for (i = 0; i < A.nnpc; i++) {
-        if (A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
+        if (!A.npcs[i].resident && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
             *y = A.npcs[i].y;
             return 1;
         }
@@ -804,7 +806,15 @@ static void build_field(void)
         }
     }
     if (A.nnpc > 0) {
+        int i;
+
         (void)bmap_npc_add_models(&A.obase, A.npcs, A.nnpc);   /* the NPCs drawn as 3D models */
+        for (i = 0; i < A.nnpc; i++) {
+            if (A.npcs[i].resident) {
+                /* a resident stands on the ground of its tile */
+                A.npcs[i].y = bmap_ground_y(&A.obase, A.npcs[i].x, A.npcs[i].z);
+            }
+        }
     }
     A.ob_zone = r->zone;
     A.ob_cx = A.ow_tx;
