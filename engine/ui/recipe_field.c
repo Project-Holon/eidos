@@ -1060,15 +1060,14 @@ extern void *FIELDMAP_GetPlaceName(void *fieldMap) __attribute__((weak));
  * player has no menu then, and the bar keeps out of the way. */
 extern int GAMESYSTEM_IsEventActive(void *gameSystem) __attribute__((weak));
 
-static int banner_shown(const FieldNow *f);
-static void place_banner(EidosUiCtx *c, const FieldNow *f);
-
-/* FieldPlaceName.state (ov021/field_place_name_types.h): the last one, the
- * plate blending out over 20 frames */
-#define PLACE_NAME_FADE_OUT 6
-#define PLACE_NAME_OUT_FRAMES 20
-static u32 g_banner_age;    /* interface frames the banner has been up    */
-static u32 g_banner_zone = 0xFFFFFFFFu;   /* the zone it names           */
+/* The place's name in the bar, and the name before it while the bar's
+ * name changes: the old one fades out over NAME_OUT frames, the new one in
+ * over NAME_IN (only when the words change: a building's own floor and its
+ * town have the same name, and nothing moves). */
+#define NAME_OUT 16u
+#define NAME_IN  24u
+static char g_bar_name[64], g_bar_prev[64];
+static u32 g_bar_fade = NAME_OUT + NAME_IN;
 
 static int banner_shown(const FieldNow *f)
 {
@@ -1079,61 +1078,6 @@ static int banner_shown(const FieldNow *f)
     }
     pn = (const u8 *)FIELDMAP_GetPlaceName(f->fm);
     return pn != NULL && rd32(pn + 0x3C) != 0;
-}
-
-/*
- * The place-name banner (mock-up "place_banner"): while the game shows its
- * banner for a new zone (FieldPlaceName.state +0x3C not 0), the bar is away
- * and a banner of the interface's own drops in at the top left with the
- * zone's name in large letters (the bar's own words: a/0/0/2 file 0x59);
- * the game's banner (BG3 and its flying letters) is left out of the screen
- * (field_text).  It slides in over its first 12 frames on show (counted
- * here: the game's frame +0x42 starts again at each of its states, and a
- * slide timed by it came in again at each one) and out over the game's
- * fade-out (state 6, frame +0x42 of its 20).
- */
-static void place_banner(EidosUiCtx *c, const FieldNow *f)
-{
-    const u8 *pn = FIELDMAP_GetPlaceName != NULL ? (const u8 *)FIELDMAP_GetPlaceName(f->fm) : NULL;
-    char place[64];
-    int w, x, y = 4, h = 40, k = 2, frame, slide;
-    u32 zone;
-
-    if (pn == NULL || ZONEDATA_GetPlaceNameId == NULL) {
-        return;
-    }
-    zone = rd16(pn + 0x46);
-    if (zone != g_banner_zone) {
-        g_banner_zone = zone;               /* another place: it comes in again */
-        g_banner_age = 0;
-    }
-    place[0] = '\0';
-    msg_text(0x59, ZONEDATA_GetPlaceNameId(zone), place, (int)sizeof(place));
-    if (place[0] == '\0') {
-        return;
-    }
-    w = ui_text_w(place, UI_FONT_LARGE) * k + 34;
-    frame = rd16(pn + 0x42);
-    slide = g_banner_age < 12u ? (12 - (int)g_banner_age) * (w + 8) / 12 : 0;
-    if (rd32(pn + 0x3C) == PLACE_NAME_FADE_OUT) {
-        slide = (frame < PLACE_NAME_OUT_FRAMES ? frame : PLACE_NAME_OUT_FRAMES) * (w + 8) / PLACE_NAME_OUT_FRAMES;
-    }
-    g_banner_age++;
-    x = 4 - slide;
-    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 8, 0x000000u, 0x464850u, 235);
-    {
-        int rr;
-
-        for (rr = 3; rr < h - 3; rr++) {
-            int left = 3 + (rr < 10 ? 10 - rr : 0);
-
-            if (left < 6) {
-                ui_fill(c, x + left, y + rr, 6 - left, 1, 0x008BACu, 255);
-            }
-        }
-    }
-    ui_text(c, x + 14, y + 4, place, UI_WHITE, 0x464850u, UI_FONT_LARGE, k);
-    ui_fill(c, x + 14, y + h - 5, w - 28, 1, 0x008BACu, 255);
 }
 
 static int field_match(void)
@@ -1272,6 +1216,7 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     u8 *list = NULL, *win = NULL;
     float s = (float)c->canvas->h / 192.0f;
     u32 hide;
+    int text;
 
     if (bw_ui_text_set_own != NULL) {
         bw_ui_text_set_own(1);
@@ -1282,14 +1227,17 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
         hide |= 1u << win[2];           /* an open list's window: ours shows */
     }
     item_card(c, f, hide != 0);
-    /* the season's scoreboard stays the game's own (the player prefers it) */
+    text = hide != 0;
+    /* the season's scoreboard stays the game's own (the player prefers it);
+     * the game's place-name banner is left out: the bar's name changes
+     * instead */
     if (banner_shown(f)) {
         hide |= 0x8u | 0x10u;           /* the game's banner: BG3, its letters */
     }
     if (g2d_hw_hide_main_bgs != NULL) {
         g2d_hw_hide_main_bgs(hide);
     }
-    return hide != 0;
+    return text;
 }
 
 /*
@@ -1431,6 +1379,20 @@ static void bar_trapezoid(EidosUiCtx *c, int cx, int w, int h, int hot)
         ui_fill(c, x1 - 1, y, 1, 1, UI_EDGE2, 255);
     }
     ui_fill(c, cx - w / 2 + 5, h, w - 10, 1, UI_CYAN, 255);
+}
+
+/* The bar's ground as the name fades into it (UI_INK under the bar's alpha
+ * over the world, about). */
+#define BAR_INK 0x101214u
+
+/* a over b by alpha (0..255) */
+static u32 mix_rgb(u32 a, u32 b, int alpha)
+{
+    u32 r = (((a >> 16) & 255u) * (u32)alpha + ((b >> 16) & 255u) * (u32)(255 - alpha)) / 255u;
+    u32 g = (((a >> 8) & 255u) * (u32)alpha + ((b >> 8) & 255u) * (u32)(255 - alpha)) / 255u;
+    u32 bl = ((a & 255u) * (u32)alpha + (b & 255u) * (u32)(255 - alpha)) / 255u;
+
+    return r << 16 | g << 8 | bl;
 }
 
 /* The width small_button gives a label and its key. */
@@ -1821,9 +1783,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->cap_mix = capture_mix();
     view->stretch = encounter_effect();
 
-    /* While the game's place-name banner shows (it names the same place)
-     * or an event runs, the bar slides up out of the way and comes back
-     * after. */
+    /* While an event runs, the bar slides up out of the way and comes back
+     * after.  It stays through the game's place-name banner: its own name
+     * changes instead. */
     g_text_up = 0;
     if (!plain_field()) {
         g_text_up = field_text(c, &f);
@@ -1847,9 +1809,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0);
     /* Opening and closing the menu are events too: right after the menu
      * the bar is simply there, fading in with the menu fading out. */
-    if (in->frame - g_menu_last_frame <= 90u && !banner_shown(&f)) {
+    if (in->frame - g_menu_last_frame <= 90u) {
         g_bar_slide = 0;
-    } else if (banner_shown(&f) || choosing || g_text_up || (GAMESYSTEM_IsEventActive != NULL
+    } else if (choosing || g_text_up || (GAMESYSTEM_IsEventActive != NULL
                                                && GAMESYSTEM_IsEventActive(f.gs) != 0)) {
         /* a list or a text box (the Union Room's talks run with no
          * event; its battle rule card stands at the top of the screen):
@@ -1857,12 +1819,6 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         g_bar_slide = g_bar_slide + 3 < bh + 1 ? g_bar_slide + 3 : bh + 1;
     } else {
         g_bar_slide = g_bar_slide > 2 ? g_bar_slide - 2 : 0;
-    }
-    if (banner_shown(&f) && !plain_field()) {
-        place_banner(c, &f);
-    } else {
-        g_banner_age = 0;                   /* the next banner comes in from the start */
-        g_banner_zone = 0xFFFFFFFFu;
     }
     if (g_bar_slide >= bh + 1) {
         return;
@@ -1988,11 +1944,27 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         for (i = 0; i < 4; i++) {
             ui_fill(c, 5 + c->safe_l + i, 4 + i, 1, 9 - 2 * i, UI_CYAN, 255);
         }
+        if (strcmp(place, g_bar_name) != 0) {
+            if (g_bar_name[0] != '\0') {
+                snprintf(g_bar_prev, sizeof g_bar_prev, "%s", g_bar_name);
+                g_bar_fade = 0;
+            }
+            snprintf(g_bar_name, sizeof g_bar_name, "%s", place);
+        }
         if (x - 2 > px) {
+            const char *shown = place;
+            int a = 255;
+
+            if (g_bar_fade < NAME_OUT + NAME_IN) {
+                shown = g_bar_fade < NAME_OUT ? g_bar_prev : place;
+                a = g_bar_fade < NAME_OUT ? 255 - (int)(g_bar_fade * 255u / NAME_OUT)
+                                          : (int)((g_bar_fade - NAME_OUT) * 255u / NAME_IN);
+                g_bar_fade++;
+            }
             ui_push(c, 0, 0, &saved);
             ui_clip(c, px, 0, x - 2 - px, bh);
-            ui_text(c, px, ui_text_y(bh, UI_FONT_LARGE), place, UI_WHITE, UI_EDGE,
-                    UI_FONT_LARGE, 1);
+            ui_text(c, px, ui_text_y(bh, UI_FONT_LARGE), shown, mix_rgb(UI_WHITE, BAR_INK, a),
+                    a < 128 ? (s32)BAR_INK : (s32)UI_EDGE, UI_FONT_LARGE, 1);
             ui_pop(c, 0, 0, &saved);
         }
     }
@@ -2027,8 +1999,6 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
 static void field_reset(void)
 {
-    g_banner_age = 0;
-    g_banner_zone = 0xFFFFFFFFu;
     g_show_cgear = 0;
     g_bar_slide = BAR_HIDDEN;
     g_stick.on = 0;
