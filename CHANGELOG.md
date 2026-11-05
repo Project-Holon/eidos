@@ -3,6 +3,25 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.2
+
+### Mods & Launcher
+- **Get Mods**: The Mods page lists the mods of katalogos, our mod index, with Install and Update; a download is checked before it is unpacked. The official mods are Nuzlocke, Soul Link (multiplayer) and Exp. Share.
+- **Mod Icons**: A mod can show an item's or a Pokémon's picture from your own ROM, or its own image.
+- **Black & White**: The Default profile is now Black, a White profile is added, and the sidebar switch picks between them; the launcher's look follows (Reshiram by day for Black, Zekrom by night for White).
+- **Saves**: The Play page shows the saves of the profile's game only.
+- **ROMs**: A profile plays the language your ROM is in when you have only one (an Italian Black ROM alone no longer asks for an English one), and Play asks for the ROM a game is missing.
+- **Mod Interface 5**: Experience for the whole party (`battle.exp` share), and hooks for battle AI mods: the trainer's item, switch and move choices, the Pokémon it sends in, abilities, stat changes, held items, statuses and turns, with reads for stat stages, the type chart and what a species can learn.
+
+### Battle
+- **YES / NO**: The one-screen choice shows the game's own answers (FORGET when a move is replaced) instead of "YES" or garbled text (#17, thanks aqali1).
+- **Party List**: The one-screen list says why a Pokémon cannot be chosen ("no energy left to battle") (#18, thanks aqali1).
+
+### Bug Fixes
+- **European Cartridges**: Fixed the game crashing on Pokémon and Options in the field menu on Italian, French, German and Spanish cartridges.
+- **Code Mods**: Fixed the game crashing at start-up with any mod that runs code.
+- **Faint Events**: A mod's faint rule now fires once per fainted Pokémon, not for every Pokémon a move touched.
+
 ## 0.2.1
 
 ### One-Screen Mode & UI
