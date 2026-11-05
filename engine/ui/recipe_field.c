@@ -1431,6 +1431,26 @@ static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h,
     return st;
 }
 
+/* The C-Gear button as its mark alone (a ring with its bar), for a bar
+ * too narrow for the word; the same place and clicks as small_button. */
+static int cgear_mark_button(EidosUiCtx *c, int *x, int h)
+{
+    int w = 20, xx = *x - w, st, cy = h / 2;
+    EidosUiRect r;
+
+    r.x = xx;
+    r.y = 0;
+    r.w = w;
+    r.h = h;
+    st = eidos_ui_hit(r);
+    ui_panel(c, xx, 1, w, h - 2, UI_CUT_TL | UI_CUT_BR, 3,
+             (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY, (st & EIDOS_UI_HOVER) ? UI_CYAN : UI_EDGE2, 240);
+    ui_ellipse(c, xx + 5, cy - 5, 10, 10, UI_BODY, UI_WHITE, 255);
+    ui_fill(c, xx + 9, cy - 1, 2, 2, UI_CYAN, 255);
+    *x = xx - 4;
+    return st;
+}
+
 /*
  * The game's own lower screen as a sheet over the world, in the one-screen
  * view: the C-Gear (its wireless and IR panels, the survey radar), and the
@@ -1483,8 +1503,9 @@ static int lower_sheet(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch,
  * orange), each lit while that channel has someone, and a C-Gear button
  * for the game's whole lower screen (the survey, the settings).  A channel
  * button taps that channel's hexagon on the game's C-Gear, so the game
- * opens the app it opens for a stylus (the Wireless and IR apps then take
- * the window, lower-only).  Returns 1 to close, 2 for the whole C-Gear.
+ * opens the app it opens for a stylus (the Wireless app then takes the
+ * window, lower-only).  IR is greyed out and takes no click: eidos has no
+ * infrared link yet.  Returns 1 to close, 2 for the whole C-Gear.
  */
 static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
                       int wireless_lit, int online_lit, int on)
@@ -1516,16 +1537,17 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
     for (i = 0; i < 3; i++) {
         int bx = x0 + pad + i * (bw + gap), by = y0 + pad;
         EidosUiRect r = { bx, by, bw, bhh };
-        int st = eidos_ui_hit(r);
+        /* IR is greyed out: eidos has no infrared link yet */
+        int ir = i == 0, st = ir ? 0 : eidos_ui_hit(r);
         u32 col = ch[i].colour;
-        const char *status = on ? "On" : "Off";
+        const char *status = ir ? "Not available" : on ? "On" : "Off";
 
         ui_panel(c, bx, by, bw, bhh, UI_CUT_TL | UI_CUT_BR, 4,
-                 (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, lit[i] ? col : UI_EDGE2, 245);
+                 (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, lit[i] ? col : UI_EDGE2, ir ? 150 : 245);
         ui_fill(c, bx + 4, by + 4, 3, bhh - 8, lit[i] ? col : UI_EDGE2, 255);
-        ui_text(c, bx + 11, by + 3, ch[i].name, lit[i] ? UI_WHITE : UI_LIGHT, UI_EDGE,
+        ui_text(c, bx + 11, by + 3, ch[i].name, ir ? UI_GREY : lit[i] ? UI_WHITE : UI_LIGHT, UI_EDGE,
                 UI_FONT_SMALL, 1);
-        ui_text(c, bx + 11, by + 15, status, lit[i] ? col : UI_GREY, -1, UI_FONT_SMALL, 1);
+        ui_text(c, bx + 11, by + 15, status, ir ? UI_EDGE2 : lit[i] ? col : UI_GREY, -1, UI_FONT_SMALL, 1);
         if (st & EIDOS_UI_CLICK) {
             eidos_ui_tap(ch[i].tx, ch[i].ty, 3);
             res = 1;
@@ -1926,7 +1948,15 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         st_bar = 0;
     }
     if (f.mode == 0 || f.mode == 8) {           /* this save has a C-Gear */
-        st = small_button(c, &x, 0, "C-GEAR", bh, NULL);
+        /* a narrow window (an iPad): when the place name would not fit
+         * beside the full button, the button is the C-Gear's mark alone */
+        int name_room = x - small_button_w("C-GEAR", NULL) - 4 - 2 - (14 + c->safe_l);
+
+        if (ui_text_w(place, UI_FONT_LARGE) > name_room) {
+            st = cgear_mark_button(c, &x, bh);
+        } else {
+            st = small_button(c, &x, 0, "C-GEAR", bh, NULL);
+        }
         if (st & EIDOS_UI_CLICK) {
             g_show_cgear = g_show_cgear ? 0 : 1;
             st_bar = 0;
@@ -1961,10 +1991,13 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                                           : (int)((g_bar_fade - NAME_OUT) * 255u / NAME_IN);
                 g_bar_fade++;
             }
+            /* a name still too long for the room takes the small font */
+            int font = ui_text_w(shown, UI_FONT_LARGE) > x - 2 - px ? UI_FONT_SMALL : UI_FONT_LARGE;
+
             ui_push(c, 0, 0, &saved);
             ui_clip(c, px, 0, x - 2 - px, bh);
-            ui_text(c, px, ui_text_y(bh, UI_FONT_LARGE), shown, mix_rgb(UI_WHITE, BAR_INK, a),
-                    a < 128 ? (s32)BAR_INK : (s32)UI_EDGE, UI_FONT_LARGE, 1);
+            ui_text(c, px, ui_text_y(bh, font), shown, mix_rgb(UI_WHITE, BAR_INK, a),
+                    a < 128 ? (s32)BAR_INK : (s32)UI_EDGE, font, 1);
             ui_pop(c, 0, 0, &saved);
         }
     }
