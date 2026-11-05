@@ -3300,6 +3300,27 @@ static int strbuf_text(const u8 *sb, char *out, int cap)
     return out[0] != '\0';
 }
 
+/* The two answers as the choice opened: BTLV_CORE_StartYesNoMenu frees
+ * them right after (CMakeLists.txt, --wrap=BTLV_SCD_OpenChoiceScreen). */
+static char g_choice_text[2][64];
+
+#if defined(EIDOS_WRAP_CHOICE)
+extern void __real_BTLV_SCD_OpenChoiceScreen(void *view, void *work);
+void __wrap_BTLV_SCD_OpenChoiceScreen(void *view, void *work);
+
+void __wrap_BTLV_SCD_OpenChoiceScreen(void *view, void *work)
+{
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        if (!strbuf_text(rdp((const u8 *)work, (u32)(4 * i)), g_choice_text[i], (int)sizeof(g_choice_text[i]))) {
+            g_choice_text[i][0] = '\0';
+        }
+    }
+    __real_BTLV_SCD_OpenChoiceScreen(view, work);
+}
+#endif
+
 static int choice_match(void)
 {
     Bt b;
@@ -3323,11 +3344,12 @@ static void choice_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->mode = EIDOS_VIEW_WORLD;
     view->hide_2d = 1;
     /* the two answers: the choice's own strings (the core's task work) */
-    if (!strbuf_text(rdp(b.core, 0x2C), text[0], sizeof(text[0]))) {
-        snprintf(text[0], sizeof(text[0]), "YES");
-    }
-    if (!strbuf_text(rdp(b.core, 0x30), text[1], sizeof(text[1]))) {
-        snprintf(text[1], sizeof(text[1]), "NO");
+    for (i = 0; i < 2; i++) {
+        if (g_choice_text[i][0] != '\0') {
+            snprintf(text[i], sizeof(text[i]), "%s", g_choice_text[i]);
+        } else if (!strbuf_text(rdp(b.core, (u32)(0x2C + 4 * i)), text[i], sizeof(text[i]))) {
+            snprintf(text[i], sizeof(text[i]), "%s", i == 0 ? "YES" : "NO");
+        }
     }
     if (!strbuf_text(rdp(b.core, 0xAC), question, sizeof(question))) {
         question[0] = '\0';

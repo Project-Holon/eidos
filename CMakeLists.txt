@@ -2926,6 +2926,15 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
     target_compile_definitions(eidos_platform PRIVATE EIDOS_WRAP_PMVOICE=1)
 endif()
 
+# The battle's yes / no answers in the one-screen interface: the game frees
+# their strings as soon as the choice screen has them, so the interface
+# keeps their text when the choice opens (engine/ui/recipe_battle.c).
+# GNU ld only, and only with the game's boot.
+if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
+    target_link_options(eidos_boot PRIVATE "-Wl,--wrap=BTLV_SCD_OpenChoiceScreen")
+    target_compile_definitions(eidos_platform PRIVATE EIDOS_WRAP_CHOICE=1)
+endif()
+
 # Instant text (Extras): the game's text streams start, and change speed,
 # through the port first (engine/platform/text_instant.c).  GNU ld only, and
 # only with the game's boot and the settings in the link.
