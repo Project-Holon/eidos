@@ -124,6 +124,10 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "never goes black." },
     [EIDOS_OPT_GPU_2D]              = { "The graphics card draws the",
                                         "screens. Off uses the CPU." },
+    [EIDOS_OPT_TEXTURE_PACK]        = { "Sharper 3D: files in textures/,",
+                                        "and Auto upscales the rest." },
+    [EIDOS_OPT_TEXTURE_DUMP]        = { "Save each new 3D texture to",
+                                        "textures/dump/ to make a pack." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -234,6 +238,8 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_OUTLINES]            = "3D outlines",
     [EIDOS_OPT_TRANSITIONS]         = "Map transitions",
     [EIDOS_OPT_GPU_2D]              = "GPU drawing",
+    [EIDOS_OPT_TEXTURE_PACK]        = "HD textures",
+    [EIDOS_OPT_TEXTURE_DUMP]        = "Dump textures",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -267,6 +273,11 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_PAD_ICONS,           8, "Steam Deck" },
     { EIDOS_OPT_OUTLINES,            0, "Off" },
     { EIDOS_OPT_OUTLINES,            1, "Thin" },
+    { EIDOS_OPT_TEXTURE_PACK,        0, "Off" },
+    { EIDOS_OPT_TEXTURE_PACK,        1, "Pack" },
+    { EIDOS_OPT_TEXTURE_PACK,        2, "Auto" },
+    { EIDOS_OPT_TEXTURE_DUMP,        0, "Off" },
+    { EIDOS_OPT_TEXTURE_DUMP,        1, "On" },
     { EIDOS_OPT_TRANSITIONS,         0, "Original" },
     { EIDOS_OPT_TRANSITIONS,         1, "Fast" },
     { EIDOS_OPT_TRANSITIONS,         2, "Seamless" },
@@ -723,6 +734,8 @@ static void build_rows(void)
         add_row(ROW_OPTION, EIDOS_OPT_DISPLAY_RESOLUTION, 0);
         add_row(ROW_OPTION, EIDOS_OPT_OUTLINES, 0);
         add_row(ROW_OPTION, EIDOS_OPT_GPU_2D, 0);
+        add_row(ROW_OPTION, EIDOS_OPT_TEXTURE_PACK, 0);
+        add_row(ROW_OPTION, EIDOS_OPT_TEXTURE_DUMP, 0);
         break;
     case 1:
         add_row(ROW_OPTION, EIDOS_OPT_LAYOUT_ARRANGEMENT, 0);

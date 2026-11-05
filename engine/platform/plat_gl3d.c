@@ -51,6 +51,7 @@
 #include <string.h>
 
 #include "plat_gl_int.h"
+#include "texpack.h"
 #ifdef far
 #undef far /* the windows headers define it; BmapDraw has a member of that name */
 #endif
@@ -87,6 +88,7 @@ static const char *k_fs3 =
     "uniform int u_tex;\n"
     "uniform sampler2D u_texture;\n"
     "uniform ivec2 u_texsize;\n"
+    "uniform int u_hd;\n"
     "uniform ivec4 u_wrap;\n"        /* repeat s, repeat t, flip s, flip t */
     "uniform int u_alpharef;\n"
     "uniform int u_toon;\n"
@@ -132,7 +134,19 @@ static const char *k_fs3 =
     "    if (u_tex == 1) {\n"
     "        int x = wrapc(int(floor(v_st.x / 16.0)), u_texsize.x, u_wrap.x, u_wrap.z);\n"
     "        int y = wrapc(int(floor(v_st.y / 16.0)), u_texsize.y, u_wrap.y, u_wrap.w);\n"
-    "        ivec4 tc = ivec4(texelFetch(u_texture, ivec2(x, y), 0) * 255.0 + 0.5);\n"
+    "        ivec4 tc;\n"
+    /* an HD texture is u_hd times the DS size (texpack.c): the wrap stays
+       in DS texels and the sample lands inside the HD texel */
+    "        if (u_hd > 1) {\n"
+    "            vec2 fr = fract(v_st / 16.0);\n"
+    "            int sx = int(floor(v_st.x / 16.0)), sy = int(floor(v_st.y / 16.0));\n"
+    "            if (u_wrap.x != 0 && u_wrap.z != 0 && (sx & (u_texsize.x * 2 - 1)) >= u_texsize.x) fr.x = 1.0 - fr.x;\n"
+    "            if (u_wrap.y != 0 && u_wrap.w != 0 && (sy & (u_texsize.y * 2 - 1)) >= u_texsize.y) fr.y = 1.0 - fr.y;\n"
+    "            ivec2 hp = ivec2(x, y) * u_hd + min(ivec2(fr * float(u_hd)), ivec2(u_hd - 1));\n"
+    "            tc = ivec4(texelFetch(u_texture, hp, 0) * 255.0 + 0.5);\n"
+    "        } else {\n"
+    "            tc = ivec4(texelFetch(u_texture, ivec2(x, y), 0) * 255.0 + 0.5);\n"
+    "        }\n"
     "        if (u_mode == 1) {\n"
     "            int ta = tc.a >> 3;\n"
     "            col = (tc.rgb * ta + c * (31 - ta)) / 31;\n"
@@ -1262,6 +1276,7 @@ int eidos_gl3d_init(EidosGl *g)
     LOC(u_tex3, "u_tex");
     LOC(u_texture, "u_texture");
     LOC(u_texsize3, "u_texsize");
+    LOC(u_hd3, "u_hd");
     LOC(u_wrap, "u_wrap");
     LOC(u_alpharef, "u_alpharef");
     LOC(u_toon, "u_toon");
@@ -1376,6 +1391,7 @@ void eidos_gl3d_destroy(EidosGl *g)
     }
     free(g->gtex);
     free(g->gtex_key);
+    free(g->gtex_hd);
     free(g->vtx);
 }
 
@@ -1690,6 +1706,7 @@ static void draw_run(EidosGl *g, const G3dSnapshot *s, const Gl3dRun *d,
         g->glUniform1i(g->u_tex3, 1);
         g->glUniform2i(g->u_texsize3, (GLint)s->tex[d->slot].w,
                        (GLint)s->tex[d->slot].h);
+        g->glUniform1i(g->u_hd3, (GLint)g->gtex_hd[d->slot]);
         g->glUniform4i(g->u_wrap, (GLint)(d->wrap & 1), (GLint)((d->wrap >> 1) & 1),
                        (GLint)((d->wrap >> 2) & 1), (GLint)((d->wrap >> 3) & 1));
     } else {
@@ -1753,6 +1770,7 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
             unsigned c = g->cap_gtex ? g->cap_gtex * 2u : 16u;
             GLuint *n = (GLuint *)realloc(g->gtex, (size_t)c * sizeof(*n));
             unsigned *k;
+            unsigned char *hd;
 
             if (n == NULL) {
                 return -1;
@@ -1763,9 +1781,15 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                 return -1;
             }
             g->gtex_key = k;
+            hd = (unsigned char *)realloc(g->gtex_hd, (size_t)c);
+            if (hd == NULL) {
+                return -1;
+            }
+            g->gtex_hd = hd;
             g->cap_gtex = c;
         }
         g->gtex_key[g->n_gtex] = 0;
+        g->gtex_hd[g->n_gtex] = 1;
         glGenTextures(1, &g->gtex[g->n_gtex]);
         glBindTexture(GL_TEXTURE_2D, g->gtex[g->n_gtex]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -1783,12 +1807,26 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
     if (!g->tex_serial_valid || g->tex_serial != s->serial) {
         for (i = 0; i < s->n_tex; i++) {
             unsigned key = tex_key(&s->tex[i]);
+            const unsigned char *hd;
+            int hw = 0, hh = 0, later = 0;
 
             if (g->gtex_key[i] == key && key != 0) {
                 continue;
             }
             g->gtex_key[i] = key;
             glBindTexture(GL_TEXTURE_2D, g->gtex[i]);
+            hd = eidos_texpack_find(s->tex[i].rgba, (int)s->tex[i].w,
+                                    (int)s->tex[i].h, &hw, &hh, &later);
+            if (later) {
+                g->gtex_key[i] = 0;     /* its HD copy comes on a later frame */
+            }
+            if (hd != NULL) {
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, hw, hh, 0, GL_RGBA,
+                             GL_UNSIGNED_BYTE, hd);
+                g->gtex_hd[i] = (unsigned char)(hw / (int)s->tex[i].w);
+                continue;
+            }
+            g->gtex_hd[i] = 1;
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)s->tex[i].w,
                          (GLsizei)s->tex[i].h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
                          s->tex[i].rgba);
