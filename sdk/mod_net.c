@@ -3474,6 +3474,7 @@ typedef struct GiftEvent {
     char method[12];
     char title[96];
     char gifts[160];
+    char text[600];                 /* the card's text, line breaks as tabs */
     u8   card[GIFT_CARD];
 } GiftEvent;
 
@@ -3486,13 +3487,15 @@ static struct {
     GiftEvent ev[GIFT_MAX];
     int       n;
     int       chosen;               /* -1: none yet                        */
-} g_gift = { BW_SOCK_INVALID, 0 };
+    int       open;                 /* s is a socket                       */
+} g_gift;
 
 static void gift_close(void)
 {
-    if (g_gift.s != BW_SOCK_INVALID) {
+    if (g_gift.open) {
         sock_shutdown(g_gift.s);
         g_gift.s = BW_SOCK_INVALID;
+        g_gift.open = 0;
     }
 }
 
@@ -3516,6 +3519,7 @@ int bw_mod_net_gift_start(const char *method, const char *language, const char *
     if (g_gift.s == BW_SOCK_INVALID) {
         return -1;
     }
+    g_gift.open = 1;
     if (sock_connect_to(g_gift.s, g_relay, g_relay_port) != 0) {
         gift_close();
         return -1;
@@ -3552,14 +3556,15 @@ static int gift_take(char *type, const u8 **payload, u32 *len, u32 *used)
     return 1;
 }
 
-/* An M payload: the three lines, then the card. */
+/* An M payload: the four lines (method, title, gifts, text), then the
+ * card. */
 static void gift_keep(const u8 *p, u32 len)
 {
-    const u8 *line[3], *end = p + len, *q = p;
+    const u8 *line[4], *end = p + len, *q = p;
     u32 k;
     GiftEvent *e;
 
-    for (k = 0; k < 3; k++) {
+    for (k = 0; k < 4; k++) {
         line[k] = q;
         while (q < end && *q != '\n') {
             q++;
@@ -3579,8 +3584,10 @@ static void gift_keep(const u8 *p, u32 len)
     memcpy(e->method, g_gift.method, strlen(g_gift.method));
     k = (u32)(line[2] - line[1] - 1);
     memcpy(e->title, line[1], k < sizeof e->title - 1 ? k : sizeof e->title - 1);
-    k = (u32)(q - line[2] - 1);
+    k = (u32)(line[3] - line[2] - 1);
     memcpy(e->gifts, line[2], k < sizeof e->gifts - 1 ? k : sizeof e->gifts - 1);
+    k = (u32)(q - line[3] - 1);
+    memcpy(e->text, line[3], k < sizeof e->text - 1 ? k : sizeof e->text - 1);
     memcpy(e->card, q, GIFT_CARD);
 }
 
@@ -3652,6 +3659,42 @@ const char *bw_mod_net_gift_title(int i)
 const char *bw_mod_net_gift_gifts(int i)
 {
     return i >= 0 && i < g_gift.n ? g_gift.ev[i].gifts : "";
+}
+
+/* The card's text in the game's 16-bit characters: UTF-8 decoded, a tab
+ * (a line break) as 0xFFFE, then 0xFFFF; at most `max` units with the
+ * end.  Returns the units written before the end. */
+int bw_mod_net_gift_text16(int i, u16 *out, int max)
+{
+    const u8 *s;
+    int n = 0;
+
+    if (out == NULL || max < 1) {
+        return 0;
+    }
+    s = i >= 0 && i < g_gift.n ? (const u8 *)g_gift.ev[i].text : (const u8 *)"";
+    while (*s != 0 && n < max - 1) {
+        u32 c = *s++;
+
+        if (c >= 0xF0u) {                       /* outside the game's set   */
+            while ((*s & 0xC0u) == 0x80u) {
+                s++;
+            }
+            continue;
+        }
+        if (c >= 0xE0u && (s[0] & 0xC0u) == 0x80u && (s[1] & 0xC0u) == 0x80u) {
+            c = ((c & 0x0Fu) << 12) | ((u32)(s[0] & 0x3Fu) << 6) | (u32)(s[1] & 0x3Fu);
+            s += 2;
+        } else if (c >= 0xC0u && (s[0] & 0xC0u) == 0x80u) {
+            c = ((c & 0x1Fu) << 6) | (u32)(s[0] & 0x3Fu);
+            s += 1;
+        } else if (c >= 0x80u) {
+            continue;
+        }
+        out[n++] = c == '\t' ? 0xFFFEu : (u16)c;
+    }
+    out[n] = 0xFFFFu;
+    return n;
 }
 
 const u8 *bw_mod_net_gift_card(int i)

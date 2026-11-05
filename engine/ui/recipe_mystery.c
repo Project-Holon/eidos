@@ -43,6 +43,7 @@ extern void *bw_dsref_g_ProcSys MG_WEAK;
 extern void *bw_dsref__GameSystemGlobal MG_WEAK;
 extern void ov121_MYSTERY_TaskReceive(void *task, int *state, void *arg) MG_WEAK;
 extern void ov121_MYSTERY_TaskNetAlbum(void *task, int *state, void *arg) MG_WEAK;
+extern void ov121_MYSTERY_TaskAlbum(void *task, int *state, void *arg) MG_WEAK;
 extern void  MYSTERY_DATA_DecryptBuffer(u8 *buffer, u32 saveType) MG_WEAK;
 /* The gifts the relay sent (sdk/mod_net.h). */
 extern int   bw_mod_net_gift_count(void) MG_WEAK;
@@ -89,6 +90,8 @@ extern int   bw_mod_net_gift_chosen(void) MG_WEAK;
 #define C_MSG           0xB2u
 #define C_KIND          0xB3u
 #define C_FLAGS         0xB4u
+#define C_SHINY         0x37u   /* 2: always shiny                          */
+#define MG_P_TEXT       0xD0u   /* the gift's text (u16[253]) in the packet */
 
 /* The Mystery Gift texts: a/0/0/2 member 80. */
 #define MG_BANK         80
@@ -313,6 +316,48 @@ static void mg_backdrop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch, i
         ui_blit_screen(c, (cw - 256 * k) / 2, (ch - 192 * k) / 2, scr, 0, 0, 256, 192, k, 0);
     }
     ui_fill(c, 0, 0, cw, ch, 0x000000u, 130);
+}
+
+/* The game's 16-bit text drawn line by line: 0xFFFE (and 0xE000, 0x000A)
+ * break the line, 0xFFFF ends it, control codes are left out.  At most
+ * `maxn` lines of the small font. */
+static void mg_text_lines(EidosUiCtx *c, int x, int y, const u8 *u, int max_units, u32 color, int maxn)
+{
+    char line[200];
+    int n = 0, lines = 0, i;
+
+    for (i = 0; i <= max_units && lines < maxn; i++) {
+        u32 ch = i < max_units ? rd16(u, (u32)i * 2u) : 0xFFFFu;
+
+        if (ch == 0xF000u && i + 2 < max_units) {
+            i += 2 + (int)rd16(u, (u32)(i + 2) * 2u);
+            continue;
+        }
+        if (ch == 0xFFFFu || ch == 0 || ch == 0xFFFEu || ch == 0xE000u || ch == 0x000Au) {
+            line[n] = '\0';
+            if (n > 0 || (ch != 0xFFFFu && ch != 0)) {
+                ui_text(c, x, y + lines * 14, line, color, MG_SHADOW, UI_FONT_SMALL, 1);
+                lines++;
+            }
+            n = 0;
+            if (ch == 0xFFFFu || ch == 0) {
+                break;
+            }
+            continue;
+        }
+        if (ch < 0x80u) {
+            if (n < (int)sizeof line - 1) line[n++] = (char)ch;
+        } else if (ch < 0x800u) {
+            if (n < (int)sizeof line - 2) {
+                line[n++] = (char)(0xC0u | (ch >> 6));
+                line[n++] = (char)(0x80u | (ch & 0x3Fu));
+            }
+        } else if (n < (int)sizeof line - 3) {
+            line[n++] = (char)(0xE0u | (ch >> 12));
+            line[n++] = (char)(0x80u | ((ch >> 6) & 0x3Fu));
+            line[n++] = (char)(0x80u | (ch & 0x3Fu));
+        }
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -741,7 +786,7 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
     const char *title = kind == DLG_MENU ? "MYSTERY GIFT" : kind == DLG_INFO ? "INFO" : "RECEIVE GIFT";
     void *tb = rdp(work, W_TEXTBOX);
 
-    mh = kind == DLG_RECEIVE ? 120 : kind == DLG_GIFT ? 80 : 168;
+    mh = kind == DLG_RECEIVE ? 120 : kind == DLG_GIFT ? 150 : 168;
     if (mh > ch - 17 - 60) {
         mh = ch - 17 - 60;
     }
@@ -889,6 +934,9 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
         if (st & EIDOS_UI_CLICK) {
             eidos_ui_press(BW_KEY_A, 2);
         }
+        /* the card's text (the gift's details), its own line breaks */
+        mg_panel(c, mx + 10, my + 66, mw - 20, mh - 76);
+        mg_text_lines(c, mx + 18, my + 72, pk + MG_P_TEXT, 253, UI_LIGHT, (mh - 84) / 14);
     }
 
     /* the walk: a move-only target (the keys over infrared) or a click */
@@ -1007,6 +1055,82 @@ static void mg_only_message(EidosUiCtx *c, const EidosUiFrame *in, void *work, i
     }
     mg_message(c, in, work, tb != NULL ? rdp(tb, 0x10) : NULL, rdp(work, W_SAVEMENU), mx, mw,
                (ch - 17) / 2 - 20);
+}
+
+/* A gift arriving (MYSTERY_TaskAlbum): the game shows the gift, saves it,
+ * then shows its card in the album until A.  States 0 to 9 are the gift
+ * and its messages, 10 to 12 build the card's view, 13 on the card.  The
+ * page shows the gift large (its Pokemon's sprite, or the item), and the
+ * Wonder Card beside it once it is received. */
+static void mg_arrival(EidosUiCtx *c, const EidosUiFrame *in, void *work, int state)
+{
+    int cw = c->canvas->w, ch = c->canvas->h;
+    int mw = cw - 16 < 460 ? cw - 16 : 460, mh = ch - 17 - 60 < 196 ? ch - 17 - 60 : 196;
+    int mx = (cw - mw) / 2, my = (ch - 17 - mh - 50) / 2, gw, t;
+    const u8 *pk = (const u8 *)work + W_PACKET;
+    void *tb = rdp(work, W_TEXTBOX);
+    MgCard g;
+    static u32 g_arrive_t;
+
+    if (my < 4) {
+        my = 4;
+    }
+    memset(&g, 0, sizeof g);
+    g.raw = pk;
+    g.kind = (int)rd8(pk, C_KIND);
+    g.species = (int)rd16(pk, C_SPECIES);
+    g.form = (int)rd8(pk, C_FORM);
+    g.item = (int)rd16(pk, C_ITEM);
+    g.picked = 0;
+    units_utf8(pk + C_TITLE, 37, g.title, (int)sizeof g.title);
+    {
+        /* the date the game wrote on receiving it */
+        g.year = (int)rd16(pk, C_DATE + 2);
+        g.month = (int)rd8(pk, C_DATE + 1);
+        g.day = (int)rd8(pk, C_DATE);
+    }
+    if (state == 0) {
+        g_arrive_t = in->frame;
+    }
+    t = (int)(in->frame - g_arrive_t);
+    mg_window(c, mx, my, mw, mh, state < 8 ? "RECEIVING GIFT" : "GIFT RECEIVED", NULL);
+    gw = mw * 2 / 5;
+    /* the gift on a light, growing in as it arrives */
+    {
+        int cx = mx + 10 + gw / 2, cy = my + 26 + (mh - 36) / 2, r = t < 40 ? t : 40;
+        int k;
+
+        for (k = 0; k < 3; k++) {
+            int rr = r + k * 10;
+
+            ui_ellipse(c, cx - rr, cy - rr, rr * 2, rr * 2, 0x000000u, k == 0 ? MG_GOLD : MG_HL, 90 - k * 25);
+        }
+        if (t > 20) {
+            if (g.kind == 1 && g.species > 0 && g.species < 700) {
+                ui_mon_front_draw(c, (u16)g.species, rd8(pk, C_SHINY) == 2, in->frame, mx + 10, my + 26, gw,
+                                  mh - 36);
+            } else {
+                const UiImage *ic = mg_card_icon(&g);
+
+                if (ic != NULL) {
+                    ui_image(c, cx - ic->w * 3 / 2, cy - ic->h * 3 / 2, ic, 3);
+                }
+            }
+        }
+    }
+    /* the Wonder Card, once the game has received it */
+    if (state >= 8) {
+        mg_wonder_card(c, mx + 10 + gw + 10, my + 26, mw - gw - 30, mh - 34, &g);
+    } else {
+        mg_panel(c, mx + 10 + gw + 10, my + 26, mw - gw - 30, mh - 34);
+        ui_text(c, mx + gw + 30, my + 34, g.title, UI_WHITE, MG_SHADOW, UI_FONT_LARGE, 1);
+        mg_text_lines(c, mx + gw + 30, my + 54, pk + MG_P_TEXT, 253, UI_LIGHT, (mh - 70) / 14);
+    }
+    if (tb != NULL) {
+        mg_message(c, in, work, rdp(tb, 0x10), NULL, mx, mw, my + mh);
+    } else {
+        ui_choice_list_idle();
+    }
 }
 
 /* The Card Album. */
@@ -1168,7 +1292,11 @@ static void mystery_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         rdp(task, 0x00) == (void *)(uintptr_t)ov121_MYSTERY_TaskReceive) {
         searching = 1;
     }
-    if (aw != NULL) {
+    if (task != NULL && &ov121_MYSTERY_TaskAlbum != NULL &&
+        rdp(task, 0x00) == (void *)(uintptr_t)ov121_MYSTERY_TaskAlbum) {
+        g_target = -1;
+        mg_arrival(c, in, work, (int)rd32(task, 0x08));
+    } else if (aw != NULL) {
         mg_album(c, in, work, aw);
     } else if (kind != DLG_NONE) {
         mg_lists(c, in, work, kind, dlg);

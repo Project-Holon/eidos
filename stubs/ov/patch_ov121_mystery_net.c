@@ -20,7 +20,7 @@
  * With more than one, the module waits until the player picked one
  * (engine/ui/recipe_mystery.c lists them).  The chosen Wonder Card becomes
  * the game's gift: the card (0xCC bytes), the version field 0 (every
- * version), an empty message, and the CRC MYSTERY_DATA_CheckPacketCrc
+ * version), the card's text from the relay, and the CRC MYSTERY_DATA_CheckPacketCrc
  * checks, made with the game's own GF_STANDARD_CalcCrc16.  Infrared keeps
  * the game's own handlers.
  *
@@ -37,6 +37,7 @@ extern int bw_mod_net_gift_poll(void);
 extern void bw_mod_net_gift_stop(void);
 extern int bw_mod_net_gift_count(void);
 extern const unsigned char *bw_mod_net_gift_card(int i);
+extern int bw_mod_net_gift_text16(int i, unsigned short *out, int max);
 extern int bw_mod_net_gift_chosen(void);
 
 /* The game's own functions this file calls. */
@@ -288,8 +289,17 @@ int MYSTERY_NET_GetReceivedData(unsigned char *p, void *a, unsigned int b)
         for (i = 0; i < 4; i++) {
             out[MG_VERSIONS + i] = 0;               /* every version       */
         }
-        out[MG_TEXT] = 0xFF;                        /* an empty message:   */
-        out[MG_TEXT + 1] = 0xFF;                    /* EOS first           */
+        {
+            /* the card's text (the gift's details window shows it): 253
+             * units, the last the end */
+            unsigned short units[253];
+            int n = bw_mod_net_gift_text16(k, units, 253);
+
+            for (i = 0; i <= (unsigned int)n && i < 253; i++) {
+                out[MG_TEXT + 2 * i] = (unsigned char)(units[i] & 0xFF);
+                out[MG_TEXT + 2 * i + 1] = (unsigned char)(units[i] >> 8);
+            }
+        }
         crc = GF_STANDARD_CalcCrc16(out, MG_CRC);
         out[MG_CRC] = (unsigned char)(crc & 0xFF);
         out[MG_CRC + 1] = (unsigned char)(crc >> 8);

@@ -463,7 +463,8 @@ int  bw_port_session_self_name(char *out, u32 out_size);
  * ones of `method` ("wfc" or "wireless") kept.  start connects and asks (0,
  * or -1 when the relay cannot be reached); poll reads, one step per frame:
  * 0 still reading, 1 done, -1 failed.  Then count, and for each event its
- * title, its gifts and its Wonder Card (204 bytes).  choose records the
+ * title, its gifts, its Wonder Card (204 bytes) and the card's text (in the
+ * game's 16-bit characters, 0xFFFE a line break, 0xFFFF the end).  choose records the
  * player's pick when there is more than one (chosen: -1 until then).
  */
 int  bw_mod_net_gift_start(const char *method, const char *language, const char *game,
@@ -474,6 +475,7 @@ int  bw_mod_net_gift_count(void);
 const char *bw_mod_net_gift_title(int i);
 const char *bw_mod_net_gift_gifts(int i);
 const u8   *bw_mod_net_gift_card(int i);
+int  bw_mod_net_gift_text16(int i, u16 *out, int max);
 void bw_mod_net_gift_choose(int i);
 int  bw_mod_net_gift_chosen(void);
 
