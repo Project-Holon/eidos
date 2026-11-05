@@ -19,9 +19,10 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # (file name, {ver} for the version; what it is): the order of the table.
-# The launchers have no version in their names (the README links
-# .../releases/latest/download/<name>); the games keep it, as installed
-# launchers look for eidos-*-<platform> (launcher/src-tauri/src/versions.rs).
+# The launchers and the phone apps have no version in their names (the
+# README links .../releases/latest/download/<name>); the desktop games keep
+# it, as installed launchers look for eidos-*-<platform>
+# (launcher/src-tauri/src/versions.rs).
 DOWNLOADS = [
     ("eidos-launcher-windows-setup.exe",
      "Windows: the launcher. It installs and updates eidos and keeps your "
@@ -31,6 +32,17 @@ DOWNLOADS = [
      "`READ ME FIRST.txt` inside it for the one Terminal line it needs."),
     ("eidos-launcher-linux-x86_64.AppImage",
      "Linux: the launcher. Make it executable and run it."),
+    ("eidos-android.apk",
+     "Android (64-bit ARM, Android 8 or later): install it from the file "
+     "(allow installs from this source when Android asks)."),
+    ("eidos-ios.ipa",
+     "iPhone and iPad (iOS 15 or later): not signed. Install it with a "
+     "sideloading tool (AltStore, Sideloadly) and your own Apple ID."),
+]
+
+# The desktop games on their own, without the launcher: folded away under
+# the main table, as most players want the launcher.
+STANDALONE = [
     ("eidos-{ver}-windows.zip",
      "Windows: eidos on its own. Unzip it anywhere and run `eidos.exe`."),
     ("eidos-{ver}-macos.zip",
@@ -38,12 +50,6 @@ DOWNLOADS = [
      "`README.txt` inside it has the one Terminal line it needs."),
     ("eidos-{ver}-linux-x86_64.AppImage",
      "Linux: eidos on its own. Make it executable and run it."),
-    ("eidos-android.apk",
-     "Android (64-bit ARM, Android 8 or later): install it from the file "
-     "(allow installs from this source when Android asks)."),
-    ("eidos-ios.ipa",
-     "iPhone and iPad (iOS 15 or later): not signed. Install it with a "
-     "sideloading tool (AltStore, Sideloadly) and your own Apple ID."),
 ]
 
 NOTICE = (
@@ -80,6 +86,17 @@ def unwrap(text):
     return "\n".join(out)
 
 
+def table(downloads, version, have):
+    """The rows of a download table, only for the files that are there."""
+    rows = ["| File | |", "| --- | --- |"]
+    for name, what in downloads:
+        name = name.format(ver=version)
+        if have is not None and name not in have:
+            continue
+        rows.append("| `%s` | %s |" % (name, what))
+    return rows
+
+
 def notes(version, assets, test_build=None):
     have = set(os.listdir(assets)) if assets and os.path.isdir(assets) else None
     out = []
@@ -96,14 +113,18 @@ def notes(version, assets, test_build=None):
     out.append("")
     out.append("## Download")
     out.append("")
-    out.append("| File | |")
-    out.append("| --- | --- |")
-    for name, what in DOWNLOADS:
-        name = name.format(ver=version)
-        if have is not None and name not in have:
-            continue
-        out.append("| `%s` | %s |" % (name, what))
+    out.extend(table(DOWNLOADS, version, have))
     out.append("")
+    rows = table(STANDALONE, version, have)
+    if len(rows) > 2:
+        out.append("<details>")
+        out.append("<summary>eidos without the launcher (Windows, macOS, "
+                   "Linux)</summary>")
+        out.append("")
+        out.extend(rows)
+        out.append("")
+        out.append("</details>")
+        out.append("")
     out.append("On the first start, eidos asks for your own Pokemon Black or "
                "White ROM. `SHA256SUMS` lists the checksum of each file; "
                "`latest.json` and the `.app.tar.gz` are for the launcher's "
