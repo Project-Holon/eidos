@@ -613,7 +613,11 @@ static void translate_words(u8 *img, u32 size, int region, u32 base)
         /* an exact pair first: it can point into the region's own place
          * where the own run's shift is not the word's (strings laid out
          * otherwise) */
-        if (!(region >= 0 && to_english_in(v, region, &e)) && ref_ambiguous(v, region)) {
+        /* a word the map lists on its own is settled: the pair names the
+         * one object it means, so an overlay loading later must not take
+         * it to another region's place (word_pairs.tsv) */
+        if (!pair_to_english(v, region, &e) && !(region >= 0 && to_english_in(v, region, &e))
+            && ref_ambiguous(v, region)) {
             pending_add(region, base + i, v);
         }
         if (pair_to_english(v, region, &e) || (region >= 0 && to_english_in(v, region, &e))

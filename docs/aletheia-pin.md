@@ -8,9 +8,19 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `af2dbddd9b1cdec6fdf1ea4bd23705de7b318ccf`
+- Revision: `309be6b3ad7ad205a1390636a5f275b4ebe2e6d4`
 - Date: 2026-11-05
-- Subject: os_spinlock: host build keeps OS_InitLock's flag in a global the port's reset clears (soft reset crash)
+- Subject: langmap: word pairs for every data pointer that two rows read back differently
+
+The step from `af2dbddd9b`: the language maps' word_pairs.tsv lists every
+data pointer word that two rows of its region read back as different
+English addresses (overlays sharing a window), with the English value.
+On another cartridge, ov010's shortcut table pointed at the party screen's
+process data through ov021's reference row (the overlay loaded at the time)
+instead of ov091's, so Pokemon and Options in the field menu crashed on
+every European Black cartridge.
+
+The step before, from `e3c8c25280`, is below.
 
 The step from `e3c8c25280`: four host fixes.  Three in ov121 mystery_album.c, for a
 received Pokemon gift's card.  MYSTERY_ALBUM_SetupIcons passed a palette's colours where
