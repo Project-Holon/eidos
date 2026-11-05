@@ -586,12 +586,12 @@ jobs:
             echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/eidos.keystore"
             export EIDOS_KEYSTORE="$RUNNER_TEMP/eidos.keystore"
             python3 android/build.py --module module/eidos_boot.wasm --build-dir build-android --jobs 4 --release
-            cp android/app/build/outputs/apk/release/*.apk "dist/eidos-${{ needs.meta.outputs.version }}-android.apk"
+            cp android/app/build/outputs/apk/release/*.apk "dist/eidos-android.apk"
             rm -f "$EIDOS_KEYSTORE"
           else
             echo "::warning::no ANDROID_KEYSTORE secret: the APK is signed with the runner's debug key"
             python3 android/build.py --module module/eidos_boot.wasm --build-dir build-android --jobs 4
-            cp android/app/build/outputs/apk/debug/*.apk "dist/eidos-${{ needs.meta.outputs.version }}-android.apk"
+            cp android/app/build/outputs/apk/debug/*.apk "dist/eidos-android.apk"
           fi
           ls -l dist
       - uses: actions/upload-artifact@v4
@@ -635,7 +635,7 @@ jobs:
         run: |
           mkdir -p dist stage/Payload
           ditto build-ios/eidos.app stage/Payload/eidos.app
-          (cd stage && zip -qry "../dist/eidos-${{ needs.meta.outputs.version }}-ios.ipa" Payload)
+          (cd stage && zip -qry "../dist/eidos-ios.ipa" Payload)
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:

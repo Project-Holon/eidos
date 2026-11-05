@@ -15,6 +15,8 @@ A native PC port of Pokémon Black, built from the
 [![Windows](https://img.shields.io/badge/Windows-Download-0078D6?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/Project-Holon/eidos/releases/latest/download/eidos-launcher-windows-setup.exe)
 [![macOS](https://img.shields.io/badge/macOS-Download-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Project-Holon/eidos/releases/latest/download/eidos-launcher-macos.dmg)
 [![Linux](https://img.shields.io/badge/Linux-Download-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/Project-Holon/eidos/releases/latest/download/eidos-launcher-linux-x86_64.AppImage)
+[![Android](https://img.shields.io/badge/Android-Download-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Project-Holon/eidos/releases/latest/download/eidos-android.apk)
+[![iOS](https://img.shields.io/badge/iOS-Download-147EFB?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Project-Holon/eidos/releases/latest/download/eidos-ios.ipa)
 
 Click your system to download the launcher. It installs eidos and keeps it
 up to date. You need your own copy of Pokémon Black or White. The builds
@@ -22,6 +24,11 @@ are not signed: on Windows, choose "More info" then "Run anyway"; on macOS
 (Apple silicon), open `READ ME FIRST.txt` in the disk image, which has the
 one Terminal line macOS needs before it opens the launcher; on Linux, make
 the AppImage executable and run it.
+
+On Android (8 or later), install the APK and allow installs from that
+source when Android asks. On iPhone and iPad (iOS 15 or later), the IPA is
+not signed: install it with a sideloading tool such as AltStore or
+Sideloadly and your own Apple ID.
 
 ## Status
 

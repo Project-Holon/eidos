@@ -38,10 +38,10 @@ DOWNLOADS = [
      "`README.txt` inside it has the one Terminal line it needs."),
     ("eidos-{ver}-linux-x86_64.AppImage",
      "Linux: eidos on its own. Make it executable and run it."),
-    ("eidos-{ver}-android.apk",
+    ("eidos-android.apk",
      "Android (64-bit ARM, Android 8 or later): install it from the file "
      "(allow installs from this source when Android asks)."),
-    ("eidos-{ver}-ios.ipa",
+    ("eidos-ios.ipa",
      "iPhone and iPad (iOS 15 or later): not signed. Install it with a "
      "sideloading tool (AltStore, Sideloadly) and your own Apple ID."),
 ]
