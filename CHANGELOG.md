@@ -3,6 +3,12 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.1
+
+### Bug Fixes
+- **Launcher**: Fixed the box legendary, badges and trainer pictures showing as broken images.
+- **Launcher**: Fixed "This release has no notes" when GitHub's request limit is reached; the notes now come from the changelog.
+
 ## 0.2.0
 
 ### One-Screen Mode & UI
