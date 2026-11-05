@@ -579,6 +579,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_title.c     # title menu hook state (docs/hooks.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ui_text.c       # the one-screen text boxes and the talk balloons
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_fixed.c  # the place's move for an effect script's fixed points
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_yesno.c  # the battle's yes / no answers kept for the one-screen interface
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/field_fade.c  # the door fade-in's step (stubs/ov/patch_ov021_event_fieldmap_control.c)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_text.c           # the port's text path: the sink that shows a queued message
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_script.c         # the script command hooks: the field VM and the battle effect VM

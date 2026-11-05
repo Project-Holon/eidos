@@ -1,5 +1,8 @@
 /*
- * patches: src/game/ov093/btlv_core.c BTLV_CORE_StartPrintMessage
+ * patches: src/game/ov093/btlv_core.c BTLV_CORE_StartPrintMessage BTLV_CORE_StartYesNoMenu
+ *
+ * symbols:
+ *   BTLV_SCD_OpenChoiceScreen  0x0689B5A4  thumb  ov095
  *
  * The port's message service at the battle's message box (sdk/mod_text.h;
  * sdk/mod_message.h; docs/mod-services.md, "Messages").
@@ -331,4 +334,66 @@ void BTLV_CORE_StartPrintMessage(struct BtlvCore *core, Strbuf *buf,
          */
         BMP_WIN_TransferChars((BmpWin *)window.bmp_win);
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The yes / no answers                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The choice's task work (src/game/ov093/btlv_core_types.h): the two
+ * answers and the mode.
+ */
+typedef struct BtlvYesNoWork {
+    void *yesText;
+    void *noText;
+    u32   mode;
+} BtlvYesNoWork;
+
+struct BtlvMessage;
+
+extern void   *BTLV_CORE_GetTaskWork(struct BtlvCore *core, int size);
+extern Strbuf *STRBUF_Create(u32 capacity, u32 heapId);
+extern void    BTLV_CORE_BuildMessage(struct BtlvMessage *msg, Strbuf *buf);
+
+extern void    BTLV_SCD_OpenChoiceScreen(BtlvAuxView *view, BtlvYesNoWork *value);
+extern u32     GFL_HEAP_Free(void *block);
+
+/* The port's own (sdk/battle_yesno.c). */
+extern int   bw_battle_yesno_on(void);
+extern void *bw_battle_yesno_keep(int which, const void *record);
+
+extern void BTLV_CORE_StartYesNoMenu(struct BtlvCore *core, struct BtlvMessage *yesMsg,
+                                     struct BtlvMessage *noMsg, u32 mode);
+
+/*
+ * The game frees the two answers as soon as the choice screen has drawn
+ * them, and the one-screen interface reads them while the choice is open
+ * (engine/ui/recipe_battle.c, from this task work).  With the hook on, the
+ * task work points at the port's own copies instead of the freed strings;
+ * the game itself reads neither after the screen opened.
+ */
+void BTLV_CORE_StartYesNoMenu(struct BtlvCore *core, struct BtlvMessage *yesMsg,
+                              struct BtlvMessage *noMsg, u32 mode)
+{
+    BtlvYesNoWork *work = BTLV_CORE_GetTaskWork(core, 12);
+
+    work->yesText = STRBUF_Create(0x20, (u16)((core->heapId & 0x7fff) | 0x8000));
+    work->noText = STRBUF_Create(0x20, (u16)((core->heapId & 0x7fff) | 0x8000));
+    work->mode = mode;
+    BTLV_CORE_BuildMessage(yesMsg, work->yesText);
+    BTLV_CORE_BuildMessage(noMsg, work->noText);
+    BTLV_SCD_OpenChoiceScreen(core->auxView, work);
+    if (bw_battle_yesno_on()) {
+        void *yes = bw_battle_yesno_keep(0, work->yesText);
+        void *no = bw_battle_yesno_keep(1, work->noText);
+
+        GFL_HEAP_Free(work->yesText);
+        GFL_HEAP_Free(work->noText);
+        work->yesText = yes;
+        work->noText = no;
+        return;
+    }
+    GFL_HEAP_Free(work->yesText);
+    GFL_HEAP_Free(work->noText);
 }
