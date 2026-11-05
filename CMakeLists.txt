@@ -1120,6 +1120,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipes.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_settings.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_title.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_mystery.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_battle.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_bag.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_shop.c

@@ -11,6 +11,8 @@ extern const EidosUiRecipe *const ui_recipes_settings[];
 extern const u32 ui_recipes_settings_count;
 extern const EidosUiRecipe *const ui_recipes_title[];
 extern const u32 ui_recipes_title_count;
+extern const EidosUiRecipe *const ui_recipes_mystery[];
+extern const u32 ui_recipes_mystery_count;
 extern const EidosUiRecipe *const ui_recipes_battle[];
 extern const u32 ui_recipes_battle_count;
 extern const EidosUiRecipe *const ui_recipes_bag[];
@@ -42,6 +44,7 @@ const EidosUiRecipeGroup eidos_ui_groups[] = {
      * battle, the boxes, an Egg hatching, ...): before those apps */
     { ui_recipes_input, &ui_recipes_input_count },
     { ui_recipes_title, &ui_recipes_title_count },
+    { ui_recipes_mystery, &ui_recipes_mystery_count },
     { ui_recipes_battle, &ui_recipes_battle_count },
     { ui_recipes_bag, &ui_recipes_bag_count },
     { ui_recipes_shop, &ui_recipes_shop_count },
