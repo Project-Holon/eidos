@@ -105,14 +105,21 @@ pub fn list(layout: &Layout, repo: &str, token: Option<&str>) -> Result<Vec<Rele
     };
     if let Ok(tags) = tags {
         if !tags.is_empty() {
+            let mut noted = false;
             return Ok(tags
                 .into_iter()
                 .map(|(tag, title, updated)| {
-                    known
-                        .iter()
-                        .find(|r| r.tag_name == tag)
-                        .cloned()
-                        .unwrap_or_else(|| guessed(repo, &tag, title, updated))
+                    known.iter().find(|r| r.tag_name == tag).cloned().unwrap_or_else(|| {
+                        let mut r = guessed(repo, &tag, title, updated);
+                        // the feed has no notes: the newest unknown release
+                        // takes its section of the changelog at its tag
+                        // (raw files are not rate limited, the API is)
+                        if !noted {
+                            noted = true;
+                            r.body = changelog_notes(&agent, repo, &tag);
+                        }
+                        r
+                    })
                 })
                 .collect());
         }
@@ -156,6 +163,48 @@ fn guessed(repo: &str, tag: &str, title: String, updated: String) -> Release {
                 }
             })
             .collect(),
+    }
+}
+
+/// A release's notes when the API cannot be asked: its version's section of
+/// CHANGELOG.md at its tag (the section the release workflow's notes start
+/// from), without the section's own heading.
+fn changelog_notes(agent: &ureq::Agent, repo: &str, tag: &str) -> Option<String> {
+    let text = agent
+        .get(&format!("https://raw.githubusercontent.com/{repo}/{tag}/CHANGELOG.md"))
+        .set("User-Agent", AGENT)
+        .call()
+        .ok()?
+        .into_string()
+        .ok()?;
+    changelog_section(&text, tag)
+}
+
+/// The `## <version>` section of a changelog (a test build's tag reads its
+/// version's section), without its heading; None when there is none.
+pub fn changelog_section(text: &str, tag: &str) -> Option<String> {
+    let ver = tag.trim_start_matches(['v', 'V']);
+    let ver = ver.split('-').next().unwrap_or(ver);
+    let mut out: Vec<&str> = Vec::new();
+    let mut inside = false;
+    for line in text.lines() {
+        let t = line.trim();
+        if let Some(head) = t.strip_prefix("## ") {
+            if inside {
+                break;
+            }
+            inside = head.trim() == ver;
+            continue;
+        }
+        if inside {
+            out.push(line);
+        }
+    }
+    let notes = out.join("\n").trim().to_string();
+    if notes.is_empty() {
+        None
+    } else {
+        Some(notes)
     }
 }
 
@@ -209,6 +258,15 @@ pub fn parse_feed(xml: &str) -> Vec<(String, String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn changelog_sections() {
+        let text = "# Changelog\n\nintro\n\n## 0.2.0\n\n### Fixes\n- **A**: one.\n\n## 0.1.9\n\n- old\n";
+        assert_eq!(changelog_section(text, "v0.2.0").as_deref(), Some("### Fixes\n- **A**: one."));
+        assert_eq!(changelog_section(text, "v0.2.0-pre.1").as_deref(), Some("### Fixes\n- **A**: one."));
+        assert_eq!(changelog_section(text, "v0.1.9").as_deref(), Some("- old"));
+        assert_eq!(changelog_section(text, "v0.3.0"), None);
+    }
 
     #[test]
     fn feed_entries() {
