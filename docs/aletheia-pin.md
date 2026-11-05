@@ -8,11 +8,22 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `e3c8c25280ee23515c2b44975ce5565aa86597db`
-- Date: 2026-11-03
-- Subject: langmap: reference rows per owning overlay, rows for every data pointer, word_pairs.tsv
+- Revision: `af2dbddd9b1cdec6fdf1ea4bd23705de7b318ccf`
+- Date: 2026-11-05
+- Subject: os_spinlock: host build keeps OS_InitLock's flag in a global the port's reset clears (soft reset crash)
 
-The step from `abdddc9882`: an overlay's reference rows in
+The step from `e3c8c25280`: four host fixes.  Three in ov121 mystery_album.c, for a
+received Pokemon gift's card.  MYSTERY_ALBUM_SetupIcons passed a palette's colours where
+CLACT_TransferPalette takes its header; the host build read a colour as an
+address and stopped when the card opened (173bd5719d); MYSTERY_ALBUM_PathAnimStep
+divides by a step's x distance, 0 on a step with no x movement, where the
+DS divide gives 0 (275e3aa76f), and by a step's frame count, 0 for one
+step, where the DS divide gives the dividend (64be06011c).  And arm9 OS_InitLock's
+"initialized" flag is a global on the host (bw_os_lock_initialized), which
+sdk/port_reset.c clears, so a soft reset fills the lock words again
+(af2dbddd9b).
+
+The step before, from `abdddc9882`: an overlay's reference rows in
 `layout/langmap/<target>.tsv` are now the owning region's own runs, with an
 owner column, and `word_pairs.tsv` lists the pointer words no run covers.
 Before, a reference run could bridge overlays that share a window: German
