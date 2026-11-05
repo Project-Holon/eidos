@@ -579,6 +579,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_title.c     # title menu hook state (docs/hooks.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ui_text.c       # the one-screen text boxes and the talk balloons
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_fixed.c  # the place's move for an effect script's fixed points
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_yesno.c  # the battle's yes / no answers kept for the one-screen interface
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/field_fade.c  # the door fade-in's step (stubs/ov/patch_ov021_event_fieldmap_control.c)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_text.c           # the port's text path: the sink that shows a queued message
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_script.c         # the script command hooks: the field VM and the battle effect VM
@@ -2924,15 +2925,6 @@ endif()
 if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
     target_link_options(eidos_boot PRIVATE "-Wl,--wrap=PM_VOICE_StopFinished")
     target_compile_definitions(eidos_platform PRIVATE EIDOS_WRAP_PMVOICE=1)
-endif()
-
-# The battle's yes / no answers in the one-screen interface: the game frees
-# their strings as soon as the choice screen has them, so the interface
-# keeps their text when the choice opens (engine/ui/recipe_battle.c).
-# GNU ld only, and only with the game's boot.
-if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
-    target_link_options(eidos_boot PRIVATE "-Wl,--wrap=BTLV_SCD_OpenChoiceScreen")
-    target_compile_definitions(eidos_platform PRIVATE EIDOS_WRAP_CHOICE=1)
 endif()
 
 # Instant text (Extras): the game's text streams start, and change speed,
