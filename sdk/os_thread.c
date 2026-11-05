@@ -299,6 +299,7 @@ static void exit_thread(void *arg);
 /* The frame handoff (bw_os_frame_delegate): the frame thread's record, and
  * a frame another thread asked it to run. */
 static HostRec      *g_frame_rec;
+static unsigned long long g_frame_host; /* its host thread (bw_thread_self_id) */
 static BwOsHaltHook  g_freq_hook;
 static void         *g_freq_user;
 static int           g_freq;       /* a frame is asked for              */
@@ -448,6 +449,22 @@ int bw_os_frame_delegate(BwOsHaltHook hook, void *user)
     bw_mutex_lock(g_mx);
     if (g_frame_rec == NULL || g_frame_rec->retired || g_frame_rec->finished) {
         g_frame_rec = me;          /* the first thread to run a frame */
+        g_frame_host = bw_thread_self_id();
+    }
+    /* The frame thread runs its own frames.  It is told by its host thread
+     * as well as by the token: after a restart it is back in the old idle
+     * loop while the next run's launcher holds the token, and asking
+     * itself for the frame would wait for ever. */
+    if (g_frame_rec != NULL && g_frame_rec != me && bw_thread_self_id() == g_frame_host) {
+        /* The frame thread after a restart, in its idle loop while the
+         * next run's launcher holds the token: it waits for the token as
+         * the idle thread, and serves the frames until then (wait_token). */
+        HostRec *fr = g_frame_rec;
+
+        wait_token(fr);
+        bw_mutex_unlock(g_mx);
+        resume(fr);
+        return 1;
     }
     if (g_frame_rec == me) {
         bw_mutex_unlock(g_mx);
@@ -935,15 +952,16 @@ void OS_InitThread(void)
     r->started = 1;
     r->kept = 0;              /* the launcher is a record of its own now */
     bw_mutex_lock(g_mx);
-    if (g_token == NULL) {
-        /* The launcher takes the token, as on the DS.  After a restart the
-         * caller holds it (it is the thread that runs the port's own
-         * code), and the launcher waits for it like any other thread: the
-         * caller hands it over at the next switch. */
-        g_token = &OSi_LauncherThread;
-        OSi_ThreadInfo.current = &OSi_LauncherThread;
-        g_cur = r;
-    }
+    /* The launcher takes the token, as on the DS.  After a restart the
+     * caller held it: the caller is the frame thread, back in its idle
+     * loop, and it waits for the token there like the idle thread it is
+     * (bw_os_frame_delegate), serving the frames meanwhile.  Left with the
+     * caller, the token never came back: the launcher ran without it and
+     * its first switch waited for ever (the Title screen restart). */
+    g_token = &OSi_LauncherThread;
+    OSi_ThreadInfo.current = &OSi_LauncherThread;
+    g_cur = r;
+    bw_cond_broadcast(g_cv);
     bw_mutex_unlock(g_mx);
 
     memset(&OSi_ThreadInfo.switchCallback, 0, sizeof(OSi_ThreadInfo.switchCallback));
@@ -1397,6 +1415,7 @@ void bw_os_thread_reset(void)
         if (r != me && !r->retired) {
             if (r == g_frame_rec) {
                 g_frame_rec = NULL;
+                g_frame_host = 0;
             }
             free(r);
             g_recs[i] = g_recs[g_nrecs - 1];

@@ -19,18 +19,31 @@
  * point, restarting the game from its first instruction.  That is CPU
  * state with no host equivalent (the port's power-on is bw_port_reset and a
  * fresh NitroMain, not a jump), and the ARM7 handshake it waits on needs a
- * second CPU.  A soft reset reaching it on the host panics.  The caller
- * (OS_ResetSystem's tail, func_01FF8414.c) uses the SDK name; the matched
- * spelling is defined too.
+ * second CPU.  On the host a soft reset is the port's own restart instead:
+ * the request goes to the boot (sdk/mod_restart.c), whose frame loop starts
+ * the run again from power-on at its safe point.  This thread halts with
+ * no interrupt enabled until then: a halt is where the frame loop runs (the
+ * port's OS_Halt), so the frames go on and the restart is taken.  The
+ * game resets this way when it leaves
+ * Mystery Gift, on L + R + START + SELECT (UI_SoftReset) and after some
+ * network errors.  The caller (OS_ResetSystem's tail, func_01FF8414.c) uses
+ * the SDK name; the matched spelling is defined too.
  */
 
 #include "asmsdk.h"
 #include "../port.h"
 
+void bw_mod_restart(u32 flags);
+u32 OS_SetIrqMask(u32 mask);
+void OS_Halt(void);
+
 void OSi_DoBoot(void)
 {
-    bw_panic("OSi_DoBoot", 0x01FF8460u,
-             "soft reset: jump to the reloaded ARM9 entry point (register file load, ARM7 handshake)");
+    bw_mod_restart(0);          /* to the title screen, as the DS's reset */
+    (void)OS_SetIrqMask(0);     /* no interrupt wakes the halt */
+    for (;;) {
+        OS_Halt();              /* frames pass until the restart stops it */
+    }
 }
 
 void func_01FF8460(void)

@@ -605,6 +605,14 @@ void bw_game_globals_register(void)
     _pTouchPanelWork = NULL;
     memset(&gUiState, 0, sizeof(gUiState));
     memset(&_GflUse, 0, sizeof(_GflUse));
+    /* The personal-data archive handle and its memo, which the game opens
+     * lazily, back to their power-on zero as the DS's cleared RAM has
+     * them: after a soft reset the handle still pointed into the old run's
+     * heap, and the title menu's Pokedex count read an empty archive.  The
+     * archive table and the heap list are set up by the port's boot before
+     * this runs, so they are left alone. */
+    g_0214652C = NULL;
+    memset(&g_02146270, 0, sizeof(g_02146270));
     BW_REG(0x02146990u, g_ProcSys, 4u);
     BW_REG(0x02146994u, svsys, 4u);
     BW_REG(0x021469B8u, _pOverlayTables, 4u);

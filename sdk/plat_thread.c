@@ -9,6 +9,7 @@
  * native APIs are the portable choice.
  */
 
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "plat_thread.h"
@@ -103,6 +104,11 @@ void bw_thread_join(BwThread *t)
         CloseHandle(t->h);
         free(t);
     }
+}
+
+unsigned long long bw_thread_self_id(void)
+{
+    return (unsigned long long)GetCurrentThreadId() + 1ull;
 }
 
 unsigned bw_cpu_count(void)
@@ -362,6 +368,12 @@ void bw_thread_join(BwThread *t)
     free(t);
 }
 
+unsigned long long bw_thread_self_id(void)
+{
+    fibers_init();
+    return (unsigned long long)g_cur + 1ull;    /* the fiber */
+}
+
 void bw_thread_exit(void)
 {
     fibers_init();
@@ -479,6 +491,12 @@ void bw_thread_join(BwThread *t)
         pthread_join(t->th, NULL);
         free(t);
     }
+}
+
+unsigned long long bw_thread_self_id(void)
+{
+    /* pthread_t is an integer or a pointer on every POSIX host built */
+    return (unsigned long long)(uintptr_t)pthread_self() | 1ull << 63;
 }
 
 unsigned bw_cpu_count(void)

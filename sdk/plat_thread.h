@@ -40,6 +40,8 @@ void     bw_cond_broadcast(BwCond *c);
 BwThread *bw_thread_start(void (*fn)(void *arg), void *arg);
 /* Wait for the thread to return, then release the handle.                 */
 void      bw_thread_join(BwThread *t);
+/* The calling host thread's identity (never 0): equal for the same thread. */
+unsigned long long bw_thread_self_id(void);
 
 #if defined(__wasm__)
 /* The wasm32 build's threads take turns on one host thread: a thread that

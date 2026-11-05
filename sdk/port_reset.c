@@ -65,6 +65,14 @@
  * the prototypes live at the top of the file, the way the manifest layer's
  * do). */
 extern void        bw_mod_savedata_reset(void);
+
+/* src/game/arm9/os_spinlock.c's host flag; weak, so a link without the
+ * game's units still succeeds. */
+#if defined(__GNUC__) || defined(__clang__)
+extern int bw_os_lock_initialized __attribute__((weak));
+#else
+extern int bw_os_lock_initialized;
+#endif
 #include "os.h"
 #include "port.h"
 #include "pxi.h"
@@ -84,6 +92,12 @@ void bw_port_reset(void)
     bw_pxi_set_irq_sink(NULL);
 
     bw_ds_reset();
+    /* The game's own lock flag lives in host memory (src/game/arm9/
+     * os_spinlock.c): the cleared RAM above took its lock words, so the
+     * next OS_InitLock must fill them again, as after a DS reset. */
+    if (&bw_os_lock_initialized != NULL) {
+        bw_os_lock_initialized = 0;
+    }
     bw_firmware_apply();
     bw_os_reset();
     bw_pxi_reset();
