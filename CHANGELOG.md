@@ -11,12 +11,23 @@ Each release's notes on GitHub start with its section here
 - **Field Windows**: Money, items received and place names have their own cards; the season card stays the game's.
 - **Battle**: Ability pop-ups and the trainer intro are drawn as plates.
 - **Union Room & Battle Subway**: Trading (offers, boxes, feelings, summaries), battles (rule card, Pokémon entry, VS screen), drawing, Spin Trade (lobby, Egg list, spinner) and the Battle Subway's Pokémon entry list are one-screen; the Union Room card has the new window style.
+- **Mystery Gift**: Its menus, gift list, Wonder Cards and Card Album are one-screen; a received gift shows its Pokémon or item with its card.
+- **Title Screen**: The logo is the cartridge's own (Black or White, each language).
+- **Place Names**: The place's name changes in the top bar instead of a sliding banner (#15).
+- **C-Gear**: The top bar's C-Gear button shrinks to its mark on narrow windows; IR is greyed out.
+- **UI fixes**: Top bar, balloon tails, nickname screen, text colours and backdrop culling, thanks @TbangIT (#14).
+
+### Mystery Gift
+- **Online gifts**: Receiving over Nintendo WFC gets the event gifts from the relay: each runs from its original day of the month for 7 days, for your region, language and game.
+- **Wireless gifts**: Receiving over wireless lists the events that were given out locally; pick one and receive it as on the DS.
+- **Infrared**: Greyed out.
 
 ### Link Play
 - **Union Room over the internet**: Two eidos players meet in the Union Room through the relay, with no code to type, and can trade and battle as on two DS consoles.
 
 ### Phones
 - **Android and iOS**: First builds of eidos for Android (APK) and iPhone (IPA, unsigned: install it with a sideloading tool), one-screen only.
+- **iPad**: Both orientations; the one-screen interface fits narrower windows, and the settings tabs wrap instead of dropping off.
 
 ### Saves
 - **First Save**: A New Game writes no file until you save; the save goes to its own slot.
@@ -38,9 +49,16 @@ Each release's notes on GitHub start with its section here
 ### Spot editor
 - Drawn with the GPU: about 11 ms a frame at 1440p (was 28), dragging a spot about 20 ms a step (was 65).
 - Shows which battles are double, and previews the trainer's own battle.
+- **Progress sheet**: Every place in story order with its trainers and wild areas checked, and totals per section.
+- **Spots**: The hand-placed spots ship in the built-in table; story fights are placed from their scenes; Black City and White Forest have their buildings, trees and residents (#8).
 
 ### Bug Fixes
 - Fixed crashes when a wild battle opens, in in-game trades, in the Union Room and when the Spin Trade starts.
+- **C-Gear**: Fixed the crash when the scientist in Striaton City gives you the C-Gear (#13).
+- **Title Screen button**: Fixed the white screen after the second click; the game now restarts at the title (#11).
+- **Soft reset**: L + R + START + SELECT, leaving Mystery Gift and the game's other resets now restart at the title instead of stopping.
+- **Mystery Gift**: Fixed crashes when a received Pokémon gift's Wonder Card opens.
+- **Geonet**: Fixed the globe on the PC.
 
 ## 0.1.9
 
