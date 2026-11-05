@@ -83,10 +83,15 @@ void eidos_ui_set_enabled(int on)
 int eidos_ui_scale(int win_w, int win_h)
 {
     /* the layouts need about 270 canvas rows (the menu's six buttons, the
-     * battle's plates and sheets): the largest whole scale that keeps them */
+     * battle's plates and sheets) and about 360 columns (a 4:3 window's
+     * width at that height): the largest whole scale that keeps both, so a
+     * window narrower than 4:3 (a tablet held upright) gets a smaller scale
+     * instead of panels cut off at its sides */
     int k = win_h / 270;
 
-    (void)win_w;
+    if (win_w / 360 < k) {
+        k = win_w / 360;
+    }
     return k < 1 ? 1 : k;
 }
 
@@ -575,6 +580,9 @@ extern void POKE_TOOL_CalcParam(void *pp) __attribute__((weak));
 extern void *POKE_TOOL_Create(u16 species, u16 level, u64 otId, u16 heapId) __attribute__((weak));
 extern u32 POKEPARTY_Add(void *party, const void *member) __attribute__((weak));
 extern void *GAME_DATA_GetMyItem(const void *gd) __attribute__((weak));
+extern void GAME_DATA_SetSubscreenType(void *gd, u32 type) __attribute__((weak));
+extern void *BLOCK20_SAVEDATA_GetBlockFromSys(void *gd) __attribute__((weak));
+extern void CGEAR_SAVE_SetObtained(void *cgearSave, u8 value) __attribute__((weak));
 extern u32 MYITEM_SAVEDATA_AddItem(void *bag, u16 itemId, u16 quantity, u16 heapId) __attribute__((weak));
 #define DEBUG_PARAM_EXP 0x08u           /* POKE_TOOL_PARAM_EXP                  */
 #define DEBUG_FIELD_HEAP 0x15u          /* the field's heap                     */
@@ -657,6 +665,29 @@ static void debug_party(void)
             if (*m != ',') break;
             m++;
         }
+    }
+    /* EIDOS_DEBUG_FLAGS="hex,hex": event flags set (0x961 and 0x962 give
+     * the field menu its POKEMON and POKEDEX buttons) */
+    if (getenv("EIDOS_DEBUG_FLAGS") != NULL && ZONEDATA_SetEventFlag != NULL && GAME_DATA_GetEventWork != NULL) {
+        const char *m = getenv("EIDOS_DEBUG_FLAGS");
+        unsigned flag;
+        int used;
+
+        while (sscanf(m, "%x%n", &flag, &used) == 1) {
+            ZONEDATA_SetEventFlag(GAME_DATA_GetEventWork(gd), (int)flag);
+            fprintf(stderr, "eidos: debug flag 0x%x set\n", flag);
+            m += used;
+            if (*m != ',') break;
+            m++;
+        }
+    }
+    /* EIDOS_DEBUG_CGEAR: the C-Gear obtained and on the bottom screen of
+     * the next field (a warp after it shows it) */
+    if (getenv("EIDOS_DEBUG_CGEAR") != NULL && GAME_DATA_SetSubscreenType != NULL
+        && CGEAR_SAVE_SetObtained != NULL && BLOCK20_SAVEDATA_GetBlockFromSys != NULL) {
+        CGEAR_SAVE_SetObtained(BLOCK20_SAVEDATA_GetBlockFromSys(gd), 1);
+        GAME_DATA_SetSubscreenType(gd, 0);
+        fprintf(stderr, "eidos: debug C-Gear\n");
     }
     /* EIDOS_DEBUG_MOVES="member:move:slot,...": teach moves */
     if (getenv("EIDOS_DEBUG_MOVES") != NULL && POKE_TOOL_SetMoveSlot != NULL) {
@@ -2069,8 +2100,15 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     if (r != NULL && (r->round_scale || g_ds_scale_req)) {
         /* round_scale: the window's height over 270, rounded; a scene that
          * shows the game's text (eidos_ui_want_ds_scale): the DS screen's
-         * own scale, so the letters are as big as the game's */
+         * own scale, so the letters are as big as the game's; neither
+         * wider than the window (the DS screen's 256 columns, the 360 of
+         * eidos_ui_scale) */
         int k = g_ds_scale_req ? in->win_h / 192 : (in->win_h + 135) / 270;
+        int kw = g_ds_scale_req ? in->win_w / 256 : (in->win_w + 180) / 360;
+
+        if (kw < k) {
+            k = kw;
+        }
 
         if (k > g_k) {
             g_k = k;

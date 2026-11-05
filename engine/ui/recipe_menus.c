@@ -3993,23 +3993,35 @@ static void relearn_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     y = my + IN_HEAD;
     if (sel >= 0 && sel < count) {
         int mv = moves[sel], pw, ac, pp;
+        int px[3] = { 10, 90, 150 }, vx[3] = { 50, 116, 166 }, j;
         char desc[400];
 
         pw = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)mv, 3) : 0;
         ac = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)mv, 4) : 0;
         pp = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)mv, 5) : 0;
+        /* the three numbers at their places in a panel of 186 or more;
+         * in a narrower one (a tablet's 4:3 canvas) in three equal columns,
+         * each value just after its label, so PP stays inside */
+        if (rw < 186) {
+            static const char *const labs[3] = { "POWER", "ACC", "PP" };
+
+            for (j = 0; j < 3; j++) {
+                px[j] = 8 + j * (rw - 12) / 3;
+                vx[j] = px[j] + ui_text_w(labs[j], UI_FONT_SMALL) + 3;
+            }
+        }
         in_panel(c, rx, y, rw, RL_ROWS * 30 - 34);
-        ui_text(c, rx + 10, y + 6, "POWER", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+        ui_text(c, rx + px[0], y + 6, "POWER", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
         snprintf(line, sizeof line, "%s", pw > 1 ? "" : "---");
         if (pw > 1) snprintf(line, sizeof line, "%d", pw);
-        ui_text(c, rx + 50, y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
-        ui_text(c, rx + 90, y + 6, "ACC", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+        ui_text(c, rx + vx[0], y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+        ui_text(c, rx + px[1], y + 6, "ACC", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
         snprintf(line, sizeof line, "%s", "---");
         if (ac > 0 && ac <= 100) snprintf(line, sizeof line, "%d", ac);
-        ui_text(c, rx + 116, y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
-        ui_text(c, rx + 150, y + 6, "PP", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
+        ui_text(c, rx + vx[1], y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+        ui_text(c, rx + px[2], y + 6, "PP", UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
         snprintf(line, sizeof line, "%d", pp);
-        ui_text(c, rx + 166, y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
+        ui_text(c, rx + vx[2], y + 3, line, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
         ui_fill(c, rx + 8, y + 20, rw - 16, 1, UI_EDGE, 255);
         flatten(ui_game_text(2, 202, (u32)mv), desc, (int)sizeof desc);
         wrapped(c, rx + 10, y + 26, rw - 20, 13, UI_FONT_SMALL, desc, UI_LIGHT, IN_SHADOW, 6);

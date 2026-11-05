@@ -1022,6 +1022,19 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     body_h = my + mh - 6 - body_y;
     tabs_x = mx + pad;
     tabs_w = mw < 360 ? 64 : 76;
+    {
+        /* wide enough for the longest pocket name and its count, when
+         * the panel has room (a tablet's narrower canvas) */
+        int need = 0;
+
+        for (i = 0; i < POCKETS; i++) {
+            need = imax(need, 6 + ui_text_w(pocket_name(&v, i), UI_FONT_LARGE) + 4 +
+                                  ui_text_w("99", UI_FONT_SMALL) + 8);
+        }
+        if (need > tabs_w && need <= tabs_w + 16 && mw >= 330) {
+            tabs_w = need;
+        }
+    }
     det_w = imax(mw < 360 ? 96 : 120, (mw - 2 * pad - tabs_w) * 40 / 100);
     det_x = mx + mw - pad - det_w;
     list_x = tabs_x + tabs_w + 6;
@@ -1044,10 +1057,13 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                      sel ? UI_WHITE : UI_RED, 255);
             ui_text(c, tabs_x + 6, ty + ui_text_y(th, UI_FONT_LARGE), nm, UI_WHITE,
                     sel ? (s32)UI_PINK2 : (s32)UI_RED2, UI_FONT_LARGE, 1);
-            if (n > 0 && !sel && tabs_w >= 70) {
+            if (n > 0 && !sel) {
                 char cnt[12];
 
                 snprintf(cnt, sizeof cnt, "%d", n);
+                if (6 + ui_text_w(nm, UI_FONT_LARGE) + 4 + ui_text_w(cnt, UI_FONT_SMALL) + 8 > tabs_w) {
+                    cnt[0] = '\0';         /* no room beside the name */
+                }
                 ui_text(c, tabs_x + tabs_w - 8 - ui_text_w(cnt, UI_FONT_SMALL),
                         ty + ui_text_y(th, UI_FONT_SMALL), cnt, UI_GREY, UI_RED2, UI_FONT_SMALL, 1);
             }

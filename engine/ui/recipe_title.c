@@ -410,6 +410,18 @@ static int g_ps_prev;
 static int g_started;           /* START was pressed: the prompt holds still */
 static u32 g_started_at;
 
+/* The title's scene is built for the DS's 4:3 frame: a window taller than
+ * that (an iPad held upright) would show past it, below Reshiram.  There
+ * the view zooms in until the frame's height fills the window, trimming
+ * the sides instead (2.0 at most, the world's largest zoom). */
+static float title_zoom(const EidosUiFrame *in)
+{
+    float a = in->win_h > 0 ? (float)in->win_w / (float)in->win_h : 0.0f;
+    float z = a > 0.0f && a < 4.0f / 3.0f ? (4.0f / 3.0f) / a : 1.0f;
+
+    return z > 2.0f ? 2.0f : z;
+}
+
 static void title_reset(void)
 {
     g_started = 0;
@@ -430,7 +442,7 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     char *dbg;
 
     view->mode = EIDOS_VIEW_WORLD;
-    view->zoom = 1.0f;
+    view->zoom = title_zoom(in);
     view->blur = 0;
     view->hide_2d = 1;
     g_title_seen++;
@@ -1056,7 +1068,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     char *dbg;
 
     view->mode = EIDOS_VIEW_WORLD;
-    view->zoom = 1.0f;
+    view->zoom = title_zoom(in);
     view->blur = 0;
     view->hide_2d = 1;
     scene(&p);

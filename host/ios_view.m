@@ -41,3 +41,9 @@ void host_ios_view_setup(void)
         method_setImplementation(m, (IMP)defer_edges);
     }
 }
+
+/* An iPad turns both ways: the one-screen layout fits a tall window too. */
+int host_ios_is_pad(void)
+{
+    return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad;
+}

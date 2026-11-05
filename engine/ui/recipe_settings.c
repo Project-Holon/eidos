@@ -133,7 +133,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     static const char *const hints[] = { "A", "Choose", "B", "Back", "L R", "Section" };
     static const u32 hint_keys[] = { BW_KEY_A, BW_KEY_B, BW_KEY_R };
     int cw = c->canvas->w, ch = c->canvas->h;
-    int mw, mh, mx, my, i, n, cur, rowh = 20, top;
+    int mw, mh, mx, my, i, n, cur, rowh = 20, top, tab_pad = 16;
     int tabs = eidos_sui_tab_count(), tab = eidos_sui_tab(), level = eidos_sui_level();
     char head[48], value[48], label[48];
     int target = -1, target_choice = -1, target_adj = 0, target_zone = -1;
@@ -151,6 +151,23 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     mw = cw * 80 / 100;
     if (mw > 460) mw = 460;
     if (mw < 300) mw = 300;
+    /* every section's tab in one row: on a narrow canvas (a tablet's 4:3
+     * screen) the panel widens up to the window's margins, and then the
+     * tabs' own padding narrows, rather than the last tabs being left out */
+    if (level == 1 && tabs > 1) {
+        int need = 0;
+
+        for (i = 0; i < tabs; i++) {
+            need += ui_text_w(eidos_sui_tab_name(i), UI_FONT_SMALL) + tab_pad + 3;
+        }
+        if (need - 3 > mw - 16) {
+            mw = need - 3 + 16 < cw - 16 ? need - 3 + 16 : cw - 16;
+        }
+        while (need - 3 > mw - 16 && tab_pad > 8) {
+            tab_pad -= 2;
+            need -= 2 * tabs;
+        }
+    }
     mh = ch - ui_bar_h(c) - 16;
     if (mh > 270) mh = 270;
     mx = (cw - mw) / 2;
@@ -165,7 +182,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
 
         for (i = 0; i < tabs; i++) {
             const char *name = eidos_sui_tab_name(i);
-            int tw = ui_text_w(name, UI_FONT_SMALL) + 16;
+            int tw = ui_text_w(name, UI_FONT_SMALL) + tab_pad;
             EidosUiRect r;
             int st, sel = i == tab;
 
@@ -177,7 +194,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
             ui_panel(c, tx, top, tw, 14, UI_CUT_TL | UI_CUT_BR, 4,
                      sel ? UI_CYAN2 : ((st & EIDOS_UI_HOVER) ? 0x242424u : UI_BODY2),
                      sel ? UI_CYAN : UI_EDGE, 255);
-            ui_text(c, tx + 8, top + ui_text_y(14, UI_FONT_SMALL), name,
+            ui_text(c, tx + tab_pad / 2, top + ui_text_y(14, UI_FONT_SMALL), name,
                     sel ? UI_WHITE : UI_GREY, sel ? 0x003C50 : (s32)UI_EDGE, UI_FONT_SMALL, 1);
             if ((st & EIDOS_UI_CLICK) && !sel) {
                 /* straight to the section, as a touch: one step, one sound */

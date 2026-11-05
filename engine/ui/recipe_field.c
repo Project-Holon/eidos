@@ -1211,18 +1211,37 @@ extern int ov012_UNION_MAIN_IsIdle(void *gameSystem) WEAK;
 /* A text box of the field is up this frame (field_text drew it). */
 static int g_text_up;
 
+/* Where the world's DS screen sits on the canvas (engine/platform/
+ * geometry.c): the window's height, centred, on a window 4:3 or wider; the
+ * window's width, centred, on a narrower one (a tablet held upright). */
+static void world_place(const EidosUiCtx *c, float *s, float *ox, float *oy)
+{
+    float cw = (float)c->canvas->w, ch = (float)c->canvas->h;
+
+    if (cw * 3.0f >= ch * 4.0f) {
+        *s = ch / 192.0f;
+        *ox = (cw - 256.0f * *s) * 0.5f;
+        *oy = 0.0f;
+    } else {
+        *s = cw / 256.0f;
+        *ox = 0.0f;
+        *oy = (ch - 192.0f * *s) * 0.5f;
+    }
+}
+
 static int field_text(EidosUiCtx *c, const FieldNow *f)
 {
     u8 *list = NULL, *win = NULL;
-    float s = (float)c->canvas->h / 192.0f;
+    float s, ox, oy;
     u32 hide;
     int text;
 
+    world_place(c, &s, &ox, &oy);
     if (bw_ui_text_set_own != NULL) {
         bw_ui_text_set_own(1);
     }
     (void)choices_now(f, &list, &win);
-    hide = ui_textbox_field(c, f->fm, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s, win);
+    hide = ui_textbox_field(c, f->fm, ox, oy, s, win);
     if (win != NULL && win[2] < 4) {
         hide |= 1u << win[2];           /* an open list's window: ours shows */
     }
@@ -1348,16 +1367,17 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
 {
     u8 *list, *win;
-    float s = (float)c->canvas->h / 192.0f;
+    float s, ox, oy;
     int style;
 
+    world_place(c, &s, &ox, &oy);
     if (!choices_now(f, &list, &win)) {
         ui_choice_list_idle();
         return 0;
     }
     /* the list takes the style of the box it answers */
     style = ui_textbox_field_kind(f->fm, win) == UI_TEXTBOX_SYSTEM ? UI_CHOICE_SYSTEM : UI_CHOICE_WHITE;
-    if (!ui_choice_list(c, in, list, win, ((float)c->canvas->w - 256.0f * s) * 0.5f, 0.0f, s, style)) {
+    if (!ui_choice_list(c, in, list, win, ox, oy, s, style)) {
         return 0;
     }
     if (right_click(in)) {

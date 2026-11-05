@@ -83,6 +83,8 @@ int host_pick_rom(const char *title, char *out, size_t n);
 #if defined(__APPLE__)
 /* host/ios_view.m: the home indicator hidden, its swipe deferred (iOS). */
 void host_ios_view_setup(void);
+/* host/ios_view.m: whether the device is an iPad (1) or not (0). */
+int host_ios_is_pad(void);
 #endif
 
 /* host/fiber.c, host/wasi.c */

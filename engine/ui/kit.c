@@ -1527,8 +1527,24 @@ void ui_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name
     if (icon != NULL) {
         ui_image(c, x + 16 + (22 - icon->w) / 2, y + (h - icon->h) / 2, icon, 1);
     }
-    nx = ui_text(c, x + 40, y + 1, name, UI_WHITE, SHADOW_DARK, UI_FONT_LARGE, 1);
-    ui_gender(c, nx + 3, y + 1, gender, UI_FONT_LARGE);
+    {
+        /* a long name in a narrow row (a tablet's canvas) would run into
+         * the level: the small letters then, and cut before the level */
+        int font = UI_FONT_LARGE, room = w - 40 - 9 - 2 - 8;
+        EidosUiRect saved;
+
+        if (level > 0) {
+            room -= ui_text_w(level >= 100 ? "Lv.100" : level >= 10 ? "Lv.50" : "Lv.5", UI_FONT_SMALL);
+        }
+        if (ui_text_w(name, UI_FONT_LARGE) > room) {
+            font = UI_FONT_SMALL;
+        }
+        ui_push(c, 0, 0, &saved);
+        ui_clip(c, x + 40, y, room + 8, h);
+        nx = ui_text(c, x + 40, y + (font == UI_FONT_LARGE ? 1 : 3), name, UI_WHITE, SHADOW_DARK, font, 1);
+        ui_gender(c, nx + 3, y + (font == UI_FONT_LARGE ? 1 : 3), gender, font);
+        ui_pop(c, 0, 0, &saved);
+    }
     if (level <= 0) {
         return;                         /* an Egg: no level and no HP      */
     }

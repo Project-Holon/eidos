@@ -2029,8 +2029,20 @@ static const char *const k_menu_label[5] = { "SUMMARY", "HELD ITEMS", "MARKING",
 static void pc_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, const u32 *keys, int n,
                      const PcMouse *m)
 {
-    int i, x = 6;
+    int i, x = 6, gap = 10, total = 0;
 
+    /* a narrow canvas (a tablet's 4:3 screen) closes the gaps between the
+     * pairs, down to 3 pixels, and leaves out a pair that still does not
+     * fit, rather than running off the window's edge */
+    for (i = 0; i < n; i++) {
+        int kw = ui_keycap_w(pairs[2 * i]);
+
+        total += (kw < 13 ? 13 : kw) + 4 + ui_text_w(pairs[2 * i + 1], UI_FONT_SMALL) + gap;
+    }
+    if (n > 1 && x + total - gap > w) {
+        gap -= (x + total - gap - w + n - 2) / (n - 1);
+        gap = gap < 3 ? 3 : gap;
+    }
     ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
     ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
     for (i = 0; i < n; i++) {
@@ -2039,6 +2051,9 @@ static void pc_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, cons
 
         if (kw < 13) {
             kw = 13;
+        }
+        if (x + kw + 4 + aw > w - 2) {
+            break;
         }
         rw = kw + 4 + aw + 4;
         if (m->x >= 0 && in_rect(m->x, m->y, x - 2, y, rw, 17)) {
@@ -2050,7 +2065,7 @@ static void pc_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, cons
         ui_keycap(c, x, y + 2, key);
         x += kw + 4;
         x = ui_text(c, x, y + 2 + ui_text_y(13, UI_FONT_SMALL), what, UI_LIGHT, UI_EDGE,
-                    UI_FONT_SMALL, 1) + 10;
+                    UI_FONT_SMALL, 1) + gap;
     }
 }
 

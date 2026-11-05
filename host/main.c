@@ -416,11 +416,16 @@ static char **mobile_args(int *argc)
     }
     argv[n] = NULL;
     *argc = n;
+    /* a phone plays landscape only; an iPad turns both ways (the
+     * one-screen layout fits a tall window, ios/Info.plist.in) */
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 #if !defined(__ANDROID__)
     host_ios_view_setup();
+    if (host_ios_is_pad()) {
+        SDL_SetHint(SDL_HINT_ORIENTATIONS,
+                    "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown");
+    }
 #endif
-    /* the DS screens side by side are wider than tall: landscape only */
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     return argv;
 }
 #endif

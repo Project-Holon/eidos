@@ -66,7 +66,7 @@ typedef struct EidosUiCanvas {
     u32 generation;         /* bumped when the picture changed             */
 } EidosUiCanvas;
 
-/* The interface scale for a window: max(1, floor(h / 270)). */
+/* The interface scale for a window: max(1, min(floor(h / 270), floor(w / 360))). */
 int eidos_ui_scale(int win_w, int win_h);
 
 /* ------------------------------------------------------------------ */

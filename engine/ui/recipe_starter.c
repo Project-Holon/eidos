@@ -477,6 +477,18 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     strbuf_text(rdp(w, PW_STRBUF), msg, (int)sizeof msg);
     mx = 10 + BOX_W + BOX_GAP;
     mw = cw - 2 * mx;
+    if (!closeup && msg[0] != '\0' && ui_wrap(msg, mw - 20, UI_FONT_LARGE, NULL, NULL) > 1) {
+        /* no close-up, so no rooms to keep clear: a line that would wrap
+         * in the narrow middle (a tablet's canvas) takes the full width */
+        int full = cw - 20;
+
+        if (ui_wrap(msg, full - 20, UI_FONT_LARGE, NULL, NULL) < ui_wrap(msg, mw - 20, UI_FONT_LARGE, NULL, NULL)) {
+            int tw = ui_text_w(msg, UI_FONT_LARGE) + 20;
+
+            mw = tw < full ? tw : full;
+            mx = (cw - mw) / 2;
+        }
+    }
     if (msg[0] != '\0') {
         message_box(c, mx, ch - ui_bar_h(c) - 6, mw, msg);
     }
