@@ -602,7 +602,9 @@ typedef struct EidosBattleExp {
     uint8_t wild;  /* 1 in a wild battle */
     uint16_t scale;  /* *mod: a percentage of every share, 100 to leave them */
     uint32_t total;  /* the experience of every share together */
-} EidosBattleExp;  /* 16 bytes */
+    uint8_t share;  /* *mod: (version 5): the bench's percentage, 0 for none */
+    uint8_t share_pad[3];
+} EidosBattleExp;  /* 20 bytes */
 
 typedef struct EidosItemAdd {
     EidosEvent h;

@@ -2324,7 +2324,7 @@
       "size": 40,
       "doc": "A Pokemon fainted in a battle.",
       "details": "",
-      "where": "`BTL_SERVER_FLOW_ProcFaintedPoke` 0x021C4F64",
+      "where": "the return of `BTL_SERVER_FLOW_ProcFaintedPoke` 0x021C4F64, when it answers 1 (a Pokemon has just fainted; the server asks about every Pokemon a move touched)",
       "refuse": null,
       "modify": null,
       "fields": [
@@ -2808,9 +2808,9 @@
       "refusable": true,
       "struct": "EidosBattleExp",
       "c_struct": "BwBattleExp",
-      "size": 16,
+      "size": 20,
       "doc": "The battle is about to hand out experience to the party after an opposing Pokemon fainted.",
-      "details": "It fires before mon.exp fires for each member that gains.  A refusal gives nobody any experience (and mon.exp does not fire); scale changes every member's share.",
+      "details": "It fires before mon.exp fires for each member that gains.  A refusal gives nobody any experience (and mon.exp does not fire); scale changes every member's share. Version 5 appends share: when a handler sets it, every party member that would gain nothing (it did not fight and holds no Exp. Share) and can battle gets that percentage of what it would have gained had it fought, with its own level, Lucky Egg, trade bonus and effort values, as the later games' Exp. Share does.  scale applies after it.",
       "where": "the return of `BTL_SERVER_FLOW_CalcPartyExpShares` 0x021CB2D4 (ov093), before `mon.exp`",
       "refuse": "nobody gains",
       "modify": "the scale of every share",
@@ -2858,6 +2858,28 @@
           "rule_name": "total",
           "doc": "every share together",
           "c_type": "u32"
+        },
+        {
+          "name": "share",
+          "type": "uint8_t",
+          "offset": 16,
+          "size": 1,
+          "count": null,
+          "writable": true,
+          "rule_name": "share",
+          "doc": "the bench's percentage; 0 for none",
+          "c_type": "u8"
+        },
+        {
+          "name": "share_pad",
+          "type": "uint8_t",
+          "offset": 17,
+          "size": 3,
+          "count": 3,
+          "writable": false,
+          "rule_name": "share_pad",
+          "doc": "",
+          "c_type": "u8"
         }
       ]
     },

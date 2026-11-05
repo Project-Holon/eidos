@@ -64,7 +64,7 @@ extern "C" {
  * and the hash follows it; the test carries the other width's number, so a
  * change fails on every width the port is built at.
  */
-#define BW_MOD_API_HASH 0x89AE8098u
+#define BW_MOD_API_HASH 0x86288CC3u
 
 /* ------------------------------------------------------------------ */
 /* The event header                                                    */
@@ -914,6 +914,12 @@ typedef struct BwBattleEnd {
  * party after an opposing Pokemon fainted. It fires before mon.exp fires
  * for each member that gains.  A refusal gives nobody any experience (and
  * mon.exp does not fire); scale changes every member's share.
+ *
+ * Version 5 appends share: when a handler sets it, every party member
+ * that would gain nothing (it did not fight and holds no Exp. Share) and
+ * can battle gets that percentage of what it would have gained had it
+ * fought, with its own level, Lucky Egg, trade bonus and effort values,
+ * as the later games' Exp. Share does.  scale applies after it.
  */
 typedef struct BwBattleExp {
     BwEvent h;
@@ -921,6 +927,8 @@ typedef struct BwBattleExp {
     u8  wild;       /* 1 in a wild battle */
     u16 scale;      /* *mod: a percentage of every share, 100 to leave them */
     u32 total;      /* the experience of every share together */
+    u8  share;      /* *mod (version 5): the bench's percentage, 0 for none */
+    u8  share_pad[3];
 } BwBattleExp;
 
 /*

@@ -603,6 +603,15 @@ nobody gains and `mon.exp` does not fire.
 | `wild` | u8 | 1 in a wild battle |
 | `scale` | u16, *mod* | a percentage of every share; 100 leaves them |
 | `total` | u32 | every share together |
+| `share` | u8, *mod* (version 5) | the bench's percentage; 0 for none |
+
+`share` gives the bench experience, as the later games' Exp. Share does:
+every party member that would gain nothing (it did not fight and holds no
+Exp. Share) and can battle gets `share` percent of what it would gain had it
+fought, with the game's own steps for its level, the trade bonus, the Lucky
+Egg, the Pass Power and the effort values. Each such member then has its
+own `mon.exp`, so a level cap still applies. `scale` applies after it. 50
+is the later games' amount.
 
 **`battle.trainer_mon`** (version 4)
 

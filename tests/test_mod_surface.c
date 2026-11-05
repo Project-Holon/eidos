@@ -58,8 +58,8 @@
  * The hash of the frozen surface on each layout the port is built at.
  *
  *   pointers  hash
- *   4         0x89AE8098u  the number in sdk/mod_api.h
- *   8         0xF096426Eu
+ *   4         0x86288CC3u  the number in sdk/mod_api.h
+ *   8         0x6E493405u
  *
  * The 32-bit one is the number the header carries.  The other is the same
  * surface on the other layout: the three tables hold host pointers, so
@@ -68,11 +68,11 @@
  */
 static unsigned int expected_hash(void)
 {
-    return (sizeof(void *) == 4) ? 0x89AE8098u : 0xF096426Eu;
+    return (sizeof(void *) == 4) ? 0x86288CC3u : 0x6E493405u;
 }
 
 /* The number in sdk/mod_api.h: the frozen one, the 32-bit hash. */
-#define BW_SURFACE_HASH_FROZEN 0x89AE8098u
+#define BW_SURFACE_HASH_FROZEN 0x86288CC3u
 
 /* The running hash. */
 static unsigned int h;
@@ -296,7 +296,8 @@ int main(void)
        F(BwBattleEnd, turns));
     PL(BwWhiteout, F(BwWhiteout, in_battle), F(BwWhiteout, money_lost));
     PL(BwBattleExp, F(BwBattleExp, members), F(BwBattleExp, wild),
-       F(BwBattleExp, scale), F(BwBattleExp, total));
+       F(BwBattleExp, scale), F(BwBattleExp, total), F(BwBattleExp, share),
+       F(BwBattleExp, share_pad));
     PL(BwBattleTrainerMon, F(BwBattleTrainerMon, trainer_id), F(BwBattleTrainerMon, index),
        F(BwBattleTrainerMon, level), F(BwBattleTrainerMon, species),
        F(BwBattleTrainerMon, item), F(BwBattleTrainerMon, move1),

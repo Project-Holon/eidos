@@ -636,7 +636,8 @@ static const BwRuleField g_f_battle_exp[] = {
     BW_RULE_FIELD(BwBattleExp, members, BW_RULE_FK_INT, 0),
     BW_RULE_FIELD(BwBattleExp, wild, BW_RULE_FK_INT, 0),
     BW_RULE_FIELD(BwBattleExp, scale, BW_RULE_FK_INT, BW_RULE_FF_MOD),
-    BW_RULE_FIELD(BwBattleExp, total, BW_RULE_FK_INT, 0)
+    BW_RULE_FIELD(BwBattleExp, total, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleExp, share, BW_RULE_FK_INT, BW_RULE_FF_MOD)
 };
 
 static const BwRuleField g_f_battle_trainer_mon[] = {
@@ -846,7 +847,7 @@ static const BwRuleEvent g_events[] = {
     { .kind = BW_EVENT_WHITEOUT, .name = "whiteout", .refusable = 0,
       .fields = g_f_whiteout, .field_count = 2 },
     { .kind = BW_EVENT_BATTLE_EXP, .name = "battle.exp", .refusable = 1,
-      .fields = g_f_battle_exp, .field_count = 4 },
+      .fields = g_f_battle_exp, .field_count = 5 },
     { .kind = BW_EVENT_BATTLE_TRAINER_MON, .name = "battle.trainer_mon",
       .refusable = 1, .fields = g_f_battle_trainer_mon, .field_count = 11 },
 

@@ -244,7 +244,8 @@ The version moves when the surface moves.
   more.
 - **Version 5** appends and moves nothing, so version 3 and 4 mods still
   load. The services table gains `event_player`, `shared_get`,
-  `shared_set`, `shared_add` and `shared_cas` (multiplayer, `docs/mod-services.md`, "Multiplayer"). A mod
+  `shared_set`, `shared_add` and `shared_cas` (multiplayer, `docs/mod-services.md`, "Multiplayer"),
+  and `battle.exp` gains `share` at its end (experience for the bench). A mod
   with `multiplayer = <n>` in its manifest receives the other players'
   events through its own handlers. Version 5 is open: `sdk/api/v5` is
   the current description.
@@ -280,8 +281,8 @@ width and the hash follows it: the number beside the version number is the
 
 | Pointers | Hash |
 |---|---|
-| 32-bit | 0x89AE8098 (the number in `sdk/mod_api.h`) |
-| 64-bit | 0xF096426E |
+| 32-bit | 0x86288CC3 (the number in `sdk/mod_api.h`) |
+| 64-bit | 0x6E493405 |
 
 The payload structs, the ids and the enums hold no pointer and hash the
 same everywhere.

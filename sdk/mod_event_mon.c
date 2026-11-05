@@ -132,6 +132,51 @@ extern u32 FILE_UTIL_GetId(u32 machineId)
 extern u16 *ZONEDATA_GetEventWorkAddress(struct EventWork *ev, u32 workId)
     BW_PORT_WEAK;                                        /* 0x020143CC */
 
+/* The battle's own experience pieces (ov093, arm9), the ones
+ * BTL_SERVER_FLOW_CalcPartyExpShares uses: battle.exp's `share` hands the
+ * bench a share with the same steps.  The overlay's functions are linked
+ * under their overlay's prefix. */
+struct BtlPokeParam;
+struct BtlSideSlot;
+struct BtlMain;
+struct MyStatus;
+extern u32 ov093_BTL_CALC_CalcDefeatExp(struct BtlPokeParam *bpp) BW_PORT_WEAK;
+extern u32 ov093_BTL_CALC_MulRatio(u32 value, u32 ratio) BW_PORT_WEAK;
+extern u8  ov093_BTL_SLOT_GetCount(struct BtlSideSlot *slot) BW_PORT_WEAK;
+extern struct BtlPokeParam *ov093_BTL_SLOT_GetPokeParam(struct BtlSideSlot *slot,
+                                                        u32 index) BW_PORT_WEAK;
+extern int ov093_BTL_POKEPARAM_IsAbleToBattle(struct BtlPokeParam *pp) BW_PORT_WEAK;
+extern int ov093_BTL_POKEPARAM_GetValue(struct BtlPokeParam *pp, int valueId)
+    BW_PORT_WEAK;
+extern u16 ov093_BTL_POKEPARAM_GetItem(struct BtlPokeParam *pp) BW_PORT_WEAK;
+extern struct PokemonParam *ov093_BTL_POKEPARAM_GetMon(struct BtlPokeParam *pp)
+    BW_PORT_WEAK;
+extern u32 ov093_BTL_MAIN_GetCompetitor(struct BtlMain *main) BW_PORT_WEAK;
+extern struct MyStatus *ov093_BTL_MAIN_GetPlayerStatus(struct BtlMain *main)
+    BW_PORT_WEAK;
+extern u32 ov093_BTL_SERVER_FLOW_CalcLevelScaledExp(struct BtlPokeParam *poke,
+                                                    u32 baseExp, u16 defeatedLevel,
+                                                    u16 gainerLevel) BW_PORT_WEAK;
+extern void ov093_BTL_SERVER_FLOW_AddDefeatEffortValues(struct BtlPokeParam *gainer,
+                                                        struct BtlPokeParam *defeated,
+                                                        u8 *expRecord) BW_PORT_WEAK;
+#define BTL_CALC_CalcDefeatExp                ov093_BTL_CALC_CalcDefeatExp
+#define BTL_CALC_MulRatio                     ov093_BTL_CALC_MulRatio
+#define BTL_SLOT_GetCount                     ov093_BTL_SLOT_GetCount
+#define BTL_SLOT_GetPokeParam                 ov093_BTL_SLOT_GetPokeParam
+#define BTL_POKEPARAM_IsAbleToBattle          ov093_BTL_POKEPARAM_IsAbleToBattle
+#define BTL_POKEPARAM_GetValue                ov093_BTL_POKEPARAM_GetValue
+#define BTL_POKEPARAM_GetItem                 ov093_BTL_POKEPARAM_GetItem
+#define BTL_POKEPARAM_GetMon                  ov093_BTL_POKEPARAM_GetMon
+#define BTL_MAIN_GetCompetitor                ov093_BTL_MAIN_GetCompetitor
+#define BTL_MAIN_GetPlayerStatus              ov093_BTL_MAIN_GetPlayerStatus
+#define BTL_SERVER_FLOW_CalcLevelScaledExp    ov093_BTL_SERVER_FLOW_CalcLevelScaledExp
+#define BTL_SERVER_FLOW_AddDefeatEffortValues ov093_BTL_SERVER_FLOW_AddDefeatEffortValues
+extern int POKE_TOOL_IsOwnedByPlayer(struct PokemonParam *pp,
+                                     struct MyStatus *myStatus) BW_PORT_WEAK;
+extern u8  MYSTATUS_GetLanguage(const struct MyStatus *mystatus) BW_PORT_WEAK;
+extern u32 GPOWER_ApplyExpRate(u32 exp) BW_PORT_WEAK;
+
 /* ------------------------------------------------------------------ */
 /* The Pokemon record's own field ids                                 */
 /* ------------------------------------------------------------------ */
@@ -1701,11 +1746,90 @@ static void build_battle_exp(const BwEventCall *call, BwEventPayload *out)
     }
 }
 
+/*
+ * battle.exp's share: the bench gains too.  Each party member that gains
+ * nothing and can battle gets `percent` of the defeated Pokemon's
+ * experience, then the steps the game applies to a member that fought
+ * (BTL_SERVER_FLOW_CalcPartyExpShares, aletheia src/game/ov093): the level
+ * scaling, the bonus for a Pokemon from another trainer (1.5, or 1.7 from
+ * another language), the Lucky Egg, the Pass Power, and the effort values.
+ */
+#define BW_PORT_ITEM_LUCKY_EGG 0xE7u
+#define BW_PORT_BTL_LEVEL      15
+
+static void battle_exp_bench(BwEventCall *call, BwPortExpShareRecord *table,
+                             u32 percent)
+{
+    BwPortBtlServerFlow *flow = (BwPortBtlServerFlow *)call->a[0];
+    struct BtlSideSlot *party = (struct BtlSideSlot *)call->a[1];
+    struct BtlPokeParam *defeated = (struct BtlPokeParam *)call->a[2];
+    struct BtlMain *main_module;
+    struct MyStatus *player;
+    u32 base, n, j;
+
+    if (flow == NULL || party == NULL || defeated == NULL || percent == 0u ||
+        BTL_CALC_CalcDefeatExp == NULL || BTL_CALC_MulRatio == NULL ||
+        BTL_SLOT_GetCount == NULL || BTL_SLOT_GetPokeParam == NULL ||
+        BTL_POKEPARAM_IsAbleToBattle == NULL || BTL_POKEPARAM_GetValue == NULL ||
+        BTL_POKEPARAM_GetItem == NULL || BTL_POKEPARAM_GetMon == NULL ||
+        BTL_MAIN_GetCompetitor == NULL || BTL_MAIN_GetPlayerStatus == NULL ||
+        BTL_SERVER_FLOW_CalcLevelScaledExp == NULL ||
+        BTL_SERVER_FLOW_AddDefeatEffortValues == NULL ||
+        POKE_TOOL_IsOwnedByPlayer == NULL || POKE_TOOL_GetPartyValue == NULL ||
+        MYSTATUS_GetLanguage == NULL || GPOWER_ApplyExpRate == NULL) {
+        return;
+    }
+    main_module = (struct BtlMain *)flow->mainModule;
+    base = BTL_CALC_CalcDefeatExp(defeated);
+    if (BTL_MAIN_GetCompetitor(main_module) == 1u) {
+        base = base * 15u / 10u;    /* a trainer's Pokemon, as the game does */
+    }
+    base = (u32)((u64)base * percent / 100u);
+    if (base == 0u) {
+        base = 1u;
+    }
+    player = BTL_MAIN_GetPlayerStatus(main_module);
+    n = BTL_SLOT_GetCount(party);
+    for (j = 0; j < n && j < 6u; j++) {
+        struct BtlPokeParam *t = BTL_SLOT_GetPokeParam(party, j);
+        struct PokemonParam *mon;
+        u32 exp;
+
+        if (t == NULL || table[j].exp != 0u ||
+            !BTL_POKEPARAM_IsAbleToBattle(t)) {
+            continue;
+        }
+        mon = BTL_POKEPARAM_GetMon(t);
+        exp = BTL_SERVER_FLOW_CalcLevelScaledExp(
+            t, base, (u16)BTL_POKEPARAM_GetValue(t, BW_PORT_BTL_LEVEL),
+            (u16)BTL_POKEPARAM_GetValue(defeated, BW_PORT_BTL_LEVEL));
+        if (mon != NULL && player != NULL &&
+            POKE_TOOL_IsOwnedByPlayer(mon, player) == 0) {
+            u32 k = POKE_TOOL_GetPartyValue(mon, 12u, 0u) !=
+                    MYSTATUS_GetLanguage(player) ? 0x1B33u : 0x1800u;
+
+            exp = BTL_CALC_MulRatio(exp, k);
+            table[j].hasBonusFlag = 1u;
+        }
+        if ((u32)BTL_POKEPARAM_GetItem(t) == BW_PORT_ITEM_LUCKY_EGG) {
+            exp = BTL_CALC_MulRatio(exp, 0x1800u);
+            table[j].hasBonusFlag = 1u;
+        }
+        table[j].exp = GPOWER_ApplyExpRate(exp);
+        if (table[j].exp != 0u) {
+            BTL_SERVER_FLOW_AddDefeatEffortValues(t, defeated, (u8 *)&table[j]);
+        }
+    }
+}
+
 static void apply_battle_exp(const BwEventPayload *in, BwEventCall *call)
 {
     BwPortExpShareRecord *table = (BwPortExpShareRecord *)call->a[3];
     u32 i;
 
+    if (table != NULL && in->battle_exp.share != 0u) {
+        battle_exp_bench(call, table, in->battle_exp.share);
+    }
     if (table == NULL || in->battle_exp.scale == 100u) {
         return;
     }
