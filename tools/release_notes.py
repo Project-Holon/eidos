@@ -143,6 +143,9 @@ def main():
     ap.add_argument("--assets", help="the folder of the release's files")
     ap.add_argument("--test-build", help="a test build's tag (the notes say so)")
     args = ap.parse_args()
+    # UTF-8 on every system (Windows' console default would turn é into a
+    # byte GitHub cannot read)
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     sys.stdout.write(notes(args.version.lstrip("vV"), args.assets, args.test_build))
 
 

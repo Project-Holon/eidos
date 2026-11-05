@@ -19,8 +19,12 @@
     type Overview,
   } from "../lib/backend";
   import Icon from "../lib/Icon.svelte";
+  import ModIcon from "../lib/ModIcon.svelte";
 
   let { ov, selected, onSelect }: { ov: Overview; selected: string; onSelect: (name: string) => void } = $props();
+
+  // The game species icons are drawn from: the profile's.
+  const game = $derived(ov.profiles.find((p) => p.name === selected)?.game || "black");
 
   let mods = $state<ModInfo[]>([]);
   let indexUrl = $state("");
@@ -167,6 +171,7 @@
               onchange={(e) => run(() => modsSetEnabled(selected, m.folder, e.currentTarget.checked))} />
             <span class="track" aria-hidden="true"></span>
           </label>
+          <ModIcon icon={m.icon} {game} />
           <div class="main">
             <span class="title">{m.name}</span>
             {#if m.name !== m.folder}<span class="sub">{m.folder}</span>{/if}
@@ -196,6 +201,7 @@
         {#each catalog.mods as c (c.id)}
           {@const st = modState(c)}
           <li class="catalog">
+            <ModIcon icon={c.icon} {game} />
             <div class="main">
               <span class="title">
                 {c.name}
