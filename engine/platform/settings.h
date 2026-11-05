@@ -102,6 +102,8 @@ enum {
     EIDOS_OPT_GPU_2D,               /* the 2D screens composed by the GPU:
                                        0 off (the CPU), 1 on (the default;
                                        docs/gpu-2d.md)                     */
+    EIDOS_OPT_FOLLOW_POKEMON,       /* 0 off, 1 on: the lead Pokemon walks
+                                       behind the player (sdk/follow.c)    */
     EIDOS_OPT_COUNT
 };
 

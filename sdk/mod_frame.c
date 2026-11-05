@@ -61,6 +61,7 @@
 
 #include "types.h"
 #include "mod_frame.h"
+#include "follow.h"
 #include "mod_net.h"
 
 /* ------------------------------------------------------------------ */
@@ -262,6 +263,9 @@ void bw_mod_frame_tick(void)
      * handoff's confirmation is asked on the frame (sdk/mod_handoff.c). */
     bw_mod_avatar_frame();
     bw_mod_handoff_frame();
+
+    /* The following Pokemon (sdk/follow.c). */
+    bw_follow_frame();
 }
 
 /* ------------------------------------------------------------------ */

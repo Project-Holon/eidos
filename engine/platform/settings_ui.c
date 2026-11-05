@@ -124,6 +124,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "never goes black." },
     [EIDOS_OPT_GPU_2D]              = { "The graphics card draws the",
                                         "screens. Off uses the CPU." },
+    [EIDOS_OPT_FOLLOW_POKEMON]      = { "The first Pokemon in the party",
+                                        "walks behind you." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -234,6 +236,7 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_OUTLINES]            = "3D outlines",
     [EIDOS_OPT_TRANSITIONS]         = "Map transitions",
     [EIDOS_OPT_GPU_2D]              = "GPU drawing",
+    [EIDOS_OPT_FOLLOW_POKEMON]      = "Following Pokemon",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -256,6 +259,8 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_BATTLE_PLATFORMS,    1, "On" },
     { EIDOS_OPT_MOVE_COLOURS,        0, "Off" },
     { EIDOS_OPT_MOVE_COLOURS,        1, "On" },
+    { EIDOS_OPT_FOLLOW_POKEMON,      0, "Off" },
+    { EIDOS_OPT_FOLLOW_POKEMON,      1, "On" },
     { EIDOS_OPT_PAD_ICONS,           0, "Auto" },
     { EIDOS_OPT_PAD_ICONS,           1, "Xbox 360" },
     { EIDOS_OPT_PAD_ICONS,           2, "Xbox One" },
@@ -741,6 +746,7 @@ static void build_rows(void)
     case TAB_EXTRAS:
         add_row(ROW_OPTION, EIDOS_OPT_EXTRAS_INSTANT_TEXT, 0);
         add_row(ROW_OPTION, EIDOS_OPT_TRANSITIONS, 0);
+        add_row(ROW_OPTION, EIDOS_OPT_FOLLOW_POKEMON, 0);
         if (eidos_settings_get(EIDOS_OPT_LAYOUT_ARRANGEMENT) == EIDOS_LAYOUT_ONE) {
             /* the battle backdrop is the one-screen layout's own */
             add_row(ROW_OPTION, EIDOS_OPT_BATTLE_BACKDROP, 0);

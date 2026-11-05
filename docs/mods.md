@@ -138,6 +138,14 @@ Two points the code makes:
   does not fail on a missing file. `bw_data_exists` is the reader that tells
   the two apart (`sdk/port.h`).
 
+A mod can also add a file the game does not have, for a port feature that
+reads it through the same resolver. The following Pokemon (Extras,
+`sdk/follow.c`) read `follow/<species>.bin`, the walking sprite of a Unova
+Pokemon, which Black and White do not have: 16 colours (BGR555), then six
+32x32 4bpp frames (up twice, down twice, left twice), 3104 bytes.
+`tools/follow_pack.py` makes such a mod from the user's own copy of
+pokeemerald-expansion's overworld sheets.
+
 ## Member overrides
 
 A mod changes one member of a NARC by holding a **directory** at the

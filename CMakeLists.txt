@@ -567,6 +567,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_slots.c       # several single-player saves
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_frame.c        # the mod layer's frame tick
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_avatar.c       # the field avatars
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/follow.c           # the following Pokemon
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_restart.c      # the run restart
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_handoff.c      # the save handoff
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_menu.c        # the mod menu's model

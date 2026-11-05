@@ -86,10 +86,14 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, 0, k_transitions, "", 0, NULL },
     { "Display", "gpu_2d", "2D on the GPU", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       1, k_offon, "", 0, NULL },
+    { "Extras", "follow_pokemon", "Following Pokemon", EIDOS_OPTKIND_CHOICE,
+      0, 1, 1, 0, k_offon, "", 0, NULL },
 };
 
 /* sdk/field_fade.c reads this option by number */
 _Static_assert(EIDOS_OPT_TRANSITIONS == 16, "sdk/field_fade.c's OPT_TRANSITIONS");
+/* and sdk/follow.c this one */
+_Static_assert(EIDOS_OPT_FOLLOW_POKEMON == 18, "sdk/follow.c's OPT_FOLLOW_POKEMON");
 
 static const EidosButtonInfo k_buttons[NBTN] = {
     { EIDOS_PAD_A,      "a",      "A" },
