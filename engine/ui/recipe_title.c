@@ -8,8 +8,8 @@
  *                 the screen that carries it (the loop swaps the two DS
  *                 screens, so the recipe always shows the 3D screen as the
  *                 world), the logo and PRESS START on the other screen.  The
- *                 recipe fills the window with the 3D, copies the logo from
- *                 the other screen (its background keyed out), and draws
+ *                 recipe fills the window with the 3D, draws the logo from
+ *                 the game's files (faded as the other screen fades it), and draws
  *                 PRESS START on a dark plate that blinks like the game's.
  *                 A click anywhere is START.
  *   Title menu    ProcData 0x021BD66C.  The menu's rows are the proc's own
@@ -35,6 +35,8 @@
 #include "input.h"
 #include "choice_list.h"
 #include "textbox.h"
+#include "g2d.h"
+#include "port.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define TT_WEAK __attribute__((weak))
@@ -180,92 +182,80 @@ static int clampi(int v, int lo, int hi)
     return v < lo ? lo : v > hi ? hi : v;
 }
 
-/* The logo, cut out of the DS screen that holds it and kept for the menu. */
-#define LOGO_SX 8
-#define LOGO_SY 16
-#define LOGO_W  240
-#define LOGO_H  142
+/* The logo, read from the game's files: the title's logo layer (overlay 88's
+ * STARTMENU_LogoInit) is archive a/0/2/6, member 0 the 256-colour tiles,
+ * member 1 the screen, member 2 the palette.  The layer sits at (0, 0) on
+ * its DS screen, so the picture lines up with that screen's pixels (the
+ * fade below compares the two).  Colour 0 is the backdrop. */
+#define LOGO_ARC "a/0/2/6"
+#define LOGO_W   256
+#define LOGO_H   192
 
 static u8 g_logo_px[LOGO_W * LOGO_H * 4];
 static UiImage g_logo = { 0, 0, g_logo_px };
-static int g_logo_have;
-static int g_logo_yellow;     /* the brightest capture so far, in yellow pixels */
+static int g_logo_have;         /* 0 not tried, 1 loaded, -1 failed */
 
-/* Take the logo from the screen: a pixel is the backdrop when it is dark and
- * connected to the rectangle's edge through dark pixels (the logo's own dark
- * parts are inside its bright outlines). */
-/* A pixel of the logo's box that belongs to the dark backdrop. */
-static int logo_dark(const u8 *screen, int i)
+static void logo_load(void)
 {
-    const u8 *p = screen + ((size_t)(LOGO_SY + i / LOGO_W) * 256 + (size_t)(LOGO_SX + i % LOGO_W)) * 4;
-    int mx = p[0] > p[1] ? p[0] : p[1];
+    BwArcFile arc;
+    u8 *chr = NULL, *scr = NULL, *pal = NULL;
+    u32 chr_n = 0, scr_n = 0, pal_n = 0;
+    G2dNcgr ncgr;
+    G2dNscr nscr;
+    G2dPalette colors = { NULL, 0 };
+    int have_ncgr = 0, have_nscr = 0;
+    u32 tx, ty;
 
-    return (p[2] > mx ? p[2] : mx) <= 70;
-}
-
-/* Queue a backdrop pixel of the fill once: marked when it is queued. */
-static void logo_push(const u8 *screen, u8 *mask, int *stack, int *sp, int i)
-{
-    if (!mask[i] && logo_dark(screen, i)) {
-        mask[i] = 1;
-        stack[(*sp)++] = i;
-    }
-}
-
-static void logo_capture(const u8 *screen)
-{
-    static u8 mask[LOGO_W * LOGO_H];
-    static int stack[LOGO_W * LOGO_H];
-    int x, y, sp = 0, n = 0, yellow = 0;
-
-    if (screen == NULL) {
+    if (g_logo_have != 0) {
         return;
     }
-    /* a fill from the border over the dark backdrop; a pixel is marked when
-     * it is queued, so each is queued once and the stack never overflows */
-    memset(mask, 0, sizeof mask);
-    for (y = 0; y < LOGO_H; y++) {
-        for (x = 0; x < LOGO_W; x++) {
-            if (x == 0 || y == 0 || x == LOGO_W - 1 || y == LOGO_H - 1) {
-                logo_push(screen, mask, stack, &sp, y * LOGO_W + x);
+    g_logo_have = -1;
+    if (bw_arc_open(&arc, LOGO_ARC) != 0) {
+        return;
+    }
+    chr = g2d_arc_member(&arc, 0, &chr_n);
+    scr = g2d_arc_member(&arc, 1, &scr_n);
+    pal = g2d_arc_member(&arc, 2, &pal_n);
+    bw_arc_close(&arc);
+    have_ncgr = chr != NULL && g2d_ncgr_parse(&ncgr, chr, chr_n) == 0;
+    have_nscr = scr != NULL && g2d_nscr_parse(&nscr, scr, scr_n) == 0;
+    if (have_ncgr && have_nscr && pal != NULL && g2d_palette_append_nclr(&colors, pal, pal_n) == 0
+        && ncgr.bytes_per_tile == 64) {
+        memset(g_logo_px, 0, sizeof g_logo_px);
+        for (ty = 0; ty < nscr.tiles_high && ty * 8 < LOGO_H; ty++) {
+            for (tx = 0; tx < nscr.tiles_wide && tx * 8 < LOGO_W; tx++) {
+                u16 e = nscr.entries[ty * nscr.tiles_wide + tx];
+                u8 px[64];
+                int i;
+
+                g2d_bg_tile(&ncgr, G2D_SCR_TILE(e), G2D_SCR_HFLIP(e), G2D_SCR_VFLIP(e), px);
+                for (i = 0; i < 64; i++) {
+                    u8 *q = g_logo_px + ((size_t)(ty * 8 + (u32)(i / 8)) * LOGO_W
+                                         + tx * 8 + (u32)(i % 8)) * 4;
+
+                    if (px[i] != 0 && px[i] < colors.count) {
+                        q[0] = colors.colors[px[i]].r;
+                        q[1] = colors.colors[px[i]].g;
+                        q[2] = colors.colors[px[i]].b;
+                        q[3] = 255;
+                    }
+                }
             }
         }
+        g_logo.w = LOGO_W;
+        g_logo.h = LOGO_H;
+        g_logo_have = 1;
     }
-    while (sp > 0) {
-        int i = stack[--sp], px = i % LOGO_W, py = i / LOGO_W;
-
-        if (px > 0) logo_push(screen, mask, stack, &sp, i - 1);
-        if (px < LOGO_W - 1) logo_push(screen, mask, stack, &sp, i + 1);
-        if (py > 0) logo_push(screen, mask, stack, &sp, i - LOGO_W);
-        if (py < LOGO_H - 1) logo_push(screen, mask, stack, &sp, i + LOGO_W);
+    if (have_ncgr) {
+        g2d_ncgr_free(&ncgr);
     }
-    for (y = 0; y < LOGO_H * LOGO_W; y++) {
-        const u8 *p = screen + ((size_t)(LOGO_SY + y / LOGO_W) * 256 +
-                                (size_t)(LOGO_SX + y % LOGO_W)) * 4;
-
-        n += mask[y] ? 0 : 1;
-        yellow += (!mask[y] && p[0] > 200 && p[1] > 150 && p[2] < 90) ? 1 : 0;
+    if (have_nscr) {
+        g2d_nscr_free(&nscr);
     }
-    /* the logo is a few thousand pixels and its yellow is bright: a fade or a
-     * blank screen is neither; keep the last good copy */
-    if (n <= 4000 || yellow < 700 || yellow * 100 < g_logo_yellow * 95) {
-        return;
-    }
-    g_logo_yellow = yellow > g_logo_yellow ? yellow : g_logo_yellow;
-    for (y = 0; y < LOGO_H; y++) {
-        for (x = 0; x < LOGO_W; x++) {
-            const u8 *p = screen + ((size_t)(LOGO_SY + y) * 256 + (size_t)(LOGO_SX + x)) * 4;
-            u8 *q = g_logo_px + ((size_t)y * LOGO_W + (size_t)x) * 4;
-
-            q[0] = p[0];
-            q[1] = p[1];
-            q[2] = p[2];
-            q[3] = mask[y * LOGO_W + x] ? 0 : 255;
-        }
-    }
-    g_logo.w = LOGO_W;
-    g_logo.h = LOGO_H;
-    g_logo_have = 1;
+    g2d_palette_free(&colors);
+    free(chr);
+    free(scr);
+    free(pal);
 }
 
 /* How bright the screen's logo is now against the stored copy, 0 to 255:
@@ -275,13 +265,13 @@ static int logo_fade(const u8 *screen)
     long cur = 0, ref = 0;
     int x, y;
 
-    if (screen == NULL || !g_logo_have) {
+    if (screen == NULL || g_logo_have != 1) {
         return 255;
     }
     for (y = 0; y < LOGO_H; y += 2) {
         for (x = 0; x < LOGO_W; x += 2) {
             const u8 *q = g_logo_px + ((size_t)y * LOGO_W + (size_t)x) * 4;
-            const u8 *p = screen + ((size_t)(LOGO_SY + y) * 256 + (size_t)(LOGO_SX + x)) * 4;
+            const u8 *p = screen + ((size_t)y * 256 + (size_t)x) * 4;
 
             if (q[3] != 0) {
                 ref += (long)q[0] + q[1] + q[2];
@@ -301,7 +291,8 @@ static int logo_bounds(int *x0, int *y0, int *x1, int *y1)
 {
     int x, y, a = LOGO_W, b = LOGO_H, c = -1, d = -1;
 
-    if (!g_logo_have) {
+    logo_load();
+    if (g_logo_have != 1) {
         return 0;
     }
     for (y = 0; y < LOGO_H; y++) {
@@ -445,8 +436,8 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     g_title_seen++;
     g_title_passed = 1;
 
-    /* the logo, from the screen that is not the 3D one */
-    logo_capture(other);
+    /* the logo, faded as the screen that is not the 3D one fades it */
+    logo_load();
     m = clampi(W / 28, 6, 22);
     lw = clampi(W * 30 / 100, 100, 200);
     logo_draw(c, m, m, lw, logo_fade(other));
@@ -1203,7 +1194,8 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
      * rows), one column otherwise */
     avail = H - ui_bar_h(c) - 12;
     wide = W * 10 >= H * 15 && n > 0;
-    if (g_logo_have) {
+    logo_load();
+    if (g_logo_have == 1) {
         int x0, y0, x1, y1;
 
         if (logo_bounds(&x0, &y0, &x1, &y1)) {
