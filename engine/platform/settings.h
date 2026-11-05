@@ -110,6 +110,11 @@ enum {
                                        the game runs at the display's rate
                                        and each frame waits for its vblank;
                                        0 the DS's 59.83 Hz by the clock    */
+    EIDOS_OPT_TEXTURE_PACK,         /* the GPU 3D's HD textures: 0 off, 1
+                                       textures/<hash>.png, 2 those, else
+                                       upscaled (texpack.c)                */
+    EIDOS_OPT_TEXTURE_DUMP,         /* 0 off, 1 each new texture written to
+                                       textures/dump/ (texpack.c)          */
     EIDOS_OPT_COUNT
 };
 
