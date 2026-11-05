@@ -3172,6 +3172,18 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
         msg_id = v.list_type == 3 ? 7 : v.list_type == 2 ? 9 : v.list_type == 8 ? 10 : 6;
         snprintf(msg, sizeof(msg), "%s", label(MSG_PLIST_UI, (u32)msg_id, "Choose a Pok\xC3\xA9mon.",
                                               buf, sizeof(buf)));
+        /* a Pokemon that cannot be chosen: the game's reason ("already in
+         * battle", "no energy left to battle") is in its string buffer while
+         * the game shows it (states 21 to 24), and the menu steps aside */
+        if ((rd32(plist, 0x2178) == 29 && rd32(plist, 0x217C) == 21) ||
+            (rd32(plist, 0x2178) >= 21 && rd32(plist, 0x2178) <= 24)) {
+            char why[96];
+
+            if (strbuf_text(rdp(plist, 0x1EA8), why, (int)sizeof(why))) {
+                snprintf(msg, sizeof(msg), "%s", why);
+                menu_open = 0;
+            }
+        }
         ui_panel(c, ix, msg_y, iw, msg_h, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 235);
         ui_text(c, ix + 10, msg_y + ui_text_y(msg_h, UI_FONT_LARGE), msg, UI_WHITE, UI_EDGE,
                 UI_FONT_LARGE, 1);
