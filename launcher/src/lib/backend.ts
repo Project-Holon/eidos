@@ -31,7 +31,26 @@ export type ModInfo = {
   order: number;
   enabled: boolean;
   hasManifest: boolean;
+  catalogId: string | null;
+  version: string | null;
 };
+
+export type CatalogMod = {
+  id: string;
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  official: boolean;
+  multiplayer: boolean;
+  hasCode: boolean;
+  games: string[];
+  tags: string[];
+  size: number;
+  index: number;
+};
+
+export type Catalog = { mods: CatalogMod[]; errors: { entry: string; error: string }[] };
 
 export type PackageInfo = { name: string; files: number; bytes: number };
 
@@ -204,6 +223,8 @@ export const modsSetEnabled = (profile: string, folder: string, enabled: boolean
 export const modsRemove = (profile: string, folder: string) => invoke<void>("mods_remove", { profile, folder });
 export const modsInspect = (path: string) => invoke<PackageInfo>("mods_inspect", { path });
 export const modsAdd = (profile: string, path: string) => invoke<string>("mods_add", { profile, path });
+export const catalogList = () => invoke<Catalog>("catalog_list");
+export const catalogInstall = (profile: string, index: number) => invoke<string>("catalog_install", { profile, index });
 export const openFolder = (what: "root" | "profile" | "mods" | "saves", profile?: string) =>
   invoke<void>("open_folder", { what, profile: profile ?? null });
 export const getSettings = () => invoke<SettingsView>("get_settings");

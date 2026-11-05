@@ -9,7 +9,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::layout::Layout;
 
-pub const DEFAULT: &str = "Default";
+/// The two profiles every launcher has: one per game, chosen with the
+/// sidebar's Black / White switch.  They keep their names and cannot be
+/// deleted; their game is theirs.
+pub const BLACK: &str = "Black";
+pub const WHITE: &str = "White";
+/// What the Black profile was called before the two game profiles.
+const OLD_DEFAULT: &str = "Default";
+
+/// Whether `name` is one of the two game profiles.
+pub fn is_game_profile(name: &str) -> bool {
+    name == BLACK || name == WHITE
+}
 /// The version value that follows the newest installed version.
 pub const LATEST: &str = "latest";
 const FILE: &str = "profile.json";
@@ -115,11 +126,24 @@ fn read_file(dir: &Path) -> ProfileFile {
         .unwrap_or_default()
 }
 
-/// Makes the Default profile when it is missing.
+/// Makes the Black and White profiles when they are missing.  The old
+/// Default profile becomes Black, with its saves, mods and settings.
 pub fn ensure_default(layout: &Layout) -> io::Result<()> {
-    let dir = layout.profile(DEFAULT);
-    if !dir.join(FILE).exists() {
-        write_file(&dir, &ProfileFile::default())?;
+    let old = layout.profile(OLD_DEFAULT);
+    let black = layout.profile(BLACK);
+    if old.join(FILE).exists() && !black.exists() {
+        fs::rename(&old, &black)?;
+    }
+    // Black is written as no game (the default), as set_game does.
+    for (name, game) in [(BLACK, ""), (WHITE, "white")] {
+        let dir = layout.profile(name);
+        let exists = dir.join(FILE).exists();
+        let mut file = if exists { read_file(&dir) } else { ProfileFile::default() };
+        let have = if file.game == "black" { "" } else { file.game.as_str() };
+        if have != game || !exists {
+            file.game = game.to_string();
+            write_file(&dir, &file)?;
+        }
         for sub in ["mods", "saves"] {
             fs::create_dir_all(dir.join(sub))?;
         }
@@ -127,11 +151,11 @@ pub fn ensure_default(layout: &Layout) -> io::Result<()> {
     Ok(())
 }
 
-/// Every profile, Default first, the rest by name.
+/// Every profile, Black and White first, the rest by name.
 pub fn list(layout: &Layout) -> io::Result<Vec<Profile>> {
     ensure_default(layout)?;
     let mut names = list_names(layout);
-    names.sort_by_key(|n| (n != DEFAULT, n.to_lowercase()));
+    names.sort_by_key(|n| (n != BLACK, n != WHITE, n.to_lowercase()));
     Ok(names
         .into_iter()
         .map(|name| {
@@ -195,6 +219,9 @@ pub fn set_game(layout: &Layout, name: &str, game: &str) -> Result<(), String> {
     if game != "black" && game != "white" {
         return Err("That game is not known.".into());
     }
+    if is_game_profile(name) && !name.eq_ignore_ascii_case(game) {
+        return Err(format!("The {name} profile plays Pokémon {name}."));
+    }
     let dir = layout.profile(name);
     let file = ProfileFile {
         game: if game == "black" { String::new() } else { game.to_string() },
@@ -240,8 +267,8 @@ pub fn set_data_root(layout: &Layout, name: &str, path: &str) -> Result<(), Stri
 }
 
 pub fn rename(layout: &Layout, from: &str, to: &str) -> Result<(), String> {
-    if from == DEFAULT {
-        return Err("The Default profile keeps its name.".into());
+    if is_game_profile(from) {
+        return Err(format!("The {from} profile keeps its name."));
     }
     get(layout, from)?;
     let to = validate_name(to)?;
@@ -288,8 +315,8 @@ pub fn duplicate(layout: &Layout, name: &str) -> Result<Profile, String> {
 }
 
 pub fn delete(layout: &Layout, name: &str) -> Result<(), String> {
-    if name == DEFAULT {
-        return Err("The Default profile cannot be deleted.".into());
+    if is_game_profile(name) {
+        return Err(format!("The {name} profile cannot be deleted."));
     }
     get(layout, name)?;
     fs::remove_dir_all(layout.profile(name)).map_err(|e| e.to_string())
@@ -309,13 +336,34 @@ mod tests {
     fn default_always_exists_and_comes_first() {
         let (_t, l) = layout();
         let first = list(&l).unwrap();
-        assert_eq!(first.len(), 1);
-        assert_eq!(first[0].name, DEFAULT);
+        assert_eq!(first.len(), 2);
+        assert_eq!(first[0].name, BLACK);
+        assert_eq!(first[0].game, "");
+        assert_eq!(first[1].name, WHITE);
+        assert_eq!(first[1].game, "white");
         assert_eq!(first[0].version, LATEST);
         create(&l, "alpha", "1.0.0").unwrap();
         create(&l, "Beta", LATEST).unwrap();
         let names: Vec<_> = list(&l).unwrap().into_iter().map(|p| p.name).collect();
-        assert_eq!(names, ["Default", "alpha", "Beta"]);
+        assert_eq!(names, ["Black", "White", "alpha", "Beta"]);
+        // their game is theirs
+        assert!(set_game(&l, WHITE, "black").is_err());
+        assert!(set_game(&l, BLACK, "white").is_err());
+        assert!(set_game(&l, "alpha", "white").is_ok());
+    }
+
+    #[test]
+    fn the_old_default_becomes_black() {
+        let (_t, l) = layout();
+        let old = l.profile("Default");
+        write_file(&old, &ProfileFile { language: "it".into(), ..ProfileFile::default() }).unwrap();
+        fs::create_dir_all(old.join("saves")).unwrap();
+        fs::write(old.join("saves/pokeblack.sav"), b"x").unwrap();
+        let names: Vec<_> = list(&l).unwrap().into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["Black", "White"]);
+        assert!(l.profile(BLACK).join("saves/pokeblack.sav").is_file());
+        assert_eq!(get(&l, BLACK).unwrap().language, "it");
+        assert!(!old.exists());
     }
 
     #[test]
@@ -346,15 +394,17 @@ mod tests {
         fs::write(l.profile("one").join("saves/slot1.sav"), b"x").unwrap();
         rename(&l, "one", "two").unwrap();
         assert!(!l.profile("one").exists());
-        assert!(rename(&l, "two", "Default").is_err());
-        assert!(rename(&l, DEFAULT, "x").is_err());
+        assert!(rename(&l, "two", "Black").is_err());
+        assert!(rename(&l, WHITE, "x").is_err());
+        assert!(rename(&l, BLACK, "x").is_err());
         let copy = duplicate(&l, "two").unwrap();
         assert_eq!(copy.name, "two copy");
         assert!(l.profile("two copy").join("saves/slot1.sav").is_file());
         assert_eq!(duplicate(&l, "two").unwrap().name, "two copy 2");
         delete(&l, "two copy").unwrap();
         assert!(!l.profile("two copy").exists());
-        assert!(delete(&l, DEFAULT).is_err());
+        assert!(delete(&l, BLACK).is_err());
+        assert!(delete(&l, WHITE).is_err());
         assert!(delete(&l, "missing").is_err());
     }
 

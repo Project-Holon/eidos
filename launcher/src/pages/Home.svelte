@@ -21,6 +21,8 @@
     openFolder,
     newerThan,
     play,
+    romLibrary,
+    gamesOf,
     supportsOneScreen,
     versionLabel,
     type Layout,
@@ -40,6 +42,7 @@
     onSelect,
     onRefresh,
     onGoto,
+    onNeedRom,
   }: {
     ov: Overview;
     selected: string;
@@ -47,25 +50,26 @@
     onSelect: (name: string) => void;
     onRefresh: () => void;
     onGoto: (page: "versions" | "profiles") => void;
+    onNeedRom: (game: "black" | "white") => void;
   } = $props();
 
   let error = $state<string | null>(null);
   let starting = $state(false);
 
-  // The box legendaries, drawn from the player's ROMs: Zekrom by night (a
-  // Black ROM in the library), Reshiram by day (a White ROM). Without that
-  // game's ROM, its theme keeps the eidos dragon.
+  // The box legendaries, drawn from the player's ROMs: Reshiram by day (on
+  // Black's box: a Black ROM in the library), Zekrom by night (on White's
+  // box: a White ROM). Without that game's ROM, its theme keeps the eidos
+  // dragon.
   let zekrom = $state<string | null>(null);
   let reshiram = $state<string | null>(null);
   onMount(() => {
-    coverArt("black")
+    coverArt("white")
       .then((url) => (zekrom = url))
       .catch(() => {});
-    coverArt("white")
+    coverArt("black")
       .then((url) => (reshiram = url))
       .catch(() => {});
   });
-
   // The version a Play press runs, as the backend resolves it.
   const version = $derived.by(() => {
     if (!current) return null;
@@ -139,6 +143,11 @@
   // The profile's saves, read from its save files; the party drawn from the
   // player's ROMs. Read again when a game closes (it may have saved).
   let saveList = $state<Save[]>([]);
+  // The saves of the game the profile plays: a Black save is not shown
+  // while the profile plays White, and the other way round.
+  const game = $derived<"black" | "white">(current?.game === "white" ? "white" : "black");
+  const shown = $derived(saveList.filter((s) => s.game === game));
+  const hidden = $derived(saveList.length - shown.length);
   let sprites = $state<Record<string, string | null>>({});
   const art = (s: Save, species: number) => sprites[`${s.game}:${species}`];
   // The badge case's badges and empty slots, per game.
@@ -213,6 +222,15 @@
 
   async function start(layout: Layout) {
     error = null;
+    // no ROM of the profile's game yet: ask for it, rather than an error
+    try {
+      if (!gamesOf(await romLibrary()).includes(game)) {
+        onNeedRom(game);
+        return;
+      }
+    } catch {
+      /* the launch below reports what is missing */
+    }
     starting = true;
     try {
       await play(selected, undefined, layout);
@@ -346,13 +364,13 @@
   <aside class="saves window" aria-label="Saves">
     <header>
       <span class="section-label">Saves in {selected}</span>
-      <span class="faint small">{saveList.length} of 8</span>
+      <span class="faint small">{saveList.length} of 8{#if hidden > 0} · {hidden} {game === "black" ? "White" : "Black"} hidden{/if}</span>
     </header>
       <div class="list">
-        {#if saveList.length === 0}
+        {#if shown.length === 0}
           <p class="faint small">No saves yet.</p>
         {/if}
-        {#each saveList as s (s.slot)}
+        {#each shown as s (s.slot)}
           <button
             class="save"
             class:current={s.current}

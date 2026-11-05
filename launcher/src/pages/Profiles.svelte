@@ -166,7 +166,7 @@
             <div class="actions">
               {#if !MOBILE}<button class="quiet outlined" title="Open this profile's folder" onclick={() => openFolder("profile", p.name)}><Icon name="folder" size={15} />Folder</button>{/if}
               <button class="quiet outlined" title="Make a copy of this profile" onclick={() => duplicate(p.name)}><Icon name="copy" size={15} />Copy</button>
-              {#if p.name !== "Default"}
+              {#if p.name !== "Black" && p.name !== "White"}
                 <button class="quiet" title="Rename" onclick={() => ((renaming = p.name), (renameTo = p.name))}><Icon name="edit" size={15} /></button>
                 <button class="quiet danger" title="Delete" onclick={() => askDelete(p.name)}><Icon name="trash" size={15} /></button>
               {/if}
@@ -193,17 +193,20 @@
                 class="lang-select"
                 value={p.game || "black"}
                 aria-label="Game of {p.name}"
-                disabled={gameChoices.length < 2 || ov.running.includes(p.name)}
+                disabled={p.name === "Black" || p.name === "White" || (gameChoices.length < 2 && gameChoices.includes((p.game || "black") as "black" | "white")) || ov.running.includes(p.name)}
                 title={gameChoices.length < 2 ? "Add ROMs of the other game in Settings to choose it" : undefined}
                 onchange={(e) => run(() => setProfileGame(p.name, e.currentTarget.value))}>
                 {#each gameChoices as g (g)}<option value={g}>{g === "black" ? "Pokémon Black" : "Pokémon White"}</option>{/each}
+                {#if !gameChoices.includes((p.game || "black") as "black" | "white")}
+                  <option value={p.game || "black"}>{(p.game || "black") === "black" ? "Pokémon Black" : "Pokémon White"} (no ROM)</option>
+                {/if}
               </select>
               <span class="label lang-label"><Icon name="translate" size={15} />Language</span>
               <select
                 class="lang-select"
                 value={p.language || "en"}
                 aria-label="Language of {p.name}"
-                disabled={langChoices.length < 2 || ov.running.includes(p.name)}
+                disabled={(langChoices.length < 2 && langChoices.some((l) => l.code === (p.language || "en"))) || ov.running.includes(p.name)}
                 title={langChoices.length < 2 ? "Add ROMs in other languages in Settings to choose one" : undefined}
                 onchange={(e) => run(() => setProfileLanguage(p.name, e.currentTarget.value))}>
                 {#each langChoices as l (l.code)}<option value={l.code}>{langLabel(l)}</option>{/each}

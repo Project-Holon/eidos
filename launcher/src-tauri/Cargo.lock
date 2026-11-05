@@ -917,6 +917,7 @@ name = "eidos-launcher"
 version = "0.1.0"
 dependencies = [
  "eidos-mod",
+ "katalogos",
  "nds",
  "releases",
  "serde",
@@ -936,8 +937,8 @@ dependencies = [
 
 [[package]]
 name = "eidos-mod"
-version = "0.4.1"
-source = "git+https://github.com/Project-Holon/morphe?tag=v0.4.1#2b50bf5f5581a02d8eee6e3d1b942f663b2eb88f"
+version = "0.7.0"
+source = "git+https://github.com/Project-Holon/morphe?tag=v0.7.0#0b93ddb391a1f4cf36e12b225667b4b0cc0bbd91"
 dependencies = [
  "serde",
  "serde_json",
@@ -2037,6 +2038,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "katalogos"
+version = "0.7.0"
+source = "git+https://github.com/Project-Holon/morphe?tag=v0.7.0#0b93ddb391a1f4cf36e12b225667b4b0cc0bbd91"
+dependencies = [
+ "eidos-mod",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2253,8 +2265,8 @@ dependencies = [
 
 [[package]]
 name = "nds"
-version = "0.4.1"
-source = "git+https://github.com/Project-Holon/morphe?tag=v0.4.1#2b50bf5f5581a02d8eee6e3d1b942f663b2eb88f"
+version = "0.7.0"
+source = "git+https://github.com/Project-Holon/morphe?tag=v0.7.0#0b93ddb391a1f4cf36e12b225667b4b0cc0bbd91"
 dependencies = [
  "png",
  "serde",
@@ -2945,8 +2957,8 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "releases"
-version = "0.4.1"
-source = "git+https://github.com/Project-Holon/morphe?tag=v0.4.1#2b50bf5f5581a02d8eee6e3d1b942f663b2eb88f"
+version = "0.7.0"
+source = "git+https://github.com/Project-Holon/morphe?tag=v0.7.0#0b93ddb391a1f4cf36e12b225667b4b0cc0bbd91"
 dependencies = [
  "serde",
  "serde_json",

@@ -22,6 +22,10 @@ pub struct ModInfo {
     pub order: i32,
     pub enabled: bool,
     pub has_manifest: bool,
+    /// The katalogos mod it was installed as, and its version.
+    pub catalog_id: Option<String>,
+    pub version: Option<String>,
+    pub icon: Option<crate::catalog::UiIcon>,
 }
 
 /// What a `.bw` package holds, for the confirmation before adding it.
@@ -40,12 +44,16 @@ fn read_info(dir: &Path, enabled: bool) -> ModInfo {
         .unwrap_or_default();
     let text = fs::read_to_string(dir.join(MANIFEST)).ok();
     let m = Manifest::parse(text.as_deref().unwrap_or(""), &folder);
+    let installed = crate::catalog::installed(dir);
     ModInfo {
         folder,
         name: m.name,
         order: m.order,
         enabled,
         has_manifest: text.is_some(),
+        icon: m.icon.as_ref().and_then(|i| crate::catalog::UiIcon::from_manifest(i, dir)),
+        catalog_id: installed.as_ref().map(|i| i.id.clone()),
+        version: installed.map(|i| i.version).or_else(|| (!m.version.is_empty()).then(|| m.version.clone())),
     }
 }
 
@@ -161,6 +169,57 @@ pub fn add_package(profile_dir: &Path, bw: &Path) -> Result<String, String> {
     Ok(folder)
 }
 
+/// The folder that holds the katalogos mod `id` in this profile, on or off.
+fn catalog_folder(profile_dir: &Path, id: &str) -> Option<(PathBuf, bool)> {
+    for (sub, on) in [(ON, true), (OFF, false)] {
+        for d in subdirs(&profile_dir.join(sub)) {
+            if crate::catalog::installed(&d).is_some_and(|i| i.id == id) {
+                return Some((d, on));
+            }
+        }
+    }
+    None
+}
+
+/// Unpacks a katalogos mod's package into the profile, with its
+/// `katalogos.json`.  An installed copy of the same mod is replaced in place
+/// (an update), and keeps its on or off switch.
+pub fn install_package(
+    profile_dir: &Path,
+    bw: &Path,
+    name: &str,
+    info: &crate::catalog::Installed,
+) -> Result<String, String> {
+    package::inspect(bw).map_err(|e| e.to_string())?;
+    let (dest, folder) = match catalog_folder(profile_dir, &info.id) {
+        Some((dir, _)) => {
+            let folder = dir.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            (dir, folder)
+        }
+        None => {
+            let folder = folder_name(name);
+            if taken(profile_dir, &folder) {
+                return Err(format!("A mod named {folder} is already installed."));
+            }
+            (profile_dir.join(ON).join(&folder), folder)
+        }
+    };
+    // unpack beside it first, so a failed update leaves the old copy
+    let staging = dest.with_file_name(format!(".{folder}.new"));
+    let _ = fs::remove_dir_all(&staging);
+    if let Err(e) = package::unpack(bw, &staging) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(e.to_string());
+    }
+    let text = serde_json::to_string_pretty(info).map_err(|e| e.to_string())?;
+    fs::write(staging.join(crate::catalog::INSTALLED), text).map_err(|e| e.to_string())?;
+    if dest.exists() {
+        fs::remove_dir_all(&dest).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&staging, &dest).map_err(|e| e.to_string())?;
+    Ok(folder)
+}
+
 /// Copies a mod folder into the profile's `mods/`.
 pub fn add_folder(profile_dir: &Path, src: &Path) -> Result<String, String> {
     if !src.is_dir() {
@@ -242,5 +301,33 @@ mod tests {
         fs::write(&junk, b"not a zip").unwrap();
         assert!(add_package(&profile, &junk).is_err());
         assert!(!profile.join("mods/junk").exists());
+    }
+
+    #[test]
+    fn installs_and_updates_a_catalog_mod() {
+        use crate::catalog::Installed;
+        let t = tempfile::tempdir().unwrap();
+        let src = t.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join(MANIFEST), "name = Nuzlocke\nversion = 1.0.0\n").unwrap();
+        let bw = t.path().join("mod.bw");
+        package::pack(&src, &bw).unwrap();
+        let profile = t.path().join("profile");
+        let v1 = Installed { id: "katalogos/nuzlocke".into(), version: "1.0.0".into() };
+        assert_eq!(install_package(&profile, &bw, "Nuzlocke", &v1).unwrap(), "Nuzlocke");
+        let l = list(&profile);
+        assert_eq!(l[0].catalog_id.as_deref(), Some("katalogos/nuzlocke"));
+        assert_eq!(l[0].version.as_deref(), Some("1.0.0"));
+        // switched off, then updated: it stays off and in the same folder
+        set_enabled(&profile, "Nuzlocke", false).unwrap();
+        let v2 = Installed { id: "katalogos/nuzlocke".into(), version: "1.1.0".into() };
+        assert_eq!(install_package(&profile, &bw, "Renamed", &v2).unwrap(), "Nuzlocke");
+        let l = list(&profile);
+        assert_eq!(l.len(), 1);
+        assert!(!l[0].enabled);
+        assert_eq!(l[0].version.as_deref(), Some("1.1.0"));
+        // another mod with the same folder name is refused
+        let other = Installed { id: "someone/nuzlocke".into(), version: "1.0.0".into() };
+        assert!(install_package(&profile, &bw, "Nuzlocke", &other).is_err());
     }
 }

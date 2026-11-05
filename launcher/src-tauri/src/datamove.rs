@@ -306,8 +306,9 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let layout = Layout::new(t.path().join("user"));
         profile::create(&layout, "p", "latest").unwrap();
-        // the Default profile elsewhere: "p" alone uses the data moved
-        profile::set_data_root(&layout, "Default", &t.path().join("other").to_string_lossy()).unwrap();
+        // the Black and White profiles elsewhere: "p" alone uses the data moved
+        profile::set_data_root(&layout, profile::BLACK, &t.path().join("other").to_string_lossy()).unwrap();
+        profile::set_data_root(&layout, profile::WHITE, &t.path().join("other").to_string_lossy()).unwrap();
         let home = t.path().join("home");
         let src = home.join("extract");
         fs::create_dir_all(src.join("sub")).unwrap();

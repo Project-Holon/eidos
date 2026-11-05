@@ -210,6 +210,78 @@ pub fn code_for(game: &str, language: &str) -> Option<String> {
     Some(format!("IR{g}{l}"))
 }
 
+/// The profile's game and language for a cartridge code eidos plays (the
+/// reverse of `code_for`).
+pub fn choice_of(code: &str) -> Option<(&'static str, &'static str)> {
+    let b = code.as_bytes();
+    if b.len() != 4 || &b[..2] != b"IR" {
+        return None;
+    }
+    let game = match b[2] {
+        b'B' => "black",
+        b'A' => "white",
+        _ => return None,
+    };
+    let language = match b[3] {
+        b'O' => "en",
+        b'F' => "fr",
+        b'D' => "de",
+        b'I' => "it",
+        b'S' => "es",
+        _ => return None,
+    };
+    Some((game, language))
+}
+
+/// The good dumps of the library that eidos plays, in the library's order.
+pub fn playable(lib: &[Entry]) -> Vec<&Entry> {
+    lib.iter()
+        .filter(|e| known(e).is_some() && e.path.is_file() && choice_of(&e.code).is_some())
+        .collect()
+}
+
+/// The game and language a profile should play when the library has no ROM
+/// for its own: the library's only language of the profile's game, or, with
+/// no ROM of that game, the library's only cartridge.  None when the
+/// profile's ROM is there, or when the library leaves a real choice (the
+/// player picks in Profiles).
+#[cfg(test)]
+pub fn fit(lib: &[Entry], game: &str, language: &str) -> Option<(&'static str, &'static str)> {
+    fit_in(lib, game, language, false)
+}
+
+/// `fit`, keeping the profile's game when `keep_game` (the Black and White
+/// profiles: only their language follows the library).
+pub fn fit_in(lib: &[Entry], game: &str, language: &str, keep_game: bool) -> Option<(&'static str, &'static str)> {
+    if code_for(game, language).as_deref().and_then(|c| with_code(lib, c)).is_some() {
+        return None;
+    }
+    let mut codes: Vec<&str> = playable(lib).iter().map(|e| e.code.as_str()).collect();
+    codes.sort_unstable();
+    codes.dedup();
+    let want = if game == "white" { "white" } else { "black" };
+    let same: Vec<&str> = codes
+        .iter()
+        .copied()
+        .filter(|c| choice_of(c).is_some_and(|(g, _)| g == want))
+        .collect();
+    match (same.as_slice(), codes.as_slice()) {
+        ([one], _) => choice_of(one),
+        ([], [one]) if !keep_game => choice_of(one),
+        _ => None,
+    }
+}
+
+/// A cartridge code as players say it: "Black, Italian".
+pub fn describe(code: &str) -> String {
+    let b = code.as_bytes();
+    if b.len() != 4 {
+        return code.to_string();
+    }
+    let game = if b[2] == b'A' { "White" } else { "Black" };
+    format!("{game}, {}", language(b[3]))
+}
+
 /// A good dump of the cartridge `code` in the library.
 pub fn with_code<'a>(lib: &'a [Entry], code: &str) -> Option<&'a Entry> {
     lib.iter().find(|e| e.code == code && known(e).is_some() && e.path.is_file())
@@ -331,6 +403,37 @@ mod tests {
         assert_eq!(v[0].name, Some("Pokemon - Black Version (USA, Europe)"));
         assert!(v[0].in_use);
         assert_eq!(for_game(&[e]).map(|e| e.code.as_str()), Some("IRBO"));
+    }
+
+    #[test]
+    fn a_profile_fits_the_only_rom() {
+        let dump = |sha1: &str, code: &str| Entry {
+            path: std::env::current_exe().unwrap(),
+            size: 0,
+            modified: 0,
+            sha1: sha1.into(),
+            code: code.into(),
+        };
+        let black_it = dump("699f8c6a8390b5e30236b6c386bc3c4bd7bdc44e", "IRBI");
+        let white_it = dump("2e33164d26236dd499f75d1de3123d85e822d502", "IRAI");
+        let black_fr = dump("a559da54839663d8f8f3f03382e5665a61873d22", "IRBF");
+        // Italian Black alone: an English Black profile becomes Italian
+        assert_eq!(fit(&[black_it.clone()], "black", "en"), Some(("black", "it")));
+        assert_eq!(fit(&[black_it.clone()], "", ""), Some(("black", "it")));
+        // its own ROM is there: nothing changes
+        assert_eq!(fit(&[black_it.clone()], "black", "it"), None);
+        // a White profile with only Black: the only cartridge
+        assert_eq!(fit(&[black_it.clone()], "white", "en"), Some(("black", "it")));
+        // the same game in one language, the other game too: the same game
+        assert_eq!(fit(&[black_it.clone(), white_it.clone()], "white", "en"), Some(("white", "it")));
+        // the White profile keeps White with only a Black ROM
+        assert_eq!(fit_in(&[black_it.clone()], "white", "en", true), None);
+        assert_eq!(fit_in(&[black_it.clone(), white_it.clone()], "white", "en", true), Some(("white", "it")));
+        // two languages of the game: the player chooses
+        assert_eq!(fit(&[black_it, black_fr], "black", "en"), None);
+        // an empty library: nothing to fit
+        assert_eq!(fit(&[], "black", "en"), None);
+        let _ = white_it;
     }
 
     /// Real dumps, when EIDOS_TEST_ROMS names a folder holding some: each

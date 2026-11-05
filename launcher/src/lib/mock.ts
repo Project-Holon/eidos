@@ -5,7 +5,8 @@
 
 const overview = {
   profiles: [
-    { name: "Default", version: "latest", dataRoot: "", language: "", game: "" },
+    { name: "Black", version: "latest", dataRoot: "", language: "", game: "" },
+    { name: "White", version: "latest", dataRoot: "", language: "", game: "white" },
     { name: "Nuzlocke", version: "0.1.4", dataRoot: "E:\\Games\\eidos", language: "fr", game: "white" },
     { name: "Randomizer", version: "local", dataRoot: "", language: "ja-kana", game: "" },
   ],
@@ -27,10 +28,20 @@ const remote = [
 ];
 
 const mods = [
-  { folder: "hd-sprites", name: "HD Sprites", order: 0, enabled: true, hasManifest: true },
-  { folder: "fast-bike", name: "Fast Bike", order: 1, enabled: false, hasManifest: true },
-  { folder: "my-test", name: "my-test", order: 2, enabled: true, hasManifest: false },
+  { folder: "Nuzlocke", name: "Nuzlocke", order: 0, enabled: true, hasManifest: true, catalogId: "katalogos/nuzlocke", version: "0.9.0" },
+  { folder: "fast-bike", name: "Fast Bike", order: 1, enabled: false, hasManifest: true, catalogId: null, version: null },
+  { folder: "my-test", name: "my-test", order: 2, enabled: true, hasManifest: false, catalogId: null, version: null },
 ];
+
+const catalog = {
+  mods: [
+    { id: "katalogos/nuzlocke", name: "Nuzlocke", version: "1.0.0", author: "Project Holon", description: "The Nuzlocke challenge: catch only the first wild Pokemon of each area, and a Pokemon that faints is gone for good.", official: true, multiplayer: false, hasCode: false, games: ["black", "white"], tags: ["challenge", "nuzlocke"], size: 2400, index: 0 },
+    { id: "katalogos/soul-link", name: "Soul Link", version: "1.0.0", author: "Project Holon", description: "A Nuzlocke for two or more players in one multiplayer game. The Pokemon you catch in the same area are linked.", official: true, multiplayer: true, hasCode: true, games: ["black", "white"], tags: ["challenge", "multiplayer"], size: 9100, index: 1 },
+    { id: "katalogos/exp-share", name: "Exp. Share", version: "1.0.0", author: "Project Holon", description: "The whole party gains experience in every battle. Can be switched off in the settings.", official: true, multiplayer: false, hasCode: false, games: ["black", "white"], tags: ["quality of life"], size: 700, index: 2 },
+    { id: "someone/fairy-type", name: "Fairy type", version: "0.3.0", author: "someone", description: "Adds the Fairy type.", official: false, multiplayer: false, hasCode: false, games: ["black"], tags: ["types"], size: 512000, index: 3 },
+  ],
+  errors: [],
+};
 
 const settings = {
   repo: "Project-Holon/eidos",
@@ -52,6 +63,8 @@ const answers: Record<string, unknown> = {
   overview,
   list_remote: remote,
   mods_list: mods,
+  catalog_list: catalog,
+  catalog_install: "Nuzlocke",
   get_settings: settings,
   save_settings: settings,
   // ?onelang: a library in one language (the picker greyed out)
@@ -114,7 +127,7 @@ export function installMock() {
         return r && r.ok ? Array.from(new Uint8Array(await r.arrayBuffer())) : null;
       }
       if (cmd === "species_art" || cmd === "cover_art") {
-        const n = cmd === "cover_art" ? (args?.game === "white" ? 643 : 644) : args?.species;
+        const n = cmd === "cover_art" ? (args?.game === "white" ? 644 : 643) : args?.species;
         const r = await fetch(`/mock/${n}.png`).catch(() => null);
         if (!r || !r.ok) return null;
         return Array.from(new Uint8Array(await r.arrayBuffer()));

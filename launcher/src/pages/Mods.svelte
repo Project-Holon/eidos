@@ -11,6 +11,10 @@
     modsSetEnabled,
     openFolder,
     getSettings,
+    catalogList,
+    catalogInstall,
+    type Catalog,
+    type CatalogMod,
     type ModInfo,
     type Overview,
   } from "../lib/backend";
@@ -44,6 +48,45 @@
   $effect(() => {
     getSettings().then((s) => (indexUrl = s.indexUrl));
   });
+
+  // The katalogos index: the mods that can be installed.
+  let catalog = $state<Catalog | null>(null);
+  let catalogError = $state("");
+  let loadingCatalog = $state(false);
+  let installing = $state<string | null>(null);
+
+  async function loadCatalog() {
+    loadingCatalog = true;
+    catalogError = "";
+    try {
+      catalog = await catalogList();
+    } catch (e) {
+      catalogError = message(e);
+    } finally {
+      loadingCatalog = false;
+    }
+  }
+
+  $effect(() => {
+    loadCatalog();
+  });
+
+  const installedOf = (c: CatalogMod) => mods.find((m) => m.catalogId === c.id);
+
+  function modState(c: CatalogMod): "install" | "update" | "installed" {
+    const m = installedOf(c);
+    if (!m) return "install";
+    return m.version === c.version ? "installed" : "update";
+  }
+
+  async function install(c: CatalogMod) {
+    installing = c.id;
+    const s = modState(c);
+    await run(() => catalogInstall(selected, c.index), s === "update" ? `${c.name} updated.` : `${c.name} installed.`);
+    installing = null;
+  }
+
+  const size = (b: number) => (b < 1048576 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1048576).toFixed(1)} MB`);
 
   async function run(task: () => Promise<unknown>, done?: string) {
     try {
@@ -140,8 +183,49 @@
   </div>
 
   <div>
-    <h2 class="section-label">Index</h2>
-    <p class="muted">{indexUrl ? indexUrl : "No index."}</p>
+    <div class="catalog-head">
+      <h2 class="section-label">Get mods</h2>
+      <button class="quiet" disabled={loadingCatalog} title="Refresh" onclick={loadCatalog}><Icon name="refresh" size={15} /></button>
+    </div>
+    {#if indexUrl}<p class="muted">From {indexUrl}</p>{/if}
+    {#if catalogError}
+      <p class="muted">Could not read the mod list: {catalogError}</p>
+    {/if}
+    <ul class="rows window">
+      {#if catalog}
+        {#each catalog.mods as c (c.id)}
+          {@const st = modState(c)}
+          <li class="catalog">
+            <div class="main">
+              <span class="title">
+                {c.name}
+                {#if c.official}<span class="badge accent">Official</span>{/if}
+                {#if c.multiplayer}<span class="badge">Multiplayer</span>{/if}
+                {#if c.hasCode}<span class="badge" title="This mod runs its own code in the game">Code</span>{/if}
+              </span>
+              <span class="sub">{c.author} · {c.version} · {size(c.size)}{c.games.length === 1 ? ` · ${c.games[0] === "black" ? "Black" : "White"} only` : ""}</span>
+              <span class="desc">{c.description}</span>
+            </div>
+            <div class="actions">
+              {#if st === "installed"}
+                <span class="badge"><Icon name="check" size={13} />Installed</span>
+              {:else}
+                <button class={st === "update" ? "primary" : ""} disabled={running || installing !== null} onclick={() => install(c)}>
+                  <Icon name="download" size={15} />{installing === c.id ? "Installing" : st === "update" ? "Update" : "Install"}
+                </button>
+              {/if}
+            </div>
+          </li>
+        {:else}
+          <li class="empty">No mods in the list</li>
+        {/each}
+        {#each catalog.errors as e}
+          <li class="empty">{e.entry}: {e.error}</li>
+        {/each}
+      {:else if loadingCatalog}
+        <li class="empty">Loading the mod list</li>
+      {/if}
+    </ul>
   </div>
 </section>
 
@@ -176,6 +260,22 @@
   }
   .off .title {
     color: var(--muted);
+  }
+  .catalog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .catalog .title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .desc {
+    color: var(--muted);
+    font-size: 0.85rem;
+    line-height: 1.35;
   }
   .switch {
     position: relative;
