@@ -1744,6 +1744,18 @@ static void apply_battle_damage(const BwEventPayload *in, BwEventCall *call)
  * the Pokemon that fainted; the cause of the faint comes from the battle
  * context, which the damage and the move events feed.
  */
+/*
+ * battle.faint fires once per Pokemon that faints.  The server calls
+ * BTL_SERVER_FLOW_ProcFaintedPoke for the attacker and every target after
+ * each move, fainted or not, and the function itself answers 1 only for a
+ * Pokemon that has just fainted (its own once-only flag), so the event is
+ * bound after it returns and only for that answer.
+ */
+static int battle_faint_happened(const BwEventCall *call)
+{
+    return call->ret != 0;
+}
+
 static void build_battle_faint(const BwEventCall *call, BwEventPayload *out)
 {
     const BwPortFlowHead *flow = (const BwPortFlowHead *)call->a[0];
@@ -2480,7 +2492,8 @@ static const BwEventBinding g_battle_rows[] = {
       apply_battle_damage, NULL, NULL },
 
     { BW_MOD_REGION_OVL(93), 0x021C4F64u, BW_EVENT_BATTLE_FAINT,
-      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_battle_faint, NULL, NULL, NULL },
+      BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_battle_faint, NULL, NULL,
+      battle_faint_happened },
 
     { BW_MOD_REGION_OVL(93), 0x021CBA40u, BW_EVENT_CATCH_ATTEMPT,
       BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_catch_attempt,
