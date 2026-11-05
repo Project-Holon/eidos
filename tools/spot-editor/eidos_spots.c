@@ -3005,6 +3005,27 @@ static int story_rank(const BmapSpot *r)
     return N_STORY;
 }
 
+/* A place's trainers and wild areas: checked and all. */
+static void place_counts(const char *name, int *td, int *tt, int *wd, int *wt)
+{
+    int k;
+
+    for (k = 0; k < bmap_spots_count(); k++) {
+        const BmapSpot *r = bmap_spots_get(k);
+
+        if (r->view != 0 || !place_is(r, name)) {
+            continue;
+        }
+        if (r->kind == 'T') {
+            (*tt)++;
+            *td += r->ok != 0;
+        } else {
+            (*wt)++;
+            *wd += r->ok != 0;
+        }
+    }
+}
+
 /* The sheet's box: under the top bar, at the right. */
 static void progress_box(int *x, int *y, int *w, int *h)
 {
@@ -3052,7 +3073,18 @@ static void draw_progress(void)
         const char *name = k_story[i];
 
         if (name[0] == '#') {
-            text(x + U(12), ly + U(6), C_ACCENT, "%s", name + 1);
+            /* the section's own count: its places up to the next title */
+            int j, pct;
+
+            for (j = i + 1; j < N_STORY && k_story[j][0] != '#'; j++) {
+                place_counts(k_story[j], &td, &tt, &wd, &wt);
+            }
+            pct = tt + wt > 0 ? (td + wd) * 100 / (tt + wt) : 0;
+            text(x + U(12), ly + U(6), C_ACCENT, "%s  %d%%", name + 1, pct);
+            text(x + ctd, ly + U(6), tt > 0 && td == tt ? C_GOOD : C_ACCENT, "%d", td);
+            text(x + ctt, ly + U(6), C_ACCENT, "%d", tt);
+            text(x + cwd, ly + U(6), wt > 0 && wd == wt ? C_GOOD : C_ACCENT, "%d", wd);
+            text(x + cwt, ly + U(6), C_ACCENT, "%d", wt);
             continue;
         }
         for (k = 0; k < bmap_spots_count(); k++) {
