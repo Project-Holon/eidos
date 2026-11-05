@@ -575,9 +575,10 @@ static int party_match(void)
     if (!party_read(&v)) {
         return 0;
     }
-    /* The plain list and the use-an-item list; the list that teaches a
-     * move, the battle order list and the like keep the DS screens. */
-    if (v.mode != 0 && v.mode != 1 && v.mode != 5 && v.mode != 8 && v.mode != 21 && v.mode != 22
+    /* The plain list, the use-an-item list and the give-an-item list; the
+     * list that teaches a move, the battle order list and the like keep
+     * the DS screens. */
+    if (v.mode != 0 && v.mode != 1 && v.mode != 5 && v.mode != 8 && v.mode != 9 && v.mode != 21 && v.mode != 22
         && v.mode != 23 && rds32(v.work, PL_RESTORE18) == 0) {
         return 0;
     }
@@ -588,7 +589,9 @@ static int party_match(void)
      * facility enters (the Battle Subway), with CONFIRM and CANCEL;
      * mode 1: the Pokemon a link battle enters (the Union Room's
      * Colosseum), with CONFIRM alone;
-     * mode 21: the Egg the Spin Trade takes (no back button) */
+     * mode 21: the Egg the Spin Trade takes (no back button);
+     * mode 9: the Pokemon the Bag gives an item to (pokelist.c: the
+     * prompt is message 0xC, "Give to which Pokemon?") */
     return 1;
 }
 
@@ -637,7 +640,7 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
     }
     case 3: idx = 11; break;
     case 2:
-        idx = v->mode == 5 ? 13 : (v->mode == 21 ? 0xA3 : 9);
+        idx = v->mode == 5 ? 13 : v->mode == 9 ? 12 : (v->mode == 21 ? 0xA3 : 9);
         break;
     default:
         break;
