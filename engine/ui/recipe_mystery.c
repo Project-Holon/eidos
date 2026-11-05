@@ -44,6 +44,12 @@ extern void *bw_dsref__GameSystemGlobal MG_WEAK;
 extern void ov121_MYSTERY_TaskReceive(void *task, int *state, void *arg) MG_WEAK;
 extern void ov121_MYSTERY_TaskNetAlbum(void *task, int *state, void *arg) MG_WEAK;
 extern void  MYSTERY_DATA_DecryptBuffer(u8 *buffer, u32 saveType) MG_WEAK;
+/* The gifts the relay sent (sdk/mod_net.h). */
+extern int   bw_mod_net_gift_count(void) MG_WEAK;
+extern const char *bw_mod_net_gift_title(int i) MG_WEAK;
+extern const char *bw_mod_net_gift_gifts(int i) MG_WEAK;
+extern void  bw_mod_net_gift_choose(int i) MG_WEAK;
+extern int   bw_mod_net_gift_chosen(void) MG_WEAK;
 
 /* MysteryWork (ov121/mystery.c) */
 #define W_ALBUM         0x008u  /* MysteryAlbumWork *, while the album is open */
@@ -588,10 +594,10 @@ static void mg_walk_list(int kind, int index, int count)
     if (g_target >= count) {
         g_target = -1;
     } else if (index < g_target) {
-        eidos_ui_press(BW_KEY_DOWN, 2);
+        eidos_ui_press(BW_KEY_DOWN, 1);
         g_wait = 5;
     } else if (index > g_target) {
-        eidos_ui_press(BW_KEY_UP, 2);
+        eidos_ui_press(BW_KEY_UP, 1);
         g_wait = 5;
     } else {
         eidos_ui_press(BW_KEY_A, 2);
@@ -615,18 +621,18 @@ static void mg_walk_album(int page, int pos)
     tp = g_target / 4;
     tpos = g_target % 4;
     if (pos > 3) {
-        eidos_ui_press(BW_KEY_UP, 2);       /* off the cards: back onto them */
+        eidos_ui_press(BW_KEY_UP, 1);       /* off the cards: back onto them */
         g_wait = 6;
         return;
     }
     cur = page * 2 + (pos & 1);             /* the column across all pages */
     tgt = tp * 2 + (tpos & 1);
     if (cur < tgt) {
-        eidos_ui_press(BW_KEY_RIGHT, 2);
+        eidos_ui_press(BW_KEY_RIGHT, 1);
     } else if (cur > tgt) {
-        eidos_ui_press(BW_KEY_LEFT, 2);
+        eidos_ui_press(BW_KEY_LEFT, 1);
     } else if ((pos >> 1) != (tpos >> 1)) {
-        eidos_ui_press((pos >> 1) < (tpos >> 1) ? BW_KEY_DOWN : BW_KEY_UP, 2);
+        eidos_ui_press((pos >> 1) < (tpos >> 1) ? BW_KEY_DOWN : BW_KEY_UP, 1);
     } else {
         if (g_target_kind == 100 && g_wait == 0 && g_target >= 0) {
             eidos_ui_press(BW_KEY_A, 2);
@@ -886,14 +892,14 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
     }
 
     /* the walk: a move-only target (the keys over infrared) or a click */
-    if (g_target_kind == 1000 + kind) {
+    if (g_target_kind == 1000 + kind && g_target >= 0) {
         if (g_wait > 0) {
             g_wait--;
         } else if (index < g_target) {
-            eidos_ui_press(BW_KEY_DOWN, 2);
+            eidos_ui_press(BW_KEY_DOWN, 1);
             g_wait = 4;
         } else if (index > g_target) {
-            eidos_ui_press(BW_KEY_UP, 2);
+            eidos_ui_press(BW_KEY_UP, 1);
             g_wait = 4;
         } else {
             g_target = -1;
@@ -904,6 +910,73 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
     mg_message(c, in, work, tb != NULL ? rdp(tb, 0x10) : NULL, rdp(work, W_SAVEMENU), mx, mw, my + mh);
 }
 
+/* More than one gift up today (sdk/mod_net.c, bw_mod_net_gift_*): the
+ * game's search waits until the player picks one, here.  UP and DOWN move
+ * the list's own cursor, A or a click picks; B is the game's (it cancels
+ * the search).  Returns 1 when the list was drawn. */
+static int g_pick_cursor;
+
+static int mg_pick_list(EidosUiCtx *c, const EidosUiFrame *in, void *work)
+{
+    int cw = c->canvas->w, ch = c->canvas->h, n, i, rows, mw, mh, mx, my, dy, st, first;
+    u32 keys;
+
+    if (bw_mod_net_gift_count == NULL || bw_mod_net_gift_chosen == NULL) {
+        return 0;
+    }
+    n = bw_mod_net_gift_count();
+    if (n < 2 || bw_mod_net_gift_chosen() >= 0) {
+        g_pick_cursor = 0;
+        return 0;
+    }
+    if (g_pick_cursor >= n) {
+        g_pick_cursor = n - 1;
+    }
+    rows = n < 5 ? n : 5;
+    mw = cw - 24 < 380 ? cw - 24 : 380;
+    mh = 30 + rows * 34;
+    mx = (cw - mw) / 2;
+    my = (ch - 17 - mh - 50) / 2;
+    if (my < 4) {
+        my = 4;
+    }
+    mg_window(c, mx, my, mw, mh, "CHOOSE A GIFT", NULL);
+    first = g_pick_cursor >= rows ? g_pick_cursor - rows + 1 : 0;
+    for (i = 0; i < rows && first + i < n; i++) {
+        int k = first + i, ty = my + 26 + i * 34;
+
+        st = mg_tile(c, mx + 10, ty, mw - 20, 30, k == g_pick_cursor && eidos_ui_keys_lit(), 0, &dy);
+        ui_text(c, mx + 22, ty + dy + 2, bw_mod_net_gift_title(k), UI_WHITE, MG_SHADOW, UI_FONT_LARGE, 1);
+        ui_text(c, mx + 22, ty + dy + 16, bw_mod_net_gift_gifts(k), k == g_pick_cursor ? UI_LIGHT : UI_GREY,
+                MG_SHADOW, UI_FONT_SMALL, 1);
+        if (st & EIDOS_UI_HOVER) {
+            g_pick_cursor = k;
+        }
+        if (st & EIDOS_UI_CLICK) {
+            bw_mod_net_gift_choose(k);
+        }
+    }
+    keys = eidos_ui_keys_pressed();
+    eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_A);
+    if ((keys & BW_KEY_DOWN) && g_pick_cursor < n - 1) {
+        g_pick_cursor++;
+    } else if ((keys & BW_KEY_UP) && g_pick_cursor > 0) {
+        g_pick_cursor--;
+    } else if (keys & BW_KEY_A) {
+        bw_mod_net_gift_choose(g_pick_cursor);
+    }
+    {
+        static const char *const lines[1] = { "More than one gift is here today. Choose one." };
+        int top = my + mh + 4;
+
+        ui_textbox_frame(c, UI_TEXTBOX_SYSTEM, mx, top, mw, 30);
+        ui_text(c, mx + 12, top + 7, lines[0], UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
+    }
+    (void)in;
+    (void)work;
+    return 1;
+}
+
 /* No list: the message alone (with the search's pulse while receiving). */
 static void mg_only_message(EidosUiCtx *c, const EidosUiFrame *in, void *work, int searching)
 {
@@ -911,6 +984,9 @@ static void mg_only_message(EidosUiCtx *c, const EidosUiFrame *in, void *work, i
     int mx = (cw - mw) / 2, mh = 96, my = (ch - 17 - mh - 50) / 2;
     void *tb = rdp(work, W_TEXTBOX);
 
+    if (searching && mg_pick_list(c, in, work)) {
+        return;
+    }
     if (searching) {
         int cx, cy, r, phase = (int)(eidos_ui_scene_age() % 60u);
 
@@ -1104,7 +1180,7 @@ static void mystery_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     if (eidos_ui_right_click()) {
         eidos_ui_press(BW_KEY_B, 2);
     }
-    if (getenv("EIDOS_UI_MYSTERY_LOG") != NULL && in->frame % 20u == 0u) {
+    if (getenv("EIDOS_UI_MYSTERY_LOG") != NULL && (in->frame % 20u == 0u || getenv("EIDOS_UI_MYSTERY_LOG")[0] == '2')) {
         fprintf(stderr, "mystery: frame %u kind %d index %d album %d page %d pos %d search %d\n", in->frame,
                 kind, dlg != NULL ? (int)rd32(dlg, D_INDEX) : -1, aw != NULL,
                 aw != NULL ? (int)rd32(aw, A_PAGE) : -1, aw != NULL ? (int)rd32(aw, A_POS) : -1, searching);

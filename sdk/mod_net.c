@@ -3452,3 +3452,219 @@ void bw_mod_net_reset(void)
     g_dropped = 0;
     bw_mutex_unlock(g_lock);
 }
+
+/* ------------------------------------------------------------------ */
+/* Mystery Gift events (metaxy docs/SPEC.md, section 4b)               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * One request on its own connection: G <version> <language> <game> <date>;
+ * the relay answers with an M frame per event up that day (method, title
+ * and gifts on three lines, then the Wonder Card's bytes) and Z <count>,
+ * and closes.  The connect may wait the usual timeout; the reading after it
+ * is a step per frame (bw_mod_net_gift_poll), so the game keeps running.
+ * Only the events of the asked method are kept.  Plain TCP only: the TLS
+ * state belongs to the session's connection.
+ */
+#define GIFT_MAX     24
+#define GIFT_CARD    204u
+#define GIFT_RX      (64u * 1024u)
+
+typedef struct GiftEvent {
+    char method[12];
+    char title[96];
+    char gifts[160];
+    u8   card[GIFT_CARD];
+} GiftEvent;
+
+static struct {
+    BwSock    s;
+    int       state;                /* 0 idle, 1 reading, 2 done, -1 failed */
+    char      method[12];
+    u8        rx[GIFT_RX];
+    u32       rx_n;
+    GiftEvent ev[GIFT_MAX];
+    int       n;
+    int       chosen;               /* -1: none yet                        */
+} g_gift = { BW_SOCK_INVALID, 0 };
+
+static void gift_close(void)
+{
+    if (g_gift.s != BW_SOCK_INVALID) {
+        sock_shutdown(g_gift.s);
+        g_gift.s = BW_SOCK_INVALID;
+    }
+}
+
+int bw_mod_net_gift_start(const char *method, const char *language, const char *game,
+                          const char *date)
+{
+    char req[96], frame[128];
+    int n, h;
+
+    gift_close();
+    memset(&g_gift.ev, 0, sizeof g_gift.ev);
+    g_gift.n = 0;
+    g_gift.rx_n = 0;
+    g_gift.chosen = -1;
+    g_gift.state = -1;
+    copy_text(g_gift.method, sizeof g_gift.method, method);
+    if (g_relay[0] == '\0') {
+        return -1;
+    }
+    g_gift.s = sock_new();
+    if (g_gift.s == BW_SOCK_INVALID) {
+        return -1;
+    }
+    if (sock_connect_to(g_gift.s, g_relay, g_relay_port) != 0) {
+        gift_close();
+        return -1;
+    }
+    n = snprintf(req, sizeof req, "%s %s %s %s", BW_MOD_NET_PROTO, language, game, date);
+    h = snprintf(frame, sizeof frame, "G %d\n%s", n, req);
+    if (n <= 0 || h <= 0 || h >= (int)sizeof frame || sock_send_all(g_gift.s, frame, (u32)h) != 0) {
+        gift_close();
+        return -1;
+    }
+    g_gift.state = 1;
+    return 0;
+}
+
+/* One whole frame from the start of the buffer: its type, payload and
+ * length taken, or 0 when more bytes are needed. */
+static int gift_take(char *type, const u8 **payload, u32 *len, u32 *used)
+{
+    u32 i, l = 0;
+
+    for (i = 2; i < g_gift.rx_n && i < 16; i++) {
+        if (g_gift.rx[i] == '\n') {
+            break;
+        }
+        l = l * 10u + (u32)(g_gift.rx[i] - '0');
+    }
+    if (g_gift.rx_n < 3 || i >= g_gift.rx_n || g_gift.rx[i] != '\n' || g_gift.rx_n < i + 1 + l) {
+        return 0;
+    }
+    *type = (char)g_gift.rx[0];
+    *payload = g_gift.rx + i + 1;
+    *len = l;
+    *used = i + 1 + l;
+    return 1;
+}
+
+/* An M payload: the three lines, then the card. */
+static void gift_keep(const u8 *p, u32 len)
+{
+    const u8 *line[3], *end = p + len, *q = p;
+    u32 k;
+    GiftEvent *e;
+
+    for (k = 0; k < 3; k++) {
+        line[k] = q;
+        while (q < end && *q != '\n') {
+            q++;
+        }
+        if (q >= end) {
+            return;
+        }
+        q++;
+    }
+    if ((u32)(end - q) != GIFT_CARD || g_gift.n >= GIFT_MAX ||
+        (size_t)(line[1] - line[0] - 1) != strlen(g_gift.method) ||
+        memcmp(line[0], g_gift.method, strlen(g_gift.method)) != 0) {
+        return;                         /* another method's event          */
+    }
+    e = &g_gift.ev[g_gift.n++];
+    memset(e, 0, sizeof *e);
+    memcpy(e->method, g_gift.method, strlen(g_gift.method));
+    k = (u32)(line[2] - line[1] - 1);
+    memcpy(e->title, line[1], k < sizeof e->title - 1 ? k : sizeof e->title - 1);
+    k = (u32)(q - line[2] - 1);
+    memcpy(e->gifts, line[2], k < sizeof e->gifts - 1 ? k : sizeof e->gifts - 1);
+    memcpy(e->card, q, GIFT_CARD);
+}
+
+int bw_mod_net_gift_poll(void)
+{
+    u32 got = 0, used = 0, len = 0;
+    const u8 *payload;
+    char type;
+    int rc;
+
+    if (g_gift.state != 1) {
+        return g_gift.state == 2 ? 1 : g_gift.state == 0 ? 0 : -1;
+    }
+    for (;;) {
+        if (g_gift.rx_n >= GIFT_RX) {
+            g_gift.state = -1;
+            break;
+        }
+        rc = sock_recv_some(g_gift.s, g_gift.rx + g_gift.rx_n, GIFT_RX - g_gift.rx_n, &got);
+        if (rc > 0) {
+            g_gift.rx_n += got;
+        }
+        while (gift_take(&type, &payload, &len, &used)) {
+            if (type == 'M') {
+                gift_keep(payload, len);
+            } else if (type == 'Z') {
+                g_gift.state = 2;
+            } else {
+                g_gift.state = -1;      /* E: no list, a bad request       */
+            }
+            memmove(g_gift.rx, g_gift.rx + used, g_gift.rx_n - used);
+            g_gift.rx_n -= used;
+            if (g_gift.state != 1) {
+                break;
+            }
+        }
+        if (g_gift.state != 1 || rc == 0) {
+            break;
+        }
+        if (rc < 0) {
+            g_gift.state = -1;
+            break;
+        }
+    }
+    if (g_gift.state != 1) {
+        gift_close();
+    }
+    return g_gift.state == 1 ? 0 : g_gift.state == 2 ? 1 : -1;
+}
+
+void bw_mod_net_gift_stop(void)
+{
+    gift_close();
+    g_gift.state = 0;
+    g_gift.n = 0;
+    g_gift.chosen = -1;
+}
+
+int bw_mod_net_gift_count(void)
+{
+    return g_gift.state == 2 ? g_gift.n : 0;
+}
+
+const char *bw_mod_net_gift_title(int i)
+{
+    return i >= 0 && i < g_gift.n ? g_gift.ev[i].title : "";
+}
+
+const char *bw_mod_net_gift_gifts(int i)
+{
+    return i >= 0 && i < g_gift.n ? g_gift.ev[i].gifts : "";
+}
+
+const u8 *bw_mod_net_gift_card(int i)
+{
+    return i >= 0 && i < g_gift.n ? g_gift.ev[i].card : NULL;
+}
+
+void bw_mod_net_gift_choose(int i)
+{
+    g_gift.chosen = i >= 0 && i < g_gift.n ? i : -1;
+}
+
+int bw_mod_net_gift_chosen(void)
+{
+    return g_gift.chosen;
+}

@@ -56,3 +56,4 @@ which is how a renamed or deleted aletheia file shows up).
 | Name | Files | What it does |
 |---|---|---|
 | `title_settings` | `stubs/ov/reimpl_ov088_func_021BB4B4.c`, `_021BA338.c`, `_021BA014.c`, `_021BAD08.c`, `_021BB608.c`, `_021BA2C8.c`; `sdk/mod_title.c`; `engine/platform/settings_ui.c` | the SETTINGS row of the title menu and the settings screen (sections Display, Layout, Controls, Sound) |
+| `mystery_gift` | `stubs/ov/patch_ov121_mystery_net.c`, `stubs/ov/patch_ov121_mystery.c`; `sdk/mod_net.c` (`bw_mod_net_gift_*`); `engine/ui/recipe_mystery.c` | Mystery Gift's WFC download and wireless search answered from the relay's event list (metaxy docs/SPEC.md section 4b): no Nintendo WFC login, the gifts up today for the cartridge's language and game, a pick list when there are several |

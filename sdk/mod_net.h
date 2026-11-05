@@ -456,6 +456,27 @@ int  bw_port_session_peer_at(u32 index, u32 *number, char *name,
 u32  bw_port_session_self_peer(void);
 int  bw_port_session_self_name(char *out, u32 out_size);
 
+/*
+ * Mystery Gift events (metaxy docs/SPEC.md, section 4b): the events up on
+ * `date` (YYYY-MM-DD) for a cartridge language ("en", "fr", ...) and game
+ * ("black" or "white"), from the relay set with bw_mod_net_set_relay, the
+ * ones of `method` ("wfc" or "wireless") kept.  start connects and asks (0,
+ * or -1 when the relay cannot be reached); poll reads, one step per frame:
+ * 0 still reading, 1 done, -1 failed.  Then count, and for each event its
+ * title, its gifts and its Wonder Card (204 bytes).  choose records the
+ * player's pick when there is more than one (chosen: -1 until then).
+ */
+int  bw_mod_net_gift_start(const char *method, const char *language, const char *game,
+                           const char *date);
+int  bw_mod_net_gift_poll(void);
+void bw_mod_net_gift_stop(void);
+int  bw_mod_net_gift_count(void);
+const char *bw_mod_net_gift_title(int i);
+const char *bw_mod_net_gift_gifts(int i);
+const u8   *bw_mod_net_gift_card(int i);
+void bw_mod_net_gift_choose(int i);
+int  bw_mod_net_gift_chosen(void);
+
 #ifdef __cplusplus
 }
 #endif
