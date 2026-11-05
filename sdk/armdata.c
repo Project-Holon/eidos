@@ -393,7 +393,14 @@ static u32 scan_code_pointers(const BwDataImage *img)
                 }
                 word = (u32)(uintptr_t)fn;
                 memcpy(w, &word, 4);
-                remember_code_word(w, word, &img->funcs[f]);
+                /* Only a word into the ARM9's own code has a function of
+                 * this image for the resolve to ask about again; a word
+                 * into an overlay window has none (f is -1), and remembering
+                 * funcs[-1] made the resolve write a stray value over the
+                 * save block table once a code mod loaded. */
+                if (f >= 0) {
+                    remember_code_word(w, word, &img->funcs[f]);
+                }
                 n++;
             }
         }
