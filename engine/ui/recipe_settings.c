@@ -151,9 +151,9 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     mw = cw * 80 / 100;
     if (mw > 460) mw = 460;
     if (mw < 300) mw = 300;
-    /* every section's tab in one row: on a narrow canvas (a tablet's 4:3
-     * screen) the panel widens up to the window's margins, and then the
-     * tabs' own padding narrows, rather than the last tabs being left out */
+    /* every section's tab: on a narrow canvas (a tablet's 4:3 screen) the
+     * panel widens up to the window's margins, then the tabs' own padding
+     * narrows, and what still does not fit goes on a second row (a phone) */
     if (level == 1 && tabs > 1) {
         int need = 0;
 
@@ -186,8 +186,9 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
             EidosUiRect r;
             int st, sel = i == tab;
 
-            if (tx + tw > mx + mw - 8) {
-                break;
+            if (tx + tw > mx + mw - 8 && tx > mx + 8) {
+                tx = mx + 8;            /* the next row of tabs */
+                top += 17;
             }
             r.x = tx; r.y = top; r.w = tw; r.h = 14;
             st = eidos_ui_hit(r);
