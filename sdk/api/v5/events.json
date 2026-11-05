@@ -2813,7 +2813,7 @@
       "details": "It fires before mon.exp fires for each member that gains.  A refusal gives nobody any experience (and mon.exp does not fire); scale changes every member's share. Version 5 appends share: when a handler sets it, every party member that would gain nothing (it did not fight and holds no Exp. Share) and can battle gets that percentage of what it would have gained had it fought, with its own level, Lucky Egg, trade bonus and effort values, as the later games' Exp. Share does.  scale applies after it.",
       "where": "the return of `BTL_SERVER_FLOW_CalcPartyExpShares` 0x021CB2D4 (ov093), before `mon.exp`",
       "refuse": "nobody gains",
-      "modify": "the scale of every share",
+      "modify": "the scale of every share, the bench's share",
       "fields": [
         {
           "name": "members",
@@ -2878,6 +2878,449 @@
           "count": 3,
           "writable": false,
           "rule_name": "share_pad",
+          "doc": "",
+          "c_type": "u8"
+        }
+      ]
+    },
+    {
+      "id": 84,
+      "name": "battle.ai",
+      "category": "battle",
+      "since": 3,
+      "refusable": false,
+      "struct": "EidosBattleAi",
+      "c_struct": "BwBattleAi",
+      "size": 48,
+      "doc": "A Pokemon the game controls (a trainer's, or a wild one for the move stage) has made one of its choices for the turn.",
+      "details": "It fires at each stage the game goes through, after the game's own choice, and a handler may replace that choice: - item: `item` is the item the trainer uses (0 none).  Writing another item uses that one; writing 0 uses none (the trainer's item the game picked is spent either way). - switch: `switch_to` is the party position switched to, 6 for none (only with a trainer).  A position of a Pokemon that cannot battle or is already out is ignored. - move: `move` is the move slot (0 to 3; 4 to run, for a wild one), `target_pos` the battle position aimed at; `scores` are the game's own points for each slot after its AI scripts (moves with no PP score 0). The stages follow each other: a Pokemon that uses an item or switches does not reach the move stage.",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "mon",
+          "type": "EidosMonRef",
+          "offset": 8,
+          "size": 8,
+          "count": null,
+          "writable": false,
+          "rule_name": "mon",
+          "doc": "the Pokemon choosing",
+          "c_type": "BwMonRef"
+        },
+        {
+          "name": "target",
+          "type": "EidosMonRef",
+          "offset": 16,
+          "size": 8,
+          "count": null,
+          "writable": false,
+          "rule_name": "target",
+          "doc": "move stage: the Pokemon the game's scripts aimed at",
+          "c_type": "BwMonRef"
+        },
+        {
+          "name": "stage",
+          "type": "uint8_t",
+          "offset": 24,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "stage",
+          "doc": "0 item, 1 switch, 2 move",
+          "c_type": "u8"
+        },
+        {
+          "name": "switch_to",
+          "type": "uint8_t",
+          "offset": 25,
+          "size": 1,
+          "count": null,
+          "writable": true,
+          "rule_name": "switch_to",
+          "doc": "switch stage: the party position switched to, 6 none; a position that cannot battle or is out is ignored",
+          "c_type": "u8"
+        },
+        {
+          "name": "move",
+          "type": "uint8_t",
+          "offset": 26,
+          "size": 1,
+          "count": null,
+          "writable": true,
+          "rule_name": "move",
+          "doc": "move stage: the move slot, 0 to 3 (4 runs, for a wild Pokemon)",
+          "c_type": "u8"
+        },
+        {
+          "name": "target_pos",
+          "type": "uint8_t",
+          "offset": 27,
+          "size": 1,
+          "count": null,
+          "writable": true,
+          "rule_name": "target_pos",
+          "doc": "move stage: the battle position aimed at",
+          "c_type": "u8"
+        },
+        {
+          "name": "item",
+          "type": "uint16_t",
+          "offset": 28,
+          "size": 2,
+          "count": null,
+          "writable": true,
+          "rule_name": "item",
+          "doc": "item stage: the trainer's item used, 0 none; another item is used instead, 0 uses none (the item the game picked is spent either way)",
+          "c_type": "u16"
+        },
+        {
+          "name": "pad",
+          "type": "uint16_t",
+          "offset": 30,
+          "size": 2,
+          "count": null,
+          "writable": false,
+          "rule_name": "pad",
+          "doc": "",
+          "c_type": "u16"
+        },
+        {
+          "name": "scores",
+          "type": "int32_t",
+          "offset": 32,
+          "size": 16,
+          "count": 4,
+          "writable": false,
+          "rule_name": "scores",
+          "doc": "move stage: the game's own points per move slot after its AI scripts",
+          "c_type": "s32"
+        }
+      ]
+    },
+    {
+      "id": 85,
+      "name": "battle.ai_replace",
+      "category": "battle",
+      "since": 3,
+      "refusable": false,
+      "struct": "EidosBattleAiReplace",
+      "c_struct": "BwBattleAiReplace",
+      "size": 24,
+      "doc": "A trainer sends in Pokemon after a faint.",
+      "details": "`order` lists the party positions that can battle, the game's own preference first (the one that hits the foe hardest); the first ones are sent.  A handler may reorder the list; positions not in it are ignored.",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "foe",
+          "type": "EidosMonRef",
+          "offset": 8,
+          "size": 8,
+          "count": null,
+          "writable": false,
+          "rule_name": "foe",
+          "doc": "the Pokemon the game measured against",
+          "c_type": "BwMonRef"
+        },
+        {
+          "name": "count",
+          "type": "uint8_t",
+          "offset": 16,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "count",
+          "doc": "entries of `order`",
+          "c_type": "u8"
+        },
+        {
+          "name": "order",
+          "type": "uint8_t",
+          "offset": 17,
+          "size": 6,
+          "count": 6,
+          "writable": true,
+          "rule_name": "order",
+          "doc": "the party positions, in the order they go in",
+          "c_type": "u8"
+        },
+        {
+          "name": "pad",
+          "type": "uint8_t",
+          "offset": 23,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "pad",
+          "doc": "",
+          "c_type": "u8"
+        }
+      ]
+    },
+    {
+      "id": 86,
+      "name": "battle.ability",
+      "category": "battle",
+      "since": 3,
+      "refusable": false,
+      "struct": "EidosBattleAbility",
+      "c_struct": "BwBattleAbility",
+      "size": 20,
+      "doc": "An ability shows itself (the game's ability banner): Intimidate on entry, Contrary turning a drop, and so on.",
+      "details": "",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "mon",
+          "type": "EidosMonRef",
+          "offset": 8,
+          "size": 8,
+          "count": null,
+          "writable": false,
+          "rule_name": "mon",
+          "doc": "",
+          "c_type": "BwMonRef"
+        },
+        {
+          "name": "ability",
+          "type": "uint16_t",
+          "offset": 16,
+          "size": 2,
+          "count": null,
+          "writable": false,
+          "rule_name": "ability",
+          "doc": "",
+          "c_type": "u16"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t",
+          "offset": 18,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "side",
+          "doc": "",
+          "c_type": "u8"
+        },
+        {
+          "name": "pad",
+          "type": "uint8_t",
+          "offset": 19,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "pad",
+          "doc": "",
+          "c_type": "u8"
+        }
+      ]
+    },
+    {
+      "id": 87,
+      "name": "battle.stat",
+      "category": "battle",
+      "since": 3,
+      "refusable": false,
+      "struct": "EidosBattleStat",
+      "c_struct": "BwBattleStat",
+      "size": 20,
+      "doc": "A stat stage changes, after the abilities that turn or block it.",
+      "details": "`stat` is the game's stat id (1 attack, 2 defense, 3 special attack, 4 special defense, 5 speed, 6 accuracy, 7 evasion), `delta` the stages it moves by.",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "mon",
+          "type": "EidosMonRef",
+          "offset": 8,
+          "size": 8,
+          "count": null,
+          "writable": false,
+          "rule_name": "mon",
+          "doc": "",
+          "c_type": "BwMonRef"
+        },
+        {
+          "name": "stat",
+          "type": "uint8_t",
+          "offset": 16,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "stat",
+          "doc": "",
+          "c_type": "u8"
+        },
+        {
+          "name": "delta",
+          "type": "int8_t",
+          "offset": 17,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "delta",
+          "doc": "",
+          "c_type": "s8"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t",
+          "offset": 18,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "side",
+          "doc": "",
+          "c_type": "u8"
+        },
+        {
+          "name": "pad",
+          "type": "uint8_t",
+          "offset": 19,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "pad",
+          "doc": "",
+          "c_type": "u8"
+        }
+      ]
+    },
+    {
+      "id": 88,
+      "name": "battle.held_item",
+      "category": "battle",
+      "since": 3,
+      "refusable": false,
+      "struct": "EidosBattleHeldItem",
+      "c_struct": "BwBattleHeldItem",
+      "size": 20,
+      "doc": "A held item takes effect (a berry eaten, Leftovers, a Focus Sash...).",
+      "details": "`item` is the item, also when it was used up by its effect.",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "mon",
+          "type": "EidosMonRef",
+          "offset": 8,
+          "size": 8,
+          "count": null,
+          "writable": false,
+          "rule_name": "mon",
+          "doc": "",
+          "c_type": "BwMonRef"
+        },
+        {
+          "name": "item",
+          "type": "uint16_t",
+          "offset": 16,
+          "size": 2,
+          "count": null,
+          "writable": false,
+          "rule_name": "item",
+          "doc": "",
+          "c_type": "u16"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t",
+          "offset": 18,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "side",
+          "doc": "",
+          "c_type": "u8"
+        },
+        {
+          "name": "pad",
+          "type": "uint8_t",
+          "offset": 19,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "pad",
+          "doc": "",
+          "c_type": "u8"
+        }
+      ]
+    },
+    {
+      "id": 89,
+      "name": "battle.status",
+      "category": "battle",
+      "since": 3,
+      "refusable": false,
+      "struct": "EidosBattleStatus",
+      "c_struct": "BwBattleStatus",
+      "size": 28,
+      "doc": "A condition is put on a Pokemon, or fails to be.",
+      "details": "`status` is the game's condition id (the major statuses 1 paralysis, 2 sleep, 3 freeze, 4 burn, 5 poison, then confusion and the others of the battle's own list), `applied` whether it took.",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "mon",
+          "type": "EidosMonRef",
+          "offset": 8,
+          "size": 8,
+          "count": null,
+          "writable": false,
+          "rule_name": "mon",
+          "doc": "",
+          "c_type": "BwMonRef"
+        },
+        {
+          "name": "source",
+          "type": "EidosMonRef",
+          "offset": 16,
+          "size": 8,
+          "count": null,
+          "writable": false,
+          "rule_name": "source",
+          "doc": "the Pokemon that caused it, or empty",
+          "c_type": "BwMonRef"
+        },
+        {
+          "name": "status",
+          "type": "uint16_t",
+          "offset": 24,
+          "size": 2,
+          "count": null,
+          "writable": false,
+          "rule_name": "status",
+          "doc": "",
+          "c_type": "u16"
+        },
+        {
+          "name": "applied",
+          "type": "uint8_t",
+          "offset": 26,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "applied",
+          "doc": "",
+          "c_type": "u8"
+        },
+        {
+          "name": "side",
+          "type": "uint8_t",
+          "offset": 27,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "side",
           "doc": "",
           "c_type": "u8"
         }
@@ -3390,6 +3833,56 @@
           "writable": false,
           "rule_name": "caught",
           "doc": "1 caught, 0 seen",
+          "c_type": "u8"
+        }
+      ]
+    },
+    {
+      "id": 113,
+      "name": "battle.turn",
+      "category": "battle",
+      "since": 3,
+      "refusable": false,
+      "struct": "EidosBattleTurn",
+      "c_struct": "BwBattleTurn",
+      "size": 12,
+      "doc": "A turn starts.",
+      "details": "",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "turn",
+          "type": "uint16_t",
+          "offset": 8,
+          "size": 2,
+          "count": null,
+          "writable": false,
+          "rule_name": "turn",
+          "doc": "",
+          "c_type": "u16"
+        },
+        {
+          "name": "weather",
+          "type": "uint8_t",
+          "offset": 10,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "weather",
+          "doc": "the game's weather id, 0 none",
+          "c_type": "u8"
+        },
+        {
+          "name": "pad",
+          "type": "uint8_t",
+          "offset": 11,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "pad",
+          "doc": "",
           "c_type": "u8"
         }
       ]

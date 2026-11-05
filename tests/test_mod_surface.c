@@ -58,8 +58,8 @@
  * The hash of the frozen surface on each layout the port is built at.
  *
  *   pointers  hash
- *   4         0x86288CC3u  the number in sdk/mod_api.h
- *   8         0x6E493405u
+ *   4         0xF07B8D07u  the number in sdk/mod_api.h
+ *   8         0x0579BE42u
  *
  * The 32-bit one is the number the header carries.  The other is the same
  * surface on the other layout: the three tables hold host pointers, so
@@ -68,11 +68,11 @@
  */
 static unsigned int expected_hash(void)
 {
-    return (sizeof(void *) == 4) ? 0x86288CC3u : 0x6E493405u;
+    return (sizeof(void *) == 4) ? 0xF07B8D07u : 0x0579BE42u;
 }
 
 /* The number in sdk/mod_api.h: the frozen one, the 32-bit hash. */
-#define BW_SURFACE_HASH_FROZEN 0x86288CC3u
+#define BW_SURFACE_HASH_FROZEN 0xF07B8D07u
 
 /* The running hash. */
 static unsigned int h;
@@ -161,6 +161,9 @@ int main(void)
     EV(BW_EVENT_BATTLE_DAMAGE); EV(BW_EVENT_BATTLE_FAINT); EV(BW_EVENT_CATCH_ATTEMPT);
     EV(BW_EVENT_CATCH_RESULT); EV(BW_EVENT_BATTLE_END); EV(BW_EVENT_WHITEOUT);
     EV(BW_EVENT_BATTLE_TRAINER_MON); EV(BW_EVENT_BATTLE_EXP);
+    EV(BW_EVENT_BATTLE_AI); EV(BW_EVENT_BATTLE_AI_REPLACE); EV(BW_EVENT_BATTLE_ABILITY);
+    EV(BW_EVENT_BATTLE_STAT); EV(BW_EVENT_BATTLE_HELD_ITEM); EV(BW_EVENT_BATTLE_STATUS);
+    EV(BW_EVENT_BATTLE_TURN);
     EV(BW_EVENT_ITEM_ADD); EV(BW_EVENT_ITEM_USE); EV(BW_EVENT_SHOP_BUY);
     EV(BW_EVENT_MONEY_CHANGE); EV(BW_EVENT_HEAL); EV(BW_EVENT_HEAL_HP); EV(BW_EVENT_MON_REVIVE);
     EV(BW_EVENT_MON_CURE); EV(BW_EVENT_MON_PP); EV(BW_EVENT_MON_FORM);
@@ -180,6 +183,7 @@ int main(void)
     EN(BW_FORMAT_SINGLE); EN(BW_FORMAT_DOUBLE); EN(BW_FORMAT_TRIPLE);
     EN(BW_FORMAT_ROTATION); EN(BW_FORMAT_MULTI);
     EN(BW_ACTION_FIGHT); EN(BW_ACTION_SWITCH); EN(BW_ACTION_RUN);
+    EN(BW_AI_ITEM); EN(BW_AI_SWITCH); EN(BW_AI_MOVE);
     EN(BW_OUTCOME_WIN); EN(BW_OUTCOME_LOSS); EN(BW_OUTCOME_FLED);
     EN(BW_OUTCOME_CAUGHT); EN(BW_OUTCOME_DRAW);
     EN(BW_MOVE_SOURCE_LEVEL); EN(BW_MOVE_SOURCE_TM); EN(BW_MOVE_SOURCE_TUTOR);
@@ -212,6 +216,10 @@ int main(void)
     EN(BW_MON_FIELD_MOVE3); EN(BW_MON_FIELD_MOVE4); EN(BW_MON_FIELD_IS_EGG);
     EN(BW_MON_FIELD_GENDER); EN(BW_MON_FIELD_FORM); EN(BW_MON_FIELD_NATURE);
     EN(BW_MON_FIELD_HAS_NICKNAME);
+    EN(BW_MON_FIELD_STAGE_ATK); EN(BW_MON_FIELD_STAGE_DEF); EN(BW_MON_FIELD_STAGE_SPATK);
+    EN(BW_MON_FIELD_STAGE_SPDEF); EN(BW_MON_FIELD_STAGE_SPEED);
+    EN(BW_MON_FIELD_STAGE_ACCURACY); EN(BW_MON_FIELD_STAGE_EVASION);
+    EN(BW_MON_FIELD_STATUS); EN(BW_MON_FIELD_BATTLE_ABILITY);
     EN(BW_MON_FIELD_FATEFUL); EN(BW_MON_FIELD_ORIGIN_GAME);
     EN(BW_MON_FIELD_MET_LOCATION); EN(BW_MON_FIELD_BALL); EN(BW_MON_FIELD_MET_LEVEL);
 #undef EN
@@ -298,6 +306,20 @@ int main(void)
     PL(BwBattleExp, F(BwBattleExp, members), F(BwBattleExp, wild),
        F(BwBattleExp, scale), F(BwBattleExp, total), F(BwBattleExp, share),
        F(BwBattleExp, share_pad));
+    PL(BwBattleAi, F(BwBattleAi, mon), F(BwBattleAi, target), F(BwBattleAi, stage),
+       F(BwBattleAi, switch_to), F(BwBattleAi, move), F(BwBattleAi, target_pos),
+       F(BwBattleAi, item), F(BwBattleAi, pad), F(BwBattleAi, scores));
+    PL(BwBattleAiReplace, F(BwBattleAiReplace, foe), F(BwBattleAiReplace, count),
+       F(BwBattleAiReplace, order), F(BwBattleAiReplace, pad));
+    PL(BwBattleAbility, F(BwBattleAbility, mon), F(BwBattleAbility, ability),
+       F(BwBattleAbility, side), F(BwBattleAbility, pad));
+    PL(BwBattleStat, F(BwBattleStat, mon), F(BwBattleStat, stat), F(BwBattleStat, delta),
+       F(BwBattleStat, side), F(BwBattleStat, pad));
+    PL(BwBattleHeldItem, F(BwBattleHeldItem, mon), F(BwBattleHeldItem, item),
+       F(BwBattleHeldItem, side), F(BwBattleHeldItem, pad));
+    PL(BwBattleStatus, F(BwBattleStatus, mon), F(BwBattleStatus, source),
+       F(BwBattleStatus, status), F(BwBattleStatus, applied), F(BwBattleStatus, side));
+    PL(BwBattleTurn, F(BwBattleTurn, turn), F(BwBattleTurn, weather), F(BwBattleTurn, pad));
     PL(BwBattleTrainerMon, F(BwBattleTrainerMon, trainer_id), F(BwBattleTrainerMon, index),
        F(BwBattleTrainerMon, level), F(BwBattleTrainerMon, species),
        F(BwBattleTrainerMon, item), F(BwBattleTrainerMon, move1),
@@ -366,6 +388,7 @@ int main(void)
     S(mon_release); S(item_count); S(item_add);
     S(area_of); S(battle_wild); S(play_seconds); S(item_value); S(move_value);
     S(mon_to_box_n); S(mon_from_box); S(mon_recalc); S(species_base); S(battle_trainer);
+    S(type_effect); S(battle_weather); S(species_learns);
 #undef S
 
     /* The services table. */

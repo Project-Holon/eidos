@@ -68,7 +68,22 @@ enum {
     BW_MON_FIELD_ORIGIN_GAME  = 0x77,
     BW_MON_FIELD_MET_LOCATION = 0x96,
     BW_MON_FIELD_BALL         = 0x98,
-    BW_MON_FIELD_MET_LEVEL    = 0x99
+    BW_MON_FIELD_MET_LEVEL    = 0x99,
+
+    /* Interface version 5: values only a Pokemon in battle has
+     * (battle_get).  A stat stage reads 0 to 12, 6 being unchanged; the
+     * status is the major condition (0 none, 1 paralysis, 2 sleep,
+     * 3 freeze, 4 burn, 5 poison); the battle ability is the one in force
+     * (Skill Swap, Mummy and the like change it). */
+    BW_MON_FIELD_STAGE_ATK     = 0x101,
+    BW_MON_FIELD_STAGE_DEF     = 0x102,
+    BW_MON_FIELD_STAGE_SPATK   = 0x103,
+    BW_MON_FIELD_STAGE_SPDEF   = 0x104,
+    BW_MON_FIELD_STAGE_SPEED   = 0x105,
+    BW_MON_FIELD_STAGE_ACCURACY = 0x106,
+    BW_MON_FIELD_STAGE_EVASION = 0x107,
+    BW_MON_FIELD_STATUS        = 0x108,
+    BW_MON_FIELD_BATTLE_ABILITY = 0x109
 };
 
 /*
@@ -191,6 +206,26 @@ typedef struct BwModState {
      * the second of a multi battle.  0 in a wild battle or for no second
      * trainer, a negative number when no battle runs. */
     s32 (*battle_trainer)(u32 n);
+
+    /* Version 5, for an AI and other battle mods. */
+
+    /* How well an attacking type hits a Pokemon of one or two types: the
+     * game's own type chart (BTL_CALC_GetTypeAffinity), in quarters: 0 no
+     * effect, 1 a quarter, 2 half, 4 normal, 8 double, 16 four times.
+     * def_type2 equal to def_type1 (or 255) for a single type.  A negative
+     * number for a type past the chart, or when no battle runs (the
+     * chart is the battle's own data). */
+    s32 (*type_effect)(u32 atk_type, u32 def_type1, u32 def_type2);
+
+    /* The weather of the battle in progress (the game's own id, 0 none),
+     * a negative number when no battle runs. */
+    s32 (*battle_weather)(void);
+
+    /* How a species can learn a move, as the game's own data says:
+     * bit 0 its level-up moves up to `level` (0 for every level), bit 1 a
+     * TM or HM it can use, bit 2 an egg move.  0 when it cannot; a negative
+     * number for a species or move past the data. */
+    s32 (*species_learns)(u16 species, u16 form, u16 move, u8 level);
 } BwModState;
 
 /* ------------------------------------------------------------------ */

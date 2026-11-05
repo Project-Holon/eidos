@@ -273,6 +273,41 @@
       "value": 83
     },
     {
+      "name": "EIDOS_EVENT_BATTLE_AI",
+      "c_name": "BW_EVENT_BATTLE_AI",
+      "value": 84
+    },
+    {
+      "name": "EIDOS_EVENT_BATTLE_AI_REPLACE",
+      "c_name": "BW_EVENT_BATTLE_AI_REPLACE",
+      "value": 85
+    },
+    {
+      "name": "EIDOS_EVENT_BATTLE_ABILITY",
+      "c_name": "BW_EVENT_BATTLE_ABILITY",
+      "value": 86
+    },
+    {
+      "name": "EIDOS_EVENT_BATTLE_STAT",
+      "c_name": "BW_EVENT_BATTLE_STAT",
+      "value": 87
+    },
+    {
+      "name": "EIDOS_EVENT_BATTLE_HELD_ITEM",
+      "c_name": "BW_EVENT_BATTLE_HELD_ITEM",
+      "value": 88
+    },
+    {
+      "name": "EIDOS_EVENT_BATTLE_STATUS",
+      "c_name": "BW_EVENT_BATTLE_STATUS",
+      "value": 89
+    },
+    {
+      "name": "EIDOS_EVENT_BATTLE_TURN",
+      "c_name": "BW_EVENT_BATTLE_TURN",
+      "value": 113
+    },
+    {
       "name": "EIDOS_EVENT_ITEM_ADD",
       "c_name": "BW_EVENT_ITEM_ADD",
       "value": 90
@@ -678,6 +713,21 @@
       "value": 2
     },
     {
+      "name": "EIDOS_AI_ITEM",
+      "c_name": "BW_AI_ITEM",
+      "value": 0
+    },
+    {
+      "name": "EIDOS_AI_SWITCH",
+      "c_name": "BW_AI_SWITCH",
+      "value": 1
+    },
+    {
+      "name": "EIDOS_AI_MOVE",
+      "c_name": "BW_AI_MOVE",
+      "value": 2
+    },
+    {
       "name": "EIDOS_SCRIPT_VM_FIELD",
       "c_name": "BW_SCRIPT_VM_FIELD",
       "value": 0
@@ -851,6 +901,51 @@
       "name": "EIDOS_MON_FIELD_MET_LEVEL",
       "c_name": "BW_MON_FIELD_MET_LEVEL",
       "value": 153
+    },
+    {
+      "name": "EIDOS_MON_FIELD_STAGE_ATK",
+      "c_name": "BW_MON_FIELD_STAGE_ATK",
+      "value": 257
+    },
+    {
+      "name": "EIDOS_MON_FIELD_STAGE_DEF",
+      "c_name": "BW_MON_FIELD_STAGE_DEF",
+      "value": 258
+    },
+    {
+      "name": "EIDOS_MON_FIELD_STAGE_SPATK",
+      "c_name": "BW_MON_FIELD_STAGE_SPATK",
+      "value": 259
+    },
+    {
+      "name": "EIDOS_MON_FIELD_STAGE_SPDEF",
+      "c_name": "BW_MON_FIELD_STAGE_SPDEF",
+      "value": 260
+    },
+    {
+      "name": "EIDOS_MON_FIELD_STAGE_SPEED",
+      "c_name": "BW_MON_FIELD_STAGE_SPEED",
+      "value": 261
+    },
+    {
+      "name": "EIDOS_MON_FIELD_STAGE_ACCURACY",
+      "c_name": "BW_MON_FIELD_STAGE_ACCURACY",
+      "value": 262
+    },
+    {
+      "name": "EIDOS_MON_FIELD_STAGE_EVASION",
+      "c_name": "BW_MON_FIELD_STAGE_EVASION",
+      "value": 263
+    },
+    {
+      "name": "EIDOS_MON_FIELD_STATUS",
+      "c_name": "BW_MON_FIELD_STATUS",
+      "value": 264
+    },
+    {
+      "name": "EIDOS_MON_FIELD_BATTLE_ABILITY",
+      "c_name": "BW_MON_FIELD_BATTLE_ABILITY",
+      "value": 265
     },
     {
       "name": "EIDOS_SESSION_MESSAGE",

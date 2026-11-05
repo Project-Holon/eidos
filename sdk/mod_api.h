@@ -64,7 +64,7 @@ extern "C" {
  * and the hash follows it; the test carries the other width's number, so a
  * change fails on every width the port is built at.
  */
-#define BW_MOD_API_HASH 0x86288CC3u
+#define BW_MOD_API_HASH 0xF07B8D07u
 
 /* ------------------------------------------------------------------ */
 /* The event header                                                    */
@@ -192,6 +192,13 @@ enum {
     BW_EVENT_WHITEOUT      = 81,
     BW_EVENT_BATTLE_TRAINER_MON = 82,   /* version 4 */
     BW_EVENT_BATTLE_EXP    = 83,        /* version 4 */
+    BW_EVENT_BATTLE_AI     = 84,        /* version 5 */
+    BW_EVENT_BATTLE_AI_REPLACE = 85,    /* version 5 */
+    BW_EVENT_BATTLE_ABILITY = 86,       /* version 5 */
+    BW_EVENT_BATTLE_STAT   = 87,        /* version 5 */
+    BW_EVENT_BATTLE_HELD_ITEM = 88,     /* version 5 */
+    BW_EVENT_BATTLE_STATUS = 89,        /* version 5 */
+    BW_EVENT_BATTLE_TURN   = 113,       /* version 5 */
 
     /* items, money and healing */
     BW_EVENT_ITEM_ADD     = 90,
@@ -930,6 +937,120 @@ typedef struct BwBattleExp {
     u8  share;      /* *mod (version 5): the bench's percentage, 0 for none */
     u8  share_pad[3];
 } BwBattleExp;
+
+/* battle.ai's stages: the three choices a trainer's Pokemon makes in turn. */
+enum {
+    BW_AI_ITEM   = 0,   /* use one of the trainer's items */
+    BW_AI_SWITCH = 1,   /* switch to a member of the bench */
+    BW_AI_MOVE   = 2    /* the move and its target */
+};
+
+/*
+ * battle.ai (version 5): a Pokemon the game controls (a trainer's, or a
+ * wild one for the move stage) has made one of its choices for the turn.
+ * It fires at each stage the game goes through, after the game's own
+ * choice, and a handler may replace that choice:
+ * - item: `item` is the item the trainer uses (0 none).  Writing another
+ *   item uses that one; writing 0 uses none (the trainer's item the game
+ *   picked is spent either way).
+ * - switch: `switch_to` is the party position switched to, 6 for none
+ *   (only with a trainer).  A position of a Pokemon that cannot battle or is
+ *   already out is ignored.
+ * - move: `move` is the move slot (0 to 3; 4 to run, for a wild one),
+ *   `target_pos` the battle position aimed at; `scores` are the game's own
+ *   points for each slot after its AI scripts (moves with no PP score 0).
+ * The stages follow each other: a Pokemon that uses an item or switches
+ * does not reach the move stage.
+ */
+typedef struct BwBattleAi {
+    BwEvent  h;
+    BwMonRef mon;        /* the Pokemon choosing */
+    BwMonRef target;     /* move stage: the Pokemon the scripts aimed at */
+    u8  stage;           /* BW_AI_* */
+    u8  switch_to;       /* *mod: switch stage */
+    u8  move;            /* *mod: move stage */
+    u8  target_pos;      /* *mod: move stage */
+    u16 item;            /* *mod: item stage */
+    u16 pad;
+    s32 scores[4];       /* move stage */
+} BwBattleAi;
+
+/*
+ * battle.ai_replace (version 5): a trainer sends in Pokemon after a faint.
+ * `order` lists the party positions that can battle, the game's own
+ * preference first (the one that hits the foe hardest); the first ones are
+ * sent.  A handler may reorder the list; positions not in it are ignored.
+ */
+typedef struct BwBattleAiReplace {
+    BwEvent  h;
+    BwMonRef foe;        /* the Pokemon the game measured against */
+    u8  count;           /* entries of order */
+    u8  order[6];        /* *mod */
+    u8  pad;
+} BwBattleAiReplace;
+
+/*
+ * battle.ability (version 5): an ability shows itself (the game's ability
+ * banner): Intimidate on entry, Contrary turning a drop, and so on.
+ */
+typedef struct BwBattleAbility {
+    BwEvent  h;
+    BwMonRef mon;
+    u16 ability;
+    u8  side;
+    u8  pad;
+} BwBattleAbility;
+
+/*
+ * battle.stat (version 5): a stat stage changes, after the abilities that
+ * turn or block it.  `stat` is the game's stat id (1 attack, 2 defense,
+ * 3 special attack, 4 special defense, 5 speed, 6 accuracy, 7 evasion),
+ * `delta` the stages it moves by.
+ */
+typedef struct BwBattleStat {
+    BwEvent  h;
+    BwMonRef mon;
+    u8  stat;
+    s8  delta;
+    u8  side;
+    u8  pad;
+} BwBattleStat;
+
+/*
+ * battle.held_item (version 5): a held item takes effect (a berry eaten,
+ * Leftovers, a Focus Sash...).  `item` is the item, also when it was used
+ * up by its effect.
+ */
+typedef struct BwBattleHeldItem {
+    BwEvent  h;
+    BwMonRef mon;
+    u16 item;
+    u8  side;
+    u8  pad;
+} BwBattleHeldItem;
+
+/*
+ * battle.status (version 5): a condition is put on a Pokemon, or fails to
+ * be.  `status` is the game's condition id (the major statuses 1 paralysis,
+ * 2 sleep, 3 freeze, 4 burn, 5 poison, then confusion and the others of the
+ * battle's own list), `applied` whether it took.
+ */
+typedef struct BwBattleStatus {
+    BwEvent  h;
+    BwMonRef mon;
+    BwMonRef source;     /* the Pokemon that caused it, or empty */
+    u16 status;
+    u8  applied;
+    u8  side;
+} BwBattleStatus;
+
+/* battle.turn (version 5): a turn starts. */
+typedef struct BwBattleTurn {
+    BwEvent  h;
+    u16 turn;
+    u8  weather;         /* the game's weather id, 0 none */
+    u8  pad;
+} BwBattleTurn;
 
 /*
  * whiteout: the player lost a battle with no Pokemon left (the battle half)

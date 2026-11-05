@@ -248,6 +248,7 @@
 0x021B90BC	BTL_MAIN_AddItemToBag	ov093	
 0x021BA238	BTL_MAIN_NotifyLevelUp	ov093	
 0x021BB8BC	BTL_SERVER_NotifyLevelUp	ov093	
+0x021BBC44	BTL_SERVER_FLOW_StartTurn	ov093	battle.turn
 0x021BD60C	BTL_SERVER_FLOW_TryEscape	ov093	battle.escape
 0x021BD9D4	BTL_SERVER_FLOW_ProcMemberIn	ov093	battle.switch
 0x021BE95C	BTL_SERVER_FLOW_DispatchMoveStartEvent	ov093	
@@ -255,12 +256,16 @@
 0x021C1910	BTL_SERVER_FLOW_RunDamageDealtEvent	ov093	
 0x021C1A10	BTL_SERVER_FLOW_RunMoveUsedEvent	ov093	battle.move
 0x021C1E74	BTL_SERVER_FLOW_CalcMoveDamage	ov093	battle.damage
+0x021C2128	BTL_SERVER_FLOW_ProcHeldItemActivate	ov093	battle.held_item
+0x021C27A0	BTL_SERVER_FLOW_TryApplySick	ov093	battle.status
 0x021C33E8	BTL_SERVER_FLOW_ApplyHpRecover	ov093	heal.hp
 0x021C4F64	BTL_SERVER_FLOW_ProcFaintedPoke	ov093	battle.faint
 0x021C5200	BTL_SERVER_FLOW_ProcFaintRewards	ov093	
 0x021C5350	BTL_SERVER_FLOW_ApplyPartyExp	ov093	
 0x021C557C	BTL_SERVER_FLOW_CureMajorStatusWithMessage	ov093	
 0x021C5620	BTL_SERVER_FLOW_CureSick	ov093	mon.cure
+0x021C5A1C	BTL_SERVER_FLOW_PushAbilityPopupIn	ov093	battle.ability
+0x021C5A8C	BTL_SERVER_FLOW_ChangeStatStage	ov093	battle.stat
 0x021C6080	BTL_SERVER_FLOW_RestoreMovePp	ov093	mon.pp
 0x021C6564	BTL_SERVER_FLOW_DispatchMoveDoneEvent	ov093	
 0x021C84D8	BTL_SERVER_FLOW_GetBattleResult	ov093	
@@ -282,10 +287,15 @@
 0x021CF078	BTL_CLIENT_StepSelectRun	ov093	
 0x021CF5B0	BTL_CLIENT_IsMoveSelectionBlocked	ov093	battle.action
 0x021CF918	BTL_CLIENT_GetEscapeBlockerForSide	ov093	battle.action
+0x021CFBF0	BTL_CLIENT_ChooseAiSwitchTarget	ov093	battle.ai
+0x021D0770	BTL_CLIENT_StepAutoChooseActions	ov093	
+0x021D09E0	BTL_CLIENT_SortMonsByMovePower	ov093	battle.ai_replace
+0x021D0D50	BTL_CLIENT_ChooseReplacementsAuto	ov093	
 0x021D1290	BTL_CLIENT_StepShowResultMessage	ov093	
 0x021D1960	BTL_CLIENT_StepShowBlackoutMessages	ov093	whiteout
 0x021D2320	BTL_CLIENT_StepFaintMon	ov093	
 0x021D2CA8	BTL_CLIENT_StepLearnLevelUpMoves	ov093	
+0x021D3DC4	BTL_CLIENT_TakeTrainerItemToUse	ov093	battle.ai
 0x021D5B68	BTL_POKEPARAM_IsFainted	ov093	
 0x021D69B8	BTL_POKEPARAM_AddExp	ov093	mon.levelup
 0x021D7930	BTL_CALC_RollCriticalHit	ov093	
@@ -302,6 +312,12 @@
 
 # ov095
 0x0689CB1C	BTL_PICK_GetLast	ov095	battle.action
+
+# ov096
+0x02187FB0	TR_AI_Think	ov096	
+0x021880BC	TR_AI_Start	ov096	
+0x02188134	TR_AI_GetChosenMove	ov096	battle.ai
+0x02188140	TR_AI_GetChosenTarget	ov096	
 
 # ov120
 0x021D42D8	GTSNEGO_DISP_StartTrade	ov120	

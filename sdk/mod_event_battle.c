@@ -2018,6 +2018,378 @@ static void build_whiteout_field(const BwEventCall *call, BwEventPayload *out)
 }
 
 /* ------------------------------------------------------------------ */
+/* The AI and what it can observe (version 5)                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The trainer AI's own work (aletheia src/game/ov096/tr_ai_types.h): the
+ * scores of its move slots, its choice and the two Pokemon it weighed.  A
+ * copy, member for member, so the host compiler gives it the offsets the
+ * game's own unit gets.
+ */
+typedef struct BwPortTrAiWork {
+    u8  phase;            /* 0x00 */
+    u8  moveIndex;        /* 0x01 */
+    u16 moveId;           /* 0x02 */
+    int moveScores[4];    /* 0x04 */
+    int baseScores[4];    /* 0x14 */
+    s16 targetScores[6];  /* 0x24 */
+    s8  targetMove[6];    /* 0x30 */
+    u8  pad36[2];
+    int workValue;        /* 0x38 */
+    u32 pendingMask;      /* 0x3C */
+    u32 fullMask;         /* 0x40 */
+    u8  flags;            /* 0x44 */
+    u8  scriptId;         /* 0x45 */
+    u8  chosenMove;       /* 0x46 */
+    u8  chosenTarget;     /* 0x47 */
+    u8  moveRoll[4];      /* 0x48 */
+    u16 knownMoves[2][4]; /* 0x4C */
+    u8  pad5C[0x20];
+    u8  abilityCache[6];  /* 0x7C */
+    u8  pad82[0x12];
+    u8  selfPos;          /* 0x94 */
+    u8  targetPos;        /* 0x95 */
+    u8  pad96[2];
+    u32 rule;             /* 0x98 */
+    u32 competitor;       /* 0x9C */
+    u16 heapId;           /* 0xA0 */
+    u8  padA2[2];
+    void *scriptArchive;  /* 0xA4 */
+    void *itemArchive;    /* 0xA8 */
+    u8  *script;          /* 0xAC */
+    void *battleMain;     /* 0xB0 */
+    void *serverFlow;     /* 0xB4 */
+    void *sideTable;      /* 0xB8 */
+    struct BtlPokeParam *selfPoke;    /* 0xBC */
+    struct BtlPokeParam *targetPoke;  /* 0xC0 */
+} BwPortTrAiWork;
+
+BW_PORT_STATIC_ASSERT(trai_scores, offsetof(BwPortTrAiWork, moveScores) == 0x04u);
+BW_PORT_STATIC_ASSERT(trai_chosen, offsetof(BwPortTrAiWork, chosenMove) == 0x46u);
+BW_PORT_STATIC_ASSERT(trai_target, offsetof(BwPortTrAiWork, chosenTarget) == 0x47u);
+BW_PORT_STATIC_ASSERT(trai_main, sizeof(void *) != 4 ||
+                      offsetof(BwPortTrAiWork, battleMain) == 0xB0u);
+BW_PORT_STATIC_ASSERT(trai_side, sizeof(void *) != 4 ||
+                      offsetof(BwPortTrAiWork, sideTable) == 0xB8u);
+BW_PORT_STATIC_ASSERT(trai_self, sizeof(void *) != 4 ||
+                      offsetof(BwPortTrAiWork, selfPoke) == 0xBCu);
+BW_PORT_STATIC_ASSERT(trai_target_poke, sizeof(void *) != 4 ||
+                      offsetof(BwPortTrAiWork, targetPoke) == 0xC0u);
+
+/* The battle record's own head (aletheia src/game/ov093/
+ * btl_pokeparam_types.h): the item a Pokemon used up is kept in it. */
+typedef struct BwPortBtlRecordHead {
+    void *mon;          /* 0x00 */
+    void *illusionMon;  /* 0x04 */
+    u32   exp;          /* 0x08 */
+    u16   species;      /* 0x0C */
+    u16   maxHp;        /* 0x0E */
+    u16   hp;           /* 0x10 */
+    u16   heldItem;     /* 0x12 */
+    u16   consumedItem; /* 0x14 */
+} BwPortBtlRecordHead;
+
+BW_PORT_STATIC_ASSERT(btl_consumed_item, sizeof(void *) != 4 ||
+                      offsetof(BwPortBtlRecordHead, consumedItem) == 0x14u);
+
+/* The game's own functions these rows read with, by their linked names. */
+extern void *VM_GetContext(void *vm) BW_PORT_WEAK;
+extern u16 ov093_BTL_POKEPARAM_GetItem(struct BtlPokeParam *pp) BW_PORT_WEAK;
+extern int ov093_BTL_POKEPARAM_IsAbleToBattle(struct BtlPokeParam *pp) BW_PORT_WEAK;
+
+/* The battle record's own value ids (src/game/ov093/btl_pokeparam.c). */
+#define BW_BTL_VALUE_ABILITY 16
+
+/* The work of the AI a call to TR_AI_GetChosenMove carries. */
+static BwPortTrAiWork *ai_of_vm(const BwEventCall *call)
+{
+    void *vm = (void *)call->a[0];
+
+    if (vm == NULL || VM_GetContext == NULL) {
+        return NULL;
+    }
+    return (BwPortTrAiWork *)VM_GetContext(vm);
+}
+
+/*
+ * battle.ai, the move stage: the return of TR_AI_GetChosenMove (ov096).
+ * The AI has run its scripts; its work holds the scores, the Pokemon that
+ * chooses and the one it aimed at.  The client asks for the target right
+ * after (TR_AI_GetChosenTarget), which reads the same work, so the applier
+ * writes the target there.
+ */
+static void build_battle_ai_move(const BwEventCall *call, BwEventPayload *out)
+{
+    BwPortTrAiWork *ai = ai_of_vm(call);
+    struct BtlMain *main;
+    u32 i;
+
+    memset(&out->battle_ai, 0, sizeof(out->battle_ai));
+    out->battle_ai.stage = (u8)BW_AI_MOVE;
+    out->battle_ai.switch_to = 6u;
+    out->battle_ai.move = (u8)call->ret;
+    if (ai == NULL) {
+        return;
+    }
+    main = (struct BtlMain *)ai->battleMain;
+    out->battle_ai.target_pos = ai->chosenTarget;
+    for (i = 0; i < 4u; i++) {
+        out->battle_ai.scores[i] = (s32)ai->moveScores[i];
+    }
+    fill_battle_ref(&out->battle_ai.mon, ai->selfPoke, main, ai->sideTable);
+    fill_battle_ref(&out->battle_ai.target, ai->targetPoke, main, ai->sideTable);
+    bind_battle(main);
+    feed_battle_context(main);
+}
+
+static void apply_battle_ai_move(const BwEventPayload *in, BwEventCall *call)
+{
+    BwPortTrAiWork *ai = ai_of_vm(call);
+
+    if (in->battle_ai.move > 4u) {
+        return;
+    }
+    call->ret = in->battle_ai.move;
+    if (ai != NULL) {
+        ai->chosenMove = in->battle_ai.move;
+        if (in->battle_ai.target_pos < 6u) {
+            ai->chosenTarget = in->battle_ai.target_pos;
+        }
+    }
+}
+
+/*
+ * battle.ai, the switch stage: the return of BTL_CLIENT_ChooseAiSwitchTarget
+ * (client, Pokemon, order slot, out member).  The game answers 1 with the
+ * party position in *out, or 0.
+ */
+static void build_battle_ai_switch(const BwEventCall *call, BwEventPayload *out)
+{
+    const BwPortClientHead *client = (const BwPortClientHead *)call->a[0];
+    struct BtlMain *main = main_of_client(call);
+    const u8 *member = (const u8 *)call->a[3];
+
+    memset(&out->battle_ai, 0, sizeof(out->battle_ai));
+    out->battle_ai.stage = (u8)BW_AI_SWITCH;
+    out->battle_ai.move = 4u;
+    out->battle_ai.switch_to = (call->ret != 0 && member != NULL) ? *member : 6u;
+    fill_battle_ref(&out->battle_ai.mon, (struct BtlPokeParam *)call->a[1], main,
+                    client != NULL ? client->side : NULL);
+    bind_battle(main);
+    feed_battle_context(main);
+}
+
+static void apply_battle_ai_switch(const BwEventPayload *in, BwEventCall *call)
+{
+    u8 *member = (u8 *)call->a[3];
+    const BwModState *state = bw_mod_state_table();
+    u8 to = in->battle_ai.switch_to;
+    BwMonRef ref;
+    u32 hp = 0;
+
+    if (to >= 6u) {
+        call->ret = 0;
+        return;
+    }
+    if (member == NULL) {
+        return;
+    }
+    /* a Pokemon that can battle, not one already out: the battle keeps
+     * the side's Pokemon on the field at the front of its order */
+    if (state != NULL && state->battle_ref != NULL && state->battle_get != NULL &&
+        (state->battle_ref(in->battle_ai.mon.side, to, &ref) != 0 ||
+         state->battle_get(ref, BW_MON_FIELD_HP, &hp) != 0 || hp == 0u)) {
+        return;
+    }
+    if (to == in->battle_ai.mon.slot) {
+        return;
+    }
+    *member = to;
+    call->ret = 1;
+}
+
+/*
+ * battle.ai, the item stage: the return of BTL_CLIENT_TakeTrainerItemToUse
+ * (client, Pokemon, party).  The game answers the item it took out of the
+ * trainer's items, or 0.
+ */
+static void build_battle_ai_item(const BwEventCall *call, BwEventPayload *out)
+{
+    const BwPortClientHead *client = (const BwPortClientHead *)call->a[0];
+    struct BtlMain *main = main_of_client(call);
+
+    memset(&out->battle_ai, 0, sizeof(out->battle_ai));
+    out->battle_ai.stage = (u8)BW_AI_ITEM;
+    out->battle_ai.switch_to = 6u;
+    out->battle_ai.move = 4u;
+    out->battle_ai.item = (u16)call->ret;
+    fill_battle_ref(&out->battle_ai.mon, (struct BtlPokeParam *)call->a[1], main,
+                    client != NULL ? client->side : NULL);
+    bind_battle(main);
+    feed_battle_context(main);
+}
+
+static void apply_battle_ai_item(const BwEventPayload *in, BwEventCall *call)
+{
+    call->ret = in->battle_ai.item;
+}
+
+/*
+ * battle.ai_replace: the return of BTL_CLIENT_SortMonsByMovePower (client,
+ * order, count, foe), inside BTL_CLIENT_ChooseReplacementsAuto.  The order
+ * is the game's preference; the first entries go in.
+ */
+static void build_battle_ai_replace(const BwEventCall *call, BwEventPayload *out)
+{
+    const BwPortClientHead *client = (const BwPortClientHead *)call->a[0];
+    struct BtlMain *main = main_of_client(call);
+    const u8 *order = (const u8 *)call->a[1];
+    u32 n = (u32)call->a[2], i;
+
+    memset(&out->battle_ai_replace, 0, sizeof(out->battle_ai_replace));
+    if (n > 6u) {
+        n = 6u;
+    }
+    out->battle_ai_replace.count = (u8)n;
+    for (i = 0; i < 6u; i++) {
+        out->battle_ai_replace.order[i] = (order != NULL && i < n) ? order[i] : 6u;
+    }
+    fill_battle_ref(&out->battle_ai_replace.foe, (struct BtlPokeParam *)call->a[3], main,
+                    client != NULL ? client->side : NULL);
+    bind_battle(main);
+}
+
+static void apply_battle_ai_replace(const BwEventPayload *in, BwEventCall *call)
+{
+    u8 *order = (u8 *)call->a[1];
+    u32 n = (u32)call->a[2], i, j;
+    u8 seen = 0;
+
+    if (order == NULL || n > 6u) {
+        return;
+    }
+    /* the handler's list must be the same positions in another order */
+    for (i = 0; i < n; i++) {
+        u8 p = in->battle_ai_replace.order[i];
+        int known = 0;
+
+        for (j = 0; j < n; j++) {
+            if (order[j] == p) {
+                known = 1;
+            }
+        }
+        if (!known || p >= 8u || (seen & (1u << p)) != 0) {
+            return;
+        }
+        seen |= (u8)(1u << p);
+    }
+    for (i = 0; i < n; i++) {
+        order[i] = in->battle_ai_replace.order[i];
+    }
+}
+
+/*
+ * battle.ability: BTL_SERVER_FLOW_PushAbilityPopupIn (flow, Pokemon), the
+ * game's ability banner going up.
+ */
+static void build_battle_ability(const BwEventCall *call, BwEventPayload *out)
+{
+    const BwPortFlowHead *flow = (const BwPortFlowHead *)call->a[0];
+    struct BtlMain *main = main_of_flow(call);
+    struct BtlPokeParam *mon = (struct BtlPokeParam *)call->a[1];
+
+    memset(&out->battle_ability, 0, sizeof(out->battle_ability));
+    fill_battle_ref(&out->battle_ability.mon, mon, main, flow != NULL ? flow->pokeCon : NULL);
+    out->battle_ability.side = out->battle_ability.mon.side;
+    if (mon != NULL && BTL_POKEPARAM_GetValue != NULL) {
+        out->battle_ability.ability = (u16)BTL_POKEPARAM_GetValue(mon, BW_BTL_VALUE_ABILITY);
+    }
+    bind_battle(main);
+}
+
+/*
+ * battle.stat: BTL_SERVER_FLOW_ChangeStatStage (flow, Pokemon, stat,
+ * delta, message, show): the change the game applies, after the abilities
+ * that turn or block it.
+ */
+static void build_battle_stat(const BwEventCall *call, BwEventPayload *out)
+{
+    const BwPortFlowHead *flow = (const BwPortFlowHead *)call->a[0];
+    struct BtlMain *main = main_of_flow(call);
+
+    memset(&out->battle_stat, 0, sizeof(out->battle_stat));
+    fill_battle_ref(&out->battle_stat.mon, (struct BtlPokeParam *)call->a[1], main,
+                    flow != NULL ? flow->pokeCon : NULL);
+    out->battle_stat.side = out->battle_stat.mon.side;
+    out->battle_stat.stat = (u8)call->a[2];
+    out->battle_stat.delta = (s8)(int)call->a[3];
+    bind_battle(main);
+}
+
+/*
+ * battle.held_item: the return of BTL_SERVER_FLOW_ProcHeldItemActivate
+ * (flow, Pokemon) when it answers that the item took effect.  An item used
+ * up by its effect is the record's consumed item then.
+ */
+static int battle_held_item_happened(const BwEventCall *call)
+{
+    return call->ret != 0;
+}
+
+static void build_battle_held_item(const BwEventCall *call, BwEventPayload *out)
+{
+    const BwPortFlowHead *flow = (const BwPortFlowHead *)call->a[0];
+    struct BtlMain *main = main_of_flow(call);
+    struct BtlPokeParam *mon = (struct BtlPokeParam *)call->a[1];
+
+    memset(&out->battle_held_item, 0, sizeof(out->battle_held_item));
+    fill_battle_ref(&out->battle_held_item.mon, mon, main, flow != NULL ? flow->pokeCon : NULL);
+    out->battle_held_item.side = out->battle_held_item.mon.side;
+    if (mon != NULL) {
+        u16 item = ov093_BTL_POKEPARAM_GetItem != NULL ? ov093_BTL_POKEPARAM_GetItem(mon) : 0u;
+
+        if (item == 0u) {
+            item = ((const BwPortBtlRecordHead *)mon)->consumedItem;
+        }
+        out->battle_held_item.item = item;
+    }
+    bind_battle(main);
+}
+
+/*
+ * battle.status: the return of BTL_SERVER_FLOW_TryApplySick (flow, target,
+ * source, condition, ...): the game answers whether it took.
+ */
+static void build_battle_status(const BwEventCall *call, BwEventPayload *out)
+{
+    const BwPortFlowHead *flow = (const BwPortFlowHead *)call->a[0];
+    struct BtlMain *main = main_of_flow(call);
+    void *side = flow != NULL ? flow->pokeCon : NULL;
+
+    memset(&out->battle_status, 0, sizeof(out->battle_status));
+    fill_battle_ref(&out->battle_status.mon, (struct BtlPokeParam *)call->a[1], main, side);
+    fill_battle_ref(&out->battle_status.source, (struct BtlPokeParam *)call->a[2], main, side);
+    out->battle_status.side = out->battle_status.mon.side;
+    out->battle_status.status = (u16)call->a[3];
+    out->battle_status.applied = (u8)(call->ret != 0);
+    bind_battle(main);
+}
+
+/* battle.turn: BTL_SERVER_FLOW_StartTurn (flow, action table). */
+static void build_battle_turn(const BwEventCall *call, BwEventPayload *out)
+{
+    struct BtlServerFlow *flow = (struct BtlServerFlow *)call->a[0];
+    struct BtlMain *main = main_of_flow(call);
+
+    memset(&out->battle_turn, 0, sizeof(out->battle_turn));
+    out->battle_turn.turn = turn_of(flow);
+    out->battle_turn.weather = weather_of(flow);
+    feed_turn_weather(flow);
+    bind_battle(main);
+}
+
+/* ------------------------------------------------------------------ */
 /* The refusals                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -2511,7 +2883,40 @@ static const BwEventBinding g_battle_rows[] = {
       NULL, NULL },
 
     { BW_MOD_REGION_OVL(10), 0x02158A20u, BW_EVENT_WHITEOUT,
-      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_whiteout_field, NULL, NULL, NULL }
+      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_whiteout_field, NULL, NULL, NULL },
+
+    /* version 5: the AI and what it observes */
+    { BW_MOD_REGION_OVL(93), 0x021D3DC4u, BW_EVENT_BATTLE_AI,
+      BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_battle_ai_item,
+      apply_battle_ai_item, NULL, NULL },
+
+    { BW_MOD_REGION_OVL(93), 0x021CFBF0u, BW_EVENT_BATTLE_AI,
+      BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_battle_ai_switch,
+      apply_battle_ai_switch, NULL, NULL },
+
+    { BW_MOD_REGION_OVL(96), 0x02188134u, BW_EVENT_BATTLE_AI,
+      BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_battle_ai_move,
+      apply_battle_ai_move, NULL, NULL },
+
+    { BW_MOD_REGION_OVL(93), 0x021D09E0u, BW_EVENT_BATTLE_AI_REPLACE,
+      BW_EVENT_AFTER, BW_SCOPE_INSIDE, BW_MOD_REGION_OVL(93), 0x021D0D50u,
+      build_battle_ai_replace, apply_battle_ai_replace, NULL, NULL },
+
+    { BW_MOD_REGION_OVL(93), 0x021C5A1Cu, BW_EVENT_BATTLE_ABILITY,
+      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_battle_ability, NULL, NULL, NULL },
+
+    { BW_MOD_REGION_OVL(93), 0x021C5A8Cu, BW_EVENT_BATTLE_STAT,
+      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_battle_stat, NULL, NULL, NULL },
+
+    { BW_MOD_REGION_OVL(93), 0x021C2128u, BW_EVENT_BATTLE_HELD_ITEM,
+      BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_battle_held_item, NULL, NULL,
+      battle_held_item_happened },
+
+    { BW_MOD_REGION_OVL(93), 0x021C27A0u, BW_EVENT_BATTLE_STATUS,
+      BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_battle_status, NULL, NULL, NULL },
+
+    { BW_MOD_REGION_OVL(93), 0x021BBC44u, BW_EVENT_BATTLE_TURN,
+      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_battle_turn, NULL, NULL, NULL }
 };
 
 /* The rows of this area, for the dispatch core. */

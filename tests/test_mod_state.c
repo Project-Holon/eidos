@@ -270,8 +270,11 @@ int main(void)
     BW_CHECK_EQ("the battle's trainers follow",
                 (long)offsetof(BwModState, battle_trainer)
                 - (long)offsetof(BwModState, party_count), 37 * (long)sizeof(void *));
+    BW_CHECK_EQ("version 5's type chart, weather and learnset follow",
+                (long)offsetof(BwModState, species_learns)
+                - (long)offsetof(BwModState, party_count), 40 * (long)sizeof(void *));
     BW_CHECK_EQ("and nothing follows it",
-                (long)sizeof(BwModState) - (long)offsetof(BwModState, battle_trainer),
+                (long)sizeof(BwModState) - (long)offsetof(BwModState, species_learns),
                 (long)sizeof(void *));
 
     printf("the services table\n");

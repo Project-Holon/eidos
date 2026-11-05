@@ -138,7 +138,7 @@ extern const char *bw_mod_savedata_namespace(void);
 /* How many rules the port holds at once, over every event together. */
 #define BW_RULE_MAX             64u
 
-/* The event ids of sdk/mod_api.h go up to BW_EVENT_DEX_REGISTER (112). */
+/* The event ids of sdk/mod_api.h go up to BW_EVENT_BATTLE_TURN (113). */
 #define BW_RULE_KINDS_MAX       128u
 
 /*
@@ -640,6 +640,55 @@ static const BwRuleField g_f_battle_exp[] = {
     BW_RULE_FIELD(BwBattleExp, share, BW_RULE_FK_INT, BW_RULE_FF_MOD)
 };
 
+static const BwRuleField g_f_battle_ai[] = {
+    BW_RULE_FIELD(BwBattleAi, mon, BW_RULE_FK_MON, 0),
+    BW_RULE_FIELD(BwBattleAi, target, BW_RULE_FK_MON, 0),
+    BW_RULE_FIELD(BwBattleAi, stage, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleAi, switch_to, BW_RULE_FK_INT, BW_RULE_FF_MOD),
+    BW_RULE_FIELD(BwBattleAi, move, BW_RULE_FK_INT, BW_RULE_FF_MOD),
+    BW_RULE_FIELD(BwBattleAi, target_pos, BW_RULE_FK_INT, BW_RULE_FF_MOD),
+    BW_RULE_FIELD(BwBattleAi, item, BW_RULE_FK_INT, BW_RULE_FF_MOD),
+    BW_RULE_FIELD(BwBattleAi, scores, BW_RULE_FK_ARRAY, 0)
+};
+
+static const BwRuleField g_f_battle_ai_replace[] = {
+    BW_RULE_FIELD(BwBattleAiReplace, foe, BW_RULE_FK_MON, 0),
+    BW_RULE_FIELD(BwBattleAiReplace, count, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleAiReplace, order, BW_RULE_FK_ARRAY, 0)
+};
+
+static const BwRuleField g_f_battle_ability[] = {
+    BW_RULE_FIELD(BwBattleAbility, mon, BW_RULE_FK_MON, 0),
+    BW_RULE_FIELD(BwBattleAbility, ability, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleAbility, side, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_battle_stat[] = {
+    BW_RULE_FIELD(BwBattleStat, mon, BW_RULE_FK_MON, 0),
+    BW_RULE_FIELD(BwBattleStat, stat, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleStat, delta, BW_RULE_FK_INT, BW_RULE_FF_SIGNED),
+    BW_RULE_FIELD(BwBattleStat, side, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_battle_held_item[] = {
+    BW_RULE_FIELD(BwBattleHeldItem, mon, BW_RULE_FK_MON, 0),
+    BW_RULE_FIELD(BwBattleHeldItem, item, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleHeldItem, side, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_battle_status[] = {
+    BW_RULE_FIELD(BwBattleStatus, mon, BW_RULE_FK_MON, 0),
+    BW_RULE_FIELD(BwBattleStatus, source, BW_RULE_FK_MON, 0),
+    BW_RULE_FIELD(BwBattleStatus, status, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleStatus, applied, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleStatus, side, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_battle_turn[] = {
+    BW_RULE_FIELD(BwBattleTurn, turn, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleTurn, weather, BW_RULE_FK_INT, 0)
+};
+
 static const BwRuleField g_f_battle_trainer_mon[] = {
     BW_RULE_FIELD(BwBattleTrainerMon, trainer_id, BW_RULE_FK_INT, 0),
     BW_RULE_FIELD(BwBattleTrainerMon, index, BW_RULE_FK_INT, 0),
@@ -848,6 +897,20 @@ static const BwRuleEvent g_events[] = {
       .fields = g_f_whiteout, .field_count = 2 },
     { .kind = BW_EVENT_BATTLE_EXP, .name = "battle.exp", .refusable = 1,
       .fields = g_f_battle_exp, .field_count = 5 },
+    { .kind = BW_EVENT_BATTLE_AI, .name = "battle.ai", .refusable = 0,
+      .fields = g_f_battle_ai, .field_count = 8 },
+    { .kind = BW_EVENT_BATTLE_AI_REPLACE, .name = "battle.ai_replace",
+      .refusable = 0, .fields = g_f_battle_ai_replace, .field_count = 3 },
+    { .kind = BW_EVENT_BATTLE_ABILITY, .name = "battle.ability", .refusable = 0,
+      .fields = g_f_battle_ability, .field_count = 3 },
+    { .kind = BW_EVENT_BATTLE_STAT, .name = "battle.stat", .refusable = 0,
+      .fields = g_f_battle_stat, .field_count = 4 },
+    { .kind = BW_EVENT_BATTLE_HELD_ITEM, .name = "battle.held_item",
+      .refusable = 0, .fields = g_f_battle_held_item, .field_count = 3 },
+    { .kind = BW_EVENT_BATTLE_STATUS, .name = "battle.status", .refusable = 0,
+      .fields = g_f_battle_status, .field_count = 5 },
+    { .kind = BW_EVENT_BATTLE_TURN, .name = "battle.turn", .refusable = 0,
+      .fields = g_f_battle_turn, .field_count = 2 },
     { .kind = BW_EVENT_BATTLE_TRAINER_MON, .name = "battle.trainer_mon",
       .refusable = 1, .fields = g_f_battle_trainer_mon, .field_count = 11 },
 

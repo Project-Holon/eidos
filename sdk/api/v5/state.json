@@ -466,6 +466,51 @@
           "name": "n"
         }
       ]
+    },
+    {
+      "name": "type_effect",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "u32",
+          "name": "atk_type"
+        },
+        {
+          "type": "u32",
+          "name": "def_type1"
+        },
+        {
+          "type": "u32",
+          "name": "def_type2"
+        }
+      ]
+    },
+    {
+      "name": "battle_weather",
+      "ret": "s32",
+      "params": []
+    },
+    {
+      "name": "species_learns",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "u16",
+          "name": "species"
+        },
+        {
+          "type": "u16",
+          "name": "form"
+        },
+        {
+          "type": "u16",
+          "name": "move"
+        },
+        {
+          "type": "u8",
+          "name": "level"
+        }
+      ]
     }
   ]
 }

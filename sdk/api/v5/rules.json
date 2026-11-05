@@ -645,6 +645,12 @@
     "whiteout",
     "battle.trainer_mon",
     "battle.exp",
+    "battle.ai",
+    "battle.ai_replace",
+    "battle.ability",
+    "battle.stat",
+    "battle.held_item",
+    "battle.status",
     "item.add",
     "item.use",
     "shop.buy",
@@ -654,6 +660,7 @@
     "mon.revive",
     "badge.get",
     "flag.set",
-    "dex.register"
+    "dex.register",
+    "battle.turn"
   ]
 }

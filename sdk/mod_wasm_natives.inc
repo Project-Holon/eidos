@@ -416,6 +416,36 @@ static int32_t wn_battle_trainer(wasm_exec_env_t env, int32_t n)
     return (int32_t)w->host->state->battle_trainer((u32)n);
 }
 
+static int32_t wn_type_effect(wasm_exec_env_t env, int32_t atk_type, int32_t def_type1, int32_t def_type2)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->type_effect == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->type_effect((u32)atk_type, (u32)def_type1, (u32)def_type2);
+}
+
+static int32_t wn_battle_weather(wasm_exec_env_t env)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->battle_weather == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->battle_weather();
+}
+
+static int32_t wn_species_learns(wasm_exec_env_t env, int32_t species, int32_t form, int32_t move, int32_t level)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->species_learns == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->species_learns((u16)species, (u16)form, (u16)move, (u8)level);
+}
+
 static void wn_message(wasm_exec_env_t env, const char *text)
 {
     BwWasmMod *w = wasm_mod_of(env);
@@ -846,6 +876,9 @@ static NativeSymbol k_wasm_api_natives[] = {
     { "mon_recalc", (void *)wn_mon_recalc, "(iiiii)i", NULL },
     { "species_base", (void *)wn_species_base, "(i)i", NULL },
     { "battle_trainer", (void *)wn_battle_trainer, "(i)i", NULL },
+    { "type_effect", (void *)wn_type_effect, "(iii)i", NULL },
+    { "battle_weather", (void *)wn_battle_weather, "()i", NULL },
+    { "species_learns", (void *)wn_species_learns, "(iiii)i", NULL },
     { "message", (void *)wn_message, "($)", NULL },
     { "confirm", (void *)wn_confirm, "($)i", NULL },
     { "session_host", (void *)wn_session_host, "(*~)i", NULL },

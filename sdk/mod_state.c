@@ -86,6 +86,8 @@
 #include "mod_api.h"
 #include "mod_state.h"
 #include "bw_limits.h"
+#include "mod_context.h"
+#include "overlay.h"
 
 #include <string.h>
 
@@ -238,6 +240,8 @@ extern void BTL_POKEPARAM_SetItem(struct BtlPokeParam *pp, u16 item)
 extern u16 BTL_POKEPARAM_GetItem(struct BtlPokeParam *pp)
     __attribute__((weak));                                    /* 0x021D5B40 */
 extern struct PokemonParam *BTL_POKEPARAM_GetMon(struct BtlPokeParam *pp)
+    __attribute__((weak));
+extern int ov093_BTL_POKEPARAM_GetMajorStatusIndex(struct BtlPokeParam *bpp)
     __attribute__((weak));
 /* POKE_TOOL_PARAM_IS_EGG (src/game/arm9/poke_tool_param.h). */
 #define BW_PARAM_IS_EGG 0x4Cu
@@ -787,6 +791,32 @@ static int state_battle_get(BwMonRef mon, u32 field, u32 *out)
         *out = (field == BW_MON_FIELD_TYPE1) ? (u32)type1 : (u32)type2;
         return 0;
     }
+    case BW_MON_FIELD_STAGE_ATK:
+    case BW_MON_FIELD_STAGE_DEF:
+    case BW_MON_FIELD_STAGE_SPATK:
+    case BW_MON_FIELD_STAGE_SPDEF:
+    case BW_MON_FIELD_STAGE_SPEED:
+    case BW_MON_FIELD_STAGE_ACCURACY:
+    case BW_MON_FIELD_STAGE_EVASION:
+        /* the game's value ids 1 to 7 are the stages, 6 unchanged */
+        if (BTL_POKEPARAM_GetValue == NULL) {
+            return -1;
+        }
+        *out = (u32)(u8)BTL_POKEPARAM_GetValue(record,
+                                               (int)(field - BW_MON_FIELD_STAGE_ATK + 1u));
+        return 0;
+    case BW_MON_FIELD_STATUS:
+        if (ov093_BTL_POKEPARAM_GetMajorStatusIndex == NULL) {
+            return -1;
+        }
+        *out = (u32)ov093_BTL_POKEPARAM_GetMajorStatusIndex(record);
+        return 0;
+    case BW_MON_FIELD_BATTLE_ABILITY:
+        if (BTL_POKEPARAM_GetValue == NULL) {
+            return -1;
+        }
+        *out = (u32)BTL_POKEPARAM_GetValue(record, 16);
+        return 0;
     default:
         break;
     }
@@ -1617,6 +1647,121 @@ static s32 state_battle_trainer(u32 n)
     return (s32)g_battle_trainers[n];
 }
 
+/* ------------------------------------------------------------------ */
+/* Version 5: the type chart, the weather, what a species can learn     */
+/* ------------------------------------------------------------------ */
+
+/* The game's type chart (src/game/ov093/btl_calc.c), by its linked name:
+ * an affinity 0 none, 1 a quarter, 2 half, 3 normal, 4 double, 5 four
+ * times; Combine puts two of them together. */
+extern int ov093_BTL_CALC_GetTypeAffinity(int atkType, int defType)
+    __attribute__((weak));                                    /* 0x021D794C */
+extern int ov093_BTL_CALC_CombineTypeAffinity(int a, int b) __attribute__((weak));
+
+#define BW_TYPE_COUNT 17u
+
+static s32 state_type_effect(u32 atk, u32 def1, u32 def2)
+{
+    static const s32 quarters[6] = { 0, 1, 2, 4, 8, 16 };
+    int a;
+
+    /* the chart is the battle overlay's own data: it is there while a
+     * battle runs (ov093 loaded), and nowhere else */
+    if (ov093_BTL_CALC_GetTypeAffinity == NULL || ov093_BTL_CALC_CombineTypeAffinity == NULL ||
+        atk >= BW_TYPE_COUNT || def1 >= BW_TYPE_COUNT || !bw_overlay_is_loaded(93u)) {
+        return -1;
+    }
+    a = ov093_BTL_CALC_GetTypeAffinity((int)atk, (int)def1);
+    if (def2 != def1 && def2 < BW_TYPE_COUNT) {
+        a = ov093_BTL_CALC_CombineTypeAffinity(a, ov093_BTL_CALC_GetTypeAffinity((int)atk, (int)def2));
+    }
+    return (a >= 0 && a <= 5) ? quarters[a] : -1;
+}
+
+static s32 state_battle_weather(void)
+{
+    if (g_battle_wild < 0) {
+        return -1;
+    }
+    return (s32)bw_mod_battle_context.weather;
+}
+
+/* The game's own learning data (src/game/arm9/poke_tool.c, file_util.c,
+ * ov021 sodateya.c): the level-up table, the TM and HM machines and the egg
+ * moves (archive 0x7B: a count, then the moves). */
+extern u32 POKE_TOOL_CheckSpeciesTmCompat(u16 species, u16 form, s32 tmIndex)
+    __attribute__((weak));
+extern u16 FILE_UTIL_GetMachineMove(u16 machineId) __attribute__((weak)); /* 0x020212B0 */
+extern u32 FILE_UTIL_GetId(u32 machineId) __attribute__((weak));
+extern void *ARC_TOOL_LoadMember(u32 archiveID, u32 memberIdx, u16 heapID)
+    __attribute__((weak));
+extern void POKE_PERSONAL_LoadDataDirect(u32 species, int form, void *dst)
+    __attribute__((weak));                                    /* 0x0201ADD0 */
+
+#define BW_SPECIES_MAX      649u
+#define BW_MOVE_MAX         559u
+#define BW_LEARNSET_BYTES   0x68u
+#define BW_EGG_MOVE_ARC     0x7Bu
+
+static s32 state_species_learns(u16 species, u16 form, u16 move, u8 level)
+{
+    s32 how = 0;
+
+    /* the species data opens with the game (as state_species_value) */
+    if (species == 0u || species > BW_SPECIES_MAX || move == 0u || move > BW_MOVE_MAX ||
+        g_game_data == NULL) {
+        return -1;
+    }
+    /* the level-up table: (move, level) pairs ending with 0xFFFF */
+    if (POKE_PERSONAL_LoadDataDirect != NULL) {
+        u16 table[BW_LEARNSET_BYTES / 2u];
+        u32 i;
+
+        memset(table, 0xFF, sizeof(table));
+        POKE_PERSONAL_LoadDataDirect(species, (int)form, table);
+        for (i = 0; i + 1u < BW_LEARNSET_BYTES / 2u && table[i] != 0xFFFFu; i += 2u) {
+            if (table[i] == move && (level == 0u || table[i + 1u] <= level)) {
+                how |= 1;
+                break;
+            }
+        }
+    }
+    /* the machines: TM01 to TM92 and HM01 to HM06 are items 0x148 to
+     * 0x1A9, TM93 to TM95 items 0x26A to 0x26C */
+    if (POKE_TOOL_CheckSpeciesTmCompat != NULL && FILE_UTIL_GetMachineMove != NULL &&
+        FILE_UTIL_GetId != NULL) {
+        u32 item;
+
+        for (item = 0x148u; item <= 0x26Cu; item++) {
+            if (item == 0x1AAu) {
+                item = 0x26Au;
+            }
+            if (FILE_UTIL_GetMachineMove((u16)item) == move &&
+                POKE_TOOL_CheckSpeciesTmCompat(species, form, (s32)FILE_UTIL_GetId(item)) != 0u) {
+                how |= 2;
+                break;
+            }
+        }
+    }
+    /* the egg moves */
+    if (ARC_TOOL_LoadMember != NULL && GFL_HEAP_Free != NULL) {
+        u16 *egg = (u16 *)ARC_TOOL_LoadMember(BW_EGG_MOVE_ARC, species, (u16)BW_STATE_BAG_HEAP);
+
+        if (egg != NULL) {
+            u32 n = egg[0], i;
+
+            for (i = 1; i <= n && i < 64u; i++) {
+                if (egg[i] == move) {
+                    how |= 4;
+                    break;
+                }
+            }
+            GFL_HEAP_Free(egg);
+        }
+    }
+    return how;
+}
+
 static u32 state_play_seconds(void)
 {
     struct PlayTime *t;
@@ -1713,7 +1858,11 @@ const BwModState bw_mod_state = {
     state_mon_recalc,
 
     state_species_base,
-    state_battle_trainer
+    state_battle_trainer,
+
+    state_type_effect,
+    state_battle_weather,
+    state_species_learns
 };
 
 int bw_mod_state_party_slot(const void *mon)

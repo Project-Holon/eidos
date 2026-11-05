@@ -613,6 +613,58 @@ Egg, the Pass Power and the effort values. Each such member then has its
 own `mon.exp`, so a level cap still applies. `scale` applies after it. 50
 is the later games' amount.
 
+**`battle.ai`** (version 5)
+
+A Pokemon the game controls has made one of its choices for the turn; the
+event fires after the game's own choice, at each stage it goes through, and
+a handler may replace that choice. The stages follow each other: a trainer's
+Pokemon that uses an item or switches does not reach the move stage. Wild
+Pokemon only have the move stage.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `mon` | mon | the Pokemon choosing |
+| `target` | mon | move stage: the Pokemon the game's scripts aimed at |
+| `stage` | u8 | 0 item, 1 switch, 2 move |
+| `switch_to` | u8, *mod* | switch stage: the party position switched to, 6 none; a position that cannot battle or is out is ignored |
+| `move` | u8, *mod* | move stage: the move slot, 0 to 3 (4 runs, for a wild Pokemon) |
+| `target_pos` | u8, *mod* | move stage: the battle position aimed at |
+| `item` | u16, *mod* | item stage: the trainer's item used, 0 none; another item is used instead, 0 uses none (the item the game picked is spent either way) |
+| `scores` | s32[4] | move stage: the game's own points per move slot after its AI scripts |
+
+**`battle.ai_replace`** (version 5)
+
+A trainer sends Pokemon in after a faint. `order` lists the party positions
+that can battle, the game's preference first (the one whose moves hit the
+foe hardest); the first ones go in. A handler may reorder the list; a list
+that is not the same positions is ignored.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `foe` | mon | the Pokemon the game measured against |
+| `count` | u8 | entries of `order` |
+| `order` | u8[6], *mod* | the party positions, in the order they go in |
+
+**`battle.ability`** (version 5): an ability shows itself (the game's
+ability banner). `mon`, `ability` (the ability id), `side`.
+
+**`battle.stat`** (version 5): a stat stage changes, after the abilities
+that turn or block the change (Contrary, Clear Body...). `mon`, `stat`
+(1 attack, 2 defense, 3 special attack, 4 special defense, 5 speed,
+6 accuracy, 7 evasion), `delta` (s8, the stages it moves by), `side`.
+
+**`battle.held_item`** (version 5): a held item takes effect. `mon`,
+`item` (also when it was used up by its effect), `side`.
+
+**`battle.status`** (version 5): a condition is put on a Pokemon, or fails
+to be. `mon`, `source` (the Pokemon that caused it, or empty), `status`
+(the game's condition id: 1 paralysis, 2 sleep, 3 freeze, 4 burn, 5 poison,
+then confusion and the battle's other conditions), `applied` (1 it took),
+`side`.
+
+**`battle.turn`** (version 5): a turn starts. `turn`, `weather` (the
+game's weather id, 0 none).
+
 **`battle.trainer_mon`** (version 4)
 
 One Pokemon of the opposing trainer's party, after the game built the party

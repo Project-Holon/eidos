@@ -245,7 +245,16 @@ The version moves when the surface moves.
 - **Version 5** appends and moves nothing, so version 3 and 4 mods still
   load. The services table gains `event_player`, `shared_get`,
   `shared_set`, `shared_add` and `shared_cas` (multiplayer, `docs/mod-services.md`, "Multiplayer"),
-  and `battle.exp` gains `share` at its end (experience for the bench). A mod
+  and `battle.exp` gains `share` at its end (experience for the bench).
+  For battle AI mods: the events `battle.ai` (the item, switch and move a
+  Pokemon the game controls chooses, each writable), `battle.ai_replace`,
+  `battle.ability`, `battle.stat`, `battle.held_item`, `battle.status` and
+  `battle.turn`; the state table gains `type_effect`, `battle_weather` and
+  `species_learns`; `battle_get` reads the stat stages, the major status
+  and the ability in force (field ids 0x101 to 0x109). The AI's own
+  functions (`TR_AI_Think`, `TR_AI_Start`, `TR_AI_GetChosenTarget`,
+  `BTL_CLIENT_StepAutoChooseActions`, `BTL_CLIENT_ChooseReplacementsAuto`)
+  are in the hookable set for code mods that replace them whole. A mod
   with `multiplayer = <n>` in its manifest receives the other players'
   events through its own handlers. Version 5 is open: `sdk/api/v5` is
   the current description.
@@ -281,8 +290,8 @@ width and the hash follows it: the number beside the version number is the
 
 | Pointers | Hash |
 |---|---|
-| 32-bit | 0x86288CC3 (the number in `sdk/mod_api.h`) |
-| 64-bit | 0x6E493405 |
+| 32-bit | 0xF07B8D07 (the number in `sdk/mod_api.h`) |
+| 64-bit | 0x0579BE42 |
 
 The payload structs, the ids and the enums hold no pointer and hash the
 same everywhere.

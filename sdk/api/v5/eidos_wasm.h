@@ -80,6 +80,13 @@ enum {
     EIDOS_EVENT_WHITEOUT = 81,
     EIDOS_EVENT_BATTLE_TRAINER_MON = 82,
     EIDOS_EVENT_BATTLE_EXP = 83,
+    EIDOS_EVENT_BATTLE_AI = 84,
+    EIDOS_EVENT_BATTLE_AI_REPLACE = 85,
+    EIDOS_EVENT_BATTLE_ABILITY = 86,
+    EIDOS_EVENT_BATTLE_STAT = 87,
+    EIDOS_EVENT_BATTLE_HELD_ITEM = 88,
+    EIDOS_EVENT_BATTLE_STATUS = 89,
+    EIDOS_EVENT_BATTLE_TURN = 113,
     EIDOS_EVENT_ITEM_ADD = 90,
     EIDOS_EVENT_ITEM_USE = 91,
     EIDOS_EVENT_SHOP_BUY = 92,
@@ -161,6 +168,9 @@ enum {
     EIDOS_HEAL_HP_FIELD = 0,
     EIDOS_HEAL_HP_BATTLE = 1,
     EIDOS_HEAL_HP_PARTY = 2,
+    EIDOS_AI_ITEM = 0,
+    EIDOS_AI_SWITCH = 1,
+    EIDOS_AI_MOVE = 2,
     EIDOS_SCRIPT_VM_FIELD = 0,
     EIDOS_SCRIPT_VM_BATTLE = 1,
     EIDOS_SCRIPT_CONTINUE = 0,
@@ -196,6 +206,15 @@ enum {
     EIDOS_MON_FIELD_MET_LOCATION = 150,
     EIDOS_MON_FIELD_BALL = 152,
     EIDOS_MON_FIELD_MET_LEVEL = 153,
+    EIDOS_MON_FIELD_STAGE_ATK = 257,
+    EIDOS_MON_FIELD_STAGE_DEF = 258,
+    EIDOS_MON_FIELD_STAGE_SPATK = 259,
+    EIDOS_MON_FIELD_STAGE_SPDEF = 260,
+    EIDOS_MON_FIELD_STAGE_SPEED = 261,
+    EIDOS_MON_FIELD_STAGE_ACCURACY = 262,
+    EIDOS_MON_FIELD_STAGE_EVASION = 263,
+    EIDOS_MON_FIELD_STATUS = 264,
+    EIDOS_MON_FIELD_BATTLE_ABILITY = 265,
     EIDOS_SESSION_MESSAGE = 0,
     EIDOS_SESSION_JOIN = 1,
     EIDOS_SESSION_LEAVE = 2,
@@ -606,6 +625,61 @@ typedef struct EidosBattleExp {
     uint8_t share_pad[3];
 } EidosBattleExp;  /* 20 bytes */
 
+typedef struct EidosBattleAi {
+    EidosEvent h;
+    EidosMonRef mon;  /* the Pokemon choosing */
+    EidosMonRef target;  /* move stage: the Pokemon the scripts aimed at */
+    uint8_t stage;  /* EIDOS_AI_* */
+    uint8_t switch_to;  /* *mod: switch stage */
+    uint8_t move;  /* *mod: move stage */
+    uint8_t target_pos;  /* *mod: move stage */
+    uint16_t item;  /* *mod: item stage */
+    uint16_t pad;
+    int32_t scores[4];  /* move stage */
+} EidosBattleAi;  /* 48 bytes */
+
+typedef struct EidosBattleAiReplace {
+    EidosEvent h;
+    EidosMonRef foe;  /* the Pokemon the game measured against */
+    uint8_t count;  /* entries of order */
+    uint8_t order[6];  /* *mod:  */
+    uint8_t pad;
+} EidosBattleAiReplace;  /* 24 bytes */
+
+typedef struct EidosBattleAbility {
+    EidosEvent h;
+    EidosMonRef mon;
+    uint16_t ability;
+    uint8_t side;
+    uint8_t pad;
+} EidosBattleAbility;  /* 20 bytes */
+
+typedef struct EidosBattleStat {
+    EidosEvent h;
+    EidosMonRef mon;
+    uint8_t stat;
+    int8_t delta;
+    uint8_t side;
+    uint8_t pad;
+} EidosBattleStat;  /* 20 bytes */
+
+typedef struct EidosBattleHeldItem {
+    EidosEvent h;
+    EidosMonRef mon;
+    uint16_t item;
+    uint8_t side;
+    uint8_t pad;
+} EidosBattleHeldItem;  /* 20 bytes */
+
+typedef struct EidosBattleStatus {
+    EidosEvent h;
+    EidosMonRef mon;
+    EidosMonRef source;  /* the Pokemon that caused it, or empty */
+    uint16_t status;
+    uint8_t applied;
+    uint8_t side;
+} EidosBattleStatus;  /* 28 bytes */
+
 typedef struct EidosItemAdd {
     EidosEvent h;
     uint16_t item;
@@ -677,6 +751,13 @@ typedef struct EidosDexRegister {
     uint8_t caught;  /* 1 caught, 0 seen */
 } EidosDexRegister;  /* 12 bytes */
 
+typedef struct EidosBattleTurn {
+    EidosEvent h;
+    uint16_t turn;
+    uint8_t weather;  /* the game's weather id, 0 none */
+    uint8_t pad;
+} EidosBattleTurn;  /* 12 bytes */
+
 /* A handler: return EIDOS_EVENT_CONTINUE or EIDOS_EVENT_REFUSE. */
 typedef int32_t (*EidosHandler)(EidosEvent *event);
 
@@ -734,6 +815,9 @@ EIDOS_IMPORT("mon_from_box") int32_t eidos_mon_from_box(uint32_t box, uint32_t s
 EIDOS_IMPORT("mon_recalc") int32_t eidos_mon_recalc(uint32_t mon_handle, uint32_t mon_place, uint32_t mon_side, uint32_t mon_box, uint32_t mon_slot);
 EIDOS_IMPORT("species_base") int32_t eidos_species_base(uint32_t species);
 EIDOS_IMPORT("battle_trainer") int32_t eidos_battle_trainer(uint32_t n);
+EIDOS_IMPORT("type_effect") int32_t eidos_type_effect(uint32_t atk_type, uint32_t def_type1, uint32_t def_type2);
+EIDOS_IMPORT("battle_weather") int32_t eidos_battle_weather(void);
+EIDOS_IMPORT("species_learns") int32_t eidos_species_learns(uint32_t species, uint32_t form, uint32_t move, uint32_t level);
 
 /* The services (BwModServices). */
 EIDOS_IMPORT("message") void eidos_message(const char *text);

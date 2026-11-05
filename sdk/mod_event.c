@@ -54,7 +54,7 @@
 /* The limits                                                          */
 /* ------------------------------------------------------------------ */
 
-/* The event ids of sdk/mod_api.h go up to BW_EVENT_DEX_REGISTER (112). */
+/* The event ids of sdk/mod_api.h go up to BW_EVENT_BATTLE_TURN (113). */
 #define BW_MOD_EVENT_KINDS_MAX    128
 
 /* How many handlers the table holds over every event kind together. */
@@ -228,6 +228,13 @@ static u32 payload_size(u32 kind)
     case BW_EVENT_WHITEOUT:       return (u32)sizeof(BwWhiteout);
     case BW_EVENT_BATTLE_TRAINER_MON: return (u32)sizeof(BwBattleTrainerMon);
     case BW_EVENT_BATTLE_EXP:     return (u32)sizeof(BwBattleExp);
+    case BW_EVENT_BATTLE_AI:      return (u32)sizeof(BwBattleAi);
+    case BW_EVENT_BATTLE_AI_REPLACE: return (u32)sizeof(BwBattleAiReplace);
+    case BW_EVENT_BATTLE_ABILITY: return (u32)sizeof(BwBattleAbility);
+    case BW_EVENT_BATTLE_STAT:    return (u32)sizeof(BwBattleStat);
+    case BW_EVENT_BATTLE_HELD_ITEM: return (u32)sizeof(BwBattleHeldItem);
+    case BW_EVENT_BATTLE_STATUS:  return (u32)sizeof(BwBattleStatus);
+    case BW_EVENT_BATTLE_TURN:    return (u32)sizeof(BwBattleTurn);
 
     case BW_EVENT_ITEM_ADD:     return (u32)sizeof(BwItemAdd);
     case BW_EVENT_ITEM_USE:     return (u32)sizeof(BwItemUse);

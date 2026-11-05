@@ -2264,6 +2264,18 @@
       "aliases": []
     },
     {
+      "address": "0x021BBC44",
+      "name": "BTL_SERVER_FLOW_StartTurn",
+      "region": "ov093",
+      "events": [
+        "battle.turn"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_StartTurn(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_StartTurn",
+      "aliases": []
+    },
+    {
       "address": "0x021BD60C",
       "name": "BTL_SERVER_FLOW_TryEscape",
       "region": "ov093",
@@ -2342,6 +2354,30 @@
       "aliases": []
     },
     {
+      "address": "0x021C2128",
+      "name": "BTL_SERVER_FLOW_ProcHeldItemActivate",
+      "region": "ov093",
+      "events": [
+        "battle.held_item"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_ProcHeldItemActivate(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_ProcHeldItemActivate",
+      "aliases": []
+    },
+    {
+      "address": "0x021C27A0",
+      "name": "BTL_SERVER_FLOW_TryApplySick",
+      "region": "ov093",
+      "events": [
+        "battle.status"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_TryApplySick(void *, void *, void *, int, unsigned int, unsigned char, unsigned int)",
+      "signature": "int (void *, void *, void *, int, unsigned int, unsigned char, unsigned int)",
+      "aletheia_name": "BTL_SERVER_FLOW_TryApplySick",
+      "aliases": []
+    },
+    {
       "address": "0x021C33E8",
       "name": "BTL_SERVER_FLOW_ApplyHpRecover",
       "region": "ov093",
@@ -2405,6 +2441,30 @@
       "prototype": "void BTL_SERVER_FLOW_CureSick(void *, void *, int, void *)",
       "signature": "void (void *, void *, int, void *)",
       "aletheia_name": "BTL_SERVER_FLOW_CureSick",
+      "aliases": []
+    },
+    {
+      "address": "0x021C5A1C",
+      "name": "BTL_SERVER_FLOW_PushAbilityPopupIn",
+      "region": "ov093",
+      "events": [
+        "battle.ability"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_PushAbilityPopupIn(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_PushAbilityPopupIn",
+      "aliases": []
+    },
+    {
+      "address": "0x021C5A8C",
+      "name": "BTL_SERVER_FLOW_ChangeStatStage",
+      "region": "ov093",
+      "events": [
+        "battle.stat"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_ChangeStatStage(void *, void *, int, int, unsigned short, int)",
+      "signature": "void (void *, void *, int, int, unsigned short, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_ChangeStatStage",
       "aliases": []
     },
     {
@@ -2635,6 +2695,50 @@
       "aliases": []
     },
     {
+      "address": "0x021CFBF0",
+      "name": "BTL_CLIENT_ChooseAiSwitchTarget",
+      "region": "ov093",
+      "events": [
+        "battle.ai"
+      ],
+      "prototype": "int BTL_CLIENT_ChooseAiSwitchTarget(void *, void *, unsigned int, void *)",
+      "signature": "int (void *, void *, unsigned int, void *)",
+      "aletheia_name": "BTL_CLIENT_ChooseAiSwitchTarget",
+      "aliases": []
+    },
+    {
+      "address": "0x021D0770",
+      "name": "BTL_CLIENT_StepAutoChooseActions",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_StepAutoChooseActions(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepAutoChooseActions",
+      "aliases": []
+    },
+    {
+      "address": "0x021D09E0",
+      "name": "BTL_CLIENT_SortMonsByMovePower",
+      "region": "ov093",
+      "events": [
+        "battle.ai_replace"
+      ],
+      "prototype": "void BTL_CLIENT_SortMonsByMovePower(void *, void *, unsigned char, void *)",
+      "signature": "void (void *, void *, unsigned char, void *)",
+      "aletheia_name": "BTL_CLIENT_SortMonsByMovePower",
+      "aliases": []
+    },
+    {
+      "address": "0x021D0D50",
+      "name": "BTL_CLIENT_ChooseReplacementsAuto",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_ChooseReplacementsAuto(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BTL_CLIENT_ChooseReplacementsAuto",
+      "aliases": []
+    },
+    {
       "address": "0x021D1290",
       "name": "BTL_CLIENT_StepShowResultMessage",
       "region": "ov093",
@@ -2674,6 +2778,18 @@
       "prototype": "int BTL_CLIENT_StepLearnLevelUpMoves(void *, void *, void *)",
       "signature": "int (void *, void *, void *)",
       "aletheia_name": "BTL_CLIENT_StepLearnLevelUpMoves",
+      "aliases": []
+    },
+    {
+      "address": "0x021D3DC4",
+      "name": "BTL_CLIENT_TakeTrainerItemToUse",
+      "region": "ov093",
+      "events": [
+        "battle.ai"
+      ],
+      "prototype": "unsigned int BTL_CLIENT_TakeTrainerItemToUse(void *, void *, void *)",
+      "signature": "unsigned int (void *, void *, void *)",
+      "aletheia_name": "BTL_CLIENT_TakeTrainerItemToUse",
       "aliases": []
     },
     {
@@ -2800,6 +2916,48 @@
       "prototype": "int BTL_PICK_GetLast(void *)",
       "signature": "int (void *)",
       "aletheia_name": "BTL_PICK_GetLast",
+      "aliases": []
+    },
+    {
+      "address": "0x02187FB0",
+      "name": "TR_AI_Think",
+      "region": "ov096",
+      "events": [],
+      "prototype": "int TR_AI_Think(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "TR_AI_Think",
+      "aliases": []
+    },
+    {
+      "address": "0x021880BC",
+      "name": "TR_AI_Start",
+      "region": "ov096",
+      "events": [],
+      "prototype": "void TR_AI_Start(void *, void *, int)",
+      "signature": "void (void *, void *, int)",
+      "aletheia_name": "TR_AI_Start",
+      "aliases": []
+    },
+    {
+      "address": "0x02188134",
+      "name": "TR_AI_GetChosenMove",
+      "region": "ov096",
+      "events": [
+        "battle.ai"
+      ],
+      "prototype": "unsigned char TR_AI_GetChosenMove(void *)",
+      "signature": "unsigned char (void *)",
+      "aletheia_name": "TR_AI_GetChosenMove",
+      "aliases": []
+    },
+    {
+      "address": "0x02188140",
+      "name": "TR_AI_GetChosenTarget",
+      "region": "ov096",
+      "events": [],
+      "prototype": "unsigned char TR_AI_GetChosenTarget(void *)",
+      "signature": "unsigned char (void *)",
+      "aletheia_name": "TR_AI_GetChosenTarget",
       "aliases": []
     },
     {
