@@ -5,9 +5,17 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.1
 
+### One-Screen Mode & UI
+- **Giving Items**: Giving an item from the Bag uses the one-screen party list ("Give to which Pokémon?", swapping held items) instead of the DS screen.
+
+### Battle Remastering & Tools
+- **Battle Spots**: Fixed the camera of N's battle in Accumula Town sitting far out.
+
 ### Bug Fixes
 - **Launcher**: Fixed the box legendary, badges and trainer pictures showing as broken images.
 - **Launcher**: Fixed "This release has no notes" when GitHub's request limit is reached; the notes now come from the changelog.
+
+PS: Honestly I'm only pushing this because the launcher is broken LOL.
 
 ## 0.2.0
 
