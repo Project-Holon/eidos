@@ -168,6 +168,11 @@ extern void        bw_mod_manifest_delete(void *manifest);
 extern int         bw_mod_manifest_parse_dir(void *manifest, const char *root,
                                               const char *dir_name);
 extern int         bw_mod_manifest_apply(void *manifest);
+extern const char *bw_mod_manifest_ui_text(const void *manifest);
+/* The one-screen interface's words (engine/ui/ui_lang.h): weak, so a build
+ * without the interface (the tests) loads mods the same way. */
+extern int  ui_lang_mod_add(u32 owner, const char *text, size_t len) __attribute__((weak));
+extern void ui_lang_mod_clear(u32 owner) __attribute__((weak));
 extern u32         bw_mod_manifest_override_count(const void *manifest);
 extern const void *bw_mod_manifest_override_at(const void *manifest, u32 i);
 extern u32         bw_mod_manifest_rule_count(const void *manifest);
@@ -987,6 +992,46 @@ static int loader_load(u32 index)
         }
     }
 
+    /* The interface's words in the mod's language (docs/mod-ui-text.md),
+     * relative to the mod's folder like a table. */
+    {
+        const char *ui = bw_mod_manifest_ui_text(manifest);
+        char path[1024];
+        int n = -1;
+
+        if (ui != NULL && ui[0] != '\0' && ui_lang_mod_add != NULL) {
+            n = snprintf(path, sizeof path, "%s/%s",
+                         root != NULL && *root != '\0' ? root : dir_name, ui);
+        }
+        if (n > 0 && (size_t)n < sizeof path) {
+            FILE *f = fopen(path, "rb");
+            char *buf = NULL;
+            long len = -1;
+
+            if (f != NULL && fseek(f, 0, SEEK_END) == 0) {
+                len = ftell(f);
+                if (len >= 0 && len <= (1L << 22) && fseek(f, 0, SEEK_SET) == 0) {
+                    buf = (char *)malloc((size_t)len + 1u);
+                    if (buf != NULL && fread(buf, 1, (size_t)len, f) != (size_t)len) {
+                        free(buf);
+                        buf = NULL;
+                    }
+                }
+            }
+            if (f != NULL) {
+                fclose(f);
+            }
+            if (buf != NULL) {
+                fprintf(stderr, "eidos: mod %s: %d interface words (%s)\n", label,
+                        ui_lang_mod_add(m->slot, buf, (size_t)len), ui);
+                free(buf);
+            } else {
+                fprintf(stderr, "eidos: mod %s: the ui_text file %s could not be read\n",
+                        label, ui);
+            }
+        }
+    }
+
     /* The rules: the manifest's rule lines, bound to their events.  A rule
      * that is refused is reported by the rule layer and the mod keeps the
      * rest of its manifest. */
@@ -1238,6 +1283,9 @@ static void loader_stop(BwModLoaderMod *m)
      *     handler left behind after the library is unloaded would be a call
      *     into a library that is gone. */
     bw_mod_script_remove_for(m->ns);
+    if (ui_lang_mod_clear != NULL) {
+        ui_lang_mod_clear(m->slot);     /* the mod's interface words */
+    }
     bw_mod_frame_remove_for(m->ns);
     bw_mod_net_remove_for(m->ns);
 

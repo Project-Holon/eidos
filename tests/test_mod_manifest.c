@@ -73,6 +73,7 @@ const char    *bw_mod_manifest_name(const BwModManifest *m);
 const char    *bw_mod_manifest_code(const BwModManifest *m);
 const char    *bw_mod_manifest_state(const BwModManifest *m);
 const char    *bw_mod_manifest_settings(const BwModManifest *m);
+const char    *bw_mod_manifest_ui_text(const BwModManifest *m);
 u32            bw_mod_manifest_applied_count(void);
 const BwModManifest *bw_mod_manifest_applied_at(u32 i);
 void           bw_mod_manifest_applied_clear(void);
@@ -161,6 +162,7 @@ int main(void)
                    "code = nuzlocke_soullink.dll\n"
                    "state = nuzlocke-soullink\n"
                    "settings = nuzlocke.ini\n"
+                   "ui_text = words.tsv\n"
                    "a line with no equals sign\n"
                    "unknown_key = whatever\n"
                    "override = ov093:0x021CBA40 wrap sl_catch\n",
@@ -173,6 +175,8 @@ int main(void)
                 strcmp(bw_mod_manifest_state(m), "nuzlocke-soullink"), 0);
     BW_CHECK_EQ("the settings path is the manifest's",
                 strcmp(bw_mod_manifest_settings(m), "nuzlocke.ini"), 0);
+    BW_CHECK_EQ("the ui_text path is the manifest's",
+                strcmp(bw_mod_manifest_ui_text(m), "words.tsv"), 0);
     BW_CHECK_EQ("a line with no equals sign and an unknown key are skipped",
                 (long)bw_mod_manifest_override_count(m), 1);
 

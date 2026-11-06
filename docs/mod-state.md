@@ -281,6 +281,7 @@ the record into registrations. The keys and what each becomes:
 | `override` | a list of pairs | one `bw_mod_slot_install_mode` per pair, after the declared check of section 4 |
 | `rule` | a list of event and path | a rule binding for the interpreter |
 | `settings` | relative path | the settings declaration |
+| `ui_text` | relative path | the interface's words in the mod's language |
 
 An `override` value is `<region>:<address> <mode> <symbol> [sig=...]
 [switch=...]` (`docs/mod-interface.md`, section 3). The record keeps the region

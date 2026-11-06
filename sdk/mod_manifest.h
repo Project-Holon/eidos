@@ -85,6 +85,9 @@ typedef struct BwModManifest {
     u32            rule_count;
     u32            rule_cap;
     char          *settings;       /* the settings declaration, or NULL */
+    char          *ui_text;        /* `ui_text = <file>`: the interface's words
+                                    * in the mod's language, or NULL
+                                    * (docs/mod-ui-text.md) */
     BwModRule     *tables;         /* the table lines: event = the name */
     u32            table_count;
     u32            table_cap;

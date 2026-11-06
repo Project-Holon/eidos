@@ -82,6 +82,7 @@
  *     const char *bw_mod_manifest_code(const void *manifest);
  *     const char *bw_mod_manifest_state(const void *manifest);
  *     const char *bw_mod_manifest_settings(const void *manifest);
+ *     const char *bw_mod_manifest_ui_text(const void *manifest);
  *     int  bw_mod_manifest_has_api(const void *manifest);
  *     int  bw_mod_manifest_namespace_valid(const char *ns);
  *     char *bw_mod_manifest_default_namespace(const char *name);
@@ -857,6 +858,7 @@ void bw_mod_manifest_free(void *manifest)
         free(m->code);
         free(m->state);
         free(m->settings);
+        free(m->ui_text);
         free(m->overrides);
         free(m->rules);
     }
@@ -1609,6 +1611,12 @@ int bw_mod_manifest_parse(void *manifest, const char *text, const char *dir_name
             } else if (set_str_n(&m->settings, vs, (size_t)(ve - vs)) != 0) {
                 return -1;
             }
+        } else if (key_len == 7 && memcmp(ks, "ui_text", 7) == 0) {
+            if (ve == vs) {
+                mod_report(m, "empty ui_text path, ignored");
+            } else if (set_str_n(&m->ui_text, vs, (size_t)(ve - vs)) != 0) {
+                return -1;
+            }
         }
         /* An unknown key is ignored on purpose: a later version may add
          * keys, and an old port must not refuse a newer manifest. */
@@ -2027,4 +2035,11 @@ const char *bw_mod_manifest_settings(const void *manifest)
     const BwModManifest *m = (const BwModManifest *)manifest;
 
     return m != NULL ? m->settings : NULL;
+}
+
+const char *bw_mod_manifest_ui_text(const void *manifest)
+{
+    const BwModManifest *m = (const BwModManifest *)manifest;
+
+    return m != NULL ? m->ui_text : NULL;
 }

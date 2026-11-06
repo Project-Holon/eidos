@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""tools/ui_lang.py -- engine/ui/ui_lang.tsv to engine/ui/ui_lang_table.h.
+"""tools/ui_lang.py -- engine/ui/ui_lang.tsv to engine/ui/ui_lang_table.h and
+sdk/api/v5/ui_text_template.txt.
 
 The one-screen interface draws its own labels in English; ui_tr
 (engine/ui/ui_lang.c) looks each one up here and gives the game language's
@@ -14,6 +15,7 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, '..', 'engine', 'ui', 'ui_lang.tsv')
 OUT = os.path.join(HERE, '..', 'engine', 'ui', 'ui_lang_table.h')
+TEMPLATE = os.path.join(HERE, '..', 'sdk', 'api', 'v5', 'ui_text_template.txt')
 
 
 def fnv1a(s):
@@ -59,6 +61,22 @@ def main():
             f.write('    { 0x%08Xu, %s, { %s } },\n' % (h, c_str(c[0]), tr))
         f.write('};\n')
     print('%d labels in %s' % (len(rows), os.path.relpath(OUT)))
+    # the start of a mod's ui_text file (docs/mod-ui-text.md): the same
+    # labels, in the order of the source, with the translation to fill in
+    with open(TEMPLATE, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('# The one-screen interface\'s labels, for a mod\'s ui_text file\n'
+                '# (docs/mod-ui-text.md); written by tools/ui_lang.py.\n'
+                '#\n'
+                '# Write the translation after the "=":\n'
+                '#     BAG = SAC\n'
+                '# A line left empty after the "=" keeps the English.\n'
+                '# EIDOS_UI_TEXT_DUMP lists the labels a run draws that are not here.\n'
+                '\n')
+        for line in open(SRC, encoding='utf-8'):
+            line = line.rstrip('\n')
+            if line and not line.startswith('#'):
+                f.write(line.split('\t')[0].replace('=', '\\=') + ' = \n')
+    print('the template in %s' % os.path.relpath(TEMPLATE))
 
 
 if __name__ == '__main__':
