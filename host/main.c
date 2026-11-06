@@ -408,7 +408,17 @@ static char **mobile_args(int *argc)
     if ((f = fopen(file, "r")) != NULL) {
         while (n < 63 && fgets(line, sizeof line, f) != NULL) {
             line[strcspn(line, "\r\n")] = 0;
-            if (line[0] != 0 && line[0] != '#') {
+            if (line[0] == '@' && line[1] == '/') {
+                /* "@/x": x in the app's folder, whose path a tool
+                 * outside the phone cannot know */
+                char *p = SDL_malloc(strlen(pref) + strlen(line));
+
+                if (p != NULL) {
+                    strcpy(p, pref);
+                    strcat(p, line + 2);
+                    argv[n++] = p;
+                }
+            } else if (line[0] != 0 && line[0] != '#') {
                 argv[n++] = SDL_strdup(line);
             }
         }
@@ -416,6 +426,22 @@ static char **mobile_args(int *argc)
     }
     argv[n] = NULL;
     *argc = n;
+    {
+        /* a profile folder named in args.txt (tests, tools/bench.py's
+         * runs) is made by the app, as its own one is */
+        int i;
+
+        for (i = 1; i + 1 < n; i++) {
+            if (strcmp(argv[i], "--profile-dir") == 0 && argv[i + 1] != prof) {
+                /* one level at a time: iOS refuses the walk up its
+                 * sandbox's parents that a whole-path create makes */
+                snprintf(line, sizeof line, "%s/saves", argv[i + 1]);
+                if (!SDL_CreateDirectory(argv[i + 1]) || !SDL_CreateDirectory(line)) {
+                    fprintf(stderr, "eidos: cannot make %s: %s\n", line, SDL_GetError());
+                }
+            }
+        }
+    }
     /* a phone plays landscape only; an iPad turns both ways (the
      * one-screen layout fits a tall window, ios/Info.plist.in) */
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
