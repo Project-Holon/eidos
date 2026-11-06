@@ -42,6 +42,7 @@ static const char *const k_arrangements[] = { "vertical", "horizontal", "one" };
 static const char *const k_offon[] = { "off", "on" };
 static const char *const k_backdrops[] = { "real map", "original" };
 static const char *const k_outlines[] = { "off", "thin" };
+static const char *const k_renderers[] = { "opengl", "native" };
 static const char *const k_transitions[] = { "original", "fast", "seamless" };
 static const char *const k_pad_icons[] = {
     "auto", "xbox360", "xboxone", "ps3", "ps4", "ps5", "switch", "gamecube", "steamdeck"
@@ -86,6 +87,8 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, 0, k_transitions, "", 0, NULL },
     { "Display", "gpu_2d", "2D on the GPU", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       1, k_offon, "", 0, NULL },
+    { "Display", "renderer", "Renderer", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
+      0, k_renderers, "", 0, NULL },
 };
 
 /* sdk/field_fade.c reads this option by number */

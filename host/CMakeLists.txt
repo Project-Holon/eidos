@@ -119,6 +119,7 @@ set(_host_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/net.c
     ${CMAKE_CURRENT_SOURCE_DIR}/wasi.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdl_gpu.c
     ${_root}/install/picker.c
     ${_root}/install/location.c
     ${_root}/sdk/plat_save.c

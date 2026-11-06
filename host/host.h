@@ -100,4 +100,10 @@ void host_wasi_init(void);
 uint32_t host_malloc(uint32_t n);
 void host_free(uint32_t addr);
 
+/* host/sdl.c: SDL's objects as the small numbers the module holds (one
+ * table for SDL and its GPU, host/sdl_gpu.c). */
+uint32_t host_handle_of(void *p);
+void *host_handle_ptr(uint32_t h);
+void host_handle_drop(uint32_t h);
+
 #endif /* EIDOS_HOST_H */

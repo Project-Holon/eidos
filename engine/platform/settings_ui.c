@@ -124,6 +124,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "never goes black." },
     [EIDOS_OPT_GPU_2D]              = { "The graphics card draws the",
                                         "screens. Off uses the CPU." },
+    [EIDOS_OPT_RENDERER]            = { "Native: Direct3D, Metal or",
+                                        "Vulkan. Applies at restart." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -234,12 +236,15 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_OUTLINES]            = "3D outlines",
     [EIDOS_OPT_TRANSITIONS]         = "Map transitions",
     [EIDOS_OPT_GPU_2D]              = "GPU drawing",
+    [EIDOS_OPT_RENDERER]            = "Renderer",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
  * {option id, choice index, text}. */
 typedef struct ValueName { int id; int index; const char *text; } ValueName;
 static const ValueName k_value_names[] = {
+    { EIDOS_OPT_RENDERER,            0, "OpenGL" },
+    { EIDOS_OPT_RENDERER,            1, "Native" },
     { EIDOS_OPT_DISPLAY_MODE,        0, "Windowed" },
     { EIDOS_OPT_DISPLAY_MODE,        1, "Fullscreen" },
     { EIDOS_OPT_DISPLAY_MODE,        2, "Borderless" },
@@ -723,6 +728,7 @@ static void build_rows(void)
         add_row(ROW_OPTION, EIDOS_OPT_DISPLAY_RESOLUTION, 0);
         add_row(ROW_OPTION, EIDOS_OPT_OUTLINES, 0);
         add_row(ROW_OPTION, EIDOS_OPT_GPU_2D, 0);
+        add_row(ROW_OPTION, EIDOS_OPT_RENDERER, 0);
         break;
     case 1:
         add_row(ROW_OPTION, EIDOS_OPT_LAYOUT_ARRANGEMENT, 0);

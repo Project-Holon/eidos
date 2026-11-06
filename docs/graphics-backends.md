@@ -1,6 +1,7 @@
 # Graphics backends: plan
 
-Status of the renderer and where it goes. Written 2026-10-04.
+Status of the renderer and where it goes. Written 2026-10-04; the backends
+section rewritten 2026-11-06.
 
 ## What runs today
 
@@ -53,22 +54,40 @@ Status of the renderer and where it goes. Written 2026-10-04.
   renderer) gets 31 fps at 1x and 12 fps at 6x. Debug aids: `--profile`,
   `EIDOS_WINDOW_HIDDEN=1`, `EIDOS_WINDOW_SIZE=WxH`, `EIDOS_GL_DUMP=file.bmp:N`.
 
-## Target backends
+## The backends (decided 2026-11-06)
 
-The renderer is to have four GPU backends behind one interface, plus the
-software path as fallback and reference.
+The platform layer draws through one table of operations (`plat_gpu.h`); a
+backend fills it.  Two backends, plus the software path as fallback and
+reference:
 
-| Backend | Platforms | Role | Minimum |
+| Backend | Files | Platforms | Role |
 |---|---|---|---|
-| OpenGL 3.3 core | Windows, Linux, macOS (up to 4.1) | default, widest reach | any GPU with OpenGL 3.3 |
-| Direct3D 12 | Windows | native Windows path | Shader Model 6 class GPU (RT64's requirement) |
-| Vulkan | Windows, Linux, Android | native Linux path, high end | Vulkan 1.2 (RT64's requirement) |
-| Metal | macOS, iOS | native Apple path, replaces deprecated OpenGL | Argument Buffers Tier 2 (RT64's requirement) |
-| Software (C) | everywhere | fallback for weak hardware, test reference | none |
+| SDL3 GPU | `plat_sdlgpu.c`, `plat_sdlgpu3d.c`, `shaders/*.hlsl` | Direct3D 12 on Windows, Metal on macOS and iOS, Vulkan on Linux and Android | the native path: the setting Renderer, Native (`EIDOS_RENDERER=gpu[:driver]`) |
+| OpenGL 3.3 core / ES 3.0 | `plat_gl*.c` | everywhere, the web and the Switch included | the default for now, and the fallback when SDL's GPU does not come up |
+| Software (C) | `engine/g2d`, `engine/g3d` | everywhere | the reference; draws what a backend cannot |
 
-Order of work: OpenGL 3.3 first (in progress), then the interface is frozen from
-what OpenGL needed, then the others. A project that needs only one of them can
-stop early: OpenGL covers every platform.
+Why one SDL3 backend and not three written by hand (the research,
+2026-11-06): SDL's GPU API is a thin layer over each platform's own API, so
+the game loses no measurable speed at a DS frame's few hundred draws, and one
+backend is one place to fix and one picture to keep equal to the software
+reference.  Its known weak spot is the presentation (frame latency, open
+issues on Metal); a backend of its own for one platform comes only when the
+frame-time log (`--bench`, `tools/bench.py`) shows SDL's presentation is the
+cause of stutter there.  The table keeps that a contained job.
+
+The SDL3 backend runs inside the wasm module like the rest of the platform
+layer: the 64-bit builds answer its SDL calls in `host/sdl_gpu.c` (handles,
+struct layouts, transfer-buffer mapping through a block of module memory).
+
+The shaders are HLSL, compiled by `tools/shaders.py` (DXC to DXIL and SPIR-V,
+SPIRV-Cross to MSL; the compilers from `tools/fetch_shadertools.py`) into the
+committed `shaders_gen.h`.  Differences from the OpenGL renderer are listed in
+`plat_sdlgpu3d.c`'s header: the polygon IDs in an R8 UNORM target, a depth
+copy the shaders write, clip z moved from GL's -w..w to 0..w, top-down
+frames, and the 2x anti-aliasing everywhere.
+
+Not in the SDL3 backend yet: the GPU 2D compositor (`docs/gpu-2d.md`; the CPU
+composes the 2D), and a tool's window (the spot editor draws with OpenGL).
 
 ## Why this set
 
@@ -86,9 +105,9 @@ What comparable projects use (checked 2026-10-04):
   profile. It still works, including on Apple Silicon, and Apple has announced no
   removal date. Metal is the long term route there.
 
-SDL3 gives the window, input and audio only; its 2D renderer cannot run custom
-shaders. SDL3's GPU layer wraps Vulkan, Direct3D 12 and Metal and may replace
-hand written backends later; eidos is on SDL3 today.
+SDL3's 2D renderer cannot run custom shaders; its GPU layer wraps Vulkan,
+Direct3D 12 and Metal, and is what eidos's native backend is written on (see
+"The backends").
 
 ## Design rules for the interface
 

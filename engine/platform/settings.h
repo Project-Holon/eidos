@@ -102,6 +102,10 @@ enum {
     EIDOS_OPT_GPU_2D,               /* the 2D screens composed by the GPU:
                                        0 off (the CPU), 1 on (the default;
                                        docs/gpu-2d.md)                     */
+    EIDOS_OPT_RENDERER,             /* the graphics API, at the next start:
+                                       0 OpenGL (the default), 1 native
+                                       (SDL's GPU: Direct3D 12, Metal or
+                                       Vulkan; docs/graphics-backends.md)  */
     EIDOS_OPT_COUNT
 };
 

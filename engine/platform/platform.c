@@ -1629,9 +1629,13 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
             flags |= SDL_WINDOW_MAXIMIZED;   /* as the player left it */
         }
 
-        /* EIDOS_RENDERER=gpu[:driver]: the SDL3 GPU backend
-         * (plat_sdlgpu.c; driver direct3d12, vulkan or metal), OpenGL when
-         * it does not come up */
+        /* The SDL3 GPU backend (plat_sdlgpu.c) when the Renderer setting
+         * says Native, or EIDOS_RENDERER=gpu[:driver] (driver direct3d12,
+         * vulkan or metal); EIDOS_RENDERER=gl keeps OpenGL whatever the
+         * setting.  OpenGL takes over when it does not come up. */
+        if (want == NULL && eidos_settings_get(EIDOS_OPT_RENDERER) == 1) {
+            want = "gpu";
+        }
         if (want != NULL && strncmp(want, "gpu", 3) == 0 && try_gl) {
             p->window = SDL_CreateWindow(title, init_w, init_h, flags);
             if (p->window != NULL) {

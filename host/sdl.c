@@ -76,6 +76,12 @@ static void handle_drop(u32 h)
     }
 }
 
+/* The same table for the GPU imports (host/sdl_gpu.c): one handle space,
+ * so a window made here is the window SDL's GPU claims there. */
+u32 host_handle_of(void *p) { return handle_of(p); }
+void *host_handle_ptr(u32 h) { return handle_ptr(h); }
+void host_handle_drop(u32 h) { handle_drop(h); }
+
 /* ------------------------------------------------------------------ */
 /* Module memory                                                       */
 /* ------------------------------------------------------------------ */
@@ -201,6 +207,19 @@ u32 w2c_env_SDL_GetCurrentVideoDriver(struct w2c_env *e)
 {
     (void)e;
     return str_to_module(S_DRIVER, SDL_GetCurrentVideoDriver());
+}
+
+/* The benchmark's notes (engine/frame/prof.h): the system and its cores. */
+u32 w2c_env_SDL_GetPlatform(struct w2c_env *e)
+{
+    (void)e;
+    return str_interned(SDL_GetPlatform());
+}
+
+u32 w2c_env_SDL_GetNumLogicalCPUCores(struct w2c_env *e)
+{
+    (void)e;
+    return (u32)SDL_GetNumLogicalCPUCores();
 }
 
 /* ------------------------------------------------------------------ */

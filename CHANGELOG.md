@@ -3,6 +3,12 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.4
+
+### Engine & Performance
+- **Native Renderer**: `Settings > Display > Renderer > Native` draws with Direct3D 12 on Windows, Metal on Mac and iPhone and Vulkan on Linux and Android, through SDL3's GPU API; OpenGL stays the default and takes over when the native renderer cannot start.
+- **Benchmark**: `--bench FILE` writes each frame's timing and a summary (percentiles, late and dropped frames, the system and renderer); `tools/bench.py` runs the standard field and battle scenes.
+
 ## 0.2.3
 
 ### Mods & Launcher
