@@ -1839,7 +1839,7 @@ static u32 state_play_seconds(void)
 
 static int state_item_value(u16 item, u32 field, u32 *out)
 {
-    if (out == NULL || FILE_UTIL_GetItemParam == NULL ||
+    if (out == NULL || FILE_UTIL_GetItemParam == NULL || g_game_data == NULL ||
         (u32)item > bw_limit_get(BW_PORT_LIMIT_ITEM_LAST)) {
         return -1;
     }
@@ -1849,7 +1849,9 @@ static int state_item_value(u16 item, u32 field, u32 *out)
 
 static int state_move_value(u16 move, u32 field, u32 *out)
 {
-    if (out == NULL || WAZA_TOOL_GetParam == NULL ||
+    /* the move archive opens with the game (as state_species_value): a
+     * read from a mod's start, before that, crashed the game */
+    if (out == NULL || WAZA_TOOL_GetParam == NULL || g_game_data == NULL ||
         (u32)move > bw_limit_get(BW_PORT_LIMIT_MOVE_LAST)) {
         return -1;
     }
