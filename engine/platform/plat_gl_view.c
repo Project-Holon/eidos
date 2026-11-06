@@ -239,6 +239,6 @@ int eidos_gl_view_read(EidosGl *g, unsigned char *rgba)
 void eidos_gl_view_end(EidosGl *g)
 {
     if (g != NULL) {
-        SDL_GL_SwapWindow(g->window);
+        eidos_gl_swap(g);
     }
 }

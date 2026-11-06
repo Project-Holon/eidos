@@ -1,4 +1,14 @@
+<script module lang="ts">
+  import type { Catalog as CatalogT, ModInfo as ModInfoT } from "../lib/backend";
+
+  // Kept while the launcher runs: the page is rebuilt each time its tab
+  // opens, and the catalog is a download. The refresh button reloads it.
+  let cachedCatalog: CatalogT | null = null;
+  const cachedMods = new Map<string, ModInfoT[]>();
+</script>
+
 <script lang="ts">
+  import { untrack } from "svelte";
   import { MOBILE } from "../lib/platform";
   import { open } from "@tauri-apps/plugin-dialog";
   import { toast } from "morphe/menu.svelte";
@@ -26,7 +36,7 @@
   // The game species icons are drawn from: the profile's.
   const game = $derived(ov.profiles.find((p) => p.name === selected)?.game || "black");
 
-  let mods = $state<ModInfo[]>([]);
+  let mods = $state<ModInfo[]>(untrack(() => cachedMods.get(selected)) ?? []);
   let indexUrl = $state("");
   let removing = $state<ModInfo | null>(null);
   let removeDialog = $state<HTMLDialogElement>();
@@ -38,14 +48,19 @@
 
   async function load() {
     try {
-      mods = await modsList(selected);
+      const name = selected;
+      const list = await modsList(name);
+      cachedMods.set(name, list);
+      if (name === selected) mods = list;
     } catch (e) {
       toast(message(e), true);
     }
   }
 
+  // The installed list is read again on each visit (it is local and quick),
+  // but the last one shows meanwhile, so the list does not flash empty.
   $effect(() => {
-    selected;
+    mods = cachedMods.get(selected) ?? [];
     load();
   });
 
@@ -54,7 +69,7 @@
   });
 
   // The katalogos index: the mods that can be installed.
-  let catalog = $state<Catalog | null>(null);
+  let catalog = $state<Catalog | null>(cachedCatalog);
   let catalogError = $state("");
   let loadingCatalog = $state(false);
   let installing = $state<string | null>(null);
@@ -64,6 +79,7 @@
     catalogError = "";
     try {
       catalog = await catalogList();
+      cachedCatalog = catalog;
     } catch (e) {
       catalogError = message(e);
     } finally {
@@ -71,8 +87,9 @@
     }
   }
 
+  // Downloaded once a launcher run; the refresh button gets it again.
   $effect(() => {
-    loadCatalog();
+    if (cachedCatalog === null) loadCatalog();
   });
 
   const installedOf = (c: CatalogMod) => mods.find((m) => m.catalogId === c.id);

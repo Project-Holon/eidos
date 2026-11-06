@@ -74,6 +74,7 @@ import json
 import os
 import re
 import sys
+import time
 from collections import Counter, defaultdict
 
 DS_LO = 0x02000000
@@ -1897,6 +1898,22 @@ def _write_atomic(path, text):
     tmp = "%s.%d.tmp" % (path, os.getpid())
     with open(tmp, "wb") as f:
         f.write(data)
+    # On Windows the replace fails while another run has the file open (it
+    # is reading it, or replacing it with the same bytes): wait and retry,
+    # and stop once the file holds these bytes.
+    for attempt in range(50):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            try:
+                with open(path, "rb") as f:
+                    if f.read() == data:
+                        os.remove(tmp)
+                        return
+            except OSError:
+                pass
+            time.sleep(0.05 * (attempt + 1) if attempt < 10 else 0.5)
     os.replace(tmp, path)
 
 

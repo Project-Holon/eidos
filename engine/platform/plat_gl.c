@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "plat_gl_int.h"
+#include "prof.h"
 
 static const char *k_vs =
     "#version 330 core\n"
@@ -1568,6 +1569,24 @@ void eidos_gl_present_panel(EidosGl *g, int out_w, int out_h,
         draw_panel(g, out_w, out_h, panel);
     }
     gl_debug_dump(out_w, out_h);
+    eidos_gl_swap(g);
+}
+
+/* The swap.  With VSync on it blocks until the vblank: that time is the
+ * pacing's, so the profile counts it as the wait, not as the frame's work
+ * (the SDL3 GPU backend waits in the same place the clock does).  With
+ * VSync off a slow swap is the GPU's work and stays in the present. */
+void eidos_gl_swap(EidosGl *g)
+{
+    int interval = 0;
+
+    if (SDL_GL_GetSwapInterval(&interval) && interval != 0) {
+        unsigned long long t = eidos_prof_begin();
+
+        SDL_GL_SwapWindow(g->window);
+        eidos_prof_end(EIDOS_PROF_WAIT, t);
+        return;
+    }
     SDL_GL_SwapWindow(g->window);
 }
 
