@@ -12,6 +12,7 @@ Each release's notes on GitHub start with its section here
 - **Battle Moves for Mods**: `battle_get` reads a Pokémon's moves and PP as the battle has them, and `move_value` reads all three stat changes of a move.
 - **Rules**: `player_x` and `player_z` give the cell the player stands on.
 - **Interface Translations**: A mod can bring the one-screen interface's labels in its own language with a `ui_text` file; `EIDOS_UI_TEXT_DUMP` lists the labels a run draws, for translators (#21).
+- **Downloads**: The Android APK and iOS IPA keep one name across releases, so the README's download links always give the latest; the release notes list the launchers and phone apps first.
 
 ### Bug Fixes
 - **Pokédex Crash**: Opening the Pokédex for the first time no longer crashes the game (#22).
