@@ -15,6 +15,7 @@
 #include <SDL3/SDL_opengl.h>
 
 #include "plat_gl.h"
+#include "plat_gpu.h"
 
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE 0x812F
@@ -82,6 +83,7 @@ typedef struct GlFb {
 } GlFb;
 
 struct EidosGl {
+    EidosGpu base;              /* first: the backend's head (plat_gpu.h) */
     SDL_Window *window;
     SDL_GLContext ctx;
 #define X(T, N) T N;

@@ -23,7 +23,7 @@
 #include "mod_panel_draw.h"
 #include "platform.h"
 #include "plat_embed.h"
-#include "plat_gl.h"
+#include "plat_gpu.h"
 #include "plat_thread.h"
 #include "settings.h"
 #include "ui.h"
@@ -35,25 +35,10 @@
 #define SCREEN_PIXELS (SCREEN_W * SCREEN_H)
 
 
-/*
- * The presenter's third image: the run-status panel (engine/platform/
- * mod_panel_draw.h).  The two calls are declared here rather than in
- * plat_gl.h: the panel is the port's own picture, drawn by the platform
- * layer beside the game's screens, and plat_gl.h is the presenter's own
- * header (shared with the 3D path).  The declaration is the port's
- * convention for a call whose header is not this file's, the way
- * engine/platform/mod_panel_draw.c declares the model's.
- */
-extern void eidos_gl_upload_panel(EidosGl *gl, const unsigned char *rgba,
-                                   int w, int h);
-extern void eidos_gl_present_panel(EidosGl *gl, int out_w, int out_h,
-                                   const SDL_Rect dst[2],
-                                   const SDL_Rect *panel);
-
 struct EidosPlatform {
     SDL_Window   *window;
     SDL_Renderer *renderer;        /* NULL when the GPU presenter runs      */
-    EidosGl      *gl;              /* the OpenGL presenter (plat_gl.c)      */
+    EidosGpu     *gl;              /* the GPU backend (plat_gpu.h)          */
     SDL_Texture  *tex[2];          /* 0 = top, 1 = bottom */
     u8           *shadow[2];       /* the last buffer uploaded to each      */
     SDL_Texture  *pre[2];          /* nearest pre-scale targets             */
@@ -535,7 +520,7 @@ extern int bw_battle_view_active(void) __attribute__((weak));    /* sdk/battle_v
 static int world_active(const EidosPlatform *p)
 {
     return p != NULL && p->layout == EIDOS_LAYOUT_ONE && p->gl != NULL &&
-           eidos_gl_has3d(p->gl) && p->ui_view.mode == EIDOS_VIEW_WORLD;
+           eidos_gpu_has3d(p->gl) && p->ui_view.mode == EIDOS_VIEW_WORLD;
 }
 
 static void read_stylus(EidosPlatform *p)
@@ -803,7 +788,7 @@ void eidos_platform_set_pixel_scale(EidosPlatform *p, int scale)
 void eidos_platform_set_outlines(EidosPlatform *p, int mode)
 {
     if (p != NULL && p->gl != NULL) {
-        eidos_gl_set_edges(p->gl, mode);
+        eidos_gpu_set_edges(p->gl, mode);
     }
 }
 
@@ -1166,7 +1151,7 @@ static void upload_panel(EidosPlatform *p, const EidosModPanelView *view)
     p->panel_w = view->w;
     p->panel_h = view->h;
     if (p->gl != NULL) {
-        eidos_gl_upload_panel(p->gl, view->rgba, view->w, view->h);
+        eidos_gpu_upload_panel(p->gl, view->rgba, view->w, view->h);
         return;
     }
     /*
@@ -1228,12 +1213,12 @@ static void render(EidosPlatform *p)
                 wh = oh - p->ui_view.bottom;    /* above a phone's hint bar */
             }
             eidos_world_geometry(ow, wh, p->ui_view.zoom, &wg);
-            eidos_gl_one_bottom(p->gl, oh - wh);
+            eidos_gpu_one_bottom(p->gl, oh - wh);
             ds.x = wg.ds.x;
             ds.y = wg.ds.y;
             ds.w = wg.ds.w;
             ds.h = wg.ds.h;
-            eidos_gl_one_set(p->gl, 1, world_active(p), p->ui_view.world_screen,
+            eidos_gpu_one_set(p->gl, 1, world_active(p), p->ui_view.world_screen,
                              &ds, p->ui_view.hide_2d, p->ui_view.blur,
                              (p->ui_view.no_fade ? 1 : 0) | (p->ui_view.hold_world ? 2 : 0) |
                              (p->ui_view.keep_world ? 4 : 0) |
@@ -1242,7 +1227,7 @@ static void render(EidosPlatform *p)
                              (p->ui_view.ds_only ? 1 << 18 : 0) |
                              (p->ui_view.spare_world ? 1 << 19 : 0));
         } else {
-            eidos_gl_one_set(p->gl, 0, 0, 0, NULL, 0, 0, 0);
+            eidos_gpu_one_set(p->gl, 0, 0, 0, NULL, 0, 0, 0);
         }
 
         for (i = 0; i < 2; i++) {
@@ -1255,7 +1240,7 @@ static void render(EidosPlatform *p)
             /* shown inside another program: the picture goes to it */
             unsigned char *px = eidos_embed_pixels(ow, oh);
 
-            if (px != NULL && eidos_gl_grab(p->gl, ow, oh, rects, px) == 0) {
+            if (px != NULL && eidos_gpu_grab(p->gl, ow, oh, rects, px) == 0) {
                 eidos_embed_publish(ow, oh);
             }
             return;
@@ -1265,9 +1250,9 @@ static void render(EidosPlatform *p)
             prect.y = view.dst.y;
             prect.w = view.dst.w;
             prect.h = view.dst.h;
-            eidos_gl_present_panel(p->gl, ow, oh, rects, &prect);
+            eidos_gpu_present_panel(p->gl, ow, oh, rects, &prect);
         } else {
-            eidos_gl_present(p->gl, ow, oh, rects);
+            eidos_gpu_present(p->gl, ow, oh, rects);
         }
         return;
     }
@@ -1647,7 +1632,7 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
             p->window = SDL_CreateWindow(title, init_w, init_h,
                                          flags | SDL_WINDOW_OPENGL);
             if (p->window != NULL) {
-                p->gl = eidos_gl_create(p->window);
+                p->gl = eidos_gpu_create_gl(p->window);
                 if (p->gl == NULL) {
                     SDL_DestroyWindow(p->window);   /* an OpenGL window cannot take SDL's renderer back */
                     p->window = NULL;
@@ -1776,7 +1761,7 @@ void eidos_platform_quit(EidosPlatform *p)
     if (p->renderer != NULL) {
         SDL_DestroyRenderer(p->renderer);
     }
-    eidos_gl_destroy(p->gl);
+    eidos_gpu_destroy(p->gl);
     if (p->window != NULL) {
         SDL_DestroyWindow(p->window);
     }
@@ -2048,7 +2033,7 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
         place(p, &pl);
         out_size(p, &ow, &oh);
         viewport(p, &pl, ow, oh, &vp);
-        eidos_gl_set_3d2d_shown(p->gl, vp.screen[0].w > vp.screen[1].w ? vp.screen[0].w : vp.screen[1].w,
+        eidos_gpu_set_3d2d_shown(p->gl, vp.screen[0].w > vp.screen[1].w ? vp.screen[0].w : vp.screen[1].w,
                                 vp.screen[0].h > vp.screen[1].h ? vp.screen[0].h : vp.screen[1].h);
     }
     for (i = 0; i < 2; i++) {
@@ -2072,8 +2057,8 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
             /* a screen the GPU composed is in its texture already
              * (eidos_platform_gpu2d_show) */
             if (p->gpu2d_frame[i] == NULL || nn[i] != 1
-                || eidos_gl2d_compose(p->gl, p->gpu2d_frame[i], NULL, i) != 0) {
-                eidos_gl_upload(p->gl, i, p->shadow[i], (int)SCREEN_W * nn[i],
+                || eidos_gpu_2d_compose(p->gl, p->gpu2d_frame[i], NULL, i) != 0) {
+                eidos_gpu_upload(p->gl, i, p->shadow[i], (int)SCREEN_W * nn[i],
                                 (int)SCREEN_H * nn[i]);
             }
             p->gpu2d_frame[i] = NULL;
@@ -2106,7 +2091,7 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
 
 int eidos_platform_gpu3d(const EidosPlatform *p)
 {
-    return p != NULL && p->gl != NULL && eidos_gl_has3d(p->gl);
+    return p != NULL && p->gl != NULL && eidos_gpu_has3d(p->gl);
 }
 
 int eidos_platform_read3d_1x(EidosPlatform *p, const struct G3dSnapshot *snap,
@@ -2115,13 +2100,13 @@ int eidos_platform_read3d_1x(EidosPlatform *p, const struct G3dSnapshot *snap,
     if (!eidos_platform_gpu3d(p)) {
         return -1;
     }
-    return eidos_gl_read3d_1x(p->gl, snap, out, async);
+    return eidos_gpu_read3d_1x(p->gl, snap, out, async);
 }
 
 void eidos_platform_set_3d_zero(EidosPlatform *p, const u8 *zero)
 {
     if (eidos_platform_gpu3d(p)) {
-        eidos_gl_set_3d_zero(p->gl, zero, (int)SCREEN_W, (int)SCREEN_H);
+        eidos_gpu_set_3d_zero(p->gl, zero, (int)SCREEN_W, (int)SCREEN_H);
     }
 }
 
@@ -2130,12 +2115,12 @@ int eidos_platform_gpu2d(EidosPlatform *p, const struct G2dGpuFrame *f, u8 *read
     if (p == NULL || p->gl == NULL) {
         return -1;
     }
-    return eidos_gl2d_compose(p->gl, f, readback, -1);
+    return eidos_gpu_2d_compose(p->gl, f, readback, -1);
 }
 
 int eidos_platform_gpu2d_ready(EidosPlatform *p)
 {
-    return p != NULL && p->gl != NULL && eidos_gl2d_ready(p->gl);
+    return p != NULL && p->gl != NULL && eidos_gpu_2d_ready(p->gl);
 }
 
 int eidos_platform_gpu2d_pixels(EidosPlatform *p, int screen, u8 *out)
@@ -2143,7 +2128,7 @@ int eidos_platform_gpu2d_pixels(EidosPlatform *p, int screen, u8 *out)
     if (p == NULL || p->gl == NULL || out == NULL) {
         return -1;
     }
-    return eidos_gl2d_pixels(p->gl, screen, out);
+    return eidos_gpu_2d_pixels(p->gl, screen, out);
 }
 
 int eidos_platform_gpu2d_show(EidosPlatform *p, const struct G2dGpuFrame *f, int screen)
@@ -2192,7 +2177,7 @@ static int render_3d_for(EidosPlatform *p, int screen, const struct G3dSnapshot 
             }
         }
     }
-    return eidos_gl_render3d(p->gl, snap, rw, rh);
+    return eidos_gpu_render3d(p->gl, snap, rw, rh);
 }
 
 int eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,
@@ -2203,14 +2188,14 @@ int eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,
         return -1;
     }
     if (screen < 0 || behind == NULL || snap == NULL) {
-        eidos_gl_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
+        eidos_gpu_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
         return 0;
     }
     if (render_3d_for(p, screen, snap, n) != 0) {
-        eidos_gl_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
+        eidos_gpu_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
         return -1;
     }
-    eidos_gl_set_3d(p->gl, screen, behind, (int)SCREEN_W, (int)SCREEN_H, bmode,
+    eidos_gpu_set_3d(p->gl, screen, behind, (int)SCREEN_W, (int)SCREEN_H, bmode,
                     bfac, dilate);
     return 0;
 }
@@ -2222,17 +2207,17 @@ int eidos_platform_set_3d_from2d(EidosPlatform *p, int screen, const struct G3dS
         return -1;
     }
     if (render_3d_for(p, screen, snap, n) != 0) {
-        eidos_gl_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
+        eidos_gpu_set_3d(p->gl, -1, NULL, 0, 0, 0, 0.f, 0);
         return -1;
     }
-    eidos_gl_set_3d_from2d(p->gl, screen, bmode, bfac);
+    eidos_gpu_set_3d_from2d(p->gl, screen, bmode, bfac);
     return 0;
 }
 
 void eidos_platform_set_world_backdrop(EidosPlatform *p, u32 rgb)
 {
     if (p != NULL && p->gl != NULL) {
-        eidos_gl_set_world_backdrop(p->gl, rgb);
+        eidos_gpu_set_world_backdrop(p->gl, rgb);
     }
 }
 
@@ -2242,11 +2227,11 @@ int eidos_platform_set_3d2d(EidosPlatform *p, int screen, const struct G3dSnapsh
         return -1;
     }
     n = n < 1 ? 1 : n > 20 ? 20 : n;
-    if (eidos_gl_render3d(p->gl, snap, (int)SCREEN_W * n, (int)SCREEN_H * n) != 0) {
-        eidos_gl_set_3d2d(p->gl, -1);
+    if (eidos_gpu_render3d(p->gl, snap, (int)SCREEN_W * n, (int)SCREEN_H * n) != 0) {
+        eidos_gpu_set_3d2d(p->gl, -1);
         return -1;
     }
-    eidos_gl_set_3d2d(p->gl, screen);
+    eidos_gpu_set_3d2d(p->gl, screen);
     return 0;
 }
 
@@ -2282,7 +2267,7 @@ void eidos_platform_set_ui_canvas(EidosPlatform *p, const struct EidosUiCanvas *
     }
     if (p->layout != EIDOS_LAYOUT_ONE || c == NULL || c->rgba == NULL ||
         c->w <= 0 || c->h <= 0 || c->k <= 0) {
-        eidos_gl_one_canvas(p->gl, NULL, 0, 0, NULL);
+        eidos_gpu_one_canvas(p->gl, NULL, 0, 0, NULL);
         p->ui_cw = p->ui_ch = p->ui_ck = 0;
         return;
     }
@@ -2306,7 +2291,7 @@ void eidos_platform_set_ui_canvas(EidosPlatform *p, const struct EidosUiCanvas *
         p->ui_cw = c->w;
         p->ui_ch = c->h;
         p->ui_ck = c->k;
-        eidos_gl_one_canvas(p->gl, up, c->w, c->h, &r);
+        eidos_gpu_one_canvas(p->gl, up, c->w, c->h, &r);
     }
 }
 
@@ -2576,14 +2561,14 @@ int eidos_platform_capture_hires(EidosPlatform *p, const u8 *a2d,
     if (n > 20) {
         n = 20;
     }
-    return eidos_gl_capture(p->gl, a2d, behind, snap, n, blend, eva, evb, b1x);
+    return eidos_gpu_capture(p->gl, a2d, behind, snap, n, blend, eva, evb, b1x);
 }
 
 void eidos_platform_show_capture(EidosPlatform *p, int screen, int bmode,
                                  float bfac)
 {
     if (p != NULL && p->gl != NULL) {
-        eidos_gl_show_capture(p->gl, screen, bmode, bfac);
+        eidos_gpu_show_capture(p->gl, screen, bmode, bfac);
     }
 }
 
@@ -2668,7 +2653,7 @@ static int screenshot_gl(EidosPlatform *p, const char *path)
         rects[i].h = vp.screen[i].h;
     }
     rgb = (u8 *)malloc((size_t)ow * (size_t)oh * 3u);
-    if (rgb == NULL || eidos_gl_grab(p->gl, ow, oh, rects, rgb) != 0) {
+    if (rgb == NULL || eidos_gpu_grab(p->gl, ow, oh, rects, rgb) != 0) {
         free(rgb);
         return -1;
     }
