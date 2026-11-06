@@ -25,6 +25,7 @@
 #include "plat_embed.h"
 #include "plat_gpu.h"
 #include "plat_thread.h"
+#include "prof.h"
 #include "settings.h"
 #include "ui.h"
 
@@ -1646,6 +1647,17 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
             SDL_SetWindowPosition(p->window, SDL_WINDOWPOS_CENTERED,
                                   SDL_WINDOWPOS_CENTERED);
         }
+    }
+    /* the benchmark's notes (engine/frame/prof.h): what this run is on */
+    eidos_bench_note("system", SDL_GetPlatform());
+    eidos_bench_note("backend", p->gl != NULL ? eidos_gpu_name(p->gl) : "SDL renderer");
+    eidos_bench_note("video_driver", SDL_GetCurrentVideoDriver() != NULL ? SDL_GetCurrentVideoDriver()
+                                                                         : "none");
+    {
+        char cores[16];
+
+        snprintf(cores, sizeof cores, "%d", SDL_GetNumLogicalCPUCores());
+        eidos_bench_note("cpu_cores", cores);
     }
     if (getenv("EIDOS_RENDERER_REPORT") != NULL) {
         fprintf(stderr, "eidos: presenter %s (video driver %s)\n",

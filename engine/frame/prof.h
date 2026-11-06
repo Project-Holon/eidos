@@ -41,6 +41,20 @@ void eidos_prof_end(int phase, unsigned long long t0);
 /* End of a frame: counts it and prints a line when the window is full.   */
 void eidos_prof_frame(unsigned long long frame_no);
 
+/*
+ * The benchmark (--bench FILE): every frame after the first `skip` is
+ * recorded (the time since the frame before, the work in it: that time less
+ * the pacing wait, and the present), and at the end of the run FILE gets a
+ * JSON summary (percentiles, the worst frame, the frames over 16.7 and
+ * 33.3 ms, the notes) and FILE.csv the frames.  It turns the profiler on.
+ * A note is a line of the summary: the platform layer names the system, the
+ * backend and the GPU, so runs on different devices compare side by side.
+ */
+void eidos_bench_start(const char *path, unsigned skip);
+void eidos_bench_note(const char *key, const char *value);
+/* Writes the files; the run's end calls it (more calls do nothing). */
+void eidos_bench_finish(void);
+
 #ifdef __cplusplus
 }
 #endif

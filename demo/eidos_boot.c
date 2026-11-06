@@ -787,6 +787,9 @@ static void boot_finish(int status, const char *why)
            (unsigned long long)eidos_frame_count(&g_run.loop),
            (unsigned long long)g_run.vblanks);
     boot_print_resident();
+#if EIDOS_BOOT
+    eidos_bench_finish();
+#endif
     fflush(stdout);
 #if EIDOS_BOOT_SDL
     if (g_run.plat != NULL) {
@@ -2759,6 +2762,24 @@ int main(int argc, char **argv)
             eidos_prof_enable((unsigned)every);
 #else
             (void)every;    /* the profiler is part of the boot build */
+#endif
+        } else if (strcmp(argv[i], "--bench") == 0 && i + 1 < argc) {
+            /* --bench FILE[:SKIP]: the frames after the first SKIP (default
+             * 300) to FILE and FILE.csv at the run's end (engine/frame/prof.h) */
+            char path[512];
+            char *colon;
+            unsigned long skip = 300;
+
+            snprintf(path, sizeof path, "%s", argv[++i]);
+            colon = strrchr(path, ':');
+            if (colon != NULL && colon[1] >= '0' && colon[1] <= '9') {
+                skip = strtoul(colon + 1, NULL, 10);
+                *colon = '\0';
+            }
+#if EIDOS_BOOT
+            eidos_bench_start(path, (unsigned)skip);
+#else
+            (void)skip;
 #endif
         } else if (strcmp(argv[i], "--window") == 0) {
             window = 1;
