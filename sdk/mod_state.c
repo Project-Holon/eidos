@@ -880,14 +880,28 @@ static int set_battle_record(struct BtlPokeParam *record, u32 field, u32 value);
 static int state_battle_set(BwMonRef mon, u32 field, u32 value)
 {
     struct BtlPokeParam *server = battle_record_in(BW_BTL_SERVER_COPY, mon.side, mon.slot);
-    struct BtlPokeParam *client = battle_record_in(BW_BTL_CLIENT_COPY, mon.side, mon.slot);
+    struct BtlPokeParam *client = NULL;
     int rc;
+    u32 i;
 
     if (server == NULL) {
         return -1;
     }
+    /* the client's copy of the same Pokemon: both copies were built from
+     * the same party record (BTL_POKEPARAM_GetMon), and the two orders can
+     * differ for a moment after a switch */
+    if (BTL_POKEPARAM_GetMon != NULL) {
+        for (i = 0; i < 6u; i++) {
+            struct BtlPokeParam *c = battle_record_in(BW_BTL_CLIENT_COPY, mon.side, i);
+
+            if (c != NULL && c != server && BTL_POKEPARAM_GetMon(c) == BTL_POKEPARAM_GetMon(server)) {
+                client = c;
+                break;
+            }
+        }
+    }
     rc = set_battle_record(server, field, value);
-    if (rc == 0 && client != NULL && client != server) {
+    if (rc == 0 && client != NULL) {
         (void)set_battle_record(client, field, value);
     }
     return rc;
