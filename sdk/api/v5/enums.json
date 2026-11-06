@@ -948,6 +948,61 @@
       "value": 265
     },
     {
+      "name": "EIDOS_MON_FIELD_PP1",
+      "c_name": "BW_MON_FIELD_PP1",
+      "value": 58
+    },
+    {
+      "name": "EIDOS_MON_FIELD_PP2",
+      "c_name": "BW_MON_FIELD_PP2",
+      "value": 59
+    },
+    {
+      "name": "EIDOS_MON_FIELD_PP3",
+      "c_name": "BW_MON_FIELD_PP3",
+      "value": 60
+    },
+    {
+      "name": "EIDOS_MON_FIELD_PP4",
+      "c_name": "BW_MON_FIELD_PP4",
+      "value": 61
+    },
+    {
+      "name": "EIDOS_MOVE_FIELD_RANK_COUNT",
+      "c_name": "BW_MOVE_FIELD_RANK_COUNT",
+      "value": 256
+    },
+    {
+      "name": "EIDOS_MOVE_FIELD_RANK_TYPE1",
+      "c_name": "BW_MOVE_FIELD_RANK_TYPE1",
+      "value": 257
+    },
+    {
+      "name": "EIDOS_MOVE_FIELD_RANK_TYPE2",
+      "c_name": "BW_MOVE_FIELD_RANK_TYPE2",
+      "value": 258
+    },
+    {
+      "name": "EIDOS_MOVE_FIELD_RANK_TYPE3",
+      "c_name": "BW_MOVE_FIELD_RANK_TYPE3",
+      "value": 259
+    },
+    {
+      "name": "EIDOS_MOVE_FIELD_RANK_VALUE1",
+      "c_name": "BW_MOVE_FIELD_RANK_VALUE1",
+      "value": 273
+    },
+    {
+      "name": "EIDOS_MOVE_FIELD_RANK_VALUE2",
+      "c_name": "BW_MOVE_FIELD_RANK_VALUE2",
+      "value": 274
+    },
+    {
+      "name": "EIDOS_MOVE_FIELD_RANK_VALUE3",
+      "c_name": "BW_MOVE_FIELD_RANK_VALUE3",
+      "value": 275
+    },
+    {
       "name": "EIDOS_SESSION_MESSAGE",
       "c_name": "BW_SESSION_MESSAGE",
       "value": 0

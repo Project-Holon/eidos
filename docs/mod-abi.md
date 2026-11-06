@@ -256,8 +256,12 @@ The version moves when the surface moves.
   `BTL_CLIENT_StepAutoChooseActions`, `BTL_CLIENT_ChooseReplacementsAuto`)
   are in the hookable set for code mods that replace them whole. A mod
   with `multiplayer = <n>` in its manifest receives the other players'
-  events through its own handlers. Version 5 is open: `sdk/api/v5` is
-  the current description.
+  events through its own handlers. Added later in version 5 (appended,
+  nothing moved): the state table's `whiteout` (the game's own whiteout, to the last
+  Pokemon Centre); `battle_get` reads the battle's own moves and their PP
+  (`MOVE1` to `MOVE4`, `PP1` to `PP4`); `move_value` reads all three stat
+  changes of a move (ids 0x100 to 0x113). Version 5 is open: `sdk/api/v5`
+  is the current description.
 
 The number cannot be forgotten. A test recomputes the hash of the surface out
 of the headers themselves and compares it with the number the header carries,
@@ -290,8 +294,8 @@ width and the hash follows it: the number beside the version number is the
 
 | Pointers | Hash |
 |---|---|
-| 32-bit | 0xF07B8D07 (the number in `sdk/mod_api.h`) |
-| 64-bit | 0x0579BE42 |
+| 32-bit | 0xF31D7215 (the number in `sdk/mod_api.h`) |
+| 64-bit | 0xC25CE7CF |
 
 The payload structs, the ids and the enums hold no pointer and hash the
 same everywhere.

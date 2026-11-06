@@ -173,6 +173,7 @@ names:
 | `badges` | the number of badges | read |
 | `badge[n]` | whether badge `n` (0 to 7) is held | read |
 | `zone` | the current zone | read |
+| `player_x`, `player_z` | the cell the player stands on (version 5) | read |
 | `party_count` | how many Pokemon the party holds | read |
 | `species[m]` | a Pokemon's species | read |
 | `level[m]` | a Pokemon's level | read |

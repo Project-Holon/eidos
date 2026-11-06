@@ -940,6 +940,24 @@ static void apply_map_warp(const BwEventPayload *in, BwEventCall *call)
     }
     work = (BwPortMapChangeWork *)change->mapChange;
     work->destination.zoneId = in->map_warp.dest_zone;
+    if (work->destination.type != BW_PORT_LOCATION_DIRECT &&
+        (in->map_warp.dest_x != 0 || in->map_warp.dest_z != 0)) {
+        /*
+         * A door names its arrival by the exit it leads to, which the game
+         * finds in the new zone; a handler that gives a cell gets a direct
+         * position there instead (ZONEDATA_SetDirectLocation's form: no
+         * exit, the height of the floor at 0, the facing kept), or the exit
+         * of the old zone's door is looked up in the new one.
+         */
+        work->destination.type = BW_PORT_LOCATION_DIRECT;
+        work->destination.exitId = -1;
+        work->destination.exitOffset = 0;
+        work->destination.posType = 0;
+        work->destination.pos.vec.x = fx32_of_cell(in->map_warp.dest_x);
+        work->destination.pos.vec.y = 0;
+        work->destination.pos.vec.z = fx32_of_cell(in->map_warp.dest_z);
+        return;
+    }
     if (work->destination.type != BW_PORT_LOCATION_DIRECT) {
         return;
     }

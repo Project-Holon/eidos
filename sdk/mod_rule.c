@@ -993,6 +993,10 @@ static const BwRuleStateField g_state_fields[] = {
       .readable = 1, .writable_ok = 0, .mon_field = 0 },
     { .name = "zone", .kind = BW_RULE_SK_PLAIN, .writable = 0,
       .readable = 1, .writable_ok = 0, .mon_field = 0 },
+    { .name = "player_x", .kind = BW_RULE_SK_PLAIN, .writable = 0,
+      .readable = 1, .writable_ok = 0, .mon_field = 0 },
+    { .name = "player_z", .kind = BW_RULE_SK_PLAIN, .writable = 0,
+      .readable = 1, .writable_ok = 0, .mon_field = 0 },
     { .name = "party_count", .kind = BW_RULE_SK_PLAIN, .writable = 0,
       .readable = 1, .writable_ok = 0, .mon_field = 0 },
     { .name = "species", .kind = BW_RULE_SK_MON, .writable = 0,
@@ -3831,6 +3835,15 @@ static int state_read(const BwRuleStateField *f, const BwRuleValue *sub,
             return -1;
         }
         *out = (s32)st->zone();
+        return 0;
+    }
+    if (strcmp(f->name, "player_x") == 0 || strcmp(f->name, "player_z") == 0) {
+        s16 x = 0, y = 0, z = 0;
+
+        if (st->player_pos == NULL || st->player_pos(&x, &y, &z) != 0) {
+            return -1;
+        }
+        *out = f->name[7] == 'x' ? (s32)x : (s32)z;
         return 0;
     }
     if (strcmp(f->name, "party_count") == 0) {

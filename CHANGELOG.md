@@ -7,8 +7,15 @@ Each release's notes on GitHub start with its section here
 
 ### Mods & Launcher
 - **Mod Icons**: The Mods page shows each mod's icon.
+- **Whiteout for Mods**: A code mod can white the player out as after a lost battle (`whiteout`): the blackout screen, the last Pokémon Center and the nurse.
+- **Mod Warps**: A mod that sends a door to a cell (`map.warp`) now lands the player on that cell; before, a door's own exit was looked up in the new zone.
+- **Battle Moves for Mods**: `battle_get` reads a Pokémon's moves and PP as the battle has them, and `move_value` reads all three stat changes of a move.
+- **Rules**: `player_x` and `player_z` give the cell the player stands on.
 
 ### Bug Fixes
+- **Pokédex Crash**: Opening the Pokédex for the first time no longer crashes the game (#22).
+- **Pokédex Tabs**: In the one-screen layout, clicking CRY no longer opens AREA; each tab opens its own page (#22).
+- **Field Reads for Mods**: A mod's reads in the field (the party, the zone, the player's position) now work before the first battle; the player's position never worked before.
 - **Battle Reads**: A mod's reads and writes of a Pokémon in battle (`battle_ref`, `battle_get`, `battle_set`) now reach the Pokémon asked for; before, every one reached the Pokémon in front, so the bench and the trainer's own side could not be read. A write reaches the battle's own copy too, so a Pokémon a mod puts at 0 HP counts as fainted when the battle checks who can still fight.
 - **Mod Start Reads**: A mod that reads a move or an item (`move_value`, `item_value`) when it starts no longer crashes the game; the read returns -1 until the game data is open.
 

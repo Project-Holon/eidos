@@ -58,8 +58,8 @@
  * The hash of the frozen surface on each layout the port is built at.
  *
  *   pointers  hash
- *   4         0xF07B8D07u  the number in sdk/mod_api.h
- *   8         0x0579BE42u
+ *   4         0xF31D7215u  the number in sdk/mod_api.h
+ *   8         0xC25CE7CFu
  *
  * The 32-bit one is the number the header carries.  The other is the same
  * surface on the other layout: the three tables hold host pointers, so
@@ -68,11 +68,11 @@
  */
 static unsigned int expected_hash(void)
 {
-    return (sizeof(void *) == 4) ? 0xF07B8D07u : 0x0579BE42u;
+    return (sizeof(void *) == 4) ? 0xF31D7215u : 0xC25CE7CFu;
 }
 
 /* The number in sdk/mod_api.h: the frozen one, the 32-bit hash. */
-#define BW_SURFACE_HASH_FROZEN 0xF07B8D07u
+#define BW_SURFACE_HASH_FROZEN 0xF31D7215u
 
 /* The running hash. */
 static unsigned int h;
@@ -222,6 +222,10 @@ int main(void)
     EN(BW_MON_FIELD_STATUS); EN(BW_MON_FIELD_BATTLE_ABILITY);
     EN(BW_MON_FIELD_FATEFUL); EN(BW_MON_FIELD_ORIGIN_GAME);
     EN(BW_MON_FIELD_MET_LOCATION); EN(BW_MON_FIELD_BALL); EN(BW_MON_FIELD_MET_LEVEL);
+    EN(BW_MON_FIELD_PP1); EN(BW_MON_FIELD_PP2); EN(BW_MON_FIELD_PP3); EN(BW_MON_FIELD_PP4);
+    EN(BW_MOVE_FIELD_RANK_COUNT); EN(BW_MOVE_FIELD_RANK_TYPE1); EN(BW_MOVE_FIELD_RANK_TYPE2);
+    EN(BW_MOVE_FIELD_RANK_TYPE3); EN(BW_MOVE_FIELD_RANK_VALUE1); EN(BW_MOVE_FIELD_RANK_VALUE2);
+    EN(BW_MOVE_FIELD_RANK_VALUE3);
 #undef EN
 
     /* The payload structs: the header plus every field. */
@@ -388,7 +392,7 @@ int main(void)
     S(mon_release); S(item_count); S(item_add);
     S(area_of); S(battle_wild); S(play_seconds); S(item_value); S(move_value);
     S(mon_to_box_n); S(mon_from_box); S(mon_recalc); S(species_base); S(battle_trainer);
-    S(type_effect); S(battle_weather); S(species_learns);
+    S(type_effect); S(battle_weather); S(species_learns); S(whiteout);
 #undef S
 
     /* The services table. */

@@ -446,6 +446,16 @@ static int32_t wn_species_learns(wasm_exec_env_t env, int32_t species, int32_t f
     return (int32_t)w->host->state->species_learns((u16)species, (u16)form, (u16)move, (u8)level);
 }
 
+static int32_t wn_whiteout(wasm_exec_env_t env)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->whiteout == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->whiteout();
+}
+
 static void wn_message(wasm_exec_env_t env, const char *text)
 {
     BwWasmMod *w = wasm_mod_of(env);
@@ -879,6 +889,7 @@ static NativeSymbol k_wasm_api_natives[] = {
     { "type_effect", (void *)wn_type_effect, "(iii)i", NULL },
     { "battle_weather", (void *)wn_battle_weather, "()i", NULL },
     { "species_learns", (void *)wn_species_learns, "(iiii)i", NULL },
+    { "whiteout", (void *)wn_whiteout, "()i", NULL },
     { "message", (void *)wn_message, "($)", NULL },
     { "confirm", (void *)wn_confirm, "($)i", NULL },
     { "session_host", (void *)wn_session_host, "(*~)i", NULL },

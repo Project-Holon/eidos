@@ -215,6 +215,17 @@ enum {
     EIDOS_MON_FIELD_STAGE_EVASION = 263,
     EIDOS_MON_FIELD_STATUS = 264,
     EIDOS_MON_FIELD_BATTLE_ABILITY = 265,
+    EIDOS_MON_FIELD_PP1 = 58,
+    EIDOS_MON_FIELD_PP2 = 59,
+    EIDOS_MON_FIELD_PP3 = 60,
+    EIDOS_MON_FIELD_PP4 = 61,
+    EIDOS_MOVE_FIELD_RANK_COUNT = 256,
+    EIDOS_MOVE_FIELD_RANK_TYPE1 = 257,
+    EIDOS_MOVE_FIELD_RANK_TYPE2 = 258,
+    EIDOS_MOVE_FIELD_RANK_TYPE3 = 259,
+    EIDOS_MOVE_FIELD_RANK_VALUE1 = 273,
+    EIDOS_MOVE_FIELD_RANK_VALUE2 = 274,
+    EIDOS_MOVE_FIELD_RANK_VALUE3 = 275,
     EIDOS_SESSION_MESSAGE = 0,
     EIDOS_SESSION_JOIN = 1,
     EIDOS_SESSION_LEAVE = 2,
@@ -818,6 +829,7 @@ EIDOS_IMPORT("battle_trainer") int32_t eidos_battle_trainer(uint32_t n);
 EIDOS_IMPORT("type_effect") int32_t eidos_type_effect(uint32_t atk_type, uint32_t def_type1, uint32_t def_type2);
 EIDOS_IMPORT("battle_weather") int32_t eidos_battle_weather(void);
 EIDOS_IMPORT("species_learns") int32_t eidos_species_learns(uint32_t species, uint32_t form, uint32_t move, uint32_t level);
+EIDOS_IMPORT("whiteout") int32_t eidos_whiteout(void);
 
 /* The services (BwModServices). */
 EIDOS_IMPORT("message") void eidos_message(const char *text);

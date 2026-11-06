@@ -52,6 +52,24 @@
       "doc": "the current zone"
     },
     {
+      "name": "player_x",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "the cell the player stands on (version 5)"
+    },
+    {
+      "name": "player_z",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "the cell the player stands on (version 5)"
+    },
+    {
       "name": "party_count",
       "subscript": null,
       "readable": true,

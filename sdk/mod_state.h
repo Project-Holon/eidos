@@ -83,7 +83,35 @@ enum {
     BW_MON_FIELD_STAGE_ACCURACY = 0x106,
     BW_MON_FIELD_STAGE_EVASION = 0x107,
     BW_MON_FIELD_STATUS        = 0x108,
-    BW_MON_FIELD_BATTLE_ABILITY = 0x109
+    BW_MON_FIELD_BATTLE_ABILITY = 0x109,
+
+    /* The PP left of each move slot: the party record's own ids.  For a
+     * Pokemon in battle, battle_get reads the battle's count (the one the
+     * fight spends) and MOVE1 to MOVE4 the battle's moves (Mimic, Sketch and
+     * Transform change them). */
+    BW_MON_FIELD_PP1          = 0x3A,
+    BW_MON_FIELD_PP2          = 0x3B,
+    BW_MON_FIELD_PP3          = 0x3C,
+    BW_MON_FIELD_PP4          = 0x3D
+};
+
+/*
+ * move_value's own ids past the move data's fields: the stat changes a
+ * move makes, all three of them (WAZA_TOOL_GetRankEffect 0x0201C0B4; the
+ * data's params 16 and 17 reach only the first).  A type is the game's
+ * stat id (1 attack, 2 defense, 3 special attack, 4 special defense,
+ * 5 speed, 6 accuracy, 7 evasion, 8 all five stats), 0 when the move makes
+ * fewer changes; a value is the signed number of stages as a u32
+ * (0xFFFFFFFF is -1).
+ */
+enum {
+    BW_MOVE_FIELD_RANK_COUNT  = 0x100,
+    BW_MOVE_FIELD_RANK_TYPE1  = 0x101,
+    BW_MOVE_FIELD_RANK_TYPE2  = 0x102,
+    BW_MOVE_FIELD_RANK_TYPE3  = 0x103,
+    BW_MOVE_FIELD_RANK_VALUE1 = 0x111,
+    BW_MOVE_FIELD_RANK_VALUE2 = 0x112,
+    BW_MOVE_FIELD_RANK_VALUE3 = 0x113
 };
 
 /*
@@ -226,6 +254,13 @@ typedef struct BwModState {
      * TM or HM it can use, bit 2 an egg move.  0 when it cannot; a negative
      * number for a species or move past the data. */
     s32 (*species_learns)(u16 species, u16 form, u16 move, u8 level);
+
+    /* The player whites out as after a lost battle: the game's own blackout
+     * screen, the arrival at the Pokemon Centre they last healed at and the
+     * nurse's script, at the next field moment with no event running.  The
+     * party is not touched first: a mod that wants it fainted sets the HP.
+     * 0 when queued; a non-zero number with no field. */
+    int (*whiteout)(void);
 } BwModState;
 
 /* ------------------------------------------------------------------ */
@@ -437,6 +472,10 @@ int  bw_mod_state_battle_static(void);
 
 /* The table the host table hands to a mod. */
 const BwModState *bw_mod_state_table(void);
+
+/* Once a frame (sdk/mod_frame.c): starts a queued whiteout once
+ * the field runs with no event. */
+void bw_mod_state_frame(void);
 
 /* The party position of a game Pokemon record, or -1 when it is not in the
  * player's party (or no game data is bound).  For the event builders. */

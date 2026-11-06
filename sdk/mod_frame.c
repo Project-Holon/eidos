@@ -262,6 +262,9 @@ void bw_mod_frame_tick(void)
      * handoff's confirmation is asked on the frame (sdk/mod_handoff.c). */
     bw_mod_avatar_frame();
     bw_mod_handoff_frame();
+
+    /* A mod's whiteout starts on a quiet field frame (sdk/mod_state.c). */
+    bw_mod_state_frame();
 }
 
 /* ------------------------------------------------------------------ */
