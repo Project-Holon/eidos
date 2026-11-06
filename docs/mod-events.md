@@ -163,7 +163,7 @@ Notes from the callers:
 | `battle.held_item` (version 5) | the return of `BTL_SERVER_FLOW_ProcHeldItemActivate` 0x021C2128 (ov093), when the item took effect | - | - | - |
 | `battle.status` (version 5) | the return of `BTL_SERVER_FLOW_TryApplySick` 0x021C27A0 (ov093) | - | - | - |
 | `battle.turn` (version 5) | `BTL_SERVER_FLOW_StartTurn` 0x021BBC44 (ov093) | - | - | - |
-| `whiteout` | `SCRCMD_NETWORK_CreateCommProcEvent` 0x0215F6E8 (ov010): every whiteout after a lost wild or trainer battle (`in_battle` 1); the mod API's own `whiteout()` raises none | - | - | - |
+| `whiteout` | `SCRCMD_NETWORK_CreateWhiteOutEvent` 0x0215F6E8 (ov010): every whiteout after a lost wild or trainer battle (`in_battle` 1); the mod API's own `whiteout()` raises none | - | - | - |
 
 Notes from the callers:
 

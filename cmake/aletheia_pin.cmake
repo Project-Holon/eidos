@@ -24,7 +24,7 @@
 # included; the guard below makes a second include a no-op.
 #
 
-set(EIDOS_ALETHEIA_PIN "56cb91a4382364ddadff5662c73c2c090e2d5987")
+set(EIDOS_ALETHEIA_PIN "7f30ac00d6fcdd7cf777bd582ac6f126d54906c5")
 
 if(EIDOS_ALETHEIA_PIN_CHECKED)
     return()

@@ -8,11 +8,18 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `56cb91a4382364ddadff5662c73c2c090e2d5987`
+- Revision: `7f30ac00d6fcdd7cf777bd582ac6f126d54906c5`
 - Date: 2026-11-06
-- Subject: Host guards for divides by 0: Pokedex first opening (#22), questionnaire graph, Mystery Gift and Wi-Fi competition downloads
+- Subject: ov010: the whiteout event's names (was CommProcEvent)
 
-The step from `309be6b3ad`: four host guards where the DS runtime divide
+The step from `56cb91a438`: names only, the ROM is byte-identical. The
+event every lost battle ends in is SCRCMD_NETWORK_CreateWhiteOutEvent (was
+SCRCMD_NETWORK_CreateCommProcEvent, ov010 0x0215F6E8), the function the
+port's `whiteout` event is bound to (mod/declared_set.txt), with
+SCRCMD_NETWORK_WhiteOutEventMain and the script commands
+SCRCMD_WORK_CmdEndScriptWhiteOutA and B.
+
+The step before, from `309be6b3ad`: four host guards where the DS runtime divide
 gives the dividend for a divisor of 0 and the host build trapped.
 SCROLLBAR_GetPosFromValue (arm9 comm_history.c) divides by a list's scroll
 range, 0 for a list with nothing to scroll, which crashed the Pokedex's

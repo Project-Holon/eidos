@@ -257,7 +257,7 @@ extern u8 WAZA_TOOL_GetRankEffect(u16 move, u32 index, s32 *value)
  * the game system's running event (src/game/arm9). */
 struct GameSystem;
 struct GameEvent;
-extern struct GameEvent *ov010_SCRCMD_NETWORK_CreateCommProcEvent(struct GameSystem *gameSystem)
+extern struct GameEvent *ov010_SCRCMD_NETWORK_CreateWhiteOutEvent(struct GameSystem *gameSystem)
     __attribute__((weak));
 /* The whiteouts the run has seen (sdk/mod_event_battle.c). */
 extern u32 bw_debug_whiteouts;
@@ -1951,7 +1951,7 @@ static int state_move_value(u16 move, u32 field, u32 *out)
 
 /*
  * whiteout: the event the game runs after a lost battle
- * (SCRCMD_NETWORK_CreateCommProcEvent, from EVENT_BATTLE_ProcBattleTask):
+ * (SCRCMD_NETWORK_CreateWhiteOutEvent, from EVENT_BATTLE_ProcBattleTask):
  * the blackout screen, the arrival at the last Pokemon Centre and the
  * nurse's script.  A mod asks from inside a handler, where the game is in
  * the middle of its own work, so the event waits for a frame where the
@@ -1981,7 +1981,7 @@ static int whiteout_event(struct GameEvent *event, int *seq, void *work)
          * whiteout is the mod's, not a lost battle, so it raises no
          * whiteout event; the test switches still count it */
         bw_debug_whiteouts++;
-        GAME_EVENT_ChangeEvent(event, ov010_SCRCMD_NETWORK_CreateCommProcEvent(gs));
+        GAME_EVENT_ChangeEvent(event, ov010_SCRCMD_NETWORK_CreateWhiteOutEvent(gs));
         return 0;
     default:
         return 1;
@@ -1990,7 +1990,7 @@ static int whiteout_event(struct GameEvent *event, int *seq, void *work)
 
 static int state_whiteout(void)
 {
-    if (g_game_data == NULL || ov010_SCRCMD_NETWORK_CreateCommProcEvent == NULL ||
+    if (g_game_data == NULL || ov010_SCRCMD_NETWORK_CreateWhiteOutEvent == NULL ||
         GAME_EVENT_Create == NULL || GAME_EVENT_CallEvent == NULL || GAME_EVENT_ChangeEvent == NULL ||
         GAME_EVENT_GetGameSystem == NULL || GAMESYSTEM_GetFieldMap == NULL ||
         FIELD_STATUS_CreateFieldCloseEvent == NULL || FIELD_SOUND_SYSTEM_StartFadeOutAndResetTask == NULL ||

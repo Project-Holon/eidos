@@ -2634,7 +2634,7 @@
       "size": 16,
       "doc": "The player lost a battle with no Pokemon left (the battle half) and is taken back to heal (the field half).",
       "details": "",
-      "where": "`SCRCMD_NETWORK_CreateCommProcEvent` 0x0215F6E8 (ov010): every whiteout after a lost wild or trainer battle (`in_battle` 1); the mod API's own `whiteout()` raises none",
+      "where": "`SCRCMD_NETWORK_CreateWhiteOutEvent` 0x0215F6E8 (ov010): every whiteout after a lost wild or trainer battle (`in_battle` 1); the mod API's own `whiteout()` raises none",
       "refuse": null,
       "modify": null,
       "fields": [

@@ -978,14 +978,14 @@
     },
     {
       "address": "0x0215F6E8",
-      "name": "SCRCMD_NETWORK_CreateCommProcEvent",
+      "name": "SCRCMD_NETWORK_CreateWhiteOutEvent",
       "region": "ov010",
       "events": [
         "whiteout"
       ],
-      "prototype": "void * SCRCMD_NETWORK_CreateCommProcEvent(void *)",
+      "prototype": "void * SCRCMD_NETWORK_CreateWhiteOutEvent(void *)",
       "signature": "void * (void *)",
-      "aletheia_name": "SCRCMD_NETWORK_CreateCommProcEvent",
+      "aletheia_name": "SCRCMD_NETWORK_CreateWhiteOutEvent",
       "aliases": []
     },
     {

@@ -179,7 +179,7 @@ that faints is dead for the rest of the run.
 | Know which of the player's Pokemon fainted | `battle.faint` with the Pokemon's identity (`BTL_SERVER_FLOW_ProcFaintedPoke`, 0x021C4F64, ov093) |
 | Keep the dead out of play, for example in a grave box | State API: `mon_to_box`, which puts a party Pokemon in the first free box slot (`BOX_SAVEDATA_AddPokemon` 0x020074D8 and `POKEPARTY_RemoveMember`, arm9); `box.withdraw` refusal; `battle.action` refuses a switch to a dead Pokemon |
 | Stop a revive or a heal from bringing one back | `battle.item` and `item.use` refusals; `heal`, whose payload says which Pokemon heal; HP is party field 0xA0 (`POKE_TOOL_SetPartyValue`, 0x02017E40) |
-| Know the run ended | `whiteout` (`SCRCMD_NETWORK_CreateCommProcEvent`, 0x0215F6E8, ov010: every whiteout) |
+| Know the run ended | `whiteout` (`SCRCMD_NETWORK_CreateWhiteOutEvent`, 0x0215F6E8, ov010: every whiteout) |
 | Nickname every catch | `catch.result`, then the game's own nickname screen (`ZUKAN_NICKNAME_Create`, 0x0220B55C, ov207) |
 | Remember dead Pokemon and used routes | Mod state, saved and loaded with the game save |
 

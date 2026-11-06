@@ -1978,7 +1978,7 @@ static void build_battle_end(const BwEventCall *call, BwEventPayload *out)
 /*
  * whiteout: the game starts the whiteout event (the blackout screen, the
  * warp to the last Pokemon Centre or home, the nurse's or the mother's
- * heal).  Every whiteout comes through SCRCMD_NETWORK_CreateCommProcEvent:
+ * heal).  Every whiteout comes through SCRCMD_NETWORK_CreateWhiteOutEvent:
  * the battle task after a lost wild battle (EVENT_BATTLE_ProcBattleTask),
  * and the trainer's script after a lost trainer battle (the script
  * commands that read the last battle's result and end the script with
