@@ -830,7 +830,9 @@ static void run_entry(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
                       const DexNow *v)
 {
     static const char *const tabs[4] = { "INFO", "AREA", "CRY", "FORM" };
-    static const int tab_tap_x[4] = { 64, 96, 128, 160 };
+    /* the centres of the game's own INFO, AREA, CRY and FORM buttons on its
+     * bottom bar (as drawn; issue #22: 128 was on AREA) */
+    static const int tab_tap_x[4] = { 72, 110, 150, 191 };
     DexLayout L;
     char right[40], text[600];
     int state = dex_state(v, v->species), i, lw, rx, rw, tx, ty;
