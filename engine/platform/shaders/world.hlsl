@@ -19,13 +19,16 @@ struct VSOut
 [[vk::combinedImageSampler]] SamplerState s2 : register(s2, space2);
 [[vk::combinedImageSampler]] Texture2D<float4> zero : register(t3, space2);
 [[vk::combinedImageSampler]] SamplerState s3 : register(s3, space2);
+// the kept picture of the field, the window's size, top-down
+[[vk::combinedImageSampler]] Texture2D<float4> held : register(t4, space2);
+[[vk::combinedImageSampler]] SamplerState s4 : register(s4, space2);
 
 cbuffer FragmentUniforms : register(b0, space3)
 {
     float4 dsr;         // the DS screen's rectangle: x, y, w, h
     float4 sz2;         // texsize, win
     int4 m;             // bmode, dilate, has zero, hide 2D
-    int4 m2;            // crop
+    int4 m2;            // crop, under (beyond the DS screen: the kept picture)
     float4 bd;          // the backdrop colour, bfac in .a
     float4 sent;        // the sentinel colour
 };
@@ -78,7 +81,16 @@ float4 fs_main(VSOut i) : SV_Target0
         }
     }
     // outside: the 3D over the DS screen's own backdrop colour
-    if (!inside) return float4(P + (1.0 - A) * bd.rgb, 1.0);
+    if (!inside) {
+        float3 B = bd.rgb;
+        if (m2.y != 0) {
+            // the kept picture, as dark as the game makes its captured
+            // screen for a cut-in (FLD3D_CI_DarkenCapturedScreen halves
+            // every colour)
+            B = held.Sample(s4, fc / win).rgb * 0.5;
+        }
+        return float4(P + (1.0 - A) * B, 1.0);
+    }
     int2 sz = int2(texsize);
     int2 ip = int2(floor(duv * texsize));
     float2 dstsize = dsr.zw;

@@ -41,12 +41,14 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "port.h"
 #include "fs.h"
 #include "overlay.h"
 #include "langmap.h"
+#include "input.h"
 
 #define BW_OVL_MAX 1024u
 
@@ -366,10 +368,28 @@ BOOL FS_UnloadOverlayImage(BwOverlayInfo *info)
 }
 
 /* FS_LoadOverlay(target, id) at 0x02079264. */
+/* EIDOS_OVERLAY_LOG=1 (tests): each overlay load and unload with the input
+ * frame, to find which overlay runs a scene. */
+static void overlay_log(const char *what, u32 id)
+{
+    static int on = -1;
+
+    if (on < 0) {
+        const char *v = getenv("EIDOS_OVERLAY_LOG");
+
+        on = v != NULL && *v != '\0' && strcmp(v, "0") != 0;
+    }
+    if (on) {
+        fprintf(stderr, "eidos: overlay %u %s at frame %u\n", (unsigned)id, what,
+                (unsigned)bw_input_frame_number());
+    }
+}
+
 BOOL FS_LoadOverlay(u32 target, u32 id)
 {
     BwOverlayInfo info;
 
+    overlay_log("load", id);
     if (!FS_LoadOverlayInfo(&info, target, id)) {
         return FALSE;
     }
@@ -385,6 +405,7 @@ BOOL FS_UnloadOverlay(u32 target, u32 id)
 {
     BwOverlayInfo info;
 
+    overlay_log("unload", id);
     if (!FS_LoadOverlayInfo(&info, target, id)) {
         return FALSE;
     }

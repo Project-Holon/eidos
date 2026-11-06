@@ -113,6 +113,9 @@ void ui_fill(EidosUiCtx *c, int x, int y, int w, int h, u32 rgb, int a);
 void ui_line(EidosUiCtx *c, int x0, int y0, int x1, int y1, u32 rgb, int a);
 /* fill and outline may be UI_NONE; the ellipse fills the box (x, y, w, h). */
 void ui_ellipse(EidosUiCtx *c, int x, int y, int w, int h, u32 fill, u32 outline, int a);
+/* One pixel, blended and clipped as every shape is (for shapes the kit has
+ * no call for: engine/ui/item_show.c's rays and stars). */
+void ui_pixel(EidosUiCtx *c, int x, int y, u32 rgb, int a);
 
 /* ------------------------------------------------------------------ */
 /* Text: the game's font                                               */

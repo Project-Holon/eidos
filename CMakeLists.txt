@@ -1119,6 +1119,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl_ops.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_sdlgpu.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_sdlgpu3d.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_sdlgpu2d.c
         # the one-screen layout: scenes, recipes, the interface kit
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipes.c
@@ -1134,6 +1135,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_pc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_input.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_field.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/item_show.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/choice_list.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/textbox.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_starter.c

@@ -150,6 +150,26 @@ u32 bw_ui_item_last(u32 *count, u32 *serial)
 }
 
 /* ------------------------------------------------------------------ */
+/* The key item a cut-in shows (stubs/ov/patch_ov021_fld_wipe_3dobj.c)  */
+/* ------------------------------------------------------------------ */
+
+static volatile u32 g_cutin_item, g_cutin_serial;
+
+void bw_ui_cutin_item(u32 item)
+{
+    g_cutin_item = item;
+    g_cutin_serial++;
+}
+
+/* The key item the last cut-in showed and a number that changes with every
+ * new one (0 when none yet). */
+u32 bw_ui_cutin_last(u32 *serial)
+{
+    if (serial != NULL) *serial = g_cutin_serial;
+    return g_cutin_item;
+}
+
+/* ------------------------------------------------------------------ */
 /* The field's open list (stubs/ov/patch_ov021_field_msgbg.c)          */
 /* ------------------------------------------------------------------ */
 

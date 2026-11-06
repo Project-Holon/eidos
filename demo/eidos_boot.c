@@ -1539,6 +1539,54 @@ static u32 boot_audio_frames(BootRun *run)
     return n;
 }
 
+/*
+ * The sound of a frame with no audio device (EIDOS_NO_AUDIO, a hidden
+ * test run): rendered and dropped, or with EIDOS_AUDIO_WAV=FILE written to
+ * a 16-bit stereo WAV at BW_AUDIO_RATE.  Each frame writes exactly its own
+ * share, so the file stays in step with the frames at any speed, fast
+ * forward included: a recording of a scripted run lines up with its
+ * --screenshot frames (frame N starts at N * 560190 / 33513982 s).
+ */
+static void boot_audio_silent(u32 n)
+{
+    static int state;               /* 0 not looked at, 1 off, 2 writing */
+    static FILE *wav;
+    static u32 bytes;
+    static s16 buf[2u * 2048u];
+    unsigned char h[44];
+
+    if (state == 0) {
+        const char *path = getenv("EIDOS_AUDIO_WAV");
+
+        state = 1;
+        if (path != NULL && *path != '\0' && (wav = fopen(path, "wb")) != NULL) {
+            state = 2;
+        }
+    }
+    if (state != 2 || n > 2048u) {
+        bw_snd_render(NULL, n);
+        return;
+    }
+    bw_snd_render(buf, n);
+    fseek(wav, 44 + (long)bytes, SEEK_SET);
+    fwrite(buf, 4, n, wav);
+    bytes += n * 4u;
+    /* the header again with the sizes so far: the file is whole whenever
+     * the run stops */
+    memcpy(h, "RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x01\0\x02\0\0\0\0\0\0\0\0\0\x04\0\x10\0data\0\0\0\0", 44);
+    h[4] = (unsigned char)(36u + bytes); h[5] = (unsigned char)((36u + bytes) >> 8);
+    h[6] = (unsigned char)((36u + bytes) >> 16); h[7] = (unsigned char)((36u + bytes) >> 24);
+    h[24] = (unsigned char)BW_AUDIO_RATE; h[25] = (unsigned char)(BW_AUDIO_RATE >> 8);
+    h[26] = (unsigned char)(BW_AUDIO_RATE >> 16); h[27] = 0;
+    h[28] = (unsigned char)(BW_AUDIO_RATE * 4); h[29] = (unsigned char)((BW_AUDIO_RATE * 4) >> 8);
+    h[30] = (unsigned char)((BW_AUDIO_RATE * 4) >> 16); h[31] = 0;
+    h[40] = (unsigned char)bytes; h[41] = (unsigned char)(bytes >> 8);
+    h[42] = (unsigned char)(bytes >> 16); h[43] = (unsigned char)(bytes >> 24);
+    fseek(wav, 0, SEEK_SET);
+    fwrite(h, 1, 44, wav);
+    fflush(wav);
+}
+
 #if EIDOS_BOOT_SDL
 /*
  * The window, opened by the thread that runs the frames.  The halt hook runs
@@ -2189,7 +2237,7 @@ static void boot_frame(void *user)
     }
 #endif
     if (!audio_device) {
-        bw_snd_render(NULL, boot_audio_frames(run));
+        boot_audio_silent(boot_audio_frames(run));
     }
     eidos_prof_frame(eidos_frame_count(&run->loop));
 }

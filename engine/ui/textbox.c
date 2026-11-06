@@ -527,6 +527,16 @@ int ui_textbox_field_kind(void *fm, const void *bmpwin)
     return ((const u8 *)bmpwin)[9] == 0xE ? UI_TEXTBOX_SYSTEM : UI_TEXTBOX_NARRATION;
 }
 
+/* Boxes ui_textbox_field drew last time: a window the game keeps open with
+ * nothing printed in it (it clears the text some frames before it closes
+ * the window) draws no box. */
+static int g_field_drawn;
+
+int ui_textbox_field_drawn(void)
+{
+    return g_field_drawn;
+}
+
 u32 ui_textbox_field(EidosUiCtx *c, void *fm, float ox, float oy, float s, const void *skip)
 {
     FieldWin w[8];
@@ -534,6 +544,8 @@ u32 ui_textbox_field(EidosUiCtx *c, void *fm, float ox, float oy, float s, const
     int n = field_wins(fm, w, 8, &hide, skip), i;
     int cw = c->canvas->w, ch = c->canvas->h;
     const u8 *info = NULL;
+
+    g_field_drawn = 0;
 
     /* the information window (the money a vending machine or a shop
      * counter shows: FIELDMAP_GetInfoWindow, a FieldMsgWin whose BmpWin is
@@ -574,6 +586,13 @@ u32 ui_textbox_field(EidosUiCtx *c, void *fm, float ox, float oy, float s, const
             }
         }
         textbox_draw(c, w[i].kind, x, y, bwid, bw, tx, ty, side);
+        {
+            WinBmp b;
+
+            if (win_bmp(bw, &b) && b.ink >= 0 && b.top < b.bottom) {
+                g_field_drawn++;            /* textbox_draw's own test */
+            }
+        }
     }
     return hide;
 }

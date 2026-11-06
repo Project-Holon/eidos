@@ -232,6 +232,11 @@ static const char *k_fsw =
     "uniform vec3 bd;\n"
     "uniform float bfac;\n"
     "uniform vec3 sent;\n"
+    /* under: beyond the DS screen the kept picture of the field (held, its
+     * rows bottom-up from the viewport's vpy), not the backdrop colour */
+    "uniform sampler2D held;\n"
+    "uniform int under;\n"
+    "uniform float vpy;\n"
     "in vec2 uv;\n"
     "out vec4 color;\n"
     SHARP_FN
@@ -287,7 +292,16 @@ static const char *k_fsw =
      * master brightness as the DS screen is (`bd` has it), so a scene with
      * little 3D, or a fade to white, fills the window like the DS
      * rectangle and does not leave it a square */
-    "    if (!inside) { color = vec4(P + (1.0 - A) * bd, 1.0); return; }\n"
+    "    if (!inside) {\n"
+    "        vec3 B = bd;\n"
+    /* the kept picture, as dark as the game makes its captured screen for a
+     * cut-in (FLD3D_CI_DarkenCapturedScreen halves every colour) */
+    "        if (under != 0) {\n"
+    "            B = texture(held, (gl_FragCoord.xy - vec2(0.0, vpy)) / win).rgb * 0.5;\n"
+    "        }\n"
+    "        color = vec4(P + (1.0 - A) * B, 1.0);\n"
+    "        return;\n"
+    "    }\n"
     "    ivec2 sz = ivec2(texsize);\n"
     "    ivec2 ip = ivec2(floor(duv * texsize));\n"
     "    vec2 dstsize = dsr.zw;\n"
@@ -353,10 +367,11 @@ static const char *k_fsu =
  */
 static struct {
     int on, world, screen, hide2d, crop, blur, no_fade, hold, keep, spare, dark, mix;
+    int under;                     /* beyond the DS screen: the kept picture */
     SDL_Rect ds;                   /* the DS screen's rectangle in the window */
     GLuint progw, progb, progu;
     GLint w_tex, w_behind, w_g3d, w_zero, w_texsize, w_dsr, w_win, w_bmode,
-          w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect, w_bd;
+          w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect, w_bd, w_held, w_under, w_vpy;
     float bd[3];                   /* the backdrop colour beyond the DS screen */
     GLint b_src, b_win, b_dir, b_tint, b_rect;
     GLint u_ctex, u_rect;
@@ -651,6 +666,9 @@ EidosGl *eidos_gl_create(SDL_Window *window)
         g_one.w_hide2d = g->glGetUniformLocation(g_one.progw, "hide2d");
         g_one.w_crop = g->glGetUniformLocation(g_one.progw, "crop");
         g_one.w_bd = g->glGetUniformLocation(g_one.progw, "bd");
+        g_one.w_held = g->glGetUniformLocation(g_one.progw, "held");
+        g_one.w_under = g->glGetUniformLocation(g_one.progw, "under");
+        g_one.w_vpy = g->glGetUniformLocation(g_one.progw, "vpy");
         g_one.w_bfac = g->glGetUniformLocation(g_one.progw, "bfac");
         g_one.w_sent = g->glGetUniformLocation(g_one.progw, "sent");
     }
@@ -1178,6 +1196,7 @@ void eidos_gl_one_set(EidosGl *g, int on, int world, int screen,
     g_one.hold = (no_fade & 2) != 0;
     g_one.keep = (no_fade & 4) != 0;
     g_one.spare = (no_fade & (1 << 19)) != 0;
+    g_one.under = (no_fade & (1 << 20)) != 0;
     g_one.dark = (no_fade >> 8) & 31;
     g_one.mix = (no_fade >> 13) & 31;
     if (ds != NULL) {
@@ -1368,7 +1387,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         one_blur(g, out_w, out_h);
         return;
     }
-    if (use_w && !blur && !g_one.keep && !g_one.hold && !g_one.no_fade && !g_one.spare) {
+    if (use_w && !blur && !g_one.keep && !g_one.hold && !g_one.no_fade && !g_one.spare && !g_one.under) {
         /* a live world that is not the field (a battle, the title): the
          * kept picture of the field is out of date from here */
         g_one.frozen_ok = 0;
@@ -1402,6 +1421,11 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
             g->glUniform3fv(g_one.w_bd, 1, g_one.no_fade ? none : g_one.bd);
         }
         g->glUniform3fv(g_one.w_sent, 1, sent);
+        g->glUniform1i(g_one.w_held, 4);
+        g->glUniform1i(g_one.w_under, g_one.under && frozen && g_one.frozen != 0);
+        g->glUniform1f(g_one.w_vpy, (float)g_vp_y);
+        g->glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, g_one.frozen != 0 ? g_one.frozen : g->behind_tex);
         g->glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, g->zero_tex);
         g->glActiveTexture(GL_TEXTURE2);
@@ -1429,7 +1453,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
             glBlendFunc(GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             glDisable(GL_BLEND);
-        } else if (!blur && g_one.keep && (!dark || g_one.no_fade)) {
+        } else if (!blur && g_one.keep && !g_one.under && (!dark || g_one.no_fade)) {
             /* keep this live world for a later modal (see g_one.frozen) */
             if (g_one.frozen == 0) {
                 glGenTextures(1, &g_one.frozen);

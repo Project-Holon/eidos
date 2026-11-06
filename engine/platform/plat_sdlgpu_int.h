@@ -24,6 +24,8 @@ typedef struct SgPic {
     int w, h;                   /* the texture's size, 0: none           */
     int up_size;                /* the transfer buffer's bytes           */
     int dirty;                  /* new pixels wait in `up`               */
+    int target;                 /* the texture is a colour target too: the
+                                   2D compositor draws into it            */
 } SgPic;
 
 /* A 3D frame's targets (plat_gl3d.c's GlFb): the premultiplied colour, the
@@ -60,6 +62,7 @@ typedef struct SdlGpu {
 
     /* the one-screen layout (plat_gl.c's g_one) */
     int on, world, which, hide2d, crop, blur_amount, no_fade, hold, keep, spare, dark, mix;
+    int under;                  /* beyond the DS screen: the kept picture  */
     int frozen_ok;
     SDL_Rect ds;                /* the DS screen's rectangle             */
     SDL_Rect crect;             /* the canvas's rectangle, w 0: none     */
@@ -71,6 +74,11 @@ typedef struct SdlGpu {
     int s3d, bmode, dilate, has_zero;
     float bfac;
     SgPic behind, zero;
+    /* the 2D compositor's composites (plat_gl.c's s3d2, s3d_from2d): the
+     * screen whose 3D the 2D shader composes and the size it is shown at;
+     * s3d's screens made by the shader (the one-screen world) */
+    int s3d2, s3d2_w, s3d2_h, s3d_from2d;
+    void *g2d;                  /* the 2D compositor (plat_sdlgpu2d.c)   */
 
     /* the display capture */
     SgPic cap_src[3];
@@ -110,6 +118,7 @@ SDL_GPUTexture *sg_texture(SdlGpu *s, SDL_GPUTextureFormat f, int w, int h, int 
 void sg_ensure_target(SdlGpu *s, SDL_GPUTexture **tex, int *tw, int *th, int w, int h);
 void sg_pic_set(SdlGpu *s, SgPic *p, const unsigned char *rgba, int w, int h);
 void sg_pic_flush(SDL_GPUCopyPass *cp, SgPic *p);
+int sg_pic_target(SdlGpu *s, SgPic *p, int w, int h);
 void sg_free_pic(SDL_GPUDevice *dev, SgPic *p);
 SDL_GPUShader *sg_shader(SDL_GPUDevice *dev, SDL_GPUShaderStage stage,
                          const unsigned char *dxil, size_t dxil_n,
@@ -128,5 +137,12 @@ int sg3d_render(SdlGpu *s, SDL_GPUCommandBuffer *cmd, int fbi, const struct G3dS
 int sg3d_render3d(SdlGpu *s, const struct G3dSnapshot *snap, int w, int h);
 int sg3d_read3d(SdlGpu *s, unsigned char *out, int w, int h);
 int sg3d_read3d_1x(SdlGpu *s, const struct G3dSnapshot *snap, unsigned char *out, int async);
+
+/* plat_sdlgpu2d.c */
+struct G2dGpuFrame;
+int sg2d_ready(SdlGpu *s);
+int sg2d_compose(SdlGpu *s, const struct G2dGpuFrame *f, unsigned char *readback, int to_screen);
+int sg2d_pixels(SdlGpu *s, int screen, unsigned char *out);
+void sg2d_destroy(SdlGpu *s);
 
 #endif

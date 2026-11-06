@@ -905,6 +905,68 @@ static void debug_warp(void)
     }
 }
 
+/* Tests: EIDOS_DEBUG_WHERE=1 logs the zone and the place the player stands
+ * once the field has run 120 frames with no event, in the form
+ * EIDOS_DEBUG_WARP takes, so a test can start from the same spot with any
+ * save (GameData's player work: zone at +0, fx32 x y z at +4). */
+static void debug_where(void)
+{
+    static int done, wait;
+    u8 *gs, *gd;
+    const u8 *pw;
+    const s32 *p;
+
+    if (done || getenv("EIDOS_DEBUG_WHERE") == NULL || &bw_dsref__GameSystemGlobal == NULL
+        || GAMESYSTEM_GetEvent == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    if (gs == NULL || *(void **)(gs + 0x20) == NULL || GAMESYSTEM_GetEvent(gs) != NULL) {
+        wait = 0;
+        return;
+    }
+    if (++wait < 120) {
+        return;
+    }
+    done = 1;
+    gd = *(u8 **)(gs + 0x1C);
+    pw = gd + 4 + 4 * 0x44;
+    p = (const s32 *)(pw + 4);
+    fprintf(stderr, "eidos: debug where: EIDOS_DEBUG_WARP=\"%u %.0f %.0f %.0f 1\"\n",
+            (unsigned)(pw[0] | (pw[1] << 8)), p[0] / 4096.0, p[1] / 4096.0, p[2] / 4096.0);
+}
+
+/* Tests: EIDOS_EVENT_LOG=1 logs the running game event's chain (each
+ * event's function, innermost first) whenever it changes, as offsets from
+ * GAMESYSTEM_GetEvent: `nm` on the program gives that function's address,
+ * and the sum names the event's.  To find which code runs a scene. */
+static void event_log(void)
+{
+    static uintptr_t last[4];
+    uintptr_t now[4] = { 0, 0, 0, 0 };
+    const u8 *gs, *ev;
+    int i;
+
+    if (getenv("EIDOS_EVENT_LOG") == NULL || &bw_dsref__GameSystemGlobal == NULL
+        || GAMESYSTEM_GetEvent == NULL) {
+        return;
+    }
+    gs = *(const u8 **)bw_dsref__GameSystemGlobal;
+    ev = gs != NULL ? (const u8 *)GAMESYSTEM_GetEvent(gs) : NULL;
+    for (i = 0; i < 4 && ev != NULL; i++) {
+        now[i] = *(const uintptr_t *)(ev + sizeof(void *));      /* GameEvent func */
+        ev = *(const u8 * const *)ev;                            /* parent */
+    }
+    if (memcmp(now, last, sizeof now) != 0) {
+        memcpy(last, now, sizeof now);
+        fprintf(stderr, "eidos: event at frame %u:", (unsigned)bw_input_frame_number());
+        for (i = 0; i < 4 && now[i] != 0; i++) {
+            fprintf(stderr, " %+ld", (long)(now[i] - (uintptr_t)GAMESYSTEM_GetEvent));
+        }
+        fprintf(stderr, "\n");
+    }
+}
+
 /* Tests: EIDOS_DEBUG_SCRIPT="ID" runs the game's script ID (a global
  * script: the vending machine's 10400, the shared ones from 2000) as the
  * game starts a script, its work values first set from the "VAR=VALUE"
@@ -1779,6 +1841,8 @@ void eidos_ui_game_frame(void)
     if (!eidos_ui_battle_only()) {
         debug_party();
         debug_warp();
+        debug_where();
+        event_log();
         debug_battle();
         debug_script();
         debug_open();

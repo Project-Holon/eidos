@@ -5,8 +5,7 @@
  * plat_gl.c's on SDL's GPU: the two DS screens with their 3D layer, the
  * one-screen layout (the world, the blur behind a modal, the interface
  * canvas), the display capture and the run-status panel.  Its 3D renderer
- * is plat_sdlgpu3d.c.  The GPU 2D compositor is not here: its operations
- * say "not available", and the platform layer composes the 2D on the CPU.
+ * is plat_sdlgpu3d.c, its 2D compositor plat_sdlgpu2d.c.
  *
  * Every frame is drawn into `scene`, an RGBA8 texture of the window's size,
  * then blitted to the swapchain: every pipeline has one target format
@@ -117,7 +116,7 @@ void sg_pic_set(SdlGpu *s, SgPic *p, const unsigned char *rgba, int w, int h)
         if (p->tex != NULL) {
             SDL_ReleaseGPUTexture(s->dev, p->tex);
         }
-        p->tex = sg_texture(s, SG_RGBA, w, h, 1, 0);
+        p->tex = sg_texture(s, SG_RGBA, w, h, 1, p->target);
         p->w = w;
         p->h = h;
     }
@@ -143,6 +142,23 @@ void sg_pic_set(SdlGpu *s, SgPic *p, const unsigned char *rgba, int w, int h)
     memcpy(dst, rgba, (size_t)bytes);
     SDL_UnmapGPUTransferBuffer(s->dev, p->up);
     p->dirty = 1;
+}
+
+/* A picture the GPU draws instead (the 2D compositor): its texture at w x h,
+ * a colour target, and no upload waiting to overwrite what is drawn. */
+int sg_pic_target(SdlGpu *s, SgPic *p, int w, int h)
+{
+    p->target = 1;
+    if (p->tex == NULL || p->w != w || p->h != h) {
+        if (p->tex != NULL) {
+            SDL_ReleaseGPUTexture(s->dev, p->tex);
+        }
+        p->tex = sg_texture(s, SG_RGBA, w, h, 1, 1);
+        p->w = p->tex != NULL ? w : 0;
+        p->h = p->tex != NULL ? h : 0;
+    }
+    p->dirty = 0;
+    return p->tex != NULL ? 0 : -1;
 }
 
 void sg_pic_flush(SDL_GPUCopyPass *cp, SgPic *p)
@@ -233,6 +249,7 @@ static void op_destroy(EidosGpu *g)
 
     if (s->dev != NULL) {
         SDL_WaitForGPUIdle(s->dev);
+        sg2d_destroy(s);
         sg3d_destroy(s);
         for (i = 0; i < 2; i++) {
             sg_free_pic(s->dev, &s->screen[i]);
@@ -499,14 +516,14 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
         /* a modal over an app that closed the world: the kept picture */
         blur_pass(s, cmd, s->frozen, b0, world, 0.f, 0.f, 1.f, 1);
     } else {
-        if (use_w && !blur && !s->keep && !s->hold && !s->no_fade && !s->spare) {
+        if (use_w && !blur && !s->keep && !s->hold && !s->no_fade && !s->spare && !s->under) {
             /* a live world that is not the field: the kept picture is out
              * of date from here */
             s->frozen_ok = 0;
         }
         if (use_w) {
             SDL_GPURenderPass *pass = begin(cmd, dst, 1, 0, 0, 0);
-            SDL_GPUTextureSamplerBinding tb[4];
+            SDL_GPUTextureSamplerBinding tb[5];
             float u[24];
             int *m = (int *)&u[8], *m2 = (int *)&u[12];
 
@@ -515,7 +532,10 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
             tb[1].texture = s->behind.tex;
             tb[2].texture = s->fb[0].color;
             tb[3].texture = s->has_zero && s->zero.tex != NULL ? s->zero.tex : s->behind.tex;
-            tb[0].sampler = tb[1].sampler = tb[2].sampler = tb[3].sampler = s->linear;
+            /* the kept picture beyond the DS screen (a cut-in: the VS) */
+            tb[4].texture = frozen ? s->frozen : s->behind.tex;
+            tb[0].sampler = tb[1].sampler = tb[2].sampler = tb[3].sampler = tb[4].sampler = s->linear;
+            m2[1] = s->under && frozen;
             u[0] = (float)s->ds.x;
             u[1] = (float)s->ds.y;
             u[2] = (float)s->ds.w;
@@ -538,7 +558,7 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
             u[20] = k_sent[0];
             u[21] = k_sent[1];
             u[22] = k_sent[2];
-            quad_n(cmd, pass, s->p_world, tb, 4, world, dst.w, dst.h, u, sizeof u);
+            quad_n(cmd, pass, s->p_world, tb, 5, world, dst.w, dst.h, u, sizeof u);
             if (s->mix > 0 && frozen && !blur && g_p_mix != NULL) {
                 /* a scene change blends the old picture out over the new
                  * world: the kept wide picture at the game's weight */
@@ -555,7 +575,7 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
                 quad(cmd, pass, g_p_mix, s->frozen, s->linear, world, dst.w, dst.h, bu, sizeof bu);
             }
             SDL_EndGPURenderPass(pass);
-            if (!(s->mix > 0 && frozen && !blur) && !blur && s->keep && (!dark || s->no_fade)) {
+            if (!(s->mix > 0 && frozen && !blur) && !blur && s->keep && !s->under && (!dark || s->no_fade)) {
                 /* keep this live world for a later modal */
                 SDL_GPUBlitInfo bi;
 
@@ -810,6 +830,7 @@ static void op_one_set(EidosGpu *g, int on, int world, int screen, const SDL_Rec
     s->hold = (no_fade & 2) != 0;
     s->keep = (no_fade & 4) != 0;
     s->spare = (no_fade & (1 << 19)) != 0;
+    s->under = (no_fade & (1 << 20)) != 0;
     s->dark = (no_fade >> 8) & 31;
     s->mix = (no_fade >> 13) & 31;
     if (ds != NULL) {
@@ -863,6 +884,8 @@ static void op_set_3d(EidosGpu *g, int screen, const unsigned char *behind, int 
 {
     SdlGpu *s = sg(g);
 
+    s->s3d2 = -1;
+    s->s3d_from2d = 0;
     if (screen < 0 || behind == NULL || w <= 0 || h <= 0) {
         s->s3d = -1;
         return;
@@ -874,15 +897,36 @@ static void op_set_3d(EidosGpu *g, int screen, const unsigned char *behind, int 
     s->dilate = dilate;
 }
 
-/* The GPU 2D compositor's composites: not in this backend, the 3D layer is
- * then off (the platform layer asks for them only after compose_2d). */
-static void op_set_3d2d(EidosGpu *g, int screen) { (void)screen; sg(g)->s3d = -1; }
+/* The 2D compositor's composites (plat_gl.c eidos_gl_set_3d2d and the two
+ * after it).  3d2d: the 2D shader composes `screen` with the GPU's 3D frame
+ * in it, so the presenter shows that screen as a picture.  from2d: the
+ * one-screen world's screens (the sentinel one, the 3D off, the black 3D)
+ * come from the shader, and s3d's composite uses them as the CPU's. */
+static void op_set_3d2d(EidosGpu *g, int screen)
+{
+    SdlGpu *s = sg(g);
+
+    s->s3d_from2d = 0;
+    s->s3d = -1;
+    s->s3d2 = screen == 0 || screen == 1 ? screen : -1;
+}
 static void op_set_3d_from2d(EidosGpu *g, int screen, int bmode, float bfac)
 {
-    (void)screen; (void)bmode; (void)bfac;
-    sg(g)->s3d = -1;
+    SdlGpu *s = sg(g);
+
+    s->s3d2 = -1;
+    s->s3d = screen;
+    s->s3d_from2d = 1;
+    s->has_zero = 0;
+    s->bmode = bmode;
+    s->bfac = bfac;
+    s->dilate = 0;
 }
-static void op_set_3d2d_shown(EidosGpu *g, int w, int h) { (void)g; (void)w; (void)h; }
+static void op_set_3d2d_shown(EidosGpu *g, int w, int h)
+{
+    sg(g)->s3d2_w = w > 0 ? w : 0;
+    sg(g)->s3d2_h = h > 0 ? h : 0;
+}
 
 /* ------------------------------------------------------------------ */
 /* The 3D and the capture                                              */
@@ -1049,16 +1093,25 @@ static void op_show_capture(EidosGpu *g, int screen, int bmode, float bfac)
 }
 
 /* ------------------------------------------------------------------ */
-/* Not in this backend yet: the platform layer takes the CPU's path     */
+/* The 2D compositor (plat_sdlgpu2d.c)                                 */
 /* ------------------------------------------------------------------ */
 
 static int op_compose_2d(EidosGpu *g, const struct G2dGpuFrame *f, unsigned char *readback,
                          int to_screen)
-{ (void)g; (void)f; (void)readback; (void)to_screen; return -1; }
-static int op_ready_2d(EidosGpu *g) { (void)g; return 0; }
+{
+    return sg2d_compose(sg(g), f, readback, to_screen);
+}
+static int op_ready_2d(EidosGpu *g) { return sg2d_ready(sg(g)); }
 static int op_pixels_2d(EidosGpu *g, int screen, unsigned char *out)
-{ (void)g; (void)screen; (void)out; return -1; }
-/* a tool's window (the spot editor) draws with the OpenGL backend */
+{
+    return sg2d_pixels(sg(g), screen, out);
+}
+
+/* ------------------------------------------------------------------ */
+/* Not in this backend: a tool's window (the spot editor) draws with    */
+/* the OpenGL backend                                                   */
+/* ------------------------------------------------------------------ */
+
 static unsigned op_view_keep3d(EidosGpu *g, unsigned tex, int w, int h)
 { (void)g; (void)tex; (void)w; (void)h; return 0; }
 static unsigned op_view_upload(EidosGpu *g, unsigned tex, const unsigned char *rgba, int w, int h,
@@ -1112,7 +1165,11 @@ EidosGpu *eidos_gpu_create_sdl(SDL_Window *window, const char *driver)
     }
     s->window = window;
     s->s3d = -1;
+    s->s3d2 = -1;
     s->cap_screen = -1;
+    /* the 2D compositor draws into these (plat_sdlgpu2d.c) */
+    s->screen[0].target = s->screen[1].target = 1;
+    s->behind.target = s->zero.target = 1;
     s->dev = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_DXIL | SDL_GPU_SHADERFORMAT_SPIRV |
                                      SDL_GPU_SHADERFORMAT_MSL,
                                  getenv("EIDOS_GPU_DEBUG") != NULL, driver);

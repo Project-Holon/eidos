@@ -606,6 +606,17 @@ u32 w2c_env_SDL_GL_MakeCurrent(struct w2c_env *e, u32 w, u32 c)
 }
 
 u32 w2c_env_SDL_GL_SetSwapInterval(struct w2c_env *e, u32 n) { (void)e; return SDL_GL_SetSwapInterval((int)n); }
+u32 w2c_env_SDL_GL_GetSwapInterval(struct w2c_env *e, u32 out)
+{
+    int n = 0;
+    bool ok = SDL_GL_GetSwapInterval(&n);
+
+    (void)e;
+    if (out != 0) {
+        memcpy(host_ptr(out, 4), &n, 4);
+    }
+    return ok;
+}
 /* EIDOS_FPS: every 120 frames, the frames per second and how much of a
  * frame went to the game and its drawing calls (between swaps) and to the
  * swap itself (waiting for the GPU and the display). */

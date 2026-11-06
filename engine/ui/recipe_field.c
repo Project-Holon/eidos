@@ -49,6 +49,7 @@
 #include "input.h"
 #include "choice_list.h"
 #include "textbox.h"
+#include "item_show.h"
 #include "overlay.h"
 
 #define WEAK __attribute__((weak))
@@ -61,6 +62,9 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldN
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
 static int power_card(EidosUiCtx *c, const struct FieldNow *f);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
+static int item_show_active(void);
+static int cutin_other(const struct FieldNow *f);
+static void cutin_view(EidosUiView *view);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1096,7 +1100,7 @@ static int field_match(void)
 
         logf_scene("field");
         /* the game's text at the game's own size */
-        if (ui_textbox_field_active(f.fm) || choices_now(&f, &list, &win)) {
+        if (ui_textbox_field_active(f.fm) || choices_now(&f, &list, &win) || item_show_active()) {
             eidos_ui_want_ds_scale();
         }
         return 1;
@@ -1245,7 +1249,9 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     if (win != NULL && win[2] < 4) {
         hide |= 1u << win[2];           /* an open list's window: ours shows */
     }
-    item_card(c, f, hide != 0);
+    /* the card goes with the box: not while the game holds its window open
+     * with the text already cleared (it closes it some frames later) */
+    item_card(c, f, hide != 0 && ui_textbox_field_drawn() > 0);
     text = hide != 0;
     /* the season's scoreboard stays the game's own (the player prefers it);
      * the game's place-name banner is left out: the bar's name changes
@@ -1282,6 +1288,7 @@ typedef struct ItemCard {
 } ItemCard;
 
 static ItemCard g_item_card;
+static int g_item_card_drawn;   /* item_card drew this frame              */
 static u32 g_item_seen;     /* the item serial last frame                 */
 static u32 g_item_age;      /* frames since it changed                    */
 static int g_item_show;     /* this message is the item's                 */
@@ -1315,6 +1322,7 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
     const UiImage *ic;
     const char *pocket;
 
+    g_item_card_drawn = 0;
     if (bw_ui_item_last == NULL) {
         return;
     }
@@ -1345,23 +1353,229 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
             return;
         }
     }
-    if (!g_item_card.ready) {
-        return;
+    if (!g_item_card.ready || item_show_active()) {
+        return;                 /* (the showcase draws the card it forms) */
     }
     pocket = g_item_card.pocket < 5 ? ui_game_text(2, 0x37, g_item_card.pocket) : "";
     ic = ui_item_icon((u16)item);
-    w = ui_text_w(g_item_card.name, UI_FONT_LARGE);
-    if (ui_text_w(pocket, UI_FONT_SMALL) > w) w = ui_text_w(pocket, UI_FONT_SMALL);
-    w += 50;
+    w = item_card_width(g_item_card.name, pocket);
     x = (cw - w) / 2;
-    y = ch - 4 - 42 - 8 - 34;           /* above the box at the bottom      */
-    ui_panel(c, x, y, w, 34, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
-    ui_panel(c, x + 4, y + 3, 28, 28, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, 0x008BACu, 255);
-    if (ic != NULL) {
-        ui_image(c, x + 6, y + 5, ic, 1);
+    y = ITEM_CARD_Y(ch);
+    item_card_draw(c, x, y, w, ic, g_item_card.name, pocket);
+    g_item_card_drawn = 1;
+}
+
+/*
+ * The key-item showcase (engine/ui/item_show.c): the game's cut-in for a
+ * key item (ov021 FLD3D_CI, the flash and the item spinning out of a glow
+ * during the jingle) is drawn on the DS screen alone, which the one-screen
+ * world does not show.  While it runs, the world holds its last wide
+ * picture (the game froze its own screen the same way) and the interface
+ * plays its own version, which ends as the item card.  The cut-in tells
+ * the port its item (bw_ui_cutin_item, stubs/ov/patch_ov021_fld_wipe_3dobj.c);
+ * the item card takes over once the "obtained" message opens.
+ */
+extern u32 bw_ui_cutin_last(u32 *serial) WEAK;
+extern int ov021_FLD3D_CI_EventMain(void *event, int *state, void *work) WEAK;
+extern void *ov021_FIELDMAP_GetFieldPlayer(void *fieldMap) WEAK;
+extern void ov021_FIELD_PLAYER_GetPos(void *player, s32 *out) WEAK;
+extern int NNS_G3dWorldPosToScrPos(const s32 *pos, int *x, int *y) WEAK;
+extern void *ov021_FIELDMAP_GetCamera(void *fieldMap) WEAK;
+extern void ov021_FIELD_CAMERA_GetTarget(void *camera, s32 *out) WEAK;
+
+typedef struct ItemShow {
+    u32 serial;             /* the cut-in it is for                         */
+    int on;
+    int t;                  /* frames since the cut-in began                */
+    u32 start, end;         /* the game frames it began and ended at        */
+    int ended;              /* frames since it ended, 0 while it runs       */
+    ItemCard card;          /* the name and pocket, read on the game thread */
+    volatile int pos_ready;
+    int sx, sy;             /* the player on the DS screen                  */
+} ItemShow;
+
+static ItemShow g_show;
+
+/* The showcase is up (the field asks for the DS text scale then too, so
+ * the card it ends as is the size of the one over the message). */
+static int item_show_active(void)
+{
+    return g_show.on;
+}
+
+/* Where the player stands on the DS screen, as the game's camera projects
+ * it (the game thread: the camera's matrices are the field's last frame). */
+static void item_show_where(void *arg)
+{
+    ItemShow *s = (ItemShow *)arg;
+    void *player = ov021_FIELDMAP_GetFieldPlayer != NULL ? ov021_FIELDMAP_GetFieldPlayer(s->card.fm) : NULL;
+    s32 pos[3] = { 0, 0, 0 };
+    int x = -1, y = -1;
+
+    if (player != NULL && ov021_FIELD_PLAYER_GetPos != NULL && NNS_G3dWorldPosToScrPos != NULL
+        && ov021_FIELDMAP_GetCamera != NULL && ov021_FIELD_CAMERA_GetTarget != NULL) {
+        /* the field draws relative to the camera's target, as the speech
+         * bubbles' tails project (TALKMSGWIN_ProjectToWorld) */
+        s32 target[3], rel[3];
+        void *camera = ov021_FIELDMAP_GetCamera(s->card.fm);
+
+        ov021_FIELD_PLAYER_GetPos(player, pos);
+        if (camera != NULL) {
+            ov021_FIELD_CAMERA_GetTarget(camera, target);
+            rel[0] = pos[0] - target[0];
+            rel[1] = pos[1] - target[1];
+            rel[2] = pos[2] - target[2];
+            (void)NNS_G3dWorldPosToScrPos(rel, &x, &y);
+        }
     }
-    ui_text(c, x + 38, y + 2, g_item_card.name, UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
-    ui_text(c, x + 38, y + 20, pocket, 0x008BACu, 0x313131u, UI_FONT_SMALL, 1);
+    s->sx = x;
+    s->sy = y;
+    s->pos_ready = 1;
+    if (getenv("EIDOS_UI_FIELD_DEBUG") != NULL) {
+        fprintf(stderr, "eidos: item show at frame %u: player (%.1f %.1f %.1f) on the DS screen (%d, %d)\n",
+                (unsigned)bw_input_frame_number(), pos[0] / 4096.0, pos[1] / 4096.0, pos[2] / 4096.0, x, y);
+    }
+}
+
+/* The game's cut-in event is running (it, or a task it pushed). */
+static int cutin_running(const FieldNow *f)
+{
+    const u8 *ev;
+    int i;
+
+    if (GAMESYSTEM_GetEvent == NULL || ov021_FLD3D_CI_EventMain == NULL || f->gs == NULL) {
+        return 0;
+    }
+    ev = (const u8 *)GAMESYSTEM_GetEvent(f->gs);
+    for (i = 0; i < 4 && ev != NULL; i++) {
+        if (*(void *const *)(ev + sizeof(void *)) == (void *)ov021_FLD3D_CI_EventMain) {
+            return 1;
+        }
+        ev = *(const u8 *const *)ev;
+    }
+    return 0;
+}
+
+/* One frame: 1 while the showcase holds the world (the caller keeps the
+ * world's last wide picture and leaves the game's capture out). */
+static int item_show(EidosUiCtx *c, const FieldNow *f)
+{
+    u32 serial = 0, item;
+    int cw = c->canvas->w, ch = c->canvas->h, w, cx, cy;
+    float s, ox, oy, fr;
+    u32 now;
+    const char *pocket;
+
+    if (bw_ui_cutin_last == NULL) {
+        return 0;
+    }
+    item = bw_ui_cutin_last(&serial);
+    if (!g_show.on && serial == g_show.serial && f->fm != NULL) {
+        /* where the player stands, kept from the field's own frames: once
+         * a cut-in starts the camera is its own */
+        static unsigned every;
+
+        if ((every++ & 3u) == 0u && g_show.pos_ready != 2) {
+            g_show.card.fm = f->fm;
+            g_show.pos_ready = 2;           /* asked */
+            if (!eidos_ui_game_call(item_show_where, &g_show)) {
+                g_show.pos_ready = 1;
+            }
+        }
+    }
+    if (serial != g_show.serial) {
+        /* a new cut-in: its name, its pocket and the player's place, read
+         * by the game's thread */
+        g_show.serial = serial;
+        g_show.on = item != 0 && item <= 0x400;
+        g_show.t = 0;
+        g_show.ended = 0;
+        g_show.card.item = item;
+        g_show.card.ready = 0;
+        g_show.card.fm = f->fm;
+        if (g_show.pos_ready == 0) {
+            g_show.sx = g_show.sy = -1;     /* not known: the canvas's middle */
+        }
+        if (g_show.on && !eidos_ui_game_call(item_card_make, &g_show.card)) {
+            g_show.on = 0;
+        }
+    }
+    if (!g_show.on) {
+        return 0;
+    }
+    /* the game's own frames, so the showcase keeps the game's time at any
+     * speed: t since the cut-in began, ended since it ended */
+    now = bw_input_frame_number();
+    if (g_show.t == 0 && g_show.ended == 0) {
+        g_show.start = now;
+    }
+    g_show.t = (int)(now - g_show.start) + 1;
+    if (g_show.ended == 0 && !cutin_running(f) && g_show.t > 10) {
+        g_show.end = now;
+        g_show.ended = 1;
+    } else if (g_show.ended > 0) {
+        g_show.ended = (int)(now - g_show.end) + 1;
+    }
+    if (!g_show.card.ready) {
+        return 1;
+    }
+    /* the mock-up's frame: the game's flash comes 7 frames into the
+     * cut-in; the entrance plays up to the hold, which lasts as long as
+     * the cut-in does; once it ends (the message opens two frames later)
+     * the item goes down into the card over 30 frames, so the card forms
+     * as the message opens, never before it */
+    fr = (float)(g_show.t - 7) * 146.f / 161.f;
+    if (fr > ITEM_SHOW_HOLD) {
+        fr = ITEM_SHOW_HOLD;
+    }
+    if (g_show.ended > 0) {
+        fr = ITEM_SHOW_HOLD + (float)g_show.ended * (ITEM_SHOW_END - ITEM_SHOW_HOLD) / 30.f;
+    }
+    if (fr >= ITEM_SHOW_END || g_show.ended > 90) {
+        /* the card is whole: drawn this frame once more (item_card ran
+         * already, held back), and the "obtained" message's card has it
+         * from the next, at the same place */
+        fr = ITEM_SHOW_END;
+        g_show.on = 0;
+    }
+    if (fr < 0.f) {
+        return 1;
+    }
+    world_place(c, &s, &ox, &oy);
+    cx = g_show.sx >= 0 ? (int)(ox + (float)g_show.sx * s) : cw / 2;
+    cy = g_show.sy >= 0 ? (int)(oy + (float)g_show.sy * s) - 20 : ch * 2 / 5;
+    if (cy < 48) {
+        cy = 48;
+    }
+    pocket = g_show.card.pocket < 5 ? ui_game_text(2, 0x37, g_show.card.pocket) : "";
+    w = item_card_width(g_show.card.name, pocket);
+    item_show_draw(c, fr, (float)(g_show.t - 7) * 146.f / 161.f, cx, cy, (cw - w) / 2, ITEM_CARD_Y(ch), w,
+                   ui_item_icon((u16)g_show.card.item), g_show.card.name, pocket);
+    return 1;
+}
+
+/*
+ * The game's other cut-ins (ov021 FLD3D_CI: a trainer's VS banner before a
+ * story battle, a Pokemon's cut-in for a field move): the game draws them
+ * with its 3D over a capture of its screen.  The one-screen world showed
+ * the capture's still picture and left them out.  While one runs, the world
+ * is live with the game's 2D, so the cut-in's 3D shows (the GPU draws it at
+ * the window's size: the VS banner crosses the whole window), and beyond the
+ * DS screen, where the game has only its backdrop colour, the field's kept
+ * wide picture shows instead (held_backdrop).
+ */
+static int cutin_other(const FieldNow *f)
+{
+    return !g_show.on && cutin_running(f);
+}
+
+static void cutin_view(EidosUiView *view)
+{
+    view->hide_2d = 0;
+    view->cap_mix = 0;
+    view->stretch = 0;
+    view->hold_world = 0;
+    view->held_backdrop = 1;
 }
 
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
@@ -1767,6 +1981,10 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->hide_2d = capture_bg_shown();
         view->cap_mix = capture_mix();
         view->stretch = encounter_effect();
+        if (cutin_other(&f)) {
+            /* a cut-in as the battle starts (the VS banner) */
+            cutin_view(view);
+        }
         return;
     }
     {
@@ -1829,8 +2047,21 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
      * after.  It stays through the game's place-name banner: its own name
      * changes instead. */
     g_text_up = 0;
+    g_item_card_drawn = 0;
     if (!plain_field()) {
         g_text_up = field_text(c, &f);
+    }
+    if (item_show(c, &f)) {
+        /* the game's cut-in freezes its screen (a capture behind its 3D)
+         * and flashes it white: the world holds its last wide picture from
+         * the cut-in's start instead, under ours, so the kept picture is
+         * never the white flash */
+        view->hide_2d = 1;
+        view->cap_mix = 0;
+        view->hold_world = 1;
+    } else if (cutin_other(&f)) {
+        /* another cut-in (a VS banner) */
+        cutin_view(view);
     }
     choosing = !plain_field() && field_choices(c, in, &f);
     if (choosing) {

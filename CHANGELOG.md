@@ -9,6 +9,14 @@ Each release's notes on GitHub start with its section here
 - **Native Renderer**: `Settings > Display > Renderer > Native` draws with Direct3D 12 on Windows, Metal on Mac and iPhone and Vulkan on Linux and Android, through SDL3's GPU API; OpenGL stays the default and takes over when the native renderer cannot start.
 - **VSync**: `Settings > Display > VSync` (on by default): on a 60 Hz display, or 120 or 240 Hz, the game runs at the display's own rate and every frame waits for the screen, so each frame shows for the same time instead of one now and then showing twice. Fast forward and other rates (50, 75, 144 Hz) pace by the clock as before.
 - **Benchmark**: `--bench FILE` writes each frame's timing and a summary (percentiles, late and dropped frames, the system and renderer); `tools/bench.py` runs the standard field and battle scenes.
+- **Native 2D**: With the native renderer, the DS's 2D layers are drawn on the GPU as well (Settings > Display > GPU drawing), as OpenGL already did: the same picture, pixel for pixel, with less work on the CPU.
+
+### One-Screen Interface
+- **Key Item Showcase**: Receiving a key item (the Xtransceiver, the C-Gear and the others) plays its moment in the one-screen layout again, in the interface's style: a flash, the item spinning up out of the light with a burst of stars during the jingle, then settling into its card as the message opens. Before, the screen froze through the jingle.
+- **VS Screens**: The VS banner before a story battle (the first one with your rival included) shows in the one-screen layout again, across the whole window, over the room around it; before, the screen froze and the banner never appeared. Other cut-ins the game draws over its screen show the same way.
+
+### Bug Fixes
+- **Item Card**: The item card no longer stays on screen for a moment after its message box closes.
 
 ### Mods & Launcher
 - **Mods Page**: Opening the Mods tab again no longer downloads the catalog again or empties the list for a moment; the catalog loads once a launcher run, and the refresh button loads it again.

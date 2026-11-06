@@ -44,6 +44,10 @@ holds the move steps (their frames then count from when it opens), and
 |---|---|
 | `EIDOS_MOD_MESSAGE_LOG=1` | Each mod message goes to the log too (`sdk/mod_message.c`). |
 | `EIDOS_SAVE_TEST_AT=FRAME` | The game saves at its first quiet moment after that frame (`demo/eidos_boot.c`). |
+| `EIDOS_EVENT_LOG=1` | Logs the running game event's chain whenever it changes, as offsets from `GAMESYSTEM_GetEvent`: add the offset to that function's address in `nm` of the program to name each event. Finds which code runs a scene. |
+| `EIDOS_OVERLAY_LOG=1` | Logs each overlay load and unload with its frame (`sdk/overlay.c`). |
+| `EIDOS_DEBUG_WHERE=1` | Logs the player's zone and position once the field runs, as an `EIDOS_DEBUG_WARP` value: a test can then start from that spot with any save. |
+| `EIDOS_AUDIO_WAV=FILE` | With `EIDOS_NO_AUDIO=1`, writes the game's sound to a WAV (16-bit stereo, 32768 Hz). Each frame writes its own share, so the sound lines up with `--screenshot` frames at any speed: frame N starts at N x 560190 / 33513982 s. |
 
 ## Pacing
 

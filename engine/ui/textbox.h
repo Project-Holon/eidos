@@ -45,6 +45,9 @@ void ui_letters_dump(const void *bmp, const char *path);
  * choice list's).  Returns the main-engine BGs to leave out of the
  * screen (g2d_hw_hide_main_bgs), 0 when nothing is open. */
 u32  ui_textbox_field(EidosUiCtx *c, void *fieldMap, float ox, float oy, float s, const void *skip);
+/* How many boxes the last ui_textbox_field drew (an open window with
+ * nothing printed in it draws none). */
+int  ui_textbox_field_drawn(void);
 /* A field text window is open (for a recipe's match). */
 int  ui_textbox_field_active(void *fieldMap);
 /* The kind of box a field window belongs with (a choice list takes the
