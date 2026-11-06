@@ -628,7 +628,7 @@ async fn item_art(app: State<'_, App>, item: u16) -> R<Option<Vec<u8>>> {
                 continue;
             };
             if let Ok(img) = nds::item::item_icon(&rom, item) {
-                return Ok(Some(nds::image::encode_png(&img)));
+                return Ok(Some(nds::image::encode_png(&centre(&img))));
             }
         }
     }
@@ -713,22 +713,10 @@ fn tight_crop(img: &nds::image::Rgba) -> nds::image::Rgba {
 /// The smallest square around the picture's opaque pixels, the picture
 /// centred in it (at least 8x8; the whole picture when it is empty).
 fn square_crop(img: &nds::image::Rgba) -> nds::image::Rgba {
-    let (w, h) = (img.width, img.height);
-    let opaque = |x: usize, y: usize| img.pixels[(y * w + x) * 4 + 3] > 0;
-    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
-    for y in 0..h {
-        for x in 0..w {
-            if opaque(x, y) {
-                x0 = x0.min(x);
-                y0 = y0.min(y);
-                x1 = x1.max(x + 1);
-                y1 = y1.max(y + 1);
-            }
-        }
-    }
-    if x1 <= x0 {
+    let w = img.width;
+    let Some((x0, y0, x1, y1)) = opaque_box(img) else {
         return img.clone();
-    }
+    };
     let side = (x1 - x0).max(y1 - y0).max(8);
     let mut out = nds::image::Rgba::new(side, side);
     let (dx, dy) = ((side - (x1 - x0)) / 2, (side - (y1 - y0)) / 2);
@@ -736,6 +724,44 @@ fn square_crop(img: &nds::image::Rgba) -> nds::image::Rgba {
         for x in x0..x1 {
             let s = (y * w + x) * 4;
             let d = ((y - y0 + dy) * side + (x - x0 + dx)) * 4;
+            out.pixels[d..d + 4].copy_from_slice(&img.pixels[s..s + 4]);
+        }
+    }
+    out
+}
+
+/// The box around a picture's opaque pixels (x0, y0, x1, y1, ends
+/// exclusive); None when it has none.
+fn opaque_box(img: &nds::image::Rgba) -> Option<(usize, usize, usize, usize)> {
+    let (w, h) = (img.width, img.height);
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
+    for y in 0..h {
+        for x in 0..w {
+            if img.pixels[(y * w + x) * 4 + 3] > 0 {
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x + 1);
+                y1 = y1.max(y + 1);
+            }
+        }
+    }
+    (x1 > x0).then_some((x0, y0, x1, y1))
+}
+
+/// The picture moved to the middle of its own canvas, the size kept: the
+/// bag icons are drawn off centre in their 32x32 cells, and cropping them
+/// instead would show small items as large as big ones.
+fn centre(img: &nds::image::Rgba) -> nds::image::Rgba {
+    let (w, h) = (img.width, img.height);
+    let Some((x0, y0, x1, y1)) = opaque_box(img) else {
+        return img.clone();
+    };
+    let (dx, dy) = ((w - (x1 - x0)) / 2, (h - (y1 - y0)) / 2);
+    let mut out = nds::image::Rgba::new(w, h);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let s = (y * w + x) * 4;
+            let d = ((y - y0 + dy) * w + (x - x0 + dx)) * 4;
             out.pixels[d..d + 4].copy_from_slice(&img.pixels[s..s + 4]);
         }
     }
@@ -1018,6 +1044,43 @@ mod tests {
         assert_eq!(out.pixels[(2 * 10) * 4 + 3], 0);
         let empty = nds::image::Rgba::new(96, 96);
         assert_eq!(square_crop(&empty).width, 96);
+    }
+
+    #[test]
+    fn centre_keeps_the_size_and_centres() {
+        let mut img = nds::image::Rgba::new(32, 32);
+        // a 4x2 block in the top left corner
+        for y in 0..2 {
+            for x in 0..4 {
+                img.pixels[(y * 32 + x) * 4 + 3] = 255;
+            }
+        }
+        let out = centre(&img);
+        assert_eq!((out.width, out.height), (32, 32));
+        assert_eq!(out.pixels[(15 * 32 + 14) * 4 + 3], 255);
+        assert_eq!(out.pixels[(16 * 32 + 17) * 4 + 3], 255);
+        assert_eq!(out.pixels[(14 * 32 + 14) * 4 + 3], 0);
+        assert_eq!(out.pixels[3], 0);
+    }
+
+    /// Writes the official mods' item icons as item_art draws them, for the
+    /// browser preview: NDS_ROM a Black or White ROM, EIDOS_MOCK_OUT the
+    /// output folder (public/mock).
+    #[test]
+    fn preview_items() {
+        let (Some(rom), Some(out)) = (std::env::var_os("NDS_ROM"), std::env::var_os("EIDOS_MOCK_OUT"))
+        else {
+            return;
+        };
+        let rom = nds::rom::Rom::open(Path::new(&rom)).unwrap();
+        for item in [4u16, 216, 267, 280] {
+            let img = nds::item::item_icon(&rom, item).unwrap();
+            std::fs::write(
+                PathBuf::from(&out).join(format!("item_{item}.png")),
+                nds::image::encode_png(&centre(&img)),
+            )
+            .unwrap();
+        }
     }
 
     /// Writes what the Home page shows for a real saves folder, for the

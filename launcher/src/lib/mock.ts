@@ -28,17 +28,18 @@ const remote = [
 ];
 
 const mods = [
-  { folder: "Nuzlocke", name: "Nuzlocke", order: 0, enabled: true, hasManifest: true, catalogId: "katalogos/nuzlocke", version: "0.9.0" },
-  { folder: "fast-bike", name: "Fast Bike", order: 1, enabled: false, hasManifest: true, catalogId: null, version: null },
-  { folder: "my-test", name: "my-test", order: 2, enabled: true, hasManifest: false, catalogId: null, version: null },
+  { folder: "Nuzlocke", name: "Nuzlocke", order: 0, enabled: true, hasManifest: true, catalogId: "katalogos/nuzlocke", version: "0.9.0", icon: { item: 4 } },
+  { folder: "fast-bike", name: "Fast Bike", order: 1, enabled: false, hasManifest: true, catalogId: null, version: null, icon: { species: 506 } },
+  { folder: "my-test", name: "my-test", order: 2, enabled: true, hasManifest: false, catalogId: null, version: null, icon: null },
 ];
 
 const catalog = {
   mods: [
-    { id: "katalogos/nuzlocke", name: "Nuzlocke", version: "1.0.0", author: "Project Holon", description: "The Nuzlocke challenge: catch only the first wild Pokemon of each area, and a Pokemon that faints is gone for good.", official: true, multiplayer: false, hasCode: false, games: ["black", "white"], tags: ["challenge", "nuzlocke"], size: 2400, index: 0 },
-    { id: "katalogos/soul-link", name: "Soul Link", version: "1.0.0", author: "Project Holon", description: "A Nuzlocke for two or more players in one multiplayer game. The Pokemon you catch in the same area are linked.", official: true, multiplayer: true, hasCode: true, games: ["black", "white"], tags: ["challenge", "multiplayer"], size: 9100, index: 1 },
-    { id: "katalogos/exp-share", name: "Exp. Share", version: "1.0.0", author: "Project Holon", description: "The whole party gains experience in every battle. Can be switched off in the settings.", official: true, multiplayer: false, hasCode: false, games: ["black", "white"], tags: ["quality of life"], size: 700, index: 2 },
-    { id: "someone/fairy-type", name: "Fairy type", version: "0.3.0", author: "someone", description: "Adds the Fairy type.", official: false, multiplayer: false, hasCode: false, games: ["black"], tags: ["types"], size: 512000, index: 3 },
+    { id: "katalogos/nuzlocke", name: "Nuzlocke", version: "1.0.0", author: "Project Holon", description: "The Nuzlocke challenge: catch only the first wild Pokemon of each area, and a Pokemon that faints is gone for good.", official: true, multiplayer: false, hasCode: false, games: ["black", "white"], tags: ["challenge", "nuzlocke"], size: 2400, icon: { item: 4 }, index: 0 },
+    { id: "katalogos/soul-link", name: "Soul Link", version: "1.0.0", author: "Project Holon", description: "A Nuzlocke for two or more players in one multiplayer game. The Pokemon you catch in the same area are linked.", official: true, multiplayer: true, hasCode: true, games: ["black", "white"], tags: ["challenge", "multiplayer"], size: 9100, icon: { item: 280 }, index: 1 },
+    { id: "katalogos/exp-share", name: "Exp. Share", version: "1.0.0", author: "Project Holon", description: "The whole party gains experience in every battle. Can be switched off in the settings.", official: true, multiplayer: false, hasCode: false, games: ["black", "white"], tags: ["quality of life"], size: 700, icon: { item: 216 }, index: 2 },
+    { id: "katalogos/smart-trainers", name: "Smart Trainers", version: "0.2.0", author: "Project Holon", description: "Trainers battle like a thinking player.", official: true, multiplayer: false, hasCode: true, games: ["black", "white"], tags: ["difficulty"], size: 72000, icon: { item: 267 }, index: 3 },
+    { id: "someone/fairy-type", name: "Fairy type", version: "0.3.0", author: "someone", description: "Adds the Fairy type.", official: false, multiplayer: false, hasCode: false, games: ["black"], tags: ["types"], size: 512000, icon: null, index: 4 },
   ],
   errors: [],
 };
@@ -124,6 +125,12 @@ export function installMock() {
       }
       if (cmd === "player_art") {
         const r = await fetch(`/mock/player_${args?.female ? 1 : 0}.png`).catch(() => null);
+        return r && r.ok ? Array.from(new Uint8Array(await r.arrayBuffer())) : null;
+      }
+      // Item bag icons drawn by the real reader from a real ROM, in
+      // public/mock/item_<n>.png (not in the repository).
+      if (cmd === "item_art") {
+        const r = await fetch(`/mock/item_${args?.item}.png`).catch(() => null);
         return r && r.ok ? Array.from(new Uint8Array(await r.arrayBuffer())) : null;
       }
       if (cmd === "species_art" || cmd === "cover_art") {
