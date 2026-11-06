@@ -78,6 +78,13 @@ static int op_read3d(EidosGpu *g, unsigned char *out, int w, int h)
 { return eidos_gl_read3d(gl(g), out, w, h); }
 static int op_read3d_1x(EidosGpu *g, const struct G3dSnapshot *snap, unsigned char *out, int async)
 { return eidos_gl_read3d_1x(gl(g), snap, out, async); }
+/* swap interval 1: the swap waits for the vblank (the driver queues no
+ * more than it must for that) */
+static void op_set_vsync(EidosGpu *g, int on)
+{
+    (void)g;
+    SDL_GL_SetSwapInterval(on ? 1 : 0);
+}
 
 static const EidosGpuOps g_gl_ops = {
     "OpenGL",
@@ -90,6 +97,7 @@ static const EidosGpuOps g_gl_ops = {
     op_has3d, op_capture, op_show_capture, op_render3d, op_set_edges, op_set_3d, op_set_3d2d,
     op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
     op_read3d_1x,
+    op_set_vsync,
 };
 
 EidosGpu *eidos_gpu_create_gl(SDL_Window *window)

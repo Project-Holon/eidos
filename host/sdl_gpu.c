@@ -197,6 +197,12 @@ u32 w2c_env_SDL_SetGPUSwapchainParameters(struct w2c_env *e, u32 dev, u32 win, u
                                          (SDL_GPUSwapchainComposition)comp, (SDL_GPUPresentMode)mode);
 }
 
+u32 w2c_env_SDL_SetGPUAllowedFramesInFlight(struct w2c_env *e, u32 dev, u32 n)
+{
+    (void)e;
+    return SDL_SetGPUAllowedFramesInFlight((SDL_GPUDevice *)H(dev), n);
+}
+
 u32 w2c_env_SDL_GPUTextureSupportsFormat(struct w2c_env *e, u32 dev, u32 fmt, u32 type, u32 usage)
 {
     (void)e;

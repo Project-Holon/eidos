@@ -895,6 +895,31 @@ static int op_render3d(EidosGpu *g, const struct G3dSnapshot *snap, int w, int h
     return sg3d_render3d(sg(g), snap, w, h);
 }
 static int op_read3d(EidosGpu *g, unsigned char *out, int w, int h) { return sg3d_read3d(sg(g), out, w, h); }
+
+/* The swapchain: VSYNC with one frame in flight (the least latency the
+ * vblank allows), or the first of IMMEDIATE and MAILBOX the window takes. */
+static void op_set_vsync(EidosGpu *g, int on)
+{
+    SdlGpu *s = sg(g);
+    static const SDL_GPUPresentMode modes[3] = {
+        SDL_GPU_PRESENTMODE_IMMEDIATE, SDL_GPU_PRESENTMODE_MAILBOX, SDL_GPU_PRESENTMODE_VSYNC
+    };
+    int i;
+
+    if (on) {
+        SDL_SetGPUSwapchainParameters(s->dev, s->window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
+                                      SDL_GPU_PRESENTMODE_VSYNC);
+        SDL_SetGPUAllowedFramesInFlight(s->dev, 1);
+        return;
+    }
+    SDL_SetGPUAllowedFramesInFlight(s->dev, 2);
+    for (i = 0; i < 3; i++) {
+        if (SDL_WindowSupportsGPUPresentMode(s->dev, s->window, modes[i])) {
+            SDL_SetGPUSwapchainParameters(s->dev, s->window, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, modes[i]);
+            break;
+        }
+    }
+}
 static int op_read3d_1x(EidosGpu *g, const struct G3dSnapshot *snap, unsigned char *out, int async)
 {
     return sg3d_read3d_1x(sg(g), snap, out, async);
@@ -1062,6 +1087,7 @@ static const EidosGpuOps g_sdlgpu_ops = {
     op_has3d, op_capture, op_show_capture, op_render3d, op_set_edges, op_set_3d, op_set_3d2d,
     op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
     op_read3d_1x,
+    op_set_vsync,
 };
 
 /*

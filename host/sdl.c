@@ -147,7 +147,7 @@ static u32 str_interned(const char *s)
     return val[i];
 }
 
-enum { S_ERROR, S_DRIVER, S_RENDERER, S_KEYS, S_TEXT, S_DROP, S_DROP2 };
+enum { S_ERROR, S_DRIVER, S_RENDERER, S_KEYS, S_TEXT, S_DROP, S_DROP2, S_MODE };
 
 /* ------------------------------------------------------------------ */
 /* Init, hints, time                                                   */
@@ -238,6 +238,38 @@ u32 w2c_env_SDL_GetDisplayForWindow(struct w2c_env *e, u32 w)
 {
     (void)e;
     return SDL_GetDisplayForWindow((SDL_Window *)handle_ptr(w));
+}
+
+/* SDL_DisplayMode as the wasm32 module lays it out: eight 4-byte fields
+ * and the internal pointer, 4 bytes there. */
+typedef struct {
+    u32 displayID, format;
+    int32_t w, h;
+    float pixel_density, refresh_rate;
+    int32_t refresh_rate_numerator, refresh_rate_denominator;
+    u32 internal;
+} WDisplayMode;
+_Static_assert(sizeof(WDisplayMode) == 36, "wasm32 SDL_DisplayMode");
+
+u32 w2c_env_SDL_GetCurrentDisplayMode(struct w2c_env *e, u32 id)
+{
+    const SDL_DisplayMode *m = SDL_GetCurrentDisplayMode(id);
+    WDisplayMode w;
+
+    (void)e;
+    if (m == NULL) {
+        return 0;
+    }
+    w.displayID = m->displayID;
+    w.format = (u32)m->format;
+    w.w = m->w;
+    w.h = m->h;
+    w.pixel_density = m->pixel_density;
+    w.refresh_rate = m->refresh_rate;
+    w.refresh_rate_numerator = m->refresh_rate_numerator;
+    w.refresh_rate_denominator = m->refresh_rate_denominator;
+    w.internal = 0;
+    return to_module(S_MODE, &w, sizeof w);
 }
 
 u32 w2c_env_SDL_CreateWindow(struct w2c_env *e, u32 title, u32 w, u32 h, u64 flags)

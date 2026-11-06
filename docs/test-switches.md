@@ -45,6 +45,13 @@ holds the move steps (their frames then count from when it opens), and
 | `EIDOS_MOD_MESSAGE_LOG=1` | Each mod message goes to the log too (`sdk/mod_message.c`). |
 | `EIDOS_SAVE_TEST_AT=FRAME` | The game saves at its first quiet moment after that frame (`demo/eidos_boot.c`). |
 
+## Pacing
+
+| Variable | What it does |
+|---|---|
+| `EIDOS_REFRESH_HZ=RATE` | The pacer acts as if the display ran at RATE Hz. `60` turns VSync on for a test on a display at another rate (the frames then wait for that display's own vblank). |
+| `EIDOS_NOWAIT=1` | No pacing at all: every frame runs as soon as the last one ends. |
+
 ## Two games in one session
 
 `EIDOS_MP_TEST=host:FILE` makes a game host at frame `EIDOS_MP_TEST_AT`

@@ -78,6 +78,10 @@ typedef struct EidosGpuOps {
     void (*set_3d_zero)(EidosGpu *g, const unsigned char *zero, int w, int h);
     int  (*read3d)(EidosGpu *g, unsigned char *out, int w, int h);
     int  (*read3d_1x)(EidosGpu *g, const struct G3dSnapshot *snap, unsigned char *out, int async);
+
+    /* The present waits for the display's vblank (on), at most one frame
+     * queued, or shows at once (off: the game's pacer alone times it). */
+    void (*set_vsync)(EidosGpu *g, int on);
 } EidosGpuOps;
 
 /* The head of every backend's state. */
@@ -171,5 +175,6 @@ static inline int eidos_gpu_read3d(EidosGpu *g, unsigned char *out, int w, int h
 static inline int eidos_gpu_read3d_1x(EidosGpu *g, const struct G3dSnapshot *snap,
                                       unsigned char *out, int async)
 { return g->ops->read3d_1x(g, snap, out, async); }
+static inline void eidos_gpu_set_vsync(EidosGpu *g, int on) { g->ops->set_vsync(g, on); }
 
 #endif

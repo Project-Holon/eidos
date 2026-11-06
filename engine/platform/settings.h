@@ -106,6 +106,10 @@ enum {
                                        0 OpenGL (the default), 1 native
                                        (SDL's GPU: Direct3D 12, Metal or
                                        Vulkan; docs/graphics-backends.md)  */
+    EIDOS_OPT_VSYNC,                /* 1 (the default): on a 60 Hz display
+                                       the game runs at the display's rate
+                                       and each frame waits for its vblank;
+                                       0 the DS's 59.83 Hz by the clock    */
     EIDOS_OPT_COUNT
 };
 

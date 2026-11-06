@@ -103,8 +103,12 @@ int main(void)
     row(6);
     BW_CHECK_EQ("renderer label", strcmp(g_label, "Renderer"), 0);
     BW_CHECK_EQ("OpenGL by default", eidos_settings_get(EIDOS_OPT_RENDERER), 0);
+    row(7);
+    BW_CHECK_EQ("vsync label", strcmp(g_label, "VSync"), 0);
+    BW_CHECK_EQ("vsync on by default", eidos_settings_get(EIDOS_OPT_VSYNC), 1);
 
     /* The action row puts the defaults back. */
+    press(DOWN);
     press(DOWN);
     press(DOWN);
     row(eidos_sui_cursor_row());
@@ -275,7 +279,7 @@ int main(void)
     BW_CHECK_EQ("touch sets the first choice", eidos_settings_get(EIDOS_OPT_DISPLAY_MODE), 0);
     BW_CHECK_EQ("row 2 is adjustable", eidos_sui_row_adjustable(2), 1);
     BW_CHECK_EQ("row 3 is adjustable", eidos_sui_row_adjustable(3), 1);
-    BW_CHECK_EQ("row 7 is not", eidos_sui_row_adjustable(7), 0);
+    BW_CHECK_EQ("row 8 is not", eidos_sui_row_adjustable(8), 0);
     eidos_settings_set(EIDOS_OPT_DISPLAY_RESOLUTION, 2);
     eidos_sui_touch(3, EIDOS_SUI_ZONE_INC);
     BW_CHECK_EQ("first touch only selects", eidos_settings_get(EIDOS_OPT_DISPLAY_RESOLUTION), 2);

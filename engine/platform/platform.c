@@ -113,6 +113,9 @@ struct EidosPlatform {
     int paced;          /* has the first boundary been set                 */
     u32 late_frames;
     u32 lag_frames;      /* whole frames the schedule lagged at the last wait */
+    float refresh_hz;    /* the window's display, 0 when not read yet      */
+    int vsync_k;         /* refresh / 60 when it is a whole multiple, or 0  */
+    int vsync_on;        /* what the backend was last told                  */
 
     /* audio */
     SDL_AudioStream  *audio_dev;    /* the stream bound to the device        */
@@ -684,12 +687,64 @@ static void eidos_delay_ms(Uint32 ms)
 #endif
 }
 
+/* The VSync setting.  On a display at 60 Hz or a whole multiple of it
+ * (59.94 counts: 57 to 63 Hz per 60), the game runs at the display's own
+ * rate instead of the DS's 59.83 Hz, and the backend waits for the vblank
+ * with one frame queued: every frame is shown for the same time.  On other
+ * rates (50, 75, 144 Hz) and in fast forward the clock alone paces, as
+ * without the setting.  Audio needs no change: the mixer makes what the
+ * device asks for, so 0.3% more frames only means 0.3% faster music. */
+static void pacer_vsync(EidosPlatform *p, int ff)
+{
+    int want;
+
+    if (p->refresh_hz == 0.0f) {   /* -1: the rate is not known */
+        const SDL_DisplayMode *m = p->window != NULL
+            ? SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(p->window)) : NULL;
+        int k = 0;
+
+        const char *force = getenv("EIDOS_REFRESH_HZ");   /* tests: as if the display ran at this rate */
+
+        p->refresh_hz = m != NULL && m->refresh_rate > 0.0f ? m->refresh_rate : -1.0f;
+        if (force != NULL && atof(force) > 0.0) {
+            p->refresh_hz = (float)atof(force);
+        }
+        if (p->refresh_hz > 0.0f) {
+            k = (int)(p->refresh_hz / 60.0f + 0.5f);
+            if (k < 1 || p->refresh_hz < 57.0f * (float)k || p->refresh_hz > 63.0f * (float)k) {
+                k = 0;
+            }
+        }
+        p->vsync_k = k;
+        p->vsync_on = -1;   /* tell the backend again, whatever it was */
+        {
+            char hz[16];
+
+            snprintf(hz, sizeof hz, "%.2f", p->refresh_hz);
+            eidos_bench_note("refresh_hz", hz);
+        }
+    }
+    want = p->gl != NULL && ff == 1 && p->vsync_k > 0
+           && eidos_settings_get(EIDOS_OPT_VSYNC) != 0;
+    if (want != p->vsync_on) {
+        p->vsync_on = want;
+        if (p->gl != NULL) {
+            eidos_gpu_set_vsync(p->gl, want);
+        }
+        if (ff == 1) {
+            eidos_bench_note("vsync", want ? "on" : "off");   /* the run's last pacing */
+        }
+        p->paced = 0;   /* a new period: the schedule restarts from now */
+    }
+}
+
 void eidos_platform_wait_frame(EidosPlatform *p)
 {
     u64 now;
     u64 period;
     u64 step;
     u64 rem_step;
+    int ff;
 
     if (p == NULL) {
         return;
@@ -710,8 +765,19 @@ void eidos_platform_wait_frame(EidosPlatform *p)
     }
     /* Fast forward: the period is the factor times shorter (with
      * EIDOS_FAST_FORWARD_MAX the host is always behind, so it never waits). */
-    period = (u64)EIDOS_DS_FRAME_CLOCKS * 1000000000ull
-             / (u64)eidos_platform_fast_forward(p);
+    ff = eidos_platform_fast_forward(p);
+    pacer_vsync(p, ff);
+    if (p->vsync_on) {
+        /* k vblanks a frame; the present's own wait keeps the phase, the
+         * clock only stops a 120 Hz display from showing 120 frames.  The
+         * clock runs 0.5% short so the vblank, never the clock, is the
+         * last wait: a clock a little slow would skip a vblank now and
+         * then, the very stutter VSync is for. */
+        period = (u64)((double)p->vsync_k * 1e9 * 0.995 / (double)p->refresh_hz
+                       * (double)EIDOS_DS_SYSTEM_CLOCK);
+    } else {
+        period = (u64)EIDOS_DS_FRAME_CLOCKS * 1000000000ull / (u64)ff;
+    }
     step = period / (u64)EIDOS_DS_SYSTEM_CLOCK;
     /* 560190 * 10^9 mod 33513982 = 3790034, the part of the period the
      * integer nanosecond count drops.  Accumulating it adds the missing
@@ -1934,6 +2000,10 @@ int eidos_platform_pump(EidosPlatform *p)
                 p->cap.pad_index = ev.gaxis.axis;
                 p->cap_state = EIDOS_CAPTURE_PAD;
             }
+            break;
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+        case SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED:
+            p->refresh_hz = 0.0f;   /* the pacer reads the new rate */
             break;
         case SDL_EVENT_WINDOW_MAXIMIZED:
         case SDL_EVENT_WINDOW_RESTORED:

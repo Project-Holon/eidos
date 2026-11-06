@@ -89,6 +89,8 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, k_offon, "", 0, NULL },
     { "Display", "renderer", "Renderer", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       0, k_renderers, "", 0, NULL },
+    { "Display", "vsync", "VSync", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
+      1, k_offon, "", 0, NULL },
 };
 
 /* sdk/field_fade.c reads this option by number */
