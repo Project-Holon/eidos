@@ -254,6 +254,9 @@ extern void BTL_POKEPARAM_GetTypes(struct BtlPokeParam *pp, u8 *type1,
 /* The battle's sides: src/game/ov093/btl_main.c. */
 extern u8 *BTL_SIDE_GetPokeAtPos(struct BtlMain *const *side, u8 position)
     __attribute__((weak));                                    /* 0x021B98AC */
+struct BtlSide;
+extern void *ov093_BTL_SIDE_GetClientPokeParam(struct BtlSide *side, unsigned int clientId,
+                                         unsigned int nth) __attribute__((weak));
 
 /* The dex: src/game/arm9/zukan_save.c. */
 extern struct ZukanSave *ZUKAN_SAVE_GetFromGameData(void *gameData)
@@ -562,22 +565,33 @@ static void *live_battle_side(u32 side)
            side * BW_BTL_SIDE_STRIDE;
 }
 
-/* The battle record of one slot of one side, or NULL. */
+/*
+ * The battle record of one member of one side's party, or NULL.
+ *
+ * Each of the main object's two BtlSide blocks holds every client's party
+ * (slots[clientId]); in a single or double battle the player is client 0
+ * and the opponent client 1, so the side is the client.  The slot is the
+ * member's place in that party (BTL_SIDE_GetClientPokeParam's nth), the
+ * same place the battle events name (BTL_MAIN_GetTrainerSlotOfPoke).
+ *
+ * BTL_SIDE_GetPokeAtPos, used here before, takes a battle position
+ * instead (0 the player's front, 1 the opponent's front in a single
+ * battle) and ignores the block's side, so every side read the field's
+ * front Pokemon and no read reached the bench.
+ */
 static struct BtlPokeParam *live_battle_record(u32 side, u32 slot)
 {
     void *side_block;
-    u8 *record;
 
-    if (BTL_SIDE_GetPokeAtPos == NULL || slot > 5u) {
+    if (ov093_BTL_SIDE_GetClientPokeParam == NULL || slot > 5u || side > 1u) {
         return NULL;
     }
-    side_block = live_battle_side(side);
+    side_block = live_battle_side(0);
     if (side_block == NULL) {
         return NULL;
     }
-    record = BTL_SIDE_GetPokeAtPos((struct BtlMain *const *)side_block,
-                                   (u8)slot);
-    return (struct BtlPokeParam *)record;
+    return (struct BtlPokeParam *)ov093_BTL_SIDE_GetClientPokeParam(
+        (struct BtlSide *)side_block, side, slot);
 }
 
 /*
