@@ -535,6 +535,24 @@ static int host_run(int argc, char **argv)
     g_wasi.argc = argc;
     g_wasi.argv = argv;
     wasm2c_game_instantiate(&g_game, &g_eidos, &g_env, &g_wasi);
+#if defined(HOST_MEMORY_BUDGET_MB) && HOST_MEMORY_BUDGET_MB > 0
+    {
+        /* Explicit bounds checks (EIDOS_HOST_BOUNDS_CHECKS: a console has
+         * no room for wasm2c's 8 GiB of guard pages): the memory is a heap
+         * block that a grow may move, and the SDL surfaces made from module
+         * pixels (host/sdl.c) must not move.  It is grown to its whole
+         * budget here, before anything points into it, so it never grows
+         * again (the module's malloc fails past the budget). */
+        uint64_t want = (uint64_t)HOST_MEMORY_BUDGET_MB * 1024u * 1024u / 65536u;
+
+        if (want > g_game.w2c_memory.pages &&
+            wasm_rt_grow_memory(&g_game.w2c_memory, want - g_game.w2c_memory.pages) == (uint64_t)-1) {
+            fprintf(stderr, "eidos: the module's memory cannot have %d MiB\n", HOST_MEMORY_BUDGET_MB);
+            return 1;
+        }
+        g_game.w2c_memory.max_pages = g_game.w2c_memory.pages;
+    }
+#endif
     /* a trap ends the program in host_trap (host/CMakeLists.txt) */
     w2c_game_0x5Fstart(&g_game);
     wasm2c_game_free(&g_game);

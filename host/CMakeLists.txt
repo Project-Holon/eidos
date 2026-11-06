@@ -31,6 +31,12 @@ set(SDL3_PREFIX "" CACHE PATH "SDL3: a prefix with include/SDL3 and the library"
 set(EIDOS_HOST_SDL_SOURCE "" CACHE PATH "SDL3's source tree, built with the program (Android, iOS)")
 set(EIDOS_HOST_PARTS 32 CACHE STRING "how many C files wasm2c writes")
 option(EIDOS_HOST_WINDOWED "Windows: a windowed program with no console (a release)" OFF)
+# Consoles (the Switch, the Vita): no room for wasm2c's 8 GiB of guard pages
+# and no fault signals, so every access is checked and the memory is a heap
+# block of a fixed budget, grown once at start (host/main.c).  Buildable on
+# a desktop to measure what the checks cost.
+option(EIDOS_HOST_BOUNDS_CHECKS "explicit bounds checks and a fixed memory budget (consoles)" OFF)
+set(EIDOS_HOST_MEMORY_MB 512 CACHE STRING "the module's memory budget with EIDOS_HOST_BOUNDS_CHECKS (MiB)")
 
 foreach(_v EIDOS_WASM_MODULE WASM2C WASM_OPT)
     if(NOT EXISTS "${${_v}}")
@@ -194,6 +200,12 @@ target_compile_definitions(eidos PRIVATE
     WASM_RT_NONCONFORMING_UNCHECKED_STACK_EXHAUSTION=1
     WASM_RT_SKIP_SIGNAL_RECOVERY=1
     WASM_RT_TRAP_HANDLER=host_trap)
+if(EIDOS_HOST_BOUNDS_CHECKS)
+    target_compile_definitions(eidos PRIVATE
+        WASM_RT_USE_MMAP=0
+        WASM_RT_MEMCHECK_BOUNDS_CHECK=1
+        HOST_MEMORY_BUDGET_MB=${EIDOS_HOST_MEMORY_MB})
+endif()
 if(IOS)
     # iOS gives an app 5 GiB of address space, not the 8 GiB wasm2c's guard
     # pages reserve (more needs an entitlement a free team cannot have).  A

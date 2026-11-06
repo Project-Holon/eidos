@@ -21,6 +21,14 @@ import sys
 
 BOOT = 5800          # the title, Continue, and the field running (frames)
 
+# What a run's log must show for its numbers to count: the scene was really
+# reached (a save the game does not load starts a New Game instead, and the
+# presses then measure the professor's intro).
+REACHED = {
+    "field": "eidos: debug move: field:200 at frame",
+    "battle": "eidos: debug battle: trainer 33",
+}
+
 SCENES = {
     # walking back and forth in town: the field's 2D, 3D and scrolling
     "field": {
@@ -62,6 +70,11 @@ def run(args, scene, mode):
     with open(os.path.join(root, "run.txt"), "w") as log:
         subprocess.run(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, cwd=root,
                        timeout=args.timeout)
+    with open(os.path.join(root, "run.txt"), encoding="utf-8", errors="replace") as log:
+        if REACHED[scene] not in log.read():
+            print("bench: %s %s did not reach its scene (no \"%s\" in run.txt): not counted; "
+                  "does the save load?" % (scene, mode, REACHED[scene]), flush=True)
+            return None
     try:
         with open(bench) as f:
             return json.load(f)
