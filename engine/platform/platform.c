@@ -1629,7 +1629,20 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
             flags |= SDL_WINDOW_MAXIMIZED;   /* as the player left it */
         }
 
-        if (try_gl) {
+        /* EIDOS_RENDERER=gpu[:driver]: the SDL3 GPU backend
+         * (plat_sdlgpu.c; driver direct3d12, vulkan or metal), OpenGL when
+         * it does not come up */
+        if (want != NULL && strncmp(want, "gpu", 3) == 0 && try_gl) {
+            p->window = SDL_CreateWindow(title, init_w, init_h, flags);
+            if (p->window != NULL) {
+                p->gl = eidos_gpu_create_sdl(p->window, want[3] == ':' ? want + 4 : NULL);
+                if (p->gl == NULL) {
+                    SDL_DestroyWindow(p->window);
+                    p->window = NULL;
+                }
+            }
+        }
+        if (try_gl && p->window == NULL) {
             p->window = SDL_CreateWindow(title, init_w, init_h,
                                          flags | SDL_WINDOW_OPENGL);
             if (p->window != NULL) {
@@ -1651,6 +1664,9 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
     /* the benchmark's notes (engine/frame/prof.h): what this run is on */
     eidos_bench_note("system", SDL_GetPlatform());
     eidos_bench_note("backend", p->gl != NULL ? eidos_gpu_name(p->gl) : "SDL renderer");
+    if (p->gl != NULL && strcmp(eidos_gpu_name(p->gl), "SDL3 GPU") == 0) {
+        eidos_bench_note("gpu_driver", eidos_gpu_sdl_driver(p->gl));
+    }
     eidos_bench_note("video_driver", SDL_GetCurrentVideoDriver() != NULL ? SDL_GetCurrentVideoDriver()
                                                                          : "none");
     {

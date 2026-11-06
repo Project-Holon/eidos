@@ -89,6 +89,13 @@ struct EidosGpu {
  * the context or the shaders fail (plat_gl_ops.c). */
 EidosGpu *eidos_gpu_create_gl(SDL_Window *window);
 
+/* The SDL3 GPU backend over a window made without SDL_WINDOW_OPENGL:
+ * `driver` "direct3d12", "vulkan" or "metal", NULL for SDL's choice; NULL
+ * when no device or pipeline comes up (plat_sdlgpu.c).  _driver names the
+ * one it runs on. */
+EidosGpu *eidos_gpu_create_sdl(SDL_Window *window, const char *driver);
+const char *eidos_gpu_sdl_driver(const EidosGpu *g);
+
 /* The calls the platform layer makes. */
 static inline const char *eidos_gpu_name(const EidosGpu *g) { return g->ops->name; }
 static inline void eidos_gpu_destroy(EidosGpu *g) { if (g != NULL) g->ops->destroy(g); }
