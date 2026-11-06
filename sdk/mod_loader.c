@@ -1039,6 +1039,13 @@ static int loader_load(u32 index)
         u32 rcount = bw_mod_manifest_rule_count(manifest);
         u32 r;
 
+        /* The rules' cells: the mod's own file under its namespace.  A rule
+         * reads its cells when it is bound, here, so the file's calls are
+         * in place first: set later, a rules-only mod loaded first found
+         * none, and its cells (a Nuzlocke's dead, its lock) were never
+         * saved. */
+        bw_mod_rule_set_cells_io(loader_cells_load, loader_cells_store);
+
         for (r = 0; r < rcount; r++) {
             const BwModRule *rule =
                 (const BwModRule *)bw_mod_manifest_rule_at(manifest, r);

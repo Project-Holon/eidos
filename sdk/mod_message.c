@@ -62,6 +62,8 @@
 #include "mod_message.h"
 #include "mod_context.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
@@ -360,6 +362,10 @@ int bw_mod_message_queue_confirm(const char *text)
 
 void bw_mod_message_show(const char *text)
 {
+    /* EIDOS_MOD_MESSAGE_LOG: each message in the log too, for the tests */
+    if (text != NULL && getenv("EIDOS_MOD_MESSAGE_LOG") != NULL) {
+        fprintf(stderr, "eidos: mod message: %s\n", text);
+    }
     (void)bw_mod_message_queue_text(text);
 }
 

@@ -567,9 +567,7 @@
       "address": "0x02158A20",
       "name": "SCRIPT_SYS_RunRecoverScript",
       "region": "ov010",
-      "events": [
-        "whiteout"
-      ],
+      "events": [],
       "prototype": "void SCRIPT_SYS_RunRecoverScript(void *, int)",
       "signature": "void (void *, int)",
       "aletheia_name": "SCRIPT_SYS_RunRecoverScript",
@@ -976,6 +974,18 @@
       "prototype": "int SCRCMD_NETWORK_CmdRestartAutoComm(void *, void *)",
       "signature": "int (void *, void *)",
       "aletheia_name": "SCRCMD_NETWORK_CmdRestartAutoComm",
+      "aliases": []
+    },
+    {
+      "address": "0x0215F6E8",
+      "name": "SCRCMD_NETWORK_CreateCommProcEvent",
+      "region": "ov010",
+      "events": [
+        "whiteout"
+      ],
+      "prototype": "void * SCRCMD_NETWORK_CreateCommProcEvent(void *)",
+      "signature": "void * (void *)",
+      "aletheia_name": "SCRCMD_NETWORK_CreateCommProcEvent",
       "aliases": []
     },
     {
@@ -2752,9 +2762,7 @@
       "address": "0x021D1960",
       "name": "BTL_CLIENT_StepShowBlackoutMessages",
       "region": "ov093",
-      "events": [
-        "whiteout"
-      ],
+      "events": [],
       "prototype": "int BTL_CLIENT_StepShowBlackoutMessages(void *, void *)",
       "signature": "int (void *, void *)",
       "aletheia_name": "BTL_CLIENT_StepShowBlackoutMessages",

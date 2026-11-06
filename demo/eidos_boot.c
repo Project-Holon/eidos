@@ -2502,10 +2502,10 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
  */
 static void boot_run_restart(void)
 {
-    printf("eidos_boot: the run starts again (%s)\n",
+    printf("eidos_boot: the run starts again (%s) at input frame %u\n",
            g_run_next == BOOT_RUN_NEW_GAME ? "a new game" :
            g_run_next == BOOT_RUN_CONTINUE ? "the save in force" :
-           "the title screen");
+           "the title screen", (unsigned)bw_input_frame_number());
     fflush(stdout);
     /* The image is in place before the reset, which copies it into main
      * RAM, binds the names and relocates the pointers. */

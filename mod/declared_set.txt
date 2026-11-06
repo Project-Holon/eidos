@@ -74,7 +74,7 @@
 0x02166710	WCM_CalcLinkLevel	ov009	
 
 # ov010
-0x02158A20	SCRIPT_SYS_RunRecoverScript	ov010	whiteout
+0x02158A20	SCRIPT_SYS_RunRecoverScript	ov010	
 0x02158AD4	SCRIPT_SYS_RunFieldRecoverScript	ov010	
 0x02159728	SCRIPT_WORK_CmdSetEventFlag	ov010	
 0x02159750	SCRIPT_WORK_CmdResetEventFlag	ov010	
@@ -113,6 +113,7 @@
 0x0215F228	SCRCMD_NETWORK_CmdStartAutoComm	ov010	
 0x0215F238	SCRCMD_NETWORK_CmdRequestCommExit	ov010	
 0x0215F280	SCRCMD_NETWORK_CmdRestartAutoComm	ov010	
+0x0215F6E8	SCRCMD_NETWORK_CreateCommProcEvent	ov010	whiteout
 0x0215F8A8	EVENT_GAMECLEAR_Create	ov010	game.cleared
 0x0215FC40	EVENT_FIELD_MENU_Create	ov010	menu.open
 0x0215FCE0	EVENT_FIELD_MENU_CreateForZone	ov010	menu.open
@@ -292,7 +293,7 @@
 0x021D09E0	BTL_CLIENT_SortMonsByMovePower	ov093	battle.ai_replace
 0x021D0D50	BTL_CLIENT_ChooseReplacementsAuto	ov093	
 0x021D1290	BTL_CLIENT_StepShowResultMessage	ov093	
-0x021D1960	BTL_CLIENT_StepShowBlackoutMessages	ov093	whiteout
+0x021D1960	BTL_CLIENT_StepShowBlackoutMessages	ov093	
 0x021D2320	BTL_CLIENT_StepFaintMon	ov093	
 0x021D2CA8	BTL_CLIENT_StepLearnLevelUpMoves	ov093	
 0x021D3DC4	BTL_CLIENT_TakeTrainerItemToUse	ov093	battle.ai

@@ -259,6 +259,8 @@ struct GameSystem;
 struct GameEvent;
 extern struct GameEvent *ov010_SCRCMD_NETWORK_CreateCommProcEvent(struct GameSystem *gameSystem)
     __attribute__((weak));
+/* The whiteouts the run has seen (sdk/mod_event_battle.c). */
+extern u32 bw_debug_whiteouts;
 extern void GAMESYSTEM_SetEvent(struct GameSystem *gameSystem, struct GameEvent *event)
     __attribute__((weak));
 struct FieldMap;
@@ -1975,6 +1977,10 @@ static int whiteout_event(struct GameEvent *event, int *seq, void *work)
         (*seq)++;
         return 0;
     case 2:
+        /* the game's whiteout by its own name, not the hooked one: this
+         * whiteout is the mod's, not a lost battle, so it raises no
+         * whiteout event; the test switches still count it */
+        bw_debug_whiteouts++;
         GAME_EVENT_ChangeEvent(event, ov010_SCRCMD_NETWORK_CreateCommProcEvent(gs));
         return 0;
     default:

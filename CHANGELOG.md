@@ -19,6 +19,9 @@ Each release's notes on GitHub start with its section here
 - **Field Reads for Mods**: A mod's reads in the field (the party, the zone, the player's position) now work before the first battle; the player's position never worked before.
 - **Battle Reads**: A mod's reads and writes of a Pokémon in battle (`battle_ref`, `battle_get`, `battle_set`) now reach the Pokémon asked for; before, every one reached the Pokémon in front, so the bench and the trainer's own side could not be read. A write reaches the battle's own copy too, so a Pokémon a mod puts at 0 HP counts as fainted when the battle checks who can still fight.
 - **Mod Start Reads**: A mod that reads a move or an item (`move_value`, `item_value`) when it starts no longer crashes the game; the read returns -1 until the game data is open.
+- **Whiteout Event**: The `whiteout` event now fires when you lose a battle, wild or trainer. Before, it never fired in a real game, so a Nuzlocke or Soul Link run did not end after a lost battle.
+- **Rules Mods Remember**: A rules mod's saved values (a Nuzlocke's lost Pokémon, its used areas, its end) are now kept with the save. Before, the first rules mod loaded kept them only until the game closed.
+- **Launcher Icons**: Item icons are centred in their square.
 
 ## 0.2.2
 

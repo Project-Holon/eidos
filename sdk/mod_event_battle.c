@@ -1976,43 +1976,36 @@ static void build_battle_end(const BwEventCall *call, BwEventPayload *out)
 }
 
 /*
- * whiteout: the player lost a battle and the game shows the messages of
- * the blackout.  The call carries the client and the state of the step.
+ * whiteout: the game starts the whiteout event (the blackout screen, the
+ * warp to the last Pokemon Centre or home, the nurse's or the mother's
+ * heal).  Every whiteout comes through SCRCMD_NETWORK_CreateCommProcEvent:
+ * the battle task after a lost wild battle (EVENT_BATTLE_ProcBattleTask),
+ * and the trainer's script after a lost trainer battle (the script
+ * commands that read the last battle's result and end the script with
+ * it).  The mod API's own whiteout (sdk/mod_state.c) calls the function by
+ * its overlay name, so it raises no event: a partner's team made to faint
+ * is not a battle the player lost.
+ *
+ * The battle's blackout messages (BTL_CLIENT_StepShowBlackoutMessages) and
+ * the recover script (SCRIPT_SYS_RunRecoverScript) are not the place: the
+ * battle client's steps are called through its table of step functions,
+ * which never passes the slot, and the recover script runs only at the
+ * game's clear (EVENT_GAMECLEAR).
  */
-static void build_whiteout_battle(const BwEventCall *call,
-                                   BwEventPayload *out)
-{
-    struct BtlMain *main = main_of_client(call);
+/* How many whiteouts this run has seen: the test switches'
+ * EIDOS_DEBUG_WHEN=whiteout (engine/ui/ui.c). */
+u32 bw_debug_whiteouts;
 
-    memset(&out->whiteout, 0, sizeof(out->whiteout));
-    out->whiteout.in_battle = 1u;
-
-    /*
-     * The field the port cannot fill: the money the game takes.  The game
-     * computes the penalty inside this step, at the state that shows the
-     * amount, and the accessor that computes it latches its result, so
-     * the port does not call it here: the game would find nothing left
-     * to show.
-     */
-    out->whiteout.money_lost = 0u;
-
-    bind_battle(main);
-}
-
-/*
- * whiteout: the player blacked out in the field.  The call carries the
- * field's own system and a word the game does not use.
- */
-static void build_whiteout_field(const BwEventCall *call, BwEventPayload *out)
+static void build_whiteout(const BwEventCall *call, BwEventPayload *out)
 {
     (void)call;
+    bw_debug_whiteouts++;
     memset(&out->whiteout, 0, sizeof(out->whiteout));
-    out->whiteout.in_battle = 0u;
+    out->whiteout.in_battle = 1u;   /* every whiteout here is a lost battle */
 
     /*
      * The field the port cannot fill: the money the game takes.  The
-     * recover script takes it, and the port does not read the script's
-     * work.
+     * whiteout's own steps take it, after this call.
      */
     out->whiteout.money_lost = 0u;
 }
@@ -2878,12 +2871,8 @@ static const BwEventBinding g_battle_rows[] = {
     { BW_MOD_REGION_OVL(10), 0x0216EE7Cu, BW_EVENT_BATTLE_END,
       BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_battle_end, NULL, NULL, NULL },
 
-    { BW_MOD_REGION_OVL(93), 0x021D1960u, BW_EVENT_WHITEOUT,
-      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_whiteout_battle, NULL,
-      NULL, NULL },
-
-    { BW_MOD_REGION_OVL(10), 0x02158A20u, BW_EVENT_WHITEOUT,
-      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_whiteout_field, NULL, NULL, NULL },
+    { BW_MOD_REGION_OVL(10), 0x0215F6E8u, BW_EVENT_WHITEOUT,
+      BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_whiteout, NULL, NULL, NULL },
 
     /* version 5: the AI and what it observes */
     { BW_MOD_REGION_OVL(93), 0x021D3DC4u, BW_EVENT_BATTLE_AI,
