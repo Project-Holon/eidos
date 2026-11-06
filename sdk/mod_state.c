@@ -579,19 +579,36 @@ static void *live_battle_side(u32 side)
  * battle) and ignores the block's side, so every side read the field's
  * front Pokemon and no read reached the bench.
  */
-static struct BtlPokeParam *live_battle_record(u32 side, u32 slot)
+static struct BtlPokeParam *battle_record_in(u32 copy, u32 side, u32 slot)
 {
     void *side_block;
 
     if (ov093_BTL_SIDE_GetClientPokeParam == NULL || slot > 5u || side > 1u) {
         return NULL;
     }
-    side_block = live_battle_side(0);
+    side_block = live_battle_side(copy);
     if (side_block == NULL) {
         return NULL;
     }
     return (struct BtlPokeParam *)ov093_BTL_SIDE_GetClientPokeParam(
         (struct BtlSide *)side_block, side, slot);
+}
+
+/*
+ * The two blocks are two copies of the same Pokemon (src/game/ov093/
+ * btl_main.c, the battle's setup): the server works on sides[1], and the
+ * clients (the player's screen and the AI) on sides[0], which the server's
+ * messages keep in step.  A read takes the server's copy, which is current
+ * even inside the server's own steps (where the battle events fire); a
+ * write goes to both, so the server acts on it (a Pokemon at 0 HP counts
+ * as fainted for the battle's end) and the screen shows it.
+ */
+#define BW_BTL_SERVER_COPY 1u
+#define BW_BTL_CLIENT_COPY 0u
+
+static struct BtlPokeParam *live_battle_record(u32 side, u32 slot)
+{
+    return battle_record_in(BW_BTL_SERVER_COPY, side, slot);
 }
 
 /*
@@ -858,15 +875,28 @@ static int state_battle_get(BwMonRef mon, u32 field, u32 *out)
     return 0;
 }
 
+static int set_battle_record(struct BtlPokeParam *record, u32 field, u32 value);
+
 static int state_battle_set(BwMonRef mon, u32 field, u32 value)
 {
-    struct BtlPokeParam *record;
-    int id;
+    struct BtlPokeParam *server = battle_record_in(BW_BTL_SERVER_COPY, mon.side, mon.slot);
+    struct BtlPokeParam *client = battle_record_in(BW_BTL_CLIENT_COPY, mon.side, mon.slot);
+    int rc;
 
-    record = live_battle_record(mon.side, mon.slot);
-    if (record == NULL) {
+    if (server == NULL) {
         return -1;
     }
+    rc = set_battle_record(server, field, value);
+    if (rc == 0 && client != NULL && client != server) {
+        (void)set_battle_record(client, field, value);
+    }
+    return rc;
+}
+
+static int set_battle_record(struct BtlPokeParam *record, u32 field, u32 value)
+{
+    int id;
+
     if (field == BW_MON_FIELD_ITEM) {
         if (BTL_POKEPARAM_SetItem == NULL) {
             return -1;
