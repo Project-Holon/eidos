@@ -8,11 +8,19 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `309be6b3ad7ad205a1390636a5f275b4ebe2e6d4`
-- Date: 2026-11-05
-- Subject: langmap: word pairs for every data pointer that two rows read back differently
+- Revision: `56cb91a4382364ddadff5662c73c2c090e2d5987`
+- Date: 2026-11-06
+- Subject: Host guards for divides by 0: Pokedex first opening (#22), questionnaire graph, Mystery Gift and Wi-Fi competition downloads
 
-The step from `af2dbddd9b`: the language maps' word_pairs.tsv lists every
+The step from `309be6b3ad`: four host guards where the DS runtime divide
+gives the dividend for a divisor of 0 and the host build trapped.
+SCROLLBAR_GetPosFromValue (arm9 comm_history.c) divides by a list's scroll
+range, 0 for a list with nothing to scroll, which crashed the Pokedex's
+first opening (issue #22); CircleGraph_ComputePercents (ov217) when every
+count is 0; and the download progress of Mystery Gift (ov121) and the Wi-Fi
+competition (ov175) while the total length is unknown.
+
+The step before, from `af2dbddd9b`: the language maps' word_pairs.tsv lists every
 data pointer word that two rows of its region read back as different
 English addresses (overlays sharing a window), with the English value.
 On another cartridge, ov010's shortcut table pointed at the party screen's
