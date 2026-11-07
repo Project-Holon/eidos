@@ -1549,7 +1549,7 @@ void ui_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name
                   int selected)
 {
     const int h = 30;
-    char num[16], lv[16], hpn[24];
+    char num[16], lv[48], hpn[24];
     int tw, hw, nx;
 
     num[0] = (char)('1' + slot);
@@ -1576,7 +1576,8 @@ void ui_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name
         EidosUiRect saved;
 
         if (level > 0) {
-            room -= ui_text_w(level >= 100 ? "Lv.100" : level >= 10 ? "Lv.50" : "Lv.5", UI_FONT_SMALL);
+            room -= ui_text_w(ui_tr("Lv."), UI_FONT_SMALL) +
+                    ui_text_w(level >= 100 ? "100" : level >= 10 ? "50" : "5", UI_FONT_SMALL);
         }
         if (ui_text_w(name, UI_FONT_LARGE) > room) {
             font = UI_FONT_SMALL;
@@ -1591,20 +1592,8 @@ void ui_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name
         return;                         /* an Egg: no level and no HP      */
     }
     {
-        int n = level, i = 0, j;
-        char t[12];
-
-        lv[0] = 'L';
-        lv[1] = 'v';
-        lv[2] = '.';
-        do {
-            t[i++] = (char)('0' + n % 10);
-            n /= 10;
-        } while (n > 0 && i < 8);
-        for (j = 0; j < i; j++) {
-            lv[3 + j] = t[i - 1 - j];
-        }
-        lv[3 + i] = '\0';
+        /* "Lv." in the game's language, then the level */
+        snprintf(lv, sizeof lv, "%s%d", ui_tr("Lv."), level);
     }
     tw = ui_text_w(lv, UI_FONT_SMALL);
     ui_text(c, x + w - 9 - tw, y + 3, lv, UI_LIGHT, SHADOW_DARK, UI_FONT_SMALL, 1);
@@ -1641,31 +1630,13 @@ void ui_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender,
 {
     int player = exp_den > 0;
     int h = player ? 32 : 24, nx, tw, i, j;
-    char lv[16], t[12];
-    int n = level;
+    char lv[48], t[12];
 
     ui_panel(c, x, y, w, h, UI_CUT_TR | UI_CUT_BL, 6, UI_BODY, UI_EDGE, 225);
     nx = ui_text(c, x + 8, y + 1, name, UI_WHITE, SHADOW_DARK, UI_FONT_LARGE, 1);
     ui_gender(c, nx + 3, y + 1, gender, UI_FONT_LARGE);
-    {
-        /* "Lv." in the game's language ("N." in French), then the level */
-        const char *pre = ui_tr("Lv.");
-        int pl = (int)strlen(pre);
-
-        if (pl > 6) {
-            pl = 6;
-        }
-        memcpy(lv, pre, (size_t)pl);
-        i = 0;
-        do {
-            t[i++] = (char)('0' + n % 10);
-            n /= 10;
-        } while (n > 0 && i < 8);
-        for (j = 0; j < i; j++) {
-            lv[pl + j] = t[i - 1 - j];
-        }
-        lv[pl + i] = '\0';
-    }
+    /* "Lv." in the game's language ("N." in French), then the level */
+    snprintf(lv, sizeof lv, "%s%d", ui_tr("Lv."), level);
     tw = ui_text_w(lv, UI_FONT_SMALL);
     ui_text(c, x + w - 10 - tw, y + 2, lv, UI_LIGHT, SHADOW_DARK, UI_FONT_SMALL, 1);
     ui_text(c, x + 8, y + 14, "HP", UI_LIME, SHADOW_DARK, UI_FONT_SMALL, 1);

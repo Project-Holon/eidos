@@ -251,6 +251,8 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_RENDERER,            1, "Native" },
     { EIDOS_OPT_VSYNC,               0, "Off" },
     { EIDOS_OPT_VSYNC,               1, "On" },
+    { EIDOS_OPT_GPU_2D,              0, "Off" },
+    { EIDOS_OPT_GPU_2D,              1, "On" },
     { EIDOS_OPT_DISPLAY_MODE,        0, "Windowed" },
     { EIDOS_OPT_DISPLAY_MODE,        1, "Fullscreen" },
     { EIDOS_OPT_DISPLAY_MODE,        2, "Borderless" },

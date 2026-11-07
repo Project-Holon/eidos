@@ -2796,6 +2796,23 @@ if(EIDOS_SDL_FOUND)
     set_tests_properties(test_settings_ui PROPERTIES
         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;EIDOS_SETTINGS=${CMAKE_CURRENT_BINARY_DIR}/test_settings_ui_default.ini")
 
+    # Every text of the settings screen is in the ui_text template.
+    add_executable(test_settings_text
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings_text.c)
+    target_include_directories(test_settings_text PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_link_libraries(test_settings_text PRIVATE eidos_platform)
+    if(EIDOS_SDL_RUNTIME)
+        add_custom_command(TARGET test_settings_text POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${EIDOS_SDL_RUNTIME}" "$<TARGET_FILE_DIR:test_settings_text>"
+            COMMENT "Copying SDL3.dll next to test_settings_text")
+    endif()
+    add_test(NAME test_settings_text COMMAND test_settings_text
+        ${CMAKE_CURRENT_SOURCE_DIR}/sdk/api/v5/ui_text_template.txt)
+    set_tests_properties(test_settings_text PROPERTIES
+        ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;EIDOS_SETTINGS=${CMAKE_CURRENT_BINARY_DIR}/test_settings_text_default.ini")
+
     # The setup window under the dummy video driver, driven by scripted
     # events: an archive dropped and refused, a mouse click on "Choose
     # another file", the synthetic cartridge refused as not the original

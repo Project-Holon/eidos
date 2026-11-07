@@ -103,6 +103,7 @@ CONV = re.compile(r'%[-+ #0]*\d*(?:\.\d+)?(?:hh|h|ll|l|z)?[diouxXsc]')
 CALLS = re.compile(r'\b(?:ui_tr|ui_trf|TRF)\s*\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)'
                    r'|\bui_text\s*\([^,;()]*,[^,;()]*,[^,;()]*,\s*((?:"(?:[^"\\]|\\.)*"\s*)+),')
 LIT = re.compile(r'"((?:[^"\\]|\\.)*)"')
+LITS = re.compile(r'(?:"(?:[^"\\]|\\.)*"\s*)+')
 
 
 def c_unescape(s):
@@ -136,7 +137,7 @@ def c_unescape(s):
 # the files of picture tags and controller art, and the modern move names
 # (they apply to the English cartridge's words only, kit.c).
 SCREENS_SKIP = ('assets.c', 'assets_sprites.c', 'assets_icons.c', 'padglyph.c', 'ui_lang.c')
-LINE_SKIP = re.compile(r'fprintf|getenv|logf|strcmp|strncmp|strstr|#include|printf\(|fopen|'
+LINE_SKIP = re.compile(r'fprintf|getenv|logf|strcmp|strncmp|strstr|#include|(?<![sn])printf\(|fopen|'
                        r'EIDOS_[A-Z_]+|eidos:|k_modern_moves|k_old_moves|"\s*\}\s*,\s*\{\s*\d')
 
 
@@ -156,8 +157,9 @@ def screen_labels():
                 continue
             if s.startswith(('*', '//')) or LINE_SKIP.search(line):
                 continue
-            for m in LIT.finditer(line):
-                text = c_unescape(m.group(1))
+            for m in LITS.finditer(line):
+                # adjacent literals are one string ("POK\xC3\x89" "DEX")
+                text = c_unescape(''.join(LIT.findall(m.group(0))))
                 if '%' in text or len(text) < 2 or not re.search(r'[A-Za-z]{2}', text):
                     continue
                 if not (text[0].isupper() or text[0] == '?'):
@@ -182,8 +184,8 @@ def settings_labels():
     found = set()
     in_tabs = False
     for line in open(SETTINGS_UI, encoding='utf-8', errors='replace'):
-        if 'k_tab_names[]' in line:
-            in_tabs = True
+        if 'k_tab_names[]' in line or 'k_option_help[' in line:
+            in_tabs = True              # a table whose entries span lines
         if in_tabs or SETTINGS_LINE.search(line):
             for m in LIT.finditer(line):
                 text = c_unescape(m.group(1)).strip()
