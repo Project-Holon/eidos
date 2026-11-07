@@ -150,8 +150,11 @@ the build is this project's CMake with `vita.toolchain.cmake`, packaged by
      `src/game` names too (G2x_SetBGyAffine_ and the blend functions had
      been skipped); `bw_ds_game_ptr` for the interface's "is this a game
      pointer" checks (they compared against 0x02000000..0x02400000).
-     With these, Win32 with `BW_DS_IDENTITY=0` plays the opening, the
-     title, the field and a trainer battle in the one-screen layout.
+     With these, Win32 with `BW_DS_IDENTITY=0` plays the opening and the
+     title in the one-screen layout; loading the field stops in ov021's
+     weather setup (layer 2's case, below).  A run whose field had no
+     weather to load reached a trainer battle, drawn as the DS screens
+     before the interface's checks were fixed.
   2. **Caught at run time**: kubridge's data-abort handler performs a
      faulting load or store on `bw_ds_ptr`'s byte and goes on, logging
      each site once (to move a frequent one into layer 1).  This is what
