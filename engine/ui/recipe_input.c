@@ -14,6 +14,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "dsmem.h"
 #include "input.h"
 
@@ -929,7 +930,7 @@ static void xt_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     px = (cwid - pw) / 2;
     py = (ch - ui_bar_h(c) - ph) / 2;
     ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
-    snprintf(cnt, sizeof(cnt), "%d nearby", shown);
+    snprintf(cnt, sizeof(cnt), ui_trf("%d nearby"), shown);
     ui_header(c, px + 1, py + 1, pw - 2, "XTRANSCEIVER", NULL, cnt, UI_CYAN);
     x0 = px + pad;
     x1 = px + pw - pad;

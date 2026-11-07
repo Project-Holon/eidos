@@ -17,6 +17,8 @@ Each release's notes on GitHub start with its section here
 
 ### Bug Fixes
 - **Item Card**: The item card no longer stays on screen for a moment after its message box closes.
+- **Interface Translations**: A mod's `ui_text` file now also translates the labels built from values (`PWR %d  ACC %d`, `Lv. %d`, `Received %s` and about 40 more), the settings' key names and the multiplayer and timer lines; a translation whose `%` codes do not match the English is ignored. The template lists every label the interface draws (#21).
+- **Move Names**: The modern English move names (Hi Jump Kick to High Jump Kick and the others) now replace only the English cartridge's names; before, they replaced the move names of every language and of mods (#21).
 
 ### Mods & Launcher
 - **Mods Page**: Opening the Mods tab again no longer downloads the catalog again or empties the list for a moment; the catalog loads once a launcher run, and the refresh button loads it again.

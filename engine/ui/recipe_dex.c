@@ -32,6 +32,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "assets.h"
 #include "port.h"
 #include "input.h"
@@ -683,7 +684,7 @@ static void run_list(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
         seen += s != 0;
         own += s == 2;
     }
-    snprintf(right, sizeof(right), "SEEN %d  OWN %d", seen, own);
+    snprintf(right, sizeof(right), ui_trf("SEEN %d  OWN %d"), seen, own);
     dex_layout(c, &L);
     dex_modal(c, &L, v->mode == 1 ? "NATIONAL" : "UNOVA", right);
 
@@ -839,7 +840,7 @@ static void run_entry(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
     DexHint hints[6];
     int nh = 0;
 
-    snprintf(right, sizeof(right), "No. %03d", v->number);
+    snprintf(right, sizeof(right), ui_trf("No. %03d"), v->number);
     dex_layout(c, &L);
     dex_modal(c, &L, "ENTRY", right);
 

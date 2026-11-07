@@ -36,6 +36,28 @@ Close = 关闭
   wins.
 - The words go when the mod is turned off.
 
+## Labels with values in them
+
+Some labels are built from a number or a name: `PWR %d  ACC %d`,
+`%s nature.`, `Met at %s, Lv. %u.`, `Last saved %u/%u/20%02u  %02u:%02u`.
+Translate the template, with its `%` codes, and the values go into your
+words:
+
+```
+PWR %d  ACC %d = 威力 %d  命中 %d
+%s nature. = 性格：%s
+Met at %s, Lv. %u. = 在%s相遇，当时为 Lv. %u。
+```
+
+- Keep the same codes in the same order: `%d` (a number), `%u` (a number),
+  `%s` (a name or a word), `%02u` (a number with two digits). A width such
+  as the `02` may change; the letter may not.
+- A translation whose codes differ from the English's is not used: the
+  English shows instead, so a slip shows as English, never as a wrong value
+  or a crash.
+- `%%` is a percent sign.
+- The dump (below) lists these templates too, with their codes.
+
 ## Which labels there are
 
 - `sdk/api/v5/ui_text_template.txt` lists the labels the interface already

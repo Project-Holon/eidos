@@ -29,6 +29,7 @@
 #include "plat_thread.h"
 #include "setup.h"
 #include "settings.h"
+#include "ui_lang.h"
 
 #define NBTN 12
 #define PATH_MAX_LEN BW_SETUP_PATH_MAX
@@ -1677,7 +1678,7 @@ const char *eidos_scancode_name(int scancode, char *buf, size_t n)
     } else if (is_ascii_name(nm)) {
         snprintf(buf, n, "%s", nm);
     } else {
-        snprintf(buf, n, "Key %d", scancode);
+        snprintf(buf, n, ui_trf("Key %d"), scancode);
     }
     return buf;
 }
@@ -1710,14 +1711,14 @@ const char *eidos_pad_control_name(int kind, int index, char *buf, size_t n)
         if (index >= 0 && (size_t)index < nb) {
             snprintf(buf, n, "%s", k_pad_button_names[index]);
         } else {
-            snprintf(buf, n, "Pad Button %d", index);
+            snprintf(buf, n, ui_trf("Pad Button %d"), index);
         }
     } else if (index >= 0 && index < 6) {
         snprintf(buf, n, "%s", kind == EIDOS_PADBIND_AXIS_POS
                                    ? k_pad_axis_pos[index]
                                    : k_pad_axis_neg[index]);
     } else {
-        snprintf(buf, n, "Pad Axis %d%s", index,
+        snprintf(buf, n, ui_trf("Pad Axis %d%s"), index,
                  kind == EIDOS_PADBIND_AXIS_POS ? "+" : "-");
     }
     return buf;

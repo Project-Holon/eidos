@@ -81,6 +81,11 @@
 #include "mod_title.h"
 #include "save.h"
 
+/* A label built from values in a mod's words (engine/ui/ui_lang.h ui_trf);
+ * the English when the interface is not linked in. */
+extern const char *ui_trf(const char *fmt) __attribute__((weak, format_arg(1)));
+#define TRF(s) (ui_trf != NULL ? ui_trf(s) : (s))
+
 /* ------------------------------------------------------------------ */
 /* What the other layers provide                                       */
 /* ------------------------------------------------------------------ */
@@ -409,7 +414,7 @@ static void panel_update(BwModTimerState *t)
 
     /* The running time. */
     format_time(stamp, sizeof(stamp), eidos_ticks_to_ms(t->elapsed_ticks));
-    snprintf(text, sizeof(text), "Time %s", stamp);
+    snprintf(text, sizeof(text), TRF("Time %s"), stamp);
     bw_mod_panel_set_port(t->ns, 0, text);
 
     /* The splits. */

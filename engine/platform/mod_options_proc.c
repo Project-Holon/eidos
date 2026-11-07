@@ -33,6 +33,11 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 typedef signed short s16;
 
+/* A label built from values in a mod's words (engine/ui/ui_lang.h ui_trf);
+ * the English when the interface is not linked in. */
+extern const char *ui_trf(const char *fmt) __attribute__((weak, format_arg(1)));
+#define TRF(s) (ui_trf != NULL ? ui_trf(s) : (s))
+
 /* The ARM9 matched files spell some functions sub_<addr>; the generated
  * header of overlay 88 (ovl/boot/include/ov088.h) renames the calls, and so
  * does this list (unless the build's gamespell.h already names the
@@ -1253,7 +1258,7 @@ static int handoff_confirm(u32 peer, const void *buf, u32 size, void *user)
     (void)buf;
     (void)size;
     (void)user;
-    snprintf(text, sizeof text, "Peer %u sent a save. Take it?",
+    snprintf(text, sizeof text, TRF("Peer %u sent a save. Take it?"),
              (unsigned int)peer);
     return bw_mod_message_confirm(text);
 }

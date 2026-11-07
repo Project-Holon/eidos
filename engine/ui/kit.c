@@ -50,6 +50,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <string.h>
 
 #include "ui_lang.h"
@@ -984,14 +985,50 @@ static const struct { u16 id; const char *name; } k_modern_moves[] = {
     { 265, "Smelling Salts" }, { 297, "Feather Dance" }, { 320, "Grass Whistle" },
 };
 
-const char *ui_move_name_modern(int id)
-{
-    size_t i;
+/* The game's spellings that are more than the modern ones squeezed. */
+static const struct { u16 id; const char *old; } k_old_moves[] = {
+    { 136, "Hi Jump Kick" }, { 185, "Faint Attack" }, { 265, "SmellingSalt" },
+};
 
+/* a and b the same letters, spaces, hyphens and capitals aside */
+static int same_squeezed(const char *a, const char *b)
+{
+    for (;;) {
+        while (*a == ' ' || *a == '-') a++;
+        while (*b == ' ' || *b == '-') b++;
+        if (*a == '\0' || *b == '\0') {
+            return *a == *b;
+        }
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) {
+            return 0;
+        }
+        a++;
+        b++;
+    }
+}
+
+const char *ui_move_name_modern(int id, const char *game_name)
+{
+    size_t i, k;
+
+    if (game_name == NULL) {
+        return NULL;
+    }
     for (i = 0; i < sizeof(k_modern_moves) / sizeof(k_modern_moves[0]); i++) {
-        if (k_modern_moves[i].id == id) {
+        if (k_modern_moves[i].id != id) {
+            continue;
+        }
+        /* only over the English cartridge's own word: another language's
+         * name, or a translation mod's, stays the game's */
+        if (same_squeezed(game_name, k_modern_moves[i].name)) {
             return k_modern_moves[i].name;
         }
+        for (k = 0; k < sizeof(k_old_moves) / sizeof(k_old_moves[0]); k++) {
+            if (k_old_moves[k].id == id && strcmp(game_name, k_old_moves[k].old) == 0) {
+                return k_modern_moves[i].name;
+            }
+        }
+        return NULL;
     }
     return NULL;
 }

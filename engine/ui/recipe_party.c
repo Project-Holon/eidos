@@ -654,7 +654,7 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
 
         mon_nick(sel_mon, nick, (int)sizeof nick);
         /* "Do what with<nl>[name]?": the name takes the placeholder's place */
-        snprintf(out, (size_t)cap, "Do what with %s?", nick);
+        snprintf(out, (size_t)cap, ui_trf("Do what with %s?"), nick);
         return;
     }
     snprintf(out, (size_t)cap, "%s", tmp);
@@ -1360,7 +1360,7 @@ static void draw_info_page(EidosUiCtx *c, const SummaryView *s, int x, int y, in
     yy += 14;
     /* nature, and where it was met */
     (void)msg_text(BANK_NATURE, pv(s->mon, P_NATURE), val, (int)sizeof val, 0);
-    snprintf(tmp, sizeof tmp, "%s nature.", val);
+    snprintf(tmp, sizeof tmp, ui_trf("%s nature."), val);
     ui_text(c, x + 8, yy + ui_text_y(14, UI_FONT_LARGE), tmp, UI_WHITE, UI_EDGE,
             UI_FONT_LARGE, 1);
     yy += 15;
@@ -1370,7 +1370,7 @@ static void draw_info_page(EidosUiCtx *c, const SummaryView *s, int x, int y, in
 
         (void)msg_text(BANK_PLACE, loc, place, (int)sizeof place, 0);
         if (place[0] != '\0') {
-            snprintf(tmp, sizeof tmp, "Met at %s, Lv. %u.", place, (unsigned)pv(s->mon, P_MET_LEVEL));
+            snprintf(tmp, sizeof tmp, ui_trf("Met at %s, Lv. %u."), place, (unsigned)pv(s->mon, P_MET_LEVEL));
             draw_wrapped(c, x + 8, yy + 2, w - 16, 14, 2, tmp, UI_FONT_MEDIUM, UI_LIGHT, UI_EDGE);
         }
     }
@@ -1408,8 +1408,8 @@ static void draw_moves(EidosUiCtx *c, const SummaryView *s, int x, int y, int w,
             }
             move_info(mv, &m2);
             (void)msg_text(BANK_MOVE, mv, name, (int)sizeof name, 0);
-            if (ui_move_name_modern((int)mv) != NULL) {
-                snprintf(name, sizeof name, "%s", ui_move_name_modern((int)mv));
+            if (ui_move_name_modern((int)mv, name) != NULL) {
+                snprintf(name, sizeof name, "%s", ui_move_name_modern((int)mv, name));
             }
             ui_move_row(c, x, yy, w, m2.type, name,
                         i < 4 ? (int)pv(s->mon, P_PP1 + (u32)i) : 0,
@@ -1743,8 +1743,8 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
         }
         move_info(mv, &m);
         (void)msg_text(BANK_MOVE, mv, name, (int)sizeof name, 0);
-        if (ui_move_name_modern((int)mv) != NULL) {
-            snprintf(name, sizeof name, "%s", ui_move_name_modern((int)mv));
+        if (ui_move_name_modern((int)mv, name) != NULL) {
+            snprintf(name, sizeof name, "%s", ui_move_name_modern((int)mv, name));
         }
         sel = (picking && i == held) || hov == i ||
               (!picking && s->cursor == i && eidos_ui_keys_lit());

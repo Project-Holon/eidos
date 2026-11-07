@@ -10,7 +10,9 @@ what ui_tr searches by.
     python tools/ui_lang.py
 """
 
+import glob
 import os
+import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, '..', 'engine', 'ui', 'ui_lang.tsv')
@@ -72,11 +74,118 @@ def main():
                 '# A line left empty after the "=" keeps the English.\n'
                 '# EIDOS_UI_TEXT_DUMP lists the labels a run draws that are not here.\n'
                 '\n')
+        listed = set()
         for line in open(SRC, encoding='utf-8'):
             line = line.rstrip('\n')
             if line and not line.startswith('#'):
-                f.write(line.split('\t')[0].replace('=', '\\=') + ' = \n')
-    print('the template in %s' % os.path.relpath(TEMPLATE))
+                en = line.split('\t')[0]
+                listed.add(en)
+                f.write(escape(en) + ' = \n')
+        rest = source_labels() - listed
+        values = sorted(s for s in rest if CONV.search(s))
+        plain = sorted(s for s in rest if not CONV.search(s))
+        f.write('\n# Labels the interface draws that have no translation of its own yet.\n\n')
+        for s in plain:
+            f.write(escape(s) + ' = \n')
+        f.write('\n# Labels built from values: keep the % codes, in the same order\n'
+                '# (docs/mod-ui-text.md, "Labels with values in them").\n\n')
+        for s in values:
+            f.write(escape(s) + ' = \n')
+    print('the template in %s (%d more labels from the source, %d with values)'
+          % (os.path.relpath(TEMPLATE), len(plain), len(values)))
+
+
+# A printf conversion: a label with one is a template (ui_trf).
+CONV = re.compile(r'%[-+ #0]*\d*(?:\.\d+)?(?:hh|h|ll|l|z)?[diouxXsc]')
+
+# The calls whose string literal the interface translates: ui_tr, ui_trf,
+# the SDK's TRF, and ui_text's text (its fourth argument).
+CALLS = re.compile(r'\b(?:ui_tr|ui_trf|TRF)\s*\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)'
+                   r'|\bui_text\s*\([^,;()]*,[^,;()]*,[^,;()]*,\s*((?:"(?:[^"\\]|\\.)*"\s*)+),')
+LIT = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def c_unescape(s):
+    """A C string literal's text (the escapes the interface's labels use)."""
+    out = bytearray()
+    i = 0
+    raw = s.encode('utf-8')
+    while i < len(raw):
+        ch = raw[i:i + 1]
+        if ch == b'\\' and i + 1 < len(raw):
+            nx = raw[i + 1:i + 2]
+            if nx == b'x':
+                j = i + 2
+                while j < len(raw) and j < i + 4 and raw[j:j + 1] in b'0123456789abcdefABCDEF':
+                    j += 1
+                out.append(int(raw[i + 2:j], 16))
+                i = j
+                continue
+            out += {b'n': b'\n', b't': b'\t', b'"': b'"', b'\\': b'\\'}.get(nx, nx)
+            i += 2
+            continue
+        out += ch
+        i += 1
+    return out.decode('utf-8', errors='replace')
+
+
+# The interface's screens hold most labels in tables and variables before
+# they are drawn (ui_text translates whatever it draws), so their files are
+# read whole: a label is a literal that starts with a capital (or "?"), is
+# not an identifier, a file, a log line or a format for one.  Left out:
+# the files of picture tags and controller art, and the modern move names
+# (they apply to the English cartridge's words only, kit.c).
+SCREENS_SKIP = ('assets.c', 'assets_sprites.c', 'assets_icons.c', 'padglyph.c', 'ui_lang.c')
+LINE_SKIP = re.compile(r'fprintf|getenv|logf|strcmp|strncmp|strstr|#include|printf\(|fopen|'
+                       r'EIDOS_[A-Z_]+|eidos:|k_modern_moves|k_old_moves|"\s*\}\s*,\s*\{\s*\d')
+
+
+def screen_labels():
+    found = set()
+    for path in sorted(glob.glob(os.path.join(HERE, '..', 'engine', 'ui', '*.c'))):
+        if os.path.basename(path) in SCREENS_SKIP:
+            continue
+        in_comment = False
+        for line in open(path, encoding='utf-8', errors='replace'):
+            s = line.strip()
+            if in_comment:
+                in_comment = '*/' not in s
+                continue
+            if s.startswith('/*'):
+                in_comment = '*/' not in s
+                continue
+            if s.startswith(('*', '//')) or LINE_SKIP.search(line):
+                continue
+            for m in LIT.finditer(line):
+                text = c_unescape(m.group(1))
+                if '%' in text or len(text) < 2 or not re.search(r'[A-Za-z]{2}', text):
+                    continue
+                if not (text[0].isupper() or text[0] == '?'):
+                    continue            # identifiers and scene names are lower case
+                if re.fullmatch(r'[A-Z0-9_]+', text) and '_' in text:
+                    continue
+                if re.fullmatch(r'[A-Z]{4}', text):
+                    continue            # a file's tag (NCGR's RGCN)
+                found.add(text)
+    return found
+
+
+def source_labels():
+    """Every literal label the interface passes through its translation."""
+    found = screen_labels()
+    for folder in ('engine/ui', 'engine/platform', 'sdk'):
+        for path in sorted(glob.glob(os.path.join(HERE, '..', folder, '*.c'))):
+            src = open(path, encoding='utf-8', errors='replace').read()
+            for m in CALLS.finditer(src):
+                lits = m.group(1) or m.group(2)
+                text = c_unescape(''.join(LIT.findall(lits)))
+                if re.search(r'[A-Za-z]{2}', CONV.sub('', text)):
+                    found.add(text)
+    return found
+
+
+def escape(s):
+    return s.replace('\\', '\\\\').replace('\n', '\\n').replace('=', '\\=')
 
 
 if __name__ == '__main__':

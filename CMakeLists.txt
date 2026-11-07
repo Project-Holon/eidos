@@ -2766,6 +2766,20 @@ if(EIDOS_SDL_FOUND)
     set_tests_properties(test_settings PROPERTIES
         ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy;EIDOS_SETTINGS=${CMAKE_CURRENT_BINARY_DIR}/test_settings_default.ini")
 
+    # A mod's words for labels built from values (ui_trf).
+    add_executable(test_ui_trf
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_trf.c)
+    target_include_directories(test_ui_trf PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_link_libraries(test_ui_trf PRIVATE eidos_platform)
+    if(EIDOS_SDL_RUNTIME)
+        add_custom_command(TARGET test_ui_trf POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${EIDOS_SDL_RUNTIME}" "$<TARGET_FILE_DIR:test_ui_trf>"
+            COMMENT "Copying SDL3.dll next to test_ui_trf")
+    endif()
+    add_test(NAME test_ui_trf COMMAND test_ui_trf)
+
     # The settings screen's model: tabs, rows, navigation, revert, commit.
     add_executable(test_settings_ui
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings_ui.c)

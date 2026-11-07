@@ -21,6 +21,18 @@ void ui_lang_set(int game_language);
  * the interface's table has it, else `en`. */
 const char *ui_tr(const char *en);
 
+/* A printf template ("PWR %d  ACC %d") in a mod's words or the game's
+ * language, to be filled in after: a label built from numbers or names is
+ * translated before its values go in.  The translation is taken only when
+ * its conversions are the English's, the same kinds in the same order
+ * (flags and widths may differ); else the English, so a translator's slip
+ * cannot make the program read the wrong value (docs/mod-ui-text.md). */
+#if defined(__GNUC__)
+const char *ui_trf(const char *fmt) __attribute__((format_arg(1)));
+#else
+const char *ui_trf(const char *fmt);
+#endif
+
 /* A mod's `ui_text` file (docs/mod-ui-text.md): "English = translation"
  * lines; '#' starts a comment.  `owner` names the mod for
  * ui_lang_mod_clear.  Returns the number of pairs taken. */

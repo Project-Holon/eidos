@@ -24,6 +24,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "input.h"
 #include "textbox.h"
 #include "choice_list.h"
@@ -746,7 +747,7 @@ static void mg_newest(EidosUiCtx *c, void *data, int x, int y, int w, int h)
     if (line[0] != '\0') {
         char rec[64];
 
-        snprintf(rec, sizeof rec, "Received %s", line);
+        snprintf(rec, sizeof rec, ui_trf("Received %s"), line);
         ui_text(c, x + 8, y + 70, rec, UI_LIGHT, MG_SHADOW, UI_FONT_SMALL, 1);
     }
     if (!last.picked) {
@@ -795,7 +796,7 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
     if (my < 4) {
         my = 4;
     }
-    snprintf(right, sizeof right, "Cards %d/12", cards);
+    snprintf(right, sizeof right, ui_trf("Cards %d/12"), cards);
     mg_window(c, mx, my, mw, mh, title, kind == DLG_MENU ? right : NULL);
 
     if (kind == DLG_MENU || kind == DLG_INFO) {
@@ -812,9 +813,14 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
             st = mg_tile(c, mx + 10, ty, tw, th, i == index && eidos_ui_keys_lit(), 0, &dy);
             if (kind == DLG_MENU && !last) {
                 const char *subs[3];
+                char c1[32], c2[48];
 
-                snprintf(sub, sizeof sub, "%d card%s, %d gift%s waiting", cards, cards == 1 ? "" : "s",
-                         waiting, waiting == 1 ? "" : "s");
+                /* each count with its own words, singular or plural, so a
+                 * translation has the whole phrase (ui_trf) */
+                snprintf(c1, sizeof c1, cards == 1 ? ui_trf("%d card") : ui_trf("%d cards"), cards);
+                snprintf(c2, sizeof c2, waiting == 1 ? ui_trf("%d gift waiting") : ui_trf("%d gifts waiting"),
+                         waiting);
+                snprintf(sub, sizeof sub, ui_trf("%s, %s"), c1, c2);
                 subs[0] = "Wireless or internet";
                 subs[1] = sub;
                 subs[2] = "How Mystery Gift works";

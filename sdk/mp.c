@@ -49,6 +49,11 @@
 #include "save.h"
 #include "save_slots.h"
 
+/* A label built from values in a mod's words (engine/ui/ui_lang.h ui_trf);
+ * the English when the interface is not linked in. */
+extern const char *ui_trf(const char *fmt) __attribute__((weak, format_arg(1)));
+#define TRF(s) (ui_trf != NULL ? ui_trf(s) : (s))
+
 #include <sys/stat.h>
 
 #ifdef _WIN32
@@ -1338,7 +1343,7 @@ static int host_ready(void)
         if (!p->connected) {
             if (g_mp.roster_set) {
                 snprintf(g_mp.blocker, sizeof(g_mp.blocker),
-                         "waiting for %s", p->name);
+                         TRF("waiting for %s"), p->name);
                 return 0;
             }
             continue;
@@ -1346,13 +1351,13 @@ static int host_ready(void)
         someone = 1;
         if (p->game == 0) {
             snprintf(g_mp.blocker, sizeof(g_mp.blocker),
-                     "no answer from %s", p->name);
+                     TRF("no answer from %s"), p->name);
             return 0;
         }
         if (strcmp(p->version, EIDOS_VERSION) != 0) {
             /* every player runs the same eidos (docs/distribution.md) */
             snprintf(g_mp.blocker, sizeof(g_mp.blocker),
-                     "%s: eidos %s (you %s)", p->name, p->version, EIDOS_VERSION);
+                     TRF("%s: eidos %s (you %s)"), p->name, p->version, EIDOS_VERSION);
             return 0;
         }
         if (p->fp[0] != '\0') {
@@ -1369,8 +1374,8 @@ static int host_ready(void)
             }
             if ((c == 'B' || c == 'W') && c != p->game) {
                 snprintf(g_mp.blocker, sizeof(g_mp.blocker),
-                         "%s's save is %s", p->name,
-                         c == 'W' ? "White" : "Black");
+                         TRF("%s's save is %s"), p->name,
+                         c == 'W' ? TRF("White") : TRF("Black"));
                 return 0;
             }
         }
@@ -1459,7 +1464,7 @@ static void host_on_join(u32 peer)
     if (g_net->peer_name == NULL ||
         g_net->peer_name(peer, p->name, (u32)sizeof(p->name)) != 0 ||
         p->name[0] == '\0') {
-        snprintf(p->name, sizeof(p->name), "player %u", (unsigned)peer);
+        snprintf(p->name, sizeof(p->name), TRF("player %u"), (unsigned)peer);
     }
     host_send_id(peer);
     if (g_mp.state == BW_MP_GRACE && host_ready()) {

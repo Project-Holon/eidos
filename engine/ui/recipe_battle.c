@@ -560,7 +560,7 @@ static void mon_view(u8 *poke, MonView *m)
 static const char *item_name(int item, char *buf, int cap)
 {
     if (!msg_line(MSG_ITEM, (u32)item, buf, cap)) {
-        snprintf(buf, (size_t)cap, "ITEM %d", item);
+        snprintf(buf, (size_t)cap, ui_trf("ITEM %d"), item);
     }
     return buf;
 }
@@ -1553,7 +1553,7 @@ static const char *prompt_choosing(const Bt *b, char *buf, int cap)
 
     mon_view(gptr_ok(poke) ? poke : NULL, &m);
     if (!msg_line_sub(15, 69, m.name, buf, cap)) {
-        snprintf(buf, (size_t)cap, "What will %s do?", m.name);
+        snprintf(buf, (size_t)cap, ui_trf("What will %s do?"), m.name);
     }
     return buf;
 }
@@ -1926,15 +1926,15 @@ static int kit_type(int t)
  * game's own text. */
 static int move_name(int id, char *out, int cap)
 {
-    const char *modern = ui_move_name_modern(id);
+    const char *modern;
 
+    if (!msg_line(MSG_MOVE, (u32)id, out, cap)) {
+        snprintf(out, (size_t)cap, ui_trf("MOVE %d"), id);
+        return 0;
+    }
+    modern = ui_move_name_modern(id, out);
     if (modern != NULL) {
         snprintf(out, (size_t)cap, "%s", modern);
-        return 1;
-    }
-    if (!msg_line(MSG_MOVE, (u32)id, out, cap)) {
-        snprintf(out, (size_t)cap, "MOVE %d", id);
-        return 0;
     }
     return 1;
 }
@@ -2051,9 +2051,9 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
                 ui_category_icon(c, x0 + 2, info_y,
                                  mv[shown].category == 2 ? 1 : mv[shown].category == 1 ? 0 : 2);
-                snprintf(info, sizeof(info), "PWR %d  ACC %d", mv[shown].power, mv[shown].accuracy);
+                snprintf(info, sizeof(info), ui_trf("PWR %d  ACC %d"), mv[shown].power, mv[shown].accuracy);
                 if (mv[shown].power == 0) {
-                    snprintf(info, sizeof(info), "ACC %d", mv[shown].accuracy);
+                    snprintf(info, sizeof(info), ui_trf("ACC %d"), mv[shown].accuracy);
                 }
                 ui_text(c, x0 + 22, info_y + ui_text_y(11, UI_FONT_SMALL), info, UI_LIGHT, UI_EDGE,
                         UI_FONT_SMALL, 1);
@@ -2335,7 +2335,7 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         if (!move_name((int)((raw >> 7) & 0xFFFFu), mname, sizeof(mname))) {
             snprintf(mname, sizeof(mname), "the move");
         }
-        snprintf(prompt_buf, sizeof(prompt_buf), "Use %s on which?", mname);
+        snprintf(prompt_buf, sizeof(prompt_buf), ui_trf("Use %s on which?"), mname);
     }
     shell_draw(c, &b, &sh, prompt_buf, 1);
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
@@ -2972,7 +2972,7 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
                     continue;
                 }
                 if (!msg_line(MSG_MOVE, (u32)m.id, name, sizeof(name))) {
-                    snprintf(name, sizeof(name), "MOVE %d", m.id);
+                    snprintf(name, sizeof(name), ui_trf("MOVE %d"), m.id);
                 }
                 mst = can_tap ? hit(c, mx2, my2, mw2, 22) : 0;
                 sel = (mst & EIDOS_UI_HOVER) || i == shown || (v->cursor == i && eidos_ui_keys_lit());

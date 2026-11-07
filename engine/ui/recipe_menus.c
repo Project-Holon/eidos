@@ -1507,7 +1507,7 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             void *pt = SYSTEM_DATA_GetPlayTime(sc);
 
             if (pt != NULL) {
-                snprintf(buf, sizeof buf, "Last saved %u/%u/20%02u  %02u:%02u",
+                snprintf(buf, sizeof buf, ui_trf("Last saved %u/%u/20%02u  %02u:%02u"),
                          PLAYTIME_GetStampMonth(pt), PLAYTIME_GetStampDay(pt),
                          PLAYTIME_GetStampYear(pt), PLAYTIME_GetStampHour(pt),
                          PLAYTIME_GetStampMinute(pt));
@@ -2439,7 +2439,7 @@ static void wireless_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
         const char *sub = off ? "Not available." : tiles[i].what;
 
         if (i == 0 && mode == 2 && INTRUDE_COMM_CountEventPeers != NULL) {
-            snprintf(buf, sizeof buf, "%d in the Entralink.", INTRUDE_COMM_CountEventPeers(comm));
+            snprintf(buf, sizeof buf, ui_trf("%d in the Entralink."), INTRUDE_COMM_CountEventPeers(comm));
             sub = buf;
         } else if (i == 0 && mode == 3) {
             sub = "Someone invites you.";
@@ -3866,7 +3866,7 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_mon_front_draw(c, (u16)species, 0, in->frame, px + 8, py + 20, 110, 110);
         ui_species_name(species, name, (int)sizeof name);
         ui_species_types(species, &t1, &t2);
-        snprintf(num, sizeof num, "No. %03d", species);
+        snprintf(num, sizeof num, ui_trf("No. %03d"), species);
         ui_text(c, px + 128, py + 36, num, UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
         ui_text(c, px + 128, py + 50, name, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 2);
         if (t1 >= 0) ui_type_tag(c, px + 128, py + 90, 56, t1);
@@ -3970,10 +3970,11 @@ static void relearn_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     if (first < 0) first = 0;
     for (i = 0; i < RL_ROWS && first + i < count; i++) {
         int row = first + i, mv = moves[row], st, dy, type;
-        const char *nm = ui_move_name_modern(mv);
+        const char *game = ui_game_text(2, 203, (u32)mv);
+        const char *nm = ui_move_name_modern(mv, game);
 
         st = in_tile(c, mx + 12, my + IN_HEAD + 30 * i, lw - 12, 26, row == sel, &dy);
-        snprintf(name, sizeof name, "%s", nm != NULL ? nm : ui_game_text(2, 203, (u32)mv));
+        snprintf(name, sizeof name, "%s", nm != NULL ? nm : game);
         ui_text(c, mx + 24, my + IN_HEAD + 30 * i + dy + ui_text_y(26, UI_FONT_LARGE), name, UI_WHITE, IN_SHADOW,
                 UI_FONT_LARGE, 1);
         type = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)mv, 0) : 0;
@@ -4306,7 +4307,7 @@ static void ending_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             name[0] = '\0';
             ui_species_name(sp, name, (int)sizeof name);
             ui_text(c, px2 + 44, y + 3, name, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
-            snprintf(lvt, sizeof lvt, "Lv. %d", lv);
+            snprintf(lvt, sizeof lvt, ui_trf("Lv. %d"), lv);
             ui_text(c, px2 + 44, y + 19, lvt, UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
         }
     } else {
@@ -4491,7 +4492,7 @@ static void trade_mon(EidosUiCtx *c, void *mon, int x, int y, u32 frame)
     name[0] = '\0';
     ui_species_name(sp, name, (int)sizeof name);
     ui_text(c, x + 34, y + 2, name, UI_WHITE, IN_SHADOW, UI_FONT_LARGE, 1);
-    snprintf(lvt, sizeof lvt, "Lv. %d", lv);
+    snprintf(lvt, sizeof lvt, ui_trf("Lv. %d"), lv);
     ui_text(c, x + 34, y + 18, lvt, UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
 }
 
@@ -5293,10 +5294,13 @@ static void ut_card(EidosUiCtx *c, int x, int y, int w, int h, const UtMon *m, i
     for (i = 0; i < 4 && iy + 12 <= y + h - 3; i++) {
         int one = menu_room > 0, cwid = one ? w - 12 - menu_room - 4 : (w - 12) / 2 - 1;
         int cx = one ? ix : ix + (i % 2) * (cwid + 2);
-        const char *mv = m->moves[i] > 0 ? ui_move_name_modern(m->moves[i]) : "-----";
+        const char *mv = "-----";
 
-        if (mv == NULL) {
-            mv = ui_game_text(2, 203, (u32)m->moves[i]);
+        if (m->moves[i] > 0) {
+            const char *game = ui_game_text(2, 203, (u32)m->moves[i]);
+            const char *modern = ui_move_name_modern(m->moves[i], game);
+
+            mv = modern != NULL ? modern : game;
         }
         ui_panel(c, cx, iy, cwid, 12, UI_CUT_TL | UI_CUT_BR, 2, UI_BODY, UI_EDGE, 255);
         ui_text(c, cx + 4, iy + ui_text_y(12, UI_FONT_SMALL), mv,

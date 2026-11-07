@@ -266,6 +266,65 @@ static void dump(u32 h, const char *en)
     fflush(f);
 }
 
+/* The next conversion of a printf template from *p on: its kind (the
+ * length modifier and the conversion letter, as "lu" or "s") into kind,
+ * 0 at the end.  "%%" is not a conversion. */
+static int next_conv(const char **p, char kind[4])
+{
+    const char *s = *p;
+
+    for (;;) {
+        int n = 0;
+
+        while (*s != '\0' && *s != '%') {
+            s++;
+        }
+        if (*s == '\0') {
+            *p = s;
+            return 0;
+        }
+        s++;
+        if (*s == '%') {
+            s++;
+            continue;
+        }
+        while (*s != '\0' && strchr("-+ #0123456789.", *s) != NULL) {
+            s++;                        /* flags, width, precision */
+        }
+        while (*s != '\0' && strchr("hlzjt", *s) != NULL && n < 2) {
+            kind[n++] = *s++;
+        }
+        if (*s == '\0') {
+            *p = s;
+            return 0;
+        }
+        kind[n++] = *s++;
+        kind[n] = '\0';
+        *p = s;
+        return 1;
+    }
+}
+
+const char *ui_trf(const char *fmt)
+{
+    const char *tr = ui_tr(fmt), *a = fmt, *b = tr;
+    char ka[4], kb[4];
+
+    if (tr == fmt) {
+        return fmt;
+    }
+    for (;;) {
+        int ha = next_conv(&a, ka), hb = next_conv(&b, kb);
+
+        if (ha != hb || (ha && strcmp(ka, kb) != 0)) {
+            return fmt;                 /* not the same values: the English */
+        }
+        if (!ha) {
+            return tr;
+        }
+    }
+}
+
 const char *ui_tr(const char *en)
 {
     u32 h, lo = 0, hi = sizeof(k_ui_lang) / sizeof(k_ui_lang[0]);

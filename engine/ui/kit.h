@@ -242,8 +242,10 @@ void ui_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
 #define UI_TYPE_UNKNOWN 17
 const char *ui_type_name(int type);
 /* The spelling later games give a move whose Black and White name was
- * squeezed into 12 letters ("Dragon Breath"), or NULL. */
-const char *ui_move_name_modern(int id);
+ * squeezed into 12 letters ("Dragon Breath"), or NULL: only when
+ * game_name, the name the game has, is that English word (another
+ * language's name, or a translation mod's, is kept). */
+const char *ui_move_name_modern(int id, const char *game_name);
 u32  ui_type_color(int type);
 /* recipe_dex.c: a species' name from the game's text (> 0 when found) and
  * its two types (the same number twice for one type). */
