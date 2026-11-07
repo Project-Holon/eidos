@@ -268,8 +268,21 @@ if(EIDOS_SDL_FOUND AND NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
     unset(EIDOS_SDL_LINKS CACHE)
     # try_compile takes imported targets and plain paths, not the ordinary
     # INTERFACE target above, so the probe is handed what went into it.
+    # A package's SDL3::SDL3 may be an alias (VitaSDK's names its static
+    # library that way), which try_compile's project cannot see: the
+    # target it stands for can.
+    set(_sdl_probe_real)
+    foreach(_l IN LISTS _sdl_probe_libs)
+        if(TARGET ${_l})
+            get_target_property(_a ${_l} ALIASED_TARGET)
+            if(_a)
+                set(_l ${_a})
+            endif()
+        endif()
+        list(APPEND _sdl_probe_real ${_l})
+    endforeach()
     set(CMAKE_REQUIRED_INCLUDES ${_sdl_probe_incs})
-    set(CMAKE_REQUIRED_LIBRARIES ${_sdl_probe_libs})
+    set(CMAKE_REQUIRED_LIBRARIES ${_sdl_probe_real})
     set(CMAKE_REQUIRED_QUIET ON)
     check_c_source_compiles("
 #define SDL_MAIN_HANDLED

@@ -125,6 +125,25 @@ static char *full_path(u32 dir, u32 path, u32 len)
     }
     memcpy(out + bl, P(path), len);
     out[bl + len] = 0;
+#if defined(__SWITCH__)
+    {
+        /* A path that names its device ("sdmc:/switch/eidos/profile", the
+         * host's own folder) is whole: the root's "/" before it would ask
+         * newlib for a device called "/sdmc". */
+        const char *s = out;
+        const char *colon, *slash;
+
+        while (*s == '/') {
+            s++;
+        }
+        colon = strchr(s, ':');
+        slash = strchr(s, '/');
+        if (colon != NULL && colon > s && (slash == NULL || colon < slash)) {
+            memmove(out, s, strlen(s) + 1);
+            return out;
+        }
+    }
+#endif
 #if !defined(_WIN32)
     if (out[0] != '/') {
         char *abs = (char *)malloc(strlen(out) + 2);

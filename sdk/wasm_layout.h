@@ -23,7 +23,7 @@
 #ifndef BW_PORT_WASM_LAYOUT_H
 #define BW_PORT_WASM_LAYOUT_H
 
-#if defined(__wasm__) && !defined(BW_WASM_NATIVE_LAYOUT)
+#if (defined(__wasm__) || defined(__vita__)) && !defined(BW_WASM_NATIVE_LAYOUT)
 #if defined(BW_WASM_PORT_SOURCE)
 #include <dirent.h>
 #include <stdio.h>

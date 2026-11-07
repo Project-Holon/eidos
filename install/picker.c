@@ -179,6 +179,42 @@ int bw_pick_rom(void *parent, const char *title, char *out, size_t n)
     return bw_host_pick_rom(title, out, (unsigned)n);
 }
 
+#elif defined(__vita__)
+
+/* ------------------------------------------------------------------ */
+/* The Vita: no file list an app can open, so the ROM is a file the     */
+/* player copies next to the program's data (docs/consoles.md)          */
+/* ------------------------------------------------------------------ */
+
+#include <dirent.h>
+
+int bw_pick_rom(void *parent, const char *title, char *out, size_t n)
+{
+    const char *dir = "ux0:data/eidos/";
+    DIR *d = opendir(dir);
+    struct dirent *e;
+
+    (void)parent;
+    (void)title;
+    if (d == NULL) {
+        snprintf(out, n, "Copy the game's ROM to %s on the memory card.", dir);
+        return BW_PICK_UNAVAILABLE;
+    }
+    while ((e = readdir(d)) != NULL) {
+        size_t len = strlen(e->d_name);
+
+        if (len > 4 && (strcmp(e->d_name + len - 4, ".nds") == 0 ||
+                        strcmp(e->d_name + len - 4, ".NDS") == 0)) {
+            snprintf(out, n, "%s%s", dir, e->d_name);
+            closedir(d);
+            return BW_PICK_OK;
+        }
+    }
+    closedir(d);
+    snprintf(out, n, "No .nds file in %s on the memory card.", dir);
+    return BW_PICK_UNAVAILABLE;
+}
+
 #elif defined(__ANDROID__) || defined(__APPLE__)
 
 /* ------------------------------------------------------------------ */

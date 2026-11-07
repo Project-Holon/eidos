@@ -14,7 +14,7 @@
  * Both exit with status 3 and never return into the faulting code.
  */
 
-#if !defined(_WIN32) && !defined(__wasm__) && !defined(_POSIX_C_SOURCE)
+#if !defined(_WIN32) && !defined(__wasm__) && !defined(__vita__) && !defined(_POSIX_C_SOURCE)
 #define _POSIX_C_SOURCE 200809L   /* sigaction, siginfo_t */
 #endif
 
@@ -180,6 +180,15 @@ static LONG WINAPI bw_ds_call_handler(EXCEPTION_POINTERS *ep)
     if (i == nreported && nreported < 256) {
         reported[nreported++] = (unsigned int)at;
         fprintf(stderr, "ds call: 0x%08X -> %s\n", (unsigned int)at, name ? name : "?");
+#if defined(_M_IX86) || defined(__i386__)
+        /* who called: the call just pushed its return address, so [esp]
+         * names the call site (the map file then names its function); a
+         * system without this redirect (the Vita) needs that pointer
+         * relocated where it is stored (docs/consoles.md) */
+        if (bw_crash_readable((uintptr_t)ep->ContextRecord->Esp, sizeof(uintptr_t))) {
+            bw_crash_print_addr("from", *(const uintptr_t *)(uintptr_t)ep->ContextRecord->Esp);
+        }
+#endif
     }
 #if defined(_M_X64) || defined(__x86_64__)
     ep->ContextRecord->Rip = (DWORD64)(uintptr_t)fn;
@@ -503,6 +512,105 @@ unsigned int bw_code_index(unsigned int at)
         fprintf(stderr, "ds call: 0x%08X -> %s\n", at, name ? name : "?");
     }
     return (unsigned int)(uintptr_t)fn;
+}
+
+#elif defined(__vita__)
+
+/* The Vita: no signals reach an application, so no crash report (the
+ * system's own crash dump stands), no watchdog and no sampler.
+ *
+ * A call to a DS code address is caught as on Win32, through kubridge (the
+ * kernel plugin Vita ports use for this; Vita3K has it too): the jump to
+ * the address faults in the prefetch, and the handler sends it on to the
+ * function the build compiled for it.  Such an address reaches a call when
+ * a table in one overlay names a function of another overlay that was not
+ * loaded yet, and the game copied the pointer before it was (a process's
+ * init, a field gimmick's callbacks): overlays share their addresses, so
+ * only the call itself can say which function it means. */
+
+#include <stdint.h>
+#include <kubridge.h>
+
+static BwCodeResolver bw_code_resolver;
+static KuKernelExceptionHandler g_old_prefetch;
+
+static void bw_ds_call_handler(KuKernelExceptionContext *ctx)
+{
+    static unsigned int reported[256];
+    static unsigned int nreported;
+    const char *name = NULL;
+    unsigned int at = ctx->pc;
+    void *fn = NULL;
+    unsigned int i;
+
+    if (bw_code_resolver != NULL && at >= 0x01FF8000u && at < 0x02800000u) {
+        /* a Thumb target ran with T set: the DS stored it with bit 0 */
+        if (ctx->SPSR & 0x20u) {
+            fn = bw_code_resolver(at | 1u, &name);
+        }
+        if (fn == NULL) {
+            fn = bw_code_resolver(at, &name);
+        }
+    }
+    if (fn == NULL) {
+        if (g_old_prefetch != NULL) {
+            g_old_prefetch(ctx);
+        }
+        return;
+    }
+    for (i = 0; i < nreported && reported[i] != at; i++) {
+    }
+    if (i == nreported && nreported < 256) {
+        reported[nreported++] = at;
+        fprintf(stderr, "ds call: 0x%08X -> %s (from 0x%08X)\n", at, name ? name : "?",
+                (unsigned int)ctx->lr);
+    }
+    /* the host function, in its own instruction set (bit 0: Thumb) */
+    ctx->pc = (SceUInt32)(uintptr_t)fn & ~1u;
+    ctx->SPSR = (ctx->SPSR & ~0x20u) | (((SceUInt32)(uintptr_t)fn & 1u) << 5);
+}
+
+int bw_plat_crash_installed(void)
+{
+    return 0;
+}
+
+void bw_plat_backtrace(void)
+{
+}
+
+void bw_plat_watchdog(unsigned seconds, unsigned long long (*progress)(void))
+{
+    (void)seconds;
+    (void)progress;
+}
+
+void bw_plat_sampler_start(void)
+{
+}
+
+void bw_plat_console_open(void)
+{
+}
+
+void bw_plat_crash_install(void)
+{
+}
+
+void bw_plat_crash_code_resolver(BwCodeResolver resolve)
+{
+    static int added;
+
+    bw_code_resolver = resolve;
+    if (resolve != NULL && !added) {
+        added = kuKernelRegisterExceptionHandler(KU_KERNEL_EXCEPTION_TYPE_PREFETCH_ABORT,
+                                                 bw_ds_call_handler, &g_old_prefetch,
+                                                 NULL) >= 0;
+        if (!added) {
+            fprintf(stderr, "eidos: no kubridge, so a call to a DS code address will "
+                    "crash (install kubridge.skprx)\n");
+        }
+    }
 }
 
 #else /* POSIX */

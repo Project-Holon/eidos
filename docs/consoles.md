@@ -1,7 +1,8 @@
 # Consoles: the Switch and the Vita
 
-Status (2026-11-07): the Switch program builds (`eidos.nro`) and has not
-run yet; the Vita has not started. This page holds
+Status (2026-11-07): the Switch program builds (`eidos.nro`) and runs in
+Ryubing through the opening; the Vita program builds (`eidos.vpk`) and
+stops at its first frame in Vita3K (below, "The Vita build"). This page holds
 the plan, what is ready, and the measurements that decide the route. The
 research behind it (sources, prior art, open questions) is in the project's
 research notes; the facts that matter are repeated here.
@@ -90,6 +91,49 @@ and `gl_imports.c`).  The pieces:
 - **Memory.** The game's memory is 512 MiB, taken at start.  That is more
   than an applet (the Album) gets, so the program is started over a game
   (holding R while starting one) for the full memory.
+- **First runs (Ryubing 1.3.3, 2026-11-07).** The opening plays; 2400
+  frames, no crash.  `--profile` per game frame: the game's own step 0.7 ms,
+  the CPU 2D compositor 57 ms, sound 29 ms (it renders as much sound as the
+  frame lasted), 3D 6 ms.  The same scene on the desktop: 0.06, 3.2, 0.2
+  and 0.7 ms.  The emulator costs 10 to 18 times; the real cost on the
+  console is the 2D compositor, about 16 ms at a Switch core's speed, so
+  the GPU 2D path is the Switch's work for 60 fps.  In Ryubing the picture
+  is cut to a column one sixth of its width; the desktop with the same
+  settings (`EIDOS_GL_ES=1`, 1920x1080, one screen) draws it whole, so the
+  console decides whether it is the port or the emulator.
+
+## The Vita build
+
+The Vita takes the native 32-bit route, not wasm2c: its Cortex-A9 at 444 MHz
+has no room for the bounds checks, and the native build is ILP32 already.
+VitaSDK's Docker image (`vitasdk/vitasdk`) has SDL3, vitaGL and kubridge;
+the build is this project's CMake with `vita.toolchain.cmake`, packaged by
+`vita_create_vpk` (title id `EIDS00001`).
+
+- **The DS's layout.** ARM EABI aligns a 64-bit member to 8 and sizes an
+  enum to its values; the DS does neither.  The game's sources get
+  `sdk/wasm_layout.h`'s `#pragma pack(4)` (as wasm32) and
+  `-fno-short-enums`; the files that talk to SDL3 and the C library keep
+  the system's own layout and enum size.
+- **The program's folder** is `ux0:data/eidos/` (extract/, profile/,
+  args.txt, env.txt, stderr.txt), the ROM the first `.nds` file there; the
+  C heap is 256 MiB.
+- **Calls to DS code addresses** (a table in one overlay names a function
+  of another, not yet loaded, overlay; 13 call sites seen on Win32) are
+  caught by kubridge's prefetch-abort handler and sent to the function
+  (sdk/plat_crash.c).  Vita3K stores that handler but does not call it yet.
+- **The open question: the DS address space.** A Vita program cannot be
+  given the DS's own addresses as Win32 and the 64-bit route are
+  (identity mapping), as far as anyone documents: its memory starts at
+  0x81000000.  So the DS memory is movable host blocks, and that mode is
+  not complete for the whole game: a DS data address the metadata does not
+  list stays a DS address in the data (the save table's pointer at
+  `_MainSaveDesc`, read by SAVEDATA_BuildLayout, is the first one met), and
+  Win32 with `BW_DS_IDENTITY=0` stops even earlier on a host address handed
+  to `bw_ds_ptr`.  On the Vita no host address falls in the DS's ranges, so
+  the mode can be completed there: data images scanned for DS data
+  addresses as they are for code ones, and `bw_ds_ptr` passing a host
+  address through.
 
 ## Measurements
 

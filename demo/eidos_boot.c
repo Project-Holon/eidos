@@ -2686,6 +2686,11 @@ static void usage(void)
  * opening (a tool's arguments do).  1 when argv[*i] was one of them (*i is
  * moved past its value).
  */
+#if defined(__vita__)
+/* POSIX's, which the Vita's newlib declares only outside strict C99 */
+int setenv(const char *name, const char *value, int overwrite);
+#endif
+
 static void boot_setenv(const char *name, const char *value)
 {
 #ifdef _WIN32
@@ -2739,6 +2744,84 @@ static int boot_launcher_arg(int argc, char **argv, int *i, int apply)
     return 0;
 }
 
+#if defined(__vita__)
+#include <sys/stat.h>
+
+/* VitaSDK's C library takes these from the program: the heap the game's
+ * malloc may use (the DS memory, the decoded assets, SDL) and the main
+ * thread's stack (the game's boot runs on it). */
+unsigned int _newlib_heap_size_user = 256u * 1024u * 1024u;
+unsigned int sceUserMainThreadStackSize = 4u * 1024u * 1024u;
+
+/* A Vita app has no command line: its arguments are made as the phones'
+ * are (host/main.c, mobile_args), from its folder ux0:data/eidos/:
+ *
+ *   extract/     the extracted game data (docs/installer.md)
+ *   profile/     settings and saves
+ *   args.txt     more arguments, one a line
+ *   env.txt      NAME=value lines for the environment (EIDOS_* switches)
+ *   stderr.txt   the program's messages
+ *
+ * and the one-screen layout on the Vita's screen (docs/consoles.md). */
+static char **vita_args(int *argc)
+{
+    static char *argv[64];
+    static char line[1024];
+    const char *dir = "ux0:data/eidos/";
+    char file[256];
+    int n = 0;
+    FILE *f;
+
+    mkdir("ux0:data/eidos", 0777);
+    mkdir("ux0:data/eidos/profile", 0777);
+    snprintf(file, sizeof file, "%sstderr.txt", dir);
+    (void)freopen(file, "w", stderr);
+    setvbuf(stderr, NULL, _IONBF, 0);
+    snprintf(file, sizeof file, "%sstdout.txt", dir);
+    (void)freopen(file, "w", stdout);
+    argv[n++] = "eidos";
+    argv[n++] = "--data-root";
+    argv[n++] = "ux0:data/eidos/extract";
+    argv[n++] = "--profile-dir";
+    argv[n++] = "ux0:data/eidos/profile";
+    argv[n++] = "--layout";
+    argv[n++] = "one";
+    argv[n++] = "--window";
+    setenv("EIDOS_TOUCH_DEVICE", "1", 1);
+    snprintf(file, sizeof file, "%senv.txt", dir);
+    if ((f = fopen(file, "r")) != NULL) {
+        while (fgets(line, sizeof line, f) != NULL) {
+            char *eq = strchr(line, '=');
+
+            line[strcspn(line, "\r\n")] = 0;
+            if (eq != NULL && line[0] != '#') {
+                *eq = 0;
+                setenv(line, eq + 1, 1);
+            }
+        }
+        fclose(f);
+    }
+    snprintf(file, sizeof file, "%sargs.txt", dir);
+    if ((f = fopen(file, "r")) != NULL) {
+        while (n < 63 && fgets(line, sizeof line, f) != NULL) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (line[0] != '\0' && line[0] != '#') {
+                char *a = (char *)malloc(strlen(line) + 1);
+
+                if (a != NULL) {
+                    strcpy(a, line);
+                    argv[n++] = a;
+                }
+            }
+        }
+        fclose(f);
+    }
+    argv[n] = NULL;
+    *argc = n;
+    return argv;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     const char *data_root = NULL;
@@ -2753,6 +2836,9 @@ int main(int argc, char **argv)
     static char setup_data[BW_SETUP_PATH_MAX];
 
     memset(&setup, 0, sizeof setup);
+#endif
+#if defined(__vita__)
+    argv = vita_args(&argc);
 #endif
 
 #if EIDOS_BOOT

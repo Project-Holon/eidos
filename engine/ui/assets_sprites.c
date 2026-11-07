@@ -310,7 +310,11 @@ static int nanr_sequence(const u8 *d, u32 size, const char *name, u16 *cells, in
     }
     names = d + lbody + nseq * 4;
     for (i = 0; i < nseq; i++) {
-        size_t l = strnlen((const char *)names, (size_t)(d + lbody + lsize - names));
+        size_t room = (size_t)(d + lbody + lsize - names), l = 0;
+
+        while (l < room && names[l] != 0) {
+            l++;                        /* strnlen, which C99 lacks */
+        }
 
         if (strcmp((const char *)names, name) == 0) {
             idx = (int)i;

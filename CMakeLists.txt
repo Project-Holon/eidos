@@ -348,11 +348,25 @@ else()
     # is one of them: it reads a file's size through fstat, and a struct
     # stat laid out the DS way puts st_size four bytes off the one the
     # runtime wrote (a 256 MiB cartridge read as 2^60 bytes).
-    if((WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4) OR CMAKE_SYSTEM_NAME STREQUAL "WASI")
+    # The Vita's ARM EABI aligns them to 8 too and is handled as wasm32 is.
+    set(_eidos_pack4 OFF)
+    if(CMAKE_SYSTEM_NAME STREQUAL "WASI" OR VITA)
+        set(_eidos_pack4 ON)
+    endif()
+    if((WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4) OR _eidos_pack4)
         # (the wasm32 build has no such flag: sdk/wasm_layout.h does it)
-        if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+        if(_eidos_pack4)
             add_compile_options("SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/sdk/wasm_layout.h"
                                 -Wno-pragma-pack)
+            if(VITA)
+                # The Vita's compiler sizes an enum to its values (1 byte
+                # for most); the DS's makes every enum 4 bytes, and the
+                # game's records (some read straight from its files) hold
+                # them.  The files that talk to SDL3 and the C library keep
+                # the system's own size below, as its libraries were built.
+                add_compile_options(-fno-short-enums)
+                add_link_options("LINKER:--no-enum-size-warning")
+            endif()
         else()
             add_compile_options(-mno-align-double)
         endif()
@@ -371,9 +385,13 @@ else()
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_picker.c
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings.c
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_wizard.c)
-        if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+        if(_eidos_pack4)
             set_property(SOURCE ${_eidos_native_align} APPEND PROPERTY
                 COMPILE_DEFINITIONS BW_WASM_NATIVE_LAYOUT=1)
+            if(VITA)
+                set_property(SOURCE ${_eidos_native_align} APPEND PROPERTY
+                    COMPILE_OPTIONS -fshort-enums)
+            endif()
             # the port's own sources (not the game's): sdk/wasm_layout.h
             # keeps the C library's structs natural for them
             file(GLOB_RECURSE _eidos_port_sources
@@ -1160,6 +1178,13 @@ if(EIDOS_SDL_FOUND)
         target_link_libraries(eidos_platform PUBLIC opengl32)
     elseif(APPLE)
         target_link_libraries(eidos_platform PUBLIC "-framework OpenGL")
+    elseif(VITA)
+        # vitaGL: OpenGL on the Vita's GXM, with its shader compiler
+        # (SceShaccCg, which the player's Vita provides; docs/consoles.md)
+        target_link_libraries(eidos_platform PUBLIC vitaGL vitashark SceShaccCgExt
+            mathneon taihen_stub SceShaccCg_stub SceKernelDmacMgr_stub SceGxm_stub
+            SceDisplay_stub SceAppMgr_stub SceCommonDialog_stub SceIme_stub
+            SceSysmodule_stub SceLibKernel_stub SceSblSsMgr_stub stdc++ m)
     else()
         target_link_libraries(eidos_platform PUBLIC GL)
     endif()
@@ -2860,6 +2885,18 @@ option(EIDOS_BOOT
 
 add_executable(eidos_boot ${CMAKE_CURRENT_SOURCE_DIR}/demo/eidos_boot.c)
 target_include_directories(eidos_boot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform)
+if(VITA)
+    # sdk/plat_crash.c catches calls to DS code addresses through kubridge
+    target_link_libraries(eidos PUBLIC kubridge_stub)
+    # VitaSDK's libdl (the native mod loader's dlsym, and SDL3's) needs the
+    # hash call of SceSblSsMgr, after it: the line's very end
+    set(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_C_STANDARD_LIBRARIES} -lSceSblSsMgr_stub")
+    # the Vita's package: the signed program (eboot.bin) and the .vpk the
+    # system (or Vita3K) installs (docs/consoles.md)
+    include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
+    vita_create_self(eidos_boot.self eidos_boot UNSAFE)
+    vita_create_vpk(eidos.vpk EIDS00001 eidos_boot.self VERSION 01.00 NAME "eidos")
+endif()
 target_link_libraries(eidos_boot PRIVATE eidos)
 # SDL3.dll has to sit next to the program on Windows (as for eidos_view)
 if(EIDOS_SDL_RUNTIME)
