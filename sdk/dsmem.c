@@ -977,6 +977,13 @@ void *bw_ds_try_ptr(u32 addr)
  * miscalling the function.  The size check states the ILP32 assumption
  * the declaration relies on in words a diagnostic can show.
  */
+int bw_ds_game_ptr(const void *p)
+{
+    uintptr_t a = (uintptr_t)p, base = (uintptr_t)g_main;
+
+    return g_main != NULL && a >= base && a - base < 0x00400000u;
+}
+
 void *bw_ds_ptr(unsigned int addr);
 typedef char bw_u32_is_unsigned_int[(sizeof(u32) == sizeof(unsigned int)
                                      && (u32)-1 == (unsigned int)-1) ? 1 : -1];
@@ -1020,7 +1027,9 @@ void *bw_ds_ptr(u32 addr)
      * translates what it is given.  The Vita's memory starts at 0x81000000,
      * so its pointers never meet a DS address; 32-bit Windows, where they
      * can, keeps identity mapping (docs/consoles.md, "The Vita build"). */
-    if (p == NULL && g_identity != 1) {
+    if (p == NULL && (g_identity != 1 || addr < 0x01FF8000u || addr >= 0x08000000u)) {
+        /* (identity mapping reserves the DS's ranges, so there a value
+         * outside them is a host pointer too) */
         return (void *)(uintptr_t)addr;
     }
     if (p == NULL) {

@@ -86,6 +86,11 @@ int bw_ovl_resident_at(u32 addr);
  */
 BwDataFn bw_ovl_code_entry(u32 value);
 
+/* Whether any compiled overlay has a function at `value` (its Thumb bit
+ * ignored), resident or not: the movable-memory data scan (sdk/armdata.c)
+ * leaves such a word as the DS code address it is. */
+int bw_ovl_is_code_entry(u32 value);
+
 /*
  * Put the hooks in the overlays' own stored code pointers again.
  *

@@ -40,6 +40,7 @@
 #include "ui.h"
 #include "kit.h"
 #include "ui_lang.h"
+#include "dsmem.h"
 #include "assets.h"
 #include "input.h"
 #include "textbox.h"
@@ -1467,7 +1468,7 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         /* the game's own bar: ten pieces light as the write advances
          * (ReportWork barPiecesLit 0x124); the fill eases toward it */
         void *rw = rdp(s.sub, 0x20);
-        int lit = ((uintptr_t)rw >= 0x02000000u && (uintptr_t)rw < 0x02400000u) ? (int)rd16(rw, 0x124) : 0;
+        int lit = bw_ds_game_ptr(rw) ? (int)rd16(rw, 0x124) : 0;
         int goal;
 
         /* the game lights ten pieces for twice the data a save writes, so
@@ -1597,9 +1598,7 @@ typedef struct CardInfo {
  * card's structs hold. */
 static int plausible(const void *p)
 {
-    uintptr_t a = (uintptr_t)p;
-
-    return a >= 0x02000000u && a < 0x02400000u && (a & 3u) == 0u;
+    return bw_ds_game_ptr(p) && ((uintptr_t)p & 3u) == 0u;
 }
 
 static int card_read(CardInfo *ci)
@@ -5624,9 +5623,7 @@ static const EidosUiRecipe recipe_union_trade = {
  * the proc on top. */
 static int ds_main_ptr(const void *p)
 {
-    uintptr_t a = (uintptr_t)p;
-
-    return a >= 0x02000000u && a < 0x02400000u;
+    return bw_ds_game_ptr(p);
 }
 
 static int vs_match(void)

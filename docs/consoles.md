@@ -141,6 +141,27 @@ the build is this project's CMake with `vita.toolchain.cmake`, packaged by
   time (G2x_SetBGyAffine_ writing 0x04000020 from ov179's opening) rather
   than as a literal `tools/dsaddr.py` rewrites.  Identity mapping makes
   those real; here each is a fault, so the rest of this mode is that class.
+- **Identity mapping is impossible on the hardware.**  VitaSDK's kernel
+  headers (`psp2kern/kernel/sysmem/data_transfers.h`): 0x40000000 and up
+  is all of userland, everything below the kernel's, and every DS address
+  lies below.  So the Vita runs movable blocks, in two layers:
+  1. **Proven at build time** (fast, no system dependency): the data
+     scan above; `tools/dsaddr.py`'s CALLEES now matched by their
+     `src/game` names too (G2x_SetBGyAffine_ and the blend functions had
+     been skipped); `bw_ds_game_ptr` for the interface's "is this a game
+     pointer" checks (they compared against 0x02000000..0x02400000).
+     With these, Win32 with `BW_DS_IDENTITY=0` plays the opening, the
+     title, the field and a trainer battle in the one-screen layout.
+  2. **Caught at run time**: kubridge's data-abort handler performs a
+     faulting load or store on `bw_ds_ptr`'s byte and goes on, logging
+     each site once (to move a frequent one into layer 1).  This is what
+     covers a pointer from one overlay into another that the listing does
+     not annotate: ov021's weather kinds point into the weather overlays
+     (0x021EE8C2), and scanning overlay data for such words is not safe,
+     since their tables hold packed numbers in the same range (ov088's
+     0x02010502).  Vita3K dispatches data aborts, so this is testable
+     there; calls through code addresses (prefetch aborts, which Vita3K
+     does not dispatch) get fixed at their call sites.
 
 ## Measurements
 

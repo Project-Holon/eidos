@@ -625,6 +625,38 @@ int bw_ovl_resident_at(u32 addr)
     return -1;
 }
 
+int bw_ovl_is_code_entry(u32 value)
+{
+    u32 key = value & ~1u;
+    u32 i;
+
+    if (g_set == NULL) {
+        return 0;
+    }
+    for (i = 0; i < g_set->count; i++) {
+        const BwOvlImage *o = g_set->images[i];
+        u32 lo = 0, hi;
+
+        if (o == NULL || o->entries == NULL) {
+            continue;
+        }
+        hi = o->entry_count;
+        while (lo < hi) {
+            u32 mid = lo + (hi - lo) / 2u;
+
+            if ((o->entries[mid].addr & ~1u) < key) {
+                lo = mid + 1u;
+            } else {
+                hi = mid;
+            }
+        }
+        if (lo < o->entry_count && (o->entries[lo].addr & ~1u) == key) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 BwDataFn bw_ovl_code_entry(u32 value)
 {
     BwDataFn found = NULL;

@@ -862,8 +862,11 @@ def analyse(src: str):
         else:
             mixed.extend(ds_args)
 
-    # 4. Functions in CALLEES: casts of their address parameters.
-    for name, ent in CALLEES.items():
+    # 4. Functions in CALLEES: casts of their address parameters.  A
+    # definition may carry the entry's address name (src/matched) or one of
+    # its aliases (aletheia's src/game names the SDK functions).
+    named = [(n, e) for k, e in CALLEES.items() for n in (k,) + tuple(e["aliases"])]
+    for name, ent in named:
         for u in re.finditer(r"\b%s\s*\(" % re.escape(name), m):
             open_ = u.end() - 1
             close = _match_fwd(m, open_)

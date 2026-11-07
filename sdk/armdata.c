@@ -353,12 +353,18 @@ static u32 scan_code_pointers(const BwDataImage *img)
 {
     u32 n = 0;
     u32 s, k;
+    const BwDataRange *scan = img->scan;
+    u32 scan_count = img->scan_count;
 
-    if (img->scan == NULL || img->func_count == 0) {
+    /* Overlays are not scanned: their data holds packed numbers in main
+     * RAM's range (ov088's 0x02010502), and a pointer from one overlay into
+     * another the listing does not annotate (ov021's weather kinds) is
+     * caught when it is used instead (docs/consoles.md, "The Vita build"). */
+    if (img->overlay >= 0 || scan == NULL || img->func_count == 0) {
         return 0;
     }
-    for (s = 0; s < img->scan_count; s++) {
-        const BwDataRange *sr = &img->scan[s];
+    for (s = 0; s < scan_count; s++) {
+        const BwDataRange *sr = &scan[s];
         for (k = 0; k < img->range_count; k++) {
             const BwDataRange *r = &img->ranges[k];
             u32 lo, hi, a;
@@ -396,8 +402,14 @@ static u32 scan_code_pointers(const BwDataImage *img)
                      * address as it stands; here main RAM is one host
                      * block, so it becomes that block's byte, as a listed
                      * one does (docs/armdata.md). */
+                    /* A function's entry stays the DS code address it is
+                     * (a call through it is redirected, not jumped into
+                     * the copied ARM bytes): an overlay's data names
+                     * functions of overlays not loaded yet. */
                     if (!bw_ds_identity() && value >= BW_DS_MAIN_BASE &&
-                        value - BW_DS_MAIN_BASE < BW_DS_MAIN_SIZE) {
+                        value - BW_DS_MAIN_BASE < BW_DS_MAIN_SIZE &&
+                        !bw_ovl_is_code_entry(value) &&
+                        func_at(img, value ^ 1u) < 0) {
                         void *h = bw_ds_try_ptr(value);
 
                         if (h != NULL) {
@@ -674,7 +686,13 @@ int bw_data_relocate(const BwDataImage *img)
             remember_code_word(w, word, &img->funcs[r->index]);
         }
     }
-    g_scanned = scan_code_pointers(img);
+    {
+        u32 n = scan_code_pointers(img);
+
+        if (img->overlay < 0) {
+            g_scanned = n;              /* the ARM9's count, which the boot prints */
+        }
+    }
     return BW_DATA_OK;
 }
 

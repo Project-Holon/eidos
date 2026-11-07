@@ -105,13 +105,11 @@ static u8 *rdp(const u8 *p, u32 off)
     return (u8 *)(uintptr_t)rd32(p, off);
 }
 
-/* A game pointer: inside the game's main RAM (the DS address space is
- * identity mapped in the port, so a game pointer is a host pointer). */
+/* A game pointer: inside the game's main RAM, wherever the host keeps it
+ * (sdk/dsmem.h, bw_ds_game_ptr). */
 static int gptr_ok(const void *p)
 {
-    uintptr_t a = (uintptr_t)p;
-
-    return a >= 0x02000000u && a < 0x02400000u && (a & 3u) == 0;
+    return bw_ds_game_ptr(p) && ((uintptr_t)p & 3u) == 0;
 }
 
 static int g_debug = -1;

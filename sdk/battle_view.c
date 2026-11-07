@@ -202,7 +202,7 @@ static int g_log = -1;
 
 static int gptr_ok(uintptr_t a)
 {
-    return a >= 0x02000000u && a < 0x02400000u && (a & 3u) == 0;
+    return bw_ds_game_ptr((const void *)a) && (a & 3u) == 0;
 }
 
 static uint32_t rd32(uintptr_t base, uint32_t off)

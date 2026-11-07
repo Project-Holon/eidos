@@ -54,6 +54,12 @@ void *bw_ds_ptr(u32 addr);
 /* As bw_ds_ptr, but returns NULL instead of panicking (for probes). */
 void *bw_ds_try_ptr(u32 addr);
 
+/* Whether `p` points into the game's main RAM as the NTR sees it (its first
+ * 4 MiB), wherever the host keeps it: at 0x02000000 with identity mapping,
+ * in a movable host block otherwise (the Vita).  A game pointer read out of
+ * the game's records passes; a stray number does not. */
+int bw_ds_game_ptr(const void *p);
+
 /*
  * The reverse, for the few places the game stores an address as a number
  * and later reads through it: the DS address of a host pointer that lies in

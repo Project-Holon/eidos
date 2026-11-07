@@ -25,6 +25,7 @@
 #include "ui.h"
 #include "kit.h"
 #include "ui_lang.h"
+#include "dsmem.h"
 #include "input.h"
 #include "overlay.h"
 
@@ -163,13 +164,11 @@ static void units_to_utf8(const u16 *u, char *out, int max)
 
 #define SCRIPT_WORK_MAGIC 0x3643Fu
 
-/* A DS main memory address (the DS address space is identity-mapped): the
- * words read on the way are not always pointers. */
+/* A pointer into the game's main memory, wherever the host keeps it
+ * (sdk/dsmem.h): the words read on the way are not always pointers. */
 static int ds_ptr(const void *p)
 {
-    uintptr_t a = (uintptr_t)p;
-
-    return a >= 0x02000000u && a < 0x02400000u;
+    return bw_ds_game_ptr(p);
 }
 
 static int g_log;
