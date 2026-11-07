@@ -12,6 +12,7 @@
 #include "mod_net.h"
 #include "mod_title.h"
 #include "mp.h"
+#include "ui_lang.h"            /* labels joined with a value are translated in parts */
 
 /*
  * The port's own network settings (engine/platform/settings.c): the
@@ -308,7 +309,6 @@ static const ValueName k_choice_names[] = {
 #define STR_MOD_REVERT  "Revert changes"
 #define STR_MOD_RELOAD  "Reload mods"
 #define STR_MOD_FOLDER  "Mods folder"
-#define STR_MOD_MISSING " (missing)"
 #define STR_ORPHAN      "orphan"
 #define STR_NET_RELAY   "Relay address"
 #define STR_NET_RPORT   "Relay port"
@@ -2308,8 +2308,8 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         if (bw_mod_menu_present_at((u32)r->arg)) {
             put(label, nl, bw_mod_menu_name_at((u32)r->arg));
         } else {
-            snprintf(buf, sizeof buf, "%s%s", bw_mod_menu_name_at((u32)r->arg),
-                     STR_MOD_MISSING);
+            snprintf(buf, sizeof buf, ui_trf("%s (missing)"),
+                     bw_mod_menu_name_at((u32)r->arg));
             put(label, nl, buf);
         }
         put(value, nv, bw_mod_menu_enabled_at((u32)r->arg) ? STR_ON : STR_OFF);
@@ -2412,7 +2412,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         put(label, nl, STR_SESSION_CODE);
         if (g_copied) {
             snprintf(buf, sizeof buf, "%s  %s", net_text(eidos_settings_session_code()),
-                     STR_COPIED);
+                     ui_tr(STR_COPIED));
             put(value, nv, buf);
         } else {
             put(value, nv, net_text(eidos_settings_session_code()));
@@ -2478,9 +2478,9 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         (void)bw_mp_player_at((u32)r->arg2, &p);
         put(label, nl, p.name[0] != '\0' ? p.name : STR_SESSION_PEER);
         snprintf(buf, sizeof buf, "#%u %s%s", (unsigned int)p.peer,
-                 !p.connected ? STR_MP_MISSING :
-                 p.game == 'W' ? "White" : p.game == 'B' ? "Black" : "...",
-                 p.connected && p.game != 0 && !p.mods_ok ? STR_MP_MODS : "");
+                 !p.connected ? ui_tr(STR_MP_MISSING) :
+                 p.game == 'W' ? ui_tr("White") : p.game == 'B' ? ui_tr("Black") : "...",
+                 p.connected && p.game != 0 && !p.mods_ok ? ui_tr(STR_MP_MODS) : "");
         put(value, nv, buf);
         break;
     }

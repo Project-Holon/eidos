@@ -1726,8 +1726,9 @@ static void boot_run_restart(void);
 
 #if EIDOS_BOOT_SDL
 /* One line of the port's bitmap font into an RGBA screen of 256n x 192n,
- * centred, at row `y` of the DS screen, in white. */
-static void hold_text(u8 *rgba, u32 n, int y, const char *text)
+ * centred, at row `y` of the DS screen, in white (ASCII only: the game's
+ * font is not open yet). */
+static void hold_text_bitmap(u8 *rgba, u32 n, int y, const char *text)
 {
     const char *s = text;
     int len = 0;
@@ -1772,6 +1773,52 @@ static void hold_text(u8 *rgba, u32 n, int y, const char *text)
         x0 += EIDOS_FONT_ADVANCE;
         if (x0 > 256 - EIDOS_FONT_ADVANCE) {
             break;
+        }
+    }
+}
+
+/* One line in the game's font (the interface's, so a translation's own
+ * letters show), centred at row `y` of the DS screen, in white. */
+static void hold_text(u8 *rgba, u32 n, int y, const char *text)
+{
+    static EidosUiCanvas canvas;
+    EidosUiCtx c;
+    int w = ui_text_w(text, UI_FONT_SMALL);
+    int x, yy;
+
+    if (w <= 0) {
+        hold_text_bitmap(rgba, n, y, text);
+        return;
+    }
+    ui_begin(&c, &canvas, 256, 16, 1);
+    if (canvas.rgba == NULL || canvas.w != 256) {
+        hold_text_bitmap(rgba, n, y, text);
+        return;
+    }
+    x = w < 252 ? (256 - w) / 2 : 2;
+    (void)ui_text(&c, x, 2, text, 0xFFFFFFu, 0x404040, UI_FONT_SMALL, 1);
+    for (yy = 0; yy < 16; yy++) {
+        for (x = 0; x < 256; x++) {
+            const u8 *s = canvas.rgba + ((size_t)yy * 256u + (size_t)x) * 4u;
+            u32 px, py;
+
+            if (s[3] == 0) {
+                continue;
+            }
+            for (py = 0; py < n; py++) {
+                int Y = (y - 2 + yy) * (int)n + (int)py;
+                u8 *d;
+
+                if (Y < 0 || Y >= 192 * (int)n) {
+                    continue;
+                }
+                d = rgba + ((size_t)Y * 256u * n + (size_t)x * n) * 4u;
+                for (px = 0; px < n; px++, d += 4) {
+                    d[0] = s[0];
+                    d[1] = s[1];
+                    d[2] = s[2];
+                }
+            }
         }
     }
 }
@@ -1845,12 +1892,12 @@ static void boot_mp_hold(BootRun *run)
                 /* the code again, in case the players forgot it */
                 char code_line[64];
 
-                snprintf(code_line, sizeof code_line, "Code: %s", bw_mp_code());
+                snprintf(code_line, sizeof code_line, ui_trf("Code: %s"), bw_mp_code());
                 /* a host whose relay restarted shows its new code */
                 hold_draw(work, top, n, bw_mp_wait_text(),
-                          !bw_mp_is_host() ? "The host starts the game." :
-                          strncmp(bw_mp_end_reason(), "the relay", 9) == 0
-                          ? bw_mp_end_reason() : code_line);
+                          !bw_mp_is_host() ? ui_tr("The host starts the game.") :
+                          bw_mp_relay_restarted()
+                          ? ui_tr(bw_mp_end_reason()) : code_line);
                 memcpy(run->hi_top, work, bytes);
                 /* the bottom screen only dims: the text is on the top one,
                  * and the title's Multiplayer screen, when it is the one

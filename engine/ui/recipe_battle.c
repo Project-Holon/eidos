@@ -2333,7 +2333,7 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         char mname[40];
 
         if (!move_name((int)((raw >> 7) & 0xFFFFu), mname, sizeof(mname))) {
-            snprintf(mname, sizeof(mname), "the move");
+            snprintf(mname, sizeof(mname), "%s", ui_tr("the move"));
         }
         snprintf(prompt_buf, sizeof(prompt_buf), ui_trf("Use %s on which?"), mname);
     }

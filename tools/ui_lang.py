@@ -170,10 +170,44 @@ def screen_labels():
     return found
 
 
+# The settings screen (engine/platform/settings_ui.c) keeps its labels in
+# #define lines and tables by option id; recipe_settings.c draws them with
+# ui_text, so every one is translated as drawn.
+SETTINGS_UI = os.path.join(HERE, '..', 'engine', 'platform', 'settings_ui.c')
+SETTINGS_LINE = re.compile(r'#define\s+(?:STR|HELP)_\w+\s|\[EIDOS_OPT_\w+\]\s*=|'
+                           r'\{\s*EIDOS_OPT_\w+\s*,\s*\d+\s*,')
+
+
+def settings_labels():
+    found = set()
+    in_tabs = False
+    for line in open(SETTINGS_UI, encoding='utf-8', errors='replace'):
+        if 'k_tab_names[]' in line:
+            in_tabs = True
+        if in_tabs or SETTINGS_LINE.search(line):
+            for m in LIT.finditer(line):
+                text = c_unescape(m.group(1)).strip()
+                if re.search(r'[A-Za-z]{2}', text) and '%' not in text:
+                    found.add(text)
+        if in_tabs and '};' in line:
+            in_tabs = False
+    return found
+
+
+# The multiplayer layer's fixed reasons (sdk/mp.c keeps them in English, it
+# compares them) and the relay's words for an ended session (metaxy's error
+# reasons a player can meet): drawn whole, so translated as drawn.
+MP_REASON = re.compile(r'g_mp\.reason,\s*sizeof\(g_mp\.reason\),\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)')
+RELAY_WORDS = ('lost', 'removed', 'full', 'unknown-code', 'too-slow')
+
+
 def source_labels():
     """Every literal label the interface passes through its translation."""
-    found = screen_labels()
-    for folder in ('engine/ui', 'engine/platform', 'sdk'):
+    found = screen_labels() | settings_labels() | set(RELAY_WORDS)
+    mp = open(os.path.join(HERE, '..', 'sdk', 'mp.c'), encoding='utf-8').read()
+    for m in MP_REASON.finditer(mp):
+        found.add(c_unescape(''.join(LIT.findall(m.group(1)))))
+    for folder in ('engine/ui', 'engine/platform', 'sdk', 'demo'):
         for path in sorted(glob.glob(os.path.join(HERE, '..', folder, '*.c'))):
             src = open(path, encoding='utf-8', errors='replace').read()
             for m in CALLS.finditer(src):

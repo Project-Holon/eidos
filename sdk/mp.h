@@ -144,6 +144,9 @@ const char *bw_mp_code(void);
 /* Why the session ended (BW_MP_ENDED), or why the code changed. */
 const char *bw_mp_end_reason(void);
 
+/* Whether the reason is the relay's (it restarted, or cannot be reached). */
+int bw_mp_relay_restarted(void);
+
 /* The players, in peer order (the host first). */
 u32  bw_mp_player_count(void);
 int  bw_mp_player_at(u32 index, BwMpPlayer *out);
