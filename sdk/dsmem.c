@@ -1014,6 +1014,15 @@ void *bw_ds_ptr(u32 addr)
             return sink + (addr & (SINK - 1u));
         }
     }
+    /* Movable blocks (the Vita, BW_DS_IDENTITY=0): a value no DS memory
+     * backs is the host address of its bytes already, a pointer the port
+     * made (the data scan, sdk/armdata.c) and handed to code that
+     * translates what it is given.  The Vita's memory starts at 0x81000000,
+     * so its pointers never meet a DS address; 32-bit Windows, where they
+     * can, keeps identity mapping (docs/consoles.md, "The Vita build"). */
+    if (p == NULL && g_identity != 1) {
+        return (void *)(uintptr_t)addr;
+    }
     if (p == NULL) {
         const char *why = "address outside every backed DS region";
         if (addr >> 24 == BW_DS_VRAM_BASE >> 24) {

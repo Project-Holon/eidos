@@ -130,10 +130,17 @@ the build is this project's CMake with `vita.toolchain.cmake`, packaged by
   list stays a DS address in the data (the save table's pointer at
   `_MainSaveDesc`, read by SAVEDATA_BuildLayout, is the first one met), and
   Win32 with `BW_DS_IDENTITY=0` stops even earlier on a host address handed
-  to `bw_ds_ptr`.  On the Vita no host address falls in the DS's ranges, so
-  the mode can be completed there: data images scanned for DS data
-  addresses as they are for code ones, and `bw_ds_ptr` passing a host
-  address through.
+  to `bw_ds_ptr`.  Done so far (2026-11-07), testable on Win32 with
+  `BW_DS_IDENTITY=0`: the data scan (sdk/armdata.c) also turns every main
+  RAM address in the data ranges into its host byte (374 words in the
+  ARM9 image), `bw_ds_ptr` hands back a value no DS memory backs as the
+  host pointer it already is, and the archive opener (sdk/fs.c) takes a
+  converted table entry as the string.  The boot, the save system and the
+  title's overlays now run, to frame 348 of the opening.  The next stop is
+  of another kind: SDK code that builds an I/O register's address at run
+  time (G2x_SetBGyAffine_ writing 0x04000020 from ov179's opening) rather
+  than as a literal `tools/dsaddr.py` rewrites.  Identity mapping makes
+  those real; here each is a fault, so the rest of this mode is that class.
 
 ## Measurements
 

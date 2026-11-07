@@ -389,6 +389,23 @@ static u32 scan_code_pointers(const BwDataImage *img)
                     fn = bw_ovl_code_entry(value);
                 }
                 if (fn == NULL) {
+                    /* Movable blocks (the Vita, BW_DS_IDENTITY=0): a word
+                     * holding a main RAM address is a data pointer the
+                     * metadata does not list (the save table's, in
+                     * _MainSaveDesc).  Identity mapping makes it the host
+                     * address as it stands; here main RAM is one host
+                     * block, so it becomes that block's byte, as a listed
+                     * one does (docs/armdata.md). */
+                    if (!bw_ds_identity() && value >= BW_DS_MAIN_BASE &&
+                        value - BW_DS_MAIN_BASE < BW_DS_MAIN_SIZE) {
+                        void *h = bw_ds_try_ptr(value);
+
+                        if (h != NULL) {
+                            word = (u32)(uintptr_t)h;
+                            memcpy(w, &word, 4);
+                            n++;
+                        }
+                    }
                     continue;
                 }
                 word = (u32)(uintptr_t)fn;

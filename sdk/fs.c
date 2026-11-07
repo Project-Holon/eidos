@@ -62,6 +62,7 @@
 #include <string.h>
 
 #include "port.h"
+#include "dsmem.h"
 #include "fs.h"
 #include "vfs.h"
 
@@ -964,6 +965,13 @@ u32 CRYPTOi__BN_lshift1(void *file, u32 path_address)
     u32 i;
 
     FS_InitFile(file);
+    if (!bw_ds_identity() && (path_address < BW_DS_MAIN_BASE ||
+                              path_address - BW_DS_MAIN_BASE >= BW_DS_MAIN_SIZE)) {
+        /* Movable blocks (the Vita, BW_DS_IDENTITY=0): the data scan
+         * (sdk/armdata.c) has made the table's DS addresses host ones
+         * already, so the entry is the string itself */
+        return FS_OpenFile(file, (const char *)(uintptr_t)path_address) ? 1u : 0u;
+    }
     for (i = 0; i < BW_FS_PATH_MAX; i++) {
         s = (const char *)bw_arm9_rodata(path_address + i, 1);
         if (s == NULL) {
