@@ -1,6 +1,7 @@
 # Consoles: the Switch and the Vita
 
-Status: groundwork (2026-11-07). Neither console builds yet. This page holds
+Status (2026-11-07): the Switch program builds (`eidos.nro`) and has not
+run yet; the Vita has not started. This page holds
 the plan, what is ready, and the measurements that decide the route. The
 research behind it (sources, prior art, open questions) is in the project's
 research notes; the facts that matter are repeated here.
@@ -25,11 +26,11 @@ What a console changes:
 - **Graphics.** The Switch has OpenGL 4.3 through devkitPro's Mesa
   (nouveau): the OpenGL backend as it is. The Vita has a GLES2-class GPU
   (vitaGL): the 2D presenter fits, the 3D path needs a cut-down backend.
-- **The host layer.** Files, threads (fibers: host/fiber.c already has the
-  AArch64 stack switch), sockets (left out at first), audio and input go
-  through libnx or VitaSDK; SDL2 is the packaged SDL on both (devkitPro
-  `switch-sdl2`, VitaSDK), so the host needs an SDL2 shim for the SDL3
-  calls it makes, or a community SDL3 build.
+- **The host layer.** Files, threads (fibers: host/fiber.c's AArch64 stack
+  switch), sockets, audio and input go through libnx or VitaSDK.  SDL2 is
+  the packaged SDL on both (devkitPro `switch-sdl2`, VitaSDK); SDL3's own
+  Switch port exists but only for licensed developers.  So the host keeps
+  its SDL3 calls and a layer answers them with SDL2 (host/switch/, below).
 - **Left out at first:** the launcher, mods (WAMR), multiplayer (mbedtls),
   the crash handler. The ROM is extracted on a PC (or on the console) and
   the data folder copied to the SD card.
@@ -40,10 +41,10 @@ What a console changes:
 
 They install inside the Ubuntu WSL distribution, so Windows stays clean.
 
-- Switch: devkitPro's pacman, then devkitA64, libnx and the portlibs
-  (`switch-dev switch-sdl2 switch-mesa switch-zlib`). The script is
-  `E:\dev\ports\setup_switch_wsl.sh` (run in WSL as root). It downloads and
-  runs devkitPro's own installer, so it waits for the owner's go.
+- Switch: devkitPro's Docker image `devkitpro/devkita64` (devkitA64 15.2,
+  libnx 4.12, SDL2 2.28.5, Mesa 20.1 with EGL and GLES, glad).  devkitPro's
+  package servers refuse command-line downloads, so the image is the way
+  in; it runs under Docker inside the Ubuntu WSL distribution.
 - Vita: VitaSDK (`vdpm`), the same way, once the Switch build runs.
 - Testing: an emulator first (Ryujinx's maintained fork for the Switch;
   Vita3K for the Vita), then the owner's modded Switch.
@@ -52,14 +53,43 @@ They install inside the Ubuntu WSL distribution, so Windows stays clean.
 
 1. Measure the bounds-checked build on a desktop. Done for Windows x64;
    numbers below.
-2. Toolchain in WSL (waits for the go above).
-3. Compile the wasm2c output and the runtime with devkitA64 (no SDL yet):
-   proves the game's code builds for the Switch.
-4. Host layer for libnx with SDL2: window, OpenGL (Mesa), audio, input,
-   files under `sdmc:/switch/eidos/`. Package an `.nro`.
+2. Toolchain. Done (the Docker image above).
+3. Compile the wasm2c output and the runtime with devkitA64. Done: the 96
+   files of the game compile with no error or warning (39 MB of code).
+4. Host layer for libnx with SDL2, packaged as an `.nro`. Done, not run
+   yet: `host/switch/build.sh` (below).
 5. Run in the emulator, then on the console; measure; tune (workers: 3,
    internal resolution 1x).
 6. The Vita after that, with the GLES2 presenter first.
+
+## The Switch build
+
+`host/switch/build.sh <host build dir> <wabt source> <SDL3 include dir>
+<out dir>`, in devkitPro's image, makes `eidos.nro` from a 64-bit host
+build made with `EIDOS_HOST_BOUNDS_CHECKS=ON` (its `game_*.c`, `game.h`
+and `gl_imports.c`).  The pieces:
+
+- **The SDL3-on-SDL2 layer** (`host/switch/`).  `sdl3_on_sdl2.c` is built
+  with SDL3's headers and gives the host every SDL3 function it calls, in
+  SDL3's own types: an event is written in SDL3's layout, because
+  host/sdl.c copies its bytes to the game.  `sdl2_side.c` does the work
+  with SDL2.  Both libraries use the same names, so the build renames
+  SDL2's in a copy of its library (`S2_SDL_*`, about 1,170 names) and the
+  two files talk through `sw2.h` in plain C types.
+  `sdl3_gpu_stubs.c` (written by `gen_gpu_stubs.py` from SDL_gpu.h) makes
+  every GPU function fail, so the game finds no native renderer and draws
+  with OpenGL ES, as on any system where it cannot start.
+- **The host on the Switch.** It takes the phones' way (`HOST_MOBILE`):
+  the folder `sdmc:/switch/eidos/` holds `extract/` (the game data),
+  `profile/`, `args.txt`, `env.txt` and `stderr.txt`; OpenGL ES 3.0; the
+  one-screen layout.  The ROM for the first run is the first `.nds` file
+  in that folder (`host/pick_switch.c`).  Fibers use the AArch64 stack
+  switch with 4 MiB stacks, since Horizon commits heap memory when it is
+  allocated.  `host/switch/include/` covers what newlib lacks
+  (`sys/mman.h`, `sigsetjmp`); `timegm` is written out in host/main.c.
+- **Memory.** The game's memory is 512 MiB, taken at start.  That is more
+  than an applet (the Album) gets, so the program is started over a game
+  (holding R while starting one) for the full memory.
 
 ## Measurements
 

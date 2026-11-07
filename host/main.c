@@ -32,7 +32,9 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
-#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+/* The Switch takes the phones' way too: no command line, a folder of its
+ * own (sdmc:/switch/eidos/), OpenGL ES and one screen (docs/consoles.md). */
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE) || defined(__SWITCH__)
 #define HOST_MOBILE 1
 #include <SDL3/SDL_main.h>
 #include <fcntl.h>
@@ -160,7 +162,24 @@ u64 w2c_eidos_tz_offset(struct w2c_eidos *e, u64 t)
     if (localtime_r(&tt, &lt) == NULL) {
         return 0;
     }
+#if defined(__SWITCH__)
+    {
+        /* newlib has no timegm: the local fields counted as UTC by hand
+         * (days from 1970 by the civil calendar) */
+        long long y = lt.tm_year + 1900LL, m = lt.tm_mon + 1, era, yoe, doy, doe, days;
+
+        y -= m <= 2;
+        era = (y >= 0 ? y : y - 399) / 400;
+        yoe = y - era * 400;
+        doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + lt.tm_mday - 1;
+        doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        days = era * 146097 + doe - 719468;
+        return (u64)(days * 86400 + lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec
+                     - (long long)tt);
+    }
+#else
     return (u64)(long long)(timegm(&lt) - tt);
+#endif
 #endif
 }
 
@@ -445,7 +464,7 @@ static char **mobile_args(int *argc)
     /* a phone plays landscape only; an iPad turns both ways (the
      * one-screen layout fits a tall window, ios/Info.plist.in) */
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
-#if !defined(__ANDROID__)
+#if defined(__APPLE__)
     host_ios_view_setup();
     if (host_ios_is_pad()) {
         SDL_SetHint(SDL_HINT_ORIENTATIONS,

@@ -36,12 +36,19 @@
 
 #include "host.h"
 
-#if defined(__aarch64__) && (defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE))
+#if defined(__aarch64__) && (defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE) \
+                             || defined(__SWITCH__))
 #define HOST_FIBER_ASM 1
 #endif
 
 #define FIBERS_MAX   64
+#if defined(__SWITCH__)
+/* Horizon's heap is committed when allocated (no pages made on first
+ * touch), so each fiber's stack costs its whole size at once. */
+#define NATIVE_STACK (4u * 1024u * 1024u)
+#else
 #define NATIVE_STACK (16u * 1024u * 1024u)   /* reserved; committed as used */
+#endif
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN

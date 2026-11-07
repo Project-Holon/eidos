@@ -30,6 +30,7 @@ static int ns_would_block(void)
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
