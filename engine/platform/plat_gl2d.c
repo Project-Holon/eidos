@@ -336,6 +336,11 @@ static int gl2d_init(EidosGl *g)
     if (s->prog != 0 || s->failed) {
         return s->prog != 0 ? 0 : -1;
     }
+#if defined(__vita__)
+    /* vitaGL has no integer textures: the CPU composes the 2D there */
+    s->failed = 1;
+    return -1;
+#endif
     s->prog = eidos_gl_compile_program(g, k_vs2d, k_fs2d);
     if (s->prog == 0) {
         s->failed = 1;

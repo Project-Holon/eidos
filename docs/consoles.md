@@ -26,7 +26,8 @@ What a console changes:
   It builds and runs on a desktop, so its cost is measured here first.
 - **Graphics.** The Switch has OpenGL 4.3 through devkitPro's Mesa
   (nouveau): the OpenGL backend as it is. The Vita has a GLES2-class GPU
-  (vitaGL): the 2D presenter fits, the 3D path needs a cut-down backend.
+  (vitaGL): the presenter runs there (below); the GPU 2D and 3D paths
+  need integer textures, so the CPU draws the screens on the Vita.
 - **The host layer.** Files, threads (fibers: host/fiber.c's AArch64 stack
   switch), sockets, audio and input go through libnx or VitaSDK.  SDL2 is
   the packaged SDL on both (devkitPro `switch-sdl2`, VitaSDK); SDL3's own
@@ -61,7 +62,8 @@ They install inside the Ubuntu WSL distribution, so Windows stays clean.
    yet: `host/switch/build.sh` (below).
 5. Run in the emulator, then on the console; measure; tune (workers: 3,
    internal resolution 1x).
-6. The Vita after that, with the GLES2 presenter first.
+6. The Vita after that, with the GLES2 presenter first. Built (vitaGL,
+   below), not yet run.
 
 ## The Switch build
 
@@ -117,7 +119,24 @@ the build is this project's CMake with `vita.toolchain.cmake`, packaged by
   the system's own layout and enum size.
 - **The program's folder** is `ux0:data/eidos/` (extract/, profile/,
   args.txt, env.txt, stderr.txt), the ROM the first `.nds` file there; the
-  C heap is 256 MiB.
+  C heap is 160 MiB (with 256 MiB the GPU's memory did not fit).
+- **The presenter.** OpenGL through vitaGL when the player has extracted
+  the console's shader compiler (`ur0:data/libshacccg.suprx`, or
+  `ur0:data/external/`); it comes from the player's own firmware and is
+  never shipped.  Without it, SDL's renderer on GXM.  vitaGL takes OpenGL
+  ES 2.0's GLSL, so plat_gl.c rewrites each GLSL 3.30 shader before it
+  compiles (`vita_glsl`): in/out become attribute/varying, the output is
+  gl_FragColor, `texelFetch` reads the texel's centre, the quad's corner
+  is a vertex attribute instead of gl_VertexID, and `clamp` gets integer
+  forms.  The shaders compare vectors with `all(equal())` and
+  `any(notEqual())` on every system, since Cg compares a component at a
+  time.  Only the programs that show CPU-drawn screens are compiled there:
+  the screens, the panel, the blur and the interface canvas.  The
+  scene-change blend needs `glBlendColor`, which vitaGL lacks, so the
+  Vita cuts instead.  Built, not yet run (2026-11-07).
+- **First runs (Vita3K, 2026-11-07).** With SDL's renderer the opening and
+  the title play, as the two DS screens (that renderer has no one-screen
+  picture) at about 8 fps.
 - **Calls to DS code addresses** (a table in one overlay names a function
   of another, not yet loaded, overlay; 13 call sites seen on Win32) are
   caught by kubridge's prefetch-abort handler and sent to the function

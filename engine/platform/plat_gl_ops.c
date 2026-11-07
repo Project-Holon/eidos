@@ -82,8 +82,7 @@ static int op_read3d_1x(EidosGpu *g, const struct G3dSnapshot *snap, unsigned ch
  * more than it must for that) */
 static void op_set_vsync(EidosGpu *g, int on)
 {
-    (void)g;
-    SDL_GL_SetSwapInterval(on ? 1 : 0);
+    eidos_gl_set_vsync(gl(g), on);
 }
 
 static const EidosGpuOps g_gl_ops = {

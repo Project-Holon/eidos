@@ -12,6 +12,76 @@
 #include "plat_gl_int.h"
 #include "prof.h"
 
+#if defined(__vita__)
+#include <stdint.h>
+/* vitaGL (VitaSDK): its own header would declare the GL calls a second
+ * time beside SDL_opengl.h, so the few calls used here are declared. */
+GLboolean vglInitExtended(int legacy_pool_size, int width, int height, int ram_threshold,
+                          int msaa);
+void *vglGetProcAddress(const char *name);
+void vglSwapBuffers(GLboolean has_commondialog);
+void vglWaitVblankStart(GLboolean enable);
+void glBindAttribLocation(GLuint program, GLuint index, const GLchar *name);
+
+static int g_vita_vsync;
+#endif
+
+void eidos_gl_set_vsync(EidosGl *g, int on)
+{
+    (void)g;
+#if defined(__vita__)
+    g_vita_vsync = on != 0;
+    vglWaitVblankStart(on ? GL_TRUE : GL_FALSE);
+#else
+    SDL_GL_SetSwapInterval(on ? 1 : 0);
+#endif
+}
+
+static int gl_vsync_on(void)
+{
+#if defined(__vita__)
+    return g_vita_vsync;
+#else
+    int interval = 0;
+
+    return SDL_GL_GetSwapInterval(&interval) && interval != 0;
+#endif
+}
+
+void eidos_gl_make_current(EidosGl *g)
+{
+#if defined(__vita__)
+    (void)g;
+#else
+    SDL_GL_MakeCurrent(g->window, g->ctx);
+#endif
+}
+
+/* The full quad's vertex array.  The shaders work the corner out from
+ * gl_VertexID, so it needs no buffer, except on the Vita, where the corner
+ * is attribute 0 (vita_glsl) and the array holds the four corners. */
+void eidos_gl_quad_vao(EidosGl *g, GLuint *vao)
+{
+    g->glGenVertexArrays(1, vao);
+#if defined(__vita__)
+    {
+        static const GLfloat corners[8] = { 0.f, 0.f, 1.f, 0.f, 0.f, 1.f, 1.f, 1.f };
+
+        if (g->quad_vbo == 0) {
+            g->glGenBuffers(1, &g->quad_vbo);
+            g->glBindBuffer(GL_ARRAY_BUFFER, g->quad_vbo);
+            g->glBufferData(GL_ARRAY_BUFFER, sizeof(corners), corners, GL_STATIC_DRAW);
+        }
+        g->glBindVertexArray(*vao);
+        g->glBindBuffer(GL_ARRAY_BUFFER, g->quad_vbo);
+        g->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+        g->glEnableVertexAttribArray(0);
+        g->glBindVertexArray(0);
+        g->glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+#endif
+}
+
 static const char *k_vs =
     "#version 330 core\n"
     "uniform vec4 rect;\n"          /* x0, y0, x1, y1 in NDC */
@@ -101,7 +171,7 @@ static const char *k_fs3 =
     "    for (int dy = -rad; dy <= rad; dy++) {\n"
     "        for (int dx = -rad; dx <= rad; dx++) {\n"
     "            ivec2 q = clamp(ip + ivec2(dx, dy), ivec2(0), sz - 1);\n"
-    "            if (texelFetch(tex, q, 0).rgb != texelFetch(behind, q, 0).rgb) { m = true; }\n"
+    "            if (any(notEqual(texelFetch(tex, q, 0).rgb, texelFetch(behind, q, 0).rgb))) { m = true; }\n"
     "        }\n"
     "    }\n"
     "    if (!m) {\n"
@@ -119,7 +189,7 @@ static const char *k_fs3 =
     "        ivec2 c = clamp(ip, ivec2(0), sz - 1);\n"
     "        vec3 T = texelFetch(tex, c, 0).rgb;\n"
     "        vec3 X = texelFetch(zero, c, 0).rgb;\n"
-    "        if (T != X) {\n"
+    "        if (any(notEqual(T, X))) {\n"
     "            float w = clamp((T.g - X.g) / sent.g, 0.0, 1.0);\n"
     "            d = min(vec3(1.0), sharp(zero, uv, texsize, dstsize) + w * d);\n"
     "        }\n"
@@ -268,8 +338,8 @@ static const char *k_fsw =
      * with a BG, white or any colour): the same at both edges and the
      * middle; a panel at the edge is not stretched out */
     "        ivec2 eo = ivec2(sz0.x - 1 - e.x, e.y), ec = ivec2(sz0.x / 2, e.y);\n"
-    "        bool rowflat = T == texelFetch(tex, eo, 0).rgb && T == texelFetch(tex, ec, 0).rgb;\n"
-    "        if (T == texelFetch(behind, e, 0).rgb && (max(T.r, max(T.g, T.b)) < 0.03 || rowflat)) {\n"
+    "        bool rowflat = all(equal(T, texelFetch(tex, eo, 0).rgb)) && all(equal(T, texelFetch(tex, ec, 0).rgb));\n"
+    "        if (all(equal(T, texelFetch(behind, e, 0).rgb)) && (max(T.r, max(T.g, T.b)) < 0.03 || rowflat)) {\n"
     "            color = vec4(T, 1.0);\n"
     "            return;\n"
     "        }\n"
@@ -280,8 +350,8 @@ static const char *k_fsw =
      * the rest of the row */
     "        if (hasz != 0) {\n"
     "            vec3 X = texelFetch(zero, e, 0).rgb;\n"
-    "            bool xflat = X == texelFetch(zero, eo, 0).rgb && X == texelFetch(zero, ec, 0).rgb;\n"
-    "            if (T != X && (max(X.r, max(X.g, X.b)) < 0.03 || xflat)) {\n"
+    "            bool xflat = all(equal(X, texelFetch(zero, eo, 0).rgb)) && all(equal(X, texelFetch(zero, ec, 0).rgb));\n"
+    "            if (any(notEqual(T, X)) && (max(X.r, max(X.g, X.b)) < 0.03 || xflat)) {\n"
     "                float w = clamp((T.g - X.g) / sent.g, 0.0, 1.0);\n"
     "                color = vec4(X + w * P, 1.0);\n"
     "                return;\n"
@@ -310,7 +380,7 @@ static const char *k_fsw =
     "    for (int dy = -rad; dy <= rad; dy++) {\n"
     "        for (int dx = -rad; dx <= rad; dx++) {\n"
     "            ivec2 q = clamp(ip + ivec2(dx, dy), ivec2(0), sz - 1);\n"
-    "            if (texelFetch(tex, q, 0).rgb != texelFetch(behind, q, 0).rgb) { m = true; }\n"
+    "            if (any(notEqual(texelFetch(tex, q, 0).rgb, texelFetch(behind, q, 0).rgb))) { m = true; }\n"
     "        }\n"
     "    }\n"
     "    if (!m) {\n"
@@ -323,7 +393,7 @@ static const char *k_fsw =
     "        ivec2 c = clamp(ip, ivec2(0), sz - 1);\n"
     "        vec3 T = texelFetch(tex, c, 0).rgb;\n"
     "        vec3 X = texelFetch(zero, c, 0).rgb;\n"
-    "        if (T != X) {\n"
+    "        if (any(notEqual(T, X))) {\n"
     "            float w = clamp((T.g - X.g) / sent.g, 0.0, 1.0);\n"
     "            d = min(vec3(1.0), sharp(zero, duv, texsize, dstsize) + w * d);\n"
     "        }\n"
@@ -395,12 +465,131 @@ static struct {
  * world is drawn (0 into an off-screen target). */
 static int g_vp_y;
 
+#if defined(__vita__)
+/*
+ * The Vita: vitaGL takes OpenGL ES 2.0's GLSL (attribute, varying,
+ * texture2D, gl_FragColor) and turns it into Cg for the console's compiler.
+ * The presenter's shaders are GLSL 3.30, so each is rewritten first:
+ *
+ *   vertex     "in" is an attribute, "out" a varying; the quad corner the
+ *              others work out from gl_VertexID is an attribute here
+ *              (vgl_corner, location 0, eidos_gl_quad_vao)
+ *   fragment   "in" is a varying, the one "out vec4 NAME" is gl_FragColor;
+ *              texelFetch reads the texel's centre through the shader's
+ *              `texsize` uniform (every image fetched is that size, and
+ *              the presenter's textures are linear, so the centre is the
+ *              texel exactly); clamp has integer forms
+ *
+ * Cg compares vectors a component at a time, so the shaders compare with
+ * all(equal()) and any(notEqual()), which mean the same in GLSL 3.30.
+ * A shader beyond this (the GPU 2D and 3D paths: integer textures) is not
+ * compiled here at all.
+ */
+static void vs_put(char **o, size_t *n, size_t *cap, const char *s, size_t len)
+{
+    if (*n + len + 1 > *cap) {
+        size_t c = (*cap + len + 1) * 2;
+        char *p = (char *)realloc(*o, c);
+
+        if (p == NULL) {
+            return;
+        }
+        *o = p;
+        *cap = c;
+    }
+    memcpy(*o + *n, s, len);
+    *n += len;
+    (*o)[*n] = 0;
+}
+
+static int vs_ident(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+static char *vita_glsl(GLenum type, const char *src)
+{
+    static const char k_corner[] =
+        "vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1))";
+    static const char k_frag_head[] =
+        "#define texelFetch(vgl_s, vgl_p, vgl_l) texture2D(vgl_s, (vec2(vgl_p) + 0.5) / texsize)\n"
+        "#define clamp vgl_clamp\n"
+        "float vgl_clamp(float x, float a, float b) { return min(max(x, a), b); }\n"
+        "vec2 vgl_clamp(vec2 x, vec2 a, vec2 b) { return min(max(x, a), b); }\n"
+        "vec2 vgl_clamp(vec2 x, float a, float b) { return min(max(x, vec2(a, a)), vec2(b, b)); }\n"
+        "vec3 vgl_clamp(vec3 x, vec3 a, vec3 b) { return min(max(x, a), b); }\n"
+        "int vgl_clamp(int x, int a, int b) { return x < a ? a : x > b ? b : x; }\n"
+        "ivec2 vgl_clamp(ivec2 x, ivec2 a, ivec2 b) {\n"
+        "    return ivec2(vgl_clamp(x.x, a.x, b.x), vgl_clamp(x.y, a.y, b.y)); }\n";
+    const int vert = type == GL_VERTEX_SHADER;
+    char *o = NULL;
+    size_t n = 0, cap = 0;
+    const char *p = src;
+    const char *nl;
+
+    /* the first line, "#version ...", stays first; vitaGL drops it */
+    nl = strchr(p, '\n');
+    if (nl == NULL) {
+        return NULL;
+    }
+    vs_put(&o, &n, &cap, p, (size_t)(nl + 1 - p));
+    p = nl + 1;
+    vs_put(&o, &n, &cap, vert ? "attribute vec2 vgl_corner;\n" : k_frag_head,
+           vert ? strlen("attribute vec2 vgl_corner;\n") : sizeof(k_frag_head) - 1);
+    while (*p != 0) {
+        int line_start = p == src || p[-1] == '\n';
+
+        if (line_start && strncmp(p, "in ", 3) == 0) {
+            vs_put(&o, &n, &cap, vert ? "attribute " : "varying ", vert ? 10 : 8);
+            p += 3;
+        } else if (line_start && strncmp(p, "out vec4 ", 9) == 0 && !vert) {
+            const char *e = strchr(p + 9, ';');
+            char def[96];
+            int len;
+
+            if (e == NULL || e - (p + 9) > 48) {
+                free(o);
+                return NULL;
+            }
+            len = snprintf(def, sizeof def, "#define %.*s gl_FragColor", (int)(e - (p + 9)), p + 9);
+            vs_put(&o, &n, &cap, def, (size_t)len);
+            p = e + 1;
+        } else if (line_start && strncmp(p, "out ", 4) == 0) {
+            vs_put(&o, &n, &cap, "varying ", 8);
+            p += 4;
+        } else if (strncmp(p, k_corner, sizeof(k_corner) - 1) == 0) {
+            vs_put(&o, &n, &cap, "vgl_corner", 10);
+            p += sizeof(k_corner) - 1;
+        } else if (strncmp(p, "texture(", 8) == 0 && (p == src || !vs_ident(p[-1]))) {
+            vs_put(&o, &n, &cap, "texture2D(", 10);
+            p += 8;
+        } else {
+            vs_put(&o, &n, &cap, p, 1);
+            p++;
+        }
+    }
+    return o;
+}
+#endif
+
 static GLuint compile(EidosGl *g, GLenum type, const char *src)
 {
     GLuint s = g->glCreateShader(type);
     GLint ok = 0;
+#if defined(__vita__)
+    char *conv = vita_glsl(type, src);
+
+    if (conv == NULL) {
+        g->glDeleteShader(s);
+        return 0;
+    }
+    src = conv;
+#endif
 
     g->glShaderSource(s, 1, &src, NULL);
+#if defined(__vita__)
+    free(conv);
+#endif
     g->glCompileShader(s);
     g->glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
@@ -427,6 +616,9 @@ GLuint eidos_gl_compile_program(EidosGl *g, const char *vsrc, const char *fsrc)
     prog = g->glCreateProgram();
     g->glAttachShader(prog, vs);
     g->glAttachShader(prog, fs);
+#if defined(__vita__)
+    glBindAttribLocation(prog, 0, "vgl_corner");
+#endif
     g->glLinkProgram(prog);
     g->glDeleteShader(vs);
     g->glDeleteShader(fs);
@@ -534,9 +726,11 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     EidosGl *g;
     int i;
 
+#if !defined(__vita__)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+#endif
     g = (EidosGl *)calloc(1, sizeof(*g));
     if (g == NULL) {
         return NULL;
@@ -545,13 +739,28 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     g->s3d = -1;
     g->s3d2 = -1;
     g->edge_mode = 0;           /* no outlines until the setting asks */
+#if defined(__vita__)
+    /* vitaGL owns the GPU (GXM) and the display itself: no SDL context.
+     * It runs only with the console's shader compiler (libshacccg.suprx,
+     * which the player extracts); demo/eidos_boot.c picks SDL's renderer
+     * when that file is missing, so the call here is the only GXM owner.
+     * 16 MiB of RAM stay free for the rest of the process. */
+    if (!vglInitExtended(0, 960, 544, 16 * 1024 * 1024, 0)) {
+        free(g);
+        return NULL;
+    }
+    g->ctx = (SDL_GLContext)(uintptr_t)1;    /* "made", for eidos_gl_destroy */
+#else
     g->ctx = SDL_GL_CreateContext(window);
     if (g->ctx == NULL) {
         free(g);
         return NULL;
     }
+#endif
 #if defined(__wasm__)
 #define GL_ENTRY(N) (&N)                     /* an import (plat_gl_int.h) */
+#elif defined(__vita__)
+#define GL_ENTRY(N) vglGetProcAddress(#N)
 #else
 #define GL_ENTRY(N) SDL_GL_GetProcAddress(#N)
 #endif
@@ -559,9 +768,14 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     g->N = (T)GL_ENTRY(N); \
     if (g->N == NULL) { eidos_gl_destroy(g); return NULL; }
     GL_FUNCS(X)
+#if defined(__vita__)
+#undef X
+#define X(T, N) g->N = (T)GL_ENTRY(N);   /* NULL: that path is off */
+#endif
+    GL_FUNCS_OPT(X)
 #undef X
     /* The pacer is the timebase, never the display's refresh. */
-    SDL_GL_SetSwapInterval(0);
+    eidos_gl_set_vsync(g, 0);
 
     g->cap_screen = -1;
     g->prog = eidos_gl_compile_program(g, k_vs, k_fs);
@@ -573,7 +787,7 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     g->u_tex = g->glGetUniformLocation(g->prog, "tex");
     g->u_texsize = g->glGetUniformLocation(g->prog, "texsize");
     g->u_dstsize = g->glGetUniformLocation(g->prog, "dstsize");
-    g->glGenVertexArrays(1, &g->vao);
+    eidos_gl_quad_vao(g, &g->vao);
     glGenTextures(2, g->tex);
     for (i = 0; i < 2; i++) {
         glBindTexture(GL_TEXTURE_2D, g->tex[i]);
@@ -601,7 +815,15 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     }
 
     /* The 3D path is optional: a failure here leaves a working presenter. */
+#if defined(__vita__)
+    /* The Vita has no GPU 3D (it needs integer textures), and these
+     * programs only show its frames: not compiled there. */
+    g->prog3 = 0;
+    (void)k_fs3;
+    (void)k_fsw;
+#else
     g->prog3 = eidos_gl_compile_program(g, k_vs, k_fs3);
+#endif
     if (g->prog3 != 0) {
         g->u3_rect = g->glGetUniformLocation(g->prog3, "rect");
         g->u3_tex = g->glGetUniformLocation(g->prog3, "tex");
@@ -650,7 +872,11 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     }
 
     /* The one-screen layout's programs: optional like the panel's. */
+#if defined(__vita__)
+    g_one.progw = 0;                 /* the window-size world needs the GPU 3D */
+#else
     g_one.progw = eidos_gl_compile_program(g, k_vs, k_fsw);
+#endif
     if (g_one.progw != 0) {
         g_one.w_rect = g->glGetUniformLocation(g_one.progw, "rect");
         g_one.w_tex = g->glGetUniformLocation(g_one.progw, "tex");
@@ -700,7 +926,7 @@ void eidos_gl_destroy(EidosGl *g)
         return;
     }
     if (g->ctx != NULL) {
-        SDL_GL_MakeCurrent(g->window, g->ctx);
+        eidos_gl_make_current(g);
         if (g->tex[0] != 0) {
             glDeleteTextures(2, g->tex);
         }
@@ -754,7 +980,12 @@ void eidos_gl_destroy(EidosGl *g)
         if (g->prog3 != 0 && g->glDeleteProgram != NULL) {
             g->glDeleteProgram(g->prog3);
         }
+        if (g->quad_vbo != 0 && g->glDeleteBuffers != NULL) {
+            g->glDeleteBuffers(1, &g->quad_vbo);
+        }
+#if !defined(__vita__)                  /* vitaGL stays up with the process */
         SDL_GL_DestroyContext(g->ctx);
+#endif
     }
     free(g);
 }
@@ -1435,7 +1666,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         g->glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, g->tex[s]);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        if (g_one.mix > 0 && frozen && !blur) {
+        if (g_one.mix > 0 && frozen && !blur && g->glBlendColor != NULL) {
             /* a scene change blends the old picture out over the new
              * world: the kept wide picture at the game's weight */
             float a = g_one.mix >= 16 ? 1.f : (float)g_one.mix / 16.f;
@@ -1602,16 +1833,20 @@ void eidos_gl_present_panel(EidosGl *g, int out_w, int out_h,
  * VSync off a slow swap is the GPU's work and stays in the present. */
 void eidos_gl_swap(EidosGl *g)
 {
-    int interval = 0;
-
-    if (SDL_GL_GetSwapInterval(&interval) && interval != 0) {
+#if defined(__vita__)
+#define GL_SWAP(g) ((void)(g), vglSwapBuffers(GL_FALSE))
+#else
+#define GL_SWAP(g) SDL_GL_SwapWindow((g)->window)
+#endif
+    if (gl_vsync_on()) {
         unsigned long long t = eidos_prof_begin();
 
-        SDL_GL_SwapWindow(g->window);
+        GL_SWAP(g);
         eidos_prof_end(EIDOS_PROF_WAIT, t);
         return;
     }
-    SDL_GL_SwapWindow(g->window);
+    GL_SWAP(g);
+#undef GL_SWAP
 }
 
 /* The two screens alone: the panel is the port's own, and a caller that

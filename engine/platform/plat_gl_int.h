@@ -68,9 +68,20 @@
     X(PFNGLENABLEVERTEXATTRIBARRAYPROC, glEnableVertexAttribArray) \
     X(PFNGLMAPBUFFERPROC, glMapBuffer) \
     X(PFNGLUNMAPBUFFERPROC, glUnmapBuffer) \
+    X(PFNGLBLENDFUNCSEPARATEPROC, glBlendFuncSeparate)
+
+/* The entry points only the GPU 2D and 3D paths and the scene-change blend
+ * use.  Every desktop and phone driver has them; the Vita's vitaGL has none
+ * of them, and there the presenter runs without those paths. */
+#define GL_FUNCS_OPT(X) \
     X(PFNGLRENDERBUFFERSTORAGEMULTISAMPLEPROC, glRenderbufferStorageMultisample) \
     X(PFNGLBLITFRAMEBUFFERPROC, glBlitFramebuffer) \
-    X(PFNGLBLENDFUNCSEPARATEPROC, glBlendFuncSeparate)     X(PFNGLBLENDCOLORPROC, glBlendColor)     X(PFNGLDRAWBUFFERSPROC, glDrawBuffers)     X(PFNGLCOLORMASKIPROC, glColorMaski)     X(PFNGLCLEARBUFFERFVPROC, glClearBufferfv)     X(PFNGLCLEARBUFFERUIVPROC, glClearBufferuiv)     X(PFNGLUNIFORM1UIPROC, glUniform1ui)
+    X(PFNGLBLENDCOLORPROC, glBlendColor) \
+    X(PFNGLDRAWBUFFERSPROC, glDrawBuffers) \
+    X(PFNGLCOLORMASKIPROC, glColorMaski) \
+    X(PFNGLCLEARBUFFERFVPROC, glClearBufferfv) \
+    X(PFNGLCLEARBUFFERUIVPROC, glClearBufferuiv) \
+    X(PFNGLUNIFORM1UIPROC, glUniform1ui)
 
 typedef struct GlFb {
     GLuint fbo, color, depth;     /* depth: a DEPTH24_STENCIL8 texture       */
@@ -88,11 +99,14 @@ struct EidosGl {
     SDL_GLContext ctx;
 #define X(T, N) T N;
     GL_FUNCS(X)
+    GL_FUNCS_OPT(X)
 #undef X
 
     /* the screen presenter */
     GLuint prog;
     GLuint vao;
+    GLuint quad_vbo;               /* the quad's corners, where a shader
+                                      cannot use gl_VertexID (the Vita) */
     GLint u_rect, u_tex, u_texsize, u_dstsize;
     GLuint tex[2];
     int tw[2], th[2];
@@ -159,5 +173,9 @@ struct EidosGl {
 int eidos_gl3d_init(EidosGl *g);
 void eidos_gl3d_destroy(EidosGl *g);
 GLuint eidos_gl_compile_program(EidosGl *g, const char *vs, const char *fs);
+/* A vertex array for the full-quad shaders (4 vertices, a triangle strip). */
+void eidos_gl_quad_vao(EidosGl *g, GLuint *vao);
+/* SDL_GL_MakeCurrent, or nothing where the presenter owns no SDL context. */
+void eidos_gl_make_current(EidosGl *g);
 
 #endif

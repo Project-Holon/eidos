@@ -28,6 +28,8 @@ void eidos_gl_present_panel(EidosGl *gl, int out_w, int out_h, const SDL_Rect ds
                             const SDL_Rect *panel);
 /* SDL_GL_SwapWindow, its vblank wait counted as the pacing's (prof.h). */
 void eidos_gl_swap(EidosGl *gl);
+/* VSync on or off: the swap waits for the vblank or not. */
+void eidos_gl_set_vsync(EidosGl *gl, int on);
 
 /* Replace screen `i`'s image: w x h RGBA bytes. */
 void eidos_gl_upload(EidosGl *gl, int i, const unsigned char *rgba, int w,

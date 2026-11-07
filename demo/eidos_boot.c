@@ -2750,7 +2750,10 @@ static int boot_launcher_arg(int argc, char **argv, int *i, int apply)
 /* VitaSDK's C library takes these from the program: the heap the game's
  * malloc may use (the DS memory, the decoded assets, SDL) and the main
  * thread's stack (the game's boot runs on it). */
-unsigned int _newlib_heap_size_user = 256u * 1024u * 1024u;
+/* (an application has about 365 MiB: the rest is the GPU's memory, which
+ * vitaGL or SDL's GXM renderer allocates outside the C heap; 256 MiB left
+ * too little for it) */
+unsigned int _newlib_heap_size_user = 160u * 1024u * 1024u;
 unsigned int sceUserMainThreadStackSize = 4u * 1024u * 1024u;
 
 /* A Vita app has no command line: its arguments are made as the phones'
@@ -2777,8 +2780,10 @@ static char **vita_args(int *argc)
     snprintf(file, sizeof file, "%sstderr.txt", dir);
     (void)freopen(file, "w", stderr);
     setvbuf(stderr, NULL, _IONBF, 0);
-    snprintf(file, sizeof file, "%sstdout.txt", dir);
-    (void)freopen(file, "w", stdout);
+    /* the program's other output goes to the same file: a stdout reopened
+     * on its own wrote nothing under Vita3K */
+    (void)freopen(file, "a", stdout);
+    setvbuf(stdout, NULL, _IONBF, 0);   /* each line reaches the card at once */
     argv[n++] = "eidos";
     argv[n++] = "--data-root";
     argv[n++] = "ux0:data/eidos/extract";
@@ -2788,6 +2793,23 @@ static char **vita_args(int *argc)
     argv[n++] = "one";
     argv[n++] = "--window";
     setenv("EIDOS_TOUCH_DEVICE", "1", 1);
+    /* The presenter: OpenGL through vitaGL when the shader compiler the
+     * player extracts from their own firmware is there (vitaGL looks in
+     * these two places, docs/consoles.md); without it SDL's renderer
+     * (GXM).  env.txt can still ask for either. */
+    {
+        FILE *cg = fopen("ur0:data/libshacccg.suprx", "rb");
+
+        if (cg == NULL) {
+            cg = fopen("ur0:data/external/libshacccg.suprx", "rb");
+        }
+        if (cg != NULL) {
+            fclose(cg);
+            setenv("EIDOS_RENDERER", "gl", 1);
+        } else {
+            setenv("EIDOS_RENDERER", "sdl", 1);
+        }
+    }
     snprintf(file, sizeof file, "%senv.txt", dir);
     if ((f = fopen(file, "r")) != NULL) {
         while (fgets(line, sizeof line, f) != NULL) {

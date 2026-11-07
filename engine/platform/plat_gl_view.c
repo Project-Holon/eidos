@@ -71,7 +71,7 @@ static int view_init(EidosGl *g)
     v->u_mode = g->glGetUniformLocation(v->prog, "mode");
     v->u_fx = g->glGetUniformLocation(v->prog, "fx");
     v->u_alpha = g->glGetUniformLocation(v->prog, "alpha");
-    g->glGenVertexArrays(1, &v->vao);
+    eidos_gl_quad_vao(g, &v->vao);
     return 0;
 }
 
@@ -145,7 +145,7 @@ void eidos_gl_view_begin(EidosGl *g, int win_w, int win_h, unsigned rgb)
     (void)view_init(g);
     g_view.win_w = win_w;
     g_view.win_h = win_h;
-    SDL_GL_MakeCurrent(g->window, g->ctx);
+    eidos_gl_make_current(g);
     g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, win_w, win_h);
     glDisable(GL_SCISSOR_TEST);

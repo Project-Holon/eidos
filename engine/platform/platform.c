@@ -1714,8 +1714,13 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
             }
         }
         if (try_gl && p->window == NULL) {
+#if defined(__vita__)
+            /* vitaGL is the OpenGL there, not SDL's own GLES (plat_gl.c) */
+            p->window = SDL_CreateWindow(title, init_w, init_h, flags);
+#else
             p->window = SDL_CreateWindow(title, init_w, init_h,
                                          flags | SDL_WINDOW_OPENGL);
+#endif
             if (p->window != NULL) {
                 p->gl = eidos_gpu_create_gl(p->window);
                 if (p->gl == NULL) {
