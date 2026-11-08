@@ -50,6 +50,16 @@ STANDALONE = [
      "`README.txt` inside it has the one Terminal line it needs."),
     ("eidos-{ver}-linux-x86_64.AppImage",
      "Linux: eidos on its own. Make it executable and run it."),
+    ("eidos-{ver}-switch.zip",
+     "Nintendo Switch (homebrew, custom firmware): unzip it to the SD card's "
+     "root, put your extracted game in `switch/eidos/extract/`, start it "
+     "from the Homebrew Menu over a game (hold R) for the full memory. "
+     "Early: tested in an emulator only."),
+    ("eidos-{ver}-vita.vpk",
+     "PlayStation Vita (homebrew, HENkaku/Ensō): install it with VitaShell; "
+     "your extracted game goes in `ux0:data/eidos/extract/`. The fast "
+     "renderer needs `libshacccg.suprx` extracted from your own Vita "
+     "(`ur0:data/`). Early: tested in an emulator only."),
 ]
 
 NOTICE = (

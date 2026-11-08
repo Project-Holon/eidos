@@ -42,7 +42,7 @@ on:
       only:
         description: "Build only part (a tag builds everything)"
         type: choice
-        options: [all, launchers, windows, linux, macos, phones]
+        options: [all, launchers, windows, linux, macos, phones, consoles]
         default: all
 
 permissions:
@@ -208,7 +208,7 @@ jobs:
   linux:
     name: linux
     needs: meta
-    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'linux' || inputs.only == 'phones' }}
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'linux' || inputs.only == 'phones' || inputs.only == 'consoles' }}
     runs-on: ubuntu-22.04     # the oldest glibc we ship against
     timeout-minutes: 90
     env:
@@ -643,10 +643,109 @@ jobs:
           path: dist/*.ipa
           if-no-files-found: error
 
+  # --------------------------------------------------------------- Consoles
+  # docs/consoles.md.  The Switch: the 64-bit route with bounds checks, from
+  # the same game module the phones are built from, compiled in devkitPro's
+  # image.  The Vita: the native 32-bit build in VitaSDK's image.  Both are
+  # homebrew: they run on a console with custom firmware.
+  switch:
+    name: switch
+    needs: [meta, linux]
+    if: ${{ !cancelled() && needs.linux.result == 'success' && (!inputs.only || inputs.only == 'all' || inputs.only == 'consoles') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      EIDOS_SDL_CACHE: ${{ github.workspace }}/.cache/sdl
+      EIDOS_WASM_CACHE: ${{ github.workspace }}/.cache/wasm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: module
+          path: module
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: deps-switch-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wasm.py') }}
+      - name: Packages
+        run: sudo apt-get install -y ninja-build
+      - name: Fetch SDL3's headers and the wasm toolchain (each is checked against a recorded SHA-256)
+        run: |
+          python3 tools/fetch_sdl.py --flavor mingw
+          python3 tools/fetch_wasm.py
+      - name: The game as C (wasm-opt, wasm2c, bounds checks) and its OpenGL imports
+        run: |
+          eval "$(python3 tools/fetch_wasm.py --locate | sed 's/^/export /')"
+          sdl=$(python3 tools/fetch_sdl.py --locate mingw)
+          echo "SDL3_INCLUDE=$sdl/include" >> "$GITHUB_ENV"
+          echo "WABT_ROOT=$WABT_ROOT" >> "$GITHUB_ENV"
+          cmake -S host -B build-switch -G Ninja \
+            -DEIDOS_WASM_MODULE="$PWD/module/eidos_boot.wasm" \
+            -DWABT_ROOT="$WABT_ROOT" -DWASM2C="$WASM2C" -DWASM_OPT="$WASM_OPT" \
+            -DSDL3_PREFIX="$sdl" -DEIDOS_HOST_BOUNDS_CHECKS=ON -DEIDOS_HOST_PARTS=96
+          ninja -C build-switch game.h gl_imports.c
+      - name: eidos.nro (devkitPro's devkitA64, libnx, SDL2)
+        run: |
+          mkdir -p out
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" -e JOBS=4 \
+            -e EIDOS_VERSION="${{ needs.meta.outputs.version }}" \
+            devkitpro/devkita64:latest \
+            sh host/switch/build.sh "$PWD/build-switch" "$WABT_ROOT" "$SDL3_INCLUDE" "$PWD/out"
+      - name: Package
+        run: |
+          mkdir -p dist stage/switch/eidos
+          cp out/eidos.nro stage/switch/eidos/
+          (cd stage && zip -qr "../dist/eidos-${{ needs.meta.outputs.version }}-switch.zip" switch)
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-switch
+          path: dist/*.zip
+          if-no-files-found: error
+
+  vita:
+    name: vita
+    needs: meta
+    if: ${{ !inputs.only || inputs.only == 'all' || inputs.only == 'consoles' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Project-Holon/aletheia
+          ref: ${{ needs.meta.outputs.pin }}
+          token: ${{ secrets.ALETHEIA_TOKEN || github.token }}
+          path: aletheia
+      - name: Stand-ins for the few ROM bytes the sources include (docs/release.md)
+        run: python3 tools/package_release.py placeholders --aletheia-root aletheia
+      - name: eidos.vpk (VitaSDK)
+        run: |
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" vitasdk/vitasdk:latest sh -c '
+            set -e
+            cmake -S . -B build-vita -G Ninja \
+              -DCMAKE_TOOLCHAIN_FILE=$VITASDK/share/vita.toolchain.cmake \
+              -DCMAKE_C_FLAGS="-O2 -fno-strict-aliasing -fwrapv -fno-delete-null-pointer-checks -fsigned-char" \
+              -DEIDOS_BOOT=ON -DEIDOS_BOOT_ALL_GAME=ON -DEIDOS_OVERLAYS=ALL \
+              -DEIDOS_TLS=OFF -DEIDOS_WASM=OFF -DEIDOS_DATA_TESTS=OFF -DEIDOS_REAL_OVERLAY_TESTS=OFF \
+              -DALETHEIA_ROOT="$PWD/aletheia" \
+              -DSDL3_DIR=$VITASDK/arm-vita-eabi/lib/cmake/SDL3
+            cmake --build build-vita --target eidos.vpk'
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build-vita/eidos.vpk "dist/eidos-${{ needs.meta.outputs.version }}-vita.vpk"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-vita
+          path: dist/*.vpk
+          if-no-files-found: error
+
   # ---------------------------------------------------------------- Release
   release:
     name: draft release
-    needs: [meta, windows, linux, macos, launcher, launcher-unix, android, ios]
+    needs: [meta, windows, linux, macos, launcher, launcher-unix, android, ios, switch, vita]
     # a release or test-build run needs every job to have passed
     if: >-
       !cancelled() && needs.windows.result == 'success' &&
@@ -654,7 +753,8 @@ jobs:
       (github.ref_type == 'tag' || inputs.draft ||
        ((inputs.release || inputs.prerelease != '') && needs.linux.result == 'success' &&
         needs.macos.result == 'success' && needs.launcher-unix.result == 'success' &&
-        needs.android.result == 'success' && needs.ios.result == 'success'))
+        needs.android.result == 'success' && needs.ios.result == 'success' &&
+        needs.switch.result == 'success' && needs.vita.result == 'success'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
