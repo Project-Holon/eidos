@@ -29,6 +29,7 @@ Each release's notes on GitHub start with its section here
 
 ### Mods & Launcher
 - **Mods Page**: Opening the Mods tab again no longer downloads the catalog again or empties the list for a moment; the catalog loads once a launcher run, and the refresh button loads it again.
+- **GitHub Outages**: When GitHub's download service fails (it answered 504 for every mod for a while), the launcher fetches the file through GitHub's API instead, for versions and mods alike, and only while enough of the hour's API requests remain. Each mod's details are kept once read, so the Mods page shows them without asking GitHub again until a mod has a new release.
 
 ## 0.2.3
 

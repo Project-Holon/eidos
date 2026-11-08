@@ -9,6 +9,7 @@
 
 mod catalog;
 mod datamove;
+mod ghdownload;
 mod launch;
 mod layout;
 mod mods;
@@ -259,13 +260,13 @@ fn install_blocking(
     let result = (|| -> R<()> {
         stage("Downloading the checksums");
         let sums_path = tmp.join("SHA256SUMS");
-        releases::download(sums_asset, s.token(), &sums_path, None).map_err(|e| e.to_string())?;
+        ghdownload::download(sums_asset, s.token(), &sums_path, None)?;
         let sums = std::fs::read_to_string(&sums_path).map_err(|e| e.to_string())?;
         let want = releases::checksum_for(&sums, &asset.name)
             .ok_or_else(|| format!("SHA256SUMS has no entry for {}.", asset.name))?;
         stage("Downloading eidos");
         let file = tmp.join(&asset.name);
-        releases::download(asset, s.token(), &file, Some(&want)).map_err(|e| e.to_string())?;
+        ghdownload::download(asset, s.token(), &file, Some(&want))?;
         stage("Unpacking");
         if asset.name.to_lowercase().ends_with(".zip") {
             versions::unzip(&file, &dest).map_err(|e| e.to_string())
@@ -439,7 +440,8 @@ fn mods_add(app: State<App>, profile: String, path: String) -> R<String> {
 #[tauri::command]
 async fn catalog_list(app: State<'_, App>) -> R<catalog::Catalog> {
     let url = app.settings().index_url;
-    tauri::async_runtime::spawn_blocking(move || catalog::list(&url))
+    let cache = app.layout.launcher().join("katalogos-cache");
+    tauri::async_runtime::spawn_blocking(move || catalog::list(&url, &cache))
         .await
         .map_err(|e| e.to_string())?
 }

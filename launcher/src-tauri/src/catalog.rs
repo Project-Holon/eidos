@@ -103,14 +103,9 @@ fn agent() -> ureq::Agent {
 }
 
 fn get(agent: &ureq::Agent, url: &str, max: u64) -> Result<Vec<u8>, String> {
-    let resp = agent
-        .get(url)
-        .set("User-Agent", "eidos-launcher")
-        .call()
-        .map_err(|e| match e {
-            ureq::Error::Status(code, _) => format!("{url}: the server answered {code}"),
-            other => format!("{url}: {other}"),
-        })?;
+    // a release file the download service fails to serve comes from the API
+    // (crate::ghdownload: only on a server error, within the hour's limit)
+    let resp = crate::ghdownload::get(agent, url)?;
     let mut buf = Vec::new();
     resp.into_reader()
         .take(max + 1)
@@ -142,9 +137,34 @@ fn read_index(agent: &ureq::Agent, url: &str) -> Result<Index, String> {
     Ok(idx)
 }
 
-/// The mods of the index, with their mod.json read.  A mod that cannot be
-/// read is listed among the errors and the others still show.
-pub fn list(index_setting: &str) -> Result<Catalog, String> {
+/// A release file of a mod, kept on disk by its address.  A release's
+/// files never change once its tag is out (a new version is a new tag, so
+/// a new address), so a kept copy is the file: it is read from disk and
+/// GitHub is not asked again until the index names another release.  That
+/// is also what keeps the list showing while GitHub's downloads fail.
+fn get_kept(agent: &ureq::Agent, cache: &Path, url: &str, max: u64) -> Result<Vec<u8>, String> {
+    use sha2::Digest;
+    let key: String = sha2::Sha256::digest(url.as_bytes()).iter().take(16).map(|b| format!("{b:02x}")).collect();
+    let path = cache.join(key);
+    if let Ok(bytes) = fs::read(&path) {
+        if bytes.len() as u64 <= max {
+            return Ok(bytes);
+        }
+    }
+    let bytes = get(agent, url, max)?;
+    if fs::create_dir_all(cache).is_ok() {
+        let tmp = path.with_extension("part");
+        if fs::write(&tmp, &bytes).is_ok() {
+            let _ = fs::rename(&tmp, &path);
+        }
+    }
+    Ok(bytes)
+}
+
+/// The mods of the index, with their mod.json read (`cache`: where release
+/// files are kept, [`get_kept`]).  A mod that cannot be read is listed
+/// among the errors and the others still show.
+pub fn list(index_setting: &str, cache: &Path) -> Result<Catalog, String> {
     let agent = agent();
     let idx = read_index(&agent, index_url(index_setting))?;
     let mut out = Catalog { mods: Vec::new(), errors: Vec::new() };
@@ -153,7 +173,7 @@ pub fn list(index_setting: &str) -> Result<Catalog, String> {
         let r = if url.is_empty() {
             Err("the entry names no mod".to_string())
         } else {
-            get(&agent, &url, MAX_JSON).and_then(|b| {
+            get_kept(&agent, cache, &url, MAX_JSON).and_then(|b| {
                 serde_json::from_slice::<ModJson>(&b).map_err(|err| format!("mod.json: {err}"))
             })
         };
@@ -163,7 +183,7 @@ pub fn list(index_setting: &str) -> Result<Catalog, String> {
                     Some(IconRef::Item(n)) => Some(UiIcon { item: Some(*n), ..Default::default() }),
                     Some(IconRef::Species(n)) => Some(UiIcon { species: Some(*n), ..Default::default() }),
                     // a mod's own picture comes beside its mod.json
-                    Some(IconRef::File(_)) => get(&agent, &release_url(e, ICON_FILE), MAX_ICON)
+                    Some(IconRef::File(_)) => get_kept(&agent, cache, &release_url(e, ICON_FILE), MAX_ICON)
                         .ok()
                         .filter(|b| eidos_mod::manifest::check_icon_png(b).is_ok())
                         .map(|b| UiIcon { png: Some(b), ..Default::default() }),
