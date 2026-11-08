@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "choice_list.h"
+#include "dsmem.h"
 #include "input.h"
 
 #define WEAK __attribute__((weak))
@@ -71,23 +72,45 @@ static void units_utf8(const u16 *u, int max, char *out, int n)
     out[o] = '\0';
 }
 
-static void item_text(const u8 *list, int i, char *out, int n)
+/* A game string still alive: in the game's memory, with the magic the game
+ * clears when it deletes one (arm9/strbuf.c, STRBUF_Delete). */
+#define STRBUF_LIVE 0xB6F8D2ECu
+
+static int live_strbuf(const u8 *sb)
+{
+    return sb != NULL && ((uintptr_t)sb & 3u) == 0 && bw_ds_game_ptr(sb) &&
+           rd32(sb + 4) == STRBUF_LIVE;
+}
+
+/* Row i's text.  0 when the list is gone: B on a script's list frees its
+ * items while the menu's event still names it for a frame (the Trainers'
+ * School blackboard, #24); its strings are dead then. */
+static int item_text(const u8 *list, int i, char *out, int n)
 {
     u8 *items = rdp(list), *sb;
 
     out[0] = '\0';
     if (items == NULL || STRBUF_GetChars == NULL || STRBUF_GetLength == NULL) {
-        return;
+        return 1;
+    }
+    if (!bw_ds_game_ptr(items)) {
+        return 0;
     }
     sb = rdp(items + 8 * i);
     if (sb != NULL) {
-        u16 len = STRBUF_GetLength(sb);
-        const u16 *u = STRBUF_GetChars(sb);
+        u16 len;
+        const u16 *u;
 
+        if (!live_strbuf(sb)) {
+            return 0;
+        }
+        len = STRBUF_GetLength(sb);
+        u = STRBUF_GetChars(sb);
         if (u != NULL) {
             units_utf8(u, len, out, n);
         }
     }
+    return 1;
 }
 
 void ui_choice_list_idle(void)
@@ -154,7 +177,10 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
     for (i = 0; i < rows; i++) {
         int tw;
 
-        item_text(list, scroll + i, text[i], (int)sizeof text[i]);
+        if (!item_text(list, scroll + i, text[i], (int)sizeof text[i])) {
+            g_target = -1;
+            return 0;
+        }
         tw = ui_text_w(text[i], UI_FONT_LARGE) + 30;
         if (tw > w) {
             w = tw;
@@ -281,8 +307,7 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
             for (k = 0; n > 0 && k < count; k++) {
                 char t[48];
 
-                item_text(list, k, t, (int)sizeof t);
-                if (strcmp(t, label) == 0) {
+                if (item_text(list, k, t, (int)sizeof t) && strcmp(t, label) == 0) {
                     g_target = k;
                     g_list = list;
                     picked++;

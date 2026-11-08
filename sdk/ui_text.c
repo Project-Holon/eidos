@@ -170,6 +170,27 @@ u32 bw_ui_cutin_last(u32 *serial)
 }
 
 /* ------------------------------------------------------------------ */
+/* The battle gauges' status icons (stubs/ov/patch_ov094_btlv_gauge.c)  */
+/* ------------------------------------------------------------------ */
+
+static volatile int g_gauge_status[8];
+
+void bw_ui_gauge_status(int slot, int status)
+{
+    if (slot >= 0 && slot < 8) {
+        g_gauge_status[slot] = status;
+    }
+}
+
+/* The condition gauge `slot` (0..7, the battle's view positions 2..9)
+ * shows: 0 none, 1 paralysis, 2 sleep, 3 freeze, 4 burn, 5 poison, 6 bad
+ * poison. */
+int bw_ui_gauge_status_of(int slot)
+{
+    return slot >= 0 && slot < 8 ? g_gauge_status[slot] : 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* The field's open list (stubs/ov/patch_ov021_field_msgbg.c)          */
 /* ------------------------------------------------------------------ */
 

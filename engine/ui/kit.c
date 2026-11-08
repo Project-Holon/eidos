@@ -1682,6 +1682,25 @@ void ui_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender,
     }
 }
 
+/* A plate's condition badge, left of its level (ui_plate's first row);
+ * badge as ui_status_badge counts (-1: none). */
+void ui_plate_status(EidosUiCtx *c, int x, int y, int w, int level, int badge)
+{
+    char lv[48];
+    int tw, bw;
+
+    if (badge < 0) {
+        return;
+    }
+    snprintf(lv, sizeof lv, "%s%d", ui_tr("Lv."), level);
+    tw = ui_text_w(lv, UI_FONT_SMALL);
+    bw = ui_text_w(k_status_name[badge], UI_FONT_SMALL) + 8;
+    if (bw < 24) {
+        bw = 24;
+    }
+    ui_status_badge(c, x + w - 10 - tw - 4 - bw, y + 3, badge);
+}
+
 void ui_cmd_button(EidosUiCtx *c, int x, int y, int w, int h, const char *label,
                    u32 color, int selected)
 {

@@ -12,11 +12,14 @@ Each release's notes on GitHub start with its section here
 - **Native 2D**: With the native renderer, the DS's 2D layers are drawn on the GPU as well (Settings > Display > GPU drawing), as OpenGL already did: the same picture, pixel for pixel, with less work on the CPU.
 
 ### One-Screen Interface
-- **Key Item Showcase**: Receiving a key item (the Xtransceiver, the C-Gear and the others) plays its moment in the one-screen layout again, in the interface's style: a flash, the item spinning up out of the light with a burst of stars during the jingle, then settling into its card as the message opens. Before, the screen froze through the jingle.
+- **Key Item Showcase**: Receiving a key item (the Xtransceiver, the C-Gear and the others) plays its moment in the one-screen layout again, in the interface's style: a flash, the item spinning up out of the light in the middle of the screen with a burst of stars during the jingle, then settling into its card as the message opens. Before, the screen froze through the jingle.
+- **Status Conditions**: The battle HP plates show poison, paralysis, sleep, burn and freeze, at the moment the game's own gauge shows them (#24).
+- **Double Battles**: Both opposing Pokémon have their HP plates; before, only one showed (#24).
 - **VS Screens**: The VS banner before a story battle (the first one with your rival included) shows in the one-screen layout again, across the whole window, over the room around it; before, the screen froze and the banner never appeared. Other cut-ins the game draws over its screen show the same way.
 
 ### Bug Fixes
 - **Item Card**: The item card no longer stays on screen for a moment after its message box closes.
+- **Trainers' School Blackboard**: Closing the blackboard's list of topics with B (Cancel) no longer closes the game (#24).
 - **Interface Translations**: A mod's `ui_text` file now also translates the labels built from values (`PWR %d  ACC %d`, `Lv. %d`, `Received %s` and about 40 more), the settings' key names and the multiplayer and timer lines; a translation whose `%` codes do not match the English is ignored. The template lists every label the interface draws, the Settings page and the multiplayer messages included, and the multiplayer pause screen draws its text in the game's font, so a translation's own letters show there too. "Lv." in the party lists and a long translation of it in battle now come through too (#21).
 - **GPU Drawing Setting**: `Settings > Display > GPU drawing` shows On and Off like the other switches, not "on" and "off".
 - **Move Names**: The modern English move names (Hi Jump Kick to High Jump Kick and the others) now replace only the English cartridge's names; before, they replaced the move names of every language and of mods (#21).

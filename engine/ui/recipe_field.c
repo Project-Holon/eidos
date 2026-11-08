@@ -1377,11 +1377,6 @@ static void item_card(EidosUiCtx *c, const FieldNow *f, int text_up)
  */
 extern u32 bw_ui_cutin_last(u32 *serial) WEAK;
 extern int ov021_FLD3D_CI_EventMain(void *event, int *state, void *work) WEAK;
-extern void *ov021_FIELDMAP_GetFieldPlayer(void *fieldMap) WEAK;
-extern void ov021_FIELD_PLAYER_GetPos(void *player, s32 *out) WEAK;
-extern int NNS_G3dWorldPosToScrPos(const s32 *pos, int *x, int *y) WEAK;
-extern void *ov021_FIELDMAP_GetCamera(void *fieldMap) WEAK;
-extern void ov021_FIELD_CAMERA_GetTarget(void *camera, s32 *out) WEAK;
 
 typedef struct ItemShow {
     u32 serial;             /* the cut-in it is for                         */
@@ -1390,8 +1385,6 @@ typedef struct ItemShow {
     u32 start, end;         /* the game frames it began and ended at        */
     int ended;              /* frames since it ended, 0 while it runs       */
     ItemCard card;          /* the name and pocket, read on the game thread */
-    volatile int pos_ready;
-    int sx, sy;             /* the player on the DS screen                  */
 } ItemShow;
 
 static ItemShow g_show;
@@ -1401,40 +1394,6 @@ static ItemShow g_show;
 static int item_show_active(void)
 {
     return g_show.on;
-}
-
-/* Where the player stands on the DS screen, as the game's camera projects
- * it (the game thread: the camera's matrices are the field's last frame). */
-static void item_show_where(void *arg)
-{
-    ItemShow *s = (ItemShow *)arg;
-    void *player = ov021_FIELDMAP_GetFieldPlayer != NULL ? ov021_FIELDMAP_GetFieldPlayer(s->card.fm) : NULL;
-    s32 pos[3] = { 0, 0, 0 };
-    int x = -1, y = -1;
-
-    if (player != NULL && ov021_FIELD_PLAYER_GetPos != NULL && NNS_G3dWorldPosToScrPos != NULL
-        && ov021_FIELDMAP_GetCamera != NULL && ov021_FIELD_CAMERA_GetTarget != NULL) {
-        /* the field draws relative to the camera's target, as the speech
-         * bubbles' tails project (TALKMSGWIN_ProjectToWorld) */
-        s32 target[3], rel[3];
-        void *camera = ov021_FIELDMAP_GetCamera(s->card.fm);
-
-        ov021_FIELD_PLAYER_GetPos(player, pos);
-        if (camera != NULL) {
-            ov021_FIELD_CAMERA_GetTarget(camera, target);
-            rel[0] = pos[0] - target[0];
-            rel[1] = pos[1] - target[1];
-            rel[2] = pos[2] - target[2];
-            (void)NNS_G3dWorldPosToScrPos(rel, &x, &y);
-        }
-    }
-    s->sx = x;
-    s->sy = y;
-    s->pos_ready = 1;
-    if (getenv("EIDOS_UI_FIELD_DEBUG") != NULL) {
-        fprintf(stderr, "eidos: item show at frame %u: player (%.1f %.1f %.1f) on the DS screen (%d, %d)\n",
-                (unsigned)bw_input_frame_number(), pos[0] / 4096.0, pos[1] / 4096.0, pos[2] / 4096.0, x, y);
-    }
 }
 
 /* The game's cut-in event is running (it, or a task it pushed). */
@@ -1470,22 +1429,8 @@ static int item_show(EidosUiCtx *c, const FieldNow *f)
         return 0;
     }
     item = bw_ui_cutin_last(&serial);
-    if (!g_show.on && serial == g_show.serial && f->fm != NULL) {
-        /* where the player stands, kept from the field's own frames: once
-         * a cut-in starts the camera is its own */
-        static unsigned every;
-
-        if ((every++ & 3u) == 0u && g_show.pos_ready != 2) {
-            g_show.card.fm = f->fm;
-            g_show.pos_ready = 2;           /* asked */
-            if (!eidos_ui_game_call(item_show_where, &g_show)) {
-                g_show.pos_ready = 1;
-            }
-        }
-    }
     if (serial != g_show.serial) {
-        /* a new cut-in: its name, its pocket and the player's place, read
-         * by the game's thread */
+        /* a new cut-in: its name and its pocket, read by the game's thread */
         g_show.serial = serial;
         g_show.on = item != 0 && item <= 0x400;
         g_show.t = 0;
@@ -1493,9 +1438,6 @@ static int item_show(EidosUiCtx *c, const FieldNow *f)
         g_show.card.item = item;
         g_show.card.ready = 0;
         g_show.card.fm = f->fm;
-        if (g_show.pos_ready == 0) {
-            g_show.sx = g_show.sy = -1;     /* not known: the canvas's middle */
-        }
         if (g_show.on && !eidos_ui_game_call(item_card_make, &g_show.card)) {
             g_show.on = 0;
         }
@@ -1542,11 +1484,10 @@ static int item_show(EidosUiCtx *c, const FieldNow *f)
         return 1;
     }
     world_place(c, &s, &ox, &oy);
-    cx = g_show.sx >= 0 ? (int)(ox + (float)g_show.sx * s) : cw / 2;
-    cy = g_show.sy >= 0 ? (int)(oy + (float)g_show.sy * s) - 20 : ch * 2 / 5;
-    if (cy < 48) {
-        cy = 48;
-    }
+    /* the middle of the DS screen, where the game's own cut-in shows the
+     * item */
+    cx = (int)(ox + 128.f * s);
+    cy = (int)(oy + 96.f * s);
     pocket = g_show.card.pocket < 5 ? ui_game_text(2, 0x37, g_show.card.pocket) : "";
     w = item_card_width(g_show.card.name, pocket);
     item_show_draw(c, fr, (float)(g_show.t - 7) * 146.f / 161.f, cx, cy, (cw - w) / 2, ITEM_CARD_Y(ch), w,

@@ -1254,6 +1254,18 @@ static int gauge_shown(int acc, int maxv, int tiles, int down, int fallback)
     return acc;
 }
 
+/*
+ * The game's gauge for view position vp (this file's 2..7).  The game
+ * numbers its gauges by its own view positions (BTL_MAIN_GetViewPosOfSlot):
+ * 0 and 1 in a single battle, 2..5 in a double and 2..7 in a triple
+ * (gViewPosOfSlotDouble {3, 5} / {2, 4}).  Reading vp - 2 in every rule
+ * showed one foe's plate in a double battle (#24).
+ */
+static int gauge_index(const Bt *b, int vp)
+{
+    return b->rule == 0 ? vp - 2 : vp;
+}
+
 /* Returns 1 and fills `g` when the gauge shows view position vp; 0 when the
  * slot is empty or hidden.  Returns -1 when there is no gauge to read. */
 static int gauge_read(const Bt *b, int vp, GaugeView *g)
@@ -1266,7 +1278,7 @@ static int gauge_read(const Bt *b, int vp, GaugeView *g)
     if (!gptr_ok(work) || vp < 2 || vp > 7) {
         return -1;
     }
-    slot = work + 0x40 + (u32)(vp - 2) * 0x80u;
+    slot = work + 0x40 + (u32)gauge_index(b, vp) * 0x80u;
     fl = rd32(slot, GAUGE_SLOT_FLAGS);
     if ((fl & GF_OCCUPIED) == 0 || (fl & GF_VISIBLE) == 0 || (fl & GF_HIDDEN) != 0) {
         return 0;
@@ -1289,6 +1301,24 @@ static int gauge_read(const Bt *b, int vp, GaugeView *g)
     g->exp = clampi(ex, 0, exmax > 0 ? exmax : 0);
     g->expmax = exmax;
     return 1;
+}
+
+/*
+ * The condition the game's gauge at view position vp shows, as
+ * ui_status_badge numbers it (-1: none).  The gauge's icon is set by
+ * BTLV_GAUGE_SetStatusIcon (stubs/ov/patch_ov094_btlv_gauge.c tells the
+ * port), so the badge comes and goes when the game's icon does (#24).
+ * Game order: 1 paralysis, 2 sleep, 3 freeze, 4 burn, 5 poison, 6 bad
+ * poison.
+ */
+extern int bw_ui_gauge_status_of(int slot) __attribute__((weak));
+
+static int gauge_badge(const Bt *b, int vp)
+{
+    static const signed char k_badge[7] = { -1, 1, 3, 4, 2, 0, 0 };
+    int st = bw_ui_gauge_status_of != NULL ? bw_ui_gauge_status_of(gauge_index(b, vp)) : 0;
+
+    return st >= 0 && st < 7 ? k_badge[st] : -1;
 }
 
 /* The experience bar of an own Pokemon: the part of this level done. */
@@ -1391,6 +1421,18 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
         }
         mon_view(poke, &m);
         gs = gauge_read(b, vp, &gv);
+        if (debug_on()) {
+            static u32 last[8];
+            const u8 *gw = rdp(b->eff, 0x1A4);
+            u32 fl = gptr_ok(gw) ? rd32(gw + 0x40 + (u32)gauge_index(b, vp) * 0x80u, GAUGE_SLOT_FLAGS) : 0xFFFFFFFFu;
+            u32 key = (u32)gs << 24 ^ fl ^ (u32)m.species << 8 ^ (u32)gauge_badge(b, vp);
+
+            if (last[vp] != key) {
+                last[vp] = key;
+                fprintf(stderr, "eidos: plate vp %d species %d gauge %d flags %08X badge %d\n", vp,
+                        m.species, gs, fl, gauge_badge(b, vp));
+            }
+        }
         if (gs == 0) {
             continue;
         }
@@ -1400,6 +1442,7 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
             m.level = gv.level;
         }
         ui_plate(c, 6, y, fw, m.name, m.gender, m.level, m.hp, m.maxhp, 0, 0);
+        ui_plate_status(c, 6, y, fw, m.level, gauge_badge(b, vp));
         y += 27;
     }
     memset(g_plate, 0, sizeof(g_plate));
@@ -1423,6 +1466,7 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
             }
         }
         ui_plate(c, s->px, y, s->pw, m.name, m.gender, m.level, m.hp, m.maxhp, num, den);
+        ui_plate_status(c, s->px, y, s->pw, m.level, gauge_badge(b, s->own_vp[i]));
         if (i < 3) {
             g_plate[i].poke = poke;
             g_plate[i].x = s->px;

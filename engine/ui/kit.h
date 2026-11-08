@@ -291,6 +291,8 @@ void ui_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name
  * experience line). */
 void ui_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender,
               int level, int hp, int maxhp, int exp_num, int exp_den);
+/* The plate's condition badge (ui_status_badge's numbering, -1 none). */
+void ui_plate_status(EidosUiCtx *c, int x, int y, int w, int level, int badge);
 void ui_cmd_button(EidosUiCtx *c, int x, int y, int w, int h, const char *label,
                    u32 color, int selected);
 /* name NULL: an empty slot. */
