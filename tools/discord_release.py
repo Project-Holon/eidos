@@ -53,29 +53,52 @@ def chunks(text, size):
     return out
 
 
-def payload(tag, url, prerelease, role):
+def cards(section):
+    """One card per "### " heading: (title, text); text before the first
+    heading is a card with no title."""
+    out, title, lines = [], None, []
+    for line in section.split("\n"):
+        if line.startswith("### "):
+            if title is not None or "".join(lines).strip():
+                out.append((title, "\n".join(lines).strip()))
+            title, lines = line[4:].strip(), []
+        else:
+            lines.append(line)
+    if title is not None or "".join(lines).strip():
+        out.append((title, "\n".join(lines).strip()))
+    return out
+
+
+def messages(tag, url, prerelease, role):
+    """The messages to send: the first has the ping, the title and the link;
+    the cards fill messages of at most 10 cards and 6000 characters."""
     version = version_of(tag)
     section = changelog_section(version) or "See the release page for the notes."
     title = "eidos %s%s" % (tag, " (pre-release)" if prerelease else "")
-    # <url>: the embed below is the preview, so Discord adds none of its own
+    # <url>: the cards are the preview, so Discord adds none of its own
     head = "%s**%s** is out\n<%s>" % ("<@&%s> " % role if role else "", title, url)
-    budget = MESSAGE_TEXT - len(title) - 100
-    parts = []
-    for i, part in enumerate(chunks(section, EMBED_TEXT)):
-        if parts and (budget - len(part) < 0 or len(parts) == 10):
-            parts[-1]["description"] += "\n\n[The full notes are on the release page.](%s)" % url
-            break
-        budget -= len(part)
-        embed = {"description": part, "color": COLOUR}
-        if i == 0:
-            embed["title"] = title
-            embed["url"] = url
-        parts.append(embed)
-    return {
-        "content": head,
-        "embeds": parts,
-        "allowed_mentions": {"roles": [role] if role else []},
-    }
+    embeds = []
+    for name, text in cards(section):
+        for i, part in enumerate(chunks(text, EMBED_TEXT) or [""]):
+            embed = {"description": part, "color": COLOUR}
+            if name:
+                embed["title"] = name if i == 0 else name + " (more)"
+            embeds.append(embed)
+    out, cur, size = [], [], 0
+    for e in embeds:
+        n = len(e["description"]) + len(e.get("title", ""))
+        if cur and (len(cur) == 10 or size + n > MESSAGE_TEXT - 200):
+            out.append(cur)
+            cur, size = [], 0
+        cur.append(e)
+        size += n
+    if cur:
+        out.append(cur)
+    msgs = [{"embeds": m, "allowed_mentions": {"roles": []}} for m in out] or [
+        {"embeds": [], "allowed_mentions": {"roles": []}}]
+    msgs[0]["content"] = head
+    msgs[0]["allowed_mentions"] = {"roles": [role] if role else []}
+    return msgs
 
 
 def main():
@@ -86,21 +109,22 @@ def main():
     ap.add_argument("--role", help="the role to ping (its id)")
     ap.add_argument("--dry-run", action="store_true", help="print the message, send nothing")
     args = ap.parse_args()
-    body = payload(args.tag, args.url, args.prerelease, args.role)
+    msgs = messages(args.tag, args.url, args.prerelease, args.role)
     if args.dry_run:
         sys.stdout.reconfigure(encoding="utf-8")
-        print(json.dumps(body, indent=2, ensure_ascii=False))
+        print(json.dumps(msgs, indent=2, ensure_ascii=False))
         return
     hook = os.environ.get("DISCORD_RELEASE_WEBHOOK", "")
     if not hook:
         sys.exit("DISCORD_RELEASE_WEBHOOK is not set")
-    req = urllib.request.Request(
-        hook, data=json.dumps(body).encode("utf-8"), method="POST",
-        headers={"Content-Type": "application/json",
-                 # Discord's front end refuses Python's default agent
-                 "User-Agent": "eidos-release (https://github.com/Project-Holon/eidos, 1)"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        print("posted:", resp.status)
+    for body in msgs:
+        req = urllib.request.Request(
+            hook, data=json.dumps(body).encode("utf-8"), method="POST",
+            headers={"Content-Type": "application/json",
+                     # Discord's front end refuses Python's default agent
+                     "User-Agent": "eidos-release (https://github.com/Project-Holon/eidos, 1)"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            print("posted:", resp.status)
 
 
 if __name__ == "__main__":
