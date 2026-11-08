@@ -53,6 +53,19 @@ write`) to make the draft. No other secret is needed.
    file list (the files below), try at least the Windows zip,
    and publish.
 
+A run after a failed one rebuilds only what changed.  Each build job starts
+with the fingerprint of its inputs (`tools/release_inputs.py`: its files'
+git blob ids, its own block of `release.yml` and the meta job's, the version
+and the aletheia revision, and for the phones and the Switch the Linux job's
+fingerprint, whose game module they use).  A package an earlier run built
+from the same fingerprint is taken from the Actions cache and the job skips
+its build and tests; any other job builds and keeps its package there for the
+next run.  So a fix to the Switch job's build rebuilds the Switch alone, and a
+change to the game's code rebuilds every package made from it.  Files no
+build reads (`docs/`, the changelog, the release-notes and Discord tools) are
+in no fingerprint.  `python3 tools/release_inputs.py JOB --list` prints a
+job's files.
+
 A test build before the release: the same run with "prerelease" set to a
 suffix (`pre.1`) instead of "release".  It tags `vx.y.z-pre.1`, drafts the
 release marked as a pre-release, and its launcher carries version

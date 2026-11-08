@@ -127,7 +127,21 @@ jobs:
           path: aletheia
       # 64-bit MinGW-w64: every build is 64-bit (docs/pointer-width.md); the
       # game itself is the wasm32 build (docs/lp64.md, tools/build64.py).
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py windows --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dist
+          key: release-windows-${{ steps.fp.outputs.hash }}
       - uses: msys2/setup-msys2@v2
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           msystem: MINGW64
           update: false
@@ -138,6 +152,7 @@ jobs:
             zip
             unzip
       - uses: actions/cache@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           path: .cache
           key: deps-windows-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wamr.py', 'tools/fetch_mbedtls.py', 'tools/fetch_wasm.py') }}
@@ -145,6 +160,7 @@ jobs:
       # same xPack GCC 14.2 build the port is developed and played on.
       # MSYS2's GCC 16 builds a test_mod_wasm that crashes (2026-10-23).
       - name: Compiler (xPack MinGW-w64 GCC 14.2.0-1, checked against its SHA-256)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           zip=xpack-mingw-w64-gcc-14.2.0-1-win32-x64.zip
           mkdir -p .cache/gcc
@@ -157,6 +173,7 @@ jobs:
           fi
           .cache/gcc/xpack-mingw-w64-gcc-14.2.0-1/bin/x86_64-w64-mingw32-gcc --version | head -1
       - name: Fetch SDL3, WAMR, Mbed TLS, the wasm toolchain (each is checked against a recorded SHA-256)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python tools/fetch_sdl.py --flavor mingw
           python tools/fetch_wamr.py
@@ -165,6 +182,7 @@ jobs:
           CC="$gcc_bin/x86_64-w64-mingw32-gcc.exe" CXX="$gcc_bin/x86_64-w64-mingw32-g++.exe" \
             python tools/fetch_wasm.py
       - name: Stand-ins for the few ROM bytes the sources include (docs/release.md)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: python tools/package_release.py placeholders --aletheia-root aletheia
       # The engine's tests, built natively in the reference configuration
       # (32-bit pointers, docs/pointer-width.md): the configuration the
@@ -174,6 +192,7 @@ jobs:
       # game's C relies on wrapping arithmetic and loose aliasing, as the
       # DS compiler gave it.
       - name: Configure the tests
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           gcc_bin="$(cygpath -m "$PWD/.cache/gcc/xpack-mingw-w64-gcc-14.2.0-1/bin")"
           cmake -S . -B build -G Ninja \
@@ -183,11 +202,14 @@ jobs:
             -DALETHEIA_ROOT="$(cygpath -m "$PWD/aletheia")" \
             -DBW_DATA_ROOT="$(cygpath -m "$PWD/no-game-data/extract/data")"
       - name: Build the tests
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: cmake --build build
       - name: Test (no ROM; tests that need one skip themselves)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: ctest --test-dir build --output-on-failure -j 4
       # The game: the wasm32 module, wasm2c, and the native 64-bit program.
       - name: Build the game
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           gcc_bin="$(cygpath -m "$PWD/.cache/gcc/xpack-mingw-w64-gcc-14.2.0-1/bin")"
           python tools/build64.py --build-dir build64 --release \
@@ -196,8 +218,17 @@ jobs:
             --cc "$gcc_bin/x86_64-w64-mingw32-gcc.exe" \
             --relay "$EIDOS_DEFAULT_RELAY"
       - name: Package
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python tools/package_release.py windows --build-dir build64/host --version "${{ needs.meta.outputs.version }}" --out dist
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dist
+          key: release-windows-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: package-windows
@@ -226,7 +257,22 @@ jobs:
           path: aletheia
       # Cached after the first good run, so a slow package mirror does not
       # hold the job; the cache keys on the package list and version.
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py linux --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dist
+            build64/module/eidos_boot.wasm
+          key: release-linux-${{ steps.fp.outputs.hash }}
       - name: Packages
+        if: steps.reuse.outputs.cache-hit != 'true'
         timeout-minutes: 15
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
@@ -236,10 +282,12 @@ jobs:
           packages: ninja-build gcc-multilib libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdrm-dev libgbm-dev libpulse-dev libasound2-dev libudev-dev libdbus-1-dev libibus-1.0-dev libfuse2 file
           version: "1"
       - uses: actions/cache@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           path: .cache
           key: deps-linux-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wamr.py', 'tools/fetch_mbedtls.py', 'tools/fetch_wasm.py') }}
       - name: Fetch SDL3, WAMR, Mbed TLS, the wasm toolchain (each is checked against a recorded SHA-256)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/fetch_sdl.py --flavor mingw     # the module's SDL3 headers
           python3 tools/fetch_sdl.py --flavor source --build --tag linux-x64
@@ -247,11 +295,13 @@ jobs:
           python3 tools/fetch_mbedtls.py
           python3 tools/fetch_wasm.py
       - name: Stand-ins for the few ROM bytes the sources include (docs/release.md)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: python3 tools/package_release.py placeholders --aletheia-root aletheia
       # The engine's tests in the reference configuration (32-bit pointers,
       # cmake/ilp32-toolchain.cmake); the platform layer is left out, as
       # there is no 32-bit SDL3 here.
       - name: Configure the tests
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE=cmake/ilp32-toolchain.cmake \
@@ -260,10 +310,13 @@ jobs:
             -DALETHEIA_ROOT="$PWD/aletheia" \
             -DBW_DATA_ROOT="$PWD/no-game-data/extract/data"
       - name: Build the tests
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: cmake --build build
       - name: Test (no ROM; tests that need one skip themselves)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: ctest --test-dir build --output-on-failure -j 4
       - name: Build the game
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/build64.py --build-dir build64 --release \
             --aletheia-root "$PWD/aletheia" \
@@ -271,13 +324,24 @@ jobs:
             --sdl3-prefix "$(python3 tools/fetch_sdl.py --locate source --tag linux-x64)" \
             --relay "$EIDOS_DEFAULT_RELAY"
       - name: linuxdeploy (pinned, checked)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           curl -sSL -o linuxdeploy "$LINUXDEPLOY_URL"
           echo "$LINUXDEPLOY_SHA256  linuxdeploy" | sha256sum -c -
           chmod +x linuxdeploy
       - name: Package
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/package_release.py linux --build-dir build64/host --version "${{ needs.meta.outputs.version }}" --out dist --linuxdeploy "$PWD/linuxdeploy"
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dist
+            build64/module/eidos_boot.wasm
+          key: release-linux-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: package-linux
@@ -311,26 +375,44 @@ jobs:
           ref: ${{ needs.meta.outputs.pin }}
           token: ${{ secrets.ALETHEIA_TOKEN || github.token }}
           path: aletheia
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py macos --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dist
+          key: release-macos-${{ steps.fp.outputs.hash }}
       - name: Packages
+        if: steps.reuse.outputs.cache-hit != 'true'
         timeout-minutes: 15
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: brew install ninja sdl3
       - uses: actions/cache@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           path: .cache
           key: deps-macos-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wamr.py', 'tools/fetch_mbedtls.py', 'tools/fetch_wasm.py') }}
       - name: Fetch WAMR, Mbed TLS, the wasm toolchain (each is checked against a recorded SHA-256)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/fetch_sdl.py --flavor mingw     # the module's SDL3 headers
           python3 tools/fetch_wamr.py
           python3 tools/fetch_mbedtls.py
           python3 tools/fetch_wasm.py
       - name: Stand-ins for the few ROM bytes the sources include (docs/release.md)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: python3 tools/package_release.py placeholders --aletheia-root aletheia
       # No native tests here: macOS has no 32-bit target, and the engine's
       # tests run in the reference configuration on Windows and Linux.
       - name: Build the game
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/build64.py --build-dir build64 --release \
             --aletheia-root "$PWD/aletheia" \
@@ -338,8 +420,17 @@ jobs:
             --sdl3-prefix "$(brew --prefix sdl3)" \
             --relay "$EIDOS_DEFAULT_RELAY"
       - name: Package
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/package_release.py macos --build-dir build64/host --version "${{ needs.meta.outputs.version }}" --out dist --lib "$(brew --prefix sdl3)/lib/libSDL3.0.dylib"
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dist
+          key: release-macos-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: package-macos
@@ -355,18 +446,35 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py launcher --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            out
+          key: release-launcher-${{ steps.fp.outputs.hash }}
       - uses: actions/setup-node@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: launcher/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.reuse.outputs.cache-hit != 'true'
       - uses: Swatinem/rust-cache@v2
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           workspaces: launcher/src-tauri
       # The launcher carries the release's version (its page shows it and
       # the installer is named with it): set in the three files that hold it.
       - name: The release's version
+        if: steps.reuse.outputs.cache-hit != 'true'
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.launcher_version }}
@@ -385,6 +493,7 @@ jobs:
       # secret.  Without the secret the installer is built unsigned and the
       # release has no latest.json: launchers then stay on their version.
       - name: Build the installer
+        if: steps.reuse.outputs.cache-hit != 'true'
         shell: bash
         working-directory: launcher
         env:
@@ -400,6 +509,7 @@ jobs:
             npx tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
       - name: Name it
+        if: steps.reuse.outputs.cache-hit != 'true'
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.version }}
@@ -421,6 +531,14 @@ jobs:
               > out/updater-windows.json
             cat out/updater-windows.json
           fi
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            out
+          key: release-launcher-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: launcher-windows
@@ -447,23 +565,40 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py launcher-unix --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }} ${{ matrix.os }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            out
+          key: release-launcher-unix-${{ steps.fp.outputs.hash }}
       - name: Packages (Linux)
-        if: matrix.os == 'linux'
+        if: steps.reuse.outputs.cache-hit != 'true' && (matrix.os == 'linux')
         timeout-minutes: 15
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           packages: libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libfuse2 file patchelf
           version: "1"
       - uses: actions/setup-node@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: launcher/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.reuse.outputs.cache-hit != 'true'
       - uses: Swatinem/rust-cache@v2
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           workspaces: launcher/src-tauri
       - name: The release's version
+        if: steps.reuse.outputs.cache-hit != 'true'
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.launcher_version }}
@@ -478,10 +613,12 @@ jobs:
           perl -0pi -e 's/^version = ".*?"/version = "$ENV{VERSION}"/m' launcher/src-tauri/Cargo.toml
           grep -m1 '^version' launcher/src-tauri/Cargo.toml
       - name: Test
+        if: steps.reuse.outputs.cache-hit != 'true'
         shell: bash
         working-directory: launcher/src-tauri
         run: cargo test
       - name: Build the bundle
+        if: steps.reuse.outputs.cache-hit != 'true'
         shell: bash
         working-directory: launcher
         env:
@@ -497,6 +634,7 @@ jobs:
             npx tauri build --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
           fi
       - name: Name it
+        if: steps.reuse.outputs.cache-hit != 'true'
         shell: bash
         env:
           VERSION: ${{ needs.meta.outputs.version }}
@@ -532,6 +670,14 @@ jobs:
             cat "out/updater-${{ matrix.os }}.json"
           fi
           ls -l out
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            out
+          key: release-launcher-unix-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: launcher-${{ matrix.os }}
@@ -552,21 +698,39 @@ jobs:
       EIDOS_WASM_CACHE: ${{ github.workspace }}/.cache/wasm
     steps:
       - uses: actions/checkout@v4
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py android --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dist
+          key: release-android-${{ steps.fp.outputs.hash }}
       - uses: actions/setup-java@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           distribution: temurin
           java-version: 17
       - uses: actions/download-artifact@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           name: module
           path: module
       - uses: actions/cache@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           path: .cache
           key: deps-android-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wasm.py') }}
       - name: Packages
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: sudo apt-get install -y ninja-build
       - name: Fetch SDL3's source and the wasm toolchain (each is checked against a recorded SHA-256)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/fetch_sdl.py --flavor source
           python3 tools/fetch_wasm.py
@@ -576,6 +740,7 @@ jobs:
       # debug build, signed with the runner's own debug key (it installs,
       # but the next one needs the old one removed first).
       - name: Build the APK
+        if: steps.reuse.outputs.cache-hit != 'true'
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE }}
           EIDOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -594,6 +759,14 @@ jobs:
             cp android/app/build/outputs/apk/debug/*.apk "dist/eidos-android.apk"
           fi
           ls -l dist
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dist
+          key: release-android-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: package-android
@@ -611,32 +784,59 @@ jobs:
       EIDOS_WASM_CACHE: ${{ github.workspace }}/.cache/wasm
     steps:
       - uses: actions/checkout@v4
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py ios --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dist
+          key: release-ios-${{ steps.fp.outputs.hash }}
       - uses: actions/download-artifact@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           name: module
           path: module
       - uses: actions/cache@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           path: .cache
           key: deps-ios-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wasm.py') }}
       - name: Packages
+        if: steps.reuse.outputs.cache-hit != 'true'
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: brew install ninja
       - name: Fetch SDL3's source and the wasm toolchain (each is checked against a recorded SHA-256)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/fetch_sdl.py --flavor source
           python3 tools/fetch_wasm.py
       - name: Build the app (for devices)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: python3 ios/build.py --module module/eidos_boot.wasm --build-dir build-ios --device --jobs 4
       # an .ipa is the app in a Payload folder, zipped; not signed, so a
       # sideloading tool signs it with the player's own Apple ID
       - name: The IPA (unsigned)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           mkdir -p dist stage/Payload
           ditto build-ios/eidos.app stage/Payload/eidos.app
           (cd stage && zip -qry "../dist/eidos-ios.ipa" Payload)
           ls -l dist
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dist
+          key: release-ios-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: package-ios
@@ -659,21 +859,39 @@ jobs:
       EIDOS_WASM_CACHE: ${{ github.workspace }}/.cache/wasm
     steps:
       - uses: actions/checkout@v4
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py switch --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dist
+          key: release-switch-${{ steps.fp.outputs.hash }}
       - uses: actions/download-artifact@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           name: module
           path: module
       - uses: actions/cache@v4
+        if: steps.reuse.outputs.cache-hit != 'true'
         with:
           path: .cache
           key: deps-switch-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wasm.py') }}
       - name: Packages
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: sudo apt-get install -y ninja-build
       - name: Fetch SDL3's headers and the wasm toolchain (each is checked against a recorded SHA-256)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           python3 tools/fetch_sdl.py --flavor mingw
           python3 tools/fetch_wasm.py
       - name: The game as C (wasm-opt, wasm2c, bounds checks) and its OpenGL imports
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           eval "$(python3 tools/fetch_wasm.py --locate | sed 's/^/export /')"
           sdl=$(python3 tools/fetch_sdl.py --locate mingw)
@@ -685,6 +903,7 @@ jobs:
             -DSDL3_PREFIX="$sdl" -DEIDOS_HOST_BOUNDS_CHECKS=ON -DEIDOS_HOST_PARTS=96
           ninja -C build-switch game.h gl_imports.c
       - name: eidos.nro (devkitPro's devkitA64, libnx, SDL2)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           mkdir -p out
           docker run --rm -v "$PWD:$PWD" -w "$PWD" -e JOBS=4 \
@@ -692,11 +911,20 @@ jobs:
             devkitpro/devkita64:latest \
             sh host/switch/build.sh "$PWD/build-switch" "$WABT_ROOT" "$SDL3_INCLUDE" "$PWD/out"
       - name: Package
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           mkdir -p dist stage/switch/eidos
           cp out/eidos.nro stage/switch/eidos/
           (cd stage && zip -qr "../dist/eidos-${{ needs.meta.outputs.version }}-switch.zip" switch)
           ls -l dist
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dist
+          key: release-switch-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: package-switch
@@ -717,9 +945,24 @@ jobs:
           ref: ${{ needs.meta.outputs.pin }}
           token: ${{ secrets.ALETHEIA_TOKEN || github.token }}
           path: aletheia
+      # tools/release_inputs.py: a package an earlier run built from the
+      # same inputs is taken from the cache and the build is skipped
+      - name: Fingerprint of this job's inputs
+        id: fp
+        shell: bash
+        run: $(command -v python3 || command -v python) tools/release_inputs.py vita --extra "${{ needs.meta.outputs.version }} ${{ needs.meta.outputs.pin }}" >> "$GITHUB_OUTPUT"
+      - name: A package built from the same inputs
+        id: reuse
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dist
+          key: release-vita-${{ steps.fp.outputs.hash }}
       - name: Stand-ins for the few ROM bytes the sources include (docs/release.md)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: python3 tools/package_release.py placeholders --aletheia-root aletheia
       - name: eidos.vpk (VitaSDK)
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           docker run --rm -v "$PWD:$PWD" -w "$PWD" vitasdk/vitasdk:latest sh -c '
             set -e
@@ -733,10 +976,19 @@ jobs:
               -DSDL3_DIR=$VITASDK/arm-vita-eabi/lib/cmake/SDL3
             cmake --build build-vita --target eidos.vpk'
       - name: Package
+        if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           mkdir -p dist
           cp build-vita/eidos.vpk "dist/eidos-${{ needs.meta.outputs.version }}-vita.vpk"
           ls -l dist
+      # keep the package for a later run with the same inputs
+      - name: Keep the package for a run that builds the same inputs
+        if: steps.reuse.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dist
+          key: release-vita-${{ steps.fp.outputs.hash }}
       - uses: actions/upload-artifact@v4
         with:
           name: package-vita
