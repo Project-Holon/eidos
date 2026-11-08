@@ -3915,7 +3915,9 @@ static const EidosUiRecipe recipe_catch = {
  * the keys move the game's cursor there; the keys stay the game's.
  *
  * PokeSummaryWork (ov173/poke_summary_types.h): mon 0x000 (PokeSummaryMon:
- * moveList 0x10, selectedIndex 0x14, scrollIndex 0x16), moveCount 0x1B8,
+ * moveList 0x10, selectedIndex 0x14 (the highlighted one of the four rows
+ * on screen), scrollIndex 0x16 (the top row): the move is the list's
+ * scrollIndex + selectedIndex), moveCount 0x1B8,
  * msgWindow 0x1C0, taskMenu 0x1E0.  The lower screen: rows at
  * (128, 80 + 24 * row), back (232, 180).  Move data: WAZA_TOOL_GetParam
  * (0 type, 3 power, 4 accuracy, 5 PP); names a/0/0/2 file 203, texts 202.
@@ -3925,7 +3927,7 @@ static const EidosUiRecipe recipe_catch = {
 
 extern u32 WAZA_TOOL_GetParam(u32 move, u32 param) MN_WEAK;
 
-static int g_rl_target = -1, g_rl_wait;
+static int g_rl_target = -1, g_rl_wait, g_rl_last, g_rl_steps;
 
 static int relearn_match(void)
 {
@@ -3956,8 +3958,8 @@ static void relearn_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         for (count = 0; count < 64 && moves[count] != 0 && moves[count] != 0xFFFFu; count++) {
         }
     }
-    sel = (int)rd16(mon, 0x14);
     scroll = (int)rd16(mon, 0x16);
+    sel = scroll + (int)rd16(mon, 0x14);     /* the move in the whole list */
     my = (ch - 17 - mh - 48) / 2;
     if (my < 4) my = 4;
     in_window(c, mx, my, mw, mh, NULL);
@@ -3984,6 +3986,8 @@ static void relearn_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             } else {
                 g_rl_target = row;
                 g_rl_wait = 0;
+                g_rl_last = -1;
+                g_rl_steps = 0;
             }
         }
     }
@@ -4029,30 +4033,40 @@ static void relearn_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     if (in_tile_words(c, rx, my + IN_HEAD + RL_ROWS * 30 - 30, rw, 26, NULL, "Back", 0, 0) & EIDOS_UI_CLICK) {
         eidos_ui_tap(232, 180, 3);
     }
-    /* the game's question and its YES / NO */
+    /* the game's question and its YES / NO: the game prints its messages
+     * into BMP window 7 (bmpWindows at 0x004, POKE_SUMMARY_MAIN_
+     * StartTextStream); 0x1C0 holds no message, so before, the "Give up?"
+     * question after B never showed and its YES / NO could not be
+     * answered (#24) */
     {
-        const void *mwin = rdp(w, 0x1C0);
+        const void *mwin = rdp(w, 0x004 + 7 * 4);
         int bh = mwin != NULL ? ui_textbox_h(mwin) : 0;
 
         if (bh > 0) {
             ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, mx, my + mh + 4, mw, mwin, -1, -1);
-            if (rdp(w, 0x1E0) != NULL) {
-                ui_taskmenu(c, rdp(w, 0x1E0), mx + mw, my + mh, UI_CHOICE_SYSTEM);
-            }
+        }
+        if (rdp(w, 0x1E0) != NULL) {
+            ui_taskmenu(c, rdp(w, 0x1E0), mx + mw, my + mh, UI_CHOICE_SYSTEM);
         }
     }
-    /* the keys walk the game's cursor to a row off its screen */
+    /* the keys walk the game's cursor to a row off its screen; the walk
+     * stops at the row, when the cursor no longer moves, after as many
+     * steps as the list has rows, or when the player presses a key, so it
+     * can never hold the screen (#24: it pressed DOWN for ever) */
+    if (g_rl_target >= 0 && in != NULL && in->buttons != 0) {
+        g_rl_target = -1;
+    }
     if (g_rl_target >= 0) {
         if (g_rl_wait > 0) {
             g_rl_wait--;
-        } else if (sel < g_rl_target) {
-            eidos_ui_press(BW_KEY_DOWN, 2);
-            g_rl_wait = 4;
-        } else if (sel > g_rl_target) {
-            eidos_ui_press(BW_KEY_UP, 2);
-            g_rl_wait = 4;
-        } else {
+        } else if (sel == g_rl_target || g_rl_target >= count || sel == g_rl_last
+                   || g_rl_steps > count) {
             g_rl_target = -1;
+        } else {
+            eidos_ui_press(sel < g_rl_target ? BW_KEY_DOWN : BW_KEY_UP, 2);
+            g_rl_last = sel;
+            g_rl_steps++;
+            g_rl_wait = 6;
         }
     }
     ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
@@ -4330,6 +4344,40 @@ static void ending_reset(void)
 
 static const EidosUiRecipe recipe_ending = {
     "ending", ending_match, ending_run, ending_reset, 0
+};
+
+/* ------------------------------------------------------------------ */
+/* The 3D demos                                                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The 3D demo player (overlay 203, ov203/demo3d.c: the Nimbasa City Ferris
+ * wheel, the Royal Unova and the others the scripts start through
+ * EVENT_FIELD_PROCLINK_CreateCommExitEvent).  The scene is the game's 3D on
+ * its upper screen; the lower one holds nothing to read.  It fills the
+ * window as the field does; before, no recipe knew it and the two DS
+ * screens showed (#24).
+ */
+static int demo3d_match(void)
+{
+    void *gs = game_system(), *cur;
+
+    if (gs == NULL || (cur = current_proc(gs)) == NULL || rd32(cur, 0x08) < 2u) {
+        return 0;
+    }
+    return (int)rd32(cur, 0x04) == 203;
+}
+
+static void demo3d_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    (void)c;
+    (void)in;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->world_screen = 0;
+}
+
+static const EidosUiRecipe recipe_demo3d = {
+    "demo3d", demo3d_match, demo3d_run, NULL, 0
 };
 
 /* ------------------------------------------------------------------ */
@@ -5684,6 +5732,6 @@ static const EidosUiRecipe recipe_vs = {
 
 const EidosUiRecipe *const ui_recipes_menus[] = { &recipe_union_trade, &recipe_vs, &recipe_options, &recipe_save, &recipe_card,
                                                   &recipe_wireless, &recipe_geonet, &recipe_entree,
-                                                  &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_egg, &recipe_trade, &recipe_oekaki, &recipe_guru2,
+                                                  &recipe_survey, &recipe_townmap, &recipe_catch, &recipe_relearn, &recipe_tvt, &recipe_ending, &recipe_demo3d, &recipe_egg, &recipe_trade, &recipe_oekaki, &recipe_guru2,
                                                   &recipe_guru2_lobby };
 const u32 ui_recipes_menus_count = 19;

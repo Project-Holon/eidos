@@ -1483,20 +1483,36 @@ static void draw_moves(EidosUiCtx *c, const SummaryView *s, int x, int y, int w,
     int detail_y;
     u32 newmove = rd16(s->param, SP_NEWMOVE);
 
+    static int drag_from = -1;
+    int px, py, pressed, released;
+
+    (void)eidos_ui_pointer(&px, &py, &pressed, &released);
     g_move_hover = -1;
     for (i = 0; i < n; i++) {
         u32 mv = i < 4 ? pv(s->mon, P_MOVE1 + (u32)i) : newmove;
         EidosUiRect r;
-        int hit, sel;
+        int hit, sel, over;
 
         r.x = x; r.y = yy; r.w = w; r.h = rowh;
-        sel = (!s->input_enabled && s->cursor == i);
+        sel = (!s->input_enabled && s->cursor == i) || (drag_from == i && eidos_ui_held());
+        over = px >= r.x && py >= r.y && px < r.x + r.w && py < r.y + r.h;
         if (mv != 0) {
             MoveInfo m2;
 
             hit = eidos_ui_hit(r);
             if (hit & EIDOS_UI_HOVER) {
                 hov = i;
+            }
+            /* A move dragged onto another swaps them, as the game's drag
+             * on its own screen does (P_STA_SKILL_HandleTouch); a click
+             * only showed a move, so the order could not be changed with
+             * the mouse or a finger (#24). */
+            if (pressed && over && i < 4) {
+                drag_from = i;
+            }
+            if (released && over && i < 4 && drag_from >= 0 && drag_from != i && s->seq == 4) {
+                eidos_ui_drag(76, k_slot_tap_y[drag_from], 76, k_slot_tap_y[i]);
+                drag_from = -1;
             }
             if ((hit & EIDOS_UI_CLICK) && s->seq == 4) {
                 eidos_ui_tap(76, k_slot_tap_y[i], 3);
@@ -1519,6 +1535,9 @@ static void draw_moves(EidosUiCtx *c, const SummaryView *s, int x, int y, int w,
         yy += rowh + 3;
     }
     g_move_hover = hov;
+    if (released || !eidos_ui_held()) {
+        drag_from = released ? -1 : drag_from;
+    }
 
     /* the move under the pointer, else the chosen one, else the first */
     if (hov >= 0) {

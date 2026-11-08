@@ -191,6 +191,57 @@ int bw_ui_gauge_status_of(int slot)
 }
 
 /* ------------------------------------------------------------------ */
+/* The party ball bars (stubs/ov/patch_ov094_btlv_ballbar.c)           */
+/* ------------------------------------------------------------------ */
+
+extern u32 bw_input_frame_number(void);
+
+static volatile int g_ballbar_on[2];
+static volatile int g_ballbar_kind[2][6];
+static volatile u32 g_ballbar_since[2];
+
+void bw_ui_ballbar(int side, const int *kinds)
+{
+    int i;
+
+    if (side < 0 || side > 1 || kinds == NULL) {
+        return;
+    }
+    for (i = 0; i < 6; i++) {
+        g_ballbar_kind[side][i] = kinds[i];
+    }
+    g_ballbar_since[side] = bw_input_frame_number();
+    g_ballbar_on[side] = 1;
+}
+
+void bw_ui_ballbar_end(int side)
+{
+    if (side >= 0 && side <= 1) {
+        g_ballbar_on[side] = 0;
+    }
+}
+
+/* Side `side`'s ball bar (0 the player's, 1 the foe's): 1 while the game
+ * shows it, with its six balls in kinds (0 no Pokemon, 1 able to battle,
+ * 2 fainted, 3 with a status condition, BTLV_SCU_GetBallStates) and the
+ * input frame it opened at in since. */
+int bw_ui_ballbar_of(int side, int kinds[6], u32 *since)
+{
+    int i;
+
+    if (side < 0 || side > 1 || !g_ballbar_on[side]) {
+        return 0;
+    }
+    for (i = 0; i < 6; i++) {
+        kinds[i] = g_ballbar_kind[side][i];
+    }
+    if (since != NULL) {
+        *since = g_ballbar_since[side];
+    }
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* The field's open list (stubs/ov/patch_ov021_field_msgbg.c)          */
 /* ------------------------------------------------------------------ */
 

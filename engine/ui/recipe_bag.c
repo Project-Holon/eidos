@@ -25,6 +25,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "input.h"
 #include "overlay.h"
 
@@ -204,6 +205,14 @@ static void units_to_utf8(const u16 *u, char *out, int max)
 
         if (c == 0xFFFEu || c == 0xE000u || c == 0x000Au) {
             c = ' ';
+        } else if (c == 0xF000u) {
+            /* a tag (a page break, a colour): its kind, its count and its
+             * arguments go with it; an argument read as a letter showed
+             * as "?" and a 0 one cut the text there */
+            if (i + 2 < 511 && u[i + 1] != 0xFFFFu) {
+                i += 2 + (int)u[i + 2];
+            }
+            continue;
         } else if (c >= 0xD800u && c <= 0xF8FFu) {
             continue;       /* control and private codes */
         }
@@ -227,6 +236,8 @@ static void units_to_utf8(const u16 *u, char *out, int max)
 /* Per work area caches: the names, descriptions and the bank texts. */
 static char g_name[ITEM_ID_MAX][40];
 static u8   g_name_ok[ITEM_ID_MAX];
+static char g_full[ITEM_ID_MAX][64];     /* row_name: a TM with its move */
+static u8   g_full_ok[ITEM_ID_MAX];
 static char g_desc[ITEM_ID_MAX][320];
 static u8   g_desc_ok[ITEM_ID_MAX];
 static char g_msg[160][64];
@@ -237,6 +248,7 @@ static u8   g_pocket_ok[POCKETS];
 static void caches_clear(void)
 {
     memset(g_name_ok, 0, sizeof g_name_ok);
+    memset(g_full_ok, 0, sizeof g_full_ok);
     memset(g_desc_ok, 0, sizeof g_desc_ok);
     memset(g_msg_ok, 0, sizeof g_msg_ok);
     memset(g_pocket_ok, 0, sizeof g_pocket_ok);
@@ -259,6 +271,38 @@ static const char *item_name(const void *work, u32 id)
         g_name_ok[id] = 1;
     }
     return g_name[id];
+}
+
+/* A TM's or HM's move (FILE_UTIL_GetMachineMove, as the game's bag reads
+ * it in ITEMMENU_DrawMoveInfo), 0 for any other item. */
+extern u16 FILE_UTIL_GetMachineMove(u16 item) __attribute__((weak));
+extern u32 WAZA_TOOL_GetParam(u32 move, u32 param) __attribute__((weak));
+
+static int tm_move(u32 id)
+{
+    return FILE_UTIL_GetMachineMove != NULL && id != 0 && id < ITEM_ID_MAX
+           ? (int)FILE_UTIL_GetMachineMove((u16)id) : 0;
+}
+
+/* The name a row and the details show: a TM or HM with its move, as the
+ * game's bag names it ("No. 35 Flamethrower"); before, only "TM35" (#24). */
+
+static const char *row_name(const void *work, u32 id)
+{
+    int mv = tm_move(id);
+
+    if (mv == 0) {
+        return item_name(work, id);
+    }
+    if (!g_full_ok[id]) {
+        const char *game = ui_game_text(2, 203, (u32)mv);
+        const char *nm = ui_move_name_modern(mv, game);
+
+        snprintf(g_full[id], sizeof g_full[id], "%s %s", item_name(work, id),
+                 nm != NULL ? nm : game != NULL ? game : "");
+        g_full_ok[id] = 1;
+    }
+    return g_full[id];
 }
 
 static const char *item_desc(const void *work, u32 id)
@@ -390,15 +434,20 @@ static int bag_read(BagView *v, void *work)
     } else {
         v->count = (int)MYITEM_SAVEDATA_CountUsedSlotsInPocket(rdp(work, W_BAG), (u32)v->pocket);
     }
+    /* ITEMMENU_TaskActionMenuInput is not the action list: the game opens
+     * it after a TM's "Teach [move] to a Pokemon?" (message 0x3E,
+     * ITEMMENU_TaskRegisterResultMessage) as that question's YES / NO.
+     * Taken for the action list, it showed USE / CANCEL without the
+     * question, so the move's name never showed (#24). */
     v->popup = rdp(work, W_MENULIST) != NULL &&
-               (task_is(work, ov070_ITEMMENU_HandleActionMenuChoice) ||
-                task_is(work, ov070_ITEMMENU_TaskActionMenuInput));
+               task_is(work, ov070_ITEMMENU_HandleActionMenuChoice);
     v->quantity = task_is(work, ov070_ITEMMENU_TaskTossQuantityInput) ||
                   task_is(work, ov070_ITEMMENU_TaskTossAskQuantity) ||
                   task_is(work, ov070_ITEMMENU_TaskSellQuantityInput);
     v->yesno = rdp(work, W_MENULIST) != NULL && !v->popup &&
                (task_is(work, ov070_ITEMMENU_TaskTossConfirmInput) ||
-                task_is(work, ov070_ITEMMENU_TaskSellConfirmInput));
+                task_is(work, ov070_ITEMMENU_TaskSellConfirmInput) ||
+                task_is(work, ov070_ITEMMENU_TaskActionMenuInput));
     v->waiting = task_is(work, ov070_ITEMMENU_TaskWaitMessage) ||
                  task_is(work, ov070_ITEMMENU_TaskWaitMessageDismiss) ||
                  task_is(work, ov070_ITEMMENU_TaskWaitMessageThenList) ||
@@ -409,7 +458,8 @@ static int bag_read(BagView *v, void *work)
     v->dialog = v->quantity || v->yesno || v->waiting ||
                 task_is(work, ov070_ITEMMENU_TaskOpenTossConfirm) ||
                 task_is(work, ov070_ITEMMENU_TaskSellAskConfirm) ||
-                task_is(work, ov070_ITEMMENU_TaskStartRegisterResult);
+                task_is(work, ov070_ITEMMENU_TaskStartRegisterResult) ||
+                task_is(work, ov070_ITEMMENU_TaskOpenActionMenu);
     /* States the recipe draws: the list (also while a pick flashes and the
      * pop-up opens, during the opening and while the game goes back to the
      * list), the action pop-up and the dialogs.  Anything else (the move
@@ -1110,7 +1160,7 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 if (sel) {
                     sel_item = (int)id;
                 }
-                item_row(c, list_x, ry, rw, rowh, ui_item_icon((u16)id), item_name(work, id),
+                item_row(c, list_x, ry, rw, rowh, ui_item_icon((u16)id), row_name(work, id),
                          v.pocket == 4 ? 0 : slot[1], sel && eidos_ui_keys_lit(),
                          (st & EIDOS_UI_HOVER) && !v.popup);
                 if (reg) {
@@ -1177,8 +1227,8 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_panel(c, det_x, body_y, det_w, body_h, UI_CUT_TR | UI_CUT_BL, 8, MODAL_FILL2, UI_RED, 255);
         (void)hover_row;
         if (shown != 0) {
-            const char *nm = item_name(work, (u32)shown);
-            int ty0;
+            const char *nm = row_name(work, (u32)shown);
+            int mv = tm_move((u32)shown), ty0;
 
             big = ui_item_icon((u16)shown);
             ix = det_x + det_w / 2;
@@ -1190,6 +1240,20 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             ty0 = iy + 50;
             ui_text(c, det_x + (det_w - ui_text_w(nm, UI_FONT_LARGE)) / 2, ty0, nm, UI_WHITE,
                     UI_RED2, UI_FONT_LARGE, 1);
+            if (mv != 0 && WAZA_TOOL_GetParam != NULL) {
+                /* the move's type, power, accuracy and PP, as the game's
+                 * bag shows them under its name */
+                int pw = (int)WAZA_TOOL_GetParam((u32)mv, 3), ac = (int)WAZA_TOOL_GetParam((u32)mv, 4);
+                char line[48], p1[8] = "---", a1[8] = "---";
+
+                ui_type_tag(c, det_x + 8, ty0 + 18, 46, (int)WAZA_TOOL_GetParam((u32)mv, 0));
+                if (pw > 1) snprintf(p1, sizeof p1, "%d", pw);
+                if (ac > 0 && ac <= 100) snprintf(a1, sizeof a1, "%d", ac);
+                snprintf(line, sizeof line, "%s %s  %s %s  PP %d", ui_tr("POWER"), p1, ui_tr("ACC"), a1,
+                         (int)WAZA_TOOL_GetParam((u32)mv, 5));
+                ui_text(c, det_x + 60, ty0 + 19, line, UI_LIGHT, UI_RED2, UI_FONT_SMALL, 1);
+                ty0 += 16;
+            }
             draw_description(c, det_x + 8, ty0 + 20, det_w - 16, body_y + body_h - 6 - (ty0 + 20),
                              item_desc(work, (u32)shown));
         }

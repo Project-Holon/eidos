@@ -218,6 +218,8 @@ void eidos_ui_reset(void);
 /* A tap on the bottom screen at (x, y) DS pixels, held `frames` frames
  * from the next game frame; the game sees the stylus there. */
 void eidos_ui_tap(int x, int y, u32 frames);
+/* A touch dragged from (x0, y0) to (x1, y1) on the game's lower screen. */
+void eidos_ui_drag(int x0, int y0, int x1, int y1);
 
 /* A button press (BW_KEY_* mask), held `frames` frames from the next game
  * frame; the player's own buttons are not disturbed. */

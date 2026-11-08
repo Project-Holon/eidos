@@ -144,6 +144,30 @@ void eidos_ui_tap(int x, int y, u32 frames)
                                 frames == 0 ? 1 : frames);
 }
 
+/* A touch dragged from (x0, y0) to (x1, y1) on the lower screen: down at
+ * the start, moved there in steps of a frame or two, held and let go, for
+ * the game's own drags (the summary's move swap, P_STA_SKILL_HandleTouch,
+ * picks a move up once the touch moves more than 8 pixels). */
+extern int bw_input_script_untouch(u32 frame);
+
+void eidos_ui_drag(int x0, int y0, int x1, int y1)
+{
+    u32 f = bw_input_frame_number(), k;
+    const u32 steps = 8;
+
+    if (x0 < 0 || y0 < 0 || x0 >= BW_TOUCH_WIDTH || y0 >= BW_TOUCH_HEIGHT ||
+        x1 < 0 || y1 < 0 || x1 >= BW_TOUCH_WIDTH || y1 >= BW_TOUCH_HEIGHT) {
+        return;
+    }
+    (void)bw_input_script_touch(f, x0, y0, 0);
+    for (k = 1; k <= steps; k++) {
+        (void)bw_input_script_touch(f + 2 + k * 2, x0 + (x1 - x0) * (int)k / (int)steps,
+                                    y0 + (y1 - y0) * (int)k / (int)steps, 0);
+    }
+    (void)bw_input_script_untouch(f + 2 + steps * 2 + 4);
+    g_tap_end = f + 2 + steps * 2 + 6;
+}
+
 void eidos_ui_press(u32 keys, u32 frames)
 {
     (void)bw_input_inject(keys & BW_KEY_GAME, frames == 0 ? 1 : frames);
@@ -1122,6 +1146,7 @@ extern void *FIELD_STATUS_CreateSubProcCallbackEvent(void *gsys, void *fieldMap,
     __attribute__((weak));
 extern void *ov010_SYMBOL_MAP_CreatePokeEventTask(void *gsys, void *fieldMap, void *poke) __attribute__((weak));
 extern void *bw_dsref_ov010_gMoveRelearnProcData __attribute__((weak));
+extern void *bw_dsref_ov010_gDemo3dProcData __attribute__((weak));
 extern void *bw_dsref_ov021_d_021EF78C __attribute__((weak));        /* ov170's ProcData */
 extern void *FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(void *gsys, void *fieldMap, u32 overlayId, void *procData,
                                                            void *procWork, void (*callback)(void *), void *callbackWork)
@@ -1175,7 +1200,21 @@ static void debug_open(void)
     }
     done = 1;
     gd = *(u8 **)(gs + 0x1C);
-    if (sscanf(what, "clear %u", &a) == 1 && ov010_EVENT_GAMECLEAR_Create != NULL) {
+    if (sscanf(what, "demo %u", &a) == 1 && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
+        && &bw_dsref_ov010_gDemo3dProcData != NULL) {
+        /* the field closed first (its overlays share the demo's memory: a
+         * script closes it before EVENT_FIELD_PROCLINK_CreateCommExitEvent),
+         * then the demo with CommProcParam (ov010/event_field_proclink.c):
+         * gameSystem 0x00, kind 0x04 (the demo, 1..18), noon */
+        static u8 demo_param[0x18];
+
+        memset(demo_param, 0, sizeof demo_param);
+        *(void **)(demo_param + 0x00) = gs;
+        *(u32 *)(demo_param + 0x04) = a;
+        demo_param[0x0D] = 12;
+        ev = FIELD_STATUS_CreateSubProcCallbackEvent(gs, fm, 203, bw_dsref_ov010_gDemo3dProcData, demo_param,
+                                                     debug_open_done, NULL);
+    } else if (sscanf(what, "clear %u", &a) == 1 && ov010_EVENT_GAMECLEAR_Create != NULL) {
         ev = ov010_EVENT_GAMECLEAR_Create(gs, a);
     } else if (sscanf(what, "trade %u %u", &a, &b2) == 2 && ov021_FLD_TRADE_CreateEvent != NULL) {
         ev = ov021_FLD_TRADE_CreateEvent(gs, a, b2);
@@ -1604,6 +1643,19 @@ extern void *BTL_SETUP_Create(u32 heapId) __attribute__((weak));
 extern void *ov010_EVENT_BATTLE_CreateScriptedBattle(void *gsys, void *fieldMap, void *btlSetup, int returnImmediately,
                                                      int effectId) __attribute__((weak));
 extern int ov010_EVENT_TRAINER_IsDoubleBattle(int trainerId) __attribute__((weak));
+extern int ov010_EVENT_TRAINER_GetBattleType(int trainerId) __attribute__((weak));
+
+/* A trainer's battle rule, as the scripts pass it (EVENT_TRAINER_
+ * GetBattleType: 0 single, 1 double, 2 triple, 3 rotation). */
+static int debug_trainer_rule(unsigned id)
+{
+    if (ov010_EVENT_TRAINER_GetBattleType != NULL) {
+        int t = ov010_EVENT_TRAINER_GetBattleType((int)id);
+
+        return t >= 0 && t <= 3 ? t : 0;
+    }
+    return ov010_EVENT_TRAINER_IsDoubleBattle != NULL && ov010_EVENT_TRAINER_IsDoubleBattle((int)id);
+}
 extern void *GAME_EVENT_GetWork(void *event) __attribute__((weak));
 extern void *ov010_EVENT_BATTLE_CreateEncounterTask(void *gsys, void *fieldMap, int rule, int partnerId,
                                                     int trainerId1, int trainerId2, int options)
@@ -1665,10 +1717,9 @@ static void debug_battle(void)
     } else if (sscanf(what, "trainer %u", &a1) == 1 && getenv("EIDOS_DEBUG_FOES") == NULL &&
                ov010_EVENT_BATTLE_CreateEncounterTask != NULL) {
         /* as a trainer's own battle: the trainer's encounter effect and
-         * music (EVENT_BATTLE_CreateEncounterTask) */
-        int dbl = ov010_EVENT_TRAINER_IsDoubleBattle != NULL && ov010_EVENT_TRAINER_IsDoubleBattle((int)a1);
-
-        ev = ov010_EVENT_BATTLE_CreateEncounterTask(gs, fm, dbl ? 1 : 0, 0, (int)a1, 0, 0);
+         * music (EVENT_BATTLE_CreateEncounterTask), with its own rule:
+         * single, double, triple or rotation (its record's type) */
+        ev = ov010_EVENT_BATTLE_CreateEncounterTask(gs, fm, debug_trainer_rule(a1), 0, (int)a1, 0, 0);
         /* The encounter task is a script's (BattleTask.isScripted, +0x14,
          * src/game/ov010/event_battle.c): on a loss it hands back to the
          * trainer's script, which blacks the player out.  Started here with
@@ -1681,9 +1732,8 @@ static void debug_battle(void)
     } else if (sscanf(what, "trainer %u", &a1) == 1 && BTL_SETUP_Create != NULL
                && ov021_FIELD_ENCOUNT_SetupTrainerBattle != NULL && ov010_EVENT_BATTLE_CreateScriptedBattle != NULL) {
         void *bs = BTL_SETUP_Create(4);
-        int dbl = ov010_EVENT_TRAINER_IsDoubleBattle != NULL && ov010_EVENT_TRAINER_IsDoubleBattle((int)a1);
 
-        ov021_FIELD_ENCOUNT_SetupTrainerBattle(enc, bs, dbl ? 1u : 0u, 0, a1, 0, 4);
+        ov021_FIELD_ENCOUNT_SetupTrainerBattle(enc, bs, (u32)debug_trainer_rule(a1), 0, a1, 0, 4);
         /* EIDOS_DEBUG_FOES="species,species,...": the trainer's team becomes
          * fresh Pokemon of those species (BattleSetupParam.party[1], +0x28) */
         if (getenv("EIDOS_DEBUG_FOES") != NULL && POKE_TOOL_SetupPartyParam != NULL &&

@@ -412,6 +412,15 @@ static int bt_read(Bt *b)
             if (gptr_ok(in)) {
                 g_bt.in = in;
                 g_bt.screen = (int)rd32(in, 0x58);
+                if (debug_on()) {
+                    static int last = -1;
+
+                    if (g_bt.screen != last) {
+                        last = g_bt.screen;
+                        fprintf(stderr, "eidos: battle input screen %d (rule %d) at %u\n", last, g_bt.rule,
+                                (unsigned)stamp);
+                    }
+                }
             }
         }
     }
@@ -467,7 +476,11 @@ static u8 *poke_at_view(const Bt *b, int vp)
 {
     u8 *main = b->main;
     int slot = view_slot(b, vp);
-    int last = b->rule == 1 ? 5 : (b->rule == 2 ? 7 : 3);
+    /* a rotation (rule 3) has three a side, as a triple: BTL_MAIN_
+     * GetViewPosOfSlot reads the triple table for any rule past 1; with
+     * rule 3 taken for a single, the foe's two side Pokemon had no plate
+     * (#24) */
+    int last = b->rule == 1 ? 5 : (b->rule >= 2 ? 7 : 3);
     u32 cid, nth = 0, i, cnt;
     u8 *slotobj, *poke;
 
@@ -1380,15 +1393,11 @@ static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s)
             }
         }
     }
-    /* the chooser last: it ends nearest the corner */
-    for (i = 0; i < n; i++) {
-        if (poke_at_view(b, s->own_vp[i]) == chooser && i != n - 1) {
-            int t = s->own_vp[i];
-
-            s->own_vp[i] = s->own_vp[n - 1];
-            s->own_vp[n - 1] = t;
-        }
-    }
+    /* The plates stay in the field's order, whoever chooses (the chooser
+     * has its corners in the scene).  Before, the chooser's plate moved
+     * to the bottom, so the two plates traded places every turn and an
+     * attack on one Pokemon could seem to take the other's HP (#24). */
+    (void)i;
     room = (h - 17 - 6 - 120) / (PLATE_H + PLATE_GAP);
     if (room < 1) {
         room = 1;
@@ -1399,6 +1408,66 @@ static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s)
     }
     s->n = n;
     s->top = h - 17 - 6 - n * (PLATE_H + PLATE_GAP) + PLATE_GAP - 4;
+}
+
+/* The party ball bars (stubs/ov/patch_ov094_btlv_ballbar.c): each side's six
+ * balls while the game shows them, a trainer's before the battle and both
+ * sides' when a Pokemon is sent out (#24: the one-screen layout hid the
+ * game's, so a trainer's team size never showed). */
+extern int bw_ui_ballbar_of(int side, int kinds[6], u32 *since) __attribute__((weak));
+
+static void ball_dot(EidosUiCtx *c, int cx, int cy, int r, int kind, int alpha)
+{
+    u32 top = kind == 1 ? 0xE8403Au : kind == 3 ? 0xF0A030u : 0x4A4F58u;
+    u32 bot = kind == 2 ? 0x8A9099u : 0xF4F4F4u;
+    int dy;
+
+    for (dy = -r; dy <= r; dy++) {
+        int hw = 0;
+
+        while ((hw + 1) * (hw + 1) + dy * dy <= r * r) {
+            hw++;
+        }
+        if (kind == 0) {
+            /* no Pokemon: a faint disc where a ball would be */
+            ui_fill(c, cx - hw, cy + dy, 2 * hw + 1, 1, UI_GREY, alpha / 4);
+            continue;
+        }
+        ui_fill(c, cx - hw, cy + dy, 2 * hw + 1, 1, dy < 0 ? top : dy == 0 ? 0x202428u : bot, alpha);
+    }
+    if (kind != 0) {
+        ui_fill(c, cx - 1, cy - 1, 3, 3, 0x202428u, alpha);
+        ui_fill(c, cx, cy, 1, 1, 0xF4F4F4u, alpha);
+    }
+}
+
+static void ballbar_draw(EidosUiCtx *c, int side, int x, int y, int right)
+{
+    int kinds[6], i, bw = 6 * 16 + 8, a, slide;
+    u32 since = 0, t;
+
+    if (bw_ui_ballbar_of == NULL || !bw_ui_ballbar_of(side, kinds, &since)) {
+        return;
+    }
+    t = bw_input_frame_number() - since;
+    /* the bar slides in from its side, then each ball, as the game's */
+    slide = t >= 10 ? 0 : (int)(10 - t) * (bw + 12) / 10;
+    a = t >= 10 ? 225 : 225 * (int)t / 10;
+    if (right) {
+        x = x - bw + slide;
+    } else {
+        x -= slide;
+    }
+    ui_panel(c, x, y, bw, 18, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, a);
+    for (i = 0; i < 6; i++) {
+        /* as the game lays them (BTLV_B_GAUGE_CreatePartyBallBar): the
+         * foe's first ball on the left, the player's on the right */
+        int k = side == 0 ? 5 - i : i;
+
+        if (t >= (u32)(10 + i * 3)) {
+            ball_dot(c, x + 4 + 8 + i * 16, y + 9, 5, kinds[k], 255);
+        }
+    }
 }
 
 static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt,
@@ -1445,6 +1514,8 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
         ui_plate_status(c, 6, y, fw, m.level, gauge_badge(b, vp));
         y += 27;
     }
+    ballbar_draw(c, 1, 6, y + 2, 0);
+    ballbar_draw(c, 0, s->px + s->pw, s->top - 22, 1);
     memset(g_plate, 0, sizeof(g_plate));
     y = s->top + 4;
     for (i = 0; i < s->n; i++) {
@@ -2002,7 +2073,8 @@ static int move_match(void)
 {
     Bt b;
 
-    return bt_read(&b) && b.in != NULL && b.screen == 2;
+    /* 2 the move screen; 5 a rotation battle's, with its rotate buttons */
+    return bt_read(&b) && b.in != NULL && (b.screen == 2 || b.screen == 5);
 }
 
 static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
@@ -2013,7 +2085,7 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static const int tap_y[5] = { 56, 56, 104, 104, 167 };
     Bt b;
     Shell sh;
-    int i, hovered = -1, cur, struggle, tw, th = 26, g = 3, x0, y0, info_y;
+    int i, hovered = -1, cur, struggle, tw, th = 26, g = 3, x0, y0, info_y, rot, rot_slot = 0;
     u8 *poke;
     MoveV mv[4];
     char prompt_buf[96];
@@ -2024,7 +2096,16 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->hide_2d = 1;
     view->mode = EIDOS_VIEW_WORLD;
     shell_layout(c, &b, &sh);
-    poke = rdp(b.core, 0xBC);
+    rot = b.screen == 5;
+    if (rot) {
+        /* a rotation battle's move screen (input screen 5): the moves of
+         * the Pokemon the rotation buttons show, BtlvInput.pokeParam
+         * [flags.slotIndex] (+0x2A4; slotIndex is bits 19-20 of +0x68) */
+        rot_slot = (int)((rd32(b.in, 0x68) >> 19) & 3u);
+        poke = rot_slot < 3 ? rdp(b.in, 0x2A4 + (u32)rot_slot * 4u) : NULL;
+    } else {
+        poke = rdp(b.core, 0xBC);
+    }
     if (!gptr_ok(poke)) {
         return;
     }
@@ -2099,6 +2180,31 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 }
                 ui_text(c, x0 + 22, info_y + ui_text_y(11, UI_FONT_SMALL), info, UI_LIGHT, UI_EDGE,
                         UI_FONT_SMALL, 1);
+            }
+        }
+    }
+    if (rot) {
+        /* the rotation: whose moves these are, and the game's two rotate
+         * buttons (sBtlvInputSectionData.da entries 5 and 6: x 0-80 and
+         * 80-160, y 152-192 on its screen) */
+        static const char *const lab[2] = { "Rotate left", "Rotate right" };
+        MonView m;
+        int bw2 = (sh.pw - g) / 2, by = info_y - 4 - 20, k;
+
+        mon_view(poke, &m);
+        ui_text(c, x0 + 2, by - 14 + ui_text_y(12, UI_FONT_SMALL), m.name, UI_WHITE, UI_EDGE,
+                UI_FONT_SMALL, 1);
+        for (k = 0; k < 2; k++) {
+            int bx = x0 + k * (bw2 + g);
+            int st = hit(c, bx, by, bw2, 20);
+            int lit = (st & EIDOS_UI_HOVER) != 0;
+
+            ui_panel(c, bx, by, bw2, 20, UI_CUT_TL | UI_CUT_BR, 5, lit ? UI_BODY2 : UI_BODY, lit ? UI_WHITE : UI_EDGE,
+                     230);
+            ui_text(c, bx + (bw2 - ui_text_w(ui_tr(lab[k]), UI_FONT_SMALL)) / 2, by + ui_text_y(20, UI_FONT_SMALL),
+                    ui_tr(lab[k]), UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
+            if (st & EIDOS_UI_CLICK) {
+                tap_request(k == 0 ? 40 : 120, 172, bt_sig(&b, 2), in->frame);
             }
         }
     }

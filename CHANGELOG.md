@@ -5,6 +5,8 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.4
 
+eidos now runs on the Switch and Vita, draws with each platform's native renderer, and brings improvements to the Remaster option along with many bug fixes.
+
 ### Engine & Performance
 - **Native Renderer**: `Settings > Display > Renderer > Native` draws with Direct3D 12 on Windows, Metal on Mac and iPhone and Vulkan on Linux and Android, through SDL3's GPU API; OpenGL stays the default and takes over when the native renderer cannot start.
 - **VSync**: `Settings > Display > VSync` (on by default): on a 60 Hz display, or 120 or 240 Hz, the game runs at the display's own rate and every frame waits for the screen, so each frame shows for the same time instead of one now and then showing twice. Fast forward and other rates (50, 75, 144 Hz) pace by the clock as before.
@@ -20,10 +22,19 @@ Each release's notes on GitHub start with its section here
 - **Status Conditions**: The battle HP plates show poison, paralysis, sleep, burn and freeze, at the moment the game's own gauge shows them (#24).
 - **Double Battles**: Both opposing Pokémon have their HP plates; before, only one showed (#24).
 - **VS Screens**: The VS banner before a story battle (the first one with your rival included) shows in the one-screen layout again, across the whole window, over the room around it; before, the screen froze and the banner never appeared. Other cut-ins the game draws over its screen show the same way.
+- **Team Size**: Before a trainer battle and when a Pokémon is sent out, each side's six balls show its team (able, with a status, fainted or empty), as the game shows them; before, they never appeared (#24).
+- **Rotation Battles**: The move screen with its Rotate left and Rotate right buttons is one-screen, and all three Pokémon of each side have their HP plates; before, choosing a move switched to the DS screens and only the front Pokémon had a plate (#24).
+- **Double Battle Plates**: Your Pokémon's plates keep the field's order; before, they traded places every turn, so an attack on one could seem to take the other's HP (#24).
+- **TMs**: The Bag names a TM's move ("TM35 Flamethrower") with its type, power, accuracy and PP, and the question "Teach Flamethrower to a Pokémon?" shows with YES and NO; before, it showed USE and CANCEL without the question (#24).
+- **Move Order**: In a Pokémon's summary, dragging a move onto another swaps them, with the mouse or a finger, as on the DS's touch screen (#24).
+- **3D Scenes**: The Nimbasa City Ferris wheel, the Royal Unova and the game's other 3D scenes show in the one-screen layout; before, they switched to the DS screens (#24).
 
 ### Bug Fixes
+- **Crash After 15 Minutes**: Fixed the game stopping with "no fiber left" after about 15 minutes in battle or the field; with the radio on and the relay out of reach, each try to join it kept a thread (#23).
+- **French Black**: Fixed the crash when using the Bag (a Potion, switching Pokémon) on the French Black cartridge (#25).
 - **Item Card**: The item card no longer stays on screen for a moment after its message box closes.
 - **Trainers' School Blackboard**: Closing the blackboard's list of topics with B (Cancel) no longer closes the game (#24).
+- **Move Relearner**: Fixed the Move Reminder locking the game: picking a move past the first four kept the cursor pressing down, and B's "Give up?" question never showed, so the screen could not be left (#24).
 - **Interface Translations**: A mod's `ui_text` file now also translates the labels built from values (`PWR %d  ACC %d`, `Lv. %d`, `Received %s` and about 40 more), the settings' key names and the multiplayer and timer lines; a translation whose `%` codes do not match the English is ignored. The template lists every label the interface draws, the Settings page and the multiplayer messages included, and the multiplayer pause screen draws its text in the game's font, so a translation's own letters show there too. "Lv." in the party lists and a long translation of it in battle now come through too (#21).
 - **GPU Drawing Setting**: `Settings > Display > GPU drawing` shows On and Off like the other switches, not "on" and "off".
 - **Move Names**: The modern English move names (Hi Jump Kick to High Jump Kick and the others) now replace only the English cartridge's names; before, they replaced the move names of every language and of mods (#21).
