@@ -840,7 +840,11 @@ EidosGl *eidos_gl_create(SDL_Window *window)
         g->u3_hasz = g->glGetUniformLocation(g->prog3, "hasz");
         g->u3_sent = g->glGetUniformLocation(g->prog3, "sent");
         if (eidos_gl3d_init(g) != 0) {
+            /* said out loud: a 3D renderer that turns itself off leaves
+             * the one-screen layout on its two-screen fallback */
             g->have3d = 0;
+            fprintf(stderr, "eidos: OpenGL 3D renderer off: its setup failed; "
+                    "the one-screen world falls back to the DS screens\n");
         }
         g->progc = eidos_gl_compile_program(g, k_vs, k_fsc);
         if (g->progc != 0) {
