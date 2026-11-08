@@ -178,6 +178,7 @@ typedef struct Model {
     int v[EIDOS_OPT_COUNT];
     int key[NBTN][EIDOS_BIND_SLOTS];
     PadCtl pad[NBTN][EIDOS_BIND_SLOTS];
+    int pad_custom;                  /* the player bound the pad: [pad] custom */
     NetModel net;
     int inject_max;                 /* the longest press the port allows */
     int panel_visible;               /* the run-status panel: 1 when shown */
@@ -283,6 +284,7 @@ static void model_defaults(Model *m)
             }
         }
     }
+    m->pad_custom = 0;
     /* The network settings start empty: the port has no relay of its own
      * (the session calls say "no relay"), the control is off and the
      * player has no name yet (the service's own default stands).  The
@@ -309,6 +311,7 @@ static void model_reset_bindings(Model *m)
     model_defaults(&d);
     memcpy(m->key, d.key, sizeof(m->key));
     memcpy(m->pad, d.pad, sizeof(m->pad));
+    m->pad_custom = 0;
 }
 
 /*
@@ -408,6 +411,7 @@ static int apply_bindings(void)
             }
         }
     }
+    eidos_platform_set_pad_custom(g_plat, g_cur.pad_custom);
     rc = eidos_platform_set_bindings(g_plat, keys, nk, pads, np);
     free(keys);
     free(pads);
@@ -1636,10 +1640,19 @@ int eidos_settings_set_pad(int button, int slot, int kind, int index)
     }
     g_cur.pad[button][slot].kind = kind < 0 ? -1 : kind;
     g_cur.pad[button][slot].index = index;
+    /* the bindings are the player's now (the swap above baked in what the
+     * pad showed): no swap later, even when they equal the shipped ones */
+    g_cur.pad_custom = 1;
     if (g_plat != NULL) {
         (void)apply_bindings();
     }
     return 0;
+}
+
+int eidos_settings_pad_custom(void)
+{
+    ensure_init();
+    return g_cur.pad_custom;
 }
 
 void eidos_settings_reset_bindings(void)
@@ -2173,6 +2186,10 @@ static void parse_file(FILE *fp, Model *m)
             }
             continue;
         }
+        if (strcmp(section, "pad") == 0 && strcmp(key, "custom") == 0) {
+            m->pad_custom = strcmp(val, "1") == 0;
+            continue;
+        }
         if (strcmp(section, "keys") == 0 || strcmp(section, "pad") == 0) {
             int b;
 
@@ -2244,6 +2261,10 @@ static int write_file(FILE *fp, const Model *m)
     }
     for (kind = 0; kind < 2; kind++) {
         fprintf(fp, "\n[%s]\n", kind == 0 ? "keys" : "pad");
+        if (kind == 1 && m->pad_custom) {
+            /* bound by the player: no automatic A/B swap (#28) */
+            fprintf(fp, "custom = 1\n");
+        }
         for (b = 0; b < NBTN; b++) {
             fprintf(fp, "%s = ", k_buttons[b].key);
             first = 1;

@@ -3,6 +3,11 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.5
+
+### Fixes
+- **Controller Remapping**: A layout bound by hand stays as bound. Setting the DS's own layout (A right, B bottom, X top, Y left) on a pad that confirms with its bottom button turned the automatic A/B swap back on with the last button bound, undoing A and B; the swap now stays off once the pad is bound, until the bindings are reset (#28).
+
 ## 0.2.4
 
 eidos now runs on the Switch and Vita, draws with each platform's native renderer, and brings improvements to the Remaster option along with many bug fixes.

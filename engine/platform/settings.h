@@ -270,6 +270,10 @@ int  eidos_settings_set_key(int button, int slot, int scancode);
 /* Gamepad.  kind is EIDOS_PADBIND_*, or -1 for an empty slot. */
 int  eidos_settings_get_pad(int button, int slot, int *kind, int *index);
 int  eidos_settings_set_pad(int button, int slot, int kind, int index);
+/* Non-zero once the player has bound the pad ([pad] custom = 1): the shipped
+ * A/B swap for pads that confirm with the bottom button is off from then on,
+ * until the bindings are reset. */
+int  eidos_settings_pad_custom(void);
 
 /* Bindings (keyboard and gamepad) back to the defaults, applied. */
 void eidos_settings_reset_bindings(void);

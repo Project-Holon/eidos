@@ -482,6 +482,13 @@ static void test_file(void)
     BW_CHECK_EQ("round trip keys", memcmp(k1, k2, sizeof k1), 0);
     BW_CHECK_EQ("round trip pad kind", memcmp(pk1, pk2, sizeof pk1), 0);
     BW_CHECK_EQ("round trip pad index", memcmp(pi1, pi2, sizeof pi1), 0);
+    /* a pad bound by the player stays theirs (#28): the flag is saved, and
+     * only a reset of the bindings clears it */
+    BW_CHECK_EQ("pad custom after a pad binding, reloaded", eidos_settings_pad_custom(), 1);
+    eidos_settings_reset_bindings();
+    BW_CHECK_EQ("reset bindings clears pad custom", eidos_settings_pad_custom(), 0);
+    BW_CHECK_EQ("reload", eidos_settings_load(), 0);
+    BW_CHECK_EQ("pad custom back from the file", eidos_settings_pad_custom(), 1);
 
     /* Hand edits: unknown keys and bad values are ignored with a warning. */
     fp = fopen(INI, "wb");

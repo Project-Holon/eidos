@@ -84,6 +84,7 @@ struct EidosPlatform {
                                        button letters, no brand            */
     int pad_type;                   /* that pad's SDL_GamepadType          */
     int face_default;               /* A, B, X, Y are on the shipped buttons */
+    int pad_custom;                 /* the player has bound the pad: no swap */
     char text[128];
     int text_len;
     int cap_state;                  /* EIDOS_CAPTURE_*                       */
@@ -338,7 +339,11 @@ static int pad_bottom_confirms(int type)
     }
 }
 
-/* Whether A, B, X and Y are bound exactly as shipped (k_default_padmap). */
+/* Whether A, B, X and Y are bound exactly as shipped (k_default_padmap).
+ * Once the player has bound the pad themselves (pad_custom) the bindings
+ * are theirs even when they equal the shipped ones: a player who set the
+ * DS's own layout by hand saw the swap come back with the last button
+ * they bound and undo A and B (#28). */
 static void note_face_default(EidosPlatform *p)
 {
     static const u32 face[4] = { EIDOS_PAD_A, EIDOS_PAD_B, EIDOS_PAD_X, EIDOS_PAD_Y };
@@ -348,6 +353,9 @@ static void note_face_default(EidosPlatform *p)
     u32 i;
 
     p->face_default = 0;
+    if (p->pad_custom) {
+        return;
+    }
     for (i = 0; i < p->padmap_count; i++) {
         for (f = 0; f < 4; f++) {
             if (p->padmap[i].button != face[f]) {
@@ -381,6 +389,15 @@ extern int eidos_ui_debug_battle_started(void) __attribute__((weak));
 int eidos_platform_face_swap(const EidosPlatform *p)
 {
     return p != NULL && p->face_default && pad_bottom_confirms(p->pad_type);
+}
+
+void eidos_platform_set_pad_custom(EidosPlatform *p, int on)
+{
+    if (p == NULL) {
+        return;
+    }
+    p->pad_custom = on != 0;
+    note_face_default(p);
 }
 
 /* Rebuilt from the whole table on every pump, as the keyboard is.         */
