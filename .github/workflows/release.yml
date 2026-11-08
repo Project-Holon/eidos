@@ -729,6 +729,7 @@ jobs:
               -DEIDOS_BOOT=ON -DEIDOS_BOOT_ALL_GAME=ON -DEIDOS_OVERLAYS=ALL \
               -DEIDOS_TLS=OFF -DEIDOS_WASM=OFF -DEIDOS_DATA_TESTS=OFF -DEIDOS_REAL_OVERLAY_TESTS=OFF \
               -DALETHEIA_ROOT="$PWD/aletheia" \
+              -DBW_DATA_ROOT="$PWD/no-game-data/extract/data" \
               -DSDL3_DIR=$VITASDK/arm-vita-eabi/lib/cmake/SDL3
             cmake --build build-vita --target eidos.vpk'
       - name: Package
