@@ -269,6 +269,13 @@ elseif(EIDOS_HOST_SDL_SOURCE)
     endif()
 else()
     find_library(_sdl3 NAMES SDL3 PATHS ${SDL3_PREFIX}/lib ${SDL3_PREFIX}/lib64)
+    if(NOT _sdl3)
+        # no library, only the headers: a build that makes the game's C and
+        # its imports for another toolchain (the Switch job, which links in
+        # devkitPro's image) never links this program; the name keeps
+        # CMake's generate step going
+        set(_sdl3 SDL3)
+    endif()
     target_link_libraries(eidos PRIVATE ${_sdl3} m dl)
     if(APPLE)
         # the ROM picker's Cocoa dialog (install/picker.c calls it)
