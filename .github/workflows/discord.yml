@@ -1,0 +1,36 @@
+# Post each published release (and pre-release) to the Discord releases
+# channel, with a ping for the release role and the changelog section
+# (tools/discord_release.py).  The release workflow only drafts a release;
+# this runs when the draft is published.  The webhook is the repository
+# secret DISCORD_RELEASE_WEBHOOK.
+name: discord
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "A published release's tag to post again"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Post to Discord
+        env:
+          DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          url=$(gh release view "$TAG" --json url --jq .url)
+          pre=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)
+          flag=""
+          [ "$pre" = "true" ] && flag="--prerelease"
+          python3 tools/discord_release.py "$TAG" --url "$url" $flag --role 1566455520846684342
