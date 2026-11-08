@@ -325,13 +325,23 @@ static void publish_ram_count(void)
     bw_io_write32(G3D_HW_RAM_COUNT, polys | (verts << 16));
 }
 
+/* CLIPMTX_RESULT as the DS gives it: position times projection, without
+ * the view scale.  Every reader in the game loads what it reads back into
+ * the pipeline (NitroSystem's billboards BB and BBY take the position from
+ * it with the projection set to identity, the envelopes and the reset path
+ * keep it), where the view scale applies again: with the scale in the read
+ * too, a billboard's place was scaled twice, so on a wide window the
+ * billboard rocks of Pinwheel Forest slid toward the middle as the camera
+ * moved (#26).  Culling goes through BOX_TEST and POS_TEST, which keep the
+ * scale. */
 static void publish_clip(void)
 {
-    const G3dMtx *c = g3d_mtx_stack_clip(&g_hw.gx.mtx);
+    G3dMtx c;
     u32 i;
 
+    g3d_mtx_mul(&c, &g_hw.gx.mtx.pos, &g_hw.gx.mtx.proj);
     for (i = 0; i < 16u; i++) {
-        bw_io_write32(G3D_HW_CLIPMTX_RESULT + i * 4u, (u32)c->m[i]);
+        bw_io_write32(G3D_HW_CLIPMTX_RESULT + i * 4u, (u32)c.m[i]);
     }
 }
 
