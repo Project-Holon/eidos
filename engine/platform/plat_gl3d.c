@@ -1316,15 +1316,19 @@ int eidos_gl3d_init(EidosGl *g)
     /* the phone hosts draw with OpenGL ES and say so (host/main.c); the
      * Switch's host makes desktop OpenGL or OpenGL ES, so the context says:
      * OpenGL ES has no profile mask (an error), desktop OpenGL 3.2 and up
-     * has one */
+     * has one.  The query's error is read every time: left pending (the
+     * phones name ES first and skipped the read), the check below took it
+     * for a failure and the 3D renderer went off, so the one-screen world
+     * never drew and the DS screens showed under its menus */
     {
         GLint mask = 0;
+        int mask_err;
 
         while (glGetError() != GL_NO_ERROR) {
         }
         glGetIntegerv(0x9126 /* GL_CONTEXT_PROFILE_MASK */, &mask);
-        g->es = getenv("EIDOS_GL_ES") != NULL ||
-                glGetError() != GL_NO_ERROR || mask == 0;
+        mask_err = glGetError() != GL_NO_ERROR;
+        g->es = getenv("EIDOS_GL_ES") != NULL || mask_err || mask == 0;
     }
     g->glGenVertexArrays(1, &g->vao3);
     g->glGenBuffers(1, &g->vbo3);
