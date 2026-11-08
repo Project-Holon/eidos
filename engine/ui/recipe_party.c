@@ -568,6 +568,70 @@ static int party_read(PartyView *v)
     return v->count >= 0 && v->count <= 6;
 }
 
+/*
+ * The labels the teach list (mode 6: a TM or a tutor's move, "ABLE" /
+ * "NOT ABLE" / "LEARNED") and the evolution-stone list (mode 16: "ABLE" /
+ * "NOT ABLE") print in place of a Pokemon's HP (PLIST_PLATE_DrawMonInfo).
+ * The game's own checks decide them (POKELIST_GetMoveLearnStatus,
+ * POKELIST_CheckEvolution); they read the personal data and allocate, so
+ * they run on the game's thread and the answers are kept here, per plate:
+ * the message of bank 157 to print, 0 while not known.
+ */
+extern int ov091_POKELIST_GetMoveLearnStatus(const void *work, void *mon, u8 slot) BW_WEAK;
+extern u32 ov091_POKELIST_CheckEvolution(const void *work, void *mon, u32 item) BW_WEAK;
+
+#define PA_ITEM 0x44            /* PokelistArg.itemId (u16)                  */
+
+static volatile u16 g_pl_label[6];
+static const void *volatile g_pl_label_work;
+static volatile int g_pl_label_asked;
+
+static int plate_is_mon(const void *work, int i, void **mon);
+
+static void party_labels_game(void *arg)
+{
+    const void *work = arg;
+    const void *pa = rdp(work, PL_ARG);
+    int mode = pa != NULL ? rds32(pa, PA_MODE) : -1;
+    int teach = mode == 6 || rds32(work, PL_RESTORE18) == 1;
+    int i;
+
+    for (i = 0; i < 6; i++) {
+        void *mon = NULL;
+        u16 msg = 0;
+
+        if (plate_is_mon(work, i, &mon)) {
+            if (teach && ov091_POKELIST_GetMoveLearnStatus != NULL) {
+                int st = ov091_POKELIST_GetMoveLearnStatus(work, mon, (u8)i);
+
+                msg = st <= 1 ? 0x89 : st == 2 ? 0x8A : 0x8B;
+            } else if (mode == 16 && ov091_POKELIST_CheckEvolution != NULL) {
+                msg = ov091_POKELIST_CheckEvolution(work, mon, rd16(pa, PA_ITEM)) != 0 ? 0x8C : 0x8D;
+            }
+        }
+        g_pl_label[i] = msg;
+    }
+    g_pl_label_work = work;
+    g_pl_label_asked = 0;
+}
+
+/* The label of plate i, or 0; asks the game for the list's labels the first
+ * time and again every 30 frames (a Pokemon that learnt the move turns to
+ * LEARNED). */
+static u16 party_label(const PartyView *v, int i, u32 frame)
+{
+    static u32 last;
+
+    if (v->mode != 6 && v->mode != 16 && rds32(v->work, PL_RESTORE18) != 1) {
+        return 0;
+    }
+    if (!g_pl_label_asked && (g_pl_label_work != v->work || frame - last >= 30u)) {
+        last = frame;
+        g_pl_label_asked = eidos_ui_game_call(party_labels_game, (void *)v->work);
+    }
+    return g_pl_label_work == v->work ? g_pl_label[i] : 0;
+}
+
 static int party_match(void)
 {
     PartyView v;
@@ -578,8 +642,8 @@ static int party_match(void)
     /* The plain list, the use-an-item list and the give-an-item list; the
      * list that teaches a move, the battle order list and the like keep
      * the DS screens. */
-    if (v.mode != 0 && v.mode != 1 && v.mode != 5 && v.mode != 8 && v.mode != 9 && v.mode != 21 && v.mode != 22
-        && v.mode != 23 && rds32(v.work, PL_RESTORE18) == 0) {
+    if (v.mode != 0 && v.mode != 1 && v.mode != 5 && v.mode != 6 && v.mode != 8 && v.mode != 9 && v.mode != 16
+        && v.mode != 21 && v.mode != 22 && v.mode != 23 && rds32(v.work, PL_RESTORE18) == 0) {
         return 0;
     }
     /* mode 8: the list back from the summary's "forget a move" after an
@@ -591,7 +655,23 @@ static int party_match(void)
      * Colosseum), with CONFIRM alone;
      * mode 21: the Egg the Spin Trade takes (no back button);
      * mode 9: the Pokemon the Bag gives an item to (pokelist.c: the
-     * prompt is message 0xC, "Give to which Pokemon?") */
+     * prompt is message 0xC, "Give to which Pokemon?");
+     * mode 6: the Pokemon a TM or a tutor teaches (message 0xE), each with
+     * ABLE, NOT ABLE or LEARNED; mode 16: the Pokemon an evolution stone is
+     * used on (message 0xD), each with ABLE or NOT ABLE (#24) */
+    return 1;
+}
+
+/* Plate i of the list's work holds a Pokemon (*mon then); the game's
+ * thread asks it (party_labels_game). */
+static int plate_is_mon(const void *work, int i, void **mon)
+{
+    const void *pl = rdp(work, PL_PLATES + 4u * (u32)i);
+
+    if (pl == NULL || rds32(pl, PP_ISEMPTY) != 0 || rdp(pl, PP_MON) == NULL) {
+        return 0;
+    }
+    *mon = rdp(pl, PP_MON);
     return 1;
 }
 
@@ -640,7 +720,8 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
     }
     case 3: idx = 11; break;
     case 2:
-        idx = v->mode == 5 ? 13 : v->mode == 9 ? 12 : (v->mode == 21 ? 0xA3 : 9);
+        idx = v->mode == 5 || v->mode == 16 ? 13 : v->mode == 9 ? 12 : v->mode == 6 ? 14
+              : (v->mode == 21 ? 0xA3 : 9);
         break;
     default:
         break;
@@ -836,6 +917,20 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             }
             if (v.phase == 3 && i == v.swap_src) {
                 ui_text(c, x + colw - 78, y + 3, "MOVE", UI_CYAN, UI_NAVY, UI_FONT_SMALL, 1);
+            }
+            {
+                /* the teach and evolution lists: the game's label in place
+                 * of the HP (ABLE in blue, NOT ABLE in pink, LEARNED in grey) */
+                u16 lm = egg ? 0 : party_label(&v, i, in->frame);
+                char lt[32];
+
+                if (lm != 0) {
+                    (void)msg_text(BANK_PARTY, lm, lt, (int)sizeof lt, 0);
+                    ui_fill(c, x + 40, y + 15, colw - 46, 13, sel ? UI_NAVY2 : UI_NAVY, 255);
+                    ui_text(c, x + 40, y + 15, lt,
+                            lm == 0x89 || lm == 0x8C ? UI_SKY : (lm == 0x8B ? UI_GREY : UI_PINK),
+                            UI_EDGE, UI_FONT_SMALL, 1);
+                }
             }
             if (entry && !egg) {
                 /* the game's label in place of the HP: the entry order,

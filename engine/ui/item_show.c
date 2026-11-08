@@ -20,9 +20,11 @@
  * a second, 0 at the flash, the card whole at 136).
  */
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "item_show.h"
+#include "port.h"
 
 #define HL      0x008BACu       /* the interface's accent (the card's well) */
 #define CYAN    0x00D5C5u
@@ -349,4 +351,162 @@ void item_show_draw(EidosUiCtx *c, float f, float live, int cx, int cy, int card
     if (fl > 0.f) {
         ui_fill(c, 0, 0, cw, ch, UI_WHITE, (int)(255.f * fl));
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The badges' pictures                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A badge as the Trainer Card's badge case draws it (its full shine): the
+ * badge viewer's graphics, archive a/0/4/0: cell bank member 45 (cell i is
+ * badge i, Trio to Legend, each a 32 x 64 object or two), characters
+ * member 27 (4 bits, one-dimensional), palette member 2 (the brightest of
+ * the polish stages; each object names its 16-colour bank).  Decoded once,
+ * 64 x 64 with the cell's origin in the middle.
+ */
+#define BADGE_PX 64
+
+static UiImage g_badge[8];
+static u8 g_badge_px[8][BADGE_PX * BADGE_PX * 4];
+static int g_badge_state;                   /* 0 not tried, 1 ok, -1 failed */
+
+static u8 *arc_load(const char *path, u32 member, u32 *size)
+{
+    BwArcFile f;
+    long n;
+    u8 *buf = NULL;
+
+    if (bw_arc_open(&f, path) != 0) {
+        return NULL;
+    }
+    n = bw_arc_member_size(&f, member);
+    if (n > 0 && (buf = (u8 *)malloc((size_t)n)) != NULL &&
+        bw_arc_read_member(&f, member, buf, (u32)n) != n) {
+        free(buf);
+        buf = NULL;
+    }
+    bw_arc_close(&f);
+    if (buf != NULL) {
+        *size = (u32)n;
+    }
+    return buf;
+}
+
+static const u8 *find_magic(const u8 *p, u32 n, const char *m)
+{
+    u32 i;
+
+    for (i = 0; i + 4 <= n; i++) {
+        if (memcmp(p + i, m, 4) == 0) {
+            return p + i;
+        }
+    }
+    return NULL;
+}
+
+static u32 le16(const u8 *p) { return (u32)p[0] | (u32)p[1] << 8; }
+static u32 le32(const u8 *p) { return le16(p) | le16(p + 2) << 16; }
+
+static void badges_load(void)
+{
+    static const int k_size[3][4][2] = {
+        { { 8, 8 }, { 16, 16 }, { 32, 32 }, { 64, 64 } },
+        { { 16, 8 }, { 32, 8 }, { 32, 16 }, { 64, 32 } },
+        { { 8, 16 }, { 8, 32 }, { 16, 32 }, { 32, 64 } },
+    };
+    u32 nc = 0, np = 0, ne = 0;
+    u8 *chr = arc_load("a/0/4/0", 27, &nc), *pal = arc_load("a/0/4/0", 2, &np);
+    u8 *cer = arc_load("a/0/4/0", 45, &ne);
+    const u8 *rahc, *ttlp, *kbec, *tiles, *colours, *cells, *oams;
+    u32 tsize, ncol, ncell, csize;
+    int b;
+
+    g_badge_state = -1;
+    if (chr == NULL || pal == NULL || cer == NULL ||
+        (rahc = find_magic(chr, nc, "RAHC")) == NULL || (ttlp = find_magic(pal, np, "TTLP")) == NULL ||
+        (kbec = find_magic(cer, ne, "KBEC")) == NULL) {
+        goto done;
+    }
+    tsize = le32(rahc + 0x18);
+    tiles = rahc + 0x20;
+    if ((u32)(tiles - chr) + tsize > nc) {
+        goto done;
+    }
+    colours = ttlp + 0x18;
+    ncol = (np - (u32)(colours - pal)) / 2u;
+    ncell = le16(kbec + 8);
+    csize = le16(kbec + 10) == 1 ? 16u : 8u;
+    cells = kbec + 8 + le32(kbec + 12);
+    oams = cells + ncell * csize;
+    if (ncell < 8) {
+        goto done;
+    }
+    for (b = 0; b < 8; b++) {
+        u32 noam = le16(cells + (u32)b * csize), ooff = le32(cells + (u32)b * csize + 4), o;
+        u8 *out = g_badge_px[b];
+
+        memset(out, 0, sizeof g_badge_px[b]);
+        for (o = 0; o < noam && o < 8; o++) {
+            const u8 *a = oams + ooff + o * 6u;
+            u32 a0 = le16(a), a1 = le16(a + 2), a2 = le16(a + 4);
+            int y = (int)(a0 & 0xFF), x = (int)(a1 & 0x1FF);
+            int shape = (int)((a0 >> 14) & 3), sz = (int)((a1 >> 14) & 3), w, h, tx, ty, xx, yy;
+            u32 tile = a2 & 0x3FF, bank = (a2 >> 12) & 15;
+
+            if (shape > 2) {
+                continue;
+            }
+            if (y >= 128) y -= 256;
+            if (x >= 256) x -= 512;
+            w = k_size[shape][sz][0];
+            h = k_size[shape][sz][1];
+            for (ty = 0; ty < h / 8; ty++) {
+                for (tx = 0; tx < w / 8; tx++) {
+                    u32 t = tile + (u32)(ty * (w / 8) + tx);
+
+                    if (t * 32u + 32u > tsize) {
+                        continue;
+                    }
+                    for (yy = 0; yy < 8; yy++) {
+                        for (xx = 0; xx < 8; xx++) {
+                            u32 byte = tiles[t * 32u + (u32)yy * 4u + (u32)(xx >> 1)];
+                            u32 v = (xx & 1) ? byte >> 4 : byte & 15u, ci = bank * 16u + v, c;
+                            int X = BADGE_PX / 2 + x + tx * 8 + xx, Y = BADGE_PX / 2 + y + ty * 8 + yy;
+                            u8 *q;
+
+                            if (v == 0 || ci >= ncol || X < 0 || Y < 0 || X >= BADGE_PX || Y >= BADGE_PX) {
+                                continue;
+                            }
+                            c = le16(colours + ci * 2u);
+                            q = out + ((size_t)Y * BADGE_PX + (size_t)X) * 4u;
+                            q[0] = (u8)((c & 31u) << 3 | (c & 31u) >> 2);
+                            q[1] = (u8)(((c >> 5) & 31u) << 3 | ((c >> 5) & 31u) >> 2);
+                            q[2] = (u8)(((c >> 10) & 31u) << 3 | ((c >> 10) & 31u) >> 2);
+                            q[3] = 255;
+                        }
+                    }
+                }
+            }
+        }
+        g_badge[b].w = BADGE_PX;
+        g_badge[b].h = BADGE_PX;
+        g_badge[b].rgba = out;
+    }
+    g_badge_state = 1;
+done:
+    free(chr);
+    free(pal);
+    free(cer);
+}
+
+const UiImage *ui_badge_image(int badge)
+{
+    if (badge < 0 || badge > 7) {
+        return NULL;
+    }
+    if (g_badge_state == 0) {
+        badges_load();
+    }
+    return g_badge_state > 0 ? &g_badge[badge] : NULL;
 }

@@ -13,6 +13,9 @@ Each release's notes on GitHub start with its section here
 
 ### One-Screen Interface
 - **Key Item Showcase**: Receiving a key item (the Xtransceiver, the C-Gear and the others) plays its moment in the one-screen layout again, in the interface's style: a flash, the item spinning up out of the light in the middle of the screen with a burst of stars during the jingle, then settling into its card as the message opens. Before, the screen froze through the jingle.
+- **Badges**: Receiving a Gym Badge plays the key item's moment with the badge, as the Trainer Card's badge case draws it, then its card over the game's message; before, the badge spun over a zoomed copy of the DS screen (#24).
+- **Field Moves**: Cut, Strength, Surf and the other field moves show their cut-in across the whole window: a flash, then a band with the Pokémon crossing it, over the field; before, the band was the DS screen's width with mismatched sides (#24).
+- **Teaching a TM**: The list that teaches a TM (and the one for an evolution stone) is one-screen, with each Pokémon's ABLE, UNABLE or LEARNED in place of its HP; before, it switched to the DS screens (#24).
 - **Status Conditions**: The battle HP plates show poison, paralysis, sleep, burn and freeze, at the moment the game's own gauge shows them (#24).
 - **Double Battles**: Both opposing Pokémon have their HP plates; before, only one showed (#24).
 - **VS Screens**: The VS banner before a story battle (the first one with your rival included) shows in the one-screen layout again, across the whole window, over the room around it; before, the screen froze and the banner never appeared. Other cut-ins the game draws over its screen show the same way.

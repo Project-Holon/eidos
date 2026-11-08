@@ -16,6 +16,7 @@ game. The code is in `engine/ui/ui.c` unless noted.
 | `EIDOS_DEBUG_BATTLE="trainer ID"` | Starts that trainer's battle once the field is quiet. A loss whites the player out, as after a wild battle. |
 | `EIDOS_DEBUG_BATTLE="wild SPECIES LEVEL"` | Starts a scripted wild battle. A loss has no script to end it and the game goes back to the title: use a trainer battle to test a whiteout. |
 | `EIDOS_DEBUG_WARP="zone x y z dir"` | Warps the player when the field runs. |
+| `EIDOS_DEBUG_CUTIN="item N"`, `"seq N"` or `"mon P"` | Starts a field cut-in as the scripts do, after 90 quiet field frames (a third number sets the frames): a key item's (its item id), a sequence by its id (2 and 4 to 10 are the badges), or party member P's field-move cut-in. |
 
 ## Driving the game
 

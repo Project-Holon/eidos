@@ -27,4 +27,8 @@ int item_card_width(const char *name, const char *pocket);
 void item_show_draw(EidosUiCtx *c, float f, float live, int cx, int cy, int card_x, int card_y, int card_w,
                     const UiImage *icon, const char *name, const char *pocket);
 
+/* Badge i (0 Trio .. 7 Legend) as the badge case shows it, 64 x 64; NULL
+ * when the game's graphics cannot be read. */
+const UiImage *ui_badge_image(int badge);
+
 #endif

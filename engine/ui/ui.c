@@ -905,6 +905,82 @@ static void debug_warp(void)
     }
 }
 
+/*
+ * Tests: EIDOS_DEBUG_CUTIN starts one of the game's field cut-ins (ov021
+ * FLD3D_CI) the way its script commands do, once the field has run 90
+ * frames with no event (after EIDOS_DEBUG_WARP's map change), or the frames
+ * a third number gives ("item 621 300"):
+ *   "item N"  a key item's (SCRCMD_StartFld3dCiByTable: the item's row of
+ *             the 17-row table; the port is told the item as the patched
+ *             command tells it)
+ *   "seq N"   a sequence by its id (SCRCMD_StartFld3dCi)
+ *   "mon P"   party member P's (SCRCMD_StartFld3dCiByVar: the field moves'
+ *             cut-in, Cut and the others)
+ */
+extern void *ov021_FIELDMAP_GetFld3dCi(void *fieldMap) __attribute__((weak));
+extern void *ov021_FLD3D_CI_StartSequence(void *gameSystem, void *ci, int sequenceId) __attribute__((weak));
+extern void *ov021_FLD3D_CI_StartPartyMemberSequence(void *gameSystem, void *ci, int partyPos) __attribute__((weak));
+extern void bw_ui_cutin_item(u32 item) __attribute__((weak));
+/* ov021's 17-row key table, through the pointers the build gives overlay
+ * data (rows of two u16: the item, then at +2 the sequence id) */
+extern void *bw_dsref_ov021_gFld3dCiKeyTable __attribute__((weak));
+
+static void debug_cutin(void)
+{
+    static int done, wait;
+    const char *at = getenv("EIDOS_DEBUG_CUTIN");
+    char kind[8];
+    unsigned n, quiet = 90;
+    u8 *gs;
+    void *ci, *ev = NULL;
+
+    if (done || at == NULL || &bw_dsref__GameSystemGlobal == NULL || GAMESYSTEM_SetEvent == NULL
+        || GAMESYSTEM_GetEvent == NULL || ov021_FIELDMAP_GetFld3dCi == NULL
+        || ov021_FLD3D_CI_StartSequence == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    if (gs == NULL || *(void **)(gs + 0x20) == NULL || GAMESYSTEM_GetEvent(gs) != NULL) {
+        wait = 0;
+        return;
+    }
+    if (sscanf(at, "%7s %u %u", kind, &n, &quiet) < 2 || ++wait < (int)quiet) {
+        return;
+    }
+    if (getenv("EIDOS_DEBUG_WARP") != NULL && wait < 200) {
+        return;                         /* the warp first, then a settled field */
+    }
+    done = 1;
+    ci = ov021_FIELDMAP_GetFld3dCi(*(void **)(gs + 0x20));
+    if (ci == NULL) {
+        return;
+    }
+    if (strcmp(kind, "item") == 0 && &bw_dsref_ov021_gFld3dCiKeyTable != NULL
+        && bw_dsref_ov021_gFld3dCiKeyTable != NULL) {
+        const unsigned short *tab = (const unsigned short *)bw_dsref_ov021_gFld3dCiKeyTable;
+        int i;
+
+        for (i = 0; i < 17; i++) {
+            if (tab[i * 2] == n) {
+                ev = ov021_FLD3D_CI_StartSequence(gs, ci, (unsigned char)tab[i * 2 + 1]);
+                if (ev != NULL && bw_ui_cutin_item != NULL) {
+                    bw_ui_cutin_item(n);
+                }
+                break;
+            }
+        }
+    } else if (strcmp(kind, "seq") == 0) {
+        ev = ov021_FLD3D_CI_StartSequence(gs, ci, (int)(n & 0xFFu));
+    } else if (strcmp(kind, "mon") == 0 && ov021_FLD3D_CI_StartPartyMemberSequence != NULL) {
+        ev = ov021_FLD3D_CI_StartPartyMemberSequence(gs, ci, (int)(n & 0xFFu));
+    }
+    if (ev != NULL) {
+        GAMESYSTEM_SetEvent(gs, ev);
+    }
+    fprintf(stderr, "eidos: debug cut-in %s %u at input frame %u%s\n", kind, n,
+            (unsigned)bw_input_frame_number(), ev != NULL ? "" : ": not started");
+}
+
 /* Tests: EIDOS_DEBUG_WHERE=1 logs the zone and the place the player stands
  * once the field has run 120 frames with no event, in the form
  * EIDOS_DEBUG_WARP takes, so a test can start from the same spot with any
@@ -1841,6 +1917,7 @@ void eidos_ui_game_frame(void)
     if (!eidos_ui_battle_only()) {
         debug_party();
         debug_warp();
+        debug_cutin();
         debug_where();
         event_log();
         debug_battle();
