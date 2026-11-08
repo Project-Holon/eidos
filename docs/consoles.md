@@ -101,15 +101,14 @@ and `gl_imports.c`).  The pieces:
   frame lasted), 3D 6 ms.  The same scene on the desktop: 0.06, 3.2, 0.2
   and 0.7 ms.  The emulator costs 10 to 18 times; the real cost on the
   console is the 2D compositor, about 16 ms at a Switch core's speed, so
-  the GPU 2D path is the Switch's work for 60 fps.  In Ryubing the picture
-  is cut to a column one sixth of its width; the desktop with the same
-  settings (`EIDOS_GL_ES=1`, 1920x1080, one screen) draws it whole, so the
-  console decides whether it is the port or the emulator.  With desktop
-  OpenGL (2026-11-08) the cut is the same, and it is in the frame itself:
-  `EIDOS_GL_DUMP` reads back the DS rectangle drawn only from x 240 to 480
-  of 1920, at its full scale (clipped, not squeezed), with GPU 2D on or
-  off.  eidos only scissors inside its 3D pass and turns it off after, so
-  the emulated GPU or Mesa's nouveau driver is the next suspect.
+  the GPU 2D path is the Switch's work for 60 fps.  The picture is whole (2026-11-08):
+  the "column one sixth of its width" seen before was the read-back, not
+  the frame.  In Ryubing one `glReadPixels` of the whole 1920x1080 window
+  returns only the first part of each row (RGB or RGBA alike), while
+  smaller reads are whole; `EIDOS_GL_DUMP` and the screenshot grab now
+  read a row at a time, and the dump shows the DS rectangle whole.  A
+  minimal SDL2 + Mesa program (clear, full-window quad, half-window
+  viewport) drew the whole window as well.
 
 ## The Vita build
 

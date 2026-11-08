@@ -682,7 +682,8 @@ static void gl_debug_dump(int w, int h)
     {
         size_t row = ((size_t)w * 3u + 3u) & ~(size_t)3u;
         unsigned char *px = (unsigned char *)malloc(row * (size_t)h);
-        unsigned char *rgb = (unsigned char *)malloc((size_t)w * (size_t)h * 3u);
+        /* RGBA rows (below) */
+        unsigned char *rgb = (unsigned char *)malloc((size_t)w * (size_t)h * 4u);
         FILE *f;
         int x, y;
 
@@ -691,13 +692,18 @@ static void gl_debug_dump(int w, int h)
             free(rgb);
             return;
         }
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        /* a row at a time: in the Switch emulator (Ryubing, Mesa's nouveau)
+         * one read of the whole window came back with only a quarter of
+         * each row, while small reads were whole */
+        for (y = 0; y < h; y++) {
+            glReadPixels(0, y, w, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgb + (size_t)y * (size_t)w * 4u);
+        }
         for (y = 0; y < h; y++) {          /* GL rows run bottom-up: so does BMP */
             for (x = 0; x < w; x++) {
-                px[(size_t)y * row + (size_t)x * 3u + 0] = rgb[((size_t)y * w + x) * 3u + 2];
-                px[(size_t)y * row + (size_t)x * 3u + 1] = rgb[((size_t)y * w + x) * 3u + 1];
-                px[(size_t)y * row + (size_t)x * 3u + 2] = rgb[((size_t)y * w + x) * 3u + 0];
+                px[(size_t)y * row + (size_t)x * 3u + 0] = rgb[((size_t)y * w + x) * 4u + 2];
+                px[(size_t)y * row + (size_t)x * 3u + 1] = rgb[((size_t)y * w + x) * 4u + 1];
+                px[(size_t)y * row + (size_t)x * 3u + 2] = rgb[((size_t)y * w + x) * 4u + 0];
             }
         }
         f = fopen(name, "wb");
@@ -1821,6 +1827,89 @@ void eidos_gl_present_panel(EidosGl *g, int out_w, int out_h,
     if (g == NULL || out_w <= 0 || out_h <= 0) {
         return;
     }
+    {
+        /* Debugging aid: EIDOS_GL_STATE=N logs, at the Nth present, the GL
+         * state the presenter draws with and the columns a full-window
+         * clear in magenta reaches (the frame then shows the clear). */
+        static int n, at = -1;
+
+        if (at < 0) {
+            const char *e = getenv("EIDOS_GL_STATE");
+
+            at = e != NULL ? atoi(e) : 0;
+        }
+        if (at > 0 && ++n == at) {
+            GLint vp[4] = { 0 }, sc[4] = { 0 }, fbo = 0;
+            unsigned char px[4];
+            int x, first = -1, last = -1;
+
+            glGetIntegerv(GL_VIEWPORT, vp);
+            glGetIntegerv(GL_SCISSOR_BOX, sc);
+            glGetIntegerv(0x8CA6 /* GL_DRAW_FRAMEBUFFER_BINDING */, &fbo);
+            fprintf(stderr, "eidos: GL state at present %d: out %dx%d, viewport %d %d %d %d, scissor %s %d %d %d %d, "
+                    "draw framebuffer %d, screen 0 %dx%d at %d,%d\n", n, out_w, out_h, vp[0], vp[1], vp[2], vp[3],
+                    glIsEnabled(GL_SCISSOR_TEST) ? "on" : "off", sc[0], sc[1], sc[2], sc[3], (int)fbo,
+                    dst[0].w, dst[0].h, dst[0].x, dst[0].y);
+            g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, out_w, out_h);
+            glClearColor(1.f, 0.f, 1.f, 1.f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            for (x = 0; x < out_w; x += 8) {
+                glReadPixels(x, out_h / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+                if (px[0] > 128 && px[2] > 128) {
+                    if (first < 0) {
+                        first = x;
+                    }
+                    last = x;
+                }
+            }
+            fprintf(stderr, "eidos: GL state: a full-window clear reaches x %d..%d of %d\n", first, last, out_w);
+            /* then the frame as drawn: its lit columns, and the last quad
+             * the screens' programs were given */
+            draw_scene(g, out_w, out_h, dst);
+            first = last = -1;
+            for (x = 0; x < out_w; x += 8) {
+                int y;
+
+                for (y = out_h / 8; y < out_h; y += out_h / 8) {
+                    glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+                    if (px[0] | px[1] | px[2]) {
+                        if (first < 0) {
+                            first = x;
+                        }
+                        last = x;
+                        break;
+                    }
+                }
+            }
+            {
+                GLfloat r[4] = { 0 }, r1[4] = { 0 }, rw[4] = { 0 };
+                typedef void (APIENTRY *GetUf)(GLuint, GLint, GLfloat *);
+#if defined(__wasm__)
+                GetUf get = &glGetUniformfv;    /* an import (plat_gl_int.h) */
+#else
+                GetUf get = (GetUf)SDL_GL_GetProcAddress("glGetUniformfv");
+#endif
+
+                if (get != NULL) {
+                    get(g->prog, g->u_rect, r);
+                    if (g->prog3 != 0) {
+                        get(g->prog3, g->u3_rect, r1);
+                    }
+                    if (g_one.progw != 0) {
+                        get(g_one.progw, g_one.w_rect, rw);
+                    }
+                }
+                fprintf(stderr, "eidos: GL state: the frame lights x %d..%d; rect %.3f %.3f %.3f %.3f, "
+                        "3D rect %.3f %.3f %.3f %.3f, world rect %.3f %.3f %.3f %.3f, one %d world %d\n",
+                        first, last, r[0], r[1], r[2], r[3], r1[0], r1[1], r1[2], r1[3], rw[0], rw[1], rw[2], rw[3],
+                        g_one.on, g_one.world);
+            }
+            eidos_gl_swap(g);
+            return;
+        }
+    }
     draw_scene(g, out_w, out_h, dst);
     if (!g_one.on) {
         draw_panel(g, out_w, out_h, panel);
@@ -1867,17 +1956,27 @@ int eidos_gl_grab(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2],
     if (g == NULL || rgb == NULL || out_w <= 0 || out_h <= 0) {
         return -1;
     }
-    raw = (unsigned char *)malloc((size_t)out_w * (size_t)out_h * 3u);
+    raw = (unsigned char *)malloc((size_t)out_w * (size_t)out_h * 4u);
     if (raw == NULL) {
         return -1;
     }
     draw_scene(g, out_w, out_h, dst);      /* not swapped: only read */
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(0, 0, out_w, out_h, GL_RGB, GL_UNSIGNED_BYTE, raw);
+    /* RGBA, a row at a time (gl_debug_dump: one read of the whole window
+     * came back partial in the Switch emulator) */
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    for (y = 0; y < out_h; y++) {
+        glReadPixels(0, y, out_w, 1, GL_RGBA, GL_UNSIGNED_BYTE, raw + (size_t)y * (size_t)out_w * 4u);
+    }
     for (y = 0; y < out_h; y++) {          /* GL rows run bottom-up */
-        memcpy(rgb + (size_t)y * (size_t)out_w * 3u,
-               raw + (size_t)(out_h - 1 - y) * (size_t)out_w * 3u,
-               (size_t)out_w * 3u);
+        const unsigned char *src = raw + (size_t)(out_h - 1 - y) * (size_t)out_w * 4u;
+        unsigned char *d = rgb + (size_t)y * (size_t)out_w * 3u;
+        int x;
+
+        for (x = 0; x < out_w; x++) {
+            d[x * 3 + 0] = src[x * 4 + 0];
+            d[x * 3 + 1] = src[x * 4 + 1];
+            d[x * 3 + 2] = src[x * 4 + 2];
+        }
     }
     free(raw);
     return glGetError() == GL_NO_ERROR ? 0 : -1;

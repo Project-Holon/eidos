@@ -45,6 +45,8 @@ holds the move steps (their frames then count from when it opens), and
 |---|---|
 | `EIDOS_MOD_MESSAGE_LOG=1` | Each mod message goes to the log too (`sdk/mod_message.c`). |
 | `EIDOS_SAVE_TEST_AT=FRAME` | The game saves at its first quiet moment after that frame (`demo/eidos_boot.c`). |
+| `EIDOS_GL_DUMP=FILE.bmp:N` (or `:N-M`) | Writes the OpenGL presenter's window at the Nth present (or every present from N to M as FILE.N.bmp) (`engine/platform/plat_gl.c`). |
+| `EIDOS_GL_STATE=N` | At the Nth present, logs the presenter's GL state (viewport, scissor, framebuffer, the screens' rectangles), how far a full-window clear reaches and which columns the frame lights (`engine/platform/plat_gl.c`). |
 | `EIDOS_EVENT_LOG=1` | Logs the running game event's chain whenever it changes, as offsets from `GAMESYSTEM_GetEvent`: add the offset to that function's address in `nm` of the program to name each event. Finds which code runs a scene. |
 | `EIDOS_OVERLAY_LOG=1` | Logs each overlay load and unload with its frame (`sdk/overlay.c`). |
 | `EIDOS_DEBUG_WHERE=1` | Logs the player's zone and position once the field runs, as an `EIDOS_DEBUG_WARP` value: a test can then start from that spot with any save. |
