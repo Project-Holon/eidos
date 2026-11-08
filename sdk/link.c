@@ -200,12 +200,22 @@ static void air_join_thread(void *arg)
     g_link.air_busy = 0;
 }
 
+/* The last join thread: joined before the next one starts.  Never joined,
+ * every try every 15 s while the relay was out of reach kept its thread,
+ * and the 64-bit build's 64 fibers ran out after about 15 minutes (#23). */
+static BwThread *g_air_thread;
+
 static void air_try(void)
 {
     u64 now = link_ms();
 
     if (g_link.state == BW_LINK_OPEN || g_link.air_up || g_link.air_busy || !g_link.air_want)
         return;
+    if (g_air_thread != NULL) {
+        /* air_busy is 0: the thread is at its end, the join is at once */
+        bw_thread_join(g_air_thread);
+        g_air_thread = NULL;
+    }
     if (bw_mp_state() != BW_MP_OFF && bw_mp_state() != BW_MP_ENDED)
         return;
     if (bw_mod_net_session_active())
@@ -215,7 +225,8 @@ static void air_try(void)
     g_link.air_last_try = now;
     g_link.air_busy = 1;
     air_key(g_air_join_key, sizeof g_air_join_key);
-    if (bw_thread_start(air_join_thread, NULL) == NULL)
+    g_air_thread = bw_thread_start(air_join_thread, NULL);
+    if (g_air_thread == NULL)
         g_link.air_busy = 0;
 }
 
