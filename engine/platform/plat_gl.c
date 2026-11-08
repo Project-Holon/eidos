@@ -16,8 +16,9 @@
 #include <stdint.h>
 /* vitaGL (VitaSDK): its own header would declare the GL calls a second
  * time beside SDL_opengl.h, so the few calls used here are declared. */
-GLboolean vglInitExtended(int legacy_pool_size, int width, int height, int ram_threshold,
-                          int msaa);
+GLboolean vglInitWithCustomSizes(int pool_size, int width, int height, int ram_pool_size,
+                                 int cdram_pool_size, int phycont_pool_size, int cdlg_pool_size,
+                                 int msaa);
 void *vglGetProcAddress(const char *name);
 void vglSwapBuffers(GLboolean has_commondialog);
 void vglWaitVblankStart(GLboolean enable);
@@ -744,11 +745,12 @@ EidosGl *eidos_gl_create(SDL_Window *window)
      * It runs only with the console's shader compiler (libshacccg.suprx,
      * which the player extracts); demo/eidos_boot.c picks SDL's renderer
      * when that file is missing, so the call here is the only GXM owner.
-     * 16 MiB of RAM stay free for the rest of the process. */
-    if (!vglInitExtended(0, 960, 544, 16 * 1024 * 1024, 0)) {
-        free(g);
-        return NULL;
-    }
+     * Its pools are fixed (32 MiB of RAM, 64 MiB of video memory, 16 MiB
+     * physically contiguous): the presenter's textures and two window-size
+     * targets need a few MiB, and the rest stays the game's.  The value
+     * vglInit* returns says the resolution fell back, not that it failed. */
+    (void)vglInitWithCustomSizes(0, 960, 544, 32 * 1024 * 1024, 64 * 1024 * 1024,
+                                 16 * 1024 * 1024, 0, 0);
     g->ctx = (SDL_GLContext)(uintptr_t)1;    /* "made", for eidos_gl_destroy */
 #else
     g->ctx = SDL_GL_CreateContext(window);

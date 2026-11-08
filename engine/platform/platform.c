@@ -1671,6 +1671,12 @@ int eidos_platform_init(EidosPlatform **out, const EidosPlatformConfig *cfg)
             init_h = eh;
         }
     }
+#if defined(__vita__)
+    /* the Vita's screen: SDL keeps the size it is asked for, and vitaGL
+     * draws a 960x544 frame */
+    init_w = 960;
+    init_h = 544;
+#endif
 
     /*
      * The GPU presenter is the default: the CPU hands over small images and

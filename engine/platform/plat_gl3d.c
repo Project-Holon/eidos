@@ -1313,8 +1313,19 @@ int eidos_gl3d_init(EidosGl *g)
     if (glGetError() != GL_NO_ERROR) {
         g->integer_samples = 0;
     }
-    /* the phone hosts draw with OpenGL ES and say so (host/main.c) */
-    g->es = getenv("EIDOS_GL_ES") != NULL;
+    /* the phone hosts draw with OpenGL ES and say so (host/main.c); the
+     * Switch's host makes desktop OpenGL or OpenGL ES, so the context says:
+     * OpenGL ES has no profile mask (an error), desktop OpenGL 3.2 and up
+     * has one */
+    {
+        GLint mask = 0;
+
+        while (glGetError() != GL_NO_ERROR) {
+        }
+        glGetIntegerv(0x9126 /* GL_CONTEXT_PROFILE_MASK */, &mask);
+        g->es = getenv("EIDOS_GL_ES") != NULL ||
+                glGetError() != GL_NO_ERROR || mask == 0;
+    }
     g->glGenVertexArrays(1, &g->vao3);
     g->glGenBuffers(1, &g->vbo3);
     g->have3d = 1;

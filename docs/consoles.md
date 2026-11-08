@@ -62,8 +62,8 @@ They install inside the Ubuntu WSL distribution, so Windows stays clean.
    yet: `host/switch/build.sh` (below).
 5. Run in the emulator, then on the console; measure; tune (workers: 3,
    internal resolution 1x).
-6. The Vita after that, with the GLES2 presenter first. Built (vitaGL,
-   below), not yet run.
+6. The Vita after that, with the GLES2 presenter first. Done (vitaGL,
+   below): it runs in Vita3K.
 
 ## The Switch build
 
@@ -84,7 +84,9 @@ and `gl_imports.c`).  The pieces:
   with OpenGL ES, as on any system where it cannot start.
 - **The host on the Switch.** It takes the phones' way (`HOST_MOBILE`):
   the folder `sdmc:/switch/eidos/` holds `extract/` (the game data),
-  `profile/`, `args.txt`, `env.txt` and `stderr.txt`; OpenGL ES 3.0; the
+  `profile/`, `args.txt`, `env.txt` and `stderr.txt`; Mesa's desktop
+  OpenGL (4.3 core) first, as the desktop draws, and OpenGL ES 3.0 when
+  that context does not come up (`HOST_GL_ES_FALLBACK`, host/sdl.c); the
   one-screen layout.  The ROM for the first run is the first `.nds` file
   in that folder (`host/pick_switch.c`).  Fibers use the AArch64 stack
   switch with 4 MiB stacks, since Horizon commits heap memory when it is
@@ -102,7 +104,12 @@ and `gl_imports.c`).  The pieces:
   the GPU 2D path is the Switch's work for 60 fps.  In Ryubing the picture
   is cut to a column one sixth of its width; the desktop with the same
   settings (`EIDOS_GL_ES=1`, 1920x1080, one screen) draws it whole, so the
-  console decides whether it is the port or the emulator.
+  console decides whether it is the port or the emulator.  With desktop
+  OpenGL (2026-11-08) the cut is the same, and it is in the frame itself:
+  `EIDOS_GL_DUMP` reads back the DS rectangle drawn only from x 240 to 480
+  of 1920, at its full scale (clipped, not squeezed), with GPU 2D on or
+  off.  eidos only scissors inside its 3D pass and turns it off after, so
+  the emulated GPU or Mesa's nouveau driver is the next suspect.
 
 ## The Vita build
 
@@ -133,10 +140,17 @@ the build is this project's CMake with `vita.toolchain.cmake`, packaged by
   time.  Only the programs that show CPU-drawn screens are compiled there:
   the screens, the panel, the blur and the interface canvas.  The
   scene-change blend needs `glBlendColor`, which vitaGL lacks, so the
-  Vita cuts instead.  Built, not yet run (2026-11-07).
+  Vita cuts instead.  vitaGL's pools are fixed (32 MiB RAM, 64 MiB video
+  memory, 16 MiB physically contiguous) and the window is 960x544; the
+  value vglInit* returns says the resolution fell back, not that it
+  failed.  It runs in Vita3K (2026-11-08): every program compiles with
+  the console's own compiler and the one-screen layout shows.
 - **First runs (Vita3K, 2026-11-07).** With SDL's renderer the opening and
   the title play, as the two DS screens (that renderer has no one-screen
-  picture) at about 8 fps.
+  picture) at about 8 fps.  With vitaGL, numbers below.  Vita3K reads
+  unmapped memory as zeros and goes on instead of raising the prefetch
+  abort, so a call through a DS code address (GX_LoadBGPltt's, after the
+  title) runs on there at a crawl; a Vita's kubridge handler catches it.
 - **Calls to DS code addresses** (a table in one overlay names a function
   of another, not yet loaded, overlay; 13 call sites seen on Win32) are
   caught by kubridge's prefetch-abort handler and sent to the function
@@ -209,3 +223,17 @@ than this desktop's: about 11 to 17 ms of work per frame in the field on one
 core before the workers share the 2D and the 3D, against a 16.7 ms frame.
 Tight, but in reach, and the workers and a 1x internal resolution are the
 margin.
+
+### In the emulators (2026-11-08)
+
+`--bench` and `--profile` on this PC, so these are emulator numbers, not a
+console's: they say what runs and where the time goes, not the speed on
+the hardware.
+
+| Console | Scene | Presenter | Frame (mean) | Notes |
+|---|---|---|---|---|
+| Switch (Ryubing 1.3.3) | field, walking (bench-field.sav), 600 frames | desktop OpenGL 4.3 (Mesa) | 124.7 ms (8 fps) | step 13.6, 3D geometry 29.5, 2D 28.5, present 11 ms |
+| Vita (Vita3K) | opening, frames 800-1700 | vitaGL | 32.9 ms (30 fps) | present 0.4 ms; SDL's renderer on GXM ran the same opening at about 8 fps |
+
+The Vita's field is not measured: Vita3K does not raise the prefetch abort
+a call through a DS code address needs (above).

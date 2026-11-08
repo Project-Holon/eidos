@@ -406,7 +406,9 @@ static char **mobile_args(int *argc)
      * screens also get a margin of 2% a side inside the safe area. */
     setenv("EIDOS_TOUCH_DEVICE", "1", 1);
     /* the 3D renderer's choices for OpenGL ES (engine/platform/plat_gl3d.c) */
+#if !defined(__SWITCH__)    /* the Switch tries desktop OpenGL first (host/sdl.c) */
     setenv("EIDOS_GL_ES", "1", 1);
+#endif
 #if defined(__ANDROID__)
     setenv("EIDOS_EDGE_MARGIN", "2", 1);
 #endif

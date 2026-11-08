@@ -27,7 +27,7 @@ COMMON="-O2 -pipe $ARCH -ffunction-sections -fdata-sections -D__SWITCH__ \
  -DWASM_RT_NONCONFORMING_UNCHECKED_STACK_EXHAUSTION=1 -DWASM_RT_SKIP_SIGNAL_RECOVERY=1 \
  -DWASM_RT_TRAP_HANDLER=host_trap -DWASM_RT_USE_MMAP=0 \
  -I$HERE/include -include $HERE/include/switch_compat.h -I$SRC -I$WABT"
-HOSTF="$COMMON -DHOST_GLES=1 -I$ROOT/host -I$ROOT/install -I$ROOT/sdk -I$SDL3 -I$HERE"
+HOSTF="$COMMON -DHOST_GL_ES_FALLBACK=1 -I$ROOT/host -I$ROOT/install -I$ROOT/sdk -I$SDL3 -I$HERE"
 export DKA COMMON HOSTF OUT
 
 # 1. SDL2 with its names moved aside (S2_SDL_*), so the host's SDL3 names

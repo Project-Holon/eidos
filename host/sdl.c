@@ -569,6 +569,17 @@ u32 w2c_env_SDL_GL_CreateContext(struct w2c_env *e, u32 w)
 
     (void)e;
     c = SDL_GL_CreateContext((SDL_Window *)handle_ptr(w));
+#if defined(HOST_GL_ES_FALLBACK)
+    /* The Switch: Mesa's desktop OpenGL first (the shaders as they are, the
+     * GPU 3D with its anti-aliasing), OpenGL ES 3.0 when that fails. */
+    if (c == NULL) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
+        c = SDL_GL_CreateContext((SDL_Window *)handle_ptr(w));
+    }
+#endif
     if (c != NULL) {
         SDL_Rect safe;
         int ww = 0, wh = 0;
