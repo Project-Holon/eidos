@@ -682,7 +682,6 @@ static void gl_debug_dump(int w, int h)
     {
         size_t row = ((size_t)w * 3u + 3u) & ~(size_t)3u;
         unsigned char *px = (unsigned char *)malloc(row * (size_t)h);
-        /* RGBA rows (below) */
         unsigned char *rgb = (unsigned char *)malloc((size_t)w * (size_t)h * 4u);
         FILE *f;
         int x, y;
@@ -693,12 +692,7 @@ static void gl_debug_dump(int w, int h)
             return;
         }
         glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        /* a row at a time: in the Switch emulator (Ryubing, Mesa's nouveau)
-         * one read of the whole window came back with only a quarter of
-         * each row, while small reads were whole */
-        for (y = 0; y < h; y++) {
-            glReadPixels(0, y, w, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgb + (size_t)y * (size_t)w * 4u);
-        }
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgb);
         for (y = 0; y < h; y++) {          /* GL rows run bottom-up: so does BMP */
             for (x = 0; x < w; x++) {
                 px[(size_t)y * row + (size_t)x * 3u + 0] = rgb[((size_t)y * w + x) * 4u + 2];
@@ -1961,12 +1955,8 @@ int eidos_gl_grab(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2],
         return -1;
     }
     draw_scene(g, out_w, out_h, dst);      /* not swapped: only read */
-    /* RGBA, a row at a time (gl_debug_dump: one read of the whole window
-     * came back partial in the Switch emulator) */
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    for (y = 0; y < out_h; y++) {
-        glReadPixels(0, y, out_w, 1, GL_RGBA, GL_UNSIGNED_BYTE, raw + (size_t)y * (size_t)out_w * 4u);
-    }
+    glReadPixels(0, 0, out_w, out_h, GL_RGBA, GL_UNSIGNED_BYTE, raw);
     for (y = 0; y < out_h; y++) {          /* GL rows run bottom-up */
         const unsigned char *src = raw + (size_t)(out_h - 1 - y) * (size_t)out_w * 4u;
         unsigned char *d = rgb + (size_t)y * (size_t)out_w * 3u;

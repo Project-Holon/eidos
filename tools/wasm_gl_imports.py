@@ -208,6 +208,30 @@ void w2c_env_glReadPixels(struct w2c_env *env, u32 x, u32 y, u32 w, u32 h, u32 f
         geti = (void (APIENTRY *)(GLenum, GLint *))gl_proc("glGetIntegerv");
     }
     geti(0x88ED /* GL_PIXEL_PACK_BUFFER_BINDING */, &pack);
+#if defined(__SWITCH__)
+    /* The Switch: one read of many rows came back with only the first
+     * part of each row in the emulator (Ryubing, Mesa's nouveau driver),
+     * a read of one row whole: so a row at a time, into memory or into
+     * the bound pixel-pack buffer alike (docs/consoles.md). */
+    if (h > 1 && type == 0x1401 /* GL_UNSIGNED_BYTE */ && (format == 0x1908 /* GL_RGBA */ ||
+        (format == 0x1907 /* GL_RGB */ && !host_gl_es))) {
+        GLint align = 4;
+        size_t row;
+        u32 i;
+        unsigned char *out = pack != 0 ? NULL : (unsigned char *)gl_ptr(pixels);
+
+        geti(0x0D05 /* GL_PACK_ALIGNMENT */, &align);
+        row = ((size_t)w * (format == 0x1908 ? 4u : 3u) + (size_t)align - 1u) / (size_t)align * (size_t)align;
+        if (pack == 0 && out == NULL) {
+            return;
+        }
+        for (i = 0; i < h; i++) {
+            fn((GLint)x, (GLint)(y + i), (GLsizei)w, 1, format, type,
+               pack != 0 ? (void *)(uintptr_t)(pixels + (u32)(i * row)) : (void *)(out + i * row));
+        }
+        return;
+    }
+#endif
     if (host_gl_es && pack == 0 && format == 0x1907 /* GL_RGB */ && type == 0x1401 /* GL_UNSIGNED_BYTE */) {
         /* OpenGL ES reads RGBA bytes only: read those, keep RGB */
         GLint align = 4;

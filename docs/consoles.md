@@ -105,8 +105,11 @@ and `gl_imports.c`).  The pieces:
   the "column one sixth of its width" seen before was the read-back, not
   the frame.  In Ryubing one `glReadPixels` of the whole 1920x1080 window
   returns only the first part of each row (RGB or RGBA alike), while
-  smaller reads are whole; `EIDOS_GL_DUMP` and the screenshot grab now
-  read a row at a time, and the dump shows the DS rectangle whole.  A
+  one row is whole.  The Switch host's `glReadPixels` (tools/
+  wasm_gl_imports.py) now reads a row at a time, into memory or a
+  pixel-pack buffer: the dump shows the DS rectangle whole, and the GPU 2D
+  check (`EIDOS_G2D_GPU_CHECK`) went from 1098 of 2393 screens different
+  (only the first 64 columns of each read back) to none.  A
   minimal SDL2 + Mesa program (clear, full-window quad, half-window
   viewport) drew the whole window as well.
 
