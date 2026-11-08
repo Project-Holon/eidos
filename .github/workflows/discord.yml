@@ -1,5 +1,6 @@
 # Post each published release (and pre-release) to the Discord releases
-# channel with its changelog section; a full release pings the release
+# channel: a short message with the highlights and the changelog as images
+# (tools/changelog_images.py); a full release pings the release
 # role, a pre-release does not
 # (tools/discord_release.py).  The release workflow only drafts a release;
 # this runs when the draft is published.  The webhook is the repository
@@ -24,15 +25,36 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      # the images are drawn by the runner's Google Chrome (headless)
+      - name: Pillow, Inter (rsms/inter 4.0) and Marcellus SC (google/fonts), each checked against its SHA-256
+        run: |
+          python3 -m pip install --user pillow==11.2.1
+          curl -sSL -o inter.zip https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip
+          echo "ff970a5d4561a04f102a7cb781adbd6ac4e9b6c460914c7a101f15acb7f7d1a4  inter.zip" | sha256sum -c -
+          mkdir -p fonts
+          unzip -j -o inter.zip extras/ttf/Inter-Regular.ttf extras/ttf/Inter-SemiBold.ttf extras/ttf/Inter-Bold.ttf -d fonts
+          curl -sSL -o fonts/MarcellusSC-Regular.ttf \
+            https://raw.githubusercontent.com/google/fonts/90abd17b4f97671435798b6147b698aa9087612f/ofl/marcellussc/MarcellusSC-Regular.ttf
+          echo "03044ab65228b0554c9a5c1e63df29d4e58a71857e212801aaf768dfd106bdf0  fonts/MarcellusSC-Regular.ttf" | sha256sum -c -
+          google-chrome --version
       - name: Post to Discord
         env:
           DISCORD_RELEASE_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
+          # only a finished release posts: published (not a draft) and with
+          # every main download attached
+          [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "false" ] \
+            || { echo "$TAG is a draft: nothing posted"; exit 1; }
+          have=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for f in eidos-launcher-windows-setup.exe eidos-launcher-macos.dmg \
+                   eidos-launcher-linux-x86_64.AppImage eidos-android.apk eidos-ios.ipa; do
+            echo "$have" | grep -qx "$f" || { echo "$TAG has no $f: nothing posted"; exit 1; }
+          done
           url=$(gh release view "$TAG" --json url --jq .url)
           pre=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)
           # a full release pings the release role; a pre-release does not
           flag="--role 1566455520846684342"
           [ "$pre" = "true" ] && flag="--prerelease"
-          python3 tools/discord_release.py "$TAG" --url "$url" $flag
+          python3 tools/discord_release.py "$TAG" --url "$url" --fonts fonts $flag

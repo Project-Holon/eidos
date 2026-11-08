@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Post a published release to the Discord releases channel: a ping for the
-release role, the release's name and link, and its changelog section.
+"""Post a published release to the Discord releases channel: one short
+message (the release, its one-sentence summary, where to get it) and the
+full changelog as a few images (tools/changelog_images.py), so the channel
+needs no scrolling.  A full release pings the release role; a pre-release
+does not.
 
-Run by .github/workflows/discord.yml when a release is published (a draft
-the release workflow made, published by hand).  The webhook comes from the
-DISCORD_RELEASE_WEBHOOK environment variable (a repository secret), never
-from a file.
+The summary is the plain text at the top of the version's CHANGELOG.md
+section, before its first "###"; without it, the message has none.
 
-    python tools/discord_release.py v0.2.4 --url URL [--prerelease] [--role ID] [--dry-run]
+Run by .github/workflows/discord.yml when a release is published.  The
+webhook comes from the DISCORD_RELEASE_WEBHOOK environment variable (a
+repository secret), never from a file.
+
+    python tools/discord_release.py v0.2.4 --url URL [--prerelease] [--role ID]
+                                    [--fonts DIR] [--dry-run]
 """
 
 import argparse
@@ -15,16 +21,14 @@ import json
 import os
 import re
 import sys
+import tempfile
 import urllib.request
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from release_notes import changelog_section  # noqa: E402
 
-# Discord's limits: 4096 characters for an embed's text, 10 embeds and 6000
-# characters in all for a message.
-EMBED_TEXT = 4096
-MESSAGE_TEXT = 6000
-COLOUR = 0x5865F2
+CONTENT_MAX = 2000          # Discord's limit for a message's text
 
 
 def version_of(tag):
@@ -32,73 +36,48 @@ def version_of(tag):
     return re.sub(r"-.*$", "", tag.lstrip("vV"))
 
 
-def chunks(text, size):
-    """The text cut at line ends into parts of at most size characters."""
-    out, cur = [], ""
-    for line in text.split("\n"):
-        while len(line) > size:
-            if cur:
-                out.append(cur)
-                cur = ""
-            out.append(line[:size])
-            line = line[size:]
-        add = line if not cur else cur + "\n" + line
-        if len(add) > size:
-            out.append(cur)
-            cur = line
-        else:
-            cur = add
-    if cur.strip():
-        out.append(cur)
-    return out
+def summary(section):
+    """The text before the section's first "###", as one paragraph."""
+    head = section.split("\n### ")[0] if not section.startswith("### ") else ""
+    text = " ".join(l.strip() for l in head.split("\n") if l.strip())
+    return [text] if text else []
 
 
-def cards(section):
-    """One card per "### " heading: (title, text); text before the first
-    heading is a card with no title."""
-    out, title, lines = [], None, []
-    for line in section.split("\n"):
-        if line.startswith("### "):
-            if title is not None or "".join(lines).strip():
-                out.append((title, "\n".join(lines).strip()))
-            title, lines = line[4:].strip(), []
-        else:
-            lines.append(line)
-    if title is not None or "".join(lines).strip():
-        out.append((title, "\n".join(lines).strip()))
-    return out
-
-
-def messages(tag, url, prerelease, role):
-    """The messages to send: the first has the ping, the title and the link;
-    the cards fill messages of at most 10 cards and 6000 characters."""
+def message(tag, url, prerelease, role):
     version = version_of(tag)
-    section = changelog_section(version) or "See the release page for the notes."
-    title = "eidos %s%s" % (tag, " (pre-release)" if prerelease else "")
-    # <url>: the cards are the preview, so Discord adds none of its own
-    head = "%s**%s** is out\n<%s>" % ("<@&%s> " % role if role else "", title, url)
-    embeds = []
-    for name, text in cards(section):
-        for i, part in enumerate(chunks(text, EMBED_TEXT) or [""]):
-            embed = {"description": part, "color": COLOUR}
-            if name:
-                embed["title"] = name if i == 0 else name + " (more)"
-            embeds.append(embed)
-    out, cur, size = [], [], 0
-    for e in embeds:
-        n = len(e["description"]) + len(e.get("title", ""))
-        if cur and (len(cur) == 10 or size + n > MESSAGE_TEXT - 200):
-            out.append(cur)
-            cur, size = [], 0
-        cur.append(e)
-        size += n
-    if cur:
-        out.append(cur)
-    msgs = [{"embeds": m, "allowed_mentions": {"roles": []}} for m in out] or [
-        {"embeds": [], "allowed_mentions": {"roles": []}}]
-    msgs[0]["content"] = head
-    msgs[0]["allowed_mentions"] = {"roles": [role] if role else []}
-    return msgs
+    section = changelog_section(version) or ""
+    name = "eidos %s" % tag.lstrip("vV")
+    lines = []
+    lines.append("%s**%s is out!**%s" % ("<@&%s> " % role if role else "", name,
+                                          " (pre-release)" if prerelease else ""))
+    lines.append("")
+    lines += summary(section)
+    lines.append("")
+    if prerelease:
+        lines.append("A test build: download it from the release page: <%s>" % url)
+    else:
+        lines.append("Update from your launcher, or download it from the release page: <%s>" % url)
+    lines.append("The full changelog is below.")
+    text = "\n".join(lines)
+    return text[:CONTENT_MAX]
+
+
+def multipart(payload, files):
+    """A multipart/form-data body: payload_json and files[n]."""
+    boundary = uuid.uuid4().hex
+    out = []
+    out.append(("--%s\r\nContent-Disposition: form-data; name=\"payload_json\"\r\n"
+                "Content-Type: application/json\r\n\r\n" % boundary).encode())
+    out.append(json.dumps(payload).encode("utf-8"))
+    out.append(b"\r\n")
+    for i, path in enumerate(files):
+        out.append(("--%s\r\nContent-Disposition: form-data; name=\"files[%d]\"; "
+                    "filename=\"%s\"\r\nContent-Type: image/png\r\n\r\n"
+                    % (boundary, i, os.path.basename(path))).encode())
+        out.append(open(path, "rb").read())
+        out.append(b"\r\n")
+    out.append(("--%s--\r\n" % boundary).encode())
+    return b"".join(out), "multipart/form-data; boundary=%s" % boundary
 
 
 def main():
@@ -107,24 +86,36 @@ def main():
     ap.add_argument("--url", required=True, help="the release's page")
     ap.add_argument("--prerelease", action="store_true")
     ap.add_argument("--role", help="the role to ping (its id)")
-    ap.add_argument("--dry-run", action="store_true", help="print the message, send nothing")
+    ap.add_argument("--fonts", help="Inter's folder (tools/changelog_images.py)")
+    ap.add_argument("--dry-run", action="store_true", help="print the message and make the images, send nothing")
     args = ap.parse_args()
-    msgs = messages(args.tag, args.url, args.prerelease, args.role)
+
+    from changelog_images import render
+    text = message(args.tag, args.url, args.prerelease, args.role)
+    out = tempfile.mkdtemp(prefix="eidos-changelog-")
+    images = render(version_of(args.tag), out, args.fonts, args.tag.lstrip("vV"))[:10]
+    # the images as plain attachments, under the message
+    payload = {
+        "content": text,
+        "attachments": [{"id": i, "filename": os.path.basename(p)} for i, p in enumerate(images)],
+        "allowed_mentions": {"roles": [args.role] if args.role else []},
+    }
     if args.dry_run:
         sys.stdout.reconfigure(encoding="utf-8")
-        print(json.dumps(msgs, indent=2, ensure_ascii=False))
+        print(text)
+        print("images:", *images, sep="\n  ")
         return
     hook = os.environ.get("DISCORD_RELEASE_WEBHOOK", "")
     if not hook:
         sys.exit("DISCORD_RELEASE_WEBHOOK is not set")
-    for body in msgs:
-        req = urllib.request.Request(
-            hook, data=json.dumps(body).encode("utf-8"), method="POST",
-            headers={"Content-Type": "application/json",
-                     # Discord's front end refuses Python's default agent
-                     "User-Agent": "eidos-release (https://github.com/Project-Holon/eidos, 1)"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            print("posted:", resp.status)
+    body, ctype = multipart(payload, images)
+    req = urllib.request.Request(
+        hook, data=body, method="POST",
+        headers={"Content-Type": ctype,
+                 # Discord's front end refuses Python's default agent
+                 "User-Agent": "eidos-release (https://github.com/Project-Holon/eidos, 1)"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        print("posted:", resp.status)
 
 
 if __name__ == "__main__":
