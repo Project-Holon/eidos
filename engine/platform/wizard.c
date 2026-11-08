@@ -402,10 +402,38 @@ static int on_phone(void)
     return t != NULL && t[0] == '1';
 }
 
+/* A games console (the Switch and Vita hosts set EIDOS_CONSOLE to its name
+ * and EIDOS_ROM_FOLDER to where the player copies the ROM): no file dialog,
+ * the ROM is the first .nds in that folder (docs/consoles.md). */
+static const char *console_name(void)
+{
+    const char *c = getenv("EIDOS_CONSOLE");
+
+    return c != NULL && c[0] != '\0' ? c : NULL;
+}
+
 static void show_welcome(Wiz *z)
 {
     z->screen = EIDOS_WIZARD_WELCOME;
     snprintf(z->heading, sizeof(z->heading), "Pokemon Black or White is needed");
+    if (console_name() != NULL) {
+        const char *dir = getenv("EIDOS_ROM_FOLDER");
+
+        snprintf(z->body, sizeof(z->body),
+                 "%s%s"
+                 "eidos runs Pokemon Black or White from your own copy of the game: "
+                 "a ROM, the file a dumping tool makes from your cartridge, ending "
+                 "in .nds. Nothing is downloaded.\n\n"
+                 "Copy the ROM to this folder on your %s:\n"
+                 ">%s\n\n"
+                 "eidos reads it once and keeps the game data it needs.",
+                 z->cfg->reason != NULL ? z->cfg->reason : "",
+                 z->cfg->reason != NULL ? "\n\n" : "",
+                 console_name(), dir != NULL ? dir : "");
+        z->foot[0] = '\0';
+        buttons(z, "Look again", ACT_CHOOSE, NULL, ACT_NONE);
+        return;
+    }
     if (on_phone()) {
         snprintf(z->body, sizeof(z->body),
                  "%s%s"
@@ -503,8 +531,8 @@ static void finish_job(Wiz *z)
         z->screen = EIDOS_WIZARD_DONE;
         snprintf(z->heading, sizeof(z->heading), "Ready to play");
         snprintf(z->body, sizeof(z->body), "%s",
-                 j->outcome.already ? "This ROM's game data was already on this phone."
-                                    : "The game data is on this phone. The ROM is not "
+                 j->outcome.already ? "This ROM's game data was already here."
+                                    : "The game data is ready. The ROM is not "
                                       "needed again.");
         z->foot[0] = '\0';
         buttons(z, "Start", ACT_START, NULL, ACT_NONE);
@@ -570,6 +598,8 @@ static void choose(Wiz *z)
     }
     if (rc == BW_PICK_OK) {
         start_job(z, path);
+    } else if (rc == BW_PICK_UNAVAILABLE && console_name() != NULL) {
+        snprintf(z->note, sizeof(z->note), "%s", path);
     } else if (rc == BW_PICK_UNAVAILABLE) {
         snprintf(z->note, sizeof(z->note), "%s Drag the ROM file onto this "
                  "window instead, or start eidos with --rom <file>.", path);
@@ -787,6 +817,12 @@ int eidos_wizard_run(const EidosWizardConfig *cfg, char *rom_out, size_t n)
         start_job(&z, cfg->rom);
     } else {
         show_welcome(&z);
+        /* a console's ROM already in its folder: no need to wait for the
+         * button */
+        if (console_name() != NULL) {
+            choose(&z);
+            z.note[0] = '\0';
+        }
     }
 
     while (z.result == -2) {

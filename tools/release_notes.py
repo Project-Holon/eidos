@@ -52,12 +52,14 @@ STANDALONE = [
      "Linux: eidos on its own. Make it executable and run it."),
     ("eidos-{ver}-switch.zip",
      "Nintendo Switch (homebrew, custom firmware): unzip it to the SD card's "
-     "root, put your extracted game in `switch/eidos/extract/`, start it "
-     "from the Homebrew Menu over a game (hold R) for the full memory. "
-     "Early: tested in an emulator only."),
+     "root, copy the `extract` folder eidos made on a PC from your ROM to "
+     "`switch/eidos/extract/`, and start it from the Homebrew Menu over a "
+     "game (hold R) for the full memory. Extracting a `.nds` on the console "
+     "itself does not work yet. Early: tested in an emulator only."),
     ("eidos-{ver}-vita.vpk",
-     "PlayStation Vita (homebrew, HENkaku/Ensō): install it with VitaShell; "
-     "your extracted game goes in `ux0:data/eidos/extract/`. The fast "
+     "PlayStation Vita (homebrew, HENkaku/Ensō): install it with VitaShell "
+     "and copy the `extract` folder eidos made on a PC from your ROM to "
+     "`ux0:data/eidos/extract/`. The fast "
      "renderer needs `libshacccg.suprx` extracted from your own Vita "
      "(`ur0:data/`). Early: tested in an emulator only."),
 ]

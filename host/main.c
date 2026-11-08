@@ -412,6 +412,11 @@ static char **mobile_args(int *argc)
 #if defined(__ANDROID__)
     setenv("EIDOS_EDGE_MARGIN", "2", 1);
 #endif
+#if defined(__SWITCH__)
+    /* the first-run screen names the ROM's folder (host/pick_switch.c) */
+    setenv("EIDOS_CONSOLE", "Switch", 1);
+    setenv("EIDOS_ROM_FOLDER", "sdmc:/switch/eidos/", 1);
+#endif
     snprintf(file, sizeof file, "%senv.txt", pref);
     if ((f = fopen(file, "r")) != NULL) {
         while (fgets(line, sizeof line, f) != NULL) {

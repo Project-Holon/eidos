@@ -120,11 +120,15 @@ static char *pseudo(const char *tmpl, size_t len, size_t *out_len)
     while (out != NULL && i < len) {
         size_t e = i;
 
+        size_t le;
+
         while (e < len && tmpl[e] != '\n') {
             e++;
         }
-        if (e - i > 3 && tmpl[i] != '#' && memcmp(tmpl + e - 3, " = ", 3) == 0) {
-            size_t en = e - i - 3;
+        /* a checkout with Windows line ends (CI's git on Windows) */
+        le = e > i && tmpl[e - 1] == '\r' ? e - 1 : e;
+        if (le - i > 3 && tmpl[i] != '#' && memcmp(tmpl + le - 3, " = ", 3) == 0) {
+            size_t en = le - i - 3;
 
             memcpy(out + o, tmpl + i, en + 3);
             o += en + 3;

@@ -2793,6 +2793,9 @@ static char **vita_args(int *argc)
     argv[n++] = "one";
     argv[n++] = "--window";
     setenv("EIDOS_TOUCH_DEVICE", "1", 1);
+    /* the first-run screen names the ROM's folder (install/picker.c) */
+    setenv("EIDOS_CONSOLE", "Vita", 1);
+    setenv("EIDOS_ROM_FOLDER", "ux0:data/eidos/", 1);
     /* The presenter: OpenGL through vitaGL when the shader compiler the
      * player extracts from their own firmware is there (vitaGL looks in
      * these two places, docs/consoles.md); without it SDL's renderer
