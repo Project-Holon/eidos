@@ -1,5 +1,6 @@
 # Post each published release (and pre-release) to the Discord releases
-# channel, with a ping for the release role and the changelog section
+# channel with its changelog section; a full release pings the release
+# role, a pre-release does not
 # (tools/discord_release.py).  The release workflow only drafts a release;
 # this runs when the draft is published.  The webhook is the repository
 # secret DISCORD_RELEASE_WEBHOOK.
@@ -31,6 +32,7 @@ jobs:
         run: |
           url=$(gh release view "$TAG" --json url --jq .url)
           pre=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)
-          flag=""
+          # a full release pings the release role; a pre-release does not
+          flag="--role 1566455520846684342"
           [ "$pre" = "true" ] && flag="--prerelease"
-          python3 tools/discord_release.py "$TAG" --url "$url" $flag --role 1566455520846684342
+          python3 tools/discord_release.py "$TAG" --url "$url" $flag
