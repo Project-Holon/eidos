@@ -7,7 +7,8 @@
  * physical control twice, and a window point lands on the bottom-screen
  * pixel worked out by hand, in both layouts, at a scale, with a gap, and
  * after the window changes size.  A pump with nothing held hands the input
- * layer an idle state.
+ * layer an idle state.  A pad in use holds the keyboard back (one device at
+ * a time).
  */
 
 #include <stdio.h>
@@ -133,9 +134,38 @@ static void test_mapping(void)
     eidos_platform_quit(p);
 }
 
+/*
+ * One device at a time (#30, #32).  A Steam Deck outside Steam's game mode
+ * sends each pad press twice, as the pad's button and as a key from Steam's
+ * desktop layout, a few milliseconds apart.  The game must see one press.
+ */
+static void test_one_device(void)
+{
+    const u32 A = 0x1u, UP = 0x40u;
+    unsigned long long owns = 0;
+
+    /* the key first, then the pad, the key let go first: one long press */
+    BW_CHECK_EQ("key first", eidos_platform_merge_input(A, 0, 1000, &owns), A);
+    BW_CHECK_EQ("then both", eidos_platform_merge_input(A, A, 1016, &owns), A);
+    BW_CHECK_EQ("the key let go, the pad held", eidos_platform_merge_input(0, A, 1033, &owns), A);
+    BW_CHECK_EQ("both let go", eidos_platform_merge_input(0, 0, 1050, &owns), 0u);
+    /* the pad first, its key copy late, after the pad was let go: no second
+     * press */
+    BW_CHECK_EQ("pad", eidos_platform_merge_input(0, UP, 1100, &owns), UP);
+    BW_CHECK_EQ("pad let go", eidos_platform_merge_input(0, 0, 1116, &owns), 0u);
+    BW_CHECK_EQ("the late key copy is held back", eidos_platform_merge_input(UP, 0, 1133, &owns), 0u);
+    BW_CHECK_EQ("still held back", eidos_platform_merge_input(UP, 0, 1499, &owns), 0u);
+    /* the pad at rest: the keyboard is the player's again */
+    BW_CHECK_EQ("keyboard alone again", eidos_platform_merge_input(A, 0, 1500, &owns), A);
+    /* a keyboard with no pad at all is never held back */
+    owns = 0;
+    BW_CHECK_EQ("no pad: keys", eidos_platform_merge_input(UP | A, 0, 5, &owns), UP | A);
+}
+
 int main(void)
 {
     test_tables();
     test_mapping();
+    test_one_device();
     BW_REPORT("test_platform_input");
 }

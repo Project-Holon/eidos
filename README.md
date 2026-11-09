@@ -23,6 +23,7 @@ The desktop launcher installs and updates eidos, manages your ROMs, and installs
 - **Windows:** Click **More info** → **Run anyway** if SmartScreen prompts you.
 - **macOS (Apple Silicon):** Follow the single Terminal command in `READ ME FIRST.txt` inside the disk image to clear the quarantine attribute before opening.
 - **Linux:** Mark the `.AppImage` as executable (`chmod +x`) and run it.
+- **Steam Deck:** Add the launcher to Steam as a non-Steam game and start it in Game Mode, with the **Gamepad** controller layout. Desktop Mode also works: Steam then sends the controller as keyboard keys too, and eidos reads one of them at a time.
 
 ### Mobile (Android, iOS)
 

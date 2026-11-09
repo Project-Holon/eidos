@@ -113,6 +113,15 @@ overflow results. `bw_port_reset` installs it.
   shoulders and triggers are L and R, Start and Back are START and SELECT,
   the d-pad and the left stick are the d-pad. Pads plugged in or out while
   running are picked up.
+- **One device at a time**: while a pad is in use (a button held, or a
+  button or stick moved in the last 400 ms, `PAD_OWNS_MS`), the keyboard's
+  bindings do not reach the game. Some systems send a pad's presses as keys
+  too: Steam's desktop layout (a Steam Deck in Desktop Mode, or a program
+  started outside Steam, turns the D-pad into the arrow keys and A into
+  Enter), the Deck's own keyboard mode before Steam starts, remapping tools.
+  The two copies of a press come a few milliseconds apart, and the game saw
+  the press twice (#30, #32). The keyboard works again as soon as the pad
+  rests. The launcher keeps the same rule (`launcher/src/lib/padnav.ts`).
 - **Stylus**: the left mouse button (SDL turns touches into the mouse) on
   the bottom screen, mapped through the window's current size. A press
   starts only on the panel; a drag off it is held to the edge.
