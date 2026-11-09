@@ -202,9 +202,13 @@ static void put(EidosUiCtx *c, int x, int y, u32 rgb, int a)
     blend_at(c->canvas, px, py, rgb, a);
 }
 
+/* Every colour drawn goes through the active theme's colour map
+ * (theme.h): fills, lines, shapes and text, never images. */
+#define tc(rgb) ui_theme_color(rgb)
+
 void ui_pixel(EidosUiCtx *c, int x, int y, u32 rgb, int a)
 {
-    put(c, x, y, rgb, a);
+    put(c, x, y, tc(rgb), a);
 }
 
 void ui_fill(EidosUiCtx *c, int x, int y, int w, int h, u32 rgb, int a)
@@ -212,6 +216,7 @@ void ui_fill(EidosUiCtx *c, int x, int y, int w, int h, u32 rgb, int a)
     /* the rectangle clipped once, then each pixel blended as put() would */
     int x0 = c->ox + x, y0 = c->oy + y, x1 = x0 + w, y1 = y0 + h, px, py;
 
+    rgb = tc(rgb);
     if (x0 < c->clip.x) x0 = c->clip.x;
     if (y0 < c->clip.y) y0 = c->clip.y;
     if (x1 > c->clip.x + c->clip.w) x1 = c->clip.x + c->clip.w;
@@ -256,6 +261,7 @@ void ui_line(EidosUiCtx *c, int x0, int y0, int x1, int y1, u32 rgb, int a)
     int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     int err;
 
+    rgb = tc(rgb);
     err = dx + dy;
     for (;;) {
         int e2;
@@ -291,6 +297,8 @@ void ui_ellipse(EidosUiCtx *c, int x, int y, int w, int h, u32 fill, u32 outline
 {
     int xx, yy;
 
+    fill = tc(fill);
+    outline = tc(outline);
     for (yy = 0; yy < h; yy++) {
         for (xx = 0; xx < w; xx++) {
             u32 col;
@@ -457,6 +465,19 @@ int ui_text(EidosUiCtx *c, int x, int y, const char *utf8, u32 color,
 
     if (utf8 == NULL) {
         return x;
+    }
+    {
+        /* the colour on the canvas under the text's middle, for the theme
+         * (a light theme's dark ink on a light fill, light on a dark one) */
+        int bx = c->ox + x + 2, by = c->oy + y + 6 * k;
+        u32 behind = 0;
+
+        if (bx >= 0 && by >= 0 && bx < c->canvas->w && by < c->canvas->h) {
+            const u8 *px = c->canvas->rgba + ((size_t)by * (size_t)c->canvas->w + (size_t)bx) * 4u;
+
+            behind = ((u32)px[0] << 16) | ((u32)px[1] << 8) | px[2];
+        }
+        ui_theme_text(&color, &shadow, behind);
     }
     if (k < 1) {
         k = 1;
@@ -658,7 +679,11 @@ static void panel_split(EidosUiCtx *c, int x, int y, int w, int h, int cut,
                         int split_x)
 {
     int xx, yy;
+    u32 ink = tc(UI_INK);
 
+    fill = tc(fill);
+    edge = tc(edge);
+    split_rgb = tc(split_rgb);
     for (yy = 0; yy < h; yy++) {
         /* the row's inner run (inside at inset 2: plain fill) is one
          * interval, every constraint being a bound on x; only the pixels
@@ -700,7 +725,7 @@ static void panel_split(EidosUiCtx *c, int x, int y, int w, int h, int cut,
                 continue;
             }
             if (!in_shape(xx, yy, w, h, cut, corner, 1)) {
-                col = UI_INK;
+                col = ink;
             } else if (!in_shape(xx, yy, w, h, cut, corner, 2)) {
                 col = edge;
             } else {
@@ -1233,7 +1258,7 @@ void ui_def_slider(EidosUiCtx *c, int x, int y, int w, int num, int den, u32 acc
 
         for (i = -half; i <= half; i++) {
             int edge = yy == 0 || yy >= 7 || i == -half || i == half || yy == 6;
-            put(c, x + fx + i, y + yy, edge ? UI_INK : UI_WHITE, 255);
+            put(c, x + fx + i, y + yy, tc(edge ? UI_INK : UI_WHITE), 255);
         }
     }
 }
@@ -1377,7 +1402,7 @@ static void span_shape(EidosUiCtx *c, int x, int y, int rows, const int *l,
                        xx < l[yy - 1] || xx > r[yy - 1] || xx < l[yy + 1] ||
                        xx > r[yy + 1];
 
-            put(c, x + xx, y + yy, edge ? outline : fill, 255);
+            put(c, x + xx, y + yy, tc(edge ? outline : fill), 255);
         }
     }
 }
@@ -1420,10 +1445,10 @@ void ui_def_party_balls(EidosUiCtx *c, int x, int y, const u8 *states, int n)
                 } else {
                     col = yy < 4 ? top : UI_WHITE;
                 }
-                put(c, bx + xx, y + yy, col, 255);
+                put(c, bx + xx, y + yy, tc(col), 255);
             }
         }
-        put(c, bx + 4, y + 4, UI_WHITE, 255);
+        put(c, bx + 4, y + 4, tc(UI_WHITE), 255);
     }
 }
 
@@ -1454,7 +1479,7 @@ void ui_def_category_icon(EidosUiCtx *c, int x, int y, int kind)
 
         for (yy = 0; yy < 7; yy++) {
             for (xx = l[yy]; xx <= r[yy]; xx++) {
-                put(c, x + xx + 1, y + yy + 2, 0xFFC83Cu, 255);
+                put(c, x + xx + 1, y + yy + 2, tc(0xFFC83Cu), 255);
             }
         }
     } else if (kind == 1) {

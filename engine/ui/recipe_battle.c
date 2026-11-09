@@ -49,6 +49,7 @@
 #include "ui.h"
 #include "ui_lang.h"
 #include "kit.h"
+#include "theme.h"
 #include "assets.h"
 #include "settings.h"
 #include "dsmem.h"
@@ -787,11 +788,14 @@ typedef struct Shell {
     int px, pw;         /* the own plates' column, bottom-right             */
     int top;            /* the y above them, where a sheet stands           */
     int n, own_vp[3];   /* the own plates, top to bottom (the chooser last) */
+    int what;           /* UI_BATTLE_*: what the screen shows (the layout)  */
 } Shell;
 
 static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s);
 static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt,
                        int own);
+static void battle_place(EidosUiCtx *c, const Shell *s, UiBattleLayout *l, int what);
+static void battle_begin(EidosUiCtx *c, Shell *s, UiBattleLayout *l, int what);
 
 /*
  * Coloured move names.  The scene unit keeps the text it printed in a string
@@ -904,6 +908,9 @@ static int mv_mark(const u8 *px, int bw, int bh, int ground, int ink, const char
     return 0;
 }
 
+/* The box behind a message or the prompt (below, with the layout). */
+static void battle_box(EidosUiCtx *c, int x, int y, int w, int h, int a);
+
 static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, int h)
 {
     const u8 *scu = rdp(b->core, 0x17C);
@@ -967,7 +974,7 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
             }
         }
     }
-    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
+    battle_box(c, x, y, w, h, 225);
     for (yy = 0; yy < bh && yy + 4 < h; yy++) {
         for (xx = 0; xx < bw && xx + 10 < w; xx++) {
             int v = msg_px(px, bw, xx, yy);
@@ -1180,7 +1187,7 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static const char *const hints[] = { "A", "Next" };
     static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
-    int w = c->canvas->w, h = c->canvas->h;
+    int w = c->canvas->w;
     int full;
     Bt b;
 
@@ -1192,20 +1199,21 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
      * game's own window, so the screen looks the same as in the menus. */
     if (bt_read(&b) && b.core != NULL) {
         Shell sh;
-        int mw, lv;
+        UiBattleLayout l;
+        int lv;
         u32 now = bw_input_frame_number(), since;
 
         view->hide_2d = 1;
         shell_layout(c, &b, &sh);
-        mw = sh.px - 6 - 6;
+        battle_begin(c, &sh, &l, UI_BATTLE_MESSAGE);
         shell_draw(c, &b, &sh, NULL, 0);
-        if (draw_battle_message(c, &b, 6, h - 17 - 6 - 40, mw, 40)) {
+        if (draw_battle_message(c, &b, l.msg.x, l.msg.y, l.msg.w, l.msg.h)) {
             g_msg_frame = now;
         } else if ((since = now - g_msg_frame) < MSG_HOLD_FRAMES + MSG_FADE_FRAMES) {
             int a = since < MSG_HOLD_FRAMES ? 225
                     : 225 * (int)(MSG_HOLD_FRAMES + MSG_FADE_FRAMES - since) / MSG_FADE_FRAMES;
 
-            ui_panel(c, 6, h - 17 - 6 - 40, mw, 40, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, a);
+            battle_box(c, l.msg.x, l.msg.y, l.msg.w, l.msg.h, a);
         }
         lv = levelup_phase(&b);
         if (lv != LV_NONE) {
@@ -1431,6 +1439,80 @@ static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s)
     }
     s->n = n;
     s->top = h - 17 - 6 - n * (PLATE_H + PLATE_GAP) + PLATE_GAP - 4;
+    s->what = UI_BATTLE_MESSAGE;
+}
+
+/*
+ * The places of the screen's parts (theme.h's UiBattleLayout): Remaster's
+ * (the plates bottom right with the 2x2 sheets above them, the foes' plates
+ * top left, the message bottom left), then the theme's changes.  `what`:
+ * UI_BATTLE_MESSAGE, _COMMANDS or _MOVES.
+ */
+static void battle_place(EidosUiCtx *c, const Shell *s, UiBattleLayout *l, int what)
+{
+    int w = c->canvas->w, h = c->canvas->h, i, th = 26, g = 3, tw = (s->pw - g) / 2;
+    int x0 = s->px, y0 = s->top - 2 * th - g;
+    const UiThemeOps *t = ui_theme_active();
+
+    memset(l, 0, sizeof(*l));
+    l->w = w;
+    l->h = h;
+    l->n_own = s->n;
+    for (i = 0; i < s->n && i < 3; i++) {
+        l->own[i].x = s->px;
+        l->own[i].y = s->top + 4 + i * (PLATE_H + PLATE_GAP);
+        l->own[i].w = s->pw;
+        l->own[i].h = PLATE_H;
+    }
+    l->foe_x = 6;
+    l->foe_y = 6;
+    l->foe_w = clampi(w * 34 / 100, 120, 170);
+    l->foe_step = 27;
+    l->foe_balls_x = 6;
+    l->foe_balls_y = -1;            /* under the last foe plate */
+    l->own_balls_x = s->px + s->pw;
+    l->own_balls_y = s->top - 22;
+    l->own_balls_right = 1;
+    l->msg.x = 6;
+    l->msg.y = h - 17 - 6 - 40;
+    l->msg.w = s->px - 6 - 6;
+    l->msg.h = 40;
+    for (i = 0; i < 4; i++) {
+        l->cmd[i].x = l->move[i].x = x0 + (i % 2) * (tw + g);
+        l->cmd[i].y = l->move[i].y = y0 + (i / 2) * (th + g);
+        l->cmd[i].w = l->move[i].w = tw;
+        l->cmd[i].h = l->move[i].h = th;
+    }
+    l->info_x = x0;
+    l->info_y = y0 - 13;
+    if (t->battle_layout != NULL) {
+        t->battle_layout(l, what);
+    }
+}
+
+/* A battle screen's start: what it shows, its layout, and the theme's
+ * backdrop under everything drawn after. */
+static void battle_begin(EidosUiCtx *c, Shell *s, UiBattleLayout *l, int what)
+{
+    const UiThemeOps *t = ui_theme_active();
+
+    s->what = what;
+    battle_place(c, s, l, what);
+    if (t->battle_backdrop != NULL) {
+        t->battle_backdrop(c, l, what);
+    }
+}
+
+/* The box behind a message or the prompt: the theme's, or Remaster's panel. */
+static void battle_box(EidosUiCtx *c, int x, int y, int w, int h, int a)
+{
+    const UiThemeOps *t = ui_theme_active();
+
+    if (t->battle_box != NULL) {
+        t->battle_box(c, x, y, w, h, a);
+    } else {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, a);
+    }
 }
 
 /* The party ball bars (stubs/ov/patch_ov094_btlv_ballbar.c): each side's six
@@ -1496,12 +1578,11 @@ static void ballbar_draw(EidosUiCtx *c, int side, int x, int y, int right)
 static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt,
                        int own)
 {
-    int w = c->canvas->w, h = c->canvas->h;
-    int fw = clampi(w * 34 / 100, 120, 170);
+    UiBattleLayout l;
     int vp, y, i;
 
-    (void)w;
-    y = 6;
+    battle_place(c, s, &l, s->what);
+    y = l.foe_y;
     for (vp = 3; vp <= 7; vp += 2) {
         u8 *poke = poke_at_view(b, vp);
         MonView m;
@@ -1533,15 +1614,14 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
             m.maxhp = gv.maxhp;
             m.level = gv.level;
         }
-        ui_plate(c, 6, y, fw, m.name, m.gender, m.level, m.hp, m.maxhp, 0, 0);
-        ui_plate_status(c, 6, y, fw, m.level, gauge_badge(b, vp));
-        y += 27;
+        ui_plate(c, l.foe_x, y, l.foe_w, m.name, m.gender, m.level, m.hp, m.maxhp, 0, 0);
+        ui_plate_status(c, l.foe_x, y, l.foe_w, m.level, gauge_badge(b, vp));
+        y += l.foe_step;
     }
-    ballbar_draw(c, 1, 6, y + 2, 0);
-    ballbar_draw(c, 0, s->px + s->pw, s->top - 22, 1);
+    ballbar_draw(c, 1, l.foe_balls_x, l.foe_balls_y >= 0 ? l.foe_balls_y : y + 2, 0);
+    ballbar_draw(c, 0, l.own_balls_x, l.own_balls_y, l.own_balls_right);
     memset(g_plate, 0, sizeof(g_plate));
-    y = s->top + 4;
-    for (i = 0; i < s->n; i++) {
+    for (i = 0; i < s->n && i < 3; i++) {
         u8 *poke = poke_at_view(b, s->own_vp[i]);
         MonView m;
         int num, den;
@@ -1559,15 +1639,12 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
                 num = 0;
             }
         }
-        ui_plate(c, s->px, y, s->pw, m.name, m.gender, m.level, m.hp, m.maxhp, num, den);
-        ui_plate_status(c, s->px, y, s->pw, m.level, gauge_badge(b, s->own_vp[i]));
-        if (i < 3) {
-            g_plate[i].poke = poke;
-            g_plate[i].x = s->px;
-            g_plate[i].y = y;
-            g_plate[i].w = s->pw;
-        }
-        y += PLATE_H + PLATE_GAP;
+        ui_plate(c, l.own[i].x, l.own[i].y, l.own[i].w, m.name, m.gender, m.level, m.hp, m.maxhp, num, den);
+        ui_plate_status(c, l.own[i].x, l.own[i].y, l.own[i].w, m.level, gauge_badge(b, s->own_vp[i]));
+        g_plate[i].poke = poke;
+        g_plate[i].x = l.own[i].x;
+        g_plate[i].y = l.own[i].y;
+        g_plate[i].w = l.own[i].w;
     }
     /* The prompt stands in the box of the game's messages (plain_run), and
      * while the game's own window holds text that text is shown: a crossfade
@@ -1575,12 +1652,10 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
      * message and the prompt a line apart.  `own`: the interface's line even
      * then (a prompt the game does not print). */
     if (prompt != NULL) {
-        int mw = s->px - 6 - 6, my = h - 17 - 6 - 40;
-
-        if (own || !draw_battle_message(c, b, 6, my, mw, 40)) {
-            ui_panel(c, 6, my, mw, 40, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
-            ui_text(c, 16, my + ui_text_y(40, UI_FONT_LARGE), prompt, UI_WHITE, UI_EDGE,
-                    UI_FONT_LARGE, 1);
+        if (own || !draw_battle_message(c, b, l.msg.x, l.msg.y, l.msg.w, l.msg.h)) {
+            battle_box(c, l.msg.x, l.msg.y, l.msg.w, l.msg.h, 225);
+            ui_text(c, l.msg.x + 10, l.msg.y + ui_text_y(l.msg.h, UI_FONT_LARGE), prompt, UI_WHITE,
+                    UI_EDGE, UI_FONT_LARGE, 1);
         }
     }
 }
@@ -1970,7 +2045,9 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static const int tap_y[4] = { 84, 167, 167, 171 };
     Bt b;
     Shell sh;
-    int i, hovered = -1, cur, can_back, tw, th = 26, g = 3, x0, y0;
+    UiBattleLayout l;
+    const UiThemeOps *theme = ui_theme_active();
+    int i, hovered = -1, cur, can_back;
     const char *names[4];
     u32 colors[4] = { UI_FIGHT, UI_BAGY, UI_MON, UI_RUN };
     char run_label[16];
@@ -1983,6 +2060,7 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->mode = EIDOS_VIEW_WORLD;
     view->hide_2d = 1;
     shell_layout(c, &b, &sh);
+    battle_begin(c, &sh, &l, UI_BATTLE_COMMANDS);
     chooser_corners(c, &b);
     keys_live(&b);
     cur = input_cursor(&b);
@@ -1997,12 +2075,9 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         en[i] = b.in[0x25A + i] != 0;
     }
 
-    tw = (sh.pw - g) / 2;
-    x0 = sh.px;
-    y0 = sh.top - 2 * th - g;
     /* hit regions first so the hover is known when drawing */
     for (i = 0; i < 4; i++) {
-        int st = hit(c, x0 + (i % 2) * (tw + g), y0 + (i / 2) * (th + g), tw, th);
+        int st = hit(c, l.cmd[i].x, l.cmd[i].y, l.cmd[i].w, l.cmd[i].h);
 
         if (st & EIDOS_UI_HOVER) {
             hovered = i;
@@ -2023,10 +2098,14 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     for (i = 0; i < 4; i++) {
         int sel = g_click_cur >= 0 ? cur == i : hovered >= 0 ? hovered == i : cur == i;
-        int x = x0 + (i % 2) * (tw + g), y = y0 + (i / 2) * (th + g);
+        const EidosUiRect *r = &l.cmd[i];
 
-        action_tile(c, x, y - (sel && en[i] ? 1 : 0), tw, th, names[i], colors[i],
-                    sel && en[i], en[i]);
+        if (theme->battle_command != NULL) {
+            theme->battle_command(c, r->x, r->y, r->w, r->h, i, names[i], colors[i], sel && en[i], en[i]);
+        } else {
+            action_tile(c, r->x, r->y - (sel && en[i] ? 1 : 0), r->w, r->h, names[i], colors[i],
+                        sel && en[i], en[i]);
+        }
     }
     tap_service(bt_sig(&b, 1), in->frame);
     if (eidos_ui_right_click() && can_back) {
@@ -2108,7 +2187,9 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static const int tap_y[5] = { 56, 56, 104, 104, 167 };
     Bt b;
     Shell sh;
-    int i, hovered = -1, cur, struggle, tw, th = 26, g = 3, x0, y0, info_y, rot, rot_slot = 0;
+    UiBattleLayout l;
+    const UiThemeOps *theme = ui_theme_active();
+    int i, hovered = -1, cur, struggle, th, g = 3, x0, info_y, rot, rot_slot = 0;
     u8 *poke;
     MoveV mv[4];
     char prompt_buf[96];
@@ -2132,6 +2213,7 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (!gptr_ok(poke)) {
         return;
     }
+    battle_begin(c, &sh, &l, UI_BATTLE_MOVES);
     chooser_corners(c, &b);
     keys_live(&b);
     cur = input_cursor(&b);
@@ -2140,23 +2222,28 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     for (i = 0; i < 4; i++) {
         move_read(poke, i, &mv[i]);
     }
-    tw = (sh.pw - g) / 2;
-    x0 = sh.px;
-    y0 = sh.top - 2 * th - g;
-    info_y = y0 - 13;
+    th = l.move[0].h;
+    x0 = l.move[0].x;
+    info_y = l.info_y;
     if (struggle) {
-        int st = hit(c, x0, sh.top - th, sh.pw, th);
+        /* one tile across the last row (Remaster: the plates' width) */
+        int sw = theme->battle_layout != NULL ? l.move[3].x + l.move[3].w - l.move[2].x : sh.pw;
+        int st = hit(c, l.move[2].x, l.move[2].y, sw, th);
 
         if (st & EIDOS_UI_CLICK) {
             tap_request(128, 80, bt_sig(&b, 2), in->frame);
         }
-        move_tile(c, x0, sh.top - th - 1, sh.pw, th, 0, "Struggle", 1, 1, 1, 1);
+        if (theme->battle_move != NULL) {
+            theme->battle_move(c, l.move[2].x, l.move[2].y, sw, th, 0, "Struggle", 1, 1, 1, 1);
+        } else {
+            move_tile(c, l.move[2].x, l.move[2].y - 1, sw, th, 0, "Struggle", 1, 1, 1, 1);
+        }
     } else {
         int en[4];
 
         for (i = 0; i < 4; i++) {
             int usable = mv[i].id != 0 && mv[i].pp != 0 && b.in[0x25A + i] != 0;
-            int st = hit(c, x0 + (i % 2) * (tw + g), y0 + (i / 2) * (th + g), tw, th);
+            int st = hit(c, l.move[i].x, l.move[i].y, l.move[i].w, l.move[i].h);
 
             en[i] = mv[i].id != 0 && b.in[0x25A + i] != 0;
             if (st & EIDOS_UI_HOVER) {
@@ -2179,20 +2266,36 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         for (i = 0; i < 4; i++) {
             char name[40];
             int sel = g_click_cur < 0 && hovered >= 0 ? hovered == i : cur == i;
-            int x = x0 + (i % 2) * (tw + g), y = y0 + (i / 2) * (th + g);
+            int x = l.move[i].x, y = l.move[i].y, tw = l.move[i].w, mh = l.move[i].h;
 
             if (mv[i].id == 0) {
-                ui_panel(c, x, y, tw, th, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY2, UI_EDGE, 160);
+                if (theme->battle_move != NULL) {
+                    theme->battle_move(c, x, y, tw, mh, -1, NULL, 0, 0, 0, 0);
+                } else {
+                    ui_panel(c, x, y, tw, mh, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY2, UI_EDGE, 160);
+                }
                 continue;
             }
             move_name(mv[i].id, name, sizeof(name));
-            move_tile(c, x, y - (sel ? 1 : 0), tw, th, mv[i].type, name, mv[i].pp,
-                      mv[i].maxpp, sel, mv[i].pp != 0 && en[i]);
+            if (theme->battle_move != NULL) {
+                theme->battle_move(c, x, y, tw, mh, mv[i].type, name, mv[i].pp, mv[i].maxpp, sel,
+                                   mv[i].pp != 0 && en[i]);
+            } else {
+                move_tile(c, x, y - (sel ? 1 : 0), tw, mh, mv[i].type, name, mv[i].pp,
+                          mv[i].maxpp, sel, mv[i].pp != 0 && en[i]);
+            }
         }
         {
             int shown = hovered >= 0 ? hovered : (cur >= 0 && cur < 4 ? cur : 0);
 
-            if (mv[shown].id != 0) {
+            if (mv[shown].id != 0 && theme->battle_move_info != NULL) {
+                char name[40];
+
+                move_name(mv[shown].id, name, sizeof(name));
+                theme->battle_move_info(c, &l, name,
+                                        mv[shown].category == 2 ? 1 : mv[shown].category == 1 ? 0 : 2,
+                                        mv[shown].power, mv[shown].accuracy);
+            } else if (mv[shown].id != 0) {
                 char info[48];
 
                 ui_category_icon(c, x0 + 2, info_y,

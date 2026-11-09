@@ -40,6 +40,29 @@ int ui_theme_add(const UiThemeOps *t)
     return 0;
 }
 
+u32 ui_theme_color(u32 rgb)
+{
+    if (rgb == UI_NONE) {
+        return rgb;
+    }
+    if ((rgb & 0xFF000000u) != 0u) {
+        return rgb & 0x00FFFFFFu;   /* UI_RAW: the theme's own colour */
+    }
+    return g_active->color != NULL ? g_active->color(rgb) : rgb;
+}
+
+void ui_theme_text(u32 *rgb, s32 *shadow, u32 behind)
+{
+    if ((*rgb & 0xFF000000u) != 0u || g_active->text == NULL) {
+        *rgb = ui_theme_color(*rgb);
+        if (*shadow >= 0) {
+            *shadow = (s32)ui_theme_color((u32)*shadow);
+        }
+        return;
+    }
+    g_active->text(rgb, shadow, behind);
+}
+
 const UiThemeOps *ui_theme_active(void)
 {
     return g_active;

@@ -18,9 +18,61 @@
 extern "C" {
 #endif
 
+/*
+ * Battle (engine/ui/recipe_battle.c): where the screen's parts go.  The
+ * battle fills it with Remaster's places, then lets the theme move them
+ * (battle_layout); it draws and tests clicks at these places, so a theme's
+ * layout takes the mouse and touch with it.  Canvas pixels.
+ */
+typedef struct UiBattleLayout {
+    int w, h;                   /* the canvas                               */
+    int n_own;                  /* the player's plates shown (1 to 3)       */
+    EidosUiRect own[3];         /* the player's plates, top to bottom       */
+    int foe_x, foe_y, foe_w, foe_step;   /* the foes' plates, a column      */
+    EidosUiRect msg;            /* the message and the prompt               */
+    EidosUiRect cmd[4];         /* FIGHT, BAG, POKEMON, RUN (the game's order) */
+    EidosUiRect move[4];        /* the four moves                           */
+    int info_x, info_y;         /* the chosen move's power and accuracy     */
+    int own_balls_x, own_balls_y, own_balls_right;   /* the party ball bars */
+    int foe_balls_x, foe_balls_y;
+} UiBattleLayout;
+
+/* What the battle shows (UiBattleLayout's users): 0 a message, 1 the
+ * commands, 2 the moves. */
+#define UI_BATTLE_MESSAGE  0
+#define UI_BATTLE_COMMANDS 1
+#define UI_BATTLE_MOVES    2
+
 typedef struct UiThemeOps {
     const char *id;         /* settings.ini's value, lower case, no spaces */
     const char *name;       /* shown in Settings                            */
+    /* The colour map: every colour the kit and the screens draw with
+     * (fills, lines, text and its shadow; not images) goes through it, so a
+     * theme recolours every screen by mapping Remaster's colours (kit.h's
+     * UI_*) to its own.  NULL: the colours as given. */
+    u32 (*color)(u32 rgb);
+    /* Text's colour and shadow (shadow < 0: none), given the colour already
+     * on the canvas under the text (`behind`, final colours): a light theme
+     * keeps white letters on a dark or saturated fill and turns them dark on
+     * a light one.  NULL: both through `color`. */
+    void (*text)(u32 *rgb, s32 *shadow, u32 behind);
+
+    /* Battle screens (UiBattleLayout above).  NULL: Remaster's. */
+    void (*battle_layout)(UiBattleLayout *l, int what);
+    /* Drawn under the battle's parts (a dock, a band). */
+    void (*battle_backdrop)(EidosUiCtx *c, const UiBattleLayout *l, int what);
+    /* The box behind the message or the prompt, at alpha a (0 to 255). */
+    void (*battle_box)(EidosUiCtx *c, int x, int y, int w, int h, int a);
+    /* One command (0 FIGHT, 1 BAG, 2 POKEMON, 3 RUN) in its colour. */
+    void (*battle_command)(EidosUiCtx *c, int x, int y, int w, int h, int which,
+                           const char *label, u32 color, int sel, int enabled);
+    /* One move: its type, name and PP. */
+    void (*battle_move)(EidosUiCtx *c, int x, int y, int w, int h, int type, const char *name,
+                        int pp, int maxpp, int sel, int enabled);
+    /* The chosen move's facts where the theme puts them (category 0
+     * physical, 1 special, 2 status; power 0: none). */
+    void (*battle_move_info)(EidosUiCtx *c, const UiBattleLayout *l, const char *name, int category,
+                             int power, int accuracy);
     void (*panel)(EidosUiCtx *c, int x, int y, int w, int h, int cut, int corner, u32 fill, u32 edge, int a);
     void (*header)(EidosUiCtx *c, int x, int y, int w, const char *title, const char *sub, const char *right, u32 accent);
     int (*hints)(EidosUiCtx *c, int y, int w, const char *const *pairs, int n, const u32 *keys);
@@ -106,6 +158,12 @@ void ui_def_info_row(EidosUiCtx *c, int x, int y, int w, const char *label, cons
 /* The themes: the built-in ones, then those mods add (ui_theme_add).
  * Index 0 is the default. */
 int ui_theme_count(void);
+/* A colour through the active theme's map (UI_NONE stays UI_NONE).  A
+ * colour marked UI_RAW is the theme's own already and passes unmapped. */
+u32 ui_theme_color(u32 rgb);
+#define UI_RAW(rgb) ((u32)(rgb) | 0x01000000u)
+/* Text's colour and shadow through the theme (theme.h's text slot). */
+void ui_theme_text(u32 *rgb, s32 *shadow, u32 behind);
 const UiThemeOps *ui_theme_at(int i);
 /* Adds a theme (a mod's, or a built-in one); 0 when added. */
 int ui_theme_add(const UiThemeOps *t);
