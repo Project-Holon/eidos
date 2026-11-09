@@ -1365,6 +1365,222 @@ static void boot_gpu2d_check(BootRun *run)
     }
 }
 
+/*
+ * The flash watch (#5): a player saw single frames of garbage tiles over
+ * the one-screen world every few seconds (0.2.4, OpenGL, a GT 1030) that no
+ * run here shows.  Each frame the upper screen's picture as the presenter
+ * gets it (run->hi_top, the GPU's own output with the 2D on the GPU) is
+ * kept with the 2D state behind it; when a frame differs strongly from the
+ * frames on both sides of it while those two agree, the three frames' state
+ * goes to <save dir>/eidos_flash.log and the first few events' pictures to
+ * eidos_flash_<n>_<a|b|c>.png beside it, so a report carries the cause.
+ * About 12k pixel compares a frame.  EIDOS_FLASH_WATCH=0 turns it off.
+ */
+#define FLASH_PX ((size_t)256 * 192 * 4)
+
+static struct {
+    int state;                  /* 0 not looked at, 1 on, 2 off */
+    u8 *pic[3];                 /* the last three upper screens, oldest first */
+    char info[3][1024];
+    u16 pow[3];                 /* POWCNT1: which engine is on top */
+    u64 at[3];                  /* the frame each picture is from */
+    int have;
+    unsigned events;
+    u64 last_event;
+} g_flash;
+
+static int flash_far(const u8 *a, const u8 *b, int lim)
+{
+    int i, d = 0;
+
+    for (i = 0; i < 3; i++) {
+        int x = (int)a[i] - (int)b[i];
+
+        if (x < 0) {
+            x = -x;
+        }
+        if (x > d) {
+            d = x;
+        }
+    }
+    return d > lim;
+}
+
+static void flash_info(char *out, size_t size, u64 frame)
+{
+    int n, slot, i;
+    size_t at;
+
+    n = snprintf(out, size, "frame %llu dispcnt %08X/%08X powcnt %04X bgcnt %04X %04X %04X %04X / %04X %04X %04X %04X\n",
+                 (unsigned long long)frame, bw_io_read32(0x04000000u), bw_io_read32(0x04001000u),
+                 bw_io_read16(0x04000304u), bw_io_read16(0x04000008u), bw_io_read16(0x0400000Au),
+                 bw_io_read16(0x0400000Cu), bw_io_read16(0x0400000Eu), bw_io_read16(0x04001008u),
+                 bw_io_read16(0x0400100Au), bw_io_read16(0x0400100Cu), bw_io_read16(0x0400100Eu));
+    at = n > 0 ? (size_t)n : 0u;
+    for (slot = 0; slot < 2 && at < size; slot++) {
+        const G2dGpuFrame *f = g2d_gpu_frame(slot);
+
+        if (f == NULL) {
+            continue;
+        }
+        n = snprintf(out + at, size - at, "  slot %d valid %d screen %d gen %u size %u obj %d l3 %d bright %04X skipped %d:",
+                     slot, f->valid, f->screen, (unsigned)f->bgv_gen, (unsigned)f->bgv_size, f->obj_on,
+                     f->l3_on, (unsigned)f->master_bright, g2d_gpu_cpu_skipped(slot));
+        at += n > 0 ? (size_t)n : 0u;
+        for (i = 0; i < 4 && at < size; i++) {
+            const G2dGpuText *t = &f->text[i];
+
+            if (!t->enabled) {
+                continue;
+            }
+            n = snprintf(out + at, size - at, " bg%d[p%u %ux%u sz%u map %X chr %X %s scr %d,%d]", i,
+                         (unsigned)t->priority, (unsigned)t->tiles_wide, (unsigned)t->tiles_high,
+                         (unsigned)t->size_code, (unsigned)t->map_ofs, (unsigned)t->char_ofs,
+                         t->bpp8 ? "8bpp" : "4bpp", (int)t->hofs, (int)t->vofs);
+            at += n > 0 ? (size_t)n : 0u;
+        }
+        for (i = 0; i < 2 && at < size; i++) {
+            const G2dGpuAffine *a = &f->affine[i];
+
+            if (!a->enabled) {
+                continue;
+            }
+            n = snprintf(out + at, size - at, " aff%d[bg%u map %X chr %X]", i, (unsigned)a->bg_index,
+                         (unsigned)a->map_ofs, (unsigned)a->char_ofs);
+            at += n > 0 ? (size_t)n : 0u;
+        }
+        if (at < size) {
+            n = snprintf(out + at, size - at, "\n");
+            at += n > 0 ? (size_t)n : 0u;
+        }
+    }
+}
+
+static void boot_flash_watch(BootRun *run, u64 frame)
+{
+    u8 *t;
+    size_t i;
+    int k, hits = 0;
+
+    if (g_flash.state == 0) {
+        const char *e = getenv("EIDOS_FLASH_WATCH");
+
+        g_flash.state = e != NULL && e[0] == '0' ? 2 : 1;
+    }
+    {
+        static int told;
+
+        if (told < 2 && getenv("EIDOS_FLASH_TEST") != NULL
+            && (told == 0 || frame >= (u64)atol(getenv("EIDOS_FLASH_TEST")))) {
+            told++;
+            fprintf(stderr, "eidos: flash watch: upper screen at %ux\n", (unsigned)run->hi_sn[0]);
+            fprintf(stderr, "eidos: flash watch: state %d, screens at %ux, frame %llu\n", g_flash.state,
+                    (unsigned)run->hi_n, (unsigned long long)frame);
+        }
+    }
+    if (g_flash.state != 1 || run->hi_sn[0] != 1u || run->hi_top == NULL) {
+        g_flash.have = 0;
+        return;
+    }
+    if (g_flash.pic[0] == NULL) {
+        for (k = 0; k < 3; k++) {
+            g_flash.pic[k] = (u8 *)malloc(FLASH_PX);
+            if (g_flash.pic[k] == NULL) {
+                g_flash.state = 2;
+                return;
+            }
+        }
+    }
+    {
+        /* EIDOS_FLASH_TEST=N: frame N's picture gets garbage tiles over its
+         * upper half, a stand-in for #5's, to check the watch */
+        static long test = -2;
+
+        if (test == -2) {
+            const char *e = getenv("EIDOS_FLASH_TEST");
+
+            test = e != NULL ? atol(e) : -1;
+        }
+        if (test >= 0 && (u64)test <= frame) {
+            test = -1;              /* the first composed frame from N (fast forward skips some) */
+            for (i = 0; i < FLASH_PX / 2; i += 4) {
+                u32 tile = (u32)((i / 4) % 256 / 8 + (i / 4) / 256 / 8 * 32);
+
+                run->hi_top[i] = (u8)(tile * 37u);
+                run->hi_top[i + 1] = (u8)(tile * 91u);
+                run->hi_top[i + 2] = (u8)(tile * 53u);
+            }
+        }
+    }
+    /* the oldest buffer takes this frame */
+    t = g_flash.pic[0];
+    g_flash.pic[0] = g_flash.pic[1];
+    g_flash.pic[1] = g_flash.pic[2];
+    g_flash.pic[2] = t;
+    memcpy(t, run->hi_top, FLASH_PX);
+    memmove(g_flash.info[0], g_flash.info[1], sizeof(g_flash.info[0]) * 2);
+    g_flash.pow[0] = g_flash.pow[1];
+    g_flash.pow[1] = g_flash.pow[2];
+    g_flash.pow[2] = bw_io_read16(0x04000304u);
+    g_flash.at[0] = g_flash.at[1];
+    g_flash.at[1] = g_flash.at[2];
+    g_flash.at[2] = frame;
+    flash_info(g_flash.info[2], sizeof(g_flash.info[2]), frame);
+    if (g_flash.have < 3) {
+        g_flash.have++;
+        return;
+    }
+    /* pic[1] against both neighbours, every 4th pixel */
+    for (i = 0; i < FLASH_PX; i += 16) {
+        const u8 *a = g_flash.pic[0] + i, *b = g_flash.pic[1] + i, *c = g_flash.pic[2] + i;
+
+        if (flash_far(b, a, 60) && flash_far(b, c, 60) && !flash_far(a, c, 25)) {
+            hits++;
+        }
+    }
+    if (getenv("EIDOS_FLASH_TEST") != NULL && frame >= (u64)atol(getenv("EIDOS_FLASH_TEST"))
+        && frame < (u64)atol(getenv("EIDOS_FLASH_TEST")) + 4u) {
+        fprintf(stderr, "eidos: flash watch: frame %llu hits %d have %d pow %04X %04X %04X\n",
+                (unsigned long long)frame, hits, g_flash.have, g_flash.pow[0], g_flash.pow[1], g_flash.pow[2]);
+    }
+    if (hits < 400 || frame < g_flash.last_event + 4u || g_flash.events >= 50u) {
+        return;                     /* under ~3% of the screen, or the same event */
+    }
+    if (g_flash.at[2] - g_flash.at[0] > 2u) {
+        return;                     /* not three frames in a row (fast forward): motion */
+    }
+    if (((g_flash.pow[0] ^ g_flash.pow[1]) | (g_flash.pow[1] ^ g_flash.pow[2])) & 0x8000u) {
+        return;                     /* the game swapped its screens (a scene change) */
+    }
+    g_flash.last_event = frame;
+    g_flash.events++;
+    {
+        char path[1024];
+        FILE *fp;
+
+        if (bw_save_path(path, sizeof path, "eidos_flash.log") == 0 && (fp = fopen(path, "a")) != NULL) {
+            fprintf(fp, "flash %u: %d of 12288 sampled pixels, the middle frame of three (with the "
+                    "2D on the GPU the pictures arrive a frame late: the middle one's state is the "
+                    "first line)\n%s%s%s\n",
+                    g_flash.events, hits, g_flash.info[0], g_flash.info[1], g_flash.info[2]);
+            fclose(fp);
+        }
+        fprintf(stderr, "eidos: flash watch: a one-frame change at frame %llu (%d pixels), see eidos_flash.log\n",
+                (unsigned long long)(frame - 1u), hits);
+        if (g_flash.events <= 6u) {
+            static const char tag[3] = { 'a', 'b', 'c' };
+            char name[64];
+
+            for (k = 0; k < 3; k++) {
+                snprintf(name, sizeof name, "eidos_flash_%u_%c.png", g_flash.events, tag[k]);
+                if (bw_save_path(path, sizeof path, name) == 0) {
+                    (void)write_screens_png(path, g_flash.pic[k], g_flash.pic[k]);
+                }
+            }
+        }
+    }
+}
+
 static void boot_render(void *user, u8 *top, u8 *bottom)
 {
     u32 unsupported[2];
@@ -1372,6 +1588,7 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
     BootRun *run = (BootRun *)user;
     const u8 *rgba3d;
     u32 n;
+    int top_fresh;              /* run->hi_top holds a new picture (the flash watch) */
 
     (void)top;
     (void)bottom;
@@ -1504,6 +1721,7 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
     if (run->plat != NULL && getenv("EIDOS_G2D_GPU_CHECK") != NULL) {
         boot_gpu2d_check(run);
     }
+    top_fresh = 1;
     if (run->gpu2d) {
         /* docs/gpu-2d.md, phase 2: a screen the shader can compose is shown
          * from its output; the CPU's stays for the readers that need it */
@@ -1516,12 +1734,20 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
                 (void)eidos_platform_gpu2d_show(run->plat, f, f->screen);
                 if (g2d_gpu_cpu_skipped(slot)) {
                     /* the readers of the pixels (the one-screen interface,
-                     * the held screens) get the GPU's, a frame late */
-                    (void)eidos_platform_gpu2d_pixels(run->plat, f->screen,
-                                                      f->screen == 0 ? run->hi_top : run->hi_bottom);
+                     * the held screens) get the GPU's, a frame late; none
+                     * when the last frame was not shown (fast forward) */
+                    int got = eidos_platform_gpu2d_pixels(run->plat, f->screen,
+                                                          f->screen == 0 ? run->hi_top : run->hi_bottom) == 0;
+
+                    if (f->screen == 0) {
+                        top_fresh = got;
+                    }
                 }
             }
         }
+    }
+    if (top_fresh) {
+        boot_flash_watch(run, eidos_frame_count(&run->loop));
     }
     g_render_ns = eidos_prof_on ? bw_clock_ns() - t0 : 0;
     eidos_prof_end(EIDOS_PROF_RENDER, t0);
