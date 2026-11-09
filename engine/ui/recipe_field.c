@@ -3106,5 +3106,54 @@ static const EidosUiRecipe recipe_lower_only = {
     "lower-only", lower_only_match, lower_only_run, lower_only_reset, 0
 };
 
-const EidosUiRecipe *const ui_recipes_lower[] = { &recipe_lower_only };
-const u32 ui_recipes_lower_count = 1;
+/*
+ * The whiteout's message ("... scurried to a Pokemon Center ..."): the
+ * game's whiteout event (ov010 SCRCMD_NETWORK_WhiteOutEventMain) writes it
+ * on its upper screen over black while no field map runs, the lower screen
+ * black.  It is that one screen at the window's height, centred, black
+ * beside it, as the DS shows it; before, no recipe took it and the two DS
+ * screens showed side by side.  The nurse's (or the mother's) heal that
+ * follows runs in the field, under the field's own recipe.
+ */
+extern int ov010_SCRCMD_NETWORK_WhiteOutEventMain(void *event, u32 *seq, void *work) WEAK;
+extern void *GAMESYSTEM_GetEvent(void *gameSystem) WEAK;
+
+static int whiteout_match(void)
+{
+    const u8 *gs, *ev;
+    int i;
+
+    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL
+        || GAMESYSTEM_GetEvent == NULL || ov010_SCRCMD_NETWORK_WhiteOutEventMain == NULL) {
+        return 0;
+    }
+    gs = *(const u8 **)bw_dsref__GameSystemGlobal;
+    if (gs == NULL || rdp(gs + 0x20) != NULL) {
+        return 0;                   /* a field map runs: the field's recipes */
+    }
+    ev = (const u8 *)GAMESYSTEM_GetEvent((void *)gs);
+    for (i = 0; i < 6 && ev != NULL; i++) {
+        if (*(void *const *)(ev + sizeof(void *)) == (void *)ov010_SCRCMD_NETWORK_WhiteOutEventMain) {
+            logf_scene("whiteout");
+            return 1;
+        }
+        ev = *(const u8 *const *)ev;
+    }
+    return 0;
+}
+
+static void whiteout_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    (void)c;
+    (void)in;
+    view->mode = EIDOS_VIEW_WORLD;
+    view->world_screen = 0;         /* the upper screen holds the message */
+    view->ds_only = 1;
+}
+
+static const EidosUiRecipe recipe_whiteout = {
+    "whiteout", whiteout_match, whiteout_run, NULL, 0
+};
+
+const EidosUiRecipe *const ui_recipes_lower[] = { &recipe_whiteout, &recipe_lower_only };
+const u32 ui_recipes_lower_count = 2;

@@ -8,6 +8,7 @@ Each release's notes on GitHub start with its section here
 ### Fixes
 - **Billboard Scenery**: In the one-screen layout, scenery that always faces the camera (the rocks of Pinwheel Forest and others) stays where it is in the world; before, it slid toward the middle of the screen as the camera moved and popped in and out (#26).
 - **Controller Remapping**: A layout bound by hand stays as bound. Setting the DS's own layout (A right, B bottom, X top, Y left) on a pad that confirms with its bottom button turned the automatic A/B swap back on with the last button bound, undoing A and B; the swap now stays off once the pad is bound, until the bindings are reset (#28).
+- **Whiteout Message**: In the one-screen layout, the message after losing a battle ("... scurried to a Pokémon Center ...") shows as one screen at the window's height, centred; before, it showed the two DS screens side by side.
 - **Launcher Theme**: `Settings > Appearance > Theme` keeps the chosen theme whichever game is selected; before, selecting a profile switched the launcher back to its game's theme. `Follow the game` (the default) keeps the old behaviour (#29).
 
 ## 0.2.4
