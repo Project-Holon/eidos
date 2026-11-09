@@ -27,6 +27,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "theme.h"
 #include "dsmem.h"
 #include "input.h"
 #include "textbox.h"
@@ -2355,6 +2356,20 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
 
     g_in = in;
 
+    {
+        /* the built-in themes, and EIDOS_UI_THEME's choice (engine/ui/theme.h) */
+        static int themes_ready;
+
+        if (!themes_ready) {
+            extern const UiThemeOps ui_theme_debug_outline;
+
+            themes_ready = 1;
+            (void)ui_theme_add(&ui_theme_debug_outline);
+            if (getenv("EIDOS_UI_THEME") != NULL) {
+                ui_theme_select(getenv("EIDOS_UI_THEME"));
+            }
+        }
+    }
     eidos_ui_mark_active();          /* settings.h: for game-side patches */
     g_k = eidos_ui_scale(in->win_w, in->win_h);
     /* rounded up: the canvas reaches the window's right and bottom edges

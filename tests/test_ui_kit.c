@@ -30,6 +30,7 @@
 
 #include "assets.h"
 #include "kit.h"
+#include "theme.h"
 #include "port.h"
 #include "port_test.h"
 
@@ -1045,12 +1046,84 @@ static int test_data(const char *root)
     return ok ? 0 : 1;
 }
 
+/* Themes (engine/ui/theme.h): a test theme that replaces the panel only. */
+static int g_theme_panels;
+
+static void theme_panel(EidosUiCtx *c, int x, int y, int w, int h, int cut, int corner,
+                        u32 fill, u32 edge, int a)
+{
+    (void)cut;
+    (void)corner;
+    (void)fill;
+    (void)edge;
+    (void)a;
+    g_theme_panels++;
+    ui_fill(c, x, y, w, h, 0xFF00FF, 255);
+}
+
+static const UiThemeOps k_test_theme = { .id = "test", .name = "Test", .panel = theme_panel };
+
+static int canvases_equal(const EidosUiCanvas *a, const EidosUiCanvas *b)
+{
+    return a->w == b->w && a->h == b->h
+           && memcmp(a->rgba, b->rgba, (size_t)a->w * (size_t)a->h * 4u) == 0;
+}
+
+static int test_themes(void)
+{
+    EidosUiCanvas cv, ref;
+    EidosUiCtx c = { 0 }, r = { 0 };
+    static const char *const yes_no[2] = { "Yes", "No" };
+    int before;
+
+    memset(&cv, 0, sizeof cv);
+    memset(&ref, 0, sizeof ref);
+    BW_CHECK_EQ("the default theme is first", strcmp(ui_theme_at(0)->id, "eidos"), 0);
+    BW_CHECK_EQ("the default is active", ui_theme_active() == ui_theme_at(0), 1);
+    BW_CHECK_EQ("a theme is added", ui_theme_add(&k_test_theme), 0);
+    BW_CHECK_EQ("an id is added once", ui_theme_add(&k_test_theme), -1);
+    BW_CHECK_EQ("two themes", ui_theme_count(), 2);
+
+    /* the default's bar, to compare the themed one with */
+    ui_begin(&r, &ref, 60, 20, 1);
+    ui_bar(&r, 2, 2, 50, 6, 30, 100);
+
+    ui_theme_select("test");
+    BW_CHECK_EQ("the test theme is active", ui_theme_active() == &k_test_theme, 1);
+    ui_begin(&c, &cv, 60, 20, 1);
+    g_theme_panels = 0;
+    ui_panel(&c, 2, 2, 20, 10, UI_CUT_TL, 4, 0xFF0000, 0x00FF00, 255);
+    BW_CHECK_EQ("the theme drew the panel", g_theme_panels, 1);
+    BW_CHECK_EQ("the theme's panel fills its corner", rgb_at(&cv, 2, 2), 0xFF00FF);
+    /* a piece built on panels uses the theme's */
+    before = g_theme_panels;
+    ui_begin(&c, &cv, 200, 120, 1);
+    (void)ui_dialog(&c, 4, 4, 180, "Save?", yes_no, 2, 0, UI_CYAN);
+    BW_CHECK_EQ("a dialog's panels are the theme's", g_theme_panels > before, 1);
+    /* a slot the theme leaves empty is the default's, pixel for pixel */
+    ui_begin(&c, &cv, 60, 20, 1);
+    ui_bar(&c, 2, 2, 50, 6, 30, 100);
+    BW_CHECK_EQ("an unthemed piece draws as the default", canvases_equal(&cv, &ref), 1);
+
+    ui_theme_select("no-such-theme");
+    BW_CHECK_EQ("an unknown id selects the default", ui_theme_active() == ui_theme_at(0), 1);
+    ui_begin(&c, &cv, 60, 20, 1);
+    g_theme_panels = 0;
+    ui_panel(&c, 2, 2, 20, 10, UI_CUT_TL, 4, 0xFF0000, 0x00FF00, 255);
+    BW_CHECK_EQ("the default draws the panel again", g_theme_panels, 0);
+    BW_CHECK_EQ("the default panel's cut corner is empty", alpha_at(&cv, 2, 2), 0);
+    ui_theme_select("eidos");
+    free(cv.rgba);
+    free(ref.rgba);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     BW_TEST_SETUP(argc, argv);
 
     if (test_canvas() != 0 || test_blend() != 0 || test_text() != 0 ||
-        test_panels() != 0 || test_pieces() != 0 || test_icon_rows() != 0) {
+        test_panels() != 0 || test_pieces() != 0 || test_icon_rows() != 0 || test_themes() != 0) {
         BW_REPORT("test_ui_kit");
     }
     /* the data checks use the game's own fonts, not the synthetic ones */
