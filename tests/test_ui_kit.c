@@ -1078,7 +1078,7 @@ static int test_themes(void)
 
     memset(&cv, 0, sizeof cv);
     memset(&ref, 0, sizeof ref);
-    BW_CHECK_EQ("the default theme is first", strcmp(ui_theme_at(0)->id, "eidos"), 0);
+    BW_CHECK_EQ("the default theme is first", strcmp(ui_theme_at(0)->id, "remaster"), 0);
     BW_CHECK_EQ("the default is active", ui_theme_active() == ui_theme_at(0), 1);
     BW_CHECK_EQ("a theme is added", ui_theme_add(&k_test_theme), 0);
     BW_CHECK_EQ("an id is added once", ui_theme_add(&k_test_theme), -1);
@@ -1112,7 +1112,7 @@ static int test_themes(void)
     ui_panel(&c, 2, 2, 20, 10, UI_CUT_TL, 4, 0xFF0000, 0x00FF00, 255);
     BW_CHECK_EQ("the default draws the panel again", g_theme_panels, 0);
     BW_CHECK_EQ("the default panel's cut corner is empty", alpha_at(&cv, 2, 2), 0);
-    ui_theme_select("eidos");
+    ui_theme_select("remaster");
     free(cv.rgba);
     free(ref.rgba);
     return 0;

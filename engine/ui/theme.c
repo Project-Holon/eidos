@@ -8,7 +8,7 @@
 
 #define UI_THEME_MAX 32
 
-static const UiThemeOps k_default = { .id = "eidos", .name = "eidos" };   /* every piece the default */
+static const UiThemeOps k_default = { .id = "remaster", .name = "Remaster" };   /* every piece the default */
 
 static const UiThemeOps *g_list[UI_THEME_MAX] = { &k_default };
 static int g_count = 1;

@@ -3,7 +3,7 @@
  * the kit's pieces and lays out the screens (docs/ui-themes.md).
  *
  * A theme is a table with one function per kit piece.  A slot left NULL
- * uses the default (eidos's own look, ui_def_* in kit.c); a theme that
+ * uses the default (Remaster, ui_def_* in kit.c); a theme that
  * fills a slot draws that piece its own way everywhere it appears, and
  * may call ui_def_* for the parts it keeps.  The pieces call each other
  * through ui_*, so a theme's panel is also the panel inside its dialogs.
