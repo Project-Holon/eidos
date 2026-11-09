@@ -3144,11 +3144,17 @@ static int whiteout_match(void)
 
 static void whiteout_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
-    (void)c;
+    float s, ox, oy;
+
     (void)in;
     view->mode = EIDOS_VIEW_WORLD;
     view->world_screen = 0;         /* the upper screen holds the message */
     view->ds_only = 1;
+    /* the game's wireless signal icon (GFL_NET's, top right of its screen
+     * while the radio is on): on the field the bar covers it; here the
+     * screen is black around the words, so its corner is black too */
+    world_place(c, &s, &ox, &oy);
+    ui_fill(c, (int)(ox + 236.0f * s), (int)oy, (int)(20.0f * s) + 1, (int)(20.0f * s) + 1, 0x000000u, 255);
 }
 
 static const EidosUiRecipe recipe_whiteout = {

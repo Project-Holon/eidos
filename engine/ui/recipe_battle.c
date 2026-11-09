@@ -1281,19 +1281,23 @@ static int gauge_index(const Bt *b, int vp)
 
 /* Returns 1 and fills `g` when the gauge shows view position vp; 0 when the
  * slot is empty or hidden.  Returns -1 when there is no gauge to read. */
-static int gauge_read(const Bt *b, int vp, GaugeView *g)
+/* 1: the gauge shows; 2 (with `any`): the slot holds the Pokemon but the
+ * game hides it (a move's animation, a Pokemon just sent in), its HP
+ * still animating; 0: no gauge; -1: no gauge work. */
+static int gauge_read_ex(const Bt *b, int vp, GaugeView *g, int any)
 {
     const u8 *work = rdp(b->eff, 0x1A4);
     const u8 *slot;
     u32 fl;
-    int hp, maxhp, hpd, ex, exmax, exd;
+    int hp, maxhp, hpd, ex, exmax, exd, shown;
 
     if (!gptr_ok(work) || vp < 2 || vp > 7) {
         return -1;
     }
     slot = work + 0x40 + (u32)gauge_index(b, vp) * 0x80u;
     fl = rd32(slot, GAUGE_SLOT_FLAGS);
-    if ((fl & GF_OCCUPIED) == 0 || (fl & GF_VISIBLE) == 0 || (fl & GF_HIDDEN) != 0) {
+    shown = (fl & GF_OCCUPIED) != 0 && (fl & GF_VISIBLE) != 0 && (fl & GF_HIDDEN) == 0;
+    if ((fl & GF_OCCUPIED) == 0 || (!shown && !any)) {
         return 0;
     }
     hp = (int)rd32(slot, 0x48);
@@ -1313,7 +1317,26 @@ static int gauge_read(const Bt *b, int vp, GaugeView *g)
     g->level = slot[0x6C];
     g->exp = clampi(ex, 0, exmax > 0 ? exmax : 0);
     g->expmax = exmax;
-    return 1;
+    return shown ? 1 : 2;
+}
+
+/*
+ * The one-screen plates do not follow the game's gauge visibility: the
+ * game hides a side's gauge during some moves' animations and for a while
+ * after a Pokemon is sent in, so a hit's damage and its "It's super
+ * effective!" ran with no HP bar on screen.  A plate shows while its
+ * Pokemon's gauge slot is in use and its HP (as the gauge animates it) is
+ * above 0, or while the gauge itself shows (a faint drains it to 0 first).
+ * Returns what gauge_read_ex does, 0 when no plate.
+ */
+static int plate_read(const Bt *b, int vp, GaugeView *g)
+{
+    int gs = gauge_read_ex(b, vp, g, 1);
+
+    if (gs == 2 && g->hp <= 0) {
+        return 0;
+    }
+    return gs > 0 ? gs : 0;
 }
 
 /*
@@ -1384,7 +1407,7 @@ static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s)
         /* a shown gauge; or the Pokemon choosing a command, whose gauge the
          * game slides in a few frames after the menu: its plate is there
          * from the start, so the sheets above it do not jump */
-        if (gauge_read(b, vp, &(GaugeView){ 0 }) != 0) {
+        if (plate_read(b, vp, &(GaugeView){ 0 }) != 0) {
             s->own_vp[n++] = vp;
         } else if (poke == chooser) {
             mon_view(poke, &m);
@@ -1489,7 +1512,7 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
             continue;
         }
         mon_view(poke, &m);
-        gs = gauge_read(b, vp, &gv);
+        gs = plate_read(b, vp, &gv);
         if (debug_on()) {
             static u32 last[8];
             const u8 *gw = rdp(b->eff, 0x1A4);
@@ -1526,7 +1549,7 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
 
         mon_view(poke, &m);
         own_exp(poke, &num, &den);
-        if (gauge_read(b, s->own_vp[i], &gv) > 0) {
+        if (plate_read(b, s->own_vp[i], &gv) > 0) {
             m.hp = gv.hp;
             m.maxhp = gv.maxhp;
             m.level = gv.level;
