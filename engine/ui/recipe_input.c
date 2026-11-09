@@ -36,6 +36,10 @@ extern void *bw_dsref_g_ProcSys IN_WEAK;
 extern void *g_ProcSys IN_WEAK;     /* the variable itself, once aletheia defines it */
 extern int ui_species_name(int species, char *out, int cap) IN_WEAK;   /* recipe_dex.c */
 extern const void *bw_ui_namein_now(void) IN_WEAK;                    /* sdk/ui_text.c */
+extern int eidos_ui_options_proc_up IN_WEAK;   /* recipe_settings.c: the port's own screen is up */
+/* The game's own lookup: the picker cell under a bottom-screen point (the
+ * picker is the grid work's first member, at work+0xFC). */
+extern int ov194_NAMEIN_GRAPHIC_FindCellAtPoint(const char *picker, int *point, void *out) IN_WEAK;
 
 /* ------------------------------------------------------------------ */
 /* Reading the game                                                    */
@@ -170,6 +174,7 @@ static void *find_scene_work(int overlay)
 /* ------------------------------------------------------------------ */
 
 #define NW_FIELD      0x068   /* inputField: text u16[11] at +0, length at +0x1E, max at +0x22 */
+#define NW_GRID       0x0FC   /* the grid work; its picker first */
 #define NW_GRID_X     0x1D4
 #define NW_GRID_Y     0x1D8
 #define NW_GRID_STATE 0x1E0
@@ -334,6 +339,9 @@ static void draw_key(EidosUiCtx *c, int x, int y, int w, int h, const char *labe
 }
 
 static int g_pressed_key = -1;
+/* The keys' column the arrows left for the bottom row: up or down from the
+ * row comes back to it. */
+static int g_bar_col = -1;
 
 /* Pick the column count that makes the keys closest to the wanted shape. */
 static int pick_cols(int n, int aw, int ah, int gap)
@@ -561,6 +569,8 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int row_a_h, icon, field_x, field_w;
     int bar_h, keys_y, keys_h, kx, kw, kh, cols, rows, gap = 3;
     const UiImage *img;
+    struct { const char *lab; int w; int tx, ty; int cx, cy; } bt[4];
+    int bn, b, on_bar;
 
     if (!name_read(&s)) {
         return;
@@ -620,7 +630,11 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         && ui_species_name(s.species, mon, (int)sizeof mon) > 0 && mon[0] != '\0') {
         ui_header(c, px + 1, py + 1, pw - 2, "NICKNAME", mon, cnt, acc);
     } else {
-        ui_header(c, px + 1, py + 1, pw - 2, "NAME", kind_sub(s.kind), cnt, acc);
+        /* the port's own texts (the multiplayer screen's name, a game's
+         * code) are plain texts, whose kind would say FRIEND */
+        ui_header(c, px + 1, py + 1, pw - 2, "NAME",
+                  &eidos_ui_options_proc_up != NULL && eidos_ui_options_proc_up ? "MULTIPLAYER"
+                                                                                : kind_sub(s.kind), cnt, acc);
     }
 
     x0 = px + pad;
@@ -687,10 +701,37 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     ui_field(c, field_x, y + row_a_h - 18, field_w, buf, imax(0, s.maxlen - s.len), acc);
     y += row_a_h + 6 + (narrow ? 18 : 0);
 
-    /* the bottom bar: BACK, SPACE (if the page has one), SHIFT, OK */
+    /* the bottom bar: DELETE, SPACE, (Shift,) OK, each a cell of the game's
+     * picker: the cell under its tap point is where the game's cursor
+     * stands when it is chosen (START puts it on OK) */
     bar_h = 24;
     keys_y = y;
     keys_h = py + ph - pad - bar_h - 6 - keys_y;
+    bn = 0;
+    bt[bn].lab = "DELETE";  bt[bn].w = s.page == 3 ? 2 : 3;
+    bt[bn].tx = s.page == 3 ? 216 : 148; bt[bn].ty = s.page == 3 ? 76 : 172; bn++;
+    if (s.page == 3) {
+        bt[bn].lab = "Shift";  bt[bn].w = 2; bt[bn].tx = 40; bt[bn].ty = 140; bn++;
+        bt[bn].lab = "SPACE"; bt[bn].w = 4; bt[bn].tx = 168; bt[bn].ty = 172; bn++;
+    } else {
+        bt[bn].lab = "SPACE"; bt[bn].w = 4; bt[bn].tx = space_tx; bt[bn].ty = space_ty; bn++;
+    }
+    bt[bn].lab = "OK"; bt[bn].w = s.page == 3 ? 2 : 3;
+    bt[bn].tx = s.page == 3 ? 212 : 204; bt[bn].ty = s.page == 3 ? 108 : 172; bn++;
+    on_bar = -1;
+    for (b = 0; b < bn; b++) {
+        int pt[2] = { bt[b].tx, bt[b].ty }, cell[2] = { -1, -1 };
+
+        bt[b].cx = bt[b].cy = -1;
+        if (ov194_NAMEIN_GRAPHIC_FindCellAtPoint != NULL
+            && ov194_NAMEIN_GRAPHIC_FindCellAtPoint((const char *)s.w + NW_GRID, pt, cell)) {
+            bt[b].cx = cell[0];
+            bt[b].cy = cell[1];
+            if (cell[0] == s.gx && cell[1] == s.gy) {
+                on_bar = b;
+            }
+        }
+    }
 
     if (s.page < 3) {
         int aw = x1 - x0;
@@ -710,36 +751,70 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             eidos_ui_take_keys(dirs);
             k = eidos_ui_keys_pressed() & dirs;
             if (k != 0) {
-                int cur = 0, to, col, row;
+                int cur = -1, to = -1, to_bar = -1, col, row;
 
                 for (i = 0; i < n; i++) {
                     if (keys[i].cx == s.gx && keys[i].cy == s.gy) {
                         cur = i;
                     }
                 }
-                col = cur % cols;
-                row = cur / cols;
-                /* every arrow lands on a key and the opposite arrow comes
-                 * back: a row wraps within itself, a column within itself
-                 * (the last row may be short: its column ends a row up) */
-                if (k & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
-                    int len = imin(cols, n - row * cols);
-
-                    col = (col + ((k & BW_KEY_LEFT) ? len - 1 : 1)) % len;
-                    to = row * cols + col;
-                } else {
-                    int height = (n - 1 - col) / cols + 1;
-
-                    row = (row + ((k & BW_KEY_UP) ? height - 1 : 1)) % height;
-                    to = row * cols + col;
+                if (cur < 0 && on_bar < 0) {
+                    cur = 0;
                 }
-                if (to != cur) {
-                    s32 gx = keys[to].cx, gy = keys[to].cy;
+                if (cur < 0) {
+                    /* on the bar: left and right along it, up to the keys'
+                     * last row and down to their first, in the column the
+                     * arrows came from (else the one above the button) */
+                    col = imin(cols - 1, (2 * on_bar + 1) * cols / (2 * bn));
+                    if (g_bar_col >= 0 && g_bar_col < cols && imin(bn - 1, g_bar_col * bn / cols) == on_bar) {
+                        col = g_bar_col;
+                    }
+                    if (k & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
+                        to_bar = (on_bar + ((k & BW_KEY_LEFT) ? bn - 1 : 1)) % bn;
+                    } else {
+                        int height = (n - 1 - col) / cols + 1;
+
+                        to = ((k & BW_KEY_UP) ? height - 1 : 0) * cols + col;
+                    }
+                } else {
+                    int height;
+
+                    col = cur % cols;
+                    row = cur / cols;
+                    height = (n - 1 - col) / cols + 1;
+                    /* a row wraps within itself; a column runs on into the
+                     * bar below the keys (the last row may be short: its
+                     * column ends a row up) and from it back to the top */
+                    if (k & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
+                        int len = imin(cols, n - row * cols);
+
+                        col = (col + ((k & BW_KEY_LEFT) ? len - 1 : 1)) % len;
+                        to = row * cols + col;
+                    } else if ((k & BW_KEY_DOWN) ? row == height - 1 : row == 0) {
+                        to_bar = imin(bn - 1, col * bn / cols);
+                        if (bt[to_bar].cx < 0) {
+                            /* the game has no such cell: the column wraps */
+                            to_bar = -1;
+                            to = ((k & BW_KEY_DOWN) ? 0 : height - 1) * cols + col;
+                        } else {
+                            g_bar_col = col;
+                        }
+                    } else {
+                        to = (row + ((k & BW_KEY_UP) ? -1 : 1)) * cols + col;
+                    }
+                }
+                if (to_bar >= 0 && bt[to_bar].cx < 0) {
+                    to_bar = -1;        /* the game has no such cell */
+                }
+                if (to >= 0 || to_bar >= 0) {
+                    s32 gx = to_bar >= 0 ? bt[to_bar].cx : keys[to].cx;
+                    s32 gy = to_bar >= 0 ? bt[to_bar].cy : keys[to].cy;
 
                     memcpy((Byte *)s.w + NW_GRID_X, &gx, sizeof gx);
                     memcpy((Byte *)s.w + NW_GRID_Y, &gy, sizeof gy);
                     s.gx = gx;
                     s.gy = gy;
+                    on_bar = to_bar;
                 }
             }
         }
@@ -789,33 +864,20 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
-    /* BACK, SPACE, SHIFT, OK */
+    /* DELETE, SPACE, (Shift,) OK: the game's cursor shows on the one it
+     * stands on */
     {
         int by = py + ph - pad - bar_h;
         int aw = x1 - x0;
-        int nb = s.page == 3 ? 4 : 3;
         int wsum = s.page == 3 ? 2 + 4 + 2 + 2 : 3 + 4 + 3, wgt;
-        int bx = x0, b;
-        struct { const char *lab; int w; int tx, ty; } bt[4];
-        int bn = 0;
+        int bx = x0;
 
-        bt[bn].lab = "DELETE";  bt[bn].w = s.page == 3 ? 2 : 3;
-        bt[bn].tx = s.page == 3 ? 216 : 148; bt[bn].ty = s.page == 3 ? 76 : 172; bn++;
-        if (s.page == 3) {
-            bt[bn].lab = "Shift";  bt[bn].w = 2; bt[bn].tx = 40; bt[bn].ty = 140; bn++;
-            bt[bn].lab = "SPACE"; bt[bn].w = 4; bt[bn].tx = 168; bt[bn].ty = 172; bn++;
-        } else {
-            bt[bn].lab = "SPACE"; bt[bn].w = 4; bt[bn].tx = space_tx; bt[bn].ty = space_ty; bn++;
-        }
-        bt[bn].lab = "OK"; bt[bn].w = s.page == 3 ? 2 : 3;
-        bt[bn].tx = s.page == 3 ? 212 : 204; bt[bn].ty = s.page == 3 ? 108 : 172; bn++;
-        (void)nb;
         for (b = 0; b < bn; b++) {
             int bw2 = (aw - (bn - 1) * gap) * bt[b].w / wsum, hh, clicked;
 
             wgt = b == bn - 1 ? x1 - bx : bw2;
             clicked = hit_box(c, bx, by, wgt, bar_h, &hh);
-            draw_key(c, bx, by, wgt, bar_h, bt[b].lab, 0, hh, 0, acc);
+            draw_key(c, bx, by, wgt, bar_h, bt[b].lab, b == on_bar, hh, 0, acc);
             if (clicked && allow) {
                 eidos_ui_tap(bt[b].tx, bt[b].ty, 3);
             }

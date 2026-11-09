@@ -1140,6 +1140,8 @@ static void debug_script(void)
  * The save these run on is a test copy: the game clear saves. */
 extern void *ov010_EVENT_GAMECLEAR_Create(void *gsys, u32 mode) __attribute__((weak));
 extern void *ov021_FLD_TRADE_CreateEvent(void *gsys, u32 tradeId, u32 partyIndex) __attribute__((weak));
+extern void *ov021_EVENT_NAMEIN_Create(void *gsys, void *fieldMap, void *parent, u32 mode, u16 *result)
+    __attribute__((weak));
 extern void *ov010_WAZA_OSHIE_CreateMoveList(void *mon, u32 heapId) __attribute__((weak));
 extern void *ov010_WAZA_OSHIE_Create(u32 heapId) __attribute__((weak));
 extern void *FIELD_STATUS_CreateSubProcCallbackEvent(void *gsys, void *fieldMap, u32 overlayId, void *procData,
@@ -1259,6 +1261,11 @@ static void debug_open(void)
         boxp->mode = (int)a;
         ev = FIELD_STATUS_CreateSubProcNoFadeCallbackEvent(gs, fm, 170, bw_dsref_ov021_d_021EF78C, boxp,
                                                            debug_open_done, NULL);
+    } else if (strcmp(what, "namein") == 0 && ov021_EVENT_NAMEIN_Create != NULL) {
+        /* the game's free-text name entry (the beacon message, mode 7) */
+        static u16 result;
+
+        ev = ov021_EVENT_NAMEIN_Create(gs, fm, NULL, 7, &result);
     } else if (strcmp(what, "union") == 0 && ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent != NULL) {
         ev = ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent(gs, fm);
     } else if (strcmp(what, "ltrade") == 0 && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
