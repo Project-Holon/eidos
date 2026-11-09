@@ -1009,13 +1009,13 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
      * the pane holds the game's own screen) */
     browse_input = !v.other && !v.dialog;
 
-    /* The pockets are a column here, so they change with L and R (the
-     * game's left and right, pressed for it); left and right themselves do
-     * nothing while the list is browsed. */
+    /* The pockets change with left and right, as on the DS (the game's own
+     * keys), and with L and R too (the pockets are a column here): L and R
+     * press the game's left and right. */
     if (browse_input && !v.popup && !v.quantity) {
         u32 k = eidos_ui_keys_pressed();
 
-        eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_L | BW_KEY_R);
+        eidos_ui_take_keys(BW_KEY_L | BW_KEY_R);
         if (k & BW_KEY_L) {
             press_key(BW_KEY_LEFT);
         } else if (k & BW_KEY_R) {
