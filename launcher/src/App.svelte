@@ -13,7 +13,7 @@
     versionLabel,
     type Overview,
   } from "./lib/backend";
-  import { setTheme } from "morphe/theme";
+  import { setGameTheme } from "./lib/theme";
   import Icon from "./lib/Icon.svelte";
   import { MOBILE } from "./lib/platform";
   import { checkForUpdate, updates } from "./lib/updater.svelte";
@@ -113,7 +113,7 @@
 
   // Black or White, in the sidebar: it selects the Black or the White
   // profile, and the launcher's look follows the selected profile's game
-  // (any profile's).  Black is Reshiram's game, by day; White is Zekrom's,
+  // (any profile's) unless a fixed theme is chosen in Settings.  Black is Reshiram's game, by day; White is Zekrom's,
   // by night (the box legendaries, as morphe's themes name them).
   type Game = "black" | "white";
   const PROFILE_OF: Record<Game, string> = { black: "Black", white: "White" };
@@ -124,7 +124,7 @@
   const game = $derived<Game>(current?.game === "white" ? "white" : "black");
 
   $effect(() => {
-    if (current) setTheme(THEME_OF[game]);
+    if (current) setGameTheme(THEME_OF[game]);
   });
 
   async function loadGames() {

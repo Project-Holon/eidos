@@ -2,7 +2,7 @@
   import { MOBILE } from "../lib/platform";
   import { open } from "@tauri-apps/plugin-dialog";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import ThemePicker from "morphe/ThemePicker.svelte";
+  import { LAUNCHER_THEMES, launcherTheme, setLauncherTheme, type LauncherTheme } from "../lib/theme";
   import { toast } from "morphe/menu.svelte";
   import {
     addRoms,
@@ -21,6 +21,7 @@
 
   let { ov, onRefresh }: { ov: Overview; onRefresh: () => Promise<void> | void } = $props();
 
+  let theme = $state<LauncherTheme>(launcherTheme());
   let repo = $state("");
   let indexUrl = $state("");
   let localBuild = $state("");
@@ -149,7 +150,18 @@
   <div class="sec-appearance">
     <h2 class="section-label">Appearance</h2>
     <div class="window block">
-      <ThemePicker />
+      <label class="theme-picker">
+        <span class="muted">Theme</span>
+        <select
+          value={theme}
+          onchange={(e) => {
+            theme = (e.currentTarget as HTMLSelectElement).value as LauncherTheme;
+            setLauncherTheme(theme);
+          }}
+        >
+          {#each LAUNCHER_THEMES as [value, label]}<option {value}>{label}</option>{/each}
+        </select>
+      </label>
     </div>
   </div>
 
@@ -256,6 +268,12 @@
 </section>
 
 <style>
+  .theme-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
   /* A wide window: the ROM list down the left, the other settings on the
      right, so the page fits without scrolling. */
   @media (min-width: 1000px) {
