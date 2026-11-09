@@ -563,12 +563,14 @@ static int host_run(int argc, char **argv)
     wasm2c_game_instantiate(&g_game, &g_eidos, &g_env, &g_wasi);
 #if defined(HOST_MEMORY_BUDGET_MB) && HOST_MEMORY_BUDGET_MB > 0
     {
-        /* Explicit bounds checks (EIDOS_HOST_BOUNDS_CHECKS: a console has
-         * no room for wasm2c's 8 GiB of guard pages): the memory is a heap
-         * block that a grow may move, and the SDL surfaces made from module
-         * pixels (host/sdl.c) must not move.  It is grown to its whole
-         * budget here, before anything points into it, so it never grows
-         * again (the module's malloc fails past the budget). */
+        /* A console's fixed budget.  With explicit bounds checks
+         * (EIDOS_HOST_BOUNDS_CHECKS) the memory is a heap block that a grow
+         * may move, and the SDL surfaces made from module pixels
+         * (host/sdl.c) must not move; with the Switch's guard pages
+         * (host/switch/vmem.c) the heap blocks behind it are mapped once.
+         * Either way it is grown to its whole budget here, before anything
+         * points into it, so it never grows again (the module's malloc
+         * fails past the budget). */
         uint64_t want = (uint64_t)HOST_MEMORY_BUDGET_MB * 1024u * 1024u / 65536u;
 
         if (want > g_game.w2c_memory.pages &&

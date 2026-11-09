@@ -239,3 +239,28 @@ the hardware.
 
 The Vita's field is not measured: Vita3K does not raise the prefetch abort
 a call through a DS code address needs (above).
+
+### The Switch without the bounds checks (2026-11-09)
+
+`host/switch/vmem.c` gives the game module guard-page memory on Horizon
+(`EIDOS_SWITCH_MEMCHECK=guard`, the default): it reserves the module's
+8 GiB of code-region address space and maps heap blocks into it with
+`svcMapProcessCodeMemory`, read-write through
+`svcSetProcessMemoryPermission`, so the game's code carries no check on its
+accesses.  Without the program's own process handle, or when the kernel
+refuses the probe mapping, it falls back to one block of the budget with a
+no-access block after it (still no check per access); the log names the
+one that runs.  Ryubing takes the fallback.  `EIDOS_SWITCH_MEMCHECK=bounds`
+builds the old way.
+
+The same source both ways, Ryubing 1.3.3, the field walk above (600 frames):
+
+| Build | Frame (mean / median) | step | 3D geometry | main 2D | render | present |
+|---|---|---|---|---|---|---|
+| bounds checks | 132.0 / 92.9 ms | 14.4 | 32.0 | 23.1 | 45.8 | 17.7 ms |
+| no checks | 76.0 / 65.1 ms | 5.7 | 16.4 | 5.0 | 13.4 | 34.3 ms |
+
+The CPU's share of a frame goes from about 114 ms to about 42 ms; the
+rest is the wait at the present, most of it the emulator's GPU.  The
+program is 7 MB smaller (34.1 MB).  The guard-page path itself has not run
+yet: it needs a console.
