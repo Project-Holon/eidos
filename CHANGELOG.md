@@ -12,6 +12,11 @@ Each release's notes on GitHub start with its section here
 - **Battle HP Bars**: In the one-screen layout, a Pokémon's HP bar stays on screen while it is in battle and its HP drains as the game animates it; before, the bar disappeared whenever the game hid its own gauge (during some moves' animations and after a Pokémon was sent in), so a hit and "It's super effective!" could show no HP bar at all.
 - **Whiteout Message**: In the one-screen layout, the message after losing a battle ("... scurried to a Pokémon Center ...") shows as one screen at the window's height, centred; before, it showed the two DS screens side by side.
 - **Launcher Theme**: `Settings > Appearance > Theme` keeps the chosen theme whichever game is selected; before, selecting a profile switched the launcher back to its game's theme. `Follow the game` (the default) keeps the old behaviour (#29).
+- **Double Presses on Steam Deck**: Each press counts once. Outside Steam's Game Mode, Steam also sends the Deck's controls as keyboard keys, so menus moved two steps at a time; now the keyboard waits while a controller is in use (#30, #32).
+- **Name Entry**: The D-pad reaches DELETE, SPACE and OK below the keys, and the cursor shows on OK after START, as on the DS; before, only the letters could be reached without a mouse (#30).
+- **Multiplayer Name**: OK on an empty name closes the keyboard, so the Multiplayer screen can be left without typing a name (#30).
+- **Bag Pockets**: Left and right change the pocket, as on the DS, as well as L and R (#32).
+- **Launcher Controls**: The launcher works with a game controller and the keyboard: the D-pad or the arrows move between controls, A or Enter presses, B or Escape goes back, LB and RB change the page (#31).
 
 ## 0.2.4
 
