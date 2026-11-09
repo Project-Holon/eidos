@@ -2339,7 +2339,8 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         eidos_ui_press(BW_KEY_B, 2);
     }
     prompt_choosing(&b, prompt_buf, sizeof(prompt_buf));
-    shell_draw(c, &b, &sh, prompt_buf, 0);
+    /* a theme that shows the move's facts in the message's place shows no prompt */
+    shell_draw(c, &b, &sh, theme->battle_move_info != NULL && !struggle ? NULL : prompt_buf, 0);
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
 }
 

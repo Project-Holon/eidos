@@ -1029,10 +1029,18 @@ static int test_data(const char *root)
     BW_REQUIRE("Pokemon front", image_pixels(ui_mon_front(495, 0, 0)) > 100);
     BW_REQUIRE("trainer fronts are not decoded", ui_trainer_front(1) == NULL);
 
-    /* the contact sheet */
+    /* the contact sheet, in UI_KIT_THEME's theme when set (remix, or the
+     * default) */
+    if (getenv("UI_KIT_THEME") != NULL) {
+        extern const UiThemeOps ui_theme_remix;
+
+        (void)ui_theme_add(&ui_theme_remix);
+        ui_theme_select(getenv("UI_KIT_THEME"));
+    }
     memset(&cv, 0, sizeof cv);
     ui_begin(&c, &cv, 660, 880, 2);
     draw_sheet(&c);
+    ui_theme_select("remaster");
     if (path == NULL) {
         path = "ui_kit_sheet.png";
     }

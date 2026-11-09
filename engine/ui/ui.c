@@ -2361,9 +2361,10 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
         static int themes_ready;
 
         if (!themes_ready) {
-            extern const UiThemeOps ui_theme_debug_outline;
+            extern const UiThemeOps ui_theme_debug_outline, ui_theme_remix;
 
             themes_ready = 1;
+            (void)ui_theme_add(&ui_theme_remix);
             (void)ui_theme_add(&ui_theme_debug_outline);
             if (getenv("EIDOS_UI_THEME") != NULL) {
                 ui_theme_select(getenv("EIDOS_UI_THEME"));
