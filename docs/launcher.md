@@ -29,6 +29,26 @@ shared Rust code come from morphe (tag `v0.1.0`).
 - Settings: theme, the releases repository, a GitHub token (only for a
   private repository), a local build folder and the mods index address.
 
+## Controller and keyboard
+
+The launcher works without a mouse (#31). A game controller is read in Rust
+(`src-tauri/src/pad.rs`, gilrs) on the desktop systems, because a web
+view's own gamepad support differs from one system to the next; its presses
+reach the page as `pad` events. The page moves its focus with them, and with
+the keyboard (`src/lib/padnav.ts`):
+
+| Action | Controller | Keyboard |
+| --- | --- | --- |
+| Move to the nearest control | D-pad, left stick | Arrow keys |
+| Press it (a list opens) | A (bottom button), Start | Enter, Space |
+| Close the dialog, else go to Play | B (right button), Back | Escape |
+| Page before, page after | LB, RB | |
+
+The directions repeat while held. Only the window in front acts on the pad:
+once the game starts, the pad is the game's. While a pad is in use the
+keyboard's arrows, Enter and Escape wait (400 ms after the pad's last
+press), as in the game (docs/input.md, "One device at a time").
+
 ## Folders
 
 The launcher uses the folders in `docs/distribution.md`:

@@ -16,6 +16,7 @@
   import { setGameTheme } from "./lib/theme";
   import Icon from "./lib/Icon.svelte";
   import { MOBILE } from "./lib/platform";
+  import { startPadNav } from "./lib/padnav";
   import { checkForUpdate, updates } from "./lib/updater.svelte";
   import Home from "./pages/Home.svelte";
   import Profiles from "./pages/Profiles.svelte";
@@ -31,6 +32,7 @@
     ["mods", "Mods", "mods"],
     ["settings", "Settings", "settings"],
   ];
+  const shownPages = PAGES.filter(([id]) => !(MOBILE && id === "versions"));
   const KEY = "eidos-launcher.profile";
 
   let ov = $state<Overview | null>(null);
@@ -106,7 +108,18 @@
       }),
     ];
     takePendingJoin().then((code) => code && showInvite(code));
-    return () => stops.forEach((s) => s.then((stop) => stop()));
+    // a controller or the keyboard moves through the page (#31)
+    const stopNav = startPadNav({
+      page: (step) => {
+        const ids = shownPages.map(([id]) => id);
+        page = ids[(ids.indexOf(page) + step + ids.length) % ids.length];
+      },
+      back: () => (page = "home"),
+    });
+    return () => {
+      stops.forEach((s) => s.then((stop) => stop()));
+      stopNav();
+    };
   });
 
   const current = $derived(ov?.profiles.find((p) => p.name === selected));
@@ -165,7 +178,7 @@
     <nav aria-label="Pages">
       <h1 class="brand">eidos</h1>
       <div class="links">
-        {#each PAGES.filter(([id]) => !(MOBILE && id === "versions")) as [id, label, icon]}
+        {#each shownPages as [id, label, icon]}
           <button class="row-item" aria-current={page === id} onclick={() => (page = id)}>
             <Icon name={icon} />
             <span>{label}</span>

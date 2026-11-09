@@ -13,6 +13,8 @@ mod ghdownload;
 mod launch;
 mod layout;
 mod mods;
+#[cfg(desktop)]
+mod pad;
 mod profile;
 mod remote;
 mod rom;
@@ -965,6 +967,9 @@ pub fn run() {
                 running: Arc::new(Mutex::new(HashMap::new())),
                 pending_join: Mutex::new(None),
             });
+            // Game controllers move the page's focus (#31).
+            #[cfg(desktop)]
+            pad::start(app.handle().clone());
             // The first start through an invite link has it in its arguments.
             let args: Vec<String> = std::env::args().collect();
             handle_urls(app.handle(), args.iter().map(String::as_str));
