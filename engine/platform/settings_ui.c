@@ -337,6 +337,7 @@ static const ValueName k_choice_names[] = {
 #define STR_SESSION_PEER     "Player"
 #define STR_SESSION_REVERT   "Revert changes"
 #define STR_MP_NEW_GAME      "New game"
+#define STR_KB_NAME          "Your name?"
 #define STR_KB_CODE          "The game code?"
 #define STR_KB_NEW_GAME      "Name the new game?"
 
@@ -637,7 +638,10 @@ static int keyboard_open(int target)
     g_kb.kind = 4;
     switch (target) {
     case KB_NAME:
-        g_kb.kind = 0;
+        /* a plain text, not the game's player name (kind 0): the game
+         * refuses an empty player name, so a player who opened the
+         * multiplayer screen could not leave it without typing one; OK on
+         * an empty text closes the keyboard and keeps the name as it was */
         g_kb.max = 7;               /* the game's own length for a name */
         start = eidos_settings_net_name();
         break;
@@ -664,11 +668,11 @@ int eidos_sui_keyboard(int *kind, int *max, char *text, int n)
     return g_kb.target;
 }
 
-/* The keyboard's question for the port's own texts; NULL keeps the
- * game's own (the player's name). */
+/* The keyboard's question for the port's own texts. */
 const char *eidos_sui_keyboard_prompt(void)
 {
     switch (g_kb.target) {
+    case KB_NAME:     return STR_KB_NAME;
     case KB_CODE:     return STR_KB_CODE;
     case KB_NEW_GAME: return STR_KB_NEW_GAME;
     default:          return NULL;

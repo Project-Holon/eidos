@@ -213,13 +213,20 @@ int main(void)
         int kind = -1, max = 0;
         char text[32];
 
-        /* the name: the game's keyboard, the player's kind */
+        /* the name: the game's keyboard, a plain text (an empty OK closes
+         * it, #30) with the port's question */
         r = press(A);
         BW_CHECK_EQ("A opens the keyboard", r & EIDOS_SUI_KEYBOARD, EIDOS_SUI_KEYBOARD);
         BW_CHECK_EQ("for the name", eidos_sui_keyboard(&kind, &max, text, sizeof text) != 0, 1);
-        BW_CHECK_EQ("a player's name", kind, 0);
+        BW_CHECK_EQ("a plain text", kind, 4);
         BW_CHECK_EQ("seven letters", max, 7);
-        BW_CHECK_EQ("the game's own question", eidos_sui_keyboard_prompt() == NULL, 1);
+        BW_CHECK_EQ("the port's question",
+                    eidos_sui_keyboard_prompt() != NULL && strcmp(eidos_sui_keyboard_prompt(), "Your name?") == 0, 1);
+        /* OK on an empty name keeps the name as it was */
+        eidos_sui_keyboard_done("", 0);
+        BW_CHECK_EQ("empty: nothing waits", eidos_sui_keyboard(&kind, &max, text, sizeof text), 0);
+        r = press(A);
+        BW_CHECK_EQ("A opens it again", r & EIDOS_SUI_KEYBOARD, EIDOS_SUI_KEYBOARD);
         eidos_sui_keyboard_done("Cheren", 1);
         BW_CHECK_EQ("nothing waits", eidos_sui_keyboard(&kind, &max, text, sizeof text), 0);
         row(1);
