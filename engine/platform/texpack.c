@@ -11,14 +11,17 @@
  *   textures/dump/<hash>.png    written once per new texture while "Dump
  *                               textures" is on: the originals, to paint
  *                               over or upscale
+ *   textures/auto/<hash>-<w>.png  an Auto copy, saved once made, so a
+ *                               later run reads it instead of upscaling
  *   textures/<hash>.png         a replacement, used while "HD textures" is
  *                               Pack or Auto: the same picture at 2x, 3x,
  *                               4x... the DS size (a whole multiple); a file
  *                               of another size is reported and ignored
  *
  * With "HD textures" at Auto, a texture with no replacement is upscaled by
- * pixup.c on two worker threads.  It is drawn at the DS size until its copy
- * is ready, so a map change that brings many new textures never waits.
+ * pixup.c on worker threads (most of the cores) and saved.  It is drawn at
+ * the DS size until its copy is ready, so a map change that brings many new
+ * textures never waits.
  *
  * The folder sits beside the program.  The PNG reading and writing below
  * is the port's own (through sdk/inflate.c; any colour type and bit depth,
@@ -272,46 +275,208 @@ static int png_chunk(FILE *f, const char *type, const unsigned char *data, uint3
         fwrite(tail, 1, 4, f) == 4;
 }
 
-/* RGBA as a PNG, with stored (uncompressed) deflate blocks, one a row (a
- * row of 1024 texels fits in one block). */
+/* Deflate with the fixed codes: greedy matches over a 32 KB window.  Pixel
+ * art compresses well this way (runs of a colour, rows repeated by an
+ * upscale), and sdk/inflate.c reads it back. */
+typedef struct {
+    unsigned char *p;
+    size_t at;
+    uint32_t bits;
+    int n;
+} BitOut;
+
+static const unsigned short k_lbase[29] = {
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+    35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258
+};
+static const unsigned char k_lext[29] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0
+};
+static const unsigned short k_dbase[30] = {
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+    257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
+    8193, 12289, 16385, 24577
+};
+static const unsigned char k_dext[30] = {
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+    7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13
+};
+
+static void put_bits(BitOut *o, uint32_t v, int n)
+{
+    o->bits |= v << o->n;
+    o->n += n;
+    while (o->n >= 8) {
+        o->p[o->at++] = (unsigned char)o->bits;
+        o->bits >>= 8;
+        o->n -= 8;
+    }
+}
+
+/* A Huffman code goes out first bit first. */
+static void put_code(BitOut *o, uint32_t code, int n)
+{
+    uint32_t r = 0;
+    int i;
+
+    for (i = 0; i < n; i++) {
+        r = (r << 1) | ((code >> i) & 1u);
+    }
+    put_bits(o, r, n);
+}
+
+static void put_sym(BitOut *o, int v)
+{
+    if (v < 144) {
+        put_code(o, 0x30u + (uint32_t)v, 8);
+    } else if (v < 256) {
+        put_code(o, 0x190u + (uint32_t)(v - 144), 9);
+    } else if (v < 280) {
+        put_code(o, (uint32_t)(v - 256), 7);
+    } else {
+        put_code(o, 0xC0u + (uint32_t)(v - 280), 8);
+    }
+}
+
+static void put_match(BitOut *o, int len, int dist)
+{
+    int i = 28, d = 29;
+
+    while (k_lbase[i] > len) {
+        i--;
+    }
+    put_sym(o, 257 + i);
+    put_bits(o, (uint32_t)(len - k_lbase[i]), k_lext[i]);
+    while (k_dbase[d] > dist) {
+        d--;
+    }
+    put_code(o, (uint32_t)d, 5);
+    put_bits(o, (uint32_t)(dist - k_dbase[d]), k_dext[d]);
+}
+
+#define WIN_BITS 15
+#define WIN      (1 << WIN_BITS)
+#define HASH_N   (1 << 15)
+
+/* raw: n bytes.  Returns a malloc'd zlib stream in *out, or -1. */
+static int deflate_fixed(const unsigned char *raw, size_t n, unsigned char **out, size_t *out_n)
+{
+    int *head = (int *)malloc(HASH_N * sizeof(int));
+    int *prev = (int *)malloc(WIN * sizeof(int));
+    BitOut o;
+    uint32_t a = 1, b = 0;
+    size_t i;
+
+    o.p = (unsigned char *)malloc(n + n / 8 + 64);
+    if (head == NULL || prev == NULL || o.p == NULL) {
+        free(head);
+        free(prev);
+        free(o.p);
+        return -1;
+    }
+    for (i = 0; i < HASH_N; i++) {
+        head[i] = -1;
+    }
+    o.at = 0;
+    o.bits = 0;
+    o.n = 0;
+    o.p[o.at++] = 0x78;
+    o.p[o.at++] = 0x01;
+    put_bits(&o, 1, 1);             /* the last block */
+    put_bits(&o, 1, 2);             /* fixed codes */
+    i = 0;
+    while (i < n) {
+        int best = 0, dist = 0;
+
+        if (i + 3 <= n) {
+            unsigned hsh = ((unsigned)raw[i] << 10 ^ (unsigned)raw[i + 1] << 5 ^ raw[i + 2]) &
+                (HASH_N - 1);
+            int cand = head[hsh], tries = 32;
+            size_t max = n - i < 258 ? n - i : 258;
+
+            while (cand >= 0 && i - (size_t)cand < WIN && tries-- > 0) {
+                size_t l = 0;
+
+                while (l < max && raw[cand + l] == raw[i + l]) {
+                    l++;
+                }
+                if ((int)l > best) {
+                    best = (int)l;
+                    dist = (int)(i - (size_t)cand);
+                    if (l == max) {
+                        break;
+                    }
+                }
+                cand = prev[cand & (WIN - 1)];
+            }
+        }
+        if (best >= 3) {
+            size_t k;
+
+            put_match(&o, best, dist);
+            for (k = 0; k < (size_t)best; k++, i++) {
+                if (i + 3 <= n) {
+                    unsigned hsh = ((unsigned)raw[i] << 10 ^ (unsigned)raw[i + 1] << 5 ^
+                                    raw[i + 2]) & (HASH_N - 1);
+
+                    prev[i & (WIN - 1)] = head[hsh];
+                    head[hsh] = (int)i;
+                }
+            }
+        } else {
+            if (i + 3 <= n) {
+                unsigned hsh = ((unsigned)raw[i] << 10 ^ (unsigned)raw[i + 1] << 5 ^
+                                raw[i + 2]) & (HASH_N - 1);
+
+                prev[i & (WIN - 1)] = head[hsh];
+                head[hsh] = (int)i;
+            }
+            put_sym(&o, raw[i]);
+            i++;
+        }
+    }
+    put_sym(&o, 256);
+    if (o.n > 0) {
+        o.p[o.at++] = (unsigned char)o.bits;
+    }
+    for (i = 0; i < n; i++) {
+        a = (a + raw[i]) % 65521u;
+        b = (b + a) % 65521u;
+    }
+    put_be32(o.p + o.at, (b << 16) | a);
+    o.at += 4;
+    free(head);
+    free(prev);
+    *out = o.p;
+    *out_n = o.at;
+    return 0;
+}
+
+/* RGBA as a PNG (filter none, deflate_fixed). */
 static int png_write(const char *path, const unsigned char *rgba, int w, int h)
 {
     static const unsigned char sig[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
     size_t row = 1 + (size_t)w * 4;
-    size_t zlen = 2 + (size_t)h * (5 + row) + 4;
     unsigned char ihdr[13];
-    unsigned char *z;
-    size_t at = 0;
-    uint32_t a = 1, b = 0;
+    unsigned char *raw, *z;
+    size_t zlen;
     int y, ok;
     FILE *f;
 
-    if (row > 0xFFFF) {
+    raw = (unsigned char *)malloc(row * (size_t)h);
+    if (raw == NULL) {
         return -1;
     }
-    z = (unsigned char *)malloc(zlen);
-    if (z == NULL) {
-        return -1;
-    }
-    z[at++] = 0x78;
-    z[at++] = 0x01;
     for (y = 0; y < h; y++) {
-        size_t i;
-
-        z[at++] = (unsigned char)(y == h - 1);
-        z[at++] = (unsigned char)(row & 0xFF);
-        z[at++] = (unsigned char)(row >> 8);
-        z[at++] = (unsigned char)(~row & 0xFF);
-        z[at++] = (unsigned char)((~row >> 8) & 0xFF);
-        z[at] = 0;                  /* filter: none */
-        memcpy(z + at + 1, rgba + (size_t)y * w * 4, row - 1);
-        for (i = 0; i < row; i++) {
-            a = (a + z[at + i]) % 65521u;
-            b = (b + a) % 65521u;
-        }
-        at += row;
+        raw[(size_t)y * row] = 0;   /* filter: none */
+        memcpy(raw + (size_t)y * row + 1, rgba + (size_t)y * w * 4, row - 1);
     }
-    put_be32(z + at, (b << 16) | a);
+    ok = deflate_fixed(raw, row * (size_t)h, &z, &zlen);
+    free(raw);
+    if (ok != 0) {
+        return -1;
+    }
     put_be32(ihdr, (uint32_t)w);
     put_be32(ihdr + 4, (uint32_t)h);
     ihdr[8] = 8;                    /* bits */
@@ -516,6 +681,48 @@ static BwMutex *g_job_mx;
 static BwCond *g_job_cv;
 static int g_workers;   /* 0 not started, 1 running */
 
+/* textures/auto/<hash>-<w>.png: the copy a run before made. */
+static void auto_path(char *path, size_t n, uint64_t hash, int w)
+{
+    snprintf(path, n, "%s" SEP "auto" SEP "%016llx-%d.png", g_dir, (unsigned long long)hash, w);
+}
+
+static unsigned char *auto_load(uint64_t hash, int w, int h)
+{
+    char path[1200];
+    unsigned char *rgba;
+    int fw = 0, fh = 0;
+
+    auto_path(path, sizeof(path), hash, w);
+    rgba = png_read(path, &fw, &fh);
+    if (rgba != NULL && (fw != w || fh != h)) {
+        free(rgba);
+        rgba = NULL;
+    }
+    return rgba;
+}
+
+/* Written under another name and renamed, so a run closed halfway leaves
+ * no broken file. */
+static void auto_save(uint64_t hash, const unsigned char *rgba, int w, int h)
+{
+    char path[1200], tmp[1210];
+
+    snprintf(path, sizeof(path), "%s" SEP "auto", g_dir);
+    mkdir_one(g_dir);
+    mkdir_one(path);
+    auto_path(path, sizeof(path), hash, w);
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    if (png_write(tmp, rgba, w, h) != 0) {
+        remove(tmp);
+        return;
+    }
+    remove(path);
+    if (rename(tmp, path) != 0) {
+        remove(tmp);
+    }
+}
+
 static void auto_worker(void *arg)
 {
     (void)arg;
@@ -538,7 +745,13 @@ static void auto_worker(void *arg)
         }
         j->state = 2;
         bw_mutex_unlock(g_job_mx);
-        up = eidos_pixup(j->in, j->w, j->h, j->s);
+        up = auto_load(j->hash, j->w * j->s, j->h * j->s);
+        if (up == NULL) {
+            up = eidos_pixup_half(j->in, j->w, j->h, j->s);
+            if (up != NULL) {
+                auto_save(j->hash, up, j->w * j->s, j->h * j->s);
+            }
+        }
         bw_mutex_lock(g_job_mx);
         j->up = up;
         j->state = 3;
@@ -548,14 +761,25 @@ static void auto_worker(void *arg)
 
 static void start_workers(void)
 {
+    int i, n;
+
     if (g_workers != 0) {
         return;
     }
     g_workers = 1;
     g_job_mx = bw_mutex_create();
     g_job_cv = bw_cond_create();
-    (void)bw_thread_start(auto_worker, NULL);
-    (void)bw_thread_start(auto_worker, NULL);
+    /* two cores left for the game, at most eight workers */
+    n = (int)bw_cpu_count() - 2;
+    if (n < 2) {
+        n = 2;
+    }
+    if (n > 8) {
+        n = 8;
+    }
+    for (i = 0; i < n; i++) {
+        (void)bw_thread_start(auto_worker, NULL);
+    }
 }
 
 /* Into the cache, the oldest out first; takes `up`. */

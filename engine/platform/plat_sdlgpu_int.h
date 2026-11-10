@@ -97,6 +97,7 @@ typedef struct SdlGpu {
     SDL_GPUTexture **gtex;      /* one per snapshot texture              */
     unsigned *gtex_key;
     int *gtex_w, *gtex_h;
+    unsigned char *gtex_hd;     /* an HD texture's scale over the DS size (1 none) */
     unsigned n_gtex, cap_gtex;
     unsigned tex_serial;
     int tex_serial_valid;

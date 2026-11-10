@@ -1768,7 +1768,7 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
     int prev_depth_eq = -1, prev_mask = -1;
     GLfloat toon[96];
     unsigned long long t_up, t_dr;
-    int use_ms, edges, fog, backdrop;
+    int use_ms, edges, fog, backdrop, pending = 0;
     double cdepth;
 
     if (g == NULL || !g->have3d || s == NULL || w < 1 || h < 1) {
@@ -1834,6 +1834,7 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                                     (int)s->tex[i].h, &hw, &hh, &later);
             if (later) {
                 g->gtex_key[i] = 0;     /* its HD copy comes on a later frame */
+                pending = 1;
             }
             if (hd != NULL) {
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, hw, hh, 0, GL_RGBA,
@@ -1847,7 +1848,9 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                          s->tex[i].rgba);
         }
         g->tex_serial = s->serial;
-        g->tex_serial_valid = 1;
+        /* an HD copy still being made: look again next frame, even when no
+         * texture changes */
+        g->tex_serial_valid = !pending;
     }
 
     eidos_prof_end(EIDOS_PROF_GLUP, t_up);

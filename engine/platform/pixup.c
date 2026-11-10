@@ -179,3 +179,28 @@ unsigned char *eidos_pixup(const unsigned char *src, int w, int h, int s)
     free(px);
     return out;
 }
+
+unsigned char *eidos_pixup_half(const unsigned char *src, int w, int h, int s)
+{
+    unsigned char *up = eidos_pixup(src, w, h, s);
+    int x, y, c;
+
+    if (up == NULL) {
+        return NULL;
+    }
+    for (y = 0; y < h * s; y++) {
+        for (x = 0; x < w * s; x++) {
+            unsigned char *u = up + ((size_t)y * w * s + x) * 4;
+            const unsigned char *p = src + ((size_t)(y / s) * w + x / s) * 4;
+
+            /* an edge texel blended with transparency keeps its own colour */
+            if (p[3] == 0 || u[3] == 0) {
+                continue;
+            }
+            for (c = 0; c < 3; c++) {
+                u[c] = (unsigned char)((u[c] + p[c] + 1) / 2);
+            }
+        }
+    }
+    return up;
+}
