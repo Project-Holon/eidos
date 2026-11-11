@@ -876,8 +876,8 @@ void eidos_platform_wait_frame(EidosPlatform *p)
     }
 
     p->lag_frames = now > p->next_ns ? (u32)((now - p->next_ns) / step) : 0;
-    if (now > p->next_ns + 2 * step) {
-        /* More than two frames behind: a breakpoint, a suspended machine or
+    if (now > p->next_ns + 4 * step) {
+        /* More than four frames behind: a breakpoint, a suspended machine or
          * a host that cannot keep up.  Running the backlog would show a
          * burst of fast frames, so the schedule is restarted from now. */
         p->late_frames++;
