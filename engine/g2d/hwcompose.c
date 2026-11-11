@@ -119,7 +119,6 @@
  * here is derived from any other decompilation, port or emulator.
  */
 
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1300,25 +1299,6 @@ static void gpu_pal(G2dGpuFrame *f, u32 row, const G2dPalette *pal)
     }
 }
 
-static int mem_differs(const void *pa, const void *pb, u32 n)
-{
-    const u8 *a = (const u8 *)pa;
-    const u8 *b = (const u8 *)pb;
-    u32 i = 0;
-
-    if ((((uintptr_t)a | (uintptr_t)b) & 7u) == 0u) {
-        for (; i + 8u <= n; i += 8u) {
-            if (*(const u64 *)(a + i) != *(const u64 *)(b + i)) {
-                return 1;
-            }
-        }
-        if (i == n) {
-            return 0;
-        }
-    }
-    return memcmp(a + i, b + i, n - i) != 0;
-}
-
 /* What compose_px reads, copied out of the engine (the pooled buffers go
  * back after the compose). */
 static void gpu_fill(Engine *e, const G2dWindows *windows, const G2dBlend *blend)
@@ -1342,7 +1322,7 @@ static void gpu_fill(Engine *e, const G2dWindows *windows, const G2dBlend *blend
         return;
     }
     f->screen = e->main == main_on_top ? 0 : 1;
-    if (f->bgv_size != need || mem_differs(f->bgv, e->bgv, need)) {
+    if (f->bgv_size != need || memcmp(f->bgv, e->bgv, need) != 0) {
         memcpy(f->bgv, e->bgv, need);
         f->bgv_size = need;
         f->bgv_gen++;
