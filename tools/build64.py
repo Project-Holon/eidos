@@ -31,7 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The game's C relies on wrapping arithmetic and loose aliasing, as the DS
 # compiler gave it (the native build's flags, docs/building.md).
-MODULE_FLAGS = "-O2 -mbulk-memory -fno-strict-aliasing -fwrapv -fno-delete-null-pointer-checks -D_GNU_SOURCE"
+MODULE_FLAGS = "-O2 -fno-strict-aliasing -fwrapv -fno-delete-null-pointer-checks -D_GNU_SOURCE"
 
 
 def run(args, **kw):

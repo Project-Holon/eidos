@@ -80,7 +80,7 @@ else()
 endif()
 add_custom_command(
     OUTPUT ${CMAKE_BINARY_DIR}/game.opt.wasm
-    COMMAND ${WASM_OPT} ${EIDOS_WASM_MODULE} ${_eidos_fpcast} --enable-bulk-memory ${EIDOS_HOST_OPT} -g
+    COMMAND ${WASM_OPT} ${EIDOS_WASM_MODULE} ${_eidos_fpcast} ${EIDOS_HOST_OPT} -g
             -o ${CMAKE_BINARY_DIR}/game.opt.wasm
     DEPENDS ${EIDOS_WASM_MODULE}
     COMMENT "wasm-opt --fpcast-emu ${EIDOS_HOST_OPT}")
