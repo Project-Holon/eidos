@@ -8,11 +8,22 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `7f30ac00d6fcdd7cf777bd582ac6f126d54906c5`
-- Date: 2026-11-06
-- Subject: ov010: the whiteout event's names (was CommProcEvent)
+- Revision: `ce8fb59a0e4e7e8c445c5696c94a5611189f2007`
+- Date: 2026-11-10
+- Subject: Script reads before the pc they move: warp table, trainer AI lists, script start, battle command filler (elevator menus, eidos #33)
 
-The step from `56cb91a438`: names only, the ROM is byte-identical. The
+The step from `7f30ac00d6`: five sites read a stream pointer in the same
+expression as the call that moves it (`vm->pc + VM_GetU32(vm)`).  The DS
+calls first; the host GCC read the pointer first, 4 bytes short.  On PC
+SCRCMD_POKEMON_FLD_SetWarpTable's table then had no end marker where
+SCRCMD_POKEMON_FLD_CountWarpEntries looked, so every elevator's floor list
+held only "Cancel" (issue #33), and TR_AI_CmdIfValueInList and
+TR_AI_CmdIfValueNotInList compared against a list that began with their own
+jump offset.  Each read is its own statement now; the ROM is byte-identical.
+SCRIPT_SYS_CreateVm and BTL_SERVER_CMD_ReadNext are written the same way
+(GCC had them right; another compiler may not).
+
+The step before, from `56cb91a438`: names only, the ROM is byte-identical. The
 event every lost battle ends in is SCRCMD_NETWORK_CreateWhiteOutEvent (was
 SCRCMD_NETWORK_CreateCommProcEvent, ov010 0x0215F6E8), the function the
 port's `whiteout` event is bound to (mod/declared_set.txt), with
