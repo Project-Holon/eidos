@@ -1388,17 +1388,34 @@ static void gpu_fill(Engine *e, const G2dWindows *windows, const G2dBlend *blend
         }
     }
     f->obj_on = (e->dispcnt & 0x1000u) != 0 && e->obj_index != NULL;
-    for (i = 0; i < SCREEN_PX; i++) {
-        u8 *o = f->obj + i * 4u;
+    {
+        /* the four planes side by side, a pixel in four bytes: index,
+         * priority, palette source, then semi-transparent (1) and OBJ
+         * window (2).  One loop for each case of what is on. */
+        u8 *o = f->obj;
+        const u8 *win = e->objwin;
 
-        if (f->obj_on) {
-            o[0] = e->obj_index[i];
-            o[1] = e->obj_prio[i];
-            o[2] = e->obj_src[i];
-            o[3] = (u8)((e->obj_semi[i] ? 1u : 0u) | (e->objwin != NULL && e->objwin[i] ? 2u : 0u));
+        if (f->obj_on && win != NULL) {
+            for (i = 0; i < SCREEN_PX; i++, o += 4) {
+                o[0] = e->obj_index[i];
+                o[1] = e->obj_prio[i];
+                o[2] = e->obj_src[i];
+                o[3] = (u8)((e->obj_semi[i] ? 1u : 0u) | (win[i] ? 2u : 0u));
+            }
+        } else if (f->obj_on) {
+            for (i = 0; i < SCREEN_PX; i++, o += 4) {
+                o[0] = e->obj_index[i];
+                o[1] = e->obj_prio[i];
+                o[2] = e->obj_src[i];
+                o[3] = (u8)(e->obj_semi[i] ? 1u : 0u);
+            }
+        } else if (win != NULL) {
+            for (i = 0; i < SCREEN_PX; i++, o += 4) {
+                o[0] = o[1] = o[2] = 0;
+                o[3] = (u8)(win[i] ? 2u : 0u);
+            }
         } else {
-            o[0] = o[1] = o[2] = 0;
-            o[3] = (u8)(e->objwin != NULL && e->objwin[i] ? 2u : 0u);
+            memset(o, 0, SCREEN_PX * 4u);
         }
     }
     f->l3_on = e->layer3d.enabled && e->layer3d.rgba != NULL
@@ -1483,7 +1500,7 @@ static int compose_graphics(Engine *e, const u8 *rgba3d, u8 *rgba, u8 *out6)
         return -1;
     }
     if (e->dispcnt & 0x1000u) {
-        if (build_objs(e) != 0 || emit_obj_poses(e) != 0) {
+        if (build_objs(e) != 0) {
             return -1;
         }
     }
@@ -1496,8 +1513,6 @@ static int compose_graphics(Engine *e, const u8 *rgba3d, u8 *rgba, u8 *out6)
     desc.abgs = e->abgs;
     desc.n_abgs = e->n_abgs;
     desc.g3d = e->layer3d.enabled ? &e->layer3d : NULL;
-    desc.objs = e->objs;
-    desc.n_objs = e->n_objs;
     desc.backdrop_pal = &e->bg_pal;
     desc.windows = &windows;
     desc.blend = &blend;
@@ -1521,6 +1536,14 @@ static int compose_graphics(Engine *e, const u8 *rgba3d, u8 *rgba, u8 *out6)
             return 0;
         }
     }
+    /* The CPU composes: the OBJ planes as its poses (the GPU's shader reads
+     * the planes themselves, gpu_fill, so a screen handed to it above never
+     * pays for these two passes over the screen). */
+    if ((e->dispcnt & 0x1000u) && emit_obj_poses(e) != 0) {
+        return -1;
+    }
+    desc.objs = e->objs;
+    desc.n_objs = e->n_objs;
     {
         u8 *zero6 = NULL;
         u32 i;
