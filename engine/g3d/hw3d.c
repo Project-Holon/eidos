@@ -311,10 +311,14 @@ static u32 gxstat_value(int with_error)
     return v;
 }
 
+/* GXSTAT and RAM_COUNT are published after every command, thousands of
+ * times a frame: a plain store into the register file.  bw_io_write32 looks
+ * for write hooks on every store, and no register of the 3D window has one
+ * (the window works through the access hook, see the head of this file). */
 static void publish_stat(void)
 {
     g_hw.stat_published = gxstat_value(0);
-    bw_io_write32(G3D_HW_GXSTAT, g_hw.stat_published);
+    bw_wr32((u8 *)bw_io(G3D_HW_GXSTAT), g_hw.stat_published);
 }
 
 static void publish_ram_count(void)
@@ -322,7 +326,7 @@ static void publish_ram_count(void)
     u32 polys = g_hw.geom.n_polys > 0xFFFu ? 0xFFFu : g_hw.geom.n_polys;
     u32 verts = g_hw.geom.n_verts > 0x1FFFu ? 0x1FFFu : g_hw.geom.n_verts;
 
-    bw_io_write32(G3D_HW_RAM_COUNT, polys | (verts << 16));
+    bw_wr32((u8 *)bw_io(G3D_HW_RAM_COUNT), polys | (verts << 16));
 }
 
 /* CLIPMTX_RESULT as the DS gives it: position times projection, without
@@ -375,16 +379,14 @@ static void gxstat_written(u32 v)
 /* Running one command                                                 */
 /* ------------------------------------------------------------------ */
 
+/* The interpreter's own per-command function (gx.c): the code g3d_gx_run
+ * runs for each command of a display list.  (Each command used to be framed
+ * as a one-command list in a byte buffer and parsed back; with thousands of
+ * commands a frame the framing cost more than the commands.) */
 static void run_cmd(u32 op, const u32 *par, u32 n)
 {
-    u8 buf[4u + 32u * 4u];
-    u32 len = 4u + n * 4u, i;
-
-    bw_wr32(buf, op & 0xFFu);
-    for (i = 0; i < n; i++) {
-        bw_wr32(buf + 4u + i * 4u, par[i]);
-    }
-    (void)g3d_gx_run(&g_hw.gx, buf, len, 0, len, len);
+    (void)n;
+    g3d_gx_exec(&g_hw.gx, op & 0xFFu, par);
 }
 
 /* The viewport, folded into clip space so the rasteriser's fixed
@@ -874,6 +876,14 @@ static void rear_passes(G3dTarget *t, u32 d3, u32 cc, u32 cd)
 
 static void trace_report(const G3dTarget *t, u32 d3);
 
+/* The clear the CPU target holds with nothing drawn into it since
+ * (render_frame): `on` 0 when it holds a drawn frame or another state. */
+static struct {
+    int on;
+    const u8 *rgba;
+    u32 width, cc, cd, wbuffer;
+} g_clean;
+
 /* The snapshot for a GPU renderer (hw3d.h).  Textures are copied once each,
  * identified by their decoded pixel buffer. */
 static G3dSnapshot g_snap;
@@ -1190,7 +1200,19 @@ static void render_frame(void)
 
     t->wbuffer = (g_hw.swap_param >> 1) & 1u;
     t->aa = (d3 >> 4) & 1u;
-    clear_planes(t, d3, cc, cd);
+    /* The clear, unless the target still holds this very clear: with a GPU
+     * renderer drawing the frames nothing is drawn into it between two
+     * swaps, and clearing it again writes the bytes it has. */
+    if (!(g_clean.on && !(d3 & 0x4000u) && g_clean.rgba == t->rgba && g_clean.width == t->width
+          && g_clean.cc == cc && g_clean.cd == cd && g_clean.wbuffer == t->wbuffer)) {
+        clear_planes(t, d3, cc, cd);
+    }
+    g_clean.on = !(d3 & 0x4000u);       /* (a rear-plane bitmap reads VRAM: always cleared) */
+    g_clean.rgba = t->rgba;
+    g_clean.width = t->width;
+    g_clean.cc = cc;
+    g_clean.cd = cd;
+    g_clean.wbuffer = t->wbuffer;
 
     t->alpha_ref = (d3 & 4u) ? (bw_io_read16(G3D_HW_ALPHA_TEST_REF) & 0x1Fu) : 0u;
     for (i = 0; i < 32u; i++) {
@@ -1336,6 +1358,7 @@ static void render_frame(void)
         g_hw.have_frame = 1;
         return;
     }
+    g_clean.on = 0;                     /* the rasteriser draws into the target */
     {
         unsigned long long tr = eidos_prof_begin();
 
@@ -1515,7 +1538,6 @@ static void exec_cmd(u32 op, const u32 *par);
 
 static void exec(u32 op, const u32 *par)
 {
-    unsigned long long t0 = eidos_prof_begin();
     g_ops_frame[op & 0xFFu]++;
     if (op >= 0x16u && op <= 0x1Cu && badmtx_on()) {
         /* a matrix command with an element far outside any real scene */
@@ -1587,7 +1609,6 @@ static void exec(u32 op, const u32 *par)
     }
 
     exec_cmd(op, par);
-    eidos_prof_end(EIDOS_PROF_GEOM, t0);
 }
 
 static void exec_cmd(u32 op, const u32 *par)
@@ -1867,6 +1888,7 @@ void g3d_hw_reset(void)
     if (g_hw.front.rgba != NULL) {
         g3d_target_clear(&g_hw.front, 0, 0, 0, 0);
     }
+    g_clean.on = 0;
     g_hw.ready = 1;
 
     bw_io_access_hook(G3D_HW_GXFIFO, G3D_HW_WINDOW_END, access_hook);
@@ -1905,8 +1927,15 @@ void g3d_hw_fifo_send(const void *src, u32 bytes)
     if (g_tr.on) {
         g_tr.w_send += bytes / 4u;
     }
-    for (i = 0; i + 4u <= bytes; i += 4u) {
-        fifo_word(bw_rd32(p + i));
+    {
+        /* the profiler's geometry phase: a whole list (a clock read around
+         * each command cost as much as the command) */
+        unsigned long long t0 = eidos_prof_begin();
+
+        for (i = 0; i + 4u <= bytes; i += 4u) {
+            fifo_word(bw_rd32(p + i));
+        }
+        eidos_prof_end(EIDOS_PROF_GEOM, t0);
     }
 }
 

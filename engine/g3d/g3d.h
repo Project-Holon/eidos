@@ -421,6 +421,12 @@ u32 g3d_gx_param_count(u32 op);
 u32 g3d_gx_run(G3dGx *gx, const u8 *data, u32 size, u32 start,
                u32 soft_limit, u32 hard_limit);
 
+/* One command of a stream: opcode `op` (a defined one) with its
+ * g3d_gx_param_count(op) parameter words.  What g3d_gx_run does for each
+ * command it decodes; the hardware path calls it for each command of the
+ * FIFO and the ports. */
+void g3d_gx_exec(G3dGx *gx, u32 op, const u32 *par);
+
 /*
  * The locator aletheia's find_gx_stream is: the first four-byte-aligned
  * offset in [start, size) from which at least `min_commands` commands

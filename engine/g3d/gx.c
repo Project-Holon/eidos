@@ -304,6 +304,168 @@ static void load_mtx(G3dGx *gx, const u32 *p, u32 n, int mult)
     }
 }
 
+/* One command: `op` with its parameter words (g3d_gx_param_count(op) of
+ * them).  g3d_gx_run calls it for each command of a display list; the
+ * hardware path (hw3d.c) for each command of the FIFO and the ports. */
+void g3d_gx_exec(G3dGx *gx, u32 op, const u32 *par)
+{
+    gx->commands++;
+
+    switch (op) {
+    case 0x10:  /* MTX_MODE */
+        g3d_mtx_stack_set_mode(&gx->mtx, par[0] & 3u);
+        break;
+    case 0x11:  /* MTX_PUSH */
+        g3d_mtx_stack_push(&gx->mtx);
+        break;
+    case 0x12: { /* MTX_POP, a signed 6-bit count */
+        s32 c = (s32)(par[0] & 0x3Fu);
+        if (c & 0x20) {
+            c -= 0x40;
+        }
+        g3d_mtx_stack_pop(&gx->mtx, c);
+        break;
+    }
+    case 0x13:  /* MTX_STORE */
+        g3d_mtx_stack_store(&gx->mtx, par[0] & 0x1Fu);
+        break;
+    case 0x14:  /* MTX_RESTORE */
+        g3d_mtx_stack_restore(&gx->mtx, par[0] & 0x1Fu);
+        break;
+    case 0x15:  /* MTX_IDENTITY */
+        g3d_mtx_stack_load_identity(&gx->mtx);
+        break;
+    case 0x16:  /* MTX_LOAD_4x4 */
+        load_mtx(gx, par, 16u, 0);
+        break;
+    case 0x17:  /* MTX_LOAD_4x3 */
+        load_mtx(gx, par, 12u, 0);
+        break;
+    case 0x18:  /* MTX_MULT_4x4 */
+        load_mtx(gx, par, 16u, 1);
+        break;
+    case 0x19:  /* MTX_MULT_4x3 */
+        load_mtx(gx, par, 12u, 1);
+        break;
+    case 0x1A:  /* MTX_MULT_3x3 */
+        load_mtx(gx, par, 9u, 1);
+        break;
+    case 0x1B: { /* MTX_SCALE */
+        /* In position+vector mode the hardware scales the position
+         * matrix only: a scale would denormalise the directional
+         * matrix the lights use. */
+        G3dMtx m;
+        u32 mode = gx->mtx.mode;
+        g3d_mtx_scale(&m, (fx32)par[0], (fx32)par[1], (fx32)par[2]);
+        if (mode == G3D_MTX_MODE_POSVEC) {
+            gx->mtx.mode = G3D_MTX_MODE_POSITION;
+        }
+        g3d_mtx_stack_mult(&gx->mtx, &m);
+        gx->mtx.mode = mode;
+        break;
+    }
+    case 0x1C: { /* MTX_TRANS */
+        G3dMtx m;
+        g3d_mtx_translate(&m, (fx32)par[0], (fx32)par[1],
+                          (fx32)par[2]);
+        g3d_mtx_stack_mult(&gx->mtx, &m);
+        break;
+    }
+
+    case 0x20:  /* COLOR */
+        gx->cr = c5to8(par[0]);
+        gx->cg = c5to8(par[0] >> 5);
+        gx->cb = c5to8(par[0] >> 10);
+        break;
+    case 0x21:  /* NORMAL */
+        gx->normal.x = (fx32)(sx10(par[0]) << 3);
+        gx->normal.y = (fx32)(sx10(par[0] >> 10) << 3);
+        gx->normal.z = (fx32)(sx10(par[0] >> 20) << 3);
+        break;
+    case 0x22:  /* TEXCOORD, s16.4 texel units */
+        gx->cs = sx16(par[0]);
+        gx->ct = sx16(par[0] >> 16);
+        break;
+    case 0x23:  /* VTX_16 */
+        gx->cx = (fx32)sx16(par[0]);
+        gx->cy = (fx32)sx16(par[0] >> 16);
+        gx->cz = (fx32)sx16(par[1]);
+        gx->vtx_cmd_count[0]++;
+        emit_vertex(gx);
+        break;
+    case 0x24:  /* VTX_10 */
+        gx->cx = (fx32)(sx10(par[0]) << 6);
+        gx->cy = (fx32)(sx10(par[0] >> 10) << 6);
+        gx->cz = (fx32)(sx10(par[0] >> 20) << 6);
+        gx->vtx_cmd_count[1]++;
+        emit_vertex(gx);
+        break;
+    case 0x25:  /* VTX_XY */
+        gx->cx = (fx32)sx16(par[0]);
+        gx->cy = (fx32)sx16(par[0] >> 16);
+        gx->vtx_cmd_count[2]++;
+        emit_vertex(gx);
+        break;
+    case 0x26:  /* VTX_XZ */
+        gx->cx = (fx32)sx16(par[0]);
+        gx->cz = (fx32)sx16(par[0] >> 16);
+        gx->vtx_cmd_count[3]++;
+        emit_vertex(gx);
+        break;
+    case 0x27:  /* VTX_YZ */
+        gx->cy = (fx32)sx16(par[0]);
+        gx->cz = (fx32)sx16(par[0] >> 16);
+        gx->vtx_cmd_count[4]++;
+        emit_vertex(gx);
+        break;
+    case 0x28:  /* VTX_DIFF */
+        /* [HW] the deltas are s10 in the vertex's own 4.12 units:
+         * at most an eighth of a unit either way, not scaled up */
+        gx->cx += (fx32)sx10(par[0]);
+        gx->cy += (fx32)sx10(par[0] >> 10);
+        gx->cz += (fx32)sx10(par[0] >> 20);
+        gx->vtx_cmd_count[5]++;
+        emit_vertex(gx);
+        break;
+    case 0x29:  /* POLYGON_ATTR: takes effect at the next BEGIN */
+        gx->poly_attr_pending = par[0];
+        break;
+    case 0x2A:  /* TEXIMAGE_PARAM */
+        gx->teximage = par[0];
+        break;
+    case 0x2B:  /* PLTT_BASE */
+        gx->pltt_base = par[0];
+        break;
+
+    case 0x40:  /* BEGIN_VTXS */
+        /* A batch that never met its END_VTXS emits nothing: the
+         * hardware needs the END to draw, and the asset lane's
+         * decoder drops such a batch too, which is what keeps the
+         * face counts comparable against its OBJ. */
+        gx->batch_open = 0;
+        gx->poly_attr = gx->poly_attr_pending;
+        gx->begin_mode = par[0] & 3u;
+        gx->batch_first = (gx->out != NULL) ? gx->out->n_verts : 0u;
+        gx->batch_count = 0;
+        gx->batch_open = 1;
+        break;
+    case 0x41:  /* END_VTXS */
+        if (gx->batch_open) {
+            close_batch(gx);
+        }
+        break;
+
+    default:
+        /* Lighting, material, viewport, swap-buffers and the box
+         * tests: consumed with the right parameter count so the
+         * stream stays aligned, and otherwise not interpreted.
+         * A static map model's picture does not depend on them,
+         * and inventing lighting the game has not been shown to
+         * enable would be a guess. */
+        break;
+    }
+}
+
 u32 g3d_gx_run(G3dGx *gx, const u8 *data, u32 size, u32 start,
                u32 soft_limit, u32 hard_limit)
 {
@@ -356,161 +518,7 @@ u32 g3d_gx_run(G3dGx *gx, const u8 *data, u32 size, u32 start,
                 par[j] = bw_rd32(data + np + j * 4u);
             }
             np += 4u * npar;
-            gx->commands++;
-
-            switch (op) {
-            case 0x10:  /* MTX_MODE */
-                g3d_mtx_stack_set_mode(&gx->mtx, par[0] & 3u);
-                break;
-            case 0x11:  /* MTX_PUSH */
-                g3d_mtx_stack_push(&gx->mtx);
-                break;
-            case 0x12: { /* MTX_POP, a signed 6-bit count */
-                s32 c = (s32)(par[0] & 0x3Fu);
-                if (c & 0x20) {
-                    c -= 0x40;
-                }
-                g3d_mtx_stack_pop(&gx->mtx, c);
-                break;
-            }
-            case 0x13:  /* MTX_STORE */
-                g3d_mtx_stack_store(&gx->mtx, par[0] & 0x1Fu);
-                break;
-            case 0x14:  /* MTX_RESTORE */
-                g3d_mtx_stack_restore(&gx->mtx, par[0] & 0x1Fu);
-                break;
-            case 0x15:  /* MTX_IDENTITY */
-                g3d_mtx_stack_load_identity(&gx->mtx);
-                break;
-            case 0x16:  /* MTX_LOAD_4x4 */
-                load_mtx(gx, par, 16u, 0);
-                break;
-            case 0x17:  /* MTX_LOAD_4x3 */
-                load_mtx(gx, par, 12u, 0);
-                break;
-            case 0x18:  /* MTX_MULT_4x4 */
-                load_mtx(gx, par, 16u, 1);
-                break;
-            case 0x19:  /* MTX_MULT_4x3 */
-                load_mtx(gx, par, 12u, 1);
-                break;
-            case 0x1A:  /* MTX_MULT_3x3 */
-                load_mtx(gx, par, 9u, 1);
-                break;
-            case 0x1B: { /* MTX_SCALE */
-                /* In position+vector mode the hardware scales the position
-                 * matrix only: a scale would denormalise the directional
-                 * matrix the lights use. */
-                G3dMtx m;
-                u32 mode = gx->mtx.mode;
-                g3d_mtx_scale(&m, (fx32)par[0], (fx32)par[1], (fx32)par[2]);
-                if (mode == G3D_MTX_MODE_POSVEC) {
-                    gx->mtx.mode = G3D_MTX_MODE_POSITION;
-                }
-                g3d_mtx_stack_mult(&gx->mtx, &m);
-                gx->mtx.mode = mode;
-                break;
-            }
-            case 0x1C: { /* MTX_TRANS */
-                G3dMtx m;
-                g3d_mtx_translate(&m, (fx32)par[0], (fx32)par[1],
-                                  (fx32)par[2]);
-                g3d_mtx_stack_mult(&gx->mtx, &m);
-                break;
-            }
-
-            case 0x20:  /* COLOR */
-                gx->cr = c5to8(par[0]);
-                gx->cg = c5to8(par[0] >> 5);
-                gx->cb = c5to8(par[0] >> 10);
-                break;
-            case 0x21:  /* NORMAL */
-                gx->normal.x = (fx32)(sx10(par[0]) << 3);
-                gx->normal.y = (fx32)(sx10(par[0] >> 10) << 3);
-                gx->normal.z = (fx32)(sx10(par[0] >> 20) << 3);
-                break;
-            case 0x22:  /* TEXCOORD, s16.4 texel units */
-                gx->cs = sx16(par[0]);
-                gx->ct = sx16(par[0] >> 16);
-                break;
-            case 0x23:  /* VTX_16 */
-                gx->cx = (fx32)sx16(par[0]);
-                gx->cy = (fx32)sx16(par[0] >> 16);
-                gx->cz = (fx32)sx16(par[1]);
-                gx->vtx_cmd_count[0]++;
-                emit_vertex(gx);
-                break;
-            case 0x24:  /* VTX_10 */
-                gx->cx = (fx32)(sx10(par[0]) << 6);
-                gx->cy = (fx32)(sx10(par[0] >> 10) << 6);
-                gx->cz = (fx32)(sx10(par[0] >> 20) << 6);
-                gx->vtx_cmd_count[1]++;
-                emit_vertex(gx);
-                break;
-            case 0x25:  /* VTX_XY */
-                gx->cx = (fx32)sx16(par[0]);
-                gx->cy = (fx32)sx16(par[0] >> 16);
-                gx->vtx_cmd_count[2]++;
-                emit_vertex(gx);
-                break;
-            case 0x26:  /* VTX_XZ */
-                gx->cx = (fx32)sx16(par[0]);
-                gx->cz = (fx32)sx16(par[0] >> 16);
-                gx->vtx_cmd_count[3]++;
-                emit_vertex(gx);
-                break;
-            case 0x27:  /* VTX_YZ */
-                gx->cy = (fx32)sx16(par[0]);
-                gx->cz = (fx32)sx16(par[0] >> 16);
-                gx->vtx_cmd_count[4]++;
-                emit_vertex(gx);
-                break;
-            case 0x28:  /* VTX_DIFF */
-                /* [HW] the deltas are s10 in the vertex's own 4.12 units:
-                 * at most an eighth of a unit either way, not scaled up */
-                gx->cx += (fx32)sx10(par[0]);
-                gx->cy += (fx32)sx10(par[0] >> 10);
-                gx->cz += (fx32)sx10(par[0] >> 20);
-                gx->vtx_cmd_count[5]++;
-                emit_vertex(gx);
-                break;
-            case 0x29:  /* POLYGON_ATTR: takes effect at the next BEGIN */
-                gx->poly_attr_pending = par[0];
-                break;
-            case 0x2A:  /* TEXIMAGE_PARAM */
-                gx->teximage = par[0];
-                break;
-            case 0x2B:  /* PLTT_BASE */
-                gx->pltt_base = par[0];
-                break;
-
-            case 0x40:  /* BEGIN_VTXS */
-                /* A batch that never met its END_VTXS emits nothing: the
-                 * hardware needs the END to draw, and the asset lane's
-                 * decoder drops such a batch too, which is what keeps the
-                 * face counts comparable against its OBJ. */
-                gx->batch_open = 0;
-                gx->poly_attr = gx->poly_attr_pending;
-                gx->begin_mode = par[0] & 3u;
-                gx->batch_first = (gx->out != NULL) ? gx->out->n_verts : 0u;
-                gx->batch_count = 0;
-                gx->batch_open = 1;
-                break;
-            case 0x41:  /* END_VTXS */
-                if (gx->batch_open) {
-                    close_batch(gx);
-                }
-                break;
-
-            default:
-                /* Lighting, material, viewport, swap-buffers and the box
-                 * tests: consumed with the right parameter count so the
-                 * stream stays aligned, and otherwise not interpreted.
-                 * A static map model's picture does not depend on them,
-                 * and inventing lighting the game has not been shown to
-                 * enable would be a guess. */
-                break;
-            }
+            g3d_gx_exec(gx, op, par);
         }
         if (bad) {
             break;

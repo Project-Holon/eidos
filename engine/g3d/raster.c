@@ -743,32 +743,52 @@ typedef struct SortKey {
     s32 ytop, xtop;
 } SortKey;
 
-static int sort_cmp_manual(const void *pa, const void *pb)
+/* a before b among the automatic mode's translucent polygons: the top
+ * vertex's Y, then its X, then the order sent */
+static int key_before(const SortKey *a, const SortKey *b)
 {
-    const SortKey *a = (const SortKey *)pa, *b = (const SortKey *)pb;
-
-    if (a->translucent != b->translucent) {
-        return a->translucent < b->translucent ? -1 : 1;
+    if (a->ytop != b->ytop) {
+        return a->ytop < b->ytop;
     }
-    return a->index < b->index ? -1 : (a->index > b->index ? 1 : 0);
+    if (a->xtop != b->xtop) {
+        return a->xtop < b->xtop;
+    }
+    return a->index < b->index;
 }
 
-static int sort_cmp_auto(const void *pa, const void *pb)
+/* k[0..n) into that order, with n keys of room at tmp (a merge sort: runs of
+ * 1, 2, 4... keys merged from one array into the other). */
+static void sort_keys(SortKey *k, SortKey *tmp, u32 n)
 {
-    const SortKey *a = (const SortKey *)pa, *b = (const SortKey *)pb;
+    SortKey *src = k, *dst = tmp;
+    u32 width, i;
 
-    if (a->translucent != b->translucent) {
-        return a->translucent < b->translucent ? -1 : 1;
-    }
-    if (a->translucent) {
-        if (a->ytop != b->ytop) {
-            return a->ytop < b->ytop ? -1 : 1;
+    for (width = 1; width < n; width *= 2u) {
+        for (i = 0; i < n; i += 2u * width) {
+            u32 mid = i + width < n ? i + width : n;
+            u32 end = i + 2u * width < n ? i + 2u * width : n;
+            u32 l = i, r = mid, o = i;
+
+            while (l < mid && r < end) {
+                dst[o++] = key_before(&src[r], &src[l]) ? src[r++] : src[l++];
+            }
+            while (l < mid) {
+                dst[o++] = src[l++];
+            }
+            while (r < end) {
+                dst[o++] = src[r++];
+            }
         }
-        if (a->xtop != b->xtop) {
-            return a->xtop < b->xtop ? -1 : 1;
+        {
+            SortKey *t = src;
+
+            src = dst;
+            dst = t;
         }
     }
-    return a->index < b->index ? -1 : (a->index > b->index ? 1 : 0);
+    if (src != k) {
+        memcpy(k, src, (size_t)n * sizeof(*k));
+    }
 }
 
 void g3d_geom_sort(G3dGeom *g, int manual)
@@ -780,7 +800,9 @@ void g3d_geom_sort(G3dGeom *g, int manual)
     if (g == NULL || g->n_polys < 2u) {
         return;
     }
-    k = (SortKey *)malloc((size_t)g->n_polys * sizeof(*k));
+    /* the keys, then room for as many again (the translucent ones, and the
+     * merge sort's second array) */
+    k = (SortKey *)malloc((size_t)g->n_polys * 3u * sizeof(*k));
     copy = (G3dPoly *)malloc((size_t)g->n_polys * sizeof(*copy));
     if (k == NULL || copy == NULL) {
         free(k);
@@ -819,9 +841,27 @@ void g3d_geom_sort(G3dGeom *g, int manual)
         k[i].xtop = xmin;
     }
     if (any) {
-        qsort(k, g->n_polys, sizeof(*k), manual ? sort_cmp_manual : sort_cmp_auto);
+        /* The opaque polygons first, as sent, then the translucent ones: the
+         * keys are in the order sent, so one pass splits them, and only the
+         * automatic mode has anything to sort (its translucent polygons). */
+        SortKey *tr = k + g->n_polys, *tmp = k + 2u * (size_t)g->n_polys;
+        u32 n_op = 0, n_tr = 0;
+
         for (i = 0; i < g->n_polys; i++) {
+            if (k[i].translucent) {
+                tr[n_tr++] = k[i];
+            } else {
+                k[n_op++] = k[i];
+            }
+        }
+        if (!manual) {
+            sort_keys(tr, tmp, n_tr);
+        }
+        for (i = 0; i < n_op; i++) {
             copy[i] = g->polys[k[i].index];
+        }
+        for (i = 0; i < n_tr; i++) {
+            copy[n_op + i] = g->polys[tr[i].index];
         }
         memcpy(g->polys, copy, (size_t)g->n_polys * sizeof(*copy));
     }
