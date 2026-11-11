@@ -193,6 +193,9 @@ void bw_arm7_backup_switch_path(const char *path); /* another file, live  */
 /* Hold the chip's writes in memory (1), or write them out (0): a new game
  * makes no file until it is saved (sdk/save_slots.c). */
 void bw_arm7_backup_hold(int on);
+/* The chip's contents from memory and no file at all (fs.c): nothing the
+ * game writes reaches a disk until a path is set again. */
+void bw_arm7_backup_set_memory(const u8 *data, u32 size, int live);
 
 /*
  * The firmware flash (sdk/arm7/nvram.c).  The file: NULL = <save dir>/

@@ -502,8 +502,10 @@ static void hints_bar(EidosUiCtx *c, int y, int w, const Hint *h, int n)
 {
     int i, x = 6;
 
-    ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
-    ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
+    if (!ui_hint_ground(c, 0, y, w, 17)) {
+        ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
+        ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
+    }
     for (i = 0; i < n; i++) {
         int kw = ui_keycap_w(h[i].key);
         int aw = ui_text_w(h[i].what, UI_FONT_SMALL);
@@ -776,7 +778,9 @@ static void run_shop(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         press_key(BW_KEY_B);
     }
 
-    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, MODAL_FILL, EDGE_BLUE, 245);
+    if (!ui_app_window(c, "shop", &mx, &my, &mw, &mh)) {
+        ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, MODAL_FILL, EDGE_BLUE, 245);
+    }
     {
         int tx;
         char money[40];

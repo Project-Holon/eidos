@@ -43,6 +43,20 @@
 #include "hw3d.h"
 #include "prof.h"
 
+/* A step of the GPU 3D path failed: said once a place (the caller falls
+ * back to the software rasteriser, which costs about 10 ms a frame). */
+static int sg_fail(int line)
+{
+    static unsigned char said[4096];
+
+    if (line >= 0 && line < (int)sizeof said && !said[line]) {
+        said[line] = 1;
+        fprintf(stderr, "eidos: GPU 3D failed at plat_sdlgpu3d.c:%d (%s)\n", line, SDL_GetError());
+    }
+    return -1;
+}
+#define SG_FAIL() sg_fail(__LINE__)
+
 #define FLOATS_PER_VERTEX 9u
 #define STENCIL_GAME 0x80u
 #define STENCIL_IDS 0x7Fu
@@ -403,8 +417,17 @@ static int fb_resize(SdlGpu *s, SgFb *f, int w, int h)
         f->ds = SDL_CreateGPUTexture(s->dev, &ci);
     }
     if (f->color == NULL || f->color2 == NULL || f->id == NULL || f->depth == NULL || f->ds == NULL) {
+        static int said_w, said_h;
+
+        if (said_w != w || said_h != h) {
+            /* said once a size: the caller falls back, at a cost */
+            fprintf(stderr, "eidos: 3D target %dx%d not made (colour %d %d id %d depth %d stencil %d): %s\n", w, h,
+                    f->color != NULL, f->color2 != NULL, f->id != NULL, f->depth != NULL, f->ds != NULL, SDL_GetError());
+            said_w = w;
+            said_h = h;
+        }
         fb_free(s, f);
-        return -1;
+        return SG_FAIL();
     }
     f->w = w;
     f->h = h;
@@ -1176,16 +1199,16 @@ static int upload_textures(SdlGpu *s, SDL_GPUCopyPass *cp, const G3dSnapshot *sn
             void *a = realloc(s->gtex, c * sizeof *s->gtex);
             void *k, *w, *h;
 
-            if (a == NULL) return -1;
+            if (a == NULL) return SG_FAIL();
             s->gtex = (SDL_GPUTexture **)a;
             k = realloc(s->gtex_key, c * sizeof *s->gtex_key);
-            if (k == NULL) return -1;
+            if (k == NULL) return SG_FAIL();
             s->gtex_key = (unsigned *)k;
             w = realloc(s->gtex_w, c * sizeof *s->gtex_w);
-            if (w == NULL) return -1;
+            if (w == NULL) return SG_FAIL();
             s->gtex_w = (int *)w;
             h = realloc(s->gtex_h, c * sizeof *s->gtex_h);
-            if (h == NULL) return -1;
+            if (h == NULL) return SG_FAIL();
             s->gtex_h = (int *)h;
             {
                 void *hd = realloc(s->gtex_hd, c);
@@ -1246,17 +1269,17 @@ static int upload_textures(SdlGpu *s, SDL_GPUCopyPass *cp, const G3dSnapshot *sn
             ti.size = total;
             s->stage = SDL_CreateGPUTransferBuffer(s->dev, &ti);
             s->stage_size = s->stage != NULL ? total : 0;
-            if (s->stage == NULL) return -1;
+            if (s->stage == NULL) return SG_FAIL();
         }
         /* first the texels into the staging buffer (where each goes kept),
          * then, unmapped, the uploads */
         Uint32 *where = (Uint32 *)malloc(snap->n_tex * sizeof *where);
 
-        if (where == NULL) return -1;
+        if (where == NULL) return SG_FAIL();
         dst = (unsigned char *)SDL_MapGPUTransferBuffer(s->dev, s->stage, true);
         if (dst == NULL) {
             free(where);
-            return -1;
+            return SG_FAIL();
         }
         for (i = 0; i < snap->n_tex; i++) {
             const G3dSnapTex *t = &snap->tex[i];
@@ -1447,11 +1470,11 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
     SgBd *bd = bd_of(s);
 
     if (!s->have3d || snap == NULL || w < 1 || h < 1 || bd == NULL) {
-        return -1;
+        return SG_FAIL();
     }
     backdrop = snap->backdrop.valid && !snap->wbuffer;
     if (fb_resize(s, fb, w, h) != 0) {
-        return -1;
+        return SG_FAIL();
     }
     t_dr = eidos_prof_begin();
     /* the vertices: each polygon as a fan of triangles */
@@ -1460,7 +1483,7 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
         float *n = (float *)realloc(s->vtx, need * sizeof(float));
 
         if (n == NULL) {
-            return -1;
+            return SG_FAIL();
         }
         s->vtx = n;
         s->cap_vtx = need;
@@ -1490,7 +1513,7 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
     cp = SDL_BeginGPUCopyPass(cmd);
     if (upload_textures(s, cp, snap) != 0) {
         SDL_EndGPUCopyPass(cp);
-        return -1;
+        return SG_FAIL();
     }
     if (nv > 0 && buf_reserve(s, &s->vbuf, SDL_GPU_BUFFERUSAGE_VERTEX,
                               (Uint32)(nv * FLOATS_PER_VERTEX * sizeof(float))) == 0) {
@@ -1555,7 +1578,7 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
     dt.clear_stencil = 0;
     pass = SDL_BeginGPURenderPass(cmd, ct, 3, &dt);
     if (pass == NULL) {
-        return -1;
+        return SG_FAIL();
     }
     if (backdrop) {
         bd_draw(s, cmd, pass, &snap->backdrop, 0, w, h, cdepth);
@@ -1699,14 +1722,27 @@ int sg3d_render(SdlGpu *s, SDL_GPUCommandBuffer *cmd, int fbi, const G3dSnapshot
 {
     SgFb *fb = &s->fb[fbi];
 
+    /* the size whose double-size target could not be made: not asked for
+     * again (the attempt alone can stall for seconds) */
+    static int aa_fail_w, aa_fail_h;
+
     if (snap != NULL && (snap->disp3dcnt & 0x10u) != 0 && (long)w * h <= AA_MAX_PIXELS &&
-        getenv("EIDOS_GL_ES") == NULL) {
+        getenv("EIDOS_GL_ES") == NULL && !(w == aa_fail_w && h == aa_fail_h)) {
         G3dSnapshot sample = *snap;
         SDL_GPUBlitInfo bi;
 
         sample.disp3dcnt &= ~0x10u;
-        if (render_into(s, cmd, &s->fb[2], &sample, w * 2, h * 2) != 0 || fb_resize(s, fb, w, h) != 0) {
-            return -1;
+        if (render_into(s, cmd, &s->fb[2], &sample, w * 2, h * 2) != 0) {
+            /* no double-size target: the frame at its own size, still on
+             * the GPU (the software rasteriser is far slower) */
+            fprintf(stderr, "eidos: 3D anti-aliasing off at %dx%d: the %dx%d target failed (%s)\n", w, h, w * 2, h * 2,
+                    SDL_GetError());
+            aa_fail_w = w;
+            aa_fail_h = h;
+            return render_into(s, cmd, fb, snap, w, h);
+        }
+        if (fb_resize(s, fb, w, h) != 0) {
+            return SG_FAIL();
         }
         memset(&bi, 0, sizeof bi);
         bi.source.texture = s->fb[2].color;
@@ -1729,7 +1765,7 @@ int sg3d_render3d(SdlGpu *s, const G3dSnapshot *snap, int w, int h)
     int rc;
 
     if (cmd == NULL) {
-        return -1;
+        return SG_FAIL();
     }
     rc = sg3d_render(s, cmd, 0, snap, w, h);
     SDL_SubmitGPUCommandBuffer(cmd);
@@ -1793,7 +1829,7 @@ static int start_read(SdlGpu *s, SDL_GPUCommandBuffer *cmd, const SgFb *fb, int 
         ti.size = (Uint32)(w * h * 4);
         s->down = SDL_CreateGPUTransferBuffer(s->dev, &ti);
         if (s->down == NULL) {
-            return -1;
+            return SG_FAIL();
         }
     }
     cp = SDL_BeginGPUCopyPass(cmd);
@@ -1822,7 +1858,7 @@ static int finish_read(SdlGpu *s, unsigned char *out, int w, int h)
     }
     raw = (const unsigned char *)SDL_MapGPUTransferBuffer(s->dev, s->down, false);
     if (raw == NULL) {
-        return -1;
+        return SG_FAIL();
     }
     unpremultiply(raw, out, w, h);
     SDL_UnmapGPUTransferBuffer(s->dev, s->down);
@@ -1838,7 +1874,7 @@ int sg3d_read3d(SdlGpu *s, unsigned char *out, int w, int h)
     int rc;
 
     if (out == NULL || s->fb[0].w != w || s->fb[0].h != h || s->fb[0].color == NULL) {
-        return -1;
+        return SG_FAIL();
     }
     memset(&ti, 0, sizeof ti);
     ti.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
@@ -1849,7 +1885,7 @@ int sg3d_read3d(SdlGpu *s, unsigned char *out, int w, int h)
         if (cmd != NULL) SDL_CancelGPUCommandBuffer(cmd);
         if (s->down != NULL) SDL_ReleaseGPUTransferBuffer(s->dev, s->down);
         s->down = keep;
-        return -1;
+        return SG_FAIL();
     }
     s->down_fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
     rc = finish_read(s, out, w, h);
@@ -1867,7 +1903,7 @@ int sg3d_read3d_1x(SdlGpu *s, const G3dSnapshot *snap, unsigned char *out, int a
     int got = 1;
 
     if (!s->have3d || snap == NULL || out == NULL) {
-        return -1;
+        return SG_FAIL();
     }
     if (s->read_valid && snap->serial == s->read_serial) {
         return 1;
@@ -1881,7 +1917,7 @@ int sg3d_read3d_1x(SdlGpu *s, const G3dSnapshot *snap, unsigned char *out, int a
         start_read(s, cmd, &s->fb[1], 256, 192) != 0) {
         if (cmd != NULL) SDL_SubmitGPUCommandBuffer(cmd);
         s->read_valid = 0;
-        return -1;
+        return SG_FAIL();
     }
     s->down_fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
     if (async) {
@@ -1889,7 +1925,7 @@ int sg3d_read3d_1x(SdlGpu *s, const G3dSnapshot *snap, unsigned char *out, int a
     } else {
         if (finish_read(s, out, 256, 192) != 0) {
             s->read_valid = 0;
-            return -1;
+            return SG_FAIL();
         }
         got = 0;
     }
@@ -1918,7 +1954,7 @@ int sg3d_init(SdlGpu *s)
         }
     }
     if (s->ds_format == SDL_GPU_TEXTUREFORMAT_INVALID) {
-        return -1;
+        return SG_FAIL();
     }
     s->vs_g3d = SG_SHADER(s->dev, SDL_GPU_SHADERSTAGE_VERTEX, g3d_vs, G3D_VS);
     s->fs_g3d = SG_SHADER(s->dev, SDL_GPU_SHADERSTAGE_FRAGMENT, g3d_fs, G3D_FS);
@@ -1929,7 +1965,7 @@ int sg3d_init(SdlGpu *s)
     s->fs_bd = SG_SHADER(s->dev, SDL_GPU_SHADERSTAGE_FRAGMENT, backdrop_fs, BACKDROP_FS);
     s->fs_dclear = SG_SHADER(s->dev, SDL_GPU_SHADERSTAGE_FRAGMENT, depthclear_fs, DEPTHCLEAR_FS);
     if (s->vs_g3d == NULL || s->fs_g3d == NULL) {
-        return -1;
+        return SG_FAIL();
     }
     if (s->vs_edge != NULL && s->fs_edge != NULL) {
         s->p_edge = make_post(s, s->fs_edge);
@@ -1941,7 +1977,7 @@ int sg3d_init(SdlGpu *s)
         s->p_dclear = make_dclear(s);
     }
     if (pipe_get(s, PK_GAME) == NULL) {
-        return -1;
+        return SG_FAIL();
     }
     if (g_dummy == NULL) {
         g_dummy = sg_texture(s, SG_RGBA, 1, 1, 1, 0);

@@ -3,7 +3,7 @@
  * the kit's pieces and lays out the screens (docs/ui-themes.md).
  *
  * A theme is a table with one function per kit piece.  A slot left NULL
- * uses the default (Remaster, ui_def_* in kit.c); a theme that
+ * uses the default (Kosmos, ui_def_* in kit.c); a theme that
  * fills a slot draws that piece its own way everywhere it appears, and
  * may call ui_def_* for the parts it keeps.  The pieces call each other
  * through ui_*, so a theme's panel is also the panel inside its dialogs.
@@ -20,7 +20,7 @@ extern "C" {
 
 /*
  * Battle (engine/ui/recipe_battle.c): where the screen's parts go.  The
- * battle fills it with Remaster's places, then lets the theme move them
+ * battle fills it with Kosmos's places, then lets the theme move them
  * (battle_layout); it draws and tests clicks at these places, so a theme's
  * layout takes the mouse and touch with it.  Canvas pixels.
  */
@@ -43,21 +43,182 @@ typedef struct UiBattleLayout {
 #define UI_BATTLE_COMMANDS 1
 #define UI_BATTLE_MOVES    2
 
+/*
+ * The field's X menu (engine/ui/recipe_field.c): where its buttons and the
+ * party stand.  The menu fills it with Kosmos's places (the party top left,
+ * the buttons a column at the right), then the theme moves them; the keys
+ * and the mouse follow the places.
+ */
+typedef struct UiFieldMenuLayout {
+    int w, h;                   /* the canvas, the hint bar's top           */
+    int n;                      /* the buttons shown                        */
+    int slot[6];                /* each button's slot in the game's own 2 x 3 */
+    EidosUiRect btn[6];
+    int party_x, party_y, party_w;   /* the party: its header, then a row every 32 */
+    int np;
+} UiFieldMenuLayout;
+
+/*
+ * The title's menu (engine/ui/recipe_title.c): CONTINUE's card, the other
+ * entries, the logo.  The theme is asked twice: first (phase 0) how the
+ * menu is built, then (phase 1) with Kosmos's places filled in, to move
+ * them.
+ */
+typedef struct UiTitleMenuLayout {
+    int w, h;                   /* the canvas, the hint bar's top           */
+    int n_rows, has_card;
+    int stacked;                /* phase 0: one column, as the DS's         */
+    int across;                 /* phase 0: the rows side by side (left and
+                                   right move among them, up and down go
+                                   between the card and the rows)           */
+    int logo_w, logo_h;         /* the logo's size when shown               */
+    EidosUiRect logo;           /* w 0: not shown                           */
+    EidosUiRect card;
+    EidosUiRect row[8];
+    const char *label[8];       /* the rows' names (English; ui_tr gives the
+                                   shown one), for a theme that sizes its
+                                   rows by them; NULL: not given            */
+} UiTitleMenuLayout;
+
+/*
+ * The party screen (engine/ui/recipe_party.c).  The screen fills the layout
+ * with Kosmos's places (a window in the middle: six rows in two columns, the
+ * prompt under them, the menu at its lower right), then the theme moves
+ * them; the mouse follows.
+ */
+typedef struct UiPartyLayout {
+    int w, h;                   /* the canvas, the hint bar's top            */
+    int menu_n;                 /* the open menu's entries, 0: none          */
+    int sel;                    /* the chosen slot, -1: none                 */
+    int no_exit;                /* the theme shows no EXIT button            */
+    EidosUiRect frame;          /* the window (a click outside it is B)      */
+    int header;                 /* 1: Kosmos's window and header are drawn   */
+    EidosUiRect slot[6];
+    int column;                 /* 1: the six stand in one column (up and
+                                   down go through them in order)            */
+    EidosUiRect msg;            /* the prompt, a message                     */
+    EidosUiRect menu;           /* the menu's entries, stacked from its foot */
+    int menu_eh;                /* a stacked entry's height (Kosmos: 17)     */
+    int menu_across;            /* 1: side by side in `menu` instead         */
+    int menu_cols;              /* > 0: a grid in `menu`, this many across
+                                   (the chosen plate turned over)            */
+    int menu_apart;             /* 1: the menu does not shorten the prompt   */
+    EidosUiRect detail;         /* w 0: none.  The chosen Pokemon's pane     */
+} UiPartyLayout;
+
+/* One Pokemon of the party for a theme's plate (name NULL: an empty slot). */
+typedef struct UiPartyMon {
+    int slot;
+    const char *name;
+    int gender, level;          /* level 0: an Egg                           */
+    int hp, maxhp;
+    int status;                 /* kit's status badge, -1: none              */
+    int item;                   /* what it holds: 0 nothing, 1 an item, 2 a letter */
+    int sel;                    /* chosen                                    */
+    int moving;                 /* the one being moved (SWITCH)              */
+    int turned;                 /* frames since it turned over for the menu
+                                   (0: its face shows)                       */
+    const char *note;           /* the game's label in place of the HP (ABLE,
+                                   NOT ABLE, an entry's order), or NULL      */
+    u32 note_rgb;
+    const UiImage *icon;
+    const UiImage *front;       /* its picture, or NULL                      */
+    int species, form;          /* for ui_mon_front_draw (its idle loop)     */
+    int type1, type2;
+} UiPartyMon;
+
+/*
+ * The Bag (engine/ui/recipe_bag.c): the pockets, the list's six rows, the
+ * chosen item's pane.  A theme that sets bag_layout places them all (the
+ * screen draws no window or header of its own then).
+ */
+typedef struct UiBagLayout {
+    int w, h;                   /* the canvas, the hint bar's top            */
+    EidosUiRect frame;          /* a click outside it is B                   */
+    EidosUiRect pocket[5];
+    EidosUiRect list;           /* the rows from its top, 2 apart            */
+    int rowh;
+    EidosUiRect detail;         /* the item's picture, name and description  */
+} UiBagLayout;
+
+/* The chosen move, for battle_move_info. */
+typedef struct UiMoveInfo {
+    const char *name;
+    const char *desc;           /* the game's description, on one line     */
+    int type;
+    int category;               /* 0 physical, 1 special, 2 status         */
+    int power, accuracy;        /* 0: none                                 */
+    int pp, maxpp;
+} UiMoveInfo;
+
 typedef struct UiThemeOps {
     const char *id;         /* settings.ini's value, lower case, no spaces */
     const char *name;       /* shown in Settings                            */
     /* The colour map: every colour the kit and the screens draw with
      * (fills, lines, text and its shadow; not images) goes through it, so a
-     * theme recolours every screen by mapping Remaster's colours (kit.h's
+     * theme recolours every screen by mapping Kosmos's colours (kit.h's
      * UI_*) to its own.  NULL: the colours as given. */
     u32 (*color)(u32 rgb);
+    /* Called when a frame's drawing begins (a theme's own per-frame state). */
+    void (*frame_begin)(void);
     /* Text's colour and shadow (shadow < 0: none), given the colour already
      * on the canvas under the text (`behind`, final colours): a light theme
      * keeps white letters on a dark or saturated fill and turns them dark on
      * a light one.  NULL: both through `color`. */
     void (*text)(u32 *rgb, s32 *shadow, u32 behind);
 
-    /* Battle screens (UiBattleLayout above).  NULL: Remaster's. */
+    /* A text box's frame (kind: textbox.h's UI_TEXTBOX_*, plus 16 when it
+     * holds a message and is not a list's or a screen's box) and the colours of
+     * what stands on it: the fill and the edge (a balloon's tail takes
+     * them), the letters and their shadow.  NULL: Kosmos's. */
+    void (*textbox)(EidosUiCtx *c, int kind, int x, int y, int w, int h, u32 *fill, u32 *edge, u32 *ink,
+                    u32 *shadow);
+    /* One answer of a choice list (style: choice_list.h's UI_CHOICE_*), its
+     * box being the text box's of that style.  NULL: Kosmos's. */
+    void (*choice_row)(EidosUiCtx *c, int style, int x, int y, int w, int h, const char *label, int lit);
+    /* A bar's ground across the screen: the field's top bar (where 0, h
+     * rows from y, `hot` under the pointer) or a bottom bar of key hints
+     * (where 1).  NULL: Kosmos's. */
+    void (*strip)(EidosUiCtx *c, int y, int w, int h, int where, int hot);
+    /* The clock's tab in the middle of the top bar (cx its middle). */
+    void (*clock_tab)(EidosUiCtx *c, int cx, int w, int h, int hot);
+    /* The field's X menu: its places, and one button (state 0 plain, 2
+     * chosen; icon may be NULL).  NULL: Kosmos's. */
+    void (*field_menu_layout)(UiFieldMenuLayout *l);
+    /* Drawn under the menu's parts (a band, a strip). */
+    void (*field_menu_backdrop)(EidosUiCtx *c, const UiFieldMenuLayout *l);
+    void (*field_menu_button)(EidosUiCtx *c, int x, int y, int w, int h, const char *label, const UiImage *icon,
+                              int state);
+    /* The title's menu (UiTitleMenuLayout above), what is drawn under it,
+     * and one of its rows.  NULL: Kosmos's. */
+    void (*title_menu_layout)(UiTitleMenuLayout *l, int phase);
+    void (*title_menu_backdrop)(EidosUiCtx *c, const UiTitleMenuLayout *l);
+    void (*title_menu_row)(EidosUiCtx *c, int x, int y, int w, int h, const char *label, int selected, int hover);
+    /* The party screen (UiPartyLayout above): its places; what stands under
+     * them (the title and the count at its right); one plate; the chosen
+     * Pokemon's pane; the prompt; one entry of the menu.  NULL: Kosmos's. */
+    void (*party_layout)(UiPartyLayout *l);
+    void (*party_backdrop)(EidosUiCtx *c, const UiPartyLayout *l, const char *title, const char *sub,
+                           const char *right);
+    void (*party_plate)(EidosUiCtx *c, const EidosUiRect *r, const UiPartyMon *m);
+    void (*party_detail)(EidosUiCtx *c, const EidosUiRect *r, const UiPartyMon *m, u32 frame);
+    void (*party_prompt)(EidosUiCtx *c, const EidosUiRect *r, const char *text);
+    void (*party_menu_entry)(EidosUiCtx *c, int x, int y, int w, int h, const char *label, int sel, int across);
+    /* The Bag (UiBagLayout above): its places; its ground (the pocket's
+     * name); one pocket (count 0: none shown); one row (name NULL: an
+     * empty place); the frame of the item's pane.  NULL: Kosmos's. */
+    void (*bag_layout)(UiBagLayout *l);
+    void (*bag_backdrop)(EidosUiCtx *c, const UiBagLayout *l, const char *pocket);
+    void (*bag_pocket)(EidosUiCtx *c, const EidosUiRect *r, int which, const char *name, int count, int sel,
+                       int hover);
+    void (*bag_row)(EidosUiCtx *c, int x, int y, int w, int h, const UiImage *icon, const char *name, int count,
+                    int sel, int hover);
+    void (*bag_detail_frame)(EidosUiCtx *c, const EidosUiRect *r, int shown);
+    /* A screen's window (app: "summary"): a theme that returns 1 drew its
+     * own ground and set the frame the screen lays itself out in; 0 (or
+     * NULL): Kosmos's window. */
+    int (*app_frame)(EidosUiCtx *c, const char *app, EidosUiRect *frame);
+    /* Battle screens (UiBattleLayout above).  NULL: Kosmos's. */
     void (*battle_layout)(UiBattleLayout *l, int what);
     /* Drawn under the battle's parts (a dock, a band). */
     void (*battle_backdrop)(EidosUiCtx *c, const UiBattleLayout *l, int what);
@@ -69,10 +230,18 @@ typedef struct UiThemeOps {
     /* One move: its type, name and PP. */
     void (*battle_move)(EidosUiCtx *c, int x, int y, int w, int h, int type, const char *name,
                         int pp, int maxpp, int sel, int enabled);
-    /* The chosen move's facts where the theme puts them (category 0
-     * physical, 1 special, 2 status; power 0: none). */
-    void (*battle_move_info)(EidosUiCtx *c, const UiBattleLayout *l, const char *name, int category,
-                             int power, int accuracy);
+    /* The chosen move's facts where the theme puts them. */
+    void (*battle_move_info)(EidosUiCtx *c, const UiBattleLayout *l, const UiMoveInfo *m);
+    /* A side's six party balls (side 0 yours, 1 the foe's; kinds as the
+     * game's: 0 no Pokemon, 1 ready, 2 fainted, 3 a status problem) at the
+     * layout's place for them (x, y; `right`: they end at x), t frames
+     * after they first showed. */
+    void (*battle_balls)(EidosUiCtx *c, int side, int x, int y, int right, const int *kinds, u32 t);
+    /* The plate behind an Ability's words (tw x th pixels) for a side: t
+     * frames after it came, or (leaving) after it went.  Sets where the
+     * words go. */
+    void (*battle_ability)(EidosUiCtx *c, const UiBattleLayout *l, int side, int tw, int th, u32 t,
+                           int leaving, int *tx, int *ty);
     void (*panel)(EidosUiCtx *c, int x, int y, int w, int h, int cut, int corner, u32 fill, u32 edge, int a);
     void (*header)(EidosUiCtx *c, int x, int y, int w, const char *title, const char *sub, const char *right, u32 accent);
     int (*hints)(EidosUiCtx *c, int y, int w, const char *const *pairs, int n, const u32 *keys);

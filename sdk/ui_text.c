@@ -11,6 +11,8 @@
  */
 
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "types.h"
 
@@ -195,6 +197,35 @@ int bw_ui_gauge_status_of(int slot)
 /* ------------------------------------------------------------------ */
 
 extern u32 bw_input_frame_number(void);
+
+/* EIDOS_DEBUG_AUTO_PLAYER=1 (a test switch; 2: without the menus): the
+ * trainer AI chooses for the player's side too (stubs/ov/patch_ov093_btl_client_auto.c asks here). */
+int bw_ui_battle_auto(void)
+{
+    static int on = -1;
+
+    if (on < 0) {
+        const char *v = getenv("EIDOS_DEBUG_AUTO_PLAYER");
+
+        on = v != NULL && v[0] != '\0' && v[0] != '0' ? (v[0] == '2' ? 2 : 1) : 0;
+    }
+    return on;
+}
+
+/* The move the AI chose for the player's side this turn (0: none, or not a
+ * move): the overlay patch sets it, the battle's menus pick it
+ * (engine/ui/recipe_battle.c). */
+static volatile int g_auto_move;
+
+void bw_ui_battle_auto_set(int move)
+{
+    g_auto_move = move;
+}
+
+int bw_ui_battle_auto_move(void)
+{
+    return g_auto_move;
+}
 
 static volatile int g_ballbar_on[2];
 static volatile int g_ballbar_kind[2][6];

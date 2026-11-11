@@ -35,6 +35,7 @@
 
 #include "textbox.h"
 #include "kit.h"
+#include "theme.h"
 
 #define WEAK __attribute__((weak))
 
@@ -192,19 +193,70 @@ static int win_bmp(const u8 *bmpwin, WinBmp *b)
     return bmp_scan(rdp(bmpwin + 0x0C), b);
 }
 
+/* The game's "more" arrow in a window's bitmap (APP_KEYCURSOR_DrawMark): 10
+ * columns from 11 before the right end, the last 9 rows.  It is there when
+ * that place holds a shape whose first row is a run of 6 or more and whose
+ * rows get no wider going down (a triangle), with two empty columns before
+ * it (letters that end a line there have neither). */
+#define KC_W 11
+#define KC_H 9
+
+static int more_arrow(const WinBmp *b)
+{
+    int x0 = b->w - KC_W, y0 = b->h - KC_H, xx, yy, last = 99, seen = 0;
+
+    if (x0 < 4 || y0 < 0) {
+        return 0;
+    }
+    for (yy = y0; yy < b->h; yy++) {
+        int run = 0, best = 0;
+
+        if (bmp_px(b->px, b->w, x0 - 1, yy) != b->ground || bmp_px(b->px, b->w, x0 - 2, yy) != b->ground) {
+            return 0;
+        }
+        for (xx = x0; xx < b->w; xx++) {
+            run = bmp_px(b->px, b->w, xx, yy) != b->ground ? run + 1 : 0;
+            if (run > best) {
+                best = run;
+            }
+        }
+        if (best == 0) {
+            if (seen) {
+                last = 0;
+            }
+            continue;
+        }
+        if (!seen && best < 6) {
+            return 0;
+        }
+        if (best > last) {
+            return 0;
+        }
+        seen = 1;
+        last = best;
+    }
+    return seen;
+}
+
 /* The window's letters at (x, y): the letters in `ink`, the rest (their
- * shadow, the "more" cursor) in `shadow`. */
-static void draw_letters(EidosUiCtx *c, const WinBmp *b, int x, int y, u32 ink, u32 shadow)
+ * shadow, the "more" cursor) in `shadow`.  `arrow_dx`: the "more" arrow,
+ * when it is there, is drawn that far to the right of its own place. */
+static void draw_letters_at(EidosUiCtx *c, const WinBmp *b, int x, int y, u32 ink, u32 shadow, int arrow_dx)
 {
     int xx, yy;
     /* a word in another colour: the interface's accent, light on a dark
      * box, dark on a white one */
     u32 accent = ((ink >> 16) & 255u) > 160u ? 0x7FD0FFu : 0x007A9Cu;
+    int moved = arrow_dx != 0 && more_arrow(b);
 
     for (yy = 0; yy < b->h; yy++) {
         for (xx = 0; xx < b->w; xx++) {
             int v = bmp_px(b->px, b->w, xx, yy);
 
+            if (v != b->ground && moved && xx >= b->w - KC_W && yy >= b->h - KC_H) {
+                ui_fill(c, x + xx + arrow_dx, y + yy, 1, 1, v == b->ink ? ink : shadow, 255);
+                continue;
+            }
             if (v != b->ground) {
                 u32 col = v == b->ink ? ink : (b->letters >> v) & 1u ? accent : shadow;
 
@@ -212,6 +264,11 @@ static void draw_letters(EidosUiCtx *c, const WinBmp *b, int x, int y, u32 ink, 
             }
         }
     }
+}
+
+static void draw_letters(EidosUiCtx *c, const WinBmp *b, int x, int y, u32 ink, u32 shadow)
+{
+    draw_letters_at(c, b, x, y, ink, shadow, 0);
 }
 
 const void *ui_bmpwin_bmp(const void *bmpwin)
@@ -376,6 +433,12 @@ static void strip(EidosUiCtx *c, int x, int y, int h, int cut, u32 col)
 
 void ui_textbox_frame(EidosUiCtx *c, int kind, int x, int y, int w, int h)
 {
+    if (ui_theme_active()->textbox != NULL) {
+        u32 fill, edge, ink, shadow;
+
+        ui_theme_active()->textbox(c, kind, x, y, w, h, &fill, &edge, &ink, &shadow);
+        return;
+    }
     if (kind == UI_TEXTBOX_SYSTEM) {
         ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, TB_SYS, TB_SEDGE, 255);
         strip(c, x, y, h, 7, TB_HL);
@@ -398,7 +461,7 @@ static void textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const voi
                          int tail_x, int tail_y, int tail_side)
 {
     WinBmp b;
-    int h, tx, ty;
+    int h, tx, ty, themed = 0;
     u32 fill, edge, ink, shadow;
 
     if (!win_bmp((const u8 *)bmpwin, &b) || b.ink < 0 || b.top >= b.bottom) {
@@ -410,7 +473,12 @@ static void textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const voi
     } else {
         fill = TB_PAPER; edge = TB_PEDGE; ink = TB_INK; shadow = TB_INKSH;
     }
-    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, fill, edge, 255);
+    if (ui_theme_active()->textbox != NULL) {
+        themed = 1;
+        ui_theme_active()->textbox(c, kind | 16, x, y, w, h, &fill, &edge, &ink, &shadow);
+    } else {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 7, fill, edge, 255);
+    }
     if (kind == UI_TEXTBOX_BALLOON && tail_x >= 0) {
         /* the tail over the box, so it opens the box's edge where it
          * leaves; none when the point it aims at is inside the box */
@@ -421,12 +489,20 @@ static void textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const voi
             tail(c, x, y, w, h, ax, ay, bx, by, (float)tail_x, (float)tail_y, fill, edge);
         }
     }
-    if (kind == UI_TEXTBOX_SYSTEM) {
+    if (kind == UI_TEXTBOX_SYSTEM && !themed) {
         strip(c, x, y, h, 7, TB_HL);
     }
     tx = x + (kind == UI_TEXTBOX_SYSTEM ? 10 : 8);
     ty = y + 5;
-    draw_letters(c, &b, tx, ty, ink, shadow);
+    if (kind == UI_TEXTBOX_BALLOON) {
+        /* the "more" arrow in the box's bottom right corner: in its own
+         * place it stands over the root of the balloon's tail */
+        int want = x + w - 8 - (KC_W - 1), has = tx + b.w - KC_W;
+
+        draw_letters_at(c, &b, tx, ty, ink, shadow, want > has ? want - has : 0);
+    } else {
+        draw_letters(c, &b, tx, ty, ink, shadow);
+    }
 }
 
 void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *bmpwin,

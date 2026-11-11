@@ -611,6 +611,15 @@ int  eidos_platform_fast_forward(const EidosPlatform *p);
  * answers 1 whatever keys are held.  The caller sets it every frame. */
 void eidos_platform_fast_forward_lock(int locked);
 
+/* The interface covers the game while it jumps somewhere (the style
+ * chooser's preview): eidos_platform_fast_forward answers
+ * EIDOS_FAST_FORWARD_MAX meanwhile.  The caller sets it every frame. */
+void eidos_platform_fast_hidden(int hidden);
+/* The one-screen interface is showing a still picture while it waits for the
+ * game (a fade between two screens, an app closing): the game runs at twice
+ * its speed for that frame.  Set every frame; ignored while locked. */
+void eidos_platform_fast_wait(int waiting);
+
 /* Monotonic nanoseconds since the platform was created. */
 u64  eidos_platform_now_ns(const EidosPlatform *p);
 

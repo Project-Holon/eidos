@@ -43,6 +43,14 @@ extern "C" {
 int  ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list, const void *win,
                     float ox, float oy, float s, int style);
 
+/*
+ * The next ui_choice_list call draws its list as a panel with a place of its
+ * own in the interface: its top-left at (x, y), at least minw wide, `title`
+ * on its head (NULL: none), and icon(text) (NULL: none) at each row's left.
+ * For the registered items under the top bar's Item button.
+ */
+void ui_choice_list_place(int x, int y, int minw, const char *title, const UiImage *(*icon)(const char *text));
+
 /* No list is open this frame: a pending walk of the cursor is dropped. */
 void ui_choice_list_idle(void);
 

@@ -55,3 +55,8 @@ void *bw_battle_yesno_keep(int which, const void *record)
     }
     return dst;
 }
+
+int bw_battle_yesno_is_kept(const void *record)
+{
+    return record == (const void *)g_keep[0] || record == (const void *)g_keep[1];
+}

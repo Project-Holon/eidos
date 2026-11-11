@@ -5,18 +5,40 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.5
 
+### One-Screen Mode & UI
+- **Interface Styles**: Added selectable UI themes for one-screen menus and battles under `Settings > Layout > Interface style` (`STYLE` in the in-game Options menu): **Kosmos** (the previous default), **Plasma** (a modern take on Black and White), and **Harmonia** (closest to the original DS interface), each with dedicated screen layouts.
+- **Style Chooser & Live Preview**: Prompt to select a UI style on first launch (reopenable anytime from the title menu with `SELECT`). Includes an interactive preview mode that lets you test the X menu, party, Bag, and battles across styles using a built-in in-memory save without touching your actual save file.
+- **Held Item Indicators**: Pokémon holding an item or Mail now display the native held-item or envelope icon in the party screen and battle Pokémon list.
+- **Animated Pokémon Sprites**: Fixed multi-part animated Pokémon sprites in the Pokédex and other screens so the full rig animation plays properly instead of looping only the first segment or drifting apart.
+
+### Engine & Performance
+- **Frame Time Reduction**: Reduced CPU frame times by roughly 50% across all renderers while keeping video and audio output bit-for-bit identical (38–66% faster in the overworld and battles on Windows across OpenGL, Direct3D 12, and Vulkan; ~50% faster in Switch emulation).
+- **Memory Operations**: Replaced the game's byte-by-byte memory copy and comparison routines with optimized native implementations.
+- **3D Rendering Pipeline**: Execute 3D geometry commands directly, avoid full general-purpose polygon sorting each frame, and skip redundant OpenGL state changes.
+- **UI Alpha Blending**: Optimized translucent panel and fill rendering to blend whole scanlines without per-pixel division.
+- **File Lookup Caching**: Cache virtual filesystem path resolution (base data vs. mod overrides) with a 1-second TTL so newly added mod files are still picked up at runtime without per-frame stat overhead.
+- **Audio Mixer**: Skip silent audio channels during mixing.
+
 ### Fixes
-- **Billboard Scenery**: In the one-screen layout, scenery that always faces the camera (the rocks of Pinwheel Forest and others) stays where it is in the world; before, it slid toward the middle of the screen as the camera moved and popped in and out (#26).
-- **Controller Remapping**: A layout bound by hand stays as bound. Setting the DS's own layout (A right, B bottom, X top, Y left) on a pad that confirms with its bottom button turned the automatic A/B swap back on with the last button bound, undoing A and B; the swap now stays off once the pad is bound, until the bindings are reset (#28).
-- **Flash Log**: When a single frame of the screen differs from the frames around it (the glitch in #5), eidos writes what the screen was made of to `eidos_flash.log` in the saves folder, with pictures of the three frames, so a report can carry the cause.
-- **Battle HP Bars**: In the one-screen layout, a Pokémon's HP bar stays on screen while it is in battle and its HP drains as the game animates it; before, the bar disappeared whenever the game hid its own gauge (during some moves' animations and after a Pokémon was sent in), so a hit and "It's super effective!" could show no HP bar at all.
-- **Whiteout Message**: In the one-screen layout, the message after losing a battle ("... scurried to a Pokémon Center ...") shows as one screen at the window's height, centred; before, it showed the two DS screens side by side.
-- **Launcher Theme**: `Settings > Appearance > Theme` keeps the chosen theme whichever game is selected; before, selecting a profile switched the launcher back to its game's theme. `Follow the game` (the default) keeps the old behaviour (#29).
-- **Double Presses on Steam Deck**: Each press counts once. Outside Steam's Game Mode, Steam also sends the Deck's controls as keyboard keys, so menus moved two steps at a time; now the keyboard waits while a controller is in use (#30, #32).
-- **Name Entry**: The D-pad reaches DELETE, SPACE and OK below the keys, and the cursor shows on OK after START, as on the DS; before, only the letters could be reached without a mouse (#30).
-- **Multiplayer Name**: OK on an empty name closes the keyboard, so the Multiplayer screen can be left without typing a name (#30).
-- **Bag Pockets**: Left and right change the pocket, as on the DS, as well as L and R (#32).
-- **Launcher Controls**: The launcher works with a game controller and the keyboard: the D-pad or the arrows move between controls, A or Enter presses, B or Escape goes back, LB and RB change the page (#31).
+- **Elevators**: Fixed elevator floor menus only listing "Cancel" (#33).
+- **Bag Crash**: Fixed a crash when using a second Potion from the overworld Bag (#33).
+- **Town Map**: Removed the Fly prompt when opening the Town Map as a key item (#33).
+- **Dowsing Machine**: Fixed the Dowsing Machine falling back to dual-screen mode in tall aspect ratios (#33).
+- **Whiteout Softlock**: Allowed mouse clicks and touch taps (in addition to the `A` button) to advance the post-whiteout message.
+- **Nickname Prompt**: Delayed the `YES` / `NO` nickname buttons until the nickname prompt appears, rather than showing them during Pokédex registration.
+- **Continue Screen**: Validate files in the `saves` directory before listing them so non-save files no longer appear as save slots.
+- **Pokédex Numbering**: Display each Pokémon's actual Pokédex number (starting with Victini at `000`) instead of its 1-based list index.
+- **Billboard Scenery**: Fixed camera-facing billboard objects (such as rocks in Pinwheel Forest) sliding toward the center of the screen and popping in/out during camera movement in one-screen mode (#26).
+- **Controller Remapping**: Fixed custom face-button bindings being overwritten by automatic `A`/`B` swapping when mapping the classic DS layout (#28).
+- **Single-Frame Flash Diagnostics**: When a single-frame visual glitch occurs (#5), automatically log scene composition details and save screenshots of the surrounding frames to `eidos_flash.log` in the `saves` folder.
+- **Battle HP Bars**: Keep one-screen HP plates visible throughout battle and animate HP drain smoothly, instead of hiding the plate whenever the underlying DS gauge hides during move animations or switch-ins.
+- **Whiteout Screen**: Render the post-battle whiteout sequence centered in one-screen mode instead of showing both DS screens side by side.
+- **Launcher Theme**: Preserve the selected theme under `Settings > Appearance > Theme` when switching game profiles, while retaining `Follow the game` as the default (#29).
+- **Steam Deck Double Input**: Suppress duplicate keyboard events while a controller is active so Steam Desktop Mode does not advance menus two steps at a time (#30, #32).
+- **Name Entry Navigation**: Enabled D-Pad navigation to the bottom `DELETE`, `SPACE`, and `OK` buttons on the naming screen, and move the cursor to `OK` when pressing `START` (#30).
+- **Multiplayer Name Prompt**: Allow confirming an empty name with `OK` to exit the Multiplayer name prompt (#30).
+- **Bag Pocket Navigation**: Restored `Left` / `Right` D-Pad navigation for switching Bag pockets alongside `L` / `R` (#32).
+- **Launcher Controller & Keyboard Support**: Added full gamepad and keyboard navigation to the launcher (`D-Pad`/Arrow keys to navigate, `A`/`Enter` to confirm, `B`/`Escape` to go back, `LB`/`RB` to switch tabs) (#31).
 
 ## 0.2.4
 

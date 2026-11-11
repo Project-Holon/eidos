@@ -385,9 +385,12 @@ static void overlay_log(const char *what, u32 id)
     }
 }
 
+extern unsigned long long bw_clock_ns(void);
+
 BOOL FS_LoadOverlay(u32 target, u32 id)
 {
     BwOverlayInfo info;
+    unsigned long long t0 = bw_clock_ns();
 
     overlay_log("load", id);
     if (!FS_LoadOverlayInfo(&info, target, id)) {
@@ -397,6 +400,9 @@ BOOL FS_LoadOverlay(u32 target, u32 id)
         return FALSE;
     }
     FS_StartOverlay(&info);
+    if (getenv("EIDOS_OVERLAY_LOG") != NULL) {
+        fprintf(stderr, "eidos: overlay %u loaded in %.1f ms\n", (unsigned)id, (double)(bw_clock_ns() - t0) / 1e6);
+    }
     return TRUE;
 }
 

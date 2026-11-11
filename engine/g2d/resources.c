@@ -572,6 +572,7 @@ u32 g2d_nanr_frame_at_time(const G2dNanr *nanr, u32 seq, u32 t)
     u32 loop_time = 0;
     u32 et;
     u32 acc;
+    u32 last;
 
     if (seq >= nanr->num_sequences) {
         return 0;
@@ -593,8 +594,12 @@ u32 g2d_nanr_frame_at_time(const G2dNanr *nanr, u32 seq, u32 t)
         if (nanr_frame_entry(nanr, seq, i, &fofs, &duration) != 0) {
             duration = 1;
         }
-        /* A zero-duration frame must not stall the timeline. */
-        total += duration ? duration : 1u;
+        /* A zero-duration frame takes no time and is never the frame shown
+         * (NNS_G2dTickAnimCtrl steps over it in the same tick).  The rigs
+         * end many sequences with one: counted as a tick it showed its cell
+         * (cell 0, another body part) for one tick a loop and made that
+         * sequence one tick longer than its sisters. */
+        total += duration;
     }
     if (total == 0) {
         return 0;
@@ -606,18 +611,30 @@ u32 g2d_nanr_frame_at_time(const G2dNanr *nanr, u32 seq, u32 t)
         et = (loop_len == 0) ? loop_time : loop_time + (et - total) % loop_len;
     }
     acc = 0;
+    last = 0;
     for (i = 0; i < s->num_frames; i++) {
         u32 fofs, duration;
 
         if (nanr_frame_entry(nanr, seq, i, &fofs, &duration) != 0) {
             duration = 1;
         }
-        acc += duration ? duration : 1u;
+        if (duration == 0) {
+            continue;
+        }
+        last = i;
+        acc += duration;
         if (et < acc) {
             return i;
         }
     }
-    return (u32)(s->num_frames - 1);
+    return last;
+}
+
+u32 g2d_nanr_frame_duration(const G2dNanr *nanr, u32 seq, u32 frame)
+{
+    u32 fofs, duration;
+
+    return nanr_frame_entry(nanr, seq, frame, &fofs, &duration) == 0 ? duration : 0u;
 }
 
 /* ------------------------------------------------------------------ */

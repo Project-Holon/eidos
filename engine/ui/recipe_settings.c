@@ -172,7 +172,9 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     if (mh > 270) mh = 270;
     mx = (cw - mw) / 2;
     my = (ch - ui_bar_h(c) - mh) / 2;
-    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    if (!ui_app_window(c, "settings", &mx, &my, &mw, &mh)) {
+        ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    }
     ui_header(c, mx + 4, my + 4, mw - 8, "SETTINGS", head[0] != '\0' ? head : NULL, NULL, UI_CYAN);
     top = my + 30;
 

@@ -583,6 +583,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/link.c             # Link sessions: the radio over the relay
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tls_roots.c        # the roots a TLS relay is checked against
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_slots.c       # several single-player saves
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/preview_save.c     # the style chooser's preview save, packed (tools/preview_save.py)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_frame.c        # the mod layer's frame tick
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_avatar.c       # the field avatars
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_restart.c      # the run restart
@@ -610,6 +611,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/game_globals.c  # the ARM9 globals the matched code names
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/aliases.c       # sub_/func_ spelling forwarders
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/dsmem.c         # the DS address space: registry, regions, I/O, VRAM
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mem_fast.c      # the program's memcpy and memcmp (the game's own are byte loops)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/host_vm.c       # reserve/commit for main RAM (the one OS-specific file)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/os_tick.c       # OS_GetTick onto the frame loop, OS_InitTick
     # The OS layer the boot runs on (docs/boot.md, "Threads, interrupts and
@@ -904,6 +906,19 @@ if((NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
    AND CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
     set_property(SOURCE ${BW_ENGINE_SOURCES} APPEND PROPERTY
         COMPILE_OPTIONS -O2 -fno-omit-frame-pointer)
+    # the program's memcpy and memcmp: the engine's copies run through them
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mem_fast.c APPEND PROPERTY
+        COMPILE_OPTIONS -O2 -fno-omit-frame-pointer)
+endif()
+# sdk/mem_fast.c defines memcpy and memcmp themselves: no builtin may turn
+# its loops, or its memmove call, into a call to the function it is in.
+if(NOT MSVC)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mem_fast.c APPEND PROPERTY
+        COMPILE_OPTIONS -fno-builtin)
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mem_fast.c APPEND PROPERTY
+            COMPILE_OPTIONS -fno-tree-loop-distribute-patterns)
+    endif()
 endif()
 # The source list the overlay table reads: every source of the library, as
 # the generator expression sees it once all target_sources calls are in.
@@ -1162,7 +1177,10 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
@@ -2694,7 +2712,10 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
@@ -3129,6 +3150,10 @@ if(EIDOS_BOOT)
     set_source_files_properties(${EIDOS_BOOT_MATCHED_WRAPPERS} PROPERTIES
         COMPILE_DEFINITIONS
         "atof=MSL_atof;atoi=MSL_atoi;atoll=MSL_atoll;copysign=MSL_copysign;cos=MSL_cos;fabs=MSL_fabs;fclose=MSL_fclose;floor=MSL_floor;fread=MSL_fread;frexp=MSL_frexp;fseek=MSL_fseek;ftell=MSL_ftell;fwide=MSL_fwide;ldexp=MSL_ldexp;memchr=MSL_memchr;memmove=MSL_memmove;nan=MSL_nan;pow=MSL_pow;qsort=MSL_qsort;rand=MSL_rand;rewind=MSL_rewind;scalbn=MSL_scalbn;sin=MSL_sin;sprintf=MSL_sprintf;srand=MSL_srand;strcat=MSL_strcat;strchr=MSL_strchr;strcmp=MSL_strcmp;strcpy=MSL_strcpy;strcspn=MSL_strcspn;strlen=MSL_strlen;strncmp=MSL_strncmp;strncpy=MSL_strncpy;strstr=MSL_strstr;strtod=MSL_strtod;strtol=MSL_strtol;strtoll=MSL_strtoll;strtoul=MSL_strtoul;vsnprintf=MSL_vsnprintf;wcscpy=MSL_wcscpy;wcslen=MSL_wcslen")
+    # memcpy and memcmp are not in the list: the game's own (loops over
+    # single bytes) are not compiled at all.  sdk/mem_fast.c defines the two
+    # for the whole program with the game's exact results, and
+    # tools/bootlink.py cuts a game function the port defines.
 endif()
 
 if(NOT _eidos_ovls STREQUAL "")
@@ -3254,7 +3279,10 @@ add_executable(test_ui_kit ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
@@ -3275,7 +3303,10 @@ add_executable(test_ui_input ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
@@ -3297,7 +3328,10 @@ add_executable(test_ui_pc ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_pc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c

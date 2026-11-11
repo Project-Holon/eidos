@@ -243,9 +243,28 @@ static int unit_cmp(const void *a, const void *b)
     return 0;
 }
 
+static int compose_nodes(const G2dNcgr *ncgr, const G2dNcer *ncer,
+                         const G2dNanr *nanr, const G2dMcGroup *group,
+                         const G2dNodeFrame *given, u32 t, u32 n_pal_colors, G2dPose *out);
+
 int g2d_compose_pose(const G2dNcgr *ncgr, const G2dNcer *ncer,
                      const G2dNanr *nanr, const G2dMcGroup *group,
                      u32 t, u32 n_pal_colors, G2dPose *out)
+{
+    return compose_nodes(ncgr, ncer, nanr, group, NULL, t, n_pal_colors, out);
+}
+
+int g2d_compose_pose_frames(const G2dNcgr *ncgr, const G2dNcer *ncer,
+                            const G2dNanr *nanr, const G2dMcGroup *group,
+                            const G2dNodeFrame *frames, u32 n_pal_colors, G2dPose *out)
+{
+    return compose_nodes(ncgr, ncer, nanr, group, frames, 0, n_pal_colors, out);
+}
+
+/* `given` NULL: every node on its own sequence's frame at time `t`. */
+static int compose_nodes(const G2dNcgr *ncgr, const G2dNcer *ncer,
+                         const G2dNanr *nanr, const G2dMcGroup *group,
+                         const G2dNodeFrame *given, u32 t, u32 n_pal_colors, G2dPose *out)
 {
     PaintUnit *units;
     u32 count = 0;
@@ -278,14 +297,15 @@ int g2d_compose_pose(const G2dNcgr *ncgr, const G2dNcer *ncer,
         const G2dMcNode *node = &group->nodes[i];
         G2dFrame frame;
         const G2dCell *cell;
-        u32 frame_idx;
+        u32 frame_idx, seq;
         u32 j;
 
         if (nanr == NULL) {
             continue;
         }
-        frame_idx = g2d_nanr_frame_at_time(nanr, node->anim_seq_idx, t);
-        if (g2d_nanr_frame_data(nanr, node->anim_seq_idx, frame_idx, &frame) != 0) {
+        seq = given != NULL ? given[i].seq : node->anim_seq_idx;
+        frame_idx = given != NULL ? given[i].frame : g2d_nanr_frame_at_time(nanr, seq, t);
+        if (g2d_nanr_frame_data(nanr, seq, frame_idx, &frame) != 0) {
             continue;   /* a node whose sequence has no such frame is skipped */
         }
         if (frame.cell_idx >= ncer->num_cells) {

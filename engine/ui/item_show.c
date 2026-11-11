@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "theme.h"
 #include "item_show.h"
 #include "port.h"
 
@@ -194,16 +195,63 @@ static void icon_blit(EidosUiCtx *c, const UiImage *im, float cx, float cy, floa
     }
 }
 
+/* The card's body and its well, a theme's when it has them.  g_card_mode:
+ * 0 the interface's own, 1 a theme's light body (ink), 2 a theme's dark one. */
+static int g_card_mode;
+
+static void card_body(EidosUiCtx *c, int x, int y, int w, int a)
+{
+    int fx = x, fy = y, fw = w, fh = ITEM_CARD_H;
+
+    if (ui_app_window(c, "item-card", &fx, &fy, &fw, &fh)) {
+        g_card_mode = fh == 1 ? 1 : 2;
+        return;
+    }
+    g_card_mode = 0;
+    ui_panel(c, x, y, w, ITEM_CARD_H, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, EDGE, a);
+}
+
+static void card_well(EidosUiCtx *c, int x, int y, int size, int a)
+{
+    int fx = x, fy = y, fw = size, fh = size;
+
+    if (!ui_app_window(c, "item-well", &fx, &fy, &fw, &fh)) {
+        ui_panel(c, x, y, size, size, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, HL, a);
+    }
+}
+
+static void card_name(EidosUiCtx *c, int x, int y, const char *name)
+{
+    if (g_card_mode == 1) {
+        ui_text(c, x, y, name, UI_RAW(0x202020u), (s32)UI_RAW(0xC4C4C4u), UI_FONT_LARGE, 1);
+    } else if (g_card_mode == 2) {
+        ui_text(c, x, y, name, UI_RAW(0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu), UI_FONT_LARGE, 1);
+    } else {
+        ui_text(c, x, y, name, UI_WHITE, EDGE, UI_FONT_LARGE, 1);
+    }
+}
+
+static void card_pocket(EidosUiCtx *c, int x, int y, const char *pocket)
+{
+    if (g_card_mode == 1) {
+        ui_text(c, x, y, pocket, UI_RAW(0x008C84u), -1, UI_FONT_SMALL, 1);
+    } else if (g_card_mode == 2) {
+        ui_text(c, x, y, pocket, UI_RAW(0xFFAC00u), (s32)UI_RAW(0x0C0C0Cu), UI_FONT_SMALL, 1);
+    } else {
+        ui_text(c, x, y, pocket, HL, 0x313131u, UI_FONT_SMALL, 1);
+    }
+}
+
 void item_card_draw(EidosUiCtx *c, int x, int y, int w, const UiImage *icon, const char *name,
                     const char *pocket)
 {
-    ui_panel(c, x, y, w, ITEM_CARD_H, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, EDGE, 240);
-    ui_panel(c, x + 4, y + 3, 28, 28, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, HL, 255);
+    card_body(c, x, y, w, 240);
+    card_well(c, x + 4, y + 3, 28, 255);
     if (icon != NULL) {
         ui_image(c, x + 6, y + 5, icon, 1);
     }
-    ui_text(c, x + 38, y + 2, name, UI_WHITE, EDGE, UI_FONT_LARGE, 1);
-    ui_text(c, x + 38, y + 20, pocket, HL, 0x313131u, UI_FONT_SMALL, 1);
+    card_name(c, x + 38, y + 2, name);
+    card_pocket(c, x + 38, y + 20, pocket);
 }
 
 int item_card_width(const char *name, const char *pocket)
@@ -226,12 +274,12 @@ static void card_words(EidosUiCtx *c, int x, int y, int w, const char *name, con
 
     if (name_t > 0.f) {
         ui_clip(c, x + 34, y, (int)((float)(w - 34) * tn) + 1, ITEM_CARD_H);
-        ui_text(c, x + 38 - (int)(8.f * (1.f - tn)), y + 2, name, UI_WHITE, EDGE, UI_FONT_LARGE, 1);
+        card_name(c, x + 38 - (int)(8.f * (1.f - tn)), y + 2, name);
         c->clip = saved;
     }
     if (pocket_t > 0.f) {
         ui_clip(c, x + 34, y, (int)((float)(w - 34) * tp) + 1, ITEM_CARD_H);
-        ui_text(c, x + 38 - (int)(8.f * (1.f - tp)), y + 20, pocket, HL, 0x313131u, UI_FONT_SMALL, 1);
+        card_pocket(c, x + 38 - (int)(8.f * (1.f - tp)), y + 20, pocket);
         c->clip = saved;
     }
 }
@@ -296,8 +344,7 @@ void item_show_draw(EidosUiCtx *c, float f, float live, int cx, int cy, int card
             pw = 30;
         }
         ui_clip(c, card_x, card_y, pw, ITEM_CARD_H);
-        ui_panel(c, card_x, card_y, card_w, ITEM_CARD_H, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, EDGE,
-                 (int)(240.f * pa));
+        card_body(c, card_x, card_y, card_w, (int)(240.f * pa));
         c->clip = saved;
         if (p_t < 1.f) {
             ui_fill(c, card_x + pw - 1, card_y + 3, 1, ITEM_CARD_H - 6, CYAN, (int)(255.f * (1.f - p_t)));
@@ -311,8 +358,8 @@ void item_show_draw(EidosUiCtx *c, float f, float live, int cx, int cy, int card
     if (wb > 0.f) {
         int size = (int)(28.f + 10.f * (1.f - wb) + .5f);
 
-        ui_panel(c, (int)(ox - (float)size / 2.f + .5f), (int)(oy - (float)size / 2.f + .5f), size, size,
-                 UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, HL, (int)(255.f * wb));
+        card_well(c, (int)(ox - (float)size / 2.f + .5f), (int)(oy - (float)size / 2.f + .5f), size,
+                  (int)(255.f * wb));
     }
 
     /* the item: grows out of the light with one gentle overshoot that ends

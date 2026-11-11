@@ -25,6 +25,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "theme.h"
 #include "ui_lang.h"
 #include "input.h"
 #include "overlay.h"
@@ -586,8 +587,10 @@ static void hints_bar(EidosUiCtx *c, int y, int w, const Hint *h, int n)
 {
     int i, x = 6;
 
-    ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
-    ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
+    if (!ui_hint_ground(c, 0, y, w, 17)) {
+        ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
+        ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
+    }
     for (i = 0; i < n; i++) {
         int kw = ui_keycap_w(h[i].key);
         int aw = ui_text_w(h[i].what, UI_FONT_SMALL);
@@ -660,6 +663,10 @@ static void item_row(EidosUiCtx *c, int x, int y, int w, int h, const UiImage *i
     int ty = ui_text_y(h, UI_FONT_LARGE), tx = 6;
     u32 fill = selected ? UI_PINK2 : (hover ? 0x5A1530u : ROW_FILL);
 
+    if (ui_theme_active()->bag_row != NULL) {
+        ui_theme_active()->bag_row(c, x, y, w, h, icon, name, count, selected, hover);
+        return;
+    }
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 4, fill, selected ? UI_WHITE : UI_RED, 255);
     if (icon != NULL) {
         ui_image(c, x + 4, y + (h - icon->h) / 2, icon, 1);
@@ -782,10 +789,15 @@ static void menu_buttons(EidosUiCtx *c, const BagView *v, const char *const *lab
         int st = eidos_ui_hit(rect(x, ry, bw, bh));
         int lit = hover >= 0 ? hover == i : (keys && cursor == i);
 
-        ui_panel(c, x, ry, bw, bh, UI_CUT_TL | UI_CUT_BR, 4, lit ? UI_PINK2 : ROW_FILL,
-                 lit ? UI_WHITE : UI_RED, 255);
-        ui_text(c, x + (bw - ui_text_w(labels[i], UI_FONT_LARGE)) / 2,
-                ry + ui_text_y(bh, UI_FONT_LARGE), labels[i], UI_WHITE, UI_RED2, UI_FONT_LARGE, 1);
+        if (ui_theme_active()->party_menu_entry != NULL) {
+            /* the theme's menu button, as the party's */
+            ui_theme_active()->party_menu_entry(c, x, ry, bw, bh, labels[i], lit, 0);
+        } else {
+            ui_panel(c, x, ry, bw, bh, UI_CUT_TL | UI_CUT_BR, 4, lit ? UI_PINK2 : ROW_FILL,
+                     lit ? UI_WHITE : UI_RED, 255);
+            ui_text(c, x + (bw - ui_text_w(labels[i], UI_FONT_LARGE)) / 2,
+                    ry + ui_text_y(bh, UI_FONT_LARGE), labels[i], UI_WHITE, UI_RED2, UI_FONT_LARGE, 1);
+        }
         if ((st & EIDOS_UI_CLICK) && menu != NULL) {
             menu_tap(menu, i, n);
         }
@@ -812,11 +824,53 @@ static void draw_popup(EidosUiCtx *c, const BagView *v, int lx, int ly, int lw, 
         labels[i] = bag_msg(v->work, k_action_msg[id < 0 || id > 10 ? 10 : id]);
         bw = imax(bw, ui_text_w(labels[i], UI_FONT_LARGE) + 24);
     }
+    {
+        /* a theme whose picked row turns over for the choices: they stand
+         * side by side inside it, and the arrows move across them */
+        int fx = lx, fy = ly + iclamp(v->cursor_row, 0, ROWS - 1) * (rowh + 2), fw = lw - (v->count > ROWS ? 8 : 0), fh = rowh;
+
+        if (ui_theme_active()->party_menu_entry != NULL && ui_app_window(c, "bag-menu-row", &fx, &fy, &fw, &fh)) {
+            int cw = (fw - 16 - (n - 1) * 3) / n, cur = (int)(rd32(menu, TM_CURSOR) & 0xFFu), hover = -1;
+            int keys = UI_GetInputMode != NULL && UI_GetInputMode() == 0;
+            u32 k = eidos_ui_keys_pressed();
+
+            cw = cw > 96 ? 96 : cw;
+            eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_UP | BW_KEY_DOWN);
+            if ((k & (BW_KEY_LEFT | BW_KEY_UP)) && cur > 0) {
+                *((u8 *)menu + TM_CURSOR) = (u8)(--cur);
+                eidos_ui_sound(0x548);
+            } else if ((k & (BW_KEY_RIGHT | BW_KEY_DOWN)) && cur < n - 1) {
+                *((u8 *)menu + TM_CURSOR) = (u8)(++cur);
+                eidos_ui_sound(0x548);
+            }
+            for (i = 0; i < n; i++) {
+                /* from the row's right end, the first choice at the left */
+                EidosUiRect r = rect(fx + fw - 8 - (n - i) * (cw + 3) + 3, fy + 3, cw, fh - 6);
+                int st = eidos_ui_hit(r);
+
+                if (st & EIDOS_UI_HOVER) {
+                    hover = i;
+                    if (i != cur) {
+                        *((u8 *)menu + TM_CURSOR) = (u8)i;
+                    }
+                }
+                ui_theme_active()->party_menu_entry(c, r.x, r.y, r.w, r.h, labels[i], hover == i || (hover < 0 && keys && cur == i), 1);
+                if (st & EIDOS_UI_CLICK) {
+                    menu_tap(menu, i, n);
+                }
+            }
+            return;
+        }
+    }
     total = n * bh + (n - 1) * gap + 12;
     x = lx + lw - bw - 6;
     y = ly + iclamp(v->cursor_row, 0, ROWS - 1) * (rowh + 2);
     y = iclamp(y + 6, ly + 6, ly + lh - total + 6);
-    ui_panel(c, x - 6, y - 6, bw + 12, total, UI_CUT_TL | UI_CUT_BR, 6, MODAL_FILL2, UI_PINK, 250);
+    if (ui_theme_active()->party_menu_entry == NULL) {
+        ui_panel(c, x - 6, y - 6, bw + 12, total, UI_CUT_TL | UI_CUT_BR, 6, MODAL_FILL2, UI_PINK, 250);
+    } else {
+        ui_fill(c, x - 4, y - 3, bw + 8, total - 6, 0x01000000u, 110);     /* a shade under the buttons */
+    }
     menu_buttons(c, v, labels, n, x, y, bw, bh, gap);
 }
 
@@ -981,6 +1035,9 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int browse_input;
     char title[48];
     u32 now = in->frame;
+    UiBagLayout bl;
+    const UiThemeOps *theme = ui_theme_active();
+    int themed = theme->bag_layout != NULL, list_y;
 
     view->mode = EIDOS_VIEW_WORLD;
     view->zoom = 1.0f;
@@ -1004,6 +1061,20 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     mh = imin(mh, hints_y - 4);
     mx = (cw - mw) / 2;
     my = (hints_y - mh) / 2;
+    memset(&bl, 0, sizeof bl);
+    if (themed) {
+        bl.w = cw;
+        bl.h = hints_y;
+        bl.frame.x = mx;
+        bl.frame.y = my;
+        bl.frame.w = mw;
+        bl.frame.h = mh;
+        theme->bag_layout(&bl);
+        mx = bl.frame.x;
+        my = bl.frame.y;
+        mw = bl.frame.w;
+        mh = bl.frame.h;
+    }
 
     /* outside the modal: a click is B (not while a sub-screen is up, where
      * the pane holds the game's own screen) */
@@ -1034,10 +1105,15 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         press_key(BW_KEY_B);
     }
 
-    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, MODAL_FILL, UI_RED, 245);
     snprintf(title, sizeof title, "%s", pocket_name(&v, v.pocket));
-    {
+    if (themed) {
+        if (theme->bag_backdrop != NULL) {
+            theme->bag_backdrop(c, &bl, title);
+        }
+    } else {
         int tx;
+
+        ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, MODAL_FILL, UI_RED, 245);
 
         ui_fill(c, mx + 6, my + 6, mw - 12, hdr - 3, UI_BODY2, 255);
         ui_fill(c, mx + 6, my + 6 + hdr - 3, mw - 12, 1, UI_PINK, 255);
@@ -1090,6 +1166,15 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     list_x = tabs_x + tabs_w + 6;
     list_w = det_x - 6 - list_x;
     rowh = iclamp((body_h - (ROWS - 1) * 2) / ROWS, 24, 30);
+    if (themed) {
+        list_x = bl.list.x;
+        list_w = bl.list.w;
+        body_y = bl.list.y;
+        rowh = bl.rowh;
+        det_x = bl.detail.x;
+        det_w = bl.detail.w;
+    }
+    list_y = body_y;
 
     /* ---- the pockets ------------------------------------------------ */
     {
@@ -1097,10 +1182,20 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
         for (i = 0; i < POCKETS; i++) {
             int ty = body_y + i * (th + 4);
-            int st = eidos_ui_hit(rect(tabs_x, ty, tabs_w, th));
+            int st = eidos_ui_hit(themed ? bl.pocket[i] : rect(tabs_x, ty, tabs_w, th));
             int sel = i == v.pocket;
             int n = (int)MYITEM_SAVEDATA_CountUsedSlotsInPocket(rdp(work, W_BAG), (u32)i);
             const char *nm = pocket_name(&v, i);
+
+            if (themed) {
+                if (theme->bag_pocket != NULL) {
+                    theme->bag_pocket(c, &bl.pocket[i], i, nm, n, sel, (st & EIDOS_UI_HOVER) != 0);
+                }
+                if ((st & EIDOS_UI_CLICK) && browse_input && !sel) {
+                    tap_ds(k_tab_tap[i][0], k_tab_tap[i][1]);
+                }
+                continue;
+            }
 
             ui_panel(c, tabs_x, ty, tabs_w, th, UI_CUT_TL | UI_CUT_BR, 4,
                      sel ? UI_PINK : ((st & EIDOS_UI_HOVER) ? 0x5A1530u : ROW_FILL),
@@ -1137,7 +1232,11 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 if (v.count == 0) {
                     continue;       /* the empty state is drawn below */
                 }
-                ui_panel(c, list_x, ry, rw, rowh, UI_CUT_TL | UI_CUT_BR, 4, ROW_EMPTY, 0x4A0F22u, 255);
+                if (theme->bag_row != NULL) {
+                    theme->bag_row(c, list_x, ry, rw, rowh, NULL, NULL, 0, 0, 0);
+                } else {
+                    ui_panel(c, list_x, ry, rw, rowh, UI_CUT_TL | UI_CUT_BR, 4, ROW_EMPTY, 0x4A0F22u, 255);
+                }
                 continue;
             } else {
                 u32 id = slot[0];
@@ -1224,7 +1323,15 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         const UiImage *big;
 
         dh = imax(dh, body_h);
-        ui_panel(c, det_x, body_y, det_w, body_h, UI_CUT_TR | UI_CUT_BL, 8, MODAL_FILL2, UI_RED, 255);
+        if (themed) {
+            body_y = bl.detail.y;
+            body_h = bl.detail.h;
+            if (theme->bag_detail_frame != NULL) {
+                theme->bag_detail_frame(c, &bl.detail, shown != 0);
+            }
+        } else {
+            ui_panel(c, det_x, body_y, det_w, body_h, UI_CUT_TR | UI_CUT_BL, 8, MODAL_FILL2, UI_RED, 255);
+        }
         (void)hover_row;
         if (shown != 0) {
             const char *nm = row_name(work, (u32)shown);
@@ -1233,7 +1340,9 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             big = ui_item_icon((u16)shown);
             ix = det_x + det_w / 2;
             iy = body_y + 8;
-            ui_ellipse(c, ix - 28, iy + 40, 56, 14, 0x4A0F22u, UI_NONE, 255);
+            if (!themed) {
+                ui_ellipse(c, ix - 28, iy + 40, 56, 14, 0x4A0F22u, UI_NONE, 255);
+            }
             if (big != NULL) {
                 ui_image(c, ix - big->w, iy, big, 2);
             }
@@ -1261,7 +1370,7 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     /* ---- the action list or the game's own screen ------------------- */
     if (v.popup) {
-        draw_popup(c, &v, list_x, body_y, list_w, ROWS * (rowh + 2), rowh);
+        draw_popup(c, &v, list_x, list_y, list_w, ROWS * (rowh + 2), rowh);
     }
     if (v.dialog) {
         draw_dialog(c, &v, mx, my, mw, mh);
@@ -1290,7 +1399,9 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         h[n].tap_x = NEXT_TAP_X;
         h[n].tap_y = BUTTON_TAP_Y;
         n++;
-        if (v.pocket == 4) {
+        if (eidos_ui_try_state() != 0) {
+            /* the style chooser's preview: Y and START are its own keys */
+        } else if (v.pocket == 4) {
             h[n].key = "Y";
             h[n].what = "Register";
             h[n].keymask = BW_KEY_Y;

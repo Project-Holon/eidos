@@ -44,11 +44,13 @@
 #include "assets.h"
 #include "input.h"
 #include "textbox.h"
+#include "theme.h"
 #include "choice_list.h"
 #include "overlay.h"
 #include "plat_thread.h"
 #include "port.h"
 #include "settings.h"
+#include "g2d.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define MN_WEAK __attribute__((weak))
@@ -740,6 +742,8 @@ static const OptRow k_display[] = {
       EIDOS_OPT_LAYOUT_ARRANGEMENT, OPT_CHOICE, 3, { "STACKED", "WIDE", "ONE" }, { 0, 1, 2 }, 0, 0, 0, 0, 0 },
     { "SWAP SCREENS", "Show the bottom screen first.",
       EIDOS_OPT_LAYOUT_SWAP, OPT_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 }, 0, 0, 0, 0, 0 },
+    { "STYLE", "The look of the menus and the battles.",
+      EIDOS_OPT_UI_THEME, OPT_CHOICE, 3, { "KOSMOS", "PLASMA", "HARMONIA" }, { 0, 1, 2 }, 0, 0, 0, 0, 0 },
 };
 
 static const OptRow k_sound[] = {
@@ -843,6 +847,8 @@ static void step_text(const OptRow *row, int v, char *out, int max)
 
 static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
+    int max_rows = 5;
+    int arr = 0;                /* the theme's arrangement (0: Kosmos's) */
     void *work = app_work(68);
     int page, cursor, scroll_y, nrows, r, i;
     const OptRow *prow;
@@ -898,12 +904,48 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     compact = c->canvas->h - ui_bar_h(c) - 6 < 193;
     m = modal_rect(c, 80, 320, 440, 86, compact ? 158 : 193, compact ? 158 : 193,
                    compact ? 158 : 193);
-    ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
+    {
+        /* the window has one size for all its pages: the tallest page's
+         * (DISPLAY has a row more than the game's five) */
+        int pg, most = 5, pn;
+
+        for (pg = 0; pg < PAGE_COUNT; pg++) {
+            pn = 5;
+            if (pg != PAGE_GAME) {
+                (void)page_rows(pg, &pn);
+            }
+            most = pn > most ? pn : most;
+        }
+        max_rows = most;
+    }
+    if (!compact && max_rows > 5) {
+        int extra = (max_rows - 5) * OPT_ROW_STEP;
+
+        m.h += extra;
+        m.y = m.y - extra / 2 < 2 ? 2 : m.y - extra / 2;
+    }
+    {
+        int ax = 0, ay = 0, aw = 0, ah = 0;
+
+        if (!compact && ui_app_window(c, "options-arr", &ax, &ay, &aw, &ah)) {
+            arr = aw;
+        }
+        if (arr == 2) {
+            int grow = c->canvas->w - 24 - m.w;
+
+            grow = grow > 150 ? 150 : grow < 0 ? 0 : grow;
+            m.x -= grow / 2;
+            m.w += grow;
+        }
+    }
+    if (!ui_app_window(c, "options", &m.x, &m.y, &m.w, &m.h)) {
+        ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
+    }
     snprintf(title, sizeof title, "%s", game_text(2, 29, 0, NULL)[0] != '\0' ? game_text(2, 29, 0, NULL) : "OPTIONS");
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, title, k_page_name[page], NULL, UI_CYAN);
 
     /* tabs on the left, CONFIRM and QUIT on the right */
-    tabs_y = m.y + 29;
+    tabs_y = arr == 1 ? m.y + m.h - 22 : m.y + 29;
     for (i = 0; i < PAGE_COUNT; i++) {
         name_tab[i] = k_page_name[i];
     }
@@ -959,8 +1001,8 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     }
 
     /* the rows */
-    rw = m.w - 16;
-    rows_y = m.y + 47;
+    rw = arr == 2 ? (m.w - 16) * 62 / 100 : m.w - 16;
+    rows_y = arr == 1 ? m.y + 27 + 30 + 5 : m.y + 47;
     g_opt.hover_row = -1;
     for (r = 0; r < nrows; r++) {
         int ry = rows_y + r * OPT_ROW_STEP;
@@ -1058,13 +1100,23 @@ static void options_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     if (!compact) {
         int hrow = g_opt.hover_row >= 0 ? g_opt.hover_row : cursor;
         const char *help = "";
+        int hx = m.x + 8, hw = rw, lines = 2;
 
-        ui_panel(c, m.x + 8, help_y, rw, help_h, CUT_DEF, 5, UI_BODY2, UI_EDGE, 255);
+        if (arr == 1) {
+            help_y = m.y + 27;                  /* the DS's: over the rows */
+        } else if (arr == 2) {
+            hx = m.x + 8 + rw + 6;              /* a tall pane beside the rows */
+            hw = m.x + m.w - 8 - hx;
+            help_y = rows_y;
+            help_h = m.y + m.h - 8 - help_y;
+            lines = (help_h - 6) / 12;
+        }
+        ui_panel(c, hx, help_y, hw, help_h, CUT_DEF, 5, UI_BODY2, UI_EDGE, 255);
         if (hrow >= 0 && hrow < nrows) {
             help = page == PAGE_GAME ? game_text(2, 29, (u32)k_game_row[hrow].help, NULL)
                                      : prow[hrow].help;
         }
-        wrapped(c, m.x + 16, help_y + 3, rw - 16, 12, UI_FONT_MEDIUM, help, UI_LIGHT, UI_EDGE, 2);
+        wrapped(c, hx + 8, help_y + 3, hw - 16, 12, UI_FONT_MEDIUM, help, UI_LIGHT, UI_EDGE, lines);
     }
 
     /* the discard question: the game's yes/no at its run-time rectangles */
@@ -1294,13 +1346,19 @@ static void event_message(const SaveInfo *s, char *out, int max)
     }
 }
 
+/* The trainer's picture (the Trainer Card's, below). */
+static int g_pic_ok, g_pic_sex;
+static UiImage g_pic_im;
+static void pic_load(int sex);
+extern u32 MYSTATUS_GetSex(const void *mystatus) __attribute__((weak));
+
 static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     SaveInfo s;
     Modal m;
     void *gs, *gd, *misc;
     char place[64], buf[96], msg[256];
-    int x, y, w, i, st_yes_no, answer = -1, busy, msgmode, compact;
+    int x, y, w, i, st_yes_no, answer = -1, busy, msgmode, compact, save_pic = 0;
     time_t now;
     struct tm tmb, *tm;
     EidosUiRect hr;
@@ -1321,12 +1379,33 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     compact = c->canvas->h - ui_bar_h(c) - 6 < 196;
     m = modal_rect(c, 60, 260, 320, 80, compact ? 162 : 196, 220, compact ? 162 : 196);
-    ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
+    if (!ui_app_window(c, "save", &m.x, &m.y, &m.w, &m.h)) {
+        ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
+    }
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, "SAVE", NULL, NULL, UI_SKY);
 
     x = m.x + 10;
     w = m.w - 20;
     y = m.y + 29;
+    {
+        /* a theme's window with the trainer at its right: the rows keep to
+         * the left of the picture */
+        int px = m.x + m.w - 98, py = m.y + 30, pw = 90, ph = 96;
+
+        save_pic = ui_app_window(c, "save-pic", &px, &py, &pw, &ph);
+        if (save_pic) {
+            void *me = gd != NULL && GAME_DATA_GetMyStatus != NULL ? GAME_DATA_GetMyStatus(gd) : NULL;
+            int sex = me != NULL && MYSTATUS_GetSex != NULL && MYSTATUS_GetSex(me) == 1;
+
+            if (g_pic_ok < 0 || g_pic_sex != sex) {
+                pic_load(sex);
+            }
+            if (g_pic_ok == 1) {
+                ui_image(c, px + (pw - g_pic_im.w) / 2, py + ph - g_pic_im.h - 6, &g_pic_im, 1);
+            }
+            w -= 96;
+        }
+    }
     /* the place and the date */
     ui_text(c, x, y + text_cy(15, UI_FONT_LARGE), place_name(gs, place, (int)sizeof place),
             UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
@@ -1396,6 +1475,9 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         s_save_disp = 0;
     }
     y += 2;
+    if (save_pic) {
+        w += 96;                /* the question and the answers: the whole width */
+    }
     if (busy) {
         /* the game's own words for the save in progress */
         const char *q = game_text(3, 0x9E, 4, NULL);
@@ -1994,8 +2076,23 @@ typedef struct CardState {
 static CardState g_card;
 static void *g_card_work;
 
+/* The card's turn: the frame a turn was asked (0: none), the frame the game
+ * showed the other face, and the face shown. */
+static u32 g_flip_close, g_flip_open;
+static int g_flip_face = -1;
+/* The card's own turn: the face shown (the game's own turn runs behind it),
+ * the frame the turn began, the frames the game's face has differed. */
+static int g_card_show = -1;
+static u32 g_turn_at;
+static int g_turning, g_turn_differs;
+
 static void card_reset(void)
 {
+    g_flip_close = g_flip_open = 0;
+    g_flip_face = -1;
+    g_card_show = -1;
+    g_turning = 0;
+    g_turn_differs = 0;
     memset(&g_card, 0, sizeof g_card);
     g_card_work = NULL;
     pend_clear();
@@ -2062,7 +2159,15 @@ static void card_flip(const CardInfo *ci, const EidosUiFrame *in)
     if (in->frame < g_card.cool || tapq_busy()) {
         return;
     }
+    if (ci->kind == CK_CARD && (g_turning || !ci->stable)) {
+        return;                 /* a turn is on its way */
+    }
     g_card.cool = in->frame + 24;
+    if (ci->kind == CK_CARD) {
+        g_turning = 1;          /* the card turns at once; the game's follows */
+        g_turn_at = in->frame;
+        g_turn_differs = 0;
+    }
     if (ci->kind == CK_CARD) {
         tapq_put(0, CARD_TAP_TURN_X, CARD_TAP_Y);
     } else if (ci->kind == CK_BADGE) {
@@ -2092,8 +2197,13 @@ static void card_row(EidosUiCtx *c, int x, int y, int w, int h, const char *labe
                      const char *value, int money)
 {
     int vw = ui_text_w(value, UI_FONT_LARGE);
+    {
+        int fx = x, fy = y, fw = w, fh = h;
 
-    ui_panel(c, x, y, w, h, CUT_DEF, 4, 0x04201Au, 0x0A4636u, 235);
+        if (!ui_app_window(c, "card-row", &fx, &fy, &fw, &fh)) {
+            ui_panel(c, x, y, w, h, CUT_DEF, 4, 0x04201Au, 0x0A4636u, 235);
+        }
+    }
     box_text(c, x, y, w, h, label, UI_CARD_L, UI_CARD_D, UI_FONT_LARGE, 0, 6);
     box_text(c, x, y, w, h, value, UI_WHITE, UI_CARD_D, UI_FONT_LARGE, 2, 8);
     if (money) {
@@ -2166,11 +2276,156 @@ static int back_rows(const CardInfo *ci, BackRow *rows)
 
 /* The case along the card's bottom: the eight silhouettes, the earned
  * ones bright. */
+/* The eight badges as the game's badge viewer draws them: one picture each,
+ * composed once from its cell (the viewer's characters, cells and palette). */
+#define BADGE_W 40
+#define BADGE_H 64
+static u8 g_badge_px[8][BADGE_W * BADGE_H * 4];
+static UiImage g_badge_im[8];
+static int g_badge_ok = -1;        /* -1 not tried, 0 failed, 1 loaded */
+
+static void badge_load(void)
+{
+    u32 cs = 0, es = 0, ps = 0;
+    const u8 *chr = arc_member_alloc("a/0/4/0", 27, &cs);
+    const u8 *cer = arc_member_alloc("a/0/4/0", 45, &es);
+    const u8 *clr = arc_member_alloc("a/0/4/0", 3, &ps);
+    G2dNcgr ncgr;
+    G2dNcer ncer;
+    G2dPalette pal;
+    int have_g = 0, have_e = 0, b;
+
+    g_badge_ok = 0;
+    memset(&pal, 0, sizeof pal);
+    memset(g_badge_px, 0, sizeof g_badge_px);
+    if (chr != NULL && cer != NULL && clr != NULL && (have_g = g2d_ncgr_parse(&ncgr, chr, cs) == 0) != 0 &&
+        (have_e = g2d_ncer_parse(&ncer, cer, es) == 0) != 0 && g2d_palette_append_nclr(&pal, clr, ps) == 0 &&
+        ncer.num_cells >= 8) {
+        for (b = 0; b < 8; b++) {
+            const G2dCell *cell = &ncer.cells[b];
+            int o, x0 = 9999, y0 = 9999, x1 = -9999, y1 = -9999;
+
+            for (o = 0; o < cell->num_oam; o++) {
+                const G2dOam *oam = &cell->oams[o];
+
+                x0 = oam->x < x0 ? oam->x : x0;
+                y0 = oam->y < y0 ? oam->y : y0;
+                x1 = oam->x + (int)oam->w > x1 ? oam->x + (int)oam->w : x1;
+                y1 = oam->y + (int)oam->h > y1 ? oam->y + (int)oam->h : y1;
+            }
+            if (cell->num_oam == 0 || x1 - x0 > BADGE_W || y1 - y0 > BADGE_H) {
+                continue;
+            }
+            /* the last entry is the farthest back */
+            for (o = cell->num_oam - 1; o >= 0; o--) {
+                const G2dOam *oam = &cell->oams[o];
+                u32 tx, ty;
+
+                for (ty = 0; ty < oam->h / 8u; ty++) {
+                    for (tx = 0; tx < oam->w / 8u; tx++) {
+                        /* the characters are a one-dimensional run of 4-bit
+                         * tiles (the sheet has no size of its own) */
+                        u32 t = ((u32)oam->tile_idx + ty * (oam->w / 8u) + tx) * 32u;
+                        int px, py;
+
+                        if (ncgr.tile_data == NULL || t + 32u > ncgr.tile_data_size) {
+                            continue;
+                        }
+                        for (py = 0; py < 8; py++) {
+                            for (px = 0; px < 8; px++) {
+                                u8 bb = ncgr.tile_data[t + (u32)py * 4u + (u32)px / 2u];
+                                u8 v = (px & 1) ? (u8)(bb >> 4) : (u8)(bb & 15);
+                                int sx = (int)tx * 8 + px, sy = (int)ty * 8 + py, dx, dy;
+                                u32 ci = (u32)oam->pal * 16u + v;
+                                u8 *d;
+
+                                if (v == 0 || ci >= pal.count) {
+                                    continue;
+                                }
+                                dx = oam->x - x0 + (oam->hflip ? (int)oam->w - 1 - sx : sx);
+                                dy = oam->y - y0 + (oam->vflip ? (int)oam->h - 1 - sy : sy);
+                                d = g_badge_px[b] + ((size_t)dy * BADGE_W + (size_t)dx) * 4u;
+                                d[0] = pal.colors[ci].r;
+                                d[1] = pal.colors[ci].g;
+                                d[2] = pal.colors[ci].b;
+                                d[3] = 255;
+                            }
+                        }
+                    }
+                }
+            }
+            g_badge_im[b].w = BADGE_W;
+            g_badge_im[b].h = y1 - y0;
+            g_badge_im[b].rgba = g_badge_px[b];
+            g_badge_ok = 1;
+        }
+    }
+    if (have_g) {
+        g2d_ncgr_free(&ncgr);
+    }
+    if (have_e) {
+        g2d_ncer_free(&ncer);
+    }
+    g2d_palette_free(&pal);
+    free((void *)chr);
+    free((void *)cer);
+    free((void *)clr);
+}
+
+/* How wide a badge's picture is (its last column with a pixel, plus one). */
+static int badge_width(int b)
+{
+    int x, y, w = 0;
+
+    for (y = 0; y < g_badge_im[b].h; y++) {
+        for (x = BADGE_W - 1; x >= w; x--) {
+            if (g_badge_px[b][((size_t)y * BADGE_W + (size_t)x) * 4u + 3u] != 0) {
+                w = x + 1;
+                break;
+            }
+        }
+    }
+    return w;
+}
+
+/* The case: the eight badges at their own size when it is tall enough
+ * (CASE_TALL), their small shapes otherwise. */
+#define CASE_TALL 68
+
+static void card_case_tall(EidosUiCtx *c, int x, int cy, int w, u16 mask)
+{
+    int cw = (w - 8) / 8, cx0 = x + 4 + ((w - 8) - cw * 8) / 2, slot;
+
+    {
+        int fx = x, fy = cy, fw = w, fh = CASE_TALL;
+
+        if (!ui_app_window(c, "card-case", &fx, &fy, &fw, &fh)) {
+            ui_panel(c, x, cy, w, CASE_TALL, CUT_DEF, 5, 0x03140Fu, 0x0A4636u, 255);
+        }
+    }
+    for (slot = 0; slot < 8; slot++) {
+        int earned = (mask >> slot) & 1;
+
+        if (earned && g_badge_im[slot].rgba != NULL) {
+            ui_image(c, cx0 + slot * cw + (cw - badge_width(slot)) / 2, cy + (CASE_TALL - g_badge_im[slot].h) / 2,
+                     &g_badge_im[slot], 1);
+        } else if (g_sil_n == 8) {
+            sil_draw(c, slot, cx0 + slot * cw + 2, cy + 6, cw - 4, CASE_TALL - 12, 0x104032u, 0x185646u);
+        }
+    }
+}
+
 static void card_case(EidosUiCtx *c, int x, int cy, int w, u16 mask)
 {
     int cw = (w - 8) / 8, cx0 = x + 4 + ((w - 8) - cw * 8) / 2, slot;
 
-    ui_panel(c, x, cy, w, 36, CUT_DEF, 5, 0x03140Fu, 0x0A4636u, 255);
+    {
+        int fx = x, fy = cy, fw = w, fh = 36;
+
+        if (!ui_app_window(c, "card-case", &fx, &fy, &fw, &fh)) {
+            ui_panel(c, x, cy, w, 36, CUT_DEF, 5, 0x03140Fu, 0x0A4636u, 255);
+        }
+    }
     for (slot = 0; slot < 8; slot++) {
         int earned = (mask >> slot) & 1;
 
@@ -2187,6 +2442,10 @@ static void card_case(EidosUiCtx *c, int x, int cy, int w, u16 mask)
 extern u32 MYSTATUS_GetSex(const void *mystatus) __attribute__((weak));
 extern void *GAME_DATA_GetMyStatus(void *gameData) __attribute__((weak));
 
+extern void *GAME_DATA_GetTrainerCardSign(void *gameData) __attribute__((weak));
+extern u8    TRCARD_SIGN_GetSeenBefore(const void *sign) __attribute__((weak));
+extern u32   CURSOR_MOVE_GetTableKind(u32 x) __attribute__((weak));
+
 static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     CardInfo ci;
@@ -2196,7 +2455,9 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     const char *pairs[6];
     int x, w, i, rows_w, hint, compact;
     const u16 *nm;
-    int back_face;
+    int back_face, flip_w, tall_case;
+    char card_app[8] = "card0";
+    EidosUiRect flip_clip;
 
     g_frame = in->frame;
     pend_pump();
@@ -2217,11 +2478,69 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         sil_load();
     }
 
-    back_face = ci.kind == CK_CARD && ci.back;
+    if (ci.kind != CK_CARD) {
+        g_card_show = 0;
+        g_turning = 0;
+    } else if (g_card_show < 0) {
+        g_card_show = ci.back != 0;
+    }
+    if (ci.kind == CK_CARD && !g_turning) {
+        /* the game's face is the truth: when it differs for long (its turn
+         * did not start), the card follows it */
+        if ((ci.back != 0) != g_card_show) {
+            if (++g_turn_differs > 70) {
+                g_card_show = ci.back != 0;
+                g_turn_differs = 0;
+            }
+        } else {
+            g_turn_differs = 0;
+        }
+    }
+    if (g_turning && in->frame - g_turn_at == 6u) {
+        g_card_show = !g_card_show;     /* the other face, at the turn's middle */
+    }
+    back_face = ci.kind == CK_CARD && g_card_show;
 
     compact = c->canvas->h - ui_bar_h(c) - 6 < 190;
     m = modal_rect(c, 72, 300, 380, 80, compact ? 146 : 190, 220, compact ? 146 : 190);
-    ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 12, 0x06281Fu, UI_CARD, 248);
+    if (g_badge_ok < 0) {
+        badge_load();
+    }
+    /* the badges at their own size when the window has the room */
+    tall_case = !compact && g_badge_ok == 1 && c->canvas->h - ui_bar_h(c) - 8 >= m.h + (CASE_TALL - 36);
+    if (tall_case) {
+        m.h += CASE_TALL - 36;
+        m.y -= (CASE_TALL - 36) / 2;
+    }
+    {
+        /* the turn: the card closes to its middle (6 frames) and opens on
+         * the other face (6 frames) */
+        int open = 256;
+
+        if (g_turning) {
+            u32 e = in->frame - g_turn_at;
+
+            if (e >= 12u) {
+                g_turning = 0;
+            } else {
+                open = e < 6u ? 256 - (int)e * 40 : 16 + (int)(e - 6u) * 40;
+            }
+        }
+        flip_w = m.w * open / 256;
+        ui_push(c, 0, 0, &flip_clip);
+        if (open < 256) {
+            ui_clip(c, m.x + (m.w - flip_w) / 2, 0, flip_w, c->canvas->h - ui_bar_h(c));
+        }
+    }
+    {
+        /* the card's stage (TrainerCardProfile.starCount, 0 to 5) */
+        int stars = ci.prof != NULL ? ((const u8 *)ci.prof)[0x03] : 0;
+
+        card_app[4] = (char)('0' + (stars > 5 ? 5 : stars));
+    }
+    if (!ui_app_window(c, card_app, &m.x, &m.y, &m.w, &m.h)) {
+        ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 12, 0x06281Fu, UI_CARD, 248);
+    }
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, "TRAINER CARD", back_face ? "RECORDS" : NULL, NULL, UI_CARD);
 
     x = m.x + 8;
@@ -2247,25 +2566,48 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         void *pt = rdp(ci.prof, 0x1C);
         int cy = m.y + 32, rw = m.w - 112, picx = m.x + m.w - 96, picy = m.y + 43;
         u16 mask = (u16)rd16(ci.prof, 0x08);
+        {
+            int ax = 0, ay = 0, aw = 0, ah = 0;
 
-        card_row(c, x, cy, rw, 19, bank_label(0, "NAME"), name, 0);
-        cy += 21;
-        snprintf(buf, sizeof buf, "%05u", rd16(ci.prof, 0x28));
-        card_row(c, x, cy, rw, 19, bank_label(5, "ID No."), buf, 0);
-        cy += 21;
-        snprintf(buf, sizeof buf, "%u", rd32(ci.prof, 0x24));
-        card_row(c, x, cy, rw, 19, bank_label(3, "POK\xC3\x89" "DEX"), buf, 0);
-        cy += 21;
-        if (pt != NULL && PLAYTIME_GetHours != NULL) {
-            snprintf(buf, sizeof buf, "%u:%02u", (unsigned)PLAYTIME_GetHours(pt),
-                     (unsigned)PLAYTIME_GetMinutes(pt));
-        } else {
-            buf[0] = '\0';
+            if (ui_app_window(c, "card-arr", &ax, &ay, &aw, &ah)) {
+                /* a theme's card: the picture at the left, the facts beside it */
+                picx = m.x + 16;
+                x = m.x + 104;
+            }
         }
-        card_row(c, x, cy, rw, 19, bank_label(6, "TIME"), buf, 0);
-        cy += 21;
-        snprintf(buf, sizeof buf, "%u", rd32(ci.prof, 0x20));
-        card_row(c, x, cy, rw, 19, bank_label(4, "MONEY"), buf, 1);
+
+        {
+            /* six rows with the nature (the card itself, not the badge
+             * viewer), a little closer; else the five */
+            int six = ci.vw != NULL, rh = six ? 16 : 19, step = six ? 18 : 21;
+            char nat[48];
+
+            card_row(c, x, cy, rw, rh, bank_label(0, "NAME"), name, 0);
+            cy += step;
+            if (six) {
+                /* the game's own row: its label (message 2), the nature's
+                 * name (message 0x1F + ViewerInfo.listIndex) */
+                snprintf(nat, sizeof nat, "%s", game_text(2, 0xBB, 0x1Fu + (rd32(ci.prof, 0x48) % 25u), NULL));
+                card_row(c, x, cy, rw, rh, bank_label(2, "NATURE"), nat, 0);
+                cy += step;
+            }
+            snprintf(buf, sizeof buf, "%05u", rd16(ci.prof, 0x28));
+            card_row(c, x, cy, rw, rh, bank_label(5, "ID No."), buf, 0);
+            cy += step;
+            snprintf(buf, sizeof buf, "%u", rd32(ci.prof, 0x24));
+            card_row(c, x, cy, rw, rh, bank_label(3, "POK\xC3\x89" "DEX"), buf, 0);
+            cy += step;
+            if (pt != NULL && PLAYTIME_GetHours != NULL) {
+                snprintf(buf, sizeof buf, "%u:%02u", (unsigned)PLAYTIME_GetHours(pt),
+                         (unsigned)PLAYTIME_GetMinutes(pt));
+            } else {
+                buf[0] = '\0';
+            }
+            card_row(c, x, cy, rw, rh, bank_label(6, "TIME"), buf, 0);
+            cy += step;
+            snprintf(buf, sizeof buf, "%u", rd32(ci.prof, 0x20));
+            card_row(c, x, cy, rw, rh, bank_label(4, "MONEY"), buf, 1);
+        }
 
         /* the picture, over the card's ring */
         ui_ellipse(c, picx - 4, picy - 4, 88, 88, 0x0A3A2Eu, 0x0A4636u, 200);
@@ -2284,10 +2626,31 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 ui_image(c, picx, picy, &g_pic_im, 1);
             }
         }
+        if (ci.vw != NULL) {
+            /* the trainer's class over the picture, as the card's own code
+             * picks it (ov111 VIEWER_TEXT_DrawTable: bank 0xBF, the row of
+             * the outfit once the card has been signed in a link, else 0) */
+            void *gd2 = game_data();
+            void *sign = gd2 != NULL && GAME_DATA_GetTrainerCardSign != NULL ? GAME_DATA_GetTrainerCardSign(gd2) : NULL;
+            u32 row = 0;
+            const char *cls;
+
+            if (sign != NULL && TRCARD_SIGN_GetSeenBefore != NULL && TRCARD_SIGN_GetSeenBefore(sign) &&
+                CURSOR_MOVE_GetTableKind != NULL) {
+                row = CURSOR_MOVE_GetTableKind(((const u8 *)ci.prof)[0x06]);
+            }
+            cls = game_text(2, 0xBF, row, NULL);
+            if (cls[0] != '\0') {
+                ui_text(c, picx + 40 - ui_text_w(cls, UI_FONT_SMALL) / 2, picy - 13, cls, UI_WHITE, UI_CARD_D, UI_FONT_SMALL,
+                        1);
+            }
+        }
 
         /* the badge case (a short canvas leaves it out) */
-        if (!compact) {
-            card_case(c, x, m.y + m.h - 44, w, mask);
+        if (tall_case) {
+            card_case_tall(c, m.x + 8, m.y + m.h - 8 - CASE_TALL, w, mask);
+        } else if (!compact) {
+            card_case(c, m.x + 8, m.y + m.h - 44, w, mask);
         }
     } else {
         BackRow rows[CARD_ROW_MAX];
@@ -2314,8 +2677,14 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
+    if (flip_w < m.w) {
+        /* the card's edges where it is closed to */
+        ui_fill(c, m.x + (m.w - flip_w) / 2, m.y + 4, 2, m.h - 8, UI_WHITE, 220);
+        ui_fill(c, m.x + (m.w + flip_w) / 2 - 2, m.y + 4, 2, m.h - 8, UI_WHITE, 220);
+    }
+    ui_pop(c, 0, 0, &flip_clip);
     /* the footer */
-    pairs[0] = "\xE2\x86\x90\xE2\x86\x92"; pairs[1] = "Flip";
+    pairs[0] = "A"; pairs[1] = "Flip";
     pairs[2] = "B"; pairs[3] = "Back";
     hint = hint_bar(c, in, pairs, 2);
     if (hint == 0) {
@@ -2331,11 +2700,11 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     {
         u32 edge = eidos_ui_keys_pressed();
 
-        if (ci.kind == CK_BADGE) {
-            eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT);
-            if ((edge & (BW_KEY_LEFT | BW_KEY_RIGHT)) != 0u) {
-                card_flip(&ci, in);
-            }
+        /* A and the arrows turn the card (the game's own turn is asked for
+         * by its button, so no key turns it twice) */
+        eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_A);
+        if ((edge & (BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_A)) != 0u) {
+            card_flip(&ci, in);
         }
     }
     if (debug_on() && (in->frame % 120u) == 0) {
@@ -2421,7 +2790,9 @@ static void wireless_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     }
 
     m = modal_rect(c, 62, 280, 380, 0, 157, 157, 157);
-    ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
+    if (!ui_app_window(c, "wireless", &m.x, &m.y, &m.w, &m.h)) {
+        ui_panel(c, m.x, m.y, m.w, m.h, CUT_DEF, 10, 0x060E1Au, 0x103C5Au, 245);
+    }
     ui_header(c, m.x + 4, m.y + 4, m.w - 8, "WIRELESS", NULL, NULL, UI_CYAN);
 
     /* the two tiles */
@@ -2736,7 +3107,9 @@ static void entree_title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFram
     mw = cw - 40 < 300 ? cw - 40 : 300;
     mx = (cw - mw) / 2;
     my = (ch - 17 - mh) / 2;
-    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    if (!ui_app_window(c, "entree", &mx, &my, &mw, &mh)) {
+        ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    }
     ui_text(c, mx + 12, my + 6, title[0] != '\0' ? title : "ENTREE", 0x62BEFFu, 0x313131u, UI_FONT_SMALL, 1);
     ui_fill(c, mx + 10, my + 19, mw - 20, 1, 0x103C5Au, 255);
     {
@@ -2810,9 +3183,16 @@ static const void *win_bmp_of(const void *win)
 
 /* The window over the world, its title the game's words when they are
  * printed. */
+static const char *g_in_app = "entree";    /* the screen's name for the theme (ui_app_window) */
+
 static void in_window(EidosUiCtx *c, int x, int y, int w, int h, const void *title_bmp)
 {
-    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 10, IN_MBODY, IN_MEDGE, 245);
+    const char *app = g_in_app;
+
+    g_in_app = "entree";
+    if (!ui_app_window(c, app, &x, &y, &w, &h)) {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 10, IN_MBODY, IN_MEDGE, 245);
+    }
     if (title_bmp != NULL) {
         ui_letters(c, title_bmp, x + 12, y + 5, IN_TITLE, IN_SHADOW, NULL, NULL);
     }
@@ -3264,7 +3644,9 @@ static void survey_top_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame 
     mw = cw - 40 < 300 ? cw - 40 : 300;
     mx = (cw - mw) / 2;
     my = (ch - 17 - mh) / 2;
-    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    if (!ui_app_window(c, "survey", &mx, &my, &mw, &mh)) {
+        ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
+    }
     ui_text(c, mx + 12, my + 6, "SURVEY RADAR", 0x62BEFFu, 0x313131u, UI_FONT_SMALL, 1);
     ui_fill(c, mx + 10, my + 19, mw - 20, 1, 0x103C5Au, 255);
     eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_A);
@@ -3546,6 +3928,7 @@ static void survey_report_run(EidosUiCtx *c, const u8 *g, const EidosUiFrame *in
     const u8 *labs = g + 0x344;
     const void *b1 = label_bmp(rdp(labs, 4), 0), *b2 = label_bmp(rdp(labs, 8), 0);
 
+    g_in_app = "survey";
     in_window(c, mx, my, mw, mh, label_bmp(rdp(labs, 0), 0));
     y = my + IN_HEAD;
     ui_letters(NULL, b1, 0, 0, 0, 0, &bw, &h1);
@@ -3686,8 +4069,9 @@ static const EidosUiRecipe recipe_survey = {
  *
  * TownMapWork (ov072/townmap_types.h): selection.box.win 0xB0 (the upper
  * screen: name, description, places), panel.win 0xC4 (the prompt),
- * hoverTown 0x134.  The lower screen's bar: zoom (177, 179), back
- * (243, 179).
+ * args 0x130 (TownMapArgs: mode at 0, 1 = view only, the Town Map item:
+ * no town is picked, so no Fly), hoverTown 0x134.  The lower screen's bar:
+ * zoom (177, 179), back (243, 179).
  */
 #define TM_OVERLAY 72
 #define TM_MAP_H   168          /* the map above the game's bar           */
@@ -3701,7 +4085,11 @@ static void townmap_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 {
     static const char *const hints[] = { "A", "Fly", "B", "Back" };
     static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    static const char *const hints_view[] = { "B", "Back" };
+    static const u32 keys_view[] = { BW_KEY_B };
     const u8 *w = (const u8 *)app_work(TM_OVERLAY);
+    const u8 *args;
+    int pick;
     int cw = c->canvas->w, ch = c->canvas->h;
     int mapw = 256 * 3 / 4, maph = TM_MAP_H * 3 / 4;
     int mw = cw - 16 < 480 ? cw - 16 : 480;
@@ -3713,6 +4101,8 @@ static void townmap_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     if (w == NULL) {
         return;
     }
+    args = (const u8 *)rdp(w, 0x130);
+    pick = args == NULL || rd32(args, 0) != 1;      /* a town is picked (Fly); the Town Map item only shows */
     info = win_bmp_of(rdp(w, 0xB0));
     ui_letters(NULL, info, 0, 0, 0, 0, &iw, &ih);
     left_h = maph + 4 + 4 + 24;
@@ -3721,6 +4111,7 @@ static void townmap_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     mx = (cw - mw) / 2;
     my = (ch - 17 - mh) / 2;
     if (my < 2) my = 2;
+    g_in_app = "townmap";
     in_window(c, mx, my, mw, mh, win_bmp_of(rdp(w, 0xC4)));
     /* the game's map */
     ui_panel(c, mx + 10, my + IN_HEAD, mapw + 4, maph + 4, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, UI_EDGE, 255);
@@ -3746,16 +4137,19 @@ static void townmap_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     /* Fly, Zoom and Back under the map */
     y = my + IN_HEAD + maph + 8;
     {
-        int tw = (mapw + 4 - 8) / 3;
+        int n = pick ? 3 : 2, tw = (mapw + 4 - 4 * (n - 1)) / n, x = mx + 10;
 
-        if (in_tile_words(c, mx + 10, y, tw, 24, NULL, "Fly", rdp(w, 0x134) != NULL && eidos_ui_keys_lit(), 0)
-            & EIDOS_UI_CLICK) {
-            eidos_ui_press(BW_KEY_A, 2);
+        if (pick) {
+            if (in_tile_words(c, x, y, tw, 24, NULL, "Fly", rdp(w, 0x134) != NULL && eidos_ui_keys_lit(), 0)
+                & EIDOS_UI_CLICK) {
+                eidos_ui_press(BW_KEY_A, 2);
+            }
+            x += tw + 4;
         }
-        if (in_tile_words(c, mx + 10 + tw + 4, y, tw, 24, NULL, "Zoom", 0, 0) & EIDOS_UI_CLICK) {
+        if (in_tile_words(c, x, y, tw, 24, NULL, "Zoom", 0, 0) & EIDOS_UI_CLICK) {
             eidos_ui_tap(177, 179, 3);
         }
-        if (in_tile_words(c, mx + 10 + 2 * (tw + 4), y, tw, 24, NULL, "Back", 0, 0) & EIDOS_UI_CLICK) {
+        if (in_tile_words(c, x + tw + 4, y, tw, 24, NULL, "Back", 0, 0) & EIDOS_UI_CLICK) {
             eidos_ui_tap(243, 179, 3);
         }
     }
@@ -3771,7 +4165,11 @@ static void townmap_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         ui_letters(c, info, rx + (iw < rw - 12 ? (rw - iw) / 2 : 6), my + IN_HEAD + 8, UI_WHITE, IN_SHADOW, NULL, NULL);
         ui_pop(c, 0, 0, &saved);
     }
-    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (pick) {
+        ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    } else {
+        ui_hints(c, ch - ui_bar_h(c), cw, hints_view, 1, keys_view);
+    }
     if (eidos_ui_right_click()) {
         eidos_ui_press(BW_KEY_B, 2);
     }
@@ -3834,6 +4232,8 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static const char *const hints[] = { "A", "Choose", "B", "No" };
     static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    static const char *const hints_next[] = { "A", "Next" };
+    static const u32 keys_next[] = { BW_KEY_A };
     const u8 *rw, *tw = catch_work(&rw), *nk;
     int cw = c->canvas->w, ch = c->canvas->h, species = 0, t1 = -1, t2 = -1;
     int px, py, pw = 280, ph = 136, bx, by, bw, bh, i;
@@ -3852,11 +4252,82 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (mon != NULL && POKE_TOOL_GetPartyValue != NULL) {
         species = (int)POKE_TOOL_GetPartyValue(mon, 5, 0);
     }
+    {
+        /* a theme's own screen (the DS's: the Pokemon in a light on the
+         * screen's ground, its name under it, the question in the theme's
+         * message box, the answers in its choice box) */
+        int sz = ch - 17 - 150 > 128 ? 128 : 96, sx = (cw - sz) / 2, sy = 14, sw = sz, sh = sz;
+
+        if (ui_app_window(c, "catch-ground", &sx, &sy, &sw, &sh)) {
+            int ny = sy + sz + 6, tw2;
+
+            if (species > 0 && species < 700) {
+                ui_mon_front_draw(c, (u16)species, 0, in->frame, sx, sy, sz, sz);
+                ui_species_name(species, name, (int)sizeof name);
+                ui_species_types(species, &t1, &t2);
+                snprintf(num, sizeof num, ui_trf("No. %03d"), species);
+                tw2 = ui_text_w(name, UI_FONT_LARGE) * 2;
+                ui_text(c, (cw - tw2) / 2, ny, name, UI_RAW(0xFFFFFFu), (s32)UI_RAW(0x101820u), UI_FONT_LARGE, 2);
+                ui_text(c, (cw - tw2) / 2 - 8 - ui_text_w(num, UI_FONT_SMALL), ny + 10, num, UI_RAW(0xD0E8E8u),
+                        (s32)UI_RAW(0x101820u), UI_FONT_SMALL, 1);
+                if (t1 >= 0) {
+                    ui_type_tag(c, (cw + tw2) / 2 + 8, ny + 8, 52, t1);
+                }
+                if (t2 >= 0 && t2 != t1) {
+                    ui_type_tag(c, (cw + tw2) / 2 + 64, ny + 8, 52, t2);
+                }
+            }
+            bw = cw - 40 < 420 ? cw - 40 : 420;
+            bh = ui_textbox_h(rdp(nk, 0x24));
+            bx = (cw - bw) / 2;
+            by = ch - 17 - 8 - (bh > 0 ? bh : 42);
+            if (bh > 0) {
+                u32 fill = 0, edge = 0, ink = UI_RAW(0x202020u), shd = UI_RAW(0xC4C4C4u);
+
+                ui_theme_active()->textbox(c, UI_TEXTBOX_NARRATION | 16, bx, by, bw, bh, &fill, &edge, &ink, &shd);
+                ui_letters(c, ui_bmpwin_bmp(rdp(nk, 0x24)), bx + 12, by + 7, ink, shd, NULL, NULL);
+            }
+            /* the answers come with the question, not before it (the game makes its yes/no
+             * input when the screen starts) */
+            if (bh > 0 && rdp(nk, 0x54) != NULL && ui_theme_active()->choice_row != NULL) {
+                static const char *const yn2[2] = { "YES", "NO" };
+                static const int tap_y2[2] = { 56, 104 };
+                int lw = 84, lx = bx + bw - lw, ly = by - 6 - (2 * 18 + 8), hov = -1;
+
+                ui_textbox_frame(c, UI_TEXTBOX_NARRATION, lx, ly, lw, 2 * 18 + 8);
+                for (i = 0; i < 2; i++) {
+                    EidosUiRect r = { lx + 3, ly + 4 + i * 18, lw - 6, 18 };
+
+                    if (eidos_ui_hit(r) & EIDOS_UI_HOVER) {
+                        hov = i;
+                    }
+                }
+                for (i = 0; i < 2; i++) {
+                    EidosUiRect r = { lx + 3, ly + 4 + i * 18, lw - 6, 18 };
+
+                    /* YES is the game's own first answer (A takes it) */
+                    ui_theme_active()->choice_row(c, UI_CHOICE_WHITE, r.x, r.y, r.w, r.h, ui_tr(yn2[i]),
+                                                  hov >= 0 ? hov == i : i == 0);
+                    if (eidos_ui_hit(r) & EIDOS_UI_CLICK) {
+                        eidos_ui_tap(127, tap_y2[i], 3);
+                    }
+                }
+            }
+            if (bh > 0) {
+                ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+            } else {
+                ui_hints(c, ch - ui_bar_h(c), cw, hints_next, 1, keys_next);
+            }
+            return;
+        }
+    }
     /* the card */
     px = (cw - pw) / 2;
     py = (ch - 17 - 70 - ph) / 2;
     if (py < 4) py = 4;
-    ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 9, IN_MBODY, IN_MEDGE, 240);
+    if (!ui_app_window(c, "catch", &px, &py, &pw, &ph)) {
+        ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 9, IN_MBODY, IN_MEDGE, 240);
+    }
     if (rd32(rw, 0x0C) == 0) {
         ui_text(c, px + 10, py + 4, "REGISTERED", IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
     }
@@ -3880,7 +4351,7 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_panel(c, bx, by, bw, bh, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 235);
         ui_letters(c, ui_bmpwin_bmp(rdp(nk, 0x24)), bx + 12, by + 7, UI_WHITE, UI_EDGE, NULL, NULL);
     }
-    if (rdp(nk, 0x54) != NULL) {
+    if (bh > 0 && rdp(nk, 0x54) != NULL) {
         static const char *const yn[2] = { "YES", "NO" };
         static const int tap_y[2] = { 56, 104 };
 
@@ -3890,7 +4361,11 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             }
         }
     }
-    ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    if (bh > 0) {
+        ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
+    } else {
+        ui_hints(c, ch - ui_bar_h(c), cw, hints_next, 1, keys_next);
+    }
 }
 
 static void catch_reset(void)
@@ -3962,8 +4437,13 @@ static void relearn_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     sel = scroll + (int)rd16(mon, 0x14);     /* the move in the whole list */
     my = (ch - 17 - mh - 48) / 2;
     if (my < 4) my = 4;
+    g_in_app = "relearn-list";
     in_window(c, mx, my, mw, mh, NULL);
-    ui_text(c, mx + 12, my + 6, "REMEMBER A MOVE", IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+    if (ui_theme_active_has_frame()) {
+        ui_header(c, mx + 3, my + 3, mw - 6, ui_tr("REMEMBER A MOVE"), "", "", UI_SKY);     /* the theme's own head */
+    } else {
+        ui_text(c, mx + 12, my + 6, "REMEMBER A MOVE", IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+    }
     lw = mw * 11 / 20;
     if (sel < first) first = sel;
     if (sel >= first + RL_ROWS) first = sel - RL_ROWS + 1;
@@ -4560,7 +5040,13 @@ static void trade_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (win != NULL && ui_bmpwin_bmp(win) != NULL && g2d_hw_hide_main_bgs != NULL && win[2] < 4) {
         g2d_hw_hide_main_bgs(1u << win[2]);
     }
-    ui_panel(c, px, py, pw, 58, UI_CUT_TL | UI_CUT_BR, 9, IN_MBODY, IN_MEDGE, 235);
+    {
+        int fx = px, fy = py, fw = pw, fh = 58;
+
+        if (!ui_app_window(c, "trade-head", &fx, &fy, &fw, &fh)) {
+            ui_panel(c, px, py, pw, 58, UI_CUT_TL | UI_CUT_BR, 9, IN_MBODY, IN_MEDGE, 235);
+        }
+    }
     trade_mon(c, rdp(ew, 0x4C), px + 10, py + 14, in->frame);
     trade_mon(c, rdp(ew, 0x48), px + pw / 2 + 12, py + 14, in->frame);
     for (i = 0; i < 5; i++) {
@@ -4649,7 +5135,9 @@ static void oekaki_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         members += sb != NULL && STRBUF_GetLength != NULL && STRBUF_GetLength((void *)sb) > 0;
     }
     snprintf(count, sizeof count, "%d / 5", members);
-    ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, IN_MBODY, IN_MEDGE, 245);
+    if (!ui_app_window(c, "union-draw", &mx, &my, &mw, &mh)) {
+        ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, IN_MBODY, IN_MEDGE, 245);
+    }
     ui_text(c, mx + 12, my + 6, "DRAWING", IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
     ui_text(c, mx + mw - 12 - ui_text_w(count, UI_FONT_SMALL), my + 6, count, UI_GREY, IN_SHADOW, UI_FONT_SMALL, 1);
     ui_fill(c, mx + 10, my + IN_HEAD - 4, mw - 20, 1, IN_MEDGE, 255);
@@ -4901,6 +5389,7 @@ static void lobby_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (my < 4) {
         my = 4;
     }
+    g_in_app = "union-lobby";
     in_window(c, mx, my, mw, mh, title);
     /* the members, as the game prints them */
     in_panel(c, mx + 10, my + IN_HEAD, 170, mh - IN_HEAD - 10);
@@ -5560,9 +6049,14 @@ static void ut_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (rdp(w, UT_PEER) != NULL && MYSTATUS_GetName != NULL) {
         units_utf8(MYSTATUS_GetName(rdp(w, UT_PEER)), 8, who, (int)sizeof who);
     }
+    g_in_app = "union-trade";
     in_window(c, mx, my, mw, mh, NULL);
-    ui_text(c, mx + 12, my + 7, ui_tr("TRADE"), IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
-    ui_text(c, mx + mw - 12 - ui_text_w(who, UI_FONT_SMALL), my + 7, who, UI_LIGHT, IN_SHADOW, UI_FONT_SMALL, 1);
+    if (ui_theme_active_has_frame()) {
+        ui_header(c, mx + 3, my + 3, mw - 6, ui_tr("TRADE"), "", who, UI_SKY);     /* the theme's own head */
+    } else {
+        ui_text(c, mx + 12, my + 7, ui_tr("TRADE"), IN_TITLE, IN_SHADOW, UI_FONT_SMALL, 1);
+        ui_text(c, mx + mw - 12 - ui_text_w(who, UI_FONT_SMALL), my + 7, who, UI_LIGHT, IN_SHADOW, UI_FONT_SMALL, 1);
+    }
     x0 = mx + 12;
     y0 = my + IN_HEAD;
     gx = x0 + 156 + 10;

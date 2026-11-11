@@ -660,10 +660,23 @@ u32 eidos_platform_late_frames(const EidosPlatform *p)
 }
 
 static int g_fast_forward_locked;
+static int g_fast_wait;          /* the interface waits on the game this frame */
+
+void eidos_platform_fast_wait(int waiting)
+{
+    g_fast_wait = waiting != 0;
+}
 
 void eidos_platform_fast_forward_lock(int locked)
 {
     g_fast_forward_locked = locked != 0;
+}
+
+static int g_fast_hidden;        /* the interface covers the game: as fast as the host can */
+
+void eidos_platform_fast_hidden(int hidden)
+{
+    g_fast_hidden = hidden != 0;
 }
 
 int eidos_platform_fast_forward(const EidosPlatform *p)
@@ -676,12 +689,28 @@ int eidos_platform_fast_forward(const EidosPlatform *p)
     if (g_fast_forward_locked) {
         return 1;
     }
+    if (g_fast_hidden) {
+        return EIDOS_FAST_FORWARD_MAX;
+    }
     /* SDL keeps the state of the window with keyboard focus only, so the
      * key does nothing while another program has the focus. */
     keys = SDL_GetKeyboardState(NULL);
     if (keys != NULL && keys[SDL_SCANCODE_TAB]) {
         return keys[SDL_SCANCODE_LSHIFT] ? EIDOS_FAST_FORWARD_MAX
                                          : EIDOS_FAST_FORWARD;
+    }
+    if (g_fast_wait) {
+        /* the interface holds a still picture and waits for the game */
+        static int off = -1;
+
+        if (off < 0) {
+            const char *v = getenv("EIDOS_UI_FAST_WAIT");
+
+            off = v != NULL && strcmp(v, "0") == 0;
+        }
+        if (!off) {
+            return EIDOS_FAST_FORWARD;
+        }
     }
     /* EIDOS_FAST_UNTIL_BATTLE (the spot editor's Preview in game): as fast
      * as possible until the first battle shows, then the normal speed; =start
