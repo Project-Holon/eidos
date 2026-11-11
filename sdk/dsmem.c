@@ -445,12 +445,16 @@ u32 bw_io_read32(u32 addr)
 static void io_write(u32 addr, u32 width, u32 v, const char *who)
 {
     u32 idx = (u32)io_checked(addr, width, who);
-    int hit[IO_HOOK_MAX];
-    u32 old[IO_HOOK_MAX];
+    /* A store is at most 4 bytes wide and hooks never overlap one another
+     * (bw_io_hook), so it meets at most 4 of them.  (Two arrays of
+     * IO_HOOK_MAX were cleared on every store: locals are zeroed in this
+     * build, -ftrivial-auto-var-init.) */
+    int hit[4];
+    u32 old[4];
     int n = 0;
     int i;
 
-    for (i = 0; i < g_hook_count; i++) {
+    for (i = 0; i < g_hook_count && n < 4; i++) {
         const struct IoHook *h = &g_hooks[i];
         if (h->off < idx + width && idx < h->off + h->width) {
             hit[n] = i;
@@ -577,7 +581,14 @@ void bw_io_sync(void)
         h.fn(io_addr_of_index(h.off), before, io_get(io_byte(h.off), h.width));
         memcpy(&g_io_synced[h.off], io_byte(h.off), h.width);
     }
-    io_snapshot();
+    /* Everything is as synced now, a register a hook function itself wrote
+     * included.  Only the hooked registers' bytes of the copy are ever read
+     * (above, and bw_io_hook brings a new hook's bytes up to date itself), so
+     * only they are copied: the whole file is 64 KiB, and a sync runs before
+     * every DMA, hundreds of times a frame. */
+    for (i = 0; i < g_hook_count; i++) {
+        memcpy(&g_io_synced[g_hooks[i].off], io_byte(g_hooks[i].off), g_hooks[i].width);
+    }
 }
 
 /* ------------------------------------------------------------------ */
