@@ -1048,8 +1048,9 @@ static void boot_capture_plan(BootRun *run, BootCapture *c)
     c->blend = mode != 0u;
     c->eva = (int)((cap & 0x1Fu) > 16u ? 16u : (cap & 0x1Fu));
     c->evb = (int)(((cap >> 8) & 0x1Fu) > 16u ? 16u : ((cap >> 8) & 0x1Fu));
-    if (c->blend && !(run->cap_ok && run->cap_bank == c->bank
-                      && boot_bank_hash(c->bankp) == run->cap_hash)) {
+    if (c->blend && !(eidos_ui_enabled() && eidos_platform_world_active(run->plat))
+        && !(run->cap_ok && run->cap_bank == c->bank
+             && boot_bank_hash(c->bankp) == run->cap_hash)) {
         /* the GPU has no copy of what the bank holds: give it the bank */
         u32 k;
 

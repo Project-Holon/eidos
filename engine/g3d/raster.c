@@ -743,39 +743,67 @@ typedef struct SortKey {
     s32 ytop, xtop;
 } SortKey;
 
-static int sort_cmp_manual(const void *pa, const void *pb)
+static inline int sort_key_lt(const SortKey *a, const SortKey *b)
 {
-    const SortKey *a = (const SortKey *)pa, *b = (const SortKey *)pb;
-
-    if (a->translucent != b->translucent) {
-        return a->translucent < b->translucent ? -1 : 1;
+    if (a->ytop != b->ytop) {
+        return a->ytop < b->ytop;
     }
-    return a->index < b->index ? -1 : (a->index > b->index ? 1 : 0);
+    if (a->xtop != b->xtop) {
+        return a->xtop < b->xtop;
+    }
+    return a->index < b->index;
 }
 
-static int sort_cmp_auto(const void *pa, const void *pb)
+static void sort_xlu_keys(SortKey *a, u32 n)
 {
-    const SortKey *a = (const SortKey *)pa, *b = (const SortKey *)pb;
+    while (n > 16u) {
+        u32 mid = n >> 1, i = 0u, j = n - 1u;
+        SortKey piv, tmp;
 
-    if (a->translucent != b->translucent) {
-        return a->translucent < b->translucent ? -1 : 1;
-    }
-    if (a->translucent) {
-        if (a->ytop != b->ytop) {
-            return a->ytop < b->ytop ? -1 : 1;
+        if (sort_key_lt(&a[mid], &a[0])) { tmp = a[0]; a[0] = a[mid]; a[mid] = tmp; }
+        if (sort_key_lt(&a[j], &a[0]))   { tmp = a[0]; a[0] = a[j];   a[j] = tmp; }
+        if (sort_key_lt(&a[j], &a[mid])) { tmp = a[mid]; a[mid] = a[j]; a[j] = tmp; }
+        piv = a[mid];
+        for (;;) {
+            while (sort_key_lt(&a[i], &piv)) { i++; }
+            while (sort_key_lt(&piv, &a[j])) { j--; }
+            if (i >= j) {
+                break;
+            }
+            tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+            i++;
+            j--;
         }
-        if (a->xtop != b->xtop) {
-            return a->xtop < b->xtop ? -1 : 1;
+        if (j + 1u < n - (j + 1u)) {
+            sort_xlu_keys(a, j + 1u);
+            a += j + 1u;
+            n -= j + 1u;
+        } else {
+            sort_xlu_keys(a + j + 1u, n - (j + 1u));
+            n = j + 1u;
         }
     }
-    return a->index < b->index ? -1 : (a->index > b->index ? 1 : 0);
+    {
+        u32 i;
+
+        for (i = 1u; i < n; i++) {
+            SortKey x = a[i];
+            u32 j = i;
+
+            while (j > 0u && sort_key_lt(&x, &a[j - 1u])) {
+                a[j] = a[j - 1u];
+                j--;
+            }
+            a[j] = x;
+        }
+    }
 }
 
 void g3d_geom_sort(G3dGeom *g, int manual)
 {
     SortKey *k;
     G3dPoly *copy;
-    u32 i, any = 0;
+    u32 i, n_opq = 0, n_xlu = 0;
 
     if (g == NULL || g->n_polys < 2u) {
         return;
@@ -790,38 +818,57 @@ void g3d_geom_sort(G3dGeom *g, int manual)
     for (i = 0; i < g->n_polys; i++) {
         const G3dPoly *p = &g->polys[i];
         u32 a5 = G3D_ATTR_ALPHA(p->attr);
-        u32 j;
-        s32 ymin = 0x7FFFFFFF, xmin = 0x7FFFFFFF;
-
-        k[i].index = i;
         /* [HW] translucent: alpha 1..30, or a texture with its own alpha
          * (A3I5 and A5I3) unless the polygon is a decal or a shadow */
         u32 fmt = (p->teximage >> 26) & 7u, pm = G3D_ATTR_MODE(p->attr);
+        u32 translucent = (p->attr != 0 && a5 > 0u && a5 < 31u) ? 1u : 0u;
 
-        k[i].translucent = (p->attr != 0 && a5 > 0u && a5 < 31u) ? 1u : 0u;
         if (p->attr != 0 && a5 == 31u && (fmt == 1u || fmt == 6u)
             && pm != G3D_POLY_MODE_DECAL && pm != G3D_POLY_MODE_SHADOW) {
-            k[i].translucent = 1u;
+            translucent = 1u;
         }
-        any |= k[i].translucent;
-        for (j = 0; k[i].translucent && j < p->count && j < 4u; j++) {
-            const G3dVertex *v = &g->verts[g->idx[p->first + j]];
-            s64 w = v->w > 0 ? v->w : 1;
-            s32 sy = (s32)(96 - ((s64)v->y * 96) / w);
-            s32 sx = (s32)(128 + ((s64)v->x * 128) / w);
-
-            if (sy < ymin || (sy == ymin && sx < xmin)) {
-                ymin = sy;
-                xmin = sx;
+        if (!translucent) {
+            if (n_xlu > 0u) {
+                copy[n_opq++] = *p;
+            }
+            continue;
+        }
+        if (n_xlu == 0u) {
+            n_opq = i;
+            if (i > 0u) {
+                memcpy(copy, g->polys, (size_t)i * sizeof(*copy));
             }
         }
-        k[i].ytop = ymin;
-        k[i].xtop = xmin;
+        {
+            SortKey *sk = &k[n_xlu++];
+            s32 ymin = 0x7FFFFFFF, xmin = 0x7FFFFFFF;
+            u32 j;
+
+            sk->index = i;
+            sk->translucent = 1u;
+            if (!manual) {
+                for (j = 0; j < p->count && j < 4u; j++) {
+                    const G3dVertex *v = &g->verts[g->idx[p->first + j]];
+                    s64 w = v->w > 0 ? v->w : 1;
+                    s32 sy = (s32)(96 - ((s64)v->y * 96) / w);
+                    s32 sx = (s32)(128 + ((s64)v->x * 128) / w);
+
+                    if (sy < ymin || (sy == ymin && sx < xmin)) {
+                        ymin = sy;
+                        xmin = sx;
+                    }
+                }
+            }
+            sk->ytop = ymin;
+            sk->xtop = xmin;
+        }
     }
-    if (any) {
-        qsort(k, g->n_polys, sizeof(*k), manual ? sort_cmp_manual : sort_cmp_auto);
-        for (i = 0; i < g->n_polys; i++) {
-            copy[i] = g->polys[k[i].index];
+    if (n_xlu > 0u) {
+        if (!manual && n_xlu > 1u) {
+            sort_xlu_keys(k, n_xlu);
+        }
+        for (i = 0; i < n_xlu; i++) {
+            copy[n_opq + i] = g->polys[k[i].index];
         }
         memcpy(g->polys, copy, (size_t)g->n_polys * sizeof(*copy));
     }

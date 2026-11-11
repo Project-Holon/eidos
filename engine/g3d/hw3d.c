@@ -1190,7 +1190,6 @@ static void render_frame(void)
 
     t->wbuffer = (g_hw.swap_param >> 1) & 1u;
     t->aa = (d3 >> 4) & 1u;
-    clear_planes(t, d3, cc, cd);
 
     t->alpha_ref = (d3 & 4u) ? (bw_io_read16(G3D_HW_ALPHA_TEST_REF) & 0x1Fu) : 0u;
     for (i = 0; i < 32u; i++) {
@@ -1336,6 +1335,7 @@ static void render_frame(void)
         g_hw.have_frame = 1;
         return;
     }
+    clear_planes(t, d3, cc, cd);
     {
         unsigned long long tr = eidos_prof_begin();
 

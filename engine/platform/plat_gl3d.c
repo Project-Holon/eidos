@@ -2004,7 +2004,13 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                 cur.two_pass = a5 >= 31u && cur.textured && s->tex[slot].partial;
                 cur.fog = G3D_ATTR_FOG(attr) != 0;
                 if (have && run_first + run_verts == first
-                    && memcmp(&run, &cur, sizeof(run)) == 0) {
+                    && run.deq == cur.deq && run.mask == cur.mask
+                    && run.xlu_depth == cur.xlu_depth && run.mode == cur.mode
+                    && run.toon == cur.toon && run.a5 == cur.a5
+                    && run.front == cur.front && run.back == cur.back
+                    && run.textured == cur.textured && run.slot == cur.slot
+                    && run.wrap == cur.wrap && run.id == cur.id
+                    && run.two_pass == cur.two_pass && run.fog == cur.fog) {
                     run_verts += verts;
                 } else {
                     if (have) {
