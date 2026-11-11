@@ -676,12 +676,17 @@ int eidos_platform_fast_forward(const EidosPlatform *p)
     if (g_fast_forward_locked) {
         return 1;
     }
-    /* SDL keeps the state of the window with keyboard focus only, so the
-     * key does nothing while another program has the focus. */
-    keys = SDL_GetKeyboardState(NULL);
-    if (keys != NULL && keys[SDL_SCANCODE_TAB]) {
-        return keys[SDL_SCANCODE_LSHIFT] ? EIDOS_FAST_FORWARD_MAX
-                                         : EIDOS_FAST_FORWARD;
+    /* Only trigger fast-forward when this window actually holds keyboard focus
+     * and Tab is not part of a desktop shortcut (Alt+Tab / Ctrl+Tab / Super+Tab). */
+    if (SDL_GetWindowFlags(p->window) & SDL_WINDOW_INPUT_FOCUS) {
+        keys = SDL_GetKeyboardState(NULL);
+        if (keys != NULL && keys[SDL_SCANCODE_TAB]
+            && !(keys[SDL_SCANCODE_LALT] || keys[SDL_SCANCODE_RALT]
+                 || keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]
+                 || keys[SDL_SCANCODE_LGUI] || keys[SDL_SCANCODE_RGUI])) {
+            return keys[SDL_SCANCODE_LSHIFT] ? EIDOS_FAST_FORWARD_MAX
+                                             : EIDOS_FAST_FORWARD;
+        }
     }
     /* EIDOS_FAST_UNTIL_BATTLE (the spot editor's Preview in game): as fast
      * as possible until the first battle shows, then the normal speed; =start
@@ -842,8 +847,8 @@ void eidos_platform_wait_frame(EidosPlatform *p)
     }
 
     p->lag_frames = now > p->next_ns ? (u32)((now - p->next_ns) / step) : 0;
-    if (now > p->next_ns + 4 * step) {
-        /* More than four frames behind: a breakpoint, a suspended machine or
+    if (now > p->next_ns + 2 * step) {
+        /* More than two frames behind: a breakpoint, a suspended machine or
          * a host that cannot keep up.  Running the backlog would show a
          * burst of fast frames, so the schedule is restarted from now. */
         p->late_frames++;
