@@ -2098,7 +2098,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     FieldNow f;
     int cw = c->canvas->w, ch = c->canvas->h;
     const int bh = 16;
-    char place[64], clock[8];
+    char place[64], clock[8], s_m[4];
     u32 zone = 0, t3[3] = { 0, 0, 0 };
     int have_time = 0, comm = 0, last_cmd = 0;
     EidosUiRect bar;
@@ -2264,8 +2264,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             t3[2] = (u32)tmv->tm_sec;
         }
     }
-    snprintf(clock, sizeof(clock), "%02u%c%02u", t3[0] % 100u, (t3[2] & 1u) ? ' ' : ':',
-             t3[1] % 100u);
+    snprintf(clock, sizeof(clock), "%02u", t3[0] % 100u);
+    snprintf(s_m, sizeof(s_m), "%02u", t3[1] % 100u);
     if (f.panel != NULL && (f.mode == 0 || f.mode == 8)) {
         comm = f.panel[0x45A] != 0;
         last_cmd = (int)rd32(f.panel + 0x218);
@@ -2396,8 +2396,23 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     /* the middle: the time on its slanted tab */
     bar_trapezoid(c, cw / 2, tab_w, bh - 1, st_bar & EIDOS_UI_HOVER);
-    ui_text(c, cw / 2 - ui_text_w(clock, UI_FONT_LARGE) / 2,
-            ui_text_y(bh - 1, UI_FONT_LARGE), clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+    {
+        /* Clock: hours and minutes at fixed anchored positions so the
+         * digits never drift when the colon blinks.  The colon sits at
+         * the centre of the tab; h is to its left, m to its right. */
+        int colon_w = ui_text_w(":", UI_FONT_LARGE);
+        int h_w     = ui_text_w(clock, UI_FONT_LARGE);
+        int cy      = ui_text_y(bh - 1, UI_FONT_LARGE);
+        int colon_x = cw / 2 - colon_w / 2;
+        int h_x     = colon_x - h_w - 1;
+        int m_x     = colon_x + colon_w + 1;
+
+        ui_text(c, h_x, cy, clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, m_x, cy, s_m,   UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        if ((t3[2] & 1u) == 0) {
+            ui_text(c, colon_x, cy, ":", UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        }
+    }
     ui_pop(c, 0, -g_bar_slide, &saved_clip);
     if (g_bar_slide > 0) {
         return;                             /* no clicks while it moves     */
