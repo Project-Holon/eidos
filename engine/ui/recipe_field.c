@@ -2836,8 +2836,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         int h_w     = ui_text_w(clock, UI_FONT_LARGE);
         int cy      = ui_text_y(bh - 1, UI_FONT_LARGE);
         int colon_x = cw / 2 - colon_w / 2;
-        int h_x     = colon_x - h_w - 1;
-        int m_x     = colon_x + colon_w + 1;
+        int h_x     = colon_x - h_w;          /* (the letters' own spacing, as "12:34" in one piece) */
+        int m_x     = colon_x + colon_w;
 
         ui_text(c, h_x, cy, clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         ui_text(c, m_x, cy, s_m,   UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
