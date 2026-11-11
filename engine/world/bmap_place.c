@@ -1979,9 +1979,8 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
     double a = (double)(sp->facing & 0xFFFFu) * 2.0 * pi / 65536.0;
     float px = sp->px, pz = sp->pz;
     int reach = sp->reach, q;
-    float foe_dz = sp->foe_dz < 0.0f ? 0.0f : sp->foe_dz;
 
-    g_foe_z = FOE_SZ_GAME - foe_dz;
+    g_foe_z = FOE_SZ_GAME - sp->foe_dz;
     for (q = 3; q < N_SIGHT; q++) {
         k_sight[q][2] = g_foe_z;
     }
@@ -2178,7 +2177,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
         s->place_a = (float)a;
         s->place_g[0] = gy;
         s->place_g[1] = bmap_ground_y(s, fx, fz);
-        s->foe_dz = foe_dz;
+        s->foe_dz = sp->foe_dz;
         /* each Pokemon on its own ground: the own one where the map is
          * placed, the foe raised or lowered onto its own (battle_view.c
          * moves the foe's slot by foe_dy, and the cameras follow it,
