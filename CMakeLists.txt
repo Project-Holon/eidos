@@ -583,6 +583,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/link.c             # Link sessions: the radio over the relay
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tls_roots.c        # the roots a TLS relay is checked against
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_slots.c       # several single-player saves
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/preview_save.c     # the style chooser's preview save, packed (tools/preview_save.py)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_frame.c        # the mod layer's frame tick
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_avatar.c       # the field avatars
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_restart.c      # the run restart
@@ -1160,7 +1161,10 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
@@ -2692,7 +2696,10 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
@@ -3252,7 +3259,10 @@ add_executable(test_ui_kit ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
@@ -3273,7 +3283,10 @@ add_executable(test_ui_input ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
@@ -3295,7 +3308,10 @@ add_executable(test_ui_pc ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_pc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_remix.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_plasma.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_bw_kit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_harmonia.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui_lang.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c

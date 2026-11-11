@@ -30,6 +30,8 @@ enum {
     EIDOS_PROF_BOOT3D,    /* the GPU 3D layer set-up                    */
     EIDOS_PROF_GLREAD,    /* glReadPixels (waits for the GPU)           */
     EIDOS_PROF_UNPREM,    /* un-premultiply and flip after the read     */
+    EIDOS_PROF_UI,        /* the one-screen interface's frame           */
+    EIDOS_PROF_GAME,      /* the game's own threads, between two frames */
     EIDOS_PROF_COUNT
 };
 
@@ -44,13 +46,22 @@ void eidos_prof_frame(unsigned long long frame_no);
 /*
  * The benchmark (--bench FILE): every frame after the first `skip` is
  * recorded (the time since the frame before, the work in it: that time less
- * the pacing wait, and the present), and at the end of the run FILE gets a
+ * the pacing wait, and every phase above), and at the end of the run FILE gets a
  * JSON summary (percentiles, the worst frame, the frames over 16.7 and
  * 33.3 ms, the notes) and FILE.csv the frames.  It turns the profiler on.
  * A note is a line of the summary: the platform layer names the system, the
  * backend and the GPU, so runs on different devices compare side by side.
  */
 void eidos_bench_start(const char *path, unsigned skip);
+
+/*
+ * The slow-frame sampler (EIDOS_HITCH_MS=N; Windows 32-bit builds, else it
+ * does nothing).  The frame function calls this at its start with the time
+ * the game's own threads took since the last frame: at N ms or more the
+ * samples taken in that time are printed (where each thread ran, and the
+ * callers on its stack inside the program), then the list starts again.
+ */
+void eidos_hitch_frame(double game_ms, unsigned long long frame_no);
 void eidos_bench_note(const char *key, const char *value);
 /* Writes the files; the run's end calls it (more calls do nothing). */
 void eidos_bench_finish(void);

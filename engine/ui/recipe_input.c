@@ -63,6 +63,10 @@ static u16 rd16(const void *p, u32 off)
     return v;
 }
 
+/* How far inside its window a title stands: 1 px inside Kosmos's thin edge,
+ * 3 px inside a theme's own frame (its lines are 3 px deep). */
+#define HEAD_IN (ui_theme_active_has_frame() ? 3 : 1)
+
 static void *rdp(const void *p, u32 off)
 {
     /* These offsets describe DS records, including four-byte pointers. */
@@ -429,6 +433,47 @@ static int draw_game_prompt(EidosUiCtx *c, const EidosUiFrame *in, int x, int y,
     if (maxx < 0 || maxx - minx + 1 > maxw + 40 || maxy - miny > 40) {
         return 0;
     }
+    if (maxy - miny >= 18) {
+        /* two lines: the second follows the first on one line when both fit
+         * (the field stands right under the prompt) */
+        int split = miny + 16, x1a = 999, x1b = -1, x2a = 999, x2b = -1, y2a = 999;
+
+        for (sy = miny; sy <= maxy; sy++) {
+            for (sx = minx; sx <= maxx; sx++) {
+                const u8 *p = scr + ((size_t)sy * 256 + (size_t)sx) * 4;
+
+                if ((int)p[0] + p[1] + p[2] < 330) {
+                    if (sy < split) {
+                        x1a = imin(x1a, sx);
+                        x1b = imax(x1b, sx);
+                    } else {
+                        x2a = imin(x2a, sx);
+                        x2b = imax(x2b, sx);
+                        y2a = imin(y2a, sy);
+                    }
+                }
+            }
+        }
+        if (x1b >= 0 && x2b >= 0 && (x1b - x1a) + 7 + (x2b - x2a) <= maxw) {
+            for (sy = miny; sy <= maxy; sy++) {
+                for (sx = minx; sx <= maxx; sx++) {
+                    const u8 *p = scr + ((size_t)sy * 256 + (size_t)sx) * 4;
+                    int sum = (int)p[0] + p[1] + p[2];
+
+                    if (sum >= 330) {
+                        continue;
+                    }
+                    if (sy < split) {
+                        ui_fill(c, x + sx - x1a, y + (sy - miny), 1, 1, sum < 200 ? UI_LIGHT : UI_GREY, 255);
+                    } else {
+                        ui_fill(c, x + (x1b - x1a) + 7 + sx - x2a, y + (sy - split), 1, 1, sum < 200 ? UI_LIGHT : UI_GREY,
+                                255);
+                    }
+                }
+            }
+            return 1;
+        }
+    }
     for (sy = miny; sy <= maxy; sy++) {
         for (sx = minx; sx <= maxx; sx++) {
             const u8 *p = scr + ((size_t)sy * 256 + (size_t)sx) * 4;
@@ -624,22 +669,24 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     px = (cw - pw) / 2;
     py = (ch - ui_bar_h(c) - ph) / 2;
-    ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
+    if (!ui_app_window(c, "namein", &px, &py, &pw, &ph)) {
+        ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
+    }
     snprintf(cnt, sizeof(cnt), "%d / %d", s.len, s.maxlen);
     if (s.kind == 1 && ui_species_name != NULL
         && ui_species_name(s.species, mon, (int)sizeof mon) > 0 && mon[0] != '\0') {
-        ui_header(c, px + 1, py + 1, pw - 2, "NICKNAME", mon, cnt, acc);
+        ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, "NICKNAME", mon, cnt, acc);
     } else {
         /* the port's own texts (the multiplayer screen's name, a game's
          * code) are plain texts, whose kind would say FRIEND */
-        ui_header(c, px + 1, py + 1, pw - 2, "NAME",
+        ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, "NAME",
                   &eidos_ui_options_proc_up != NULL && eidos_ui_options_proc_up ? "MULTIPLAYER"
                                                                                 : kind_sub(s.kind), cnt, acc);
     }
 
     x0 = px + pad;
     x1 = px + pw - pad;
-    y = py + 1 + 22 + 6;
+    y = py + HEAD_IN + 22 + 6;
 
     /* row A: the subject, the prompt, the field, the page tabs */
     icon = 40;
@@ -991,12 +1038,14 @@ static void xt_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     ph = imin(imin(ch - ui_bar_h(c) - 12, 250), 22 + 6 + imax(shown, 3) * rowh + 2 * pad + 4);
     px = (cwid - pw) / 2;
     py = (ch - ui_bar_h(c) - ph) / 2;
-    ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
+    if (!ui_app_window(c, "xtrans", &px, &py, &pw, &ph)) {
+        ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
+    }
     snprintf(cnt, sizeof(cnt), ui_trf("%d nearby"), shown);
-    ui_header(c, px + 1, py + 1, pw - 2, "XTRANSCEIVER", NULL, cnt, UI_CYAN);
+    ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, "XTRANSCEIVER", NULL, cnt, UI_CYAN);
     x0 = px + pad;
     x1 = px + pw - pad;
-    rows_y = py + 1 + 22 + 6;
+    rows_y = py + HEAD_IN + 22 + 6;
     avail = py + ph - pad - rows_y;
 
     if (shown == 0) {

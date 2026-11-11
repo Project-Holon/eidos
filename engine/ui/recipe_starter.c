@@ -27,6 +27,9 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "choice_list.h"
+#include "theme.h"
+#include "textbox.h"
 #include "input.h"
 #include "dsmem.h"
 
@@ -55,6 +58,7 @@
 extern int bw_overlay_is_loaded(u32 id) PS_WEAK;
 extern void *bw_dsref__GameSystemGlobal PS_WEAK;
 extern void *bw_dsref_ov223_d_021BC710 PS_WEAK;     /* the three species */
+extern void *bw_dsref_ov223_d_021BC730 PS_WEAK;     /* their captions' message numbers */
 extern u8   APP_TASKMENU_GetCursorPos(const void *menu) PS_WEAK;
 extern void STRBUF_ToChars(void *strbuf, u16 *out, u32 max) PS_WEAK;
 
@@ -319,7 +323,7 @@ static void sprite_draw(EidosUiCtx *c, int species, u32 frame, int cx, int by)
 static void picture_box(EidosUiCtx *c, u32 frame, int species, int x, int bottom)
 {
     char name[64];
-    int t1, t2, w, h, pw, ph, cx, by, y;
+    int t1, t2, w, h, pw, ph, cx, by, y, themed = 0, light = 0;
     u32 edge, shade, fill;
 
     if (!sprite_first(species, frame)) {
@@ -335,12 +339,31 @@ static void picture_box(EidosUiCtx *c, u32 frame, int species, int x, int bottom
     y = bottom - h;
     cx = x + w / 2;
     by = y + 6 + ph;
-    ui_panel(c, x, y, w, h, CUT_DEF, 6, fill, edge, 255);
-    ui_ellipse(c, cx - pw * 3 / 8, by - 11, pw * 3 / 4, 14, shade, UI_NONE, 255);
-    ui_ellipse(c, cx - pw * 5 / 16, by - 8, pw * 5 / 8, 9, scale_rgb(edge, 1, 4), UI_NONE, 255);
+    {
+        int fx = x, fy = y, fw = w, fh = h;
+
+        themed = ui_app_window(c, "starter-pic", &fx, &fy, &fw, &fh);
+        light = themed && fh == 1;
+        if (themed) {
+            by += fy - y;               /* the theme may stand it higher */
+            y = fy;
+        }
+    }
+    if (!themed) {
+        ui_panel(c, x, y, w, h, CUT_DEF, 6, fill, edge, 255);
+    }
+    /* the ground under the Pokemon: its own colour, pale on a light box */
+    ui_ellipse(c, cx - pw * 3 / 8, by - 11, pw * 3 / 4, 14, light ? UI_RAW(0xC8C8D0u) : shade, UI_NONE, 255);
+    ui_ellipse(c, cx - pw * 5 / 16, by - 8, pw * 5 / 8, 9, light ? UI_RAW(0xB0B0BCu) : scale_rgb(edge, 1, 4), UI_NONE, 255);
     sprite_draw(c, species, frame, cx, by);
-    ui_fill(c, x + 6, y + h - 28, w - 12, 1, shade, 255);
+    if (!themed) {
+        ui_fill(c, x + 6, y + h - 28, w - 12, 1, shade, 255);
+    }
     if (ui_species_name(species, name, (int)sizeof name) > 0) {
+        if (themed) {
+            ui_text(c, x + 8, y + h - 24 + ui_text_y(20, UI_FONT_LARGE), name, UI_RAW(light ? 0x202020u : 0xF8F8F8u),
+                    (s32)UI_RAW(light ? 0xC4C4C4u : 0x0C0C0Cu), UI_FONT_LARGE, 1);
+        } else
         ui_text(c, x + 8, y + h - 24 + ui_text_y(20, UI_FONT_LARGE), name, UI_WHITE, UI_EDGE,
                 UI_FONT_LARGE, 1);
     }
@@ -354,6 +377,90 @@ static void picture_box(EidosUiCtx *c, u32 frame, int species, int x, int bottom
         }
         ui_type_tag(c, tx, y + h - 22, 48, t1);
     }
+}
+
+/* The first line of the game's caption for the picked Pokemon ("The
+ * Fire-type Pokemon"; its second line is the name, a word tag). */
+static void caption_line(void *w, int ball, char *out, int cap)
+{
+    u16 u[128];
+    int i, at = 0;
+    void *sb;
+
+    out[0] = '\0';
+    if (&bw_dsref_ov223_d_021BC730 == NULL || bw_dsref_ov223_d_021BC730 == NULL || MSGDATA_AllocString == NULL
+        || STRBUF_Delete == NULL || STRBUF_ToChars == NULL || rdp(w, PW_MSGBANK) == NULL) {
+        return;
+    }
+    sb = MSGDATA_AllocString(rdp(w, PW_MSGBANK), ((const u32 *)bw_dsref_ov223_d_021BC730)[ball]);
+    if (sb == NULL) {
+        return;
+    }
+    memset(u, 0xFF, sizeof u);
+    STRBUF_ToChars(sb, u, 127);
+    STRBUF_Delete(sb);
+    u[127] = 0xFFFFu;
+    for (i = 0; i < 127 && u[i] != 0xFFFFu && u[i] != 0xFFFEu; i++) {
+        if (u[i] == 0xF000u) {
+            /* a tag (its code, its count of arguments, the arguments): the
+             * line opens with the one that centres it */
+            if (i + 2 >= 127 || at > 0) {
+                break;
+            }
+            i += 2 + u[i + 2];
+            continue;
+        }
+        at = put_utf8(out, at, cap, u[i]);
+    }
+    while (at > 0 && out[at - 1] == ' ') {
+        at--;
+    }
+    out[at] = '\0';
+}
+
+/* A theme's stage for the picked Pokemon (hook "starter-stage"): the theme
+ * draws the ground and says where the Pokemon stands and how large; then
+ * its caption (hook "starter-caption").  0: the theme has none. */
+static int themed_stage(EidosUiCtx *c, void *w, u32 frame, int ball, int cw, int room)
+{
+    static int line_ball = -1;
+    static char line[128];
+    char name[64];
+    const UiImage *im;
+    int species = species_of(ball), t1, t2, x, y, kw, hh, k, ox, oy;
+
+    if (!ui_theme_active_has_frame() || !sprite_first(species, frame)) {
+        return 0;
+    }
+    ui_species_types(species, &t1, &t2);
+    x = (int)(g_pic_rgb & 0xFFFFFFu);
+    y = t1;
+    kw = g_pic_w;                       /* the sprite's size: the theme picks its scale */
+    hh = g_pic_h;
+    if (!ui_app_window(c, "starter-stage", &x, &y, &kw, &hh)) {
+        return 0;
+    }
+    k = kw < 1 ? 1 : kw > 4 ? 4 : kw;
+    im = ui_mon_front_anim((u16)species, 0, frame - g_pic_start, &ox, &oy);
+    if (im != NULL) {
+        ui_image(c, x - k * (g_pic_w / 2 - g_pic_ox + ox), y - k * (g_pic_h - g_pic_oy + oy), im, k);
+    }
+    if (line_ball != ball) {
+        caption_line(w, ball, line, (int)sizeof line);
+        line_ball = line[0] != '\0' ? ball : -1;
+        if (debug_on()) {
+            fprintf(stderr, "starter: caption ball %d table %p line '%s'\n", ball,
+                    &bw_dsref_ov223_d_021BC730 != NULL ? bw_dsref_ov223_d_021BC730 : NULL, line);
+        }
+    }
+    name[0] = '\0';
+    (void)ui_species_name(species, name, (int)sizeof name);
+    ui_app_text(0, line);
+    ui_app_text(1, name);
+    kw = cw;
+    hh = room;
+    (void)ui_app_window(c, "starter-caption", &x, &y, &kw, &hh);
+    return 1;
 }
 
 /* The message, wrapped to `w`, its bottom at `bottom` (the game's longer
@@ -380,7 +487,11 @@ static void message_box(EidosUiCtx *c, int x, int bottom, int w, const char *tex
     int h = 14 + 15 * (lines > 0 ? lines : 1);   /* as ui_dialog, without its buttons */
     MsgLines m;
 
-    ui_panel(c, x, bottom - h, w, h, CUT_DEF, 6, UI_BODY, UI_EDGE, 215);
+    if (ui_theme_active_has_frame()) {
+        ui_textbox_frame(c, UI_TEXTBOX_SYSTEM | 16, x, bottom - h, w, h);     /* the theme's message box */
+    } else {
+        ui_panel(c, x, bottom - h, w, h, CUT_DEF, 6, UI_BODY, UI_EDGE, 215);
+    }
     m.c = c;
     m.x = x + 10;
     m.y = bottom - h + 7;
@@ -393,7 +504,7 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     int outer = -1;
     void *w = psel_work(&outer);
     int cw = c->canvas->w, ch = c->canvas->h;
-    int sub, sel, i, mw, mx, closeup, menu;
+    int sub, sel, i, mw, mx, closeup, menu, stage = 0;
     float s, ox;
     char msg[256];
     const char *pairs[4];
@@ -472,9 +583,79 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
      * the game asks, YES and NO at the bottom right; the message between
      * them keeps both rooms clear, so it sits the same with or without them */
     if (closeup && sel >= 0 && sel <= 2) {
-        picture_box(c, in->frame, species_of(sel), 10, ch - ui_bar_h(c) - 6);
+        stage = themed_stage(c, w, in->frame, sel, cw, ch - ui_bar_h(c));
+        if (!stage) {
+            picture_box(c, in->frame, species_of(sel), 10, ch - ui_bar_h(c) - 6);
+        }
     }
     strbuf_text(rdp(w, PW_STRBUF), msg, (int)sizeof msg);
+    if (stage) {
+        /* the theme's own arrangement: the question, then its two answers */
+        int fx = 0, fy = 0, fw = cw, fh = ch - ui_bar_h(c);
+
+        if (msg[0] != '\0') {
+            ui_app_text(2, msg);
+            if (!ui_app_window(c, "starter-ask", &fx, &fy, &fw, &fh)) {
+                message_box(c, 10, ch - ui_bar_h(c) - 6, cw - 20, msg);
+            }
+        }
+        if (menu) {
+            void *tm = rdp(w, PW_TASKMENU);
+            int cur = (tm != NULL && APP_TASKMENU_GetCursorPos != NULL) ? APP_TASKMENU_GetCursorPos(tm) : 0;
+            int hover = -1, ok = 1;
+            EidosUiRect r[2];
+
+            for (i = 0; i < 2; i++) {
+                fx = i;
+                fy = 0;
+                fw = cw;
+                fh = ch - ui_bar_h(c);
+                ok = ok && ui_app_window(c, "starter-answer-rect", &fx, &fy, &fw, &fh);
+                r[i].x = fx;
+                r[i].y = fy;
+                r[i].w = fw;
+                r[i].h = fh;
+                if (ok && (eidos_ui_hit(r[i]) & EIDOS_UI_HOVER)) {
+                    hover = i;
+                }
+            }
+            if (ok && r[0].y == r[1].y) {
+                /* side by side: left and right move the game's cursor too */
+                u32 k = eidos_ui_keys_pressed();
+
+                eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT);
+                if ((k & BW_KEY_LEFT) && cur == 1) {
+                    eidos_ui_press(BW_KEY_UP, 2);
+                } else if ((k & BW_KEY_RIGHT) && cur == 0) {
+                    eidos_ui_press(BW_KEY_DOWN, 2);
+                }
+            }
+            for (i = 0; ok && i < 2; i++) {
+                fx = r[i].x;
+                fy = r[i].y;
+                fw = r[i].w;
+                fh = (hover >= 0 ? hover == i : cur == i) ? -r[i].h : r[i].h;
+                ui_app_text(3, game_text(w, MSG_YES + (u32)i, i == 0 ? "YES" : "NO"));
+                (void)ui_app_window(c, "starter-answer", &fx, &fy, &fw, &fh);
+                if (eidos_ui_hit(r[i]) & EIDOS_UI_CLICK) {
+                    eidos_ui_tap(220, i == 0 ? 100 : 124, 3);
+                }
+            }
+        }
+        msg[0] = '\0';
+        menu = 0;
+        pairs[0] = "A"; pairs[1] = "Choose";
+        pairs[2] = "B"; pairs[3] = "Back";
+        {
+            static const u32 keys[2] = { BW_KEY_A, BW_KEY_B };
+
+            ui_hints(c, ch - ui_bar_h(c), cw, pairs, sub == 11 ? 2 : 1, keys);
+        }
+        if (sub == 11 && eidos_ui_right_click()) {
+            eidos_ui_press(BW_KEY_B, 2);
+        }
+        return;
+    }
     mx = 10 + BOX_W + BOX_GAP;
     mw = cw - 2 * mx;
     if (!closeup && msg[0] != '\0' && ui_wrap(msg, mw - 20, UI_FONT_LARGE, NULL, NULL) > 1) {
@@ -490,7 +671,13 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         }
     }
     if (msg[0] != '\0') {
-        message_box(c, mx, ch - ui_bar_h(c) - 6, mw, msg);
+        /* over the case a theme may write the line its own way (x = 1) */
+        int fx = 1, fy = 0, fw = cw, fh = ch - ui_bar_h(c);
+
+        ui_app_text(2, msg);
+        if (closeup || !ui_theme_active_has_frame() || !ui_app_window(c, "starter-ask", &fx, &fy, &fw, &fh)) {
+            message_box(c, mx, ch - ui_bar_h(c) - 6, mw, msg);
+        }
     }
     if (menu) {
         void *tm = rdp(w, PW_TASKMENU);
@@ -507,6 +694,30 @@ static void starter_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
                 hover = i;
             }
         }
+        if (ui_theme_active()->choice_row != NULL) {
+            /* a theme: its own choice box, over the message's right end */
+            int lw = 84, lh = 2 * 18 + 8, lx = cw - 10 - lw, ly = ch - ui_bar_h(c) - 6 - 40 - 6 - lh;
+
+            ui_textbox_frame(c, UI_TEXTBOX_NARRATION, lx, ly, lw, lh);
+            hover = -1;
+            for (i = 0; i < 2; i++) {
+                r[i].x = lx + 3;
+                r[i].y = ly + 4 + i * 18;
+                r[i].w = lw - 6;
+                r[i].h = 18;
+                if (eidos_ui_hit(r[i]) & EIDOS_UI_HOVER) {
+                    hover = i;
+                }
+            }
+            for (i = 0; i < 2; i++) {
+                ui_theme_active()->choice_row(c, UI_CHOICE_WHITE, r[i].x, r[i].y, r[i].w, r[i].h,
+                                              game_text(w, MSG_YES + (u32)i, i == 0 ? "YES" : "NO"),
+                                              hover >= 0 ? hover == i : cur == i);
+                if (eidos_ui_hit(r[i]) & EIDOS_UI_CLICK) {
+                    eidos_ui_tap(220, i == 0 ? 100 : 124, 3);
+                }
+            }
+        } else
         for (i = 0; i < 2; i++) {
             ui_menu_row(c, r[i].x, r[i].y, r[i].w, game_text(w, MSG_YES + (u32)i, i == 0 ? "YES" : "NO"),
                         NULL, hover < 0 && cur == i, hover == i);

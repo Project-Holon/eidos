@@ -68,12 +68,15 @@ typedef struct UiOwned {
 } UiOwned;
 
 static UiOwned *g_item[ITEM_MAX];
+static UiOwned *g_app[UI_APP_ICON_COUNT];
+static u8       g_app_tried[UI_APP_ICON_COUNT];
 static UiOwned *g_mon[ICON_MEMBERS * 2];
 static u8      *g_mon_pal;          /* member 0 of a/0/0/7                  */
 static u32      g_mon_pal_size;
 static int      g_mon_pal_tried;
 
 static void rig_drop(void);
+static void held_drop(void);
 
 static u32 rd16(const u8 *p) { return (u32)p[0] | ((u32)p[1] << 8); }
 
@@ -111,6 +114,9 @@ static void free_images(UiOwned **list, int n)
 void ui_icons_reset(void)
 {
     free_images(g_item, ITEM_MAX);
+    free_images(g_app, UI_APP_ICON_COUNT);
+    memset(g_app_tried, 0, sizeof(g_app_tried));
+    held_drop();
     free_images(g_mon, ICON_MEMBERS * 2);
     free(g_mon_pal);
     g_mon_pal = NULL;
@@ -168,6 +174,123 @@ const UiImage *ui_item_icon(u16 item)
     free(pal);
     g_item[item] = o;
     return o != NULL ? &o->im : NULL;
+}
+
+/* ------------------------------------------------------------------ */
+/* The interface's own icons                                           */
+/* ------------------------------------------------------------------ */
+
+const UiImage *ui_app_icon(int which)
+{
+    /* archive, character member, palette member, palette bank, first
+     * tile, tiles across and down */
+    static const struct {
+        u8 arc, chr, pal, bank, first, tw, th;
+    } k[UI_APP_ICON_COUNT] = {
+        { UI_ARC_FMENU, 7, 1, 6, 0, 4, 4 },     /* the Bag            */
+        { UI_ARC_FMENU, 8, 1, 6, 0, 4, 4 },     /* Pokemon            */
+        { UI_ARC_APP, 20, 19, 0, 16, 4, 4 },    /* the return arrow   */
+        { UI_ARC_APP, 57, 33, 0, 0, 4, 2 },     /* a physical move    */
+        { UI_ARC_APP, 58, 33, 0, 0, 4, 2 },     /* a special move     */
+        { UI_ARC_APP, 56, 33, 0, 0, 4, 2 },     /* a status move      */
+    };
+    u8 *chr, *pal;
+    u32 chr_size = 0, pal_size = 0, need;
+    u16 p16[16];
+
+    if (which < 0 || which >= UI_APP_ICON_COUNT) {
+        return NULL;
+    }
+    if (g_app_tried[which]) {
+        return g_app[which] != NULL ? &g_app[which]->im : NULL;
+    }
+    g_app_tried[which] = 1;
+    chr = ui_arc_member(k[which].arc, k[which].chr, &chr_size);
+    pal = ui_arc_member(k[which].arc, k[which].pal, &pal_size);
+    need = 0x30u + (u32)(k[which].first + k[which].tw * k[which].th) * 32u;
+    if (chr != NULL && pal != NULL && chr_size >= need && read_pal16(pal, pal_size, k[which].bank, p16) == 0) {
+        g_app[which] = make_image(ui_decode_4bpp(chr + 0x30 + k[which].first * 32u, k[which].tw, k[which].th, p16,
+                                                 k[which].tw * 8, k[which].th * 8),
+                                  k[which].tw * 8, k[which].th * 8);
+    }
+    free(chr);
+    free(pal);
+    return g_app[which] != NULL ? &g_app[which]->im : NULL;
+}
+
+/* ------------------------------------------------------------------ */
+/* The party's marks for a held item and a held letter                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * a/0/8/3, characters member 65 and palette member 66 (the game's
+ * APP_ICON_GetItem*FileId): tile 0 a jar, tile 4 an envelope, 8 x 8 each.
+ * The palette's colour 1 is the edge, 5 the cap's side, 7 the body, 8 the
+ * body's side; a style repaints those four (kit.h, ui_held_icon).  A few
+ * pictures are kept, one for each kind and set of colours asked for.
+ */
+#define HELD_KEPT 8
+
+static struct {
+    int kind, used;
+    u32 swap[4];
+    UiOwned *im;
+} g_held[HELD_KEPT];
+
+static void held_drop(void)
+{
+    int i;
+
+    for (i = 0; i < HELD_KEPT; i++) {
+        if (g_held[i].im != NULL) {
+            free((void *)g_held[i].im->im.rgba);
+            free(g_held[i].im);
+        }
+    }
+    memset(g_held, 0, sizeof(g_held));
+}
+
+const UiImage *ui_held_icon(int kind, const u32 *swap)
+{
+    static const u8 k_colour[4] = { 1, 5, 7, 8 };
+    static const u32 k_none[4] = { 0, 0, 0, 0 };
+    u8 *chr, *pal;
+    u32 chr_size = 0, pal_size = 0, first = kind == 2 ? 4u : 0u;
+    u16 p16[16];
+    int i, at = -1;
+
+    if (kind != 1 && kind != 2) {
+        return NULL;
+    }
+    swap = swap != NULL ? swap : k_none;
+    for (i = 0; i < HELD_KEPT; i++) {
+        if (g_held[i].used && g_held[i].kind == kind && memcmp(g_held[i].swap, swap, sizeof(g_held[i].swap)) == 0) {
+            return g_held[i].im != NULL ? &g_held[i].im->im : NULL;
+        }
+        if (!g_held[i].used && at < 0) {
+            at = i;
+        }
+    }
+    if (at < 0) {
+        return NULL;                /* (more sets of colours than a session has styles) */
+    }
+    g_held[at].used = 1;
+    g_held[at].kind = kind;
+    memcpy(g_held[at].swap, swap, sizeof(g_held[at].swap));
+    chr = ui_arc_member(UI_ARC_APP, 65, &chr_size);
+    pal = ui_arc_member(UI_ARC_APP, 66, &pal_size);
+    if (chr != NULL && pal != NULL && chr_size >= 0x30u + (first + 1u) * 32u && read_pal16(pal, pal_size, 0, p16) == 0) {
+        for (i = 0; i < 4; i++) {
+            if (swap[i] != 0u) {
+                p16[k_colour[i]] = (u16)(((swap[i] >> 19) & 31u) | (((swap[i] >> 11) & 31u) << 5)
+                                         | (((swap[i] >> 3) & 31u) << 10));
+            }
+        }
+        g_held[at].im = make_image(ui_decode_4bpp(chr + 0x30 + first * 32u, 1, 1, p16, 8, 8), 8, 8);
+    }
+    free(chr);
+    free(pal);
+    return g_held[at].im != NULL ? &g_held[at].im->im : NULL;
 }
 
 /* ------------------------------------------------------------------ */
@@ -255,9 +378,14 @@ const UiImage *ui_mon_icon(u16 species, u8 form, int frame)
  * the front's bundle (character sheets, the cell bank, the cell animation,
  * the multi-cell resource), n 9..17 a second bundle, n 18 and 19 the
  * normal and shiny palettes.  The picture is a rig of body-part cells
- * (engine/g2d/rig.c loads it, g2d_compose_pose poses it); the multi-cell
- * group 0 is the idle animation the game loops in battle and on the
- * starter stage.  One rig is kept at a time.
+ * (engine/g2d/rig.c loads it and plays it: g2d_rig_play_*); its multi-cell
+ * animation 0 is the idle animation the game loops in battle and on the
+ * starter stage.  One rig is kept at a time, and one animation of it: it
+ * starts when the picture is first asked for at a time other than 0 and
+ * runs with the caller's clock (a clock that goes back, or jumps on by more
+ * than PLAY_GAP ticks, starts it again: the picture was away).  Time 0 is
+ * the standing picture, kept apart: callers ask for it to measure while the
+ * animation runs.
  */
 #define RIG_ARCHIVE  "a/0/0/4"
 #define RIG_BLOCK    20u
@@ -268,10 +396,24 @@ static BwArcFile g_rig_arc;
 static int       g_rig_arc_state;           /* 0 not tried, 1 open, -1 failed */
 static G2dRig    g_rig;
 static int       g_rig_species = -1, g_rig_shiny, g_rig_ok;
-static u32       g_rig_t = 0xFFFFFFFFu;
-static UiImage   g_front;
-static u8       *g_front_px;
-static int       g_front_ox, g_front_oy;
+#define PLAY_GAP 600u
+
+typedef struct FrontPic {
+    UiImage im;
+    u8     *px;
+    int     ox, oy;
+} FrontPic;
+
+static FrontPic   g_front, g_rest;
+static G2dRigPlay g_play;
+static int        g_play_on;
+static u32        g_play_base;
+
+static void pic_drop(FrontPic *f)
+{
+    free(f->px);
+    memset(f, 0, sizeof *f);
+}
 
 static void rig_drop(void)
 {
@@ -281,10 +423,9 @@ static void rig_drop(void)
     memset(&g_rig, 0, sizeof g_rig);
     g_rig_ok = 0;
     g_rig_species = -1;
-    g_rig_t = 0xFFFFFFFFu;
-    free(g_front_px);
-    g_front_px = NULL;
-    memset(&g_front, 0, sizeof g_front);
+    g_play_on = 0;
+    pic_drop(&g_front);
+    pic_drop(&g_rest);
 }
 
 static int rig_use(u16 species, int shiny)
@@ -317,50 +458,89 @@ static int rig_use(u16 species, int shiny)
     return 1;
 }
 
-const UiImage *ui_mon_front_anim(u16 species, int shiny, u32 t, int *ox, int *oy)
+/* The player's picture now into `f` (its old picture stays on a failure). */
+static int pic_take(FrontPic *f, const G2dRigPlay *play)
 {
     G2dPose pose;
+    u8 *px;
     u32 i, n;
+
+    if (g2d_rig_play_pose(play, &pose) != 0) {
+        return -1;
+    }
+    n = pose.width * pose.height;
+    px = (u8 *)malloc((size_t)n * 4u);
+    if (px == NULL) {
+        g2d_pose_free(&pose);
+        return -1;
+    }
+    for (i = 0; i < n; i++) {
+        u8 v = pose.indices[i];
+        u8 *d = px + (size_t)i * 4u;
+
+        if (v == 0 || v >= g_rig.palette.count) {
+            d[0] = d[1] = d[2] = d[3] = 0;
+            continue;
+        }
+        d[0] = g_rig.palette.colors[v].r;
+        d[1] = g_rig.palette.colors[v].g;
+        d[2] = g_rig.palette.colors[v].b;
+        d[3] = 255;
+    }
+    free(f->px);
+    f->px = px;
+    f->im.w = (int)pose.width;
+    f->im.h = (int)pose.height;
+    f->im.rgba = px;
+    f->ox = pose.ox;
+    f->oy = pose.oy;
+    g2d_pose_free(&pose);
+    return 0;
+}
+
+const UiImage *ui_mon_front_anim(u16 species, int shiny, u32 t, int *ox, int *oy)
+{
+    FrontPic *f;
 
     if (!rig_use(species, shiny)) {
         return NULL;
     }
-    if (t != g_rig_t || g_front_px == NULL) {
-        if (g2d_compose_pose(&g_rig.ncgr, &g_rig.ncer, g_rig.has_nanr ? &g_rig.nanr : NULL,
-                             &g_rig.nmcr.groups[0], t, g_rig.palette.count, &pose) != 0) {
-            return g_front_px != NULL ? &g_front : NULL;    /* keep the last frame */
-        }
-        n = pose.width * pose.height;
-        free(g_front_px);
-        g_front_px = (u8 *)malloc((size_t)n * 4u);
-        if (g_front_px == NULL) {
-            g2d_pose_free(&pose);
-            return NULL;
-        }
-        for (i = 0; i < n; i++) {
-            u8 v = pose.indices[i];
-            u8 *d = g_front_px + (size_t)i * 4u;
+    if (t == 0) {
+        f = &g_rest;
+        if (f->px == NULL) {
+            G2dRigPlay *play = (G2dRigPlay *)malloc(sizeof *play);
 
-            if (v == 0 || v >= g_rig.palette.count) {
-                d[0] = d[1] = d[2] = d[3] = 0;
-                continue;
+            if (play != NULL) {
+                g2d_rig_play_start(play, &g_rig, 0);
+                (void)pic_take(f, play);
+                free(play);
             }
-            d[0] = g_rig.palette.colors[v].r;
-            d[1] = g_rig.palette.colors[v].g;
-            d[2] = g_rig.palette.colors[v].b;
-            d[3] = 255;
         }
-        g_front.w = (int)pose.width;
-        g_front.h = (int)pose.height;
-        g_front.rgba = g_front_px;
-        g_front_ox = pose.ox;
-        g_front_oy = pose.oy;
-        g_rig_t = t;
-        g2d_pose_free(&pose);
+    } else {
+        u32 at = g_play_base + g_play.t;
+        int moved = 0;
+
+        f = &g_front;
+        if (!g_play_on || t < at || t - at > PLAY_GAP) {
+            g2d_rig_play_start(&g_play, &g_rig, 0);
+            g_play_on = 1;
+            g_play_base = t;
+            moved = 1;
+        }
+        while (g_play_base + g_play.t < t) {
+            g2d_rig_play_tick(&g_play);
+            moved = 1;
+        }
+        if (moved || f->px == NULL) {
+            (void)pic_take(f, &g_play);     /* a failure keeps the last frame */
+        }
     }
-    if (ox != NULL) *ox = g_front_ox;
-    if (oy != NULL) *oy = g_front_oy;
-    return &g_front;
+    if (f->px == NULL) {
+        return NULL;
+    }
+    if (ox != NULL) *ox = f->ox;
+    if (oy != NULL) *oy = f->oy;
+    return &f->im;
 }
 
 /* The front in its idle loop in the box (x, y, w, h): the largest whole

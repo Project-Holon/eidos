@@ -747,7 +747,9 @@ static void map_bank(int bank, u8 cnt)
  * which case it stays in its own store and is invisible there, as the page
  * table already has it.  A remap moves the bytes of every bank whose home
  * changes: all of them out first, then each into its new home, so two banks
- * trading places keep their contents.  The address a bank leaves keeps
+ * trading places keep their contents.  A bank that goes from LCDC to a use
+ * with no CPU address keeps its home (its own LCDC address), so the pair of
+ * switches round a texture load moves nothing.  The address a bank leaves keeps
  * stale bytes; the hardware would show nothing there, and the game does
  * not read a window it just unmapped.  Mirrors past each engine window's
  * period are not backed: a raw access there faults at its DS address
@@ -766,6 +768,12 @@ static int window_holds(u32 base, u32 size)
     return 0;
 }
 
+/* Counters for the slow-frame report (EIDOS_HITCH_MS): the remaps since
+ * the last report, the bytes they moved, the time they took. */
+unsigned bw_vram_stat_remaps, bw_vram_stat_moves;
+unsigned long long bw_vram_stat_bytes, bw_vram_stat_ns;
+extern unsigned long long bw_clock_ns(void);
+
 static void vram_rehome(const u8 *cnt)
 {
     u8 *home[BW_VRAM_BANKS];
@@ -782,7 +790,17 @@ static void vram_rehome(const u8 *cnt)
         base = g_probe_base;
         home[b] = &g_vram[k_bank_off[b]];
         lo[b] = 0;
-        if (base == 0u || !window_holds(base, k_bank_size[b])) {
+        if (base == 0u) {
+            /* no CPU address (a texture, a palette slot, off): bytes that
+             * are at the bank's own LCDC address stay there.  No other
+             * bank can be mapped at that address, and the game's texture
+             * loads go LCDC, texture, LCDC, ... once for every texture. */
+            if (g_bank_home[b] == (u8 *)(uintptr_t)(VRAM_LCDC_BASE + k_bank_off[b])) {
+                home[b] = g_bank_home[b];
+            }
+            continue;
+        }
+        if (!window_holds(base, k_bank_size[b])) {
             continue;
         }
         for (c = 0; c < b; c++) {
@@ -800,6 +818,8 @@ static void vram_rehome(const u8 *cnt)
     for (b = 0; b < BW_VRAM_BANKS; b++) {
         if (home[b] != g_bank_home[b]) {
             memcpy(&g_vram_move[k_bank_off[b]], g_bank_home[b], k_bank_size[b]);
+            bw_vram_stat_moves++;
+            bw_vram_stat_bytes += 2u * k_bank_size[b];
         }
     }
     for (b = 0; b < BW_VRAM_BANKS; b++) {
@@ -810,7 +830,18 @@ static void vram_rehome(const u8 *cnt)
     }
 }
 
+static void vram_remap_do(void);
+
 void bw_vram_remap(void)
+{
+    unsigned long long t0 = bw_clock_ns();
+
+    vram_remap_do();
+    bw_vram_stat_remaps++;
+    bw_vram_stat_ns += bw_clock_ns() - t0;
+}
+
+static void vram_remap_do(void)
 {
     u8 cnt[BW_VRAM_BANKS];
     int b;

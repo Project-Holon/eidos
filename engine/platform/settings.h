@@ -110,6 +110,9 @@ enum {
                                        the game runs at the display's rate
                                        and each frame waits for its vblank;
                                        0 the DS's 59.83 Hz by the clock    */
+    EIDOS_OPT_UI_THEME,             /* the one-screen interface's style
+                                       (engine/ui/theme.h): 0 Kosmos (the
+                                       default), 1 Plasma, 2 Harmonia      */
     EIDOS_OPT_COUNT
 };
 
@@ -135,6 +138,9 @@ int eidos_settings_get(int id);
 /* Clamp to the range, apply to the platform now.  0 on success, -1 when the
  * host refused the change (the value is left as it was). */
 int eidos_settings_set(int id, int value);
+/* Whether the player has chosen an interface style (EIDOS_OPT_UI_THEME was
+ * in the file, or was set since): until then the title menu asks. */
+int eidos_settings_style_chosen(void);
 /* The value as text for the screen: a choice's name or "3x", "80%". */
 const char *eidos_settings_value_text(int id, char *buf, size_t n);
 

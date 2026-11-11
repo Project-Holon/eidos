@@ -509,8 +509,18 @@ static const u8 *bg_extpal(const Engine *e, u32 slot)
  */
 enum { RAS_TEXT_EXT, RAS_AFFINE_EXT, RAS_BITMAP256, RAS_DIRECT };
 
+/* What one raster keeps between two of its pixels: the tile last decoded
+ * (neighbours come from the same one) and the layer's matrix. */
+typedef struct RasMemo {
+    u32 entry;              /* the map entry of `tile`; 0xFFFFFFFF: none yet */
+    u8 tile[64];
+    int have_affine;
+    G2dAffine m;
+    s32 rx, ry;
+} RasMemo;
+
 static int ras_pixel(const Engine *e, int kind, u32 n, u16 cnt,
-                     const u8 *ext, s32 x, s32 y, G2dColor *out)
+                     const u8 *ext, s32 x, s32 y, G2dColor *out, RasMemo *mm)
 {
     if (kind == RAS_TEXT_EXT) {
         const G2dBgLayer *layer = &e->bgs[n];
@@ -520,11 +530,14 @@ static int ras_pixel(const Engine *e, int kind, u32 n, u16 cnt,
         u16 entry = layer->nscr->entries[
             g2d_bg_screen_index((int)(px / 8u), (int)(py / 8u),
                                 layer->screen_size)];
-        u8 tile[64];
+        const u8 *tile = mm->tile;
         u8 v;
 
-        g2d_bg_tile(layer->ncgr, G2D_SCR_TILE(entry), G2D_SCR_HFLIP(entry),
-                    G2D_SCR_VFLIP(entry), tile);
+        if (mm->entry != entry) {
+            g2d_bg_tile(layer->ncgr, G2D_SCR_TILE(entry), G2D_SCR_HFLIP(entry),
+                        G2D_SCR_VFLIP(entry), mm->tile);
+            mm->entry = entry;
+        }
         v = tile[(py % 8u) * 8u + (px % 8u)];
         if (v == 0) {
             return 0;
@@ -537,7 +550,13 @@ static int ras_pixel(const Engine *e, int kind, u32 n, u16 cnt,
         u32 w, h;
         int wrap = (cnt & 0x2000u) != 0;
 
-        read_affine(e, n, &m, &rx, &ry);
+        if (!mm->have_affine) {
+            read_affine(e, n, &mm->m, &mm->rx, &mm->ry);
+            mm->have_affine = 1;
+        }
+        m = mm->m;
+        rx = mm->rx;
+        ry = mm->ry;
         if (kind == RAS_AFFINE_EXT) {
             w = h = 128u << (((u32)cnt >> 14) & 3u);
         } else {
@@ -559,11 +578,14 @@ static int ras_pixel(const Engine *e, int kind, u32 n, u16 cnt,
             u32 sb = screen_base(e, cnt);
             u16 entry = bw_rd16(e->bgv + sb
                                 + (((u32)ty / 8u) * (w / 8u) + (u32)tx / 8u) * 2u);
-            u8 tile[64];
+            const u8 *tile = mm->tile;
             u8 v;
 
-            g2d_bg_tile(&e->ncgr[n], G2D_SCR_TILE(entry), G2D_SCR_HFLIP(entry),
-                        G2D_SCR_VFLIP(entry), tile);
+            if (mm->entry != entry) {
+                g2d_bg_tile(&e->ncgr[n], G2D_SCR_TILE(entry), G2D_SCR_HFLIP(entry),
+                            G2D_SCR_VFLIP(entry), mm->tile);
+                mm->entry = entry;
+            }
             v = tile[((u32)ty % 8u) * 8u + ((u32)tx % 8u)];
             if (v == 0) {
                 return 0;
@@ -604,16 +626,19 @@ static int build_raster(Engine *e, int kind, u32 n, u16 cnt, const u8 *ext)
     G2dLayerRaster *r = &e->rasters[slot];
     u8 *px = (u8 *)calloc(SCREEN_PX, 4u);
     s32 x, y;
+    RasMemo mm;
 
     if (px == NULL) {
         return -1;
     }
+    mm.entry = 0xFFFFFFFFu;             /* a map entry is 16 bits: never this */
+    mm.have_affine = 0;
     e->raster_px[slot] = px;
     for (y = 0; y < (s32)SCREEN_H; y++) {
         for (x = 0; x < (s32)SCREEN_W; x++) {
             G2dColor c;
 
-            if (ras_pixel(e, kind, n, cnt, ext, x, y, &c)) {
+            if (ras_pixel(e, kind, n, cnt, ext, x, y, &c, &mm)) {
                 put_rgb(px + ((size_t)y * SCREEN_W + (u32)x) * 4u, c);
             }
         }

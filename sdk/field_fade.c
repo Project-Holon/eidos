@@ -27,3 +27,20 @@ int eidos_door_fade_step(void)
 {
     return eidos_field_transition() >= 1 ? 4 : 1;
 }
+
+/* The style chooser's preview (engine/ui/ui.c) starts the game on its save
+ * again and again under a dark cut: the season's sign that Continue fades
+ * in through (192 frames) is the plain fade-in there
+ * (stubs/ov/patch_ov021_event_fieldmap_control.c).  Set by the preview's
+ * start, cleared by its end; 0 everywhere else. */
+static int g_plain_continue;
+
+void eidos_field_set_plain_continue(int on)
+{
+    g_plain_continue = on != 0;
+}
+
+int eidos_field_plain_continue(void)
+{
+    return g_plain_continue;
+}

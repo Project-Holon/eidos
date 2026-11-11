@@ -1029,18 +1029,19 @@ static int test_data(const char *root)
     BW_REQUIRE("Pokemon front", image_pixels(ui_mon_front(495, 0, 0)) > 100);
     BW_REQUIRE("trainer fronts are not decoded", ui_trainer_front(1) == NULL);
 
-    /* the contact sheet, in UI_KIT_THEME's theme when set (remix, or the
+    /* the contact sheet, in UI_KIT_THEME's theme when set (plasma, or the
      * default) */
     if (getenv("UI_KIT_THEME") != NULL) {
-        extern const UiThemeOps ui_theme_remix;
+        extern const UiThemeOps ui_theme_plasma, ui_theme_harmonia;
 
-        (void)ui_theme_add(&ui_theme_remix);
+        (void)ui_theme_add(&ui_theme_plasma);
+        (void)ui_theme_add(&ui_theme_harmonia);
         ui_theme_select(getenv("UI_KIT_THEME"));
     }
     memset(&cv, 0, sizeof cv);
     ui_begin(&c, &cv, 660, 880, 2);
     draw_sheet(&c);
-    ui_theme_select("remaster");
+    ui_theme_select("kosmos");
     if (path == NULL) {
         path = "ui_kit_sheet.png";
     }
@@ -1086,7 +1087,7 @@ static int test_themes(void)
 
     memset(&cv, 0, sizeof cv);
     memset(&ref, 0, sizeof ref);
-    BW_CHECK_EQ("the default theme is first", strcmp(ui_theme_at(0)->id, "remaster"), 0);
+    BW_CHECK_EQ("the default theme is first", strcmp(ui_theme_at(0)->id, "kosmos"), 0);
     BW_CHECK_EQ("the default is active", ui_theme_active() == ui_theme_at(0), 1);
     BW_CHECK_EQ("a theme is added", ui_theme_add(&k_test_theme), 0);
     BW_CHECK_EQ("an id is added once", ui_theme_add(&k_test_theme), -1);
@@ -1120,7 +1121,7 @@ static int test_themes(void)
     ui_panel(&c, 2, 2, 20, 10, UI_CUT_TL, 4, 0xFF0000, 0x00FF00, 255);
     BW_CHECK_EQ("the default draws the panel again", g_theme_panels, 0);
     BW_CHECK_EQ("the default panel's cut corner is empty", alpha_at(&cv, 2, 2), 0);
-    ui_theme_select("remaster");
+    ui_theme_select("kosmos");
     free(cv.rgba);
     free(ref.rgba);
     return 0;

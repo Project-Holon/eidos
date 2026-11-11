@@ -17,6 +17,8 @@
 #include "choice_list.h"
 #include "dsmem.h"
 #include "input.h"
+#include "theme.h"
+#include "textbox.h"
 
 #define WEAK __attribute__((weak))
 
@@ -118,6 +120,21 @@ void ui_choice_list_idle(void)
     g_target = -1;
 }
 
+/* A place asked for the next list (ui_choice_list_place). */
+static int g_pl_on, g_pl_x, g_pl_y, g_pl_w;
+static const char *g_pl_title;
+static const UiImage *(*g_pl_icon)(const char *text);
+
+void ui_choice_list_place(int x, int y, int minw, const char *title, const UiImage *(*icon)(const char *text))
+{
+    g_pl_on = 1;
+    g_pl_x = x;
+    g_pl_y = y;
+    g_pl_w = minw;
+    g_pl_title = title;
+    g_pl_icon = icon;
+}
+
 #define HL 0x008BACu        /* the interface's highlight (kit UI_CYAN2) */
 
 /* a over b at k/16 */
@@ -134,6 +151,11 @@ static u32 mix16(u32 a, u32 b, int k)
     return o;
 }
 
+static int sheet_frame(EidosUiCtx *c, int x, int y, int w, int h)
+{
+    return ui_app_window(c, "sheet", &x, &y, &w, &h);
+}
+
 int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const void *win_p,
                    float ox, float oy, float s, int style)
 {
@@ -143,7 +165,9 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
     int gx0, gy0, gx1, gy1, pitch, bh, w, h, x, y, i, hover = -1;
     char text[CHOICE_MAX][48];
     EidosUiRect r;
+    int placed = g_pl_on, head = 0, indent = 0;
 
+    g_pl_on = 0;
     if (list == NULL || win == NULL || BMP_MENULIST_GetPos == NULL) {
         g_target = -1;
         return 0;
@@ -171,7 +195,8 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
     gx1 = (int)(ox + (float)((win[3] + win[5] + 1) * 8) * s + 0.99f);
     gy0 = (int)(oy + (float)((win[4] - 1) * 8) * s);
     (void)gx0; (void)gy1;
-    pitch = 18;
+    pitch = placed && g_pl_icon != NULL ? 26 : 18;
+    indent = placed && g_pl_icon != NULL ? 28 : 0;
     bh = pitch;
     w = 0;
     for (i = 0; i < rows; i++) {
@@ -181,7 +206,7 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
             g_target = -1;
             return 0;
         }
-        tw = ui_text_w(text[i], UI_FONT_LARGE) + 30;
+        tw = ui_text_w(text[i], UI_FONT_LARGE) + 30 + indent;
         if (tw > w) {
             w = tw;
         }
@@ -189,21 +214,39 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
     h = 4 + rows * pitch + 4;
     x = gx1 - w;
     y = gy0;
+    if (placed) {
+        head = g_pl_title != NULL ? 15 : 0;
+        w = w < g_pl_w ? g_pl_w : w;
+        h += head;
+        x = g_pl_x;
+        y = g_pl_y;
+    }
     if (x + w > cw - 4) x = cw - 4 - w;
     if (x < 4) x = 4;
     if (y + h > chh - 4) y = chh - 4 - h;
     if (y < 4) y = 4;
 
     /* the panel in the style of the box it answers (mock-ups n9, n3A) */
-    if (style == UI_CHOICE_SYSTEM) {
+    if (placed && sheet_frame(c, x, y, w, h)) {
+        /* a theme's sheet, made of the bar it hangs from */
+    } else if (ui_theme_active()->textbox != NULL) {
+        ui_textbox_frame(c, style == UI_CHOICE_WHITE ? UI_TEXTBOX_NARRATION : UI_TEXTBOX_SYSTEM, x, y, w, h);
+    } else if (style == UI_CHOICE_SYSTEM) {
         ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
     } else if (style == UI_CHOICE_WHITE) {
         ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0xFFFFFFu, 0x9698A0u, 255);
     } else {
         ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 235);
     }
+    if (head > 0) {
+        /* the panel's name, a rule under it */
+        u32 tink = style == UI_CHOICE_WHITE ? 0x42424Au : UI_LIGHT;
+
+        ui_text(c, x + 8, y + 3 + ui_text_y(12, UI_FONT_SMALL), g_pl_title, tink, -1, UI_FONT_SMALL, 1);
+        ui_fill(c, x + 6, y + head, w - 12, 1, tink, 90);
+    }
     for (i = 0; i < rows; i++) {
-        r.x = x + 3; r.y = y + 4 + i * pitch; r.w = w - 6; r.h = bh;
+        r.x = x + 3; r.y = y + 4 + head + i * pitch; r.w = w - 6; r.h = bh;
         if (eidos_ui_hit(r) & EIDOS_UI_HOVER) {
             hover = i;
         }
@@ -228,11 +271,36 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
         g_py = py;
     }
     for (i = 0; i < rows; i++) {
-        int ry = y + 4 + i * pitch, st, lit = row == i;
+        int ry = y + 4 + head + i * pitch, st, lit = row == i;
         u32 ink, shadow;
 
         r.x = x + 3; r.y = ry; r.w = w - 6; r.h = bh;
         st = eidos_ui_hit(r);
+        if (ui_theme_active()->choice_row != NULL) {
+            char padded[80];
+            const UiImage *ic = indent > 0 ? g_pl_icon(text[i]) : NULL;
+            int sp = ui_text_w(" ", UI_FONT_LARGE), k = 0;
+
+            /* the label stands past the picture */
+            while (indent > 0 && sp > 0 && k * sp < indent && k < 20) {
+                padded[k++] = ' ';
+            }
+            snprintf(padded + k, sizeof padded - (size_t)k, "%s", text[i]);
+            ui_theme_active()->choice_row(c, style, r.x, ry, r.w, bh, padded, lit);
+            if (ic != NULL) {
+                EidosUiRect saved;
+
+                ui_push(c, 0, 0, &saved);
+                ui_clip(c, r.x, ry, r.w, bh);
+                ui_image(c, r.x + 6 + (24 - ic->w) / 2, ry + (bh - ic->h) / 2, ic, 1);
+                ui_pop(c, 0, 0, &saved);
+            }
+            if (st & EIDOS_UI_CLICK) {
+                g_target = g_pick ? scroll + i : -2 - (scroll + i);
+                g_list = list;
+            }
+            continue;
+        }
         if (lit) {
             /* the battle sheet's chosen tile: tinted with the accent,
              * edged in it, its strip, raised a pixel */
@@ -254,8 +322,20 @@ int ui_choice_list(EidosUiCtx *c, const EidosUiFrame *in, void *list_p, const vo
         } else {
             ink = lit ? UI_WHITE : UI_LIGHT; shadow = 0x464850u;
         }
-        ui_text(c, r.x + 10, ry - (lit ? 1 : 0) + ui_text_y(bh, UI_FONT_LARGE), text[i], ink, shadow,
+        ui_text(c, r.x + 10 + indent, ry - (lit ? 1 : 0) + ui_text_y(bh, UI_FONT_LARGE), text[i], ink, shadow,
                 UI_FONT_LARGE, 1);
+        if (indent > 0) {
+            const UiImage *ic = g_pl_icon(text[i]);
+
+            if (ic != NULL) {
+                EidosUiRect saved;
+
+                ui_push(c, 0, 0, &saved);
+                ui_clip(c, r.x, ry - 1, r.w, bh);
+                ui_image(c, r.x + 8 + (24 - ic->w) / 2, ry - (lit ? 1 : 0) + (bh - ic->h) / 2, ic, 1);
+                ui_pop(c, 0, 0, &saved);
+            }
+        }
         if (st & EIDOS_UI_CLICK) {
             g_target = g_pick ? scroll + i : -2 - (scroll + i);
             g_list = list;
@@ -431,7 +511,9 @@ int ui_taskmenu_labels(EidosUiCtx *c, void *menu_p, int right, int bottom, int s
     } else {
         cur = m[0x00];
     }
-    if (style == UI_CHOICE_SYSTEM) {
+    if (ui_theme_active()->textbox != NULL) {
+        ui_textbox_frame(c, style == UI_CHOICE_WHITE ? UI_TEXTBOX_NARRATION : UI_TEXTBOX_SYSTEM, x, y, w, h);
+    } else if (style == UI_CHOICE_SYSTEM) {
         ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
     } else if (style == UI_CHOICE_WHITE) {
         ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0xFFFFFFu, 0x9698A0u, 255);
@@ -448,6 +530,13 @@ int ui_taskmenu_labels(EidosUiCtx *c, void *menu_p, int right, int bottom, int s
             g_tm_focus = i;
         }
         lit = (st & EIDOS_UI_HOVER) || (eidos_ui_keys_lit() && i == cur);
+        if (ui_theme_active()->choice_row != NULL) {
+            ui_theme_active()->choice_row(c, style, r.x, ry, r.w, 18, text[i], lit);
+            if (st & EIDOS_UI_CLICK) {
+                pick = i;
+            }
+            continue;
+        }
         if (lit) {
             u32 base = style == UI_CHOICE_WHITE ? 0xFFFFFFu : UI_BODY;
 

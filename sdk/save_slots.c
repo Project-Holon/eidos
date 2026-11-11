@@ -29,6 +29,17 @@ extern void *bw_dsref__pSaveControl BW_SLOTS_WEAK;
 extern int SAVE_CONTROL_Reload(void *saveControl) BW_SLOTS_WEAK;
 extern int SYSTEM_DATA_IsActive(void *saveControl) BW_SLOTS_WEAK;
 extern void bw_arm7_backup_hold(int on) BW_SLOTS_WEAK;
+extern void bw_arm7_backup_set_memory(const unsigned char *data, u32 size, int live) BW_SLOTS_WEAK;
+/* The preview's save, packed (sdk/preview_save.c: in this file's own source
+ * list; plain names, a weak one would not bring its object into the
+ * program), and its unpacker. */
+extern const unsigned char bw_preview_save_z[];
+extern const unsigned int bw_preview_save_z_size;
+extern const unsigned int bw_preview_save_size;
+extern const unsigned int bw_preview_save_crc;
+extern int bw_inflate(const unsigned char *src, size_t src_len, unsigned char *dst, size_t dst_len,
+                      size_t *src_used) BW_SLOTS_WEAK;
+extern u32 bw_crc32(u32 crc, const unsigned char *data, size_t len) BW_SLOTS_WEAK;
 extern u32  bw_arm7_backup_writes(void) BW_SLOTS_WEAK;
 extern int  bw_arm7_backup_dirty(void) BW_SLOTS_WEAK;
 
@@ -182,11 +193,9 @@ static int reload(int has_save)
  * first save writes a file the game does not take as a save): it is not
  * offered, counted or stepped onto. */
 static unsigned char g_bad[BW_SLOTS_MAX + 1];
-
-static int offered(int n)
-{
-    return bw_slots_used(n) && !g_bad[n];
-}
+/* The verdicts hold for the file as it was read: its time stamp then
+ * (g_seen: read by the game's loader at that stamp, good or bad). */
+static long g_seen[BW_SLOTS_MAX + 1];
 
 /* When the slot's file was last written (0 when it cannot be read). */
 static long slot_time(int n)
@@ -200,11 +209,187 @@ static long slot_time(int n)
     return (long)st.st_mtime;
 }
 
+static void mark_bad(int n)
+{
+    g_bad[n] = 1;
+    g_seen[n] = slot_time(n);
+}
+
+static int offered(int n)
+{
+    if (g_bad[n] && g_seen[n] != slot_time(n)) {
+        g_bad[n] = 0;               /* written since: to be read again */
+        g_seen[n] = 0;
+    }
+    return bw_slots_used(n) && !g_bad[n];
+}
+
+static int g_pending;       /* a new game not saved yet (below) */
+
+/* Every slot's file not judged yet is read by the game's loader, so the
+ * Continue card counts and offers only saves that load (it counted every
+ * file, and a file that is no save dropped out only when the player
+ * stepped onto it).  The slot in force is read back afterwards. */
+static void judge_all(void)
+{
+    unsigned char *sc;
+    int cur = bw_slots_current(), n, had, moved = 0;
+
+    if (g_pending != 0 || SAVE_CONTROL_Get == NULL || SAVE_CONTROL_Reload == NULL
+        || (sc = (unsigned char *)SAVE_CONTROL_Get()) == NULL) {
+        return;
+    }
+    had = sc[SAVE_CONTROL_HAS_SAVE];
+    for (n = 1; n <= BW_SLOTS_MAX; n++) {
+        long t;
+
+        if (n == cur || !bw_slots_used(n)) {
+            continue;
+        }
+        t = slot_time(n);
+        if (g_seen[n] == t && t != 0) {
+            continue;               /* judged as it is now */
+        }
+        g_current = n;              /* (slot.txt is not written for a look) */
+        apply(1);
+        g_bad[n] = reload(1) ? 0 : 1;
+        g_seen[n] = t;
+        moved = 1;
+        if (g_bad[n]) {
+            fprintf(stderr, "eidos: save: slot %d holds a file that is no save; it is not offered\n", n);
+        }
+    }
+    if (moved) {
+        g_current = cur;
+        apply(1);
+        (void)reload(had);
+    }
+}
+
+static int g_try;               /* a session on another save, in memory (bw_slots_try_begin): 1 a file's, 2 the built-in */
+static char g_try_path[600];
+static unsigned char *g_try_mem;    /* the built-in save, unpacked */
+
+int bw_slots_try_embedded(void)
+{
+    return bw_preview_save_z_size != 0u && bw_inflate != NULL && bw_arm7_backup_set_memory != NULL;
+}
+
+/* The built-in save in memory: unpacked once, checked against its sum. */
+static int try_unpack(void)
+{
+    if (g_try_mem != NULL) {
+        return 1;
+    }
+    if (!bw_slots_try_embedded()) {
+        return 0;
+    }
+    g_try_mem = (unsigned char *)malloc(bw_preview_save_size);
+    if (g_try_mem == NULL) {
+        return 0;
+    }
+    if (bw_inflate(bw_preview_save_z, bw_preview_save_z_size, g_try_mem, bw_preview_save_size, NULL) != 0
+        || (bw_crc32 != NULL && bw_crc32(0, g_try_mem, bw_preview_save_size) != bw_preview_save_crc)) {
+        fprintf(stderr, "eidos: save: the built-in preview save does not unpack\n");
+        free(g_try_mem);
+        g_try_mem = NULL;
+        return 0;
+    }
+    return 1;
+}
+
+int bw_slots_try_begin(const char *path)
+{
+    FILE *f;
+    int have = 0;
+
+    if (path == NULL) {
+        /* the built-in save: from memory, no file at all */
+        if (!try_unpack()) {
+            return 0;
+        }
+        bw_arm7_backup_set_memory(g_try_mem, bw_preview_save_size, 1);
+        g_try = 2;
+        if (!reload(1)) {
+            bw_slots_try_end();
+            return 0;
+        }
+        fprintf(stderr, "eidos: save: a session on the built-in preview save, in memory only\n");
+        return 1;
+    }
+    if (strlen(path) >= sizeof(g_try_path) || bw_arm7_backup_switch_path == NULL
+        || bw_arm7_backup_set_path == NULL || bw_arm7_backup_hold == NULL || (f = fopen(path, "rb")) == NULL) {
+        return 0;
+    }
+    have = fseek(f, 0, SEEK_END) == 0 && ftell(f) > 0;
+    fclose(f);
+    if (!have) {
+        return 0;
+    }
+    bw_arm7_backup_switch_path(path);
+    bw_arm7_backup_hold(1);         /* from here nothing reaches a file */
+    g_try = 1;
+    strcpy(g_try_path, path);
+    if (!reload(1)) {
+        bw_slots_try_end();
+        return 0;
+    }
+    fprintf(stderr, "eidos: save: a session on %s, kept in memory\n", path);
+    return 1;
+}
+
+int bw_slots_try_active(void)
+{
+    return g_try;
+}
+
+/* The run's start-up while the session lasts: the chip's file is the
+ * session's (read at the next identify), held again (a reset lets go). */
+int bw_slots_try_boot(void)
+{
+    if (!g_try) {
+        return 0;
+    }
+    if (g_try == 2) {
+        bw_arm7_backup_set_memory(g_try_mem, bw_preview_save_size, 0);
+        return 1;
+    }
+    bw_arm7_backup_set_path(g_try_path);
+    bw_arm7_backup_hold(1);
+    return 1;
+}
+
+int bw_slots_try_reload(void)
+{
+    return g_try ? reload(1) : 0;
+}
+
+void bw_slots_try_leave(void)
+{
+    if (g_try) {
+        g_try = 0;
+        fprintf(stderr, "eidos: save: the session in memory is over (a restart follows)\n");
+    }
+}
+
+void bw_slots_try_end(void)
+{
+    if (!g_try) {
+        return;
+    }
+    g_try = 0;
+    apply(1);                       /* the slot in force again: a path change drops what was held */
+    (void)reload(bw_slots_used(bw_slots_current()));
+    fprintf(stderr, "eidos: save: the session in memory is over; slot %d is the game's again\n", bw_slots_current());
+}
+
 void bw_slots_settle(void)
 {
     unsigned char *sc;
     int cur = bw_slots_current(), i;
 
+    bw_slots_try_end();             /* back at the title menu: the player's own save */
+    judge_all();
     if (SAVE_CONTROL_Get == NULL || (sc = (unsigned char *)SAVE_CONTROL_Get()) == NULL
         || sc[SAVE_CONTROL_HAS_SAVE]) {
         return;
@@ -215,7 +400,7 @@ void bw_slots_settle(void)
     /* the slot in force holds a file but no save: the save played last
      * (the newest file that loads), so a new game left before it was saved
      * does not hide the game before it */
-    g_bad[cur] = 1;
+    mark_bad(cur);
     for (i = 1; i < BW_SLOTS_MAX; i++) {
         int n, best = 0;
         long best_t = -1;
@@ -241,7 +426,7 @@ void bw_slots_settle(void)
             fprintf(stderr, "eidos: save: slot %d has no save; slot %d is shown\n", cur, best);
             return;
         }
-        g_bad[best] = 1;
+        mark_bad(best);
     }
     set_current(cur);               /* none loads: as it was */
     apply(1);
@@ -279,7 +464,7 @@ int bw_slots_flip(int d)
             set_current(n);
             apply(1);
             if (!reload(1)) {
-                g_bad[n] = 1;       /* not a save after all: the next one */
+                mark_bad(n);        /* not a save after all: the next one */
                 continue;
             }
             return 1;
@@ -292,7 +477,6 @@ int bw_slots_flip(int d)
  * Until the game's first completed save the chip holds its writes in
  * memory, so New Game makes no file and slot.txt keeps the save before
  * (bw_slots_frame commits, bw_slots_dropped goes back). */
-static int g_pending;
 static int g_prev;
 static int g_released;          /* the hold is off; waiting for the file   */
 static u32 g_writes_before;

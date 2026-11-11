@@ -43,6 +43,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "theme.h"
 #include "plat_thread.h"
 #include "port.h"
 #include "dsmem.h"
@@ -56,6 +57,7 @@
 #define WEAK __attribute__((weak))
 
 static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h, const char *key);
+static int g_cgear_plain;           /* the theme's C-Gear sheet is the bar carried on: its button is not lit */
 static int small_button_w(const char *label, const char *key);
 struct FieldNow;
 static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
@@ -317,8 +319,12 @@ static int hint_bar(EidosUiCtx *c, int y, int w, const char *const *pairs, int n
      * lies over the world (no bar_top), so opening and closing the field's
      * menu does not move the world */
     y = top + lift / 2;
-    ui_fill(c, 0, top, w, bh, UI_BODY2, 235);
-    ui_fill(c, 0, top, w, 1, UI_EDGE, 255);
+    if (ui_theme_active()->strip != NULL) {
+        ui_theme_active()->strip(c, top, w, bh, 1, 0);
+    } else {
+        ui_fill(c, 0, top, w, bh, UI_BODY2, 235);
+        ui_fill(c, 0, top, w, 1, UI_EDGE, 255);
+    }
     for (i = 0; i < n; i++) {
         const char *key = pairs[2 * i], *what = pairs[2 * i + 1];
         int kw = ui_keycap_w(key);
@@ -634,6 +640,8 @@ static int menu_match(void)
 }
 
 static int g_menu_frame_open;
+static int g_menu_primed;           /* this opening chose its first entry   */
+static int g_menu_last_slot = -1;   /* the entry the cursor was on last      */
 static int g_menu_leaving;          /* the menu is closing or opening an app */
 static int g_menu_shown;            /* its panels are on show                */
 static u32 g_menu_last_frame;       /* the last frame it ran                 */
@@ -641,6 +649,40 @@ static int g_menu_closing;          /* closing to the field (not to an app)  */
 static int g_scrim;
 static u32 g_menu_back_frame;       /* the frame the menu came back from an app */
 #define MENU_BACK_HOLD 20u                 /* the world's dimming behind it, 0..90  */
+
+/* The X menu's places: Kosmos's (the party top left, the buttons a column
+ * at the right, as menu_run lays them), then the theme's changes. */
+static void menu_places(EidosUiCtx *c, int n, const int *slot_of, int np, UiFieldMenuLayout *l)
+{
+    int cw = c->canvas->w, ch = c->canvas->h, i, gap = 4;
+    int colw = clampi(cw * 30 / 100, 118, 168), colx = cw - colw - 8;
+    int avail = ch - ui_bar_h(c) - 16, bh = n > 0 ? (avail - (n - 1) * gap) / n : 30, top;
+    const UiThemeOps *t = ui_theme_active();
+
+    bh = clampi(bh, 24, 44);
+    top = 8 + (avail - (n * bh + (n - 1) * gap)) / 2;
+    if (top < 8) {
+        top = 8;
+    }
+    memset(l, 0, sizeof(*l));
+    l->w = cw;
+    l->h = ch - ui_bar_h(c);
+    l->n = n;
+    for (i = 0; i < n && i < 6; i++) {
+        l->slot[i] = slot_of[i];
+        l->btn[i].x = colx;
+        l->btn[i].y = top + i * (bh + gap);
+        l->btn[i].w = colw;
+        l->btn[i].h = bh;
+    }
+    l->party_x = 8;
+    l->party_y = 8;
+    l->party_w = clampi(cw * 30 / 100, 118, 168);
+    l->np = np;
+    if (t->field_menu_layout != NULL) {
+        t->field_menu_layout(l);
+    }
+}
 
 static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
@@ -656,6 +698,8 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int px, py, pw;
     int click_slot = -1, click_party = -1, in_panel = 0, hint = -1;
     EidosUiRect col_rect, party_rect;
+    UiFieldMenuLayout fl;
+    const UiThemeOps *theme = ui_theme_active();
     static const char *const hints[] = { "X", "Close", "A", "Open", "Arrows", "Move" };
 
     view->mode = EIDOS_VIEW_WORLD;
@@ -751,16 +795,78 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             n++;
         }
     }
+    /* The menu opens on the entry used last (the first one, POKEMON, when
+     * there is none yet), its cursor shown. */
+    if (ready && n > 0 && !g_menu_primed) {
+        int want = slot_of[0];
+
+        g_menu_primed = 1;
+        for (i = 0; i < n; i++) {
+            if (slot_of[i] == g_menu_last_slot) {
+                want = g_menu_last_slot;
+            }
+        }
+        menu[0x1E] = (u8)(want & 1);
+        menu[0x1F] = (u8)(want >> 1);
+        wr32(menu + 0x24, 1);                  /* cursorDirty      */
+        wr32(menu + 0x2C, 1);                  /* keyCursorActive  */
+    }
     /* the cursor's slot from cursorCol / cursorRow, which a move (the
      * game's or ours) sets at once; selectedItem follows a frame later */
     if (rd32(menu + 0x2C) != 0 && menu[0x1E] + 2 * menu[0x1F] < 6) {
         sel = menu[0x1E] + 2 * menu[0x1F];
+        if (g_menu_primed) {
+            g_menu_last_slot = sel;
+        }
     }
     /* The keys follow the column the buttons are drawn in: up and down go
      * to the previous and next button in it (the game's own cursor, moved
      * the way FIELD_MENU_MoveCursor moves it, with its sound), left and
      * right do nothing. */
-    if (ready && n > 0) {
+    if (ready && n > 0 && theme->field_menu_layout != NULL) {
+        /* a theme's places: the nearest button in the arrow's direction */
+        u32 k = eidos_ui_keys_pressed();
+        int dx = (k & BW_KEY_RIGHT) ? 1 : (k & BW_KEY_LEFT) ? -1 : 0;
+        int dy = dx != 0 ? 0 : (k & BW_KEY_DOWN) ? 1 : (k & BW_KEY_UP) ? -1 : 0;
+
+        eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT);
+        if (dx != 0 || dy != 0) {
+            int at = menu[0x1E] + 2 * menu[0x1F], pos = -1, best = -1, cost = 0;
+
+            menu_places(c, n, slot_of, 0, &fl);
+            for (i = 0; i < n; i++) {
+                if (slot_of[i] == at) {
+                    pos = i;
+                }
+            }
+            if (pos < 0) {
+                best = 0;
+            } else {
+                for (i = 0; i < n; i++) {
+                    int ex = (fl.btn[i].x + fl.btn[i].w / 2) - (fl.btn[pos].x + fl.btn[pos].w / 2);
+                    int ey = (fl.btn[i].y + fl.btn[i].h / 2) - (fl.btn[pos].y + fl.btn[pos].h / 2);
+                    int along = ex * dx + ey * dy, across = ex * dy + ey * dx, v;
+
+                    if (i == pos || along <= 0) {
+                        continue;
+                    }
+                    v = along + 2 * (across < 0 ? -across : across);
+                    if (best < 0 || v < cost) {
+                        best = i;
+                        cost = v;
+                    }
+                }
+            }
+            if (best >= 0) {
+                menu[0x1E] = (u8)(slot_of[best] & 1);
+                menu[0x1F] = (u8)(slot_of[best] >> 1);
+                wr32(menu + 0x24, 1);                  /* cursorDirty      */
+                wr32(menu + 0x2C, 1);                  /* keyCursorActive  */
+                eidos_ui_sound(0x548);  /* SE_FIELD_MENU_MOVE */
+                sel = slot_of[best];
+            }
+        }
+    } else if (ready && n > 0) {
         u32 k = eidos_ui_keys_pressed();
 
         eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT);
@@ -882,15 +988,34 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     col_rect.w = colw + 18;
     col_rect.h = ch - ui_bar_h(c);
 
-    px = 8;
-    py = 8;
-    pw = clampi(cw * 30 / 100, 118, 168);
     np = read_party(&f, party, 6);
+    menu_places(c, n, slot_of, np, &fl);
+    px = fl.party_x;
+    py = fl.party_y;
+    pw = fl.party_w;
     party_rect.x = px;
     party_rect.y = py;
     party_rect.w = pw;
     party_rect.h = 22 + np * 32;
+    if (theme->field_menu_layout != NULL && n > 0) {
+        /* the buttons' own area (a click in it is not a click outside) */
+        int x0 = fl.btn[0].x, y0 = fl.btn[0].y, x1 = x0 + fl.btn[0].w, y1 = y0 + fl.btn[0].h;
 
+        for (i = 1; i < n; i++) {
+            x0 = fl.btn[i].x < x0 ? fl.btn[i].x : x0;
+            y0 = fl.btn[i].y < y0 ? fl.btn[i].y : y0;
+            x1 = fl.btn[i].x + fl.btn[i].w > x1 ? fl.btn[i].x + fl.btn[i].w : x1;
+            y1 = fl.btn[i].y + fl.btn[i].h > y1 ? fl.btn[i].y + fl.btn[i].h : y1;
+        }
+        col_rect.x = x0 - 6;
+        col_rect.y = y0 - 6;
+        col_rect.w = x1 - x0 + 12;
+        col_rect.h = y1 - y0 + 12;
+    }
+
+    if (theme->field_menu_backdrop != NULL) {
+        theme->field_menu_backdrop(c, &fl);
+    }
     /* The party (the game's data; a click on a row opens the party list). */
     {
         char cnt[16];
@@ -924,6 +1049,9 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     for (i = 0; i < n; i++) {
         EidosUiRect r = { colx - 8, top + i * (bh + gap), colw + 8, bh };
 
+        if (theme->field_menu_layout != NULL) {
+            r = fl.btn[i];
+        }
         if (eidos_ui_hit(r) & EIDOS_UI_HOVER) {
             hover_any = 1;
         }
@@ -937,6 +1065,9 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         r.y = by;
         r.w = colw + 8;
         r.h = bh;
+        if (theme->field_menu_layout != NULL) {
+            r = fl.btn[i];
+        }
         st = eidos_ui_hit(r);
         if (st & EIDOS_UI_HOVER) {
             state = 2;
@@ -956,7 +1087,18 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         } else if (state == 1) {
             bx -= 4;
         }
-        draw_button(c, bx, by, colw + (colx - bx), bh, label[i], &g_icons[btn_of[i]], state);
+        if (theme->field_menu_button != NULL) {
+            const MenuIcon *mi = &g_icons[btn_of[i]];
+            UiImage im;
+
+            im.w = mi->w;
+            im.h = mi->h;
+            im.rgba = mi->px;
+            theme->field_menu_button(c, fl.btn[i].x, fl.btn[i].y, fl.btn[i].w, fl.btn[i].h, label[i],
+                                     mi->ok ? &im : NULL, state);
+        } else {
+            draw_button(c, bx, by, colw + (colx - bx), bh, label[i], &g_icons[btn_of[i]], state);
+        }
     }
 
     hint = hint_bar(c, ch - ui_bar_h(c), cw, hints, 3);
@@ -969,8 +1111,10 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         int bh, top = ui_bottom_bar(c, ch - ui_bar_h(c), 17, &bh);
         int tx = cw - 4 - c->safe_r;
         /* in the bar's middle, as its keys are (taller on a phone) */
-        int st = small_button(c, &tx, top + (bh - 17) / 2,
-                              armed ? "Sure? Unsaved progress is lost" : "Title screen", 17, NULL);
+        /* (not in the style chooser's preview: its own keys stand there, START goes back) */
+        int st = eidos_ui_try_state() != 0 ? 0
+                 : small_button(c, &tx, top + (bh - 17) / 2,
+                                armed ? "Sure? Unsaved progress is lost" : "Title screen", 17, NULL);
 
         if (st & EIDOS_UI_CLICK) {
             if (armed) {
@@ -1029,6 +1173,17 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (right_click(in)) {
         click_slot = 6;
     }
+    if (ready) {
+        /* the style chooser's preview goes on to the party or the Bag (ui.c);
+         * the ask is taken when the menu can act on it */
+        int want = eidos_ui_try_menu_want();
+
+        for (i = 0; want > 0 && i < n; i++) {
+            if (btn_of[i] == want) {
+                click_slot = slot_of[i];
+            }
+        }
+    }
     if (click_slot >= 0 && ready) {
         eidos_ui_tap(k_slot_cx[click_slot], k_slot_cy[click_slot], 3);
     }
@@ -1038,6 +1193,7 @@ static void menu_reset(void)
 {
     memset(g_icons, 0, sizeof(g_icons));
     g_menu_frame_open = 0;
+    g_menu_primed = 0;
     g_menu_shown = 0;
     g_menu_closing = 0;
     g_scrim = 0;
@@ -1720,6 +1876,75 @@ static void cutin_view(EidosUiView *view)
     view->held_backdrop = 1;
 }
 
+/*
+ * The registered-items shortcut (Y; ov010 EVENT_SHORTCUT_MENU_MainEvent at
+ * its waiting steps 3 and 4; its work's +0x0C is the ShortcutMenu of
+ * ov021/shortcut_menu.c: list +0x04, window +0x08), or NULL.
+ */
+extern int ov010_EVENT_SHORTCUT_MENU_MainEvent(void *event, int *seq, void *work) WEAK;
+
+/* The shortcut's event runs (at any step: its list opening or closing). */
+static int shortcut_event(const FieldNow *f)
+{
+    u8 *ev;
+
+    if (GAMESYSTEM_GetEvent == NULL || ov010_EVENT_SHORTCUT_MENU_MainEvent == NULL) {
+        return 0;
+    }
+    ev = (u8 *)GAMESYSTEM_GetEvent(f->gs);
+    return ev != NULL && (uintptr_t)rd32(ev + 4) == (uintptr_t)ov010_EVENT_SHORTCUT_MENU_MainEvent && rd32(ev + 8) <= 4u;
+}
+
+static u8 *shortcut_now(const FieldNow *f)
+{
+    u8 *ev, *work, *menu;
+
+    if (GAMESYSTEM_GetEvent == NULL || ov010_EVENT_SHORTCUT_MENU_MainEvent == NULL) {
+        return NULL;
+    }
+    ev = (u8 *)GAMESYSTEM_GetEvent(f->gs);
+    if (ev == NULL || (uintptr_t)rd32(ev + 4) != (uintptr_t)ov010_EVENT_SHORTCUT_MENU_MainEvent ||
+        (rd32(ev + 8) != 3u && rd32(ev + 8) != 4u)) {
+        return NULL;
+    }
+    work = rdp(ev + 0x0C);
+    menu = work != NULL ? rdp(work + 0x0C) : NULL;
+    return menu != NULL && rdp(menu + 4) != NULL && rdp(menu + 8) != NULL ? menu : NULL;
+}
+
+/* The picture of the item a shortcut row names (the rows are the items'
+ * names; an entry that is no item has none). */
+static const UiImage *shortcut_icon(const char *text)
+{
+    static struct { char name[48]; int item; } cache[8];
+    static int n;
+    char buf[64];
+    int i, id;
+
+    for (i = 0; i < n; i++) {
+        if (strcmp(cache[i].name, text) == 0) {
+            return cache[i].item > 0 ? ui_item_icon((u16)cache[i].item) : NULL;
+        }
+    }
+    i = n < 8 ? n++ : 0;
+    snprintf(cache[i].name, sizeof cache[i].name, "%s", text);
+    cache[i].item = 0;
+    for (id = 1; id < 639; id++) {
+        msg_text(54, (u32)id, buf, (int)sizeof buf);       /* the item names' bank */
+        if (strcmp(buf, text) == 0) {
+            cache[i].item = id;
+            break;
+        }
+    }
+    return cache[i].item > 0 ? ui_item_icon((u16)cache[i].item) : NULL;
+}
+
+static int g_item_btn_x = -1;   /* the top bar's Item button, as last drawn */
+static int g_item_btn_bh;
+static int g_shortcut_open;     /* the shortcut list is up: the bar stays */
+static int g_shortcut_was;      /* it was up last frame */
+static u32 g_shortcut_since;    /* the frame it came up */
+
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
 {
     u8 *list, *win;
@@ -1727,6 +1952,44 @@ static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *
     int style;
 
     world_place(c, &s, &ox, &oy);
+    g_shortcut_was = g_shortcut_open;
+    g_shortcut_open = 0;
+    {
+        u8 *sm = shortcut_now(f);
+
+        if (sm != NULL) {
+            /* under the top bar's Item button; it unrolls from the button */
+            int x = g_item_btn_x >= 0 ? g_item_btn_x + 4 : c->canvas->w / 2 - 110;     /* the button's left edge */
+            int top = g_item_btn_bh > 0 ? g_item_btn_bh : 14, drawn;                   /* the bar's foot */
+            u32 age;
+            EidosUiRect saved;
+
+            if (!g_shortcut_was) {
+                g_shortcut_since = in->frame;
+            }
+            age = in->frame - g_shortcut_since;
+            ui_push(c, 0, 0, &saved);
+            if (age < 8u) {
+                /* a sheet that grows down from the button: its foot comes
+                 * down, its rows stay in place */
+                ui_clip(c, 0, top, c->canvas->w, 4 + (int)(age + 1u) * (int)(age + 1u) * 3);
+            }
+            ui_choice_list_place(x, top, 132, ui_tr("REGISTERED"), shortcut_icon);
+            drawn = ui_choice_list(c, in, rdp(sm + 4), rdp(sm + 8), ox, oy, s, UI_CHOICE_SYSTEM);
+            ui_pop(c, 0, 0, &saved);
+            if (drawn) {
+                static const char *const hints[] = { "A", "Use", "B", "Close", "SELECT", "Reorder" };
+                static const u32 keys[] = { BW_KEY_A, BW_KEY_B, BW_KEY_SELECT };
+
+                ui_hints(c, c->canvas->h - ui_bar_h(c), c->canvas->w, hints, 3, keys);
+                g_shortcut_open = 1;
+                if (right_click(in)) {
+                    eidos_ui_press(BW_KEY_B, 2);
+                }
+                return 1;
+            }
+        }
+    }
     if (!choices_now(f, &list, &win)) {
         ui_choice_list_idle();
         return 0;
@@ -1745,6 +2008,11 @@ static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *
 static void bar_trapezoid(EidosUiCtx *c, int cx, int w, int h, int hot)
 {
     int y;
+
+    if (ui_theme_active()->clock_tab != NULL) {
+        ui_theme_active()->clock_tab(c, cx, w, h, hot);
+        return;
+    }
 
     for (y = 0; y < h; y++) {
         int inset = y * 5 / (h > 1 ? h - 1 : 1);
@@ -1791,9 +2059,21 @@ static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h,
     r.w = w;
     r.h = h;
     st = eidos_ui_hit(r);
-    ui_panel(c, xx, y + 1, w, h - 2, UI_CUT_TL | UI_CUT_BR, 3,
-             (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY, (st & EIDOS_UI_HOVER) ? UI_CYAN : UI_EDGE2,
-             240);
+    {
+        /* negative: under the pointer (the Item button also while its list is open) */
+        int lit = (st & EIDOS_UI_HOVER) || (g_shortcut_open && strcmp(label, "Item") == 0) ||
+                  (g_show_cgear == 1 && !g_cgear_plain && strcmp(label, "C-GEAR") == 0);
+
+        if (g_show_cgear == 1 && g_cgear_plain && strcmp(label, "C-GEAR") == 0) {
+            lit = 0;                    /* its sheet is this button carried on: no lit strip between them */
+        }
+        int fx = xx, fy = y, fw = w, fh = lit ? -h : h;
+
+        if (!ui_app_window(c, "bar-button", &fx, &fy, &fw, &fh)) {
+            ui_panel(c, xx, y + 1, w, h - 2, UI_CUT_TL | UI_CUT_BR, 3, lit ? UI_EDGE : UI_BODY, lit ? UI_CYAN : UI_EDGE2,
+                     240);
+        }
+    }
     {
         int tx = xx + 5;
 
@@ -1883,6 +2163,8 @@ static int lower_sheet(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch,
  * window, lower-only).  IR is greyed out and takes no click: eidos has no
  * infrared link yet.  Returns 1 to close, 2 for the whole C-Gear.
  */
+static int g_cgear_btn_x = -1;     /* the top bar's C-GEAR button's left edge, as last drawn */
+
 static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
                       int wireless_lit, int online_lit, int on)
 {
@@ -1898,18 +2180,98 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
     const int bw = 76, bhh = 28, gap = 4, pad = 5;
     int fullw = ui_text_w("C-GEAR", UI_FONT_SMALL) + 14;
     int w = pad * 2 + 3 * bw + 2 * gap + gap + fullw, h = bhh + pad * 2;
-    int x0 = cw - w - 4, y0 = top + 2, i, res = 0;
+    int x0 = cw - w - 4, y0 = top + 2, i, res = 0, themed = 0;
     int lit[3];
 
     (void)in;
     lit[0] = 0;
     lit[1] = online_lit;
     lit[2] = wireless_lit;
+    if (ui_theme_active_has_frame() && g_cgear_btn_x >= 0) {
+        /* a theme's own sheet: a list of four rows from the C-GEAR button */
+        int fx = g_cgear_btn_x, fy = top, fw = 4, fh = small_button_w("C-GEAR", NULL);
+
+        if (ui_app_window(c, "cgear-sheet", &fx, &fy, &fw, &fh)) {
+            g_cgear_plain = fh == 1;
+            for (i = 0; i < 4; i++) {
+                EidosUiRect r;
+                int rx = i, ry = 0, rw = 0, rh = 0, tx = i, ty, slant = 0, dark = 0, ir = i == 0, st, k;
+
+                if (!ui_app_window(c, "cgear-row-rect", &rx, &ry, &rw, &rh)) {
+                    break;
+                }
+                r.x = rx;
+                r.y = ry;
+                r.w = rw;
+                r.h = rh;
+                int own_mark;
+
+                st = ir ? 0 : eidos_ui_hit(r);
+                ty = (st & EIDOS_UI_HOVER) != 0;
+                /* (in: w the channel's colour, h its state: 0 not there, 1 off, 2 on.  A theme that draws
+                 * the channel's mark itself answers a slant of -1: upright words, no strip.) */
+                slant = i < 3 ? (int)ch[i].colour : 0;
+                dark = i < 3 ? (ir ? 0 : lit[i] ? 2 : 1) : 0;
+                (void)ui_app_window(c, "cgear-row", &tx, &ty, &slant, &dark);
+                own_mark = slant < 0;
+                if (own_mark) {
+                    slant = 0;
+                }
+                if (i < 3) {
+                    u32 col = ch[i].colour;
+                    const char *status = ir ? "Not available" : on ? "On" : "Off";
+
+                    for (k = 2; !own_mark && k < rh - 6; k++) {      /* the channel's colour, along the row's slant */
+                        ui_fill(c, tx - 7 + k * slant / 16, ty + k, 3, 1, UI_RAW(col), ir ? 90 : lit[i] ? 255 : 150);
+                    }
+                    if (dark) {
+                        ui_text(c, tx, ty, ch[i].name, UI_RAW(0x181818u), -1, UI_FONT_SMALL, 1);
+                        ui_text(c, tx, ty + 11, ui_tr(status), UI_RAW(0x505058u), -1, UI_FONT_SMALL, 1);
+                    } else {
+                    ui_text(c, tx, ty, ch[i].name, UI_RAW(ir ? 0x8A8A8Au : 0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
+                            UI_FONT_SMALL, 1);
+                    ui_text(c, tx + 11 * slant / 16, ty + 11, ui_tr(status),
+                            UI_RAW(ir ? 0x6A6A6Au : lit[i] ? col : 0xB0B0B0u), -1, UI_FONT_SMALL, 1);
+                    }
+                    if (st & EIDOS_UI_CLICK) {
+                        eidos_ui_tap(ch[i].tx, ch[i].ty, 3);
+                        res = 1;
+                    }
+                } else {
+                    int tw = ui_text_w("C-GEAR", UI_FONT_SMALL);
+
+                    ui_text(c, rx + (rw - tw) / 2 + (rh / 2) * slant / 16, ry + ui_text_y(rh, UI_FONT_SMALL), "C-GEAR",
+                            UI_RAW(dark ? 0x181818u : 0xF8F8F8u), dark ? -1 : (s32)UI_RAW(0x0C0C0Cu), UI_FONT_SMALL, 1);
+                    if (st & EIDOS_UI_CLICK) {
+                        res = 2;
+                    }
+                }
+            }
+            return res;
+        }
+    }
+    if (ui_theme_active_has_frame() && g_cgear_btn_x >= 0) {
+        /* a theme: the drop hangs from the C-GEAR button, made of the bar */
+        int fx, fy, fw, fh;
+
+        x0 = g_cgear_btn_x;
+        if (x0 + w > cw - 4) {
+            x0 = cw - 4 - w;
+        }
+        y0 = top;
+        fx = x0;
+        fy = y0;
+        fw = w;
+        fh = h;
+        themed = ui_app_window(c, "sheet", &fx, &fy, &fw, &fh);
+    }
     if (x0 < 2) {
         x0 = 2;
     }
-    ui_panel(c, x0, y0, w, h, UI_CUT_BL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 235);
-    ui_fill(c, x0 + 5, y0 + h - 1, w - 10, 1, UI_CYAN, 255);
+    if (!themed) {
+        ui_panel(c, x0, y0, w, h, UI_CUT_BL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 235);
+        ui_fill(c, x0 + 5, y0 + h - 1, w - 10, 1, UI_CYAN, 255);
+    }
     for (i = 0; i < 3; i++) {
         int bx = x0 + pad + i * (bw + gap), by = y0 + pad;
         EidosUiRect r = { bx, by, bw, bhh };
@@ -1918,12 +2280,25 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
         u32 col = ch[i].colour;
         const char *status = ir ? "Not available" : on ? "On" : "Off";
 
+        if (themed) {
+            /* the theme's tile; the channel's own colour as a strip at its
+             * left (dim while the channel is off or not there) */
+            int fx = bx, fy = by, fw = bw, fh = (st & EIDOS_UI_HOVER) ? -bhh : bhh;
+
+            (void)ui_app_window(c, "sheet-tile", &fx, &fy, &fw, &fh);
+            ui_fill(c, bx + 4, by + 5, 3, bhh - 10, UI_RAW(col), ir ? 90 : lit[i] ? 255 : 150);
+            ui_text(c, bx + 11, by + 3, ch[i].name, UI_RAW(ir ? 0x8A8A8Au : 0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
+                    UI_FONT_SMALL, 1);
+            ui_text(c, bx + 11, by + 15, ui_tr(status), UI_RAW(ir ? 0x6A6A6Au : lit[i] ? col : 0xB0B0B0u), -1,
+                    UI_FONT_SMALL, 1);
+        } else {
         ui_panel(c, bx, by, bw, bhh, UI_CUT_TL | UI_CUT_BR, 4,
                  (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, lit[i] ? col : UI_EDGE2, ir ? 150 : 245);
         ui_fill(c, bx + 4, by + 4, 3, bhh - 8, lit[i] ? col : UI_EDGE2, 255);
         ui_text(c, bx + 11, by + 3, ch[i].name, ir ? UI_GREY : lit[i] ? UI_WHITE : UI_LIGHT, UI_EDGE,
                 UI_FONT_SMALL, 1);
         ui_text(c, bx + 11, by + 15, status, ir ? UI_EDGE2 : lit[i] ? col : UI_GREY, -1, UI_FONT_SMALL, 1);
+        }
         if (st & EIDOS_UI_CLICK) {
             eidos_ui_tap(ch[i].tx, ch[i].ty, 3);
             res = 1;
@@ -1934,10 +2309,18 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
         EidosUiRect r = { bx, by, fullw, bhh };
         int st = eidos_ui_hit(r);
 
+        if (themed) {
+            int fx = bx, fy = by, fw = fullw, fh = (st & EIDOS_UI_HOVER) ? -bhh : bhh;
+
+            (void)ui_app_window(c, "sheet-tile", &fx, &fy, &fw, &fh);
+            ui_text(c, bx + 7, by + ui_text_y(bhh, UI_FONT_SMALL), "C-GEAR", UI_RAW(0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
+                    UI_FONT_SMALL, 1);
+        } else {
         ui_panel(c, bx, by, fullw, bhh, UI_CUT_TL | UI_CUT_BR, 4,
                  (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, UI_CYAN2, 245);
         ui_text(c, bx + 7, by + ui_text_y(bhh, UI_FONT_SMALL), "C-GEAR", UI_WHITE, UI_EDGE,
                 UI_FONT_SMALL, 1);
+        }
         if (st & EIDOS_UI_CLICK) {
             res = 2;
         }
@@ -2206,6 +2589,9 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         cutin_view(view);
     }
     choosing = !plain_field() && field_choices(c, in, &f);
+    if (g_shortcut_open) {
+        view->hide_2d = 1;              /* the game's own list on its screen */
+    }
     if (choosing) {
         /* a choice list is open: its own clicks (field_choices) */
     } else if (GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0) {
@@ -2224,8 +2610,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 GAMESYSTEM_IsEventActive != NULL && GAMESYSTEM_IsEventActive(f.gs) != 0);
     /* Opening and closing the menu are events too: right after the menu
      * the bar is simply there, fading in with the menu fading out. */
-    if (in->frame - g_menu_last_frame <= 90u) {
-        g_bar_slide = 0;
+    if (in->frame - g_menu_last_frame <= 90u || g_shortcut_open || shortcut_event(&f)) {
+        g_bar_slide = 0;                /* the shortcut list hangs from the bar */
     } else if (choosing || g_text_up || (GAMESYSTEM_IsEventActive != NULL
                                                && GAMESYSTEM_IsEventActive(f.gs) != 0)) {
         /* a list or a text box (the Union Room's talks run with no
@@ -2278,8 +2664,12 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     bar.w = cw;
     bar.h = bh;
     st_bar = eidos_ui_hit(bar);
-    ui_fill(c, 0, 0, cw, bh, UI_INK, st_bar & EIDOS_UI_HOVER ? 205 : 170);
-    ui_fill(c, 0, bh, cw, 1, UI_EDGE, 200);
+    if (ui_theme_active()->strip != NULL) {
+        ui_theme_active()->strip(c, 0, cw, bh, 0, (st_bar & EIDOS_UI_HOVER) != 0);
+    } else {
+        ui_fill(c, 0, 0, cw, bh, UI_INK, st_bar & EIDOS_UI_HOVER ? 205 : 170);
+        ui_fill(c, 0, bh, cw, 1, UI_EDGE, 200);
+    }
 
     /* The time on its slanted tab in the middle, Menu right of it, Item
      * and the C-Gear left of it: the buttons keep their places whatever
@@ -2334,6 +2724,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
      * Machine: a touch screen has no key for it), then the C-Gear */
     x = tab_l - 6;
     st = small_button(c, &x, 0, "Item", bh, "Y");
+    g_item_btn_x = x;
+    g_item_btn_bh = bh;
     if (st & EIDOS_UI_CLICK) {
         use_item = 1;
     }
@@ -2350,6 +2742,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         } else {
             st = small_button(c, &x, 0, "C-GEAR", bh, NULL);
         }
+        g_cgear_btn_x = x + 4;
         if (st & EIDOS_UI_CLICK) {
             g_show_cgear = g_show_cgear ? 0 : 1;
             st_bar = 0;
@@ -2461,7 +2854,10 @@ static int lower_match(void)
         u8 *l, *w;
 
         if (ui_textbox_field_active(f.fm) || f.mode == 9 || choices_now(&f, &l, &w)) {
-            eidos_ui_want_ds_scale();
+            /* with room for the lower screen's sheet (the bar, 192 rows, a margin): at the plain
+             * DS scale a 1440 or 1600 row window left 205 or 199 rows and the scene fell back
+             * to the two screens (the Dowsing Machine finding an item, #33) */
+            eidos_ui_want_ds_scale_rows(216);
         }
     }
     return 1;
@@ -2498,6 +2894,10 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     own = plain_field() ? 0 : (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
           || (f.mode == 9 && power_card(c, &f));
+    if (own && f.mode == 9) {
+        /* the game's banner on the top screen points at the lower one */
+        view->hide_2d = 1;
+    }
     if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
     }
@@ -2537,7 +2937,33 @@ static int power_card(EidosUiCtx *c, const FieldNow *f)
         /* the box as tall as the words (the game's window has room for a
          * longer message) */
         if (!ui_letters(NULL, ui_bmpwin_bmp(msg), 0, 0, 0, 0, &mw2, &mh2)) {
-            return 1;                   /* nothing printed yet             */
+            /* no message: the game's notice alone (the C-Gear cannot be
+             * started), which it ends at a touch.  The note is the box. */
+            EidosUiRect r;
+            u32 k = eidos_ui_keys_pressed();
+
+            if (note == NULL || !ui_letters(NULL, ui_bmpwin_bmp(note), 0, 0, 0, 0, &nw, &nh)) {
+                return 1;               /* nothing printed yet             */
+            }
+            bh = nh + 14;
+            bw = nw + 24 > 256 ? nw + 24 : 256;
+            if (bw > cw - 8) {
+                bw = cw - 8;
+            }
+            x = (cw - bw) / 2;
+            y = ch - 4 - bh;
+            ui_textbox_frame(c, UI_TEXTBOX_SYSTEM, x, y, bw, bh);
+            ui_letters(c, ui_bmpwin_bmp(note), x + 12, y + 7, UI_WHITE, 0x464850u, NULL, NULL);
+            r.x = x; r.y = y; r.w = bw; r.h = bh;
+            eidos_ui_take_keys(BW_KEY_A | BW_KEY_B);
+            if ((eidos_ui_hit(r) & EIDOS_UI_CLICK) || (k & (BW_KEY_A | BW_KEY_B))) {
+                eidos_ui_tap(128, 96, 2);
+            }
+            g_card.x = x;
+            g_card.y = y;
+            g_card.w = bw;
+            g_card.h = ch - y;
+            return 1;
         }
         bh = mh2 + 14;
         bw = cw - 8 < 256 ? cw - 8 : 256;
@@ -2555,9 +2981,11 @@ static int power_card(EidosUiCtx *c, const FieldNow *f)
         ui_taskmenu(c, menu, x + bw, y - 3, UI_CHOICE_SYSTEM);
     } else {
         EidosUiRect r;
+        u32 k = eidos_ui_keys_pressed();
 
         r.x = x; r.y = y; r.w = bw; r.h = bh;
-        if (eidos_ui_hit(r) & EIDOS_UI_CLICK) {
+        eidos_ui_take_keys(BW_KEY_A | BW_KEY_B);
+        if ((eidos_ui_hit(r) & EIDOS_UI_CLICK) || (k & (BW_KEY_A | BW_KEY_B))) {
             eidos_ui_tap(128, 96, 2);
         }
     }
@@ -3155,6 +3583,23 @@ static void whiteout_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
      * screen is black around the words, so its corner is black too */
     world_place(c, &s, &ox, &oy);
     ui_fill(c, (int)(ox + 236.0f * s), (int)oy, (int)(20.0f * s) + 1, (int)(20.0f * s) + 1, 0x000000u, 255);
+    {
+        /* the message goes on at A; a click or a tap anywhere is A (a phone
+         * has no A key here, and the screen took no touch: a loss left the
+         * player on this screen for good) */
+        static const char *const hints[] = { "A", "Next" };
+        static const u32 keys[] = { BW_KEY_A };
+        EidosUiRect all;
+
+        all.x = 0;
+        all.y = 0;
+        all.w = c->canvas->w;
+        all.h = c->canvas->h - ui_bar_h(c);
+        if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+            eidos_ui_press(BW_KEY_A, 2);
+        }
+        ui_hints(c, c->canvas->h - ui_bar_h(c), c->canvas->w, hints, 1, keys);
+    }
 }
 
 static const EidosUiRecipe recipe_whiteout = {

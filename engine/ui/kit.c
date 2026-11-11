@@ -82,6 +82,9 @@ const UiTheme UI_THEME_OPTIONS = { UI_CYAN,   UI_CYAN2, UI_BODY2, UI_EDGE };
 
 void ui_begin(EidosUiCtx *c, EidosUiCanvas *canvas, int w, int h, int k)
 {
+    if (ui_theme_active() != NULL && ui_theme_active()->frame_begin != NULL) {
+        ui_theme_active()->frame_begin();
+    }
     size_t need;
 
     if (w < 1) {
@@ -172,6 +175,20 @@ static void blend_at(EidosUiCanvas *cv, int px, int py, u32 rgb, int a)
         d[1] = (u8)sg;
         d[2] = (u8)sb;
         d[3] = (u8)(a > 255 ? 255 : a);
+        return;
+    }
+    if (da == 255) {
+        /* over an opaque pixel (most of a full-screen menu): the general
+         * case below comes to (s * a + d * (255 - a) + 127) / 255, and the
+         * division by 255 is exact as two shifts for values under 65536 */
+        int ia = 255 - a, t;
+
+        t = sr * a + d[0] * ia + 127;
+        d[0] = (u8)((t + 1 + (t >> 8)) >> 8);
+        t = sg * a + d[1] * ia + 127;
+        d[1] = (u8)((t + 1 + (t >> 8)) >> 8);
+        t = sb * a + d[2] * ia + 127;
+        d[2] = (u8)((t + 1 + (t >> 8)) >> 8);
         return;
     }
     {
@@ -285,37 +302,97 @@ void ui_line(EidosUiCtx *c, int x0, int y0, int x1, int y1, u32 rgb, int a)
 /* Is pixel (px, py) inside the ellipse that fills a w x h box? */
 static int in_ellipse(int px, int py, int w, int h)
 {
-    long u = 2L * px + 1 - w, v = 2L * py + 1 - h;
+    long long u = 2LL * px + 1 - w, v = 2LL * py + 1 - h;
 
     if (px < 0 || py < 0 || px >= w || py >= h) {
         return 0;
     }
-    return u * u * (long)h * h + v * v * (long)w * w <= (long)w * w * (long)h * h;
+    return u * u * (long long)h * h + v * v * (long long)w * w <= (long long)w * w * (long long)h * h;
+}
+
+/* A row's columns inside the ellipse, first to last (first > last: none).
+ * The columns are symmetric about the middle and inside from some column on
+ * to the middle, so the first is found by halving. */
+static void ellipse_row(int yy, int w, int h, int *first, int *last)
+{
+    int lo = 0, hi = (w - 1) / 2;
+
+    if (yy < 0 || yy >= h || w <= 0 || !in_ellipse(hi, yy, w, h)) {
+        *first = 1;
+        *last = 0;
+        return;
+    }
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+
+        if (in_ellipse(mid, yy, w, h)) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    *first = lo;
+    *last = w - 1 - lo;
+}
+
+/* Columns x0 to x1 of a row in one colour (already through the theme's
+ * map), clipped as put() clips. */
+static void span(EidosUiCtx *c, int x0, int x1, int y, u32 rgb, int a)
+{
+    int px0 = c->ox + x0, px1 = c->ox + x1 + 1, py = c->oy + y, px;
+
+    if (py < c->clip.y || py >= c->clip.y + c->clip.h || py < 0 || py >= c->canvas->h) {
+        return;
+    }
+    if (px0 < c->clip.x) px0 = c->clip.x;
+    if (px1 > c->clip.x + c->clip.w) px1 = c->clip.x + c->clip.w;
+    if (px0 < 0) px0 = 0;
+    if (px1 > c->canvas->w) px1 = c->canvas->w;
+    for (px = px0; px < px1; px++) {
+        blend_at(c->canvas, px, py, rgb, a);
+    }
 }
 
 void ui_ellipse(EidosUiCtx *c, int x, int y, int w, int h, u32 fill, u32 outline, int a)
 {
-    int xx, yy;
+    int yy, pf = 1, pl = 0, cf, cl, nf, nl;
 
     fill = tc(fill);
     outline = tc(outline);
-    for (yy = 0; yy < h; yy++) {
-        for (xx = 0; xx < w; xx++) {
-            u32 col;
+    if (outline == UI_NONE) {
+        outline = fill;                 /* an edge pixel takes the fill */
+    }
+    ellipse_row(0, w, h, &cf, &cl);
+    for (yy = 0; yy < h; yy++, pf = cf, pl = cl, cf = nf, cl = nl) {
+        int inf, inl;
 
-            if (!in_ellipse(xx, yy, w, h)) {
-                continue;
-            }
-            if (!in_ellipse(xx - 1, yy, w, h) || !in_ellipse(xx + 1, yy, w, h) ||
-                !in_ellipse(xx, yy - 1, w, h) || !in_ellipse(xx, yy + 1, w, h)) {
-                col = outline != UI_NONE ? outline : fill;
-            } else {
-                col = fill;
-            }
-            if (col != UI_NONE) {
-                put(c, x + xx, y + yy, col, a);
-            }
+        ellipse_row(yy + 1, w, h, &nf, &nl);
+        if (cf > cl) {
+            continue;
         }
+        if (outline == fill) {
+            if (fill != UI_NONE) {
+                span(c, x + cf, x + cl, y + yy, fill, a);
+            }
+            continue;
+        }
+        /* the inner pixels: both side neighbours and the ones above and
+         * below are inside; the rest of the row is the edge */
+        inf = cf + 1;
+        inl = cl - 1;
+        if (pf > inf) inf = pf;
+        if (nf > inf) inf = nf;
+        if (pl < inl) inl = pl;
+        if (nl < inl) inl = nl;
+        if (pf > pl || nf > nl || inf > inl) {
+            span(c, x + cf, x + cl, y + yy, outline, a);
+            continue;
+        }
+        span(c, x + cf, x + inf - 1, y + yy, outline, a);
+        if (fill != UI_NONE) {
+            span(c, x + inf, x + inl, y + yy, fill, a);
+        }
+        span(c, x + inl + 1, x + cl, y + yy, outline, a);
     }
 }
 
@@ -1570,6 +1647,45 @@ void ui_def_menu_row(EidosUiCtx *c, int x, int y, int w, const char *label,
             UI_FONT_LARGE, 1);
 }
 
+extern u32 FILE_UTIL_IsMailItem(u16 itemId) __attribute__((weak));
+
+int ui_held_kind(u32 item)
+{
+    if (item == 0) {
+        return 0;
+    }
+    if (FILE_UTIL_IsMailItem != NULL) {
+        return FILE_UTIL_IsMailItem((u16)item) ? 2 : 1;
+    }
+    return item >= 137 && item <= 148 ? 2 : 1;
+}
+
+/* The game's party plate: the mark's cell 14 across and 21 down from the
+ * icon's corner (ov091's plist_plate.c). */
+void ui_held_mark_swap(EidosUiCtx *c, int icon_x, int icon_y, int kind, const u32 *swap)
+{
+    const UiImage *im = ui_held_icon(kind, swap);
+
+    if (im != NULL) {
+        ui_image(c, icon_x + 14, icon_y + 21, im, 1);
+    }
+}
+
+/* The game's own colours. */
+void ui_held_mark_game(EidosUiCtx *c, int icon_x, int icon_y, int kind)
+{
+    ui_held_mark_swap(c, icon_x, icon_y, kind, NULL);
+}
+
+/* Kosmos's: the jar's body in its teal (the lit buttons'), a navy edge, a
+ * pale blue on the cap's side. */
+void ui_held_mark(EidosUiCtx *c, int icon_x, int icon_y, int kind)
+{
+    static const u32 kosmos[4] = { 0x04182Cu, 0x9CD8F0u, UI_CYAN, UI_CYAN2 };
+
+    ui_held_mark_swap(c, icon_x, icon_y, kind, kosmos);
+}
+
 void ui_def_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name,
                   int gender, int level, int hp, int maxhp, const UiImage *icon,
                   int selected)
@@ -1594,6 +1710,8 @@ void ui_def_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *
             UI_FONT_LARGE, 1);
     if (icon != NULL) {
         ui_image(c, x + 16 + (22 - icon->w) / 2, y + (h - icon->h) / 2, icon, 1);
+        /* what it holds, on the icon's feet (ui_party_row_held) */
+        ui_held_mark(c, x + 16 + (22 - icon->w) / 2, y + (h - icon->h) / 2, ui_party_row_take_held());
     }
     {
         /* a long name in a narrow row (a tablet's canvas) would run into
@@ -1651,11 +1769,51 @@ void ui_def_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *
     ui_text(c, x + w - 9 - hw, y + 16, hpn, UI_LIGHT, SHADOW_DARK, UI_FONT_SMALL, 1);
 }
 
+static const int *g_plate_balls;
+static u32 g_plate_balls_t;
+
+void ui_plate_set_balls(const int *kinds, u32 t)
+{
+    g_plate_balls = kinds;
+    g_plate_balls_t = t;
+}
+
+/* A plate's six balls from (x, y), 5 pixels each: red over white; yellow
+ * for a status problem; greys for a fainted Pokemon; a dim dot for no
+ * Pokemon.  Yours run right to left (the first at the right), as the game
+ * lays its bars; each comes a moment after the one before. */
+static void plate_balls(EidosUiCtx *c, int x, int y, int player)
+{
+    int i;
+
+    for (i = 0; i < 6 && g_plate_balls != NULL; i++) {
+        int kind = g_plate_balls[player ? 5 - i : i], bx = x + i * 7;
+        u32 top = kind == 3 ? 0xF0B030u : kind == 2 ? 0x5A5E66u : 0xE8403Au;
+        u32 bot = kind == 2 ? 0x8A9099u : 0xF4F4F4u;
+
+        if (g_plate_balls_t < (u32)(4 + i * 3)) {
+            continue;
+        }
+        if (kind == 0) {
+            ui_fill(c, bx + 1, y + 1, 3, 3, UI_EDGE2, 255);
+            continue;
+        }
+        ui_fill(c, bx + 1, y, 3, 1, top, 255);
+        ui_fill(c, bx, y + 1, 5, 1, top, 255);
+        ui_fill(c, bx, y + 2, 5, 1, UI_INK, 255);
+        ui_fill(c, bx + 2, y + 2, 1, 1, bot, 255);
+        ui_fill(c, bx, y + 3, 5, 1, bot, 255);
+        ui_fill(c, bx + 1, y + 4, 3, 1, bot, 255);
+    }
+}
+
 void ui_def_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender,
               int level, int hp, int maxhp, int exp_num, int exp_den)
 {
     int player = exp_den > 0;
     int h = player ? 32 : 24, nx, tw, i, j;
+    /* the foe's balls stand at the end of its HP row, which gives them room */
+    int room = !player && g_plate_balls != NULL ? 46 : 0;
     char lv[48], t[12];
 
     ui_panel(c, x, y, w, h, UI_CUT_TR | UI_CUT_BL, 6, UI_BODY, UI_EDGE, 225);
@@ -1667,7 +1825,8 @@ void ui_def_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gend
     ui_text(c, x + w - 10 - tw, y + 2, lv, UI_LIGHT, SHADOW_DARK, UI_FONT_SMALL, 1);
     ui_text(c, x + 8, y + 14, "HP", UI_LIME, SHADOW_DARK, UI_FONT_SMALL, 1);
     if (!player) {
-        ui_bar(c, x + 24, y + 16, w - 36, 4, hp, maxhp);
+        ui_bar(c, x + 24, y + 16, w - 36 - room, 4, hp, maxhp);
+        plate_balls(c, x + w - 12 - 41, y + 15, 0);
     } else {
         char hpn[24];
         int a = hp, b = maxhp, k;
@@ -1699,6 +1858,8 @@ void ui_def_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gend
 
             ui_bar(c, x + 24, y + 16, bw, 4, hp, maxhp);
             ui_text(c, x + 24 + bw + 5, y + 14, hpn, UI_WHITE, SHADOW_DARK, UI_FONT_SMALL, 1);
+            /* your balls under the bar, above the EXP line */
+            plate_balls(c, x + 24, y + 21, 1);
             ui_fill(c, ex, y + h - 6, ew0, 2, UI_INK, 255);
             if (exp_num > 0) {
                 ew = (int)((long)ew0 * (exp_num > exp_den ? exp_den : exp_num) / exp_den);

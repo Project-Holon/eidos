@@ -2,13 +2,14 @@
  * engine/ui/theme.c -- the theme in use and the kit's dispatch: each ui_*
  * piece calls the active theme's function, or the default (theme.h).
  */
+#include <stdio.h>
 #include <string.h>
 
 #include "theme.h"
 
 #define UI_THEME_MAX 32
 
-static const UiThemeOps k_default = { .id = "remaster", .name = "Remaster" };   /* every piece the default */
+static const UiThemeOps k_default = { .id = "kosmos", .name = "Kosmos" };   /* every piece the default */
 
 static const UiThemeOps *g_list[UI_THEME_MAX] = { &k_default };
 static int g_count = 1;
@@ -236,9 +237,25 @@ void ui_menu_row(EidosUiCtx *c, int x, int y, int w, const char *label, const Ui
     (g_active->menu_row != NULL ? g_active->menu_row : ui_def_menu_row)(c, x, y, w, label, icon, selected, hover);
 }
 
+static int g_row_held;       /* what the next row's Pokemon holds (ui_party_row_held) */
+
+void ui_party_row_held(int kind)
+{
+    g_row_held = kind;
+}
+
+int ui_party_row_take_held(void)
+{
+    int k = g_row_held;
+
+    g_row_held = 0;
+    return k;
+}
+
 void ui_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name, int gender, int level, int hp, int maxhp, const UiImage *icon, int selected)
 {
     (g_active->party_row != NULL ? g_active->party_row : ui_def_party_row)(c, x, y, w, slot, name, gender, level, hp, maxhp, icon, selected);
+    g_row_held = 0;             /* (a row that draws no mark does not pass it on) */
 }
 
 void ui_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender, int level, int hp, int maxhp, int exp_num, int exp_den)
@@ -274,4 +291,60 @@ void ui_dex_row(EidosUiCtx *c, int x, int y, int w, int number, const char *name
 void ui_info_row(EidosUiCtx *c, int x, int y, int w, const char *label, const char *value)
 {
     (g_active->info_row != NULL ? g_active->info_row : ui_def_info_row)(c, x, y, w, label, value);
+}
+
+int ui_hint_ground(EidosUiCtx *c, int x, int y, int w, int h)
+{
+    const UiThemeOps *t = ui_theme_active();
+    EidosUiRect saved;
+
+    if (t == NULL || t->strip == NULL) {
+        return 0;
+    }
+    ui_push(c, 0, 0, &saved);
+    ui_clip(c, x, y, w, h);
+    t->strip(c, y, x + w, h, 1, 0);
+    ui_pop(c, 0, 0, &saved);
+    return 1;
+}
+
+static char g_app_text[4][160];
+
+void ui_app_text(int slot, const char *utf8)
+{
+    if (slot >= 0 && slot < 4) {
+        snprintf(g_app_text[slot], sizeof g_app_text[slot], "%s", utf8 != NULL ? utf8 : "");
+    }
+}
+
+const char *ui_app_text_get(int slot)
+{
+    return slot >= 0 && slot < 4 ? g_app_text[slot] : "";
+}
+
+int ui_app_window(EidosUiCtx *c, const char *app, int *x, int *y, int *w, int *h)
+{
+    const UiThemeOps *t = ui_theme_active();
+    EidosUiRect r;
+
+    if (t == NULL || t->app_frame == NULL) {
+        return 0;
+    }
+    r.x = *x;
+    r.y = *y;
+    r.w = *w;
+    r.h = *h;
+    if (!t->app_frame(c, app, &r)) {
+        return 0;
+    }
+    *x = r.x;
+    *y = r.y;
+    *w = r.w;
+    *h = r.h;
+    return 1;
+}
+
+int ui_theme_active_has_frame(void)
+{
+    return ui_theme_active() != NULL && ui_theme_active()->app_frame != NULL;
 }

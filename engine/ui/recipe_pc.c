@@ -1053,6 +1053,28 @@ static void pc_layout(PcLay *l, int cw, int ch, int bar_h)
         l->pw += spare / 2;
         l->dw += spare - spare / 2;
     }
+    if (ui_theme_active_has_frame()) {
+        /* a theme's PC: the party a slim tray of icon cells, the box as
+         * large as the height allows, the rest a wide pane for the Pokemon
+         * under the cursor */
+        int tray = clampi(cw * 8 / 100, 40, 58), dmin = clampi(cw * 30 / 100, 150, 280);
+
+        l->y1 = ch - bar_h - 5;
+        l->bh = l->y1 - l->y0;
+        ph = (l->bh - 4 - 18 - 3 - 20 - 3 - 25) / 5;
+        l->show_strip = ph >= 28;
+        if (!l->show_strip) {
+            ph = (l->bh - 4 - 18 - 3 - 20 - 3 - 6) / 5;
+        }
+        l->pitch = (cw - 2 * m - 2 * gap - tray - dmin - 12) / 6;
+        if (ph < l->pitch) {
+            l->pitch = ph;
+        }
+        l->pitch = clampi(l->pitch, 22, 64);
+        l->bw = 6 * l->pitch + 12;
+        l->pw = tray;
+        l->dw = cw - 2 * m - 2 * gap - tray - l->bw;
+    }
     l->px = m;
     l->py = l->y0;
     l->bx = l->px + l->pw + gap;
@@ -1169,6 +1191,13 @@ static void rect_outline(EidosUiCtx *c, int x, int y, int w, int h, u32 col, int
 static void draw_cell(EidosUiCtx *c, int x, int y, int p, int hover, int selected)
 {
     u32 edge = selected ? UI_SKY : 0x0B3A62u;
+    {
+        int fx = x, fy = y, fw = p - 2, fh = hover ? -(p - 2) : p - 2;     /* a negative height: under the pointer */
+
+        if (ui_app_window(c, "pc-cell", &fx, &fy, &fw, &fh)) {
+            return;
+        }
+    }
 
     ui_fill(c, x, y, p - 2, p - 2, hover ? 0x0E3A5Cu : 0x08243Eu, 235);
     rect_outline(c, x, y, p - 2, p - 2, edge, 255);
@@ -1299,6 +1328,28 @@ static void party_chip(EidosUiCtx *c, int x, int y, int w, int h, int slot, cons
     char lv[16];
     int nx;
 
+    if (w < 70) {
+        /* a tray's cell: the icon, the HP under it */
+        const UiImage *ic = dim ? NULL : icon_of(m, (frame / 24) & 1);
+        char n[2];
+
+        n[0] = (char)('1' + slot);
+        n[1] = '\0';
+        if (!m->exists) {
+            ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 5, 0x06182Cu, UI_NAVY, hover ? 255 : 170);
+            ui_text(c, x + 4, y + 3, n, UI_EDGE2, -1, UI_FONT_SMALL, 1);
+            return;
+        }
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 5, sel || hover ? UI_NAVY2 : UI_NAVY,
+                 sel ? UI_SKY : 0x084A73u, 240);
+        if (ic != NULL) {
+            ui_image(c, x + (w - ic->w) / 2, y + (h - 6 - ic->h) / 2, ic, 1);
+        }
+        if (!m->egg) {
+            ui_bar(c, x + 5, y + h - 8, w - 10, 4, m->hp, m->maxhp);
+        }
+        return;
+    }
     if (!m->exists) {
         char n[2];
 
@@ -1353,12 +1404,94 @@ static void party_chip(EidosUiCtx *c, int x, int y, int w, int h, int slot, cons
 
 /* The details: name, level, icon with the types and marks, ability, item,
  * the moves; rows drop from the bottom when the panel is short. */
+/* A theme's wide pane: the Pokemon's picture large, its name and level over
+ * it, its types under it, then its ability, item and moves. */
+static void details_wide(EidosUiCtx *c, int x, int y, int w, int h, const PcMon *m, int item_focus, int frame)
+{
+    int ix = x + 8, iw = w - 16, iy = y + 6, i, foot, room, k = 1;
+    const UiImage *pic = NULL;
+
+    {
+        int fx = x, fy = y, fw = w, fh = h;
+
+        if (!ui_app_window(c, "pc-detail", &fx, &fy, &fw, &fh)) {
+            ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
+        }
+    }
+    if (!m->exists) {
+        ui_text(c, ix, iy, "Empty", UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+        return;
+    }
+    {
+        char lv[16];
+        int nx = ui_text(c, ix, iy, m->egg ? "Egg" : m->nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+
+        if (!m->egg) {
+            ui_gender(c, nx + 3, iy, m->gender, UI_FONT_LARGE);
+            fmt_int(lv, ui_tr("Lv."), m->level);
+            ui_text(c, x + w - 8 - ui_text_w(lv, UI_FONT_LARGE), iy, lv, UI_LIGHT, UI_EDGE, UI_FONT_LARGE, 1);
+        }
+    }
+    iy += 18;
+    /* what stands under the picture: the types' line, two rows, the moves
+     * two across */
+    foot = m->egg ? 0 : 18 + 2 * 17 + 2 * 14 + 6;
+    room = y + h - foot - iy;
+    if (!m->egg && m->species > 0) {
+        pic = ui_mon_front((u16)m->species, (u8)m->form, 0);
+    }
+    if (pic == NULL) {
+        pic = icon_of(m, (frame / 24) & 1);
+        k = 2;
+    }
+    if (pic != NULL) {
+        while (k > 1 && pic->h * k > room) {
+            k--;
+        }
+        while (pic->h * (k + 1) <= room + 6 && pic->w * (k + 1) <= iw && k < 3) {
+            k++;
+        }
+        ui_ellipse(c, x + w / 2 - pic->w * k * 3 / 10, iy + (room + pic->h * k) / 2 - pic->h * k / 8 - 3,
+                   pic->w * k * 6 / 10, pic->h * k / 8 + 4, UI_INK, UI_NONE, 70);
+        ui_image(c, x + (w - pic->w * k) / 2, iy + (room - pic->h * k) / 2, pic, k);
+    }
+    if (m->egg) {
+        return;
+    }
+    iy = y + h - foot;
+    ui_type_tag(c, ix, iy, 46, m->type1);
+    if (m->type2 != m->type1) {
+        ui_type_tag(c, ix + 50, iy, 46, m->type2);
+    }
+    marks_small(c, x + w - 8 - 48, iy + 3, m->mark);
+    iy += 18;
+    ui_info_row(c, ix, iy, iw, "Ability", pc_text(TXT_ABILITY, (u32)m->ability));
+    iy += 17;
+    ui_info_row(c, ix, iy, iw, "Item", m->item > 0 ? pc_text(TXT_ITEM, (u32)m->item) : "None");
+    if (item_focus) {
+        rect_outline(c, ix - 1, iy - 1, iw + 2, 17, UI_CYAN, 255);
+    }
+    iy += 19;
+    for (i = 0; i < 4; i++) {
+        int mw = (iw - 4) / 2, mx = ix + (i & 1) * (mw + 4), my = iy + (i >> 1) * 14;
+
+        ui_panel(c, mx, my, mw, 12, UI_CUT_TL | UI_CUT_BR, 2, UI_BODY2, UI_EDGE, 255);
+        ui_text(c, mx + 4, my + ui_text_y(12, UI_FONT_SMALL),
+                m->moves[i] > 0 ? pc_text(TXT_MOVE, (u32)m->moves[i]) : "-----",
+                m->moves[i] > 0 ? UI_WHITE : UI_EDGE2, UI_EDGE, UI_FONT_SMALL, 1);
+    }
+}
+
 static void details_panel(EidosUiCtx *c, int x, int y, int w, int h, const PcMon *m,
                           int item_focus, int frame)
 {
     int ix = x + 5, iw = w - 10, iy = y + 4, well = 38, i;
     const UiImage *ic;
 
+    if (ui_theme_active_has_frame() && w >= 150) {
+        details_wide(c, x, y, w, h, m, item_focus, frame);
+        return;
+    }
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
     if (!m->exists) {
         ui_text(c, ix, iy, "Empty", UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
@@ -2043,8 +2176,10 @@ static void pc_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, cons
         gap -= (x + total - gap - w + n - 2) / (n - 1);
         gap = gap < 3 ? 3 : gap;
     }
-    ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
-    ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
+    if (!ui_hint_ground(c, 0, y, w, 17)) {
+        ui_fill(c, 0, y, w, 17, UI_BODY2, 235);
+        ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
+    }
     for (i = 0; i < n; i++) {
         const char *key = pairs[2 * i], *what = pairs[2 * i + 1];
         int kw = ui_keycap_w(key), aw = ui_text_w(what, UI_FONT_SMALL), rw;
@@ -2443,6 +2578,11 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     box_title(g, g->cur_box, boxname, (int)sizeof(boxname));
     /* the box's own bar names it and counts its Pokemon, and the strip
      * under the grid shows every box: no box counter in the header */
+    {
+        int fx = 0, fy = 0, fw = cw, fh = ch - ui_bar_h(c);
+
+        (void)ui_app_window(c, "pc", &fx, &fy, &fw, &fh);
+    }
     ui_header(c, 6, 5, cw - 12, "POKEMON STORAGE", mode_title(g->mode), NULL, UI_SKY);
 
     {
@@ -2470,7 +2610,13 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
 
         /* the box */
-        ui_panel(c, l.bx, l.by, l.bw, l.bh, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_SKY, 225);
+        {
+            int fx = l.bx, fy = l.by, fw = l.bw, fh = l.bh;
+
+            if (!ui_app_window(c, "pc-box", &fx, &fy, &fw, &fh)) {
+                ui_panel(c, l.bx, l.by, l.bw, l.bh, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_SKY, 225);
+            }
+        }
         {
             char cnt[24];
 
@@ -2504,7 +2650,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
             (void)pc_mon(g, i, 0, &mon[i]);
             draw_cell(c, cx, cy, p, hover == i, 0);
-            if (!mon[i].exists) {
+            if (!mon[i].exists && ui_theme_active_has_frame() == 0) {
                 ui_ellipse(c, cx + p / 2 - 5, cy + p / 2 - 5, 9, 9, UI_NONE, 0x0B3A62u, 255);
             }
             ic = icon_of(&mon[i], (frame / 24) & 1);

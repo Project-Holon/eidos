@@ -142,6 +142,8 @@ static struct {
     u32 writes;                     /* successful file writes               */
     u32 failures;                   /* failed writes since the last success */
     int hold;                       /* writes stay in memory (save slots)   */
+    const u8 *mem;                  /* the contents come from memory and    */
+    u32 mem_size;                   /* there is no file (the preview's save) */
 } g_fs;
 
 /* ------------------------------------------------------------------ */
@@ -207,6 +209,10 @@ int bw_arm7_backup_flush(void)
 
     if (!g_fs.dirty || g_fs.hold)
         return 0;
+    if (g_fs.mem != NULL) {
+        g_fs.dirty = 0;             /* no file: what was written is the chip's only */
+        return 0;
+    }
     path = save_path();
     if (path[0] == '\0') {
         fprintf(stderr, "eidos: backup: no save folder; the save stays in "
@@ -247,9 +253,13 @@ static void load_image(u32 size)
     }
     g_fs.image_size = size;
     memset(g_fs.image, 0xFF, size);
-    n = bw_save_read(save_path(), g_fs.image, size);
-    if (n >= 0 && (u32)n < size)
-        memset(g_fs.image + n, 0xFF, size - (u32)n);
+    if (g_fs.mem != NULL) {
+        memcpy(g_fs.image, g_fs.mem, g_fs.mem_size < size ? g_fs.mem_size : size);
+    } else {
+        n = bw_save_read(save_path(), g_fs.image, size);
+        if (n >= 0 && (u32)n < size)
+            memset(g_fs.image + n, 0xFF, size - (u32)n);
+    }
     g_fs.loaded = 1;
     g_fs.dirty = 0;
     if (!g_fs.atexit_done) {
@@ -488,6 +498,7 @@ void bw_arm7_backup_set_path(const char *path)
 {
     (void)bw_arm7_backup_flush();
     g_fs.hold = 0;                      /* held writes are dropped          */
+    g_fs.mem = NULL;                    /* a file again                     */
     if (path == NULL || strlen(path) >= sizeof g_fs.path) {
         g_fs.path_set = 0;
     } else {
@@ -511,6 +522,7 @@ void bw_arm7_backup_switch_path(const char *path)
 
     (void)bw_arm7_backup_flush();
     g_fs.hold = 0;                      /* held writes are dropped          */
+    g_fs.mem = NULL;                    /* a file again                     */
     if (path == NULL || strlen(path) >= sizeof g_fs.path) {
         g_fs.path_set = 0;
     } else {
@@ -525,6 +537,34 @@ void bw_arm7_backup_switch_path(const char *path)
         g_fs.loaded = 1;
     }
     g_fs.dirty = 0;
+}
+
+/* The chip's contents from memory, and no file: whatever the game writes
+ * stays in the chip's own memory and reaches no disk, held or not (the
+ * style chooser's preview save, sdk/save_slots.c).  `data` must stay valid.
+ * `live`: the chip keeps its type and takes the contents at once; else the
+ * next IDENTIFY takes them.  A path set afterwards (bw_arm7_backup_set_path
+ * or _switch_path) ends it. */
+void bw_arm7_backup_set_memory(const u8 *data, u32 size, int live)
+{
+    (void)bw_arm7_backup_flush();       /* what the file before it is owed  */
+    g_fs.hold = 0;
+    g_fs.mem = data;
+    g_fs.mem_size = data != NULL ? size : 0;
+    g_fs.dirty = 0;
+    if (live) {
+        if (g_fs.image != NULL && g_fs.image_size > 0 && data != NULL) {
+            memset(g_fs.image, 0xFF, g_fs.image_size);
+            memcpy(g_fs.image, data, size < g_fs.image_size ? size : g_fs.image_size);
+            g_fs.loaded = 1;
+        }
+    } else {
+        free(g_fs.image);
+        g_fs.image = NULL;
+        g_fs.image_size = 0;
+        g_fs.loaded = 0;
+        g_fs.type = 0;
+    }
 }
 
 /* While held, the chip's writes stay in memory and no file is written;

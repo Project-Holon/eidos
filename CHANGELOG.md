@@ -5,7 +5,21 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.5
 
+### One-Screen Mode & UI
+- **Interface Styles**: `Settings > Layout > Interface style` (STYLE in the game's own options) sets the look of the one-screen menus and battles: Kosmos (the look so far), Plasma (a modern take on Black and White) or Harmonia (the closest to the DS). Every screen is laid out for each style.
+- **Style Chooser**: The title menu asks for a style on the first start; SELECT opens the chooser again. Preview plays the real game in the chosen style (X menu, party, Bag, a battle) on a save built into the program, with SELECT to change style; the player's own save is not touched.
+- **Held Items**: A Pokémon that holds an item shows the game's own item mark on its icon, in the party and in the battle's Pokémon list; Mail shows the envelope.
+- **Animated Pokémon**: The Pokédex and the other screens with a moving Pokémon play its whole animation as the game does; before, only the first movement played, and parts flashed or drifted apart.
+
 ### Fixes
+- **Elevators**: Every elevator's floor list held only "Cancel"; the floors are back (#33).
+- **Bag Crash**: Using a second Potion from the field Bag could crash the game (#33).
+- **Town Map**: Opened as an item, the Town Map no longer offers Fly (#33).
+- **Dowsing Machine**: In tall windows the Dowsing Machine fell back to the two DS screens; it stays in the one-screen layout (#33).
+- **Whiteout Softlock**: The message after losing a battle took the A button only; a click or a tap continues too.
+- **Nickname Question**: YES and NO showed while the Pokédex registration was still up; they come with the question now.
+- **Continue Card**: Files in the saves folder that are not saves no longer count as save slots.
+- **Pokédex Numbers**: The Pokédex shows each Pokémon's own number (Victini 000); before, it showed the place in the list, one too high once Victini was seen.
 - **Billboard Scenery**: In the one-screen layout, scenery that always faces the camera (the rocks of Pinwheel Forest and others) stays where it is in the world; before, it slid toward the middle of the screen as the camera moved and popped in and out (#26).
 - **Controller Remapping**: A layout bound by hand stays as bound. Setting the DS's own layout (A right, B bottom, X top, Y left) on a pad that confirms with its bottom button turned the automatic A/B swap back on with the last button bound, undoing A and B; the swap now stays off once the pad is bound, until the bindings are reset (#28).
 - **Flash Log**: When a single frame of the screen differs from the frames around it (the glitch in #5), eidos writes what the screen was made of to `eidos_flash.log` in the saves folder, with pictures of the three frames, so a report can carry the cause.

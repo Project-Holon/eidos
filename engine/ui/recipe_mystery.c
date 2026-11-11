@@ -193,7 +193,9 @@ static void units_utf8(const u8 *u, int max_units, char *out, int cap)
 
 static void mg_window(EidosUiCtx *c, int x, int y, int w, int h, const char *title, const char *right)
 {
-    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 10, MG_MBODY, MG_MEDGE, 245);
+    if (!ui_app_window(c, "mystery", &x, &y, &w, &h)) {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 10, MG_MBODY, MG_MEDGE, 245);
+    }
     ui_text(c, x + 12, y + 6, title, MG_TITLE, MG_SHADOW, UI_FONT_SMALL, 1);
     if (right != NULL) {
         ui_text(c, x + w - 12 - ui_text_w(right, UI_FONT_SMALL), y + 6, right, UI_GREY, MG_SHADOW,
@@ -1328,9 +1330,158 @@ static void mystery_reset(void)
     g_wait = 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Battle Competition                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The title menu's BATTLE COMPETITION (overlay 176).  Its proc's work is a
+ * BattleChampionshipFlowWork (ov176/battle_championship_flow_types.h): the
+ * message window's work at +0x08 (a WifibattlematchUtilWork of
+ * ov177/wifibattlematch_util.c: the window the text prints into at +0x20,
+ * the message window at +0x14), the menu flow at +0x2C when +0x30 is 0 (a
+ * BattleChampionshipFlowMenu: its WifibattlematchMenu at +0x04, whose window
+ * is at +0x00 and whose BmpMenuList at +0x10).  The game keeps the logic:
+ * the list's keys are its own, a click walks its cursor and presses A.
+ */
+static void *bc_work(void)
+{
+    void *sys = NULL, *cur, *w, *pw, *csys, *ccur;
+
+    if (&g_ProcSys != NULL) {
+        sys = g_ProcSys;
+    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+        sys = *(void **)bw_dsref_g_ProcSys;
+    }
+    /* the match system (overlay 199, ov199/wifibattlematch_sys.c) runs its
+     * screens in a proc system of its own: its work's procWork (+0x18)
+     * begins with that ProcSys; the menu flow is its current proc */
+    cur = sys != NULL ? rdp(sys, 0x08) : NULL;
+    if (cur == NULL || rd32(cur, 0x04) != 199u || rd32(cur, 0x08) != 2u) {
+        return NULL;
+    }
+    w = rdp(cur, 0x14);
+    pw = w != NULL ? rdp(w, 0x18) : NULL;
+    csys = pw != NULL ? rdp(pw, 0x00) : NULL;
+    ccur = csys != NULL ? rdp(csys, 0x08) : NULL;
+    if (ccur == NULL || rd32(ccur, 0x04) != 176u || rd32(ccur, 0x08) != 2u) {
+        return NULL;
+    }
+    return rdp(ccur, 0x14);
+}
+
+static int bcomp_match(void)
+{
+    return bc_work() != NULL;
+}
+
+static u8 g_bc_back[256 * 192 * 4];
+static int g_bc_back_have;
+
+static void bcomp_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
+{
+    static const char *const hints[] = { "A", "Choose", "B", "Back" };
+    static const u32 keys[] = { BW_KEY_A, BW_KEY_B };
+    void *work = bc_work(), *util, *flow, *menu = NULL, *msgwin = NULL;
+    int cw = c->canvas->w, ch = c->canvas->h - ui_bar_h(c), s, k, mw, mx, top, lh = 0, bh;
+
+    view->mode = EIDOS_VIEW_WORLD;
+    view->world_screen = 0;
+    view->zoom = 1.0f;
+    view->blur = 0;
+    view->hide_2d = 1;
+    view->ds_only = 1;
+    /* the backdrop: the game's blue grid, from the screen that has no
+     * window on it (blue well above red, not in a fade, no white box) */
+    {
+        int best = -1;
+        long best_white = 0;
+
+        for (s = 0; s < 2; s++) {
+            const u8 *scr = in->screen_rgba[s];
+            long blue = 0, lum = 0, white = 0;
+            int i, n = 0;
+
+            if (scr == NULL) {
+                continue;
+            }
+            for (i = 0; i < 256 * 192; i += 53, n++) {
+                blue += scr[i * 4 + 2] - scr[i * 4];
+                lum += scr[i * 4 + 2];
+                white += scr[i * 4] > 200 && scr[i * 4 + 1] > 200 && scr[i * 4 + 2] > 200;
+            }
+            if (n > 0 && blue / n > 50 && lum / n > 90 && (best < 0 || white < best_white)) {
+                best = s;
+                best_white = white;
+            }
+        }
+        if (best >= 0 && best_white < 40) {
+            memcpy(g_bc_back, in->screen_rgba[best], sizeof g_bc_back);
+            g_bc_back_have = 1;
+        }
+    }
+    ui_fill(c, 0, 0, cw, c->canvas->h, 0x06143Cu, 255);
+    if (g_bc_back_have) {
+        k = (cw + 255) / 256;
+        if ((c->canvas->h + 191) / 192 > k) {
+            k = (c->canvas->h + 191) / 192;
+        }
+        ui_blit_screen(c, (cw - 256 * k) / 2, (c->canvas->h - 192 * k) / 2, g_bc_back, 0, 0, 256, 192, k, 0);
+    }
+    ui_fill(c, 0, 0, cw, c->canvas->h, 0x000000u, 90);
+    if (work == NULL) {
+        return;
+    }
+    util = rdp(work, 0x08);
+    flow = rd32(work, 0x30) == 0u ? rdp(work, 0x2C) : NULL;
+    if (flow != NULL) {
+        menu = rdp(flow, 0x04);
+    }
+    if (util != NULL) {
+        msgwin = rdp(util, 0x20) != NULL ? rdp(util, 0x20) : rdp(util, 0x14);
+    }
+    mw = cw - 40 < 380 ? cw - 40 : 380;
+    mx = (cw - mw) / 2;
+    bh = msgwin != NULL ? ui_textbox_h(msgwin) : 0;
+    if (menu != NULL && rdp(menu, 0x10) != NULL && rdp(menu, 0x00) != NULL) {
+        int count = (int)rd16(rdp(menu, 0x10), 0x10);
+
+        lh = 15 + 8 + (count > 0 ? count : 1) * 18;
+    }
+    /* the message at the screen's foot, where every other screen has its
+     * message (it stood under the list, in the middle of the screen: in
+     * Plasma, whose message is a band across the screen, it cut the screen
+     * in two); the list in the middle of what is left above it */
+    top = (ch - (bh > 0 ? bh + 8 : 0) - lh) / 2;
+    top = top < 6 ? 6 : top;
+    if (lh > 0) {
+        ui_choice_list_place(mx, top, mw, ui_tr("BATTLE COMPETITION"), NULL);
+        if (!ui_choice_list(c, in, rdp(menu, 0x10), rdp(menu, 0x00), 0.0f, 0.0f, 1.0f, UI_CHOICE_SYSTEM)) {
+            lh = 0;
+        }
+    } else {
+        ui_choice_list_idle();
+    }
+    if (bh > 0) {
+        ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, mx, ch - bh - 4, mw, msgwin, -1, -1);
+    }
+    ui_hints(c, c->canvas->h - ui_bar_h(c), cw, hints, 2, keys);
+    if (eidos_ui_right_click()) {
+        eidos_ui_press(BW_KEY_B, 2);
+    }
+}
+
+static void bcomp_reset(void)
+{
+    g_bc_back_have = 0;
+}
+
 static const EidosUiRecipe recipe_mystery = {
     "mystery", mystery_match, mystery_run, mystery_reset, 0
 };
+static const EidosUiRecipe recipe_bcomp = {
+    "battle-competition", bcomp_match, bcomp_run, bcomp_reset, 0
+};
 
-const EidosUiRecipe *const ui_recipes_mystery[] = { &recipe_mystery };
+const EidosUiRecipe *const ui_recipes_mystery[] = { &recipe_mystery, &recipe_bcomp };
 const u32 ui_recipes_mystery_count = sizeof(ui_recipes_mystery) / sizeof(ui_recipes_mystery[0]);

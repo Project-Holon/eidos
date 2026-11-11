@@ -43,6 +43,7 @@ static const char *const k_arrangements[] = { "vertical", "horizontal", "one" };
 static const char *const k_offon[] = { "off", "on" };
 static const char *const k_backdrops[] = { "real map", "original" };
 static const char *const k_outlines[] = { "off", "thin" };
+static const char *const k_ui_themes[] = { "kosmos", "plasma", "harmonia" };
 static const char *const k_renderers[] = { "opengl", "native" };
 static const char *const k_transitions[] = { "original", "fast", "seamless" };
 static const char *const k_pad_icons[] = {
@@ -92,6 +93,8 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       0, k_renderers, "", 0, NULL },
     { "Display", "vsync", "VSync", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       1, k_offon, "", 0, NULL },
+    { "Layout", "ui_theme", "Interface style", EIDOS_OPTKIND_CHOICE, 0, 2, 1,
+      0, k_ui_themes, "", 0, NULL },
 };
 
 /* sdk/field_fade.c reads this option by number */
@@ -183,6 +186,8 @@ typedef struct Model {
     int inject_max;                 /* the longest press the port allows */
     int panel_visible;               /* the run-status panel: 1 when shown */
     SessionModel session;            /* the session's code                */
+    int style_chosen;                /* the player has chosen an interface style:
+                                        ui_theme is in the file only then  */
 } Model;
 
 static Model g_cur, g_saved;
@@ -508,7 +513,16 @@ int eidos_settings_set(int id, int value)
         g_cur.v[id] = old;
         return -1;
     }
+    if (id == EIDOS_OPT_UI_THEME) {
+        g_cur.style_chosen = 1;
+    }
     return 0;
+}
+
+int eidos_settings_style_chosen(void)
+{
+    ensure_init();
+    return g_cur.style_chosen;
 }
 
 const char *eidos_settings_value_text(int id, char *buf, size_t n)
@@ -2216,6 +2230,9 @@ static void parse_file(FILE *fp, Model *m)
                 int v;
 
                 found = 1;
+                if (id == EIDOS_OPT_UI_THEME) {
+                    m->style_chosen = 1;        /* in the file: chosen */
+                }
                 if (parse_value(id, val, &v) == 0) {
                     m->v[id] = v;
                 } else {
@@ -2248,6 +2265,9 @@ static int write_file(FILE *fp, const Model *m)
         const EidosOption *o = &k_options[id];
         char grp[32];
 
+        if (id == EIDOS_OPT_UI_THEME && !m->style_chosen) {
+            continue;                   /* not chosen yet: the game asks at its title menu */
+        }
         lower_into(grp, sizeof(grp), o->group);
         if (strcmp(grp, prev) != 0) {
             fprintf(fp, "\n[%s]\n", grp);
@@ -2448,7 +2468,12 @@ void eidos_settings_defaults(void)
     int i;
 
     ensure_init();
-    model_defaults(&g_cur);
+    {
+        int chosen = g_cur.style_chosen;    /* a reset does not ask for the style again */
+
+        model_defaults(&g_cur);
+        g_cur.style_chosen = chosen;
+    }
     for (i = 0; i < EIDOS_OPT_COUNT; i++) {
         g_ovr[i] = 0;
     }

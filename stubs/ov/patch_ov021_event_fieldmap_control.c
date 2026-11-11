@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov021/event_fieldmap_control.c EVENT_FIELDMAP_CONTROL_RunDefaultFadeIn EVENT_FIELDMAP_CONTROL_GetExitEffect EVENT_FIELDMAP_CONTROL_GetEntranceEffect
+ * patches: src/game/ov021/event_fieldmap_control.c EVENT_FIELDMAP_CONTROL_RunDefaultFadeIn EVENT_FIELDMAP_CONTROL_GetExitEffect EVENT_FIELDMAP_CONTROL_GetEntranceEffect EVENT_FIELDMAP_CONTROL_StartFadeIn
  * keeps declarations
  *
  * The door fade-in: the game captures the old screen into VRAM bank A and
@@ -231,4 +231,63 @@ int EVENT_FIELDMAP_CONTROL_GetEntranceEffect(int fromZoneId, int toZoneId)
     }
     fromGroup = ZONEDATA_GetExpObjSetId(fromZoneId);
     return EVENT_FIELDMAP_CONTROL_LookupEntranceEffect(fromGroup, ZONEDATA_GetExpObjSetId(toZoneId));
+}
+
+/*
+ * EVENT_FIELDMAP_CONTROL_StartFadeIn: the fade-in of an effect.  The game's
+ * own switch.  One case more: in the style chooser's preview
+ * (eidos_field_plain_continue, sdk/field_fade.c) the season's sign (effect
+ * 3, what Continue fades in through: 192 frames) is the plain fade-in
+ * (effect 0 with the planes restored, as after a battle).  Everywhere else
+ * this is the matched function.
+ */
+struct GameSystem;
+struct FieldMap;
+
+extern int eidos_field_plain_continue(void);
+extern struct GameEvent *EVENT_FIELDMAP_CONTROL_CreateFadeInEventDefault(struct GameSystem *gameSystem,
+                                                                         struct FieldMap *fieldMap);
+extern struct GameEvent *EVENT_FIELDMAP_CONTROL_CreateFadeInEventForEffect(struct GameSystem *gameSystem,
+                                                                           struct FieldMap *fieldMap, int effect,
+                                                                           int skipWait, int restoreBg);
+extern struct GameEvent *EVENT_FIELDMAP_CONTROL_CreateSeasonFadeInEvent(struct GameSystem *gameSystem,
+                                                                        struct FieldMap *fieldMap, int seasonShown,
+                                                                        int seasonTarget);
+extern struct GameEvent *EVENT_FIELDMAP_CONTROL_CreateFadeInEventEffect5(struct GameSystem *gameSystem,
+                                                                         struct FieldMap *fieldMap);
+extern struct GameEvent *EVENT_FIELDMAP_CONTROL_CreateFadeInEventEffect6(struct GameSystem *gameSystem,
+                                                                         struct FieldMap *fieldMap);
+extern struct GameEvent *EVENT_FIELDMAP_CONTROL_CreateFadeInEventEffect7(struct GameSystem *gameSystem,
+                                                                         struct FieldMap *fieldMap);
+extern struct GameEvent *EVENT_FIELDMAP_CONTROL_CreateFadeInEventEffect8(struct GameSystem *gameSystem,
+                                                                         struct FieldMap *fieldMap);
+extern struct GameEvent *EVENT_FIELDMAP_CONTROL_StartFadeInByFacing(struct GameSystem *gameSystem,
+                                                                    struct FieldMap *fieldMap);
+
+struct GameEvent *EVENT_FIELDMAP_CONTROL_StartFadeIn(struct GameSystem *gameSystem, struct FieldMap *fieldMap,
+                                                     int effect, int skipWait, int restoreBg,
+                                                     unsigned char seasonShown, unsigned char seasonTarget)
+{
+    if (effect == 3 && eidos_field_plain_continue()) {
+        return EVENT_FIELDMAP_CONTROL_CreateFadeInEventForEffect(gameSystem, fieldMap, 0, 0, 1);
+    }
+    switch (effect) {
+    default:
+        return EVENT_FIELDMAP_CONTROL_CreateFadeInEventDefault(gameSystem, fieldMap);
+    case 0:
+    case 1:
+        return EVENT_FIELDMAP_CONTROL_CreateFadeInEventForEffect(gameSystem, fieldMap, effect, skipWait, restoreBg);
+    case 3:
+        return EVENT_FIELDMAP_CONTROL_CreateSeasonFadeInEvent(gameSystem, fieldMap, seasonShown, seasonTarget);
+    case 5:
+        return EVENT_FIELDMAP_CONTROL_CreateFadeInEventEffect5(gameSystem, fieldMap);
+    case 6:
+        return EVENT_FIELDMAP_CONTROL_CreateFadeInEventEffect6(gameSystem, fieldMap);
+    case 7:
+        return EVENT_FIELDMAP_CONTROL_CreateFadeInEventEffect7(gameSystem, fieldMap);
+    case 8:
+        return EVENT_FIELDMAP_CONTROL_CreateFadeInEventEffect8(gameSystem, fieldMap);
+    case 9:
+        return EVENT_FIELDMAP_CONTROL_StartFadeInByFacing(gameSystem, fieldMap);
+    }
 }

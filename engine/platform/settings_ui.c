@@ -129,6 +129,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "Vulkan. Applies at restart." },
     [EIDOS_OPT_VSYNC]               = { "Every frame shown evenly.",
                                         "Off: the DS's own speed." },
+    [EIDOS_OPT_UI_THEME]            = { "The look of the one-screen",
+                                        "menus and battles." },
 };
 #define HELP_BIND1     "Bind a key or pad button."
 #define HELP_BIND2     ""
@@ -241,12 +243,16 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_GPU_2D]              = "GPU drawing",
     [EIDOS_OPT_RENDERER]            = "Renderer",
     [EIDOS_OPT_VSYNC]               = "VSync",
+    [EIDOS_OPT_UI_THEME]            = "Interface style",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
  * {option id, choice index, text}. */
 typedef struct ValueName { int id; int index; const char *text; } ValueName;
 static const ValueName k_value_names[] = {
+    { EIDOS_OPT_UI_THEME,            0, "Kosmos" },
+    { EIDOS_OPT_UI_THEME,            1, "Plasma" },
+    { EIDOS_OPT_UI_THEME,            2, "Harmonia" },
     { EIDOS_OPT_RENDERER,            0, "OpenGL" },
     { EIDOS_OPT_RENDERER,            1, "Native" },
     { EIDOS_OPT_VSYNC,               0, "Off" },
@@ -746,6 +752,9 @@ static void build_rows(void)
         add_row(ROW_OPTION, EIDOS_OPT_LAYOUT_ARRANGEMENT, 0);
         add_row(ROW_OPTION, EIDOS_OPT_LAYOUT_SWAP, 0);
         add_row(ROW_OPTION, EIDOS_OPT_LAYOUT_GAP, 0);
+        if (eidos_settings_get(EIDOS_OPT_LAYOUT_ARRANGEMENT) == EIDOS_LAYOUT_ONE) {
+            add_row(ROW_OPTION, EIDOS_OPT_UI_THEME, 0);
+        }
         break;
     case 2:
         add_row(ROW_OPTION, EIDOS_OPT_PAD_ICONS, 0);

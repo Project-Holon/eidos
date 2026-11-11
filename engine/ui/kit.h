@@ -91,6 +91,20 @@ struct EidosUiCtx {
  * height the system covers there too.  A screen's contents end at
  * canvas height - ui_bar_h. */
 int ui_bar_h(const EidosUiCtx *c);
+/* The ground of a bar of key hints a screen draws itself (x, y, w, h): 1
+ * when the theme drew it, 0 for the screen to draw Kosmos's. */
+int ui_hint_ground(EidosUiCtx *c, int x, int y, int w, int h);
+/* A screen's window (app: "options", "save", ...): 1 when the theme drew it
+ * (and its ground), and it may have moved the frame; 0 for the screen to
+ * draw Kosmos's panel. */
+int ui_app_window(EidosUiCtx *c, const char *app, int *x, int *y, int *w, int *h);
+
+/* Words a recipe hands the theme's hook (ui_app_window carries numbers
+ * only): slot 0 to 3, kept until set again.  Never NULL when read. */
+void        ui_app_text(int slot, const char *utf8);
+const char *ui_app_text_get(int slot);
+/* 1 when the theme draws the screens' windows itself. */
+int ui_theme_active_has_frame(void);
 /* A bar of height h asked for at y: when it belongs on the bottom edge
  * (y at canvas height - h, or - ui_bar_h), the top of the bar that
  * reaches the edge, taller by safe_b, with its height in *bh; else y and
@@ -180,6 +194,40 @@ const UiImage *ui_item_icon(u16 item);
 const UiImage *ui_mon_icon(u16 species, u8 form, int frame);
 const UiImage *ui_overworld(u16 sprite, int dir, int frame);  /* walk frames */
 const UiImage *ui_trainer_front(u16 trainer_class);
+/* The party's six balls for the next plate drawn (the battle: the plate
+ * shows its side's team; kinds as the game's: 0 no Pokemon, 1 ready, 2
+ * fainted, 3 a status problem; t frames since they first showed).  NULL:
+ * none.  The default plate draws them in itself; a theme's own plate may
+ * leave them to its battle_balls. */
+void ui_plate_set_balls(const int *kinds, u32 t);
+
+/* The game's own interface icons: the field menu's Bag and Pokemon, the
+ * touch bar's return arrow, the move kinds' badges. */
+enum { UI_APP_ICON_BAG, UI_APP_ICON_POKEMON, UI_APP_ICON_BACK, UI_APP_ICON_PHYSICAL, UI_APP_ICON_SPECIAL,
+       UI_APP_ICON_STATUS, UI_APP_ICON_COUNT };
+const UiImage *ui_app_icon(int which);
+/* The game's own mark for what a Pokemon holds (8 x 8): kind 1 a jar (an
+ * item), 2 an envelope (a letter).  `swap` repaints four colours of the
+ * game's picture before it is decoded, as 0xRRGGBB: [0] the edge, [1] the
+ * cap's side, [2] the body, [3] the body's side; 0 keeps the game's, NULL
+ * keeps them all.  The shape and the shading stay the game's. */
+const UiImage *ui_held_icon(int kind, const u32 *swap);
+/* The mark where the game's party plate has it: on the feet of the 32 x 32
+ * icon whose top left corner is (icon_x, icon_y), 14 across and 21 down.
+ * kind: 0 nothing, 1 an item, 2 a letter.  ui_held_mark is Kosmos's (the
+ * jar in its teal), ui_held_mark_game the game's own colours (the style
+ * that follows the DS), ui_held_mark_swap any style's. */
+void ui_held_mark(EidosUiCtx *c, int icon_x, int icon_y, int kind);
+void ui_held_mark_game(EidosUiCtx *c, int icon_x, int icon_y, int kind);
+void ui_held_mark_swap(EidosUiCtx *c, int icon_x, int icon_y, int kind, const u32 *swap);
+/* What an item id is for the mark: 0 nothing, 1 an item, 2 a letter (the
+ * game's own list of the twelve Mail items). */
+int ui_held_kind(u32 item);
+/* A list row's Pokemon holds this (a kind, as above): said just before
+ * ui_party_row, which draws the mark on its icon's feet in the style's
+ * colour.  A row's drawing takes it with ui_party_row_take_held. */
+void ui_party_row_held(int kind);
+int ui_party_row_take_held(void);
 const UiImage *ui_mon_front(u16 species, u8 form, int shiny);
 /* The front as the game animates it: the idle loop at `t` frames, and
  * where the rig's origin (the point its frames line up on) falls in the
