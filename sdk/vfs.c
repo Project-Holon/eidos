@@ -28,6 +28,9 @@
 #include "port.h"
 #include "vfs.h"
 #include "plat_dir.h"
+#include "plat_thread.h"
+
+static void layer_cache_drop(void);     /* the kept bw_vfs_file_layer answers, below */
 #include "mod_bw.h"
 
 /* ------------------------------------------------------------------ */
@@ -59,6 +62,7 @@ void bw_set_data_root(const char *path)
     copy_root(g_data_root, sizeof(g_data_root), path, strlen(path));
     g_data_root_set = 1;
     bw_vfs_flush();
+    layer_cache_drop();
 }
 
 const char *bw_data_root(void)
@@ -219,6 +223,7 @@ void bw_clear_mods(void)
      * root added is sorted in by the manifest's key again. */
     g_player_order = 0;
     bw_vfs_flush();
+    layer_cache_drop();
 }
 
 /* Append one root of length n (not terminated).  0, or -1. */
@@ -293,6 +298,7 @@ static int add_root_n(const char *path, size_t n)
     g_mods[at] = m;
     g_mod_count++;
     bw_vfs_flush();
+    layer_cache_drop();
     return 0;
 }
 
@@ -425,12 +431,69 @@ static int join(char *out, size_t out_size, const char *root, const char *rel)
     return 0;
 }
 
+/*
+ * bw_vfs_file_layer's last answers.  The game opens the same few archives
+ * again and again (every ARC_TOOL read opens its file), every open asks
+ * twice, and an answer costs a file-system lookup per mod folder and one for
+ * the data folder.  An answer is kept for LAYER_KEEP_NS and for one state of
+ * the mod list and the data folder (g_layer_gen), so a file put into a mod
+ * folder while the game runs is seen a second later at most.
+ */
+#define LAYER_CACHE   64u
+#define LAYER_REL_MAX 96u
+#define LAYER_KEEP_NS 1000000000ull
+
+static struct LayerAnswer {
+    char rel[LAYER_REL_MAX];
+    int layer;
+    unsigned long long at;
+    u32 gen;                    /* 0: empty */
+} g_layer[LAYER_CACHE];
+static u32 g_layer_gen = 1;
+
+static void layer_cache_drop(void)
+{
+    if (++g_layer_gen == 0) {
+        g_layer_gen = 1;
+    }
+}
+
+static int file_layer_look(const char *rel);
+
 int bw_vfs_file_layer(const char *rel)
+{
+    struct LayerAnswer *a;
+    unsigned long long now;
+    size_t len;
+    u32 h = 2166136261u, i;
+    int layer;
+
+    mods_init();
+    len = strlen(rel);
+    if (len >= LAYER_REL_MAX) {
+        return file_layer_look(rel);
+    }
+    for (i = 0; i < len; i++) {
+        h = (h ^ (u8)rel[i]) * 16777619u;
+    }
+    a = &g_layer[h % LAYER_CACHE];
+    now = bw_clock_ns();
+    if (a->gen == g_layer_gen && now - a->at < LAYER_KEEP_NS && strcmp(a->rel, rel) == 0) {
+        return a->layer;
+    }
+    layer = file_layer_look(rel);
+    memcpy(a->rel, rel, len + 1u);
+    a->layer = layer;
+    a->at = now;
+    a->gen = g_layer_gen;
+    return layer;
+}
+
+static int file_layer_look(const char *rel)
 {
     char cand[1200];
     u32 i;
 
-    mods_init();
     /*
      * A regular file, not merely something fopen accepts: on POSIX fopen
      * opens a directory, and a directory at an archive's path in a mod is
