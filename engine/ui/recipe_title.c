@@ -321,12 +321,13 @@ static int logo_bounds(int *x0, int *y0, int *x1, int *y1)
  * left at (x, y).  Returns the height drawn. */
 static int logo_draw(EidosUiCtx *c, int x, int y, int w, int alpha)
 {
-    static u8 base[400 * 260 * 4];
     static u8 out[400 * 260 * 4];
-    static int c_bx0 = -1, c_by0, c_sw, c_sh, c_dw, c_dh, c_alpha = -1;
+    /* what `out` holds: the logo is the same picture frame after frame, so
+     * it is scaled again only when its place in the source, its size or its
+     * alpha changes */
+    static int c_bx0 = -1, c_by0, c_sw, c_sh, c_dw, c_dh, c_alpha;
     UiImage im;
     int bx0, by0, bx1, by1, sw, sh, dw, dh, ox, oy;
-    int rebuilt = 0;
 
     if (!logo_bounds(&bx0, &by0, &bx1, &by1)) {
         return 0;
@@ -339,13 +340,13 @@ static int logo_draw(EidosUiCtx *c, int x, int y, int w, int alpha)
         dh = 260;
     }
     if (c_bx0 != bx0 || c_by0 != by0 || c_sw != sw || c_sh != sh
-        || c_dw != dw || c_dh != dh) {
+        || c_dw != dw || c_dh != dh || c_alpha != alpha) {
         for (oy = 0; oy < dh; oy++) {
             for (ox = 0; ox < dw; ox++) {
                 int sx0 = bx0 + ox * sw / dw, sx1 = bx0 + (ox + 1) * sw / dw;
                 int sy0 = by0 + oy * sh / dh, sy1 = by0 + (oy + 1) * sh / dh;
                 int xx, yy, n = 0, na = 0, r = 0, g = 0, b = 0;
-                u8 *q = base + ((size_t)oy * (size_t)dw + (size_t)ox) * 4;
+                u8 *q = out + ((size_t)oy * (size_t)dw + (size_t)ox) * 4;
 
                 if (sx1 <= sx0) sx1 = sx0 + 1;
                 if (sy1 <= sy0) sy1 = sy0 + 1;
@@ -368,7 +369,7 @@ static int logo_draw(EidosUiCtx *c, int x, int y, int w, int alpha)
                     q[0] = (u8)(r / na);
                     q[1] = (u8)(g / na);
                     q[2] = (u8)(b / na);
-                    q[3] = (u8)(255 * na / n);
+                    q[3] = (u8)(255 * na / n * alpha / 255);
                 }
             }
         }
@@ -378,29 +379,11 @@ static int logo_draw(EidosUiCtx *c, int x, int y, int w, int alpha)
         c_sh = sh;
         c_dw = dw;
         c_dh = dh;
-        c_alpha = -1;
-        rebuilt = 1;
+        c_alpha = alpha;
     }
     im.w = dw;
     im.h = dh;
-    if (alpha == 255) {
-        im.rgba = base;
-    } else {
-        if (rebuilt || c_alpha != alpha) {
-            size_t i, px = (size_t)dw * (size_t)dh;
-
-            for (i = 0; i < px; i++) {
-                size_t o = i * 4u;
-
-                out[o + 0u] = base[o + 0u];
-                out[o + 1u] = base[o + 1u];
-                out[o + 2u] = base[o + 2u];
-                out[o + 3u] = (u8)((int)base[o + 3u] * alpha / 255);
-            }
-            c_alpha = alpha;
-        }
-        im.rgba = out;
-    }
+    im.rgba = out;
     ui_image(c, x, y, &im, 1);
     return dh;
 }
