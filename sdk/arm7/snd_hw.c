@@ -531,23 +531,34 @@ static s32 clip16(s64 v)
 void bw_sndhw_mix(s16 *out, u32 frames)
 {
     static const int k_div[4] = { 0, 1, 2, 4 };
+    /* The work arrays are outside the sample loop: every element is written
+     * on every sample, and a local declared in the loop would be cleared on
+     * every turn as well (-ftrivial-auto-var-init). */
+    s32 level[BW_SNDHW_CHANNELS];
+    int pan[BW_SNDHW_CHANNELS];
+    s64 ch_l[BW_SNDHW_CHANNELS], ch_r[BW_SNDHW_CHANNELS];
+    /* what no channel's clock changes during the call, read once */
+    const int master_pan = g_hw.master_pan, surround = g_hw.surround;
+    const int bypass1 = g_hw.bypass1, bypass3 = g_hw.bypass3;
     u32 f;
     int i;
 
     for (f = 0; f < frames; f++) {
-        s32 level[BW_SNDHW_CHANNELS];
-        int pan[BW_SNDHW_CHANNELS];
-        s64 mix_l = 0, mix_r = 0, ch_l[BW_SNDHW_CHANNELS], ch_r[BW_SNDHW_CHANNELS];
+        s64 mix_l = 0, mix_r = 0;
         s64 sel_l, sel_r;
 
         for (i = 0; i < BW_SNDHW_CHANNELS; i++) {
             Chan *c = &g_hw.ch[i];
             s32 s = (c->busy || (c->ended && c->hold)) ? c->out : 0;
-            pan[i] = g_hw.master_pan >= 0 ? g_hw.master_pan : c->pan;
+            pan[i] = master_pan >= 0 ? master_pan : c->pan;
+            if (s == 0) {
+                level[i] = 0;           /* a silent channel: 0 whatever its volume */
+                continue;
+            }
             level[i] = (s * c->volume) >> k_div[c->shift];
-            if (g_hw.surround != 0) {
+            if (surround != 0) {
                 int off = pan[i] >= 64 ? pan[i] - 64 : 64 - pan[i];
-                level[i] = (s32)(((s64)level[i] * (8192 - g_hw.surround * off)) >> 13);
+                level[i] = (s32)(((s64)level[i] * (8192 - surround * off)) >> 13);
             }
         }
         /* SNDCAPxCNT bit 0: channel 0 (2) added into channel 1 (3). */
@@ -556,9 +567,14 @@ void bw_sndhw_mix(s16 *out, u32 frames)
         if (g_hw.cap[1].busy && g_hw.cap[1].out)
             level[3] += level[2];
         for (i = 0; i < BW_SNDHW_CHANNELS; i++) {
+            if (level[i] == 0) {
+                ch_l[i] = 0;
+                ch_r[i] = 0;
+                continue;
+            }
             ch_l[i] = (s64)level[i] * (128 - pan[i]);
             ch_r[i] = (s64)level[i] * pan[i];
-            if ((i == 1 && g_hw.bypass1) || (i == 3 && g_hw.bypass3))
+            if ((i == 1 && bypass1) || (i == 3 && bypass3))
                 continue;
             mix_l += ch_l[i];
             mix_r += ch_r[i];
