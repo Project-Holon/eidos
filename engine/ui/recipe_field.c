@@ -25,8 +25,9 @@
  *                pointer as the stylus, until Close, a right click or B.
  *
  *   field-lower  the field's other lower screens (the Union Room, the
- *                Entralink's map, dowsing): the world, and the game's
- *                lower screen as the same sheet.  The save report has its
+ *                Entralink's map): the world, and the game's lower
+ *                screen as the same sheet; the Dowsing Machine's rods
+ *                on a small card (dowsing_card).  The save report has its
  *                own recipe (engine/ui/recipe_menus.c).
  *
  * The game's state is read the way sdk/mp.c reads it: the game system's
@@ -64,6 +65,7 @@ static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
 static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldNow *f);
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
 static int power_card(EidosUiCtx *c, const struct FieldNow *f);
+static int dowsing_card(EidosUiCtx *c, const EidosUiFrame *in);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
 static int item_show_active(void);
 static int cutin_other(const struct FieldNow *f);
@@ -2893,7 +2895,7 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
     own = plain_field() ? 0 : (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
-          || (f.mode == 9 && power_card(c, &f));
+          || (f.mode == 9 && power_card(c, &f)) || (f.mode == 6 && dowsing_card(c, in));
     if (own && f.mode == 9) {
         /* the game's banner on the top screen points at the lower one */
         view->hide_2d = 1;
@@ -2918,6 +2920,35 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
  * CGearPowerOnOffWork (ov035/c_gear_power_onoff_types.h): messageWindow
  * 0x18, menuWindow 0x1C (the note), taskMenu 0x44.
  */
+/*
+ * The Dowsing Machine (mode 6): its rods, cut from the game's lower screen,
+ * on a small card at the top right under the bar, clear of the player in
+ * the middle of the window (the whole screen as a sheet covered them).
+ * The game closes it with X or a tap on its cross: the card's Close button
+ * taps the cross.
+ */
+static int dowsing_card(EidosUiCtx *c, const EidosUiFrame *in)
+{
+    const int sx = 20, sy = 22, w = 216, h = 118, head = 16;
+    int cw = c->canvas->w, x, y, bx;
+
+    if (in->screen_rgba[1] == NULL || cw < w + 16) {
+        return 0;
+    }
+    x = cw - w - 10;
+    y = 16 + 6;
+    ui_panel(c, x - 4, y - 2, w + 8, head + h + 6, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 240);
+    ui_text(c, x + 4, y + ui_text_y(head, UI_FONT_SMALL), "DOWSING MCHN", UI_WHITE, UI_EDGE,
+            UI_FONT_SMALL, 1);
+    bx = x + w;
+    if (small_button(c, &bx, y, "Close", head - 2, "X") & EIDOS_UI_CLICK) {
+        eidos_ui_tap(0xF0, 0xB0, 3);
+    }
+    ui_fill(c, x - 1, y + head - 1, w + 2, h + 2, UI_INK, 255);
+    ui_blit_screen(c, x, y + head, in->screen_rgba[1], sx, sy, w, h, 1, 0);
+    return 1;
+}
+
 static int power_card(EidosUiCtx *c, const FieldNow *f)
 {
     const u8 *w = f->panel;
