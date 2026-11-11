@@ -1625,23 +1625,29 @@ static int item_show_active(void)
     return g_show.on;
 }
 
-/* The game's cut-in event is running (it, or a task it pushed). */
-static int cutin_running(const FieldNow *f)
+/* The game's cut-in event when it is running (it, or a task it pushed), or
+ * NULL (struct GameEvent: parent, func, seq, work). */
+static const u8 *cutin_event(const FieldNow *f)
 {
     const u8 *ev;
     int i;
 
     if (GAMESYSTEM_GetEvent == NULL || ov021_FLD3D_CI_EventMain == NULL || f->gs == NULL) {
-        return 0;
+        return NULL;
     }
     ev = (const u8 *)GAMESYSTEM_GetEvent(f->gs);
     for (i = 0; i < 4 && ev != NULL; i++) {
         if (*(void *const *)(ev + sizeof(void *)) == (void *)ov021_FLD3D_CI_EventMain) {
-            return 1;
+            return ev;
         }
         ev = *(const u8 *const *)ev;
     }
-    return 0;
+    return NULL;
+}
+
+static int cutin_running(const FieldNow *f)
+{
+    return cutin_event(f) != NULL;
 }
 
 /*
@@ -1881,19 +1887,32 @@ static int cutin_other(const FieldNow *f)
 
 static void cutin_view(EidosUiView *view, const FieldNow *f, int cw, int ch)
 {
-    int seq = cutin_sequence(f, NULL);
+    /* The game's own steps (FLD3D_CI_EventMain's state, the event's seq):
+     * 0 fades the field to white, 2 and 3 capture the screen, 4 loads the
+     * sequence and halves the capture's colours when the sequence says so
+     * (Fld3dCiEventWork.seq.darkenScreen, at +0x34 of the event's work),
+     * 5 fades in, 7 plays.  A step's number is the one the game runs next. */
+    const u8 *ev = cutin_event(f);
+    u32 step = ev != NULL ? rd32(ev + 2 * sizeof(void *)) : 0;
+    const u8 *work = ev != NULL ? rdp(ev + 2 * sizeof(void *) + 4) : NULL;
     float zc = (cw > 0 && ch > 0) ? (float)((double)cw / (double)ch / (4.0 / 3.0)) : 1.0f;
     if (zc < 1.0f && cw > 0 && ch > 0) {
         zc = (float)((4.0 / 3.0) / ((double)cw / (double)ch));
     }
-    view->zoom = zc;
+    /* the bigger picture from the capture on: the screen is white then, so
+     * the field is not seen to change size (it did, for the frames of the
+     * fade, and that bigger field was then kept as the picture behind) */
+    if (step >= 2u) {
+        view->zoom = zc;
+    }
     view->hide_2d = 0;
     view->cap_mix = 0;
     view->stretch = 0;
     view->hold_world = 0;
-    /* NARC 117 darkenScreen == 0 for seq 3, 20, 21, 22 -> full brightness (2);
-     * all darkened VS/Plasma/boss cut-ins (seq 13..16, 23..25) halve held (1). */
-    view->held_backdrop = (seq == 3 || seq == 20 || seq == 21 || seq == 22) ? 2 : 1;
+    /* the kept picture as the game shows its capture: halved (1) once the
+     * game has darkened it, as it is (2) before that and for a sequence
+     * that does not darken */
+    view->held_backdrop = (step >= 5u && work != NULL && rd32(work + 0x34) != 0u) ? 1 : 2;
 }
 
 /*
