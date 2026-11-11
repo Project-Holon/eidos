@@ -1021,8 +1021,7 @@ static int track_command(Player *p, Track *t, int pi, int noteon_ok)
             case 0xC7: t->note_wait = v != 0; break;
             case 0xC8:
                 t->tie = v != 0;
-                if (!t->tie)
-                    track_release_all(t);
+                track_release_all(t);
                 break;
             case 0xC9:
                 tr_set8(t, BW_SNDTR_PORTA_KEY,
