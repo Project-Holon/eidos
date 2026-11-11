@@ -1594,6 +1594,7 @@ static int msaa_target(EidosGl *g, GlFb *f, int w, int h)
      * take fewer samples (macOS: GL_MAX_INTEGER_SAMPLES is 1) rejects its
      * storage with GL_INVALID_OPERATION, and that error failed the frame */
     static GLint samples = -1;
+    int fresh;
 
     if (samples < 0) {
         GLint any = 0, integer = 0;
@@ -1614,7 +1615,8 @@ static int msaa_target(EidosGl *g, GlFb *f, int w, int h)
         g->glGenRenderbuffers(1, &f->ms_depth);
         g->glGenRenderbuffers(1, &f->ms_id);
     }
-    if (f->ms_w != w || f->ms_h != h) {
+    fresh = f->ms_w != w || f->ms_h != h;
+    if (fresh) {
         g->glBindRenderbuffer(GL_RENDERBUFFER, f->ms_color);
         g->glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAA_SAMPLES, GL_RGBA8, w, h);
         g->glBindRenderbuffer(GL_RENDERBUFFER, f->ms_depth);
@@ -1636,7 +1638,10 @@ static int msaa_target(EidosGl *g, GlFb *f, int w, int h)
         f->ms_h = h;
     }
     g->glBindFramebuffer(GL_FRAMEBUFFER, f->ms_fbo);
-    if (g->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    /* asked when the storage is made, not every frame: the answer does not
+     * change while the storage stands, and the question waits for the
+     * driver's own thread (a target that fails is made again next frame) */
+    if (fresh && g->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         f->ms_w = 0;
         return 0;
     }

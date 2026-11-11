@@ -469,6 +469,10 @@ void eidos_platform_set_view(EidosPlatform *p, const struct EidosUiView *v);
 void eidos_platform_set_ui_canvas(EidosPlatform *p,
                                   const struct EidosUiCanvas *c);
 int  eidos_platform_world_active(const EidosPlatform *p);
+/* The one-screen world shows `screen` (0 top, 1 bottom) as its 3D alone, the
+ * screen's 2D layers left out (the title): nothing looks at that screen's
+ * 2D pictures. */
+int  eidos_platform_world_2d_hidden(const EidosPlatform *p, int screen);
 void eidos_platform_view_scale(const EidosPlatform *p, s32 *kx, s32 *ky);
 int  eidos_platform_mouse(const EidosPlatform *p, struct EidosUiMouse *m);
 void eidos_platform_window_size(const EidosPlatform *p, int *w, int *h);

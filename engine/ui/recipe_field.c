@@ -67,7 +67,7 @@ static int power_card(EidosUiCtx *c, const struct FieldNow *f);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
 static int item_show_active(void);
 static int cutin_other(const struct FieldNow *f);
-static void cutin_view(EidosUiView *view);
+static void cutin_view(EidosUiView *view, const struct FieldNow *f, int cw, int ch);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1416,6 +1416,18 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     if (banner_shown(f)) {
         hide |= 0x8u | 0x10u;           /* the game's banner: BG3, its letters */
     }
+    {
+        static u32 s_last_hide;
+        static int s_hide_hold;
+
+        if (hide != 0) {
+            s_last_hide = hide;
+            s_hide_hold = 2;
+        } else if (s_hide_hold > 0) {
+            hide = s_last_hide;
+            s_hide_hold--;
+        }
+    }
     if (g2d_hw_hide_main_bgs != NULL) {
         g2d_hw_hide_main_bgs(hide);
     }
@@ -1613,23 +1625,29 @@ static int item_show_active(void)
     return g_show.on;
 }
 
-/* The game's cut-in event is running (it, or a task it pushed). */
-static int cutin_running(const FieldNow *f)
+/* The game's cut-in event when it is running (it, or a task it pushed), or
+ * NULL (struct GameEvent: parent, func, seq, work). */
+static const u8 *cutin_event(const FieldNow *f)
 {
     const u8 *ev;
     int i;
 
     if (GAMESYSTEM_GetEvent == NULL || ov021_FLD3D_CI_EventMain == NULL || f->gs == NULL) {
-        return 0;
+        return NULL;
     }
     ev = (const u8 *)GAMESYSTEM_GetEvent(f->gs);
     for (i = 0; i < 4 && ev != NULL; i++) {
         if (*(void *const *)(ev + sizeof(void *)) == (void *)ov021_FLD3D_CI_EventMain) {
-            return 1;
+            return ev;
         }
         ev = *(const u8 *const *)ev;
     }
-    return 0;
+    return NULL;
+}
+
+static int cutin_running(const FieldNow *f)
+{
+    return cutin_event(f) != NULL;
 }
 
 /*
@@ -1867,13 +1885,43 @@ static int cutin_other(const FieldNow *f)
     return !g_show.on && !g_mon_show.on && cutin_running(f);
 }
 
-static void cutin_view(EidosUiView *view)
+static void cutin_view(EidosUiView *view, const FieldNow *f, int cw, int ch)
 {
+    /* The game's own steps (FLD3D_CI_EventMain's state, the event's seq):
+     * 0 fades the field to white, 2 and 3 capture the screen, 4 loads the
+     * sequence and halves the capture's colours when the sequence says so
+     * (Fld3dCiEventWork.seq.darkenScreen, at +0x34 of the event's work),
+     * 5 fades in, 7 plays, 8 ends the sequence and draws the field again.
+     * A step's number is the one the game runs next. */
+    const u8 *ev = cutin_event(f);
+    u32 step = ev != NULL ? rd32(ev + 2 * sizeof(void *)) : 0;
+    const u8 *work = ev != NULL ? rdp(ev + 2 * sizeof(void *) + 4) : NULL;
+    /* The DS screen's width over the window's: a 16:9 window shows the
+     * banner as the DS does, edge to edge.  Not past that (on a wider
+     * window the banner's top would leave the window), and no bigger on a
+     * window taller than the DS screen (there the DS picture already fills
+     * the width; a bigger one cut both trainers off). */
+    float zc = (cw > 0 && ch > 0) ? (float)((double)cw / (double)ch / (4.0 / 3.0)) : 1.0f;
+    if (zc < 1.0f) {
+        zc = 1.0f;
+    } else if (zc > 4.0f / 3.0f) {
+        zc = 4.0f / 3.0f;
+    }
+    /* the bigger picture from the capture on: the screen is white then, so
+     * the field is not seen to change size (it did, for the frames of the
+     * fade, and that bigger field was then kept as the picture behind);
+     * and no longer once the game draws the field again */
+    if (step >= 2u && step <= 8u) {
+        view->zoom = zc;
+    }
     view->hide_2d = 0;
     view->cap_mix = 0;
     view->stretch = 0;
     view->hold_world = 0;
-    view->held_backdrop = 1;
+    /* the kept picture as the game shows its capture: halved (1) once the
+     * game has darkened it, as it is (2) before that and for a sequence
+     * that does not darken */
+    view->held_backdrop = (step >= 5u && work != NULL && rd32(work + 0x34) != 0u) ? 1 : 2;
 }
 
 /*
@@ -2481,7 +2529,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     FieldNow f;
     int cw = c->canvas->w, ch = c->canvas->h;
     const int bh = 16;
-    char place[64], clock[8];
+    char place[64], clock[8], s_m[4];
     u32 zone = 0, t3[3] = { 0, 0, 0 };
     int have_time = 0, comm = 0, last_cmd = 0;
     EidosUiRect bar;
@@ -2508,7 +2556,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->stretch = encounter_effect();
         if (cutin_other(&f)) {
             /* a cut-in as the battle starts (the VS banner) */
-            cutin_view(view);
+            cutin_view(view, &f, cw, ch);
         }
         return;
     }
@@ -2586,7 +2634,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->hold_world = 1;
     } else if (cutin_other(&f)) {
         /* another cut-in (a VS banner) */
-        cutin_view(view);
+        cutin_view(view, &f, cw, ch);
     }
     choosing = !plain_field() && field_choices(c, in, &f);
     if (g_shortcut_open) {
@@ -2650,8 +2698,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             t3[2] = (u32)tmv->tm_sec;
         }
     }
-    snprintf(clock, sizeof(clock), "%02u%c%02u", t3[0] % 100u, (t3[2] & 1u) ? ' ' : ':',
-             t3[1] % 100u);
+    snprintf(clock, sizeof(clock), "%02u", t3[0] % 100u);
+    snprintf(s_m, sizeof(s_m), "%02u", t3[1] % 100u);
     if (f.panel != NULL && (f.mode == 0 || f.mode == 8)) {
         comm = f.panel[0x45A] != 0;
         last_cmd = (int)rd32(f.panel + 0x218);
@@ -2789,8 +2837,23 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     /* the middle: the time on its slanted tab */
     bar_trapezoid(c, cw / 2, tab_w, bh - 1, st_bar & EIDOS_UI_HOVER);
-    ui_text(c, cw / 2 - ui_text_w(clock, UI_FONT_LARGE) / 2,
-            ui_text_y(bh - 1, UI_FONT_LARGE), clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+    {
+        /* Clock: hours and minutes at fixed anchored positions so the
+         * digits never drift when the colon blinks.  The colon sits at
+         * the centre of the tab; h is to its left, m to its right. */
+        int colon_w = ui_text_w(":", UI_FONT_LARGE);
+        int h_w     = ui_text_w(clock, UI_FONT_LARGE);
+        int cy      = ui_text_y(bh - 1, UI_FONT_LARGE);
+        int colon_x = cw / 2 - colon_w / 2;
+        int h_x     = colon_x - h_w;          /* (the letters' own spacing, as "12:34" in one piece) */
+        int m_x     = colon_x + colon_w;
+
+        ui_text(c, h_x, cy, clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, m_x, cy, s_m,   UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        if ((t3[2] & 1u) == 0) {
+            ui_text(c, colon_x, cy, ":", UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        }
+    }
     ui_pop(c, 0, -g_bar_slide, &saved_clip);
     if (g_bar_slide > 0) {
         return;                             /* no clicks while it moves     */

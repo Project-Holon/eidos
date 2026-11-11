@@ -573,7 +573,7 @@ static void test_sequence(void)
     bw_snd_player_state(3, &ps);
     BW_CHECK_EQ("seq: prepared", ps.prepared, 1);
     BW_CHECK_EQ("seq: not active before START_PREPARED", ps.active, 0);
-    BW_CHECK_EQ("seq: status before start", g_sw->playerStatus, 0);
+    BW_CHECK_EQ("seq: status before start", g_sw->playerStatus, 1u << 3);
     run(100);                           /* time passes; nothing plays */
     BW_CHECK_EQ("seq: silent while prepared", g_sw->channelStatus, 0);
 
