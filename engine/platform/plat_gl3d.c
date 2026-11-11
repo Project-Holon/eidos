@@ -1677,9 +1677,54 @@ typedef struct Gl3dRun {
     int fog;           /* POLYGON_ATTR bit 15: ID buffer bit 6           */
 } Gl3dRun;
 
+/* What the runs of one pass last sent (draw_run): a value that stays is not
+ * sent again.  -1: not sent yet in this pass. */
+typedef struct RunSent {
+    GLint mode, toon, a5, front, back, tex3, tw, th, wrap, id;
+    GLint stencil;      /* the stencil function: 0 always, else the reference of "not equal" */
+    GLint cmask;        /* colour mask of target 1 */
+} RunSent;
+
+static void run_sent_reset(RunSent *st)
+{
+    st->mode = st->toon = st->a5 = st->front = st->back = st->tex3 = st->tw = st->th = st->wrap = st->id = -1;
+    st->stencil = -1;
+    st->cmask = -1;
+}
+
+static void run_stencil(RunSent *st, GLint ref)
+{
+    if (st->stencil != ref) {
+        if (ref == 0) {
+            glStencilFunc(GL_ALWAYS, STENCIL_GAME, 0xFFu);
+        } else {
+            glStencilFunc(GL_NOTEQUAL, ref, STENCIL_IDS);
+        }
+        st->stencil = ref;
+    }
+}
+
+static void run_cmask(EidosGl *g, RunSent *st, GLint on)
+{
+    if (st->cmask != on) {
+        g->glColorMaski(1, on ? GL_TRUE : GL_FALSE, on ? GL_TRUE : GL_FALSE, on ? GL_TRUE : GL_FALSE,
+                        on ? GL_TRUE : GL_FALSE);
+        st->cmask = on;
+    }
+}
+
+#define RUN_UNIFORM(field, loc, value) \
+    do { \
+        GLint v_ = (GLint)(value); \
+        if (st->field != v_) { \
+            g->glUniform1i(loc, v_); \
+            st->field = v_; \
+        } \
+    } while (0)
+
 static void draw_run(EidosGl *g, const G3dSnapshot *s, const Gl3dRun *d,
                      unsigned first, unsigned verts, int *prev_depth_eq,
-                     int *prev_mask, s32 *bound_tex)
+                     int *prev_mask, s32 *bound_tex, RunSent *st)
 {
     GLint xid = (GLint)(0x40 | d->id);
     GLint uid = (GLint)(0x80 | (d->fog ? 0x40 : 0) | d->id);
@@ -1692,25 +1737,33 @@ static void draw_run(EidosGl *g, const G3dSnapshot *s, const Gl3dRun *d,
         glDepthMask(d->mask ? GL_TRUE : GL_FALSE);
         *prev_mask = d->mask;
     }
-    g->glUniform1i(g->u_mode, (GLint)d->mode);
-    g->glUniform1i(g->u_toon, (GLint)d->toon);
-    g->glUniform1i(g->u_alpha5, (GLint)d->a5);
-    g->glUniform1i(g->u_front, (GLint)d->front);
-    g->glUniform1i(g->u_back, (GLint)d->back);
+    RUN_UNIFORM(mode, g->u_mode, d->mode);
+    RUN_UNIFORM(toon, g->u_toon, d->toon);
+    RUN_UNIFORM(a5, g->u_alpha5, d->a5);
+    RUN_UNIFORM(front, g->u_front, d->front);
+    RUN_UNIFORM(back, g->u_back, d->back);
     if (d->textured) {
+        GLint tw = (GLint)s->tex[d->slot].w, th = (GLint)s->tex[d->slot].h;
+
         if (*bound_tex != d->slot) {
             glBindTexture(GL_TEXTURE_2D, g->gtex[d->slot]);
             *bound_tex = d->slot;
         }
-        g->glUniform1i(g->u_tex3, 1);
-        g->glUniform2i(g->u_texsize3, (GLint)s->tex[d->slot].w,
-                       (GLint)s->tex[d->slot].h);
-        g->glUniform4i(g->u_wrap, (GLint)(d->wrap & 1), (GLint)((d->wrap >> 1) & 1),
-                       (GLint)((d->wrap >> 2) & 1), (GLint)((d->wrap >> 3) & 1));
+        RUN_UNIFORM(tex3, g->u_tex3, 1);
+        if (st->tw != tw || st->th != th) {
+            g->glUniform2i(g->u_texsize3, tw, th);
+            st->tw = tw;
+            st->th = th;
+        }
+        if (st->wrap != (GLint)d->wrap) {
+            g->glUniform4i(g->u_wrap, (GLint)(d->wrap & 1), (GLint)((d->wrap >> 1) & 1),
+                           (GLint)((d->wrap >> 2) & 1), (GLint)((d->wrap >> 3) & 1));
+            st->wrap = (GLint)d->wrap;
+        }
     } else {
-        g->glUniform1i(g->u_tex3, 0);
+        RUN_UNIFORM(tex3, g->u_tex3, 0);
     }
-    g->glUniform1i(g->u_id, uid);
+    RUN_UNIFORM(id, g->u_id, uid);
     if (d->two_pass) {
         /* An opaque polygon whose texture has partly transparent
          * texels: the hardware decides per pixel from the final alpha,
@@ -1718,25 +1771,21 @@ static void draw_run(EidosGl *g, const G3dSnapshot *s, const Gl3dRun *d,
          * do not (unless bit 11 says so).  One draw cannot do both:
          * two passes can. */
         glDepthMask(GL_TRUE);
-        glStencilFunc(GL_ALWAYS, STENCIL_GAME, 0xFFu);
+        run_stencil(st, 0);
         g->glUniform1i(g->u_pass, 1);
-        g->glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        run_cmask(g, st, 1);
         glDrawArrays(GL_TRIANGLES, (GLint)first, (GLsizei)verts);
         glDepthMask(d->xlu_depth ? GL_TRUE : GL_FALSE);
-        glStencilFunc(GL_NOTEQUAL, xid | STENCIL_GAME, STENCIL_IDS);
+        run_stencil(st, xid | STENCIL_GAME);
         g->glUniform1i(g->u_pass, 2);
         /* a translucent pixel keeps the ID beneath it */
-        g->glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        run_cmask(g, st, 0);
         glDrawArrays(GL_TRIANGLES, (GLint)first, (GLsizei)verts);
         g->glUniform1i(g->u_pass, 0);
         *prev_mask = d->xlu_depth;
     } else {
-        if (d->a5 >= 31) {
-            glStencilFunc(GL_ALWAYS, STENCIL_GAME, 0xFFu);
-        } else {
-            glStencilFunc(GL_NOTEQUAL, xid | STENCIL_GAME, STENCIL_IDS);
-        }
-        g->glColorMaski(1, d->a5 >= 31, d->a5 >= 31, d->a5 >= 31, d->a5 >= 31);
+        run_stencil(st, d->a5 >= 31 ? 0 : (xid | STENCIL_GAME));
+        run_cmask(g, st, d->a5 >= 31);
         glDrawArrays(GL_TRIANGLES, (GLint)first, (GLsizei)verts);
     }
 }
@@ -1964,7 +2013,9 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
             Gl3dRun run, cur;
             unsigned run_first = 0, run_verts = 0;
             int have = 0;
+            RunSent sent;
 
+            run_sent_reset(&sent);
             memset(&run, 0, sizeof(run));
             memset(&cur, 0, sizeof(cur));
             for (i = 0; i < s->n_polys; i++) {
@@ -2009,7 +2060,7 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                 } else {
                     if (have) {
                         draw_run(g, s, &run, run_first, run_verts, &prev_depth_eq,
-                                 &prev_mask, &bound_tex);
+                                 &prev_mask, &bound_tex, &sent);
                         drawn++;
                     }
                     run = cur;
@@ -2021,7 +2072,7 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
             }
             if (have) {
                 draw_run(g, s, &run, run_first, run_verts, &prev_depth_eq,
-                         &prev_mask, &bound_tex);
+                         &prev_mask, &bound_tex, &sent);
                 drawn++;
             }
         }
