@@ -743,7 +743,9 @@ typedef struct SortKey {
     s32 ytop, xtop;
 } SortKey;
 
-static inline int sort_key_lt(const SortKey *a, const SortKey *b)
+/* a before b among the automatic mode's translucent polygons: the top
+ * vertex's Y, then its X, then the order sent */
+static int key_before(const SortKey *a, const SortKey *b)
 {
     if (a->ytop != b->ytop) {
         return a->ytop < b->ytop;
@@ -754,48 +756,38 @@ static inline int sort_key_lt(const SortKey *a, const SortKey *b)
     return a->index < b->index;
 }
 
-static void sort_xlu_keys(SortKey *a, u32 n)
+/* k[0..n) into that order, with n keys of room at tmp (a merge sort: runs of
+ * 1, 2, 4... keys merged from one array into the other). */
+static void sort_keys(SortKey *k, SortKey *tmp, u32 n)
 {
-    while (n > 16u) {
-        u32 mid = n >> 1, i = 0u, j = n - 1u;
-        SortKey piv, tmp;
+    SortKey *src = k, *dst = tmp;
+    u32 width, i;
 
-        if (sort_key_lt(&a[mid], &a[0])) { tmp = a[0]; a[0] = a[mid]; a[mid] = tmp; }
-        if (sort_key_lt(&a[j], &a[0]))   { tmp = a[0]; a[0] = a[j];   a[j] = tmp; }
-        if (sort_key_lt(&a[j], &a[mid])) { tmp = a[mid]; a[mid] = a[j]; a[j] = tmp; }
-        piv = a[mid];
-        for (;;) {
-            while (sort_key_lt(&a[i], &piv)) { i++; }
-            while (sort_key_lt(&piv, &a[j])) { j--; }
-            if (i >= j) {
-                break;
+    for (width = 1; width < n; width *= 2u) {
+        for (i = 0; i < n; i += 2u * width) {
+            u32 mid = i + width < n ? i + width : n;
+            u32 end = i + 2u * width < n ? i + 2u * width : n;
+            u32 l = i, r = mid, o = i;
+
+            while (l < mid && r < end) {
+                dst[o++] = key_before(&src[r], &src[l]) ? src[r++] : src[l++];
             }
-            tmp = a[i]; a[i] = a[j]; a[j] = tmp;
-            i++;
-            j--;
+            while (l < mid) {
+                dst[o++] = src[l++];
+            }
+            while (r < end) {
+                dst[o++] = src[r++];
+            }
         }
-        if (j + 1u < n - (j + 1u)) {
-            sort_xlu_keys(a, j + 1u);
-            a += j + 1u;
-            n -= j + 1u;
-        } else {
-            sort_xlu_keys(a + j + 1u, n - (j + 1u));
-            n = j + 1u;
+        {
+            SortKey *t = src;
+
+            src = dst;
+            dst = t;
         }
     }
-    {
-        u32 i;
-
-        for (i = 1u; i < n; i++) {
-            SortKey x = a[i];
-            u32 j = i;
-
-            while (j > 0u && sort_key_lt(&x, &a[j - 1u])) {
-                a[j] = a[j - 1u];
-                j--;
-            }
-            a[j] = x;
-        }
+    if (src != k) {
+        memcpy(k, src, (size_t)n * sizeof(*k));
     }
 }
 
@@ -803,12 +795,14 @@ void g3d_geom_sort(G3dGeom *g, int manual)
 {
     SortKey *k;
     G3dPoly *copy;
-    u32 i, n_opq = 0, n_xlu = 0;
+    u32 i, any = 0;
 
     if (g == NULL || g->n_polys < 2u) {
         return;
     }
-    k = (SortKey *)malloc((size_t)g->n_polys * sizeof(*k));
+    /* the keys, then room for as many again (the translucent ones, and the
+     * merge sort's second array) */
+    k = (SortKey *)malloc((size_t)g->n_polys * 3u * sizeof(*k));
     copy = (G3dPoly *)malloc((size_t)g->n_polys * sizeof(*copy));
     if (k == NULL || copy == NULL) {
         free(k);
@@ -818,57 +812,56 @@ void g3d_geom_sort(G3dGeom *g, int manual)
     for (i = 0; i < g->n_polys; i++) {
         const G3dPoly *p = &g->polys[i];
         u32 a5 = G3D_ATTR_ALPHA(p->attr);
+        u32 j;
+        s32 ymin = 0x7FFFFFFF, xmin = 0x7FFFFFFF;
+
+        k[i].index = i;
         /* [HW] translucent: alpha 1..30, or a texture with its own alpha
          * (A3I5 and A5I3) unless the polygon is a decal or a shadow */
         u32 fmt = (p->teximage >> 26) & 7u, pm = G3D_ATTR_MODE(p->attr);
-        u32 translucent = (p->attr != 0 && a5 > 0u && a5 < 31u) ? 1u : 0u;
 
+        k[i].translucent = (p->attr != 0 && a5 > 0u && a5 < 31u) ? 1u : 0u;
         if (p->attr != 0 && a5 == 31u && (fmt == 1u || fmt == 6u)
             && pm != G3D_POLY_MODE_DECAL && pm != G3D_POLY_MODE_SHADOW) {
-            translucent = 1u;
+            k[i].translucent = 1u;
         }
-        if (!translucent) {
-            if (n_xlu > 0u) {
-                copy[n_opq++] = *p;
-            }
-            continue;
-        }
-        if (n_xlu == 0u) {
-            n_opq = i;
-            if (i > 0u) {
-                memcpy(copy, g->polys, (size_t)i * sizeof(*copy));
-            }
-        }
-        {
-            SortKey *sk = &k[n_xlu++];
-            s32 ymin = 0x7FFFFFFF, xmin = 0x7FFFFFFF;
-            u32 j;
+        any |= k[i].translucent;
+        for (j = 0; k[i].translucent && j < p->count && j < 4u; j++) {
+            const G3dVertex *v = &g->verts[g->idx[p->first + j]];
+            s64 w = v->w > 0 ? v->w : 1;
+            s32 sy = (s32)(96 - ((s64)v->y * 96) / w);
+            s32 sx = (s32)(128 + ((s64)v->x * 128) / w);
 
-            sk->index = i;
-            sk->translucent = 1u;
-            if (!manual) {
-                for (j = 0; j < p->count && j < 4u; j++) {
-                    const G3dVertex *v = &g->verts[g->idx[p->first + j]];
-                    s64 w = v->w > 0 ? v->w : 1;
-                    s32 sy = (s32)(96 - ((s64)v->y * 96) / w);
-                    s32 sx = (s32)(128 + ((s64)v->x * 128) / w);
-
-                    if (sy < ymin || (sy == ymin && sx < xmin)) {
-                        ymin = sy;
-                        xmin = sx;
-                    }
-                }
+            if (sy < ymin || (sy == ymin && sx < xmin)) {
+                ymin = sy;
+                xmin = sx;
             }
-            sk->ytop = ymin;
-            sk->xtop = xmin;
         }
+        k[i].ytop = ymin;
+        k[i].xtop = xmin;
     }
-    if (n_xlu > 0u) {
-        if (!manual && n_xlu > 1u) {
-            sort_xlu_keys(k, n_xlu);
+    if (any) {
+        /* The opaque polygons first, as sent, then the translucent ones: the
+         * keys are in the order sent, so one pass splits them, and only the
+         * automatic mode has anything to sort (its translucent polygons). */
+        SortKey *tr = k + g->n_polys, *tmp = k + 2u * (size_t)g->n_polys;
+        u32 n_op = 0, n_tr = 0;
+
+        for (i = 0; i < g->n_polys; i++) {
+            if (k[i].translucent) {
+                tr[n_tr++] = k[i];
+            } else {
+                k[n_op++] = k[i];
+            }
         }
-        for (i = 0; i < n_xlu; i++) {
-            copy[n_opq + i] = g->polys[k[i].index];
+        if (!manual) {
+            sort_keys(tr, tmp, n_tr);
+        }
+        for (i = 0; i < n_op; i++) {
+            copy[i] = g->polys[k[i].index];
+        }
+        for (i = 0; i < n_tr; i++) {
+            copy[n_op + i] = g->polys[tr[i].index];
         }
         memcpy(g->polys, copy, (size_t)g->n_polys * sizeof(*copy));
     }

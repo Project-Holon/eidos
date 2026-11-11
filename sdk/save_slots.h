@@ -79,6 +79,29 @@ void bw_slots_label(char *out, u32 size);
 int  bw_slots_replacing(void);
 void bw_slots_set_replacing(int on);
 
+/*
+ * A session on another save that leaves no trace (the style chooser's
+ * preview): the file is read into the chip, the chip's writes are held in
+ * memory from then on, and the game's save control loads it.  1 when the
+ * file holds a save the game loads.  The session lasts through the port's
+ * restarts (bw_slots_try_boot, in the place of bw_slots_apply: the chip is
+ * that file again, held).  It ends with bw_slots_try_leave before a
+ * restart (the next start-up reads the slot in force), or, in a running
+ * game, when the title menu next lists its rows (bw_slots_settle) or with
+ * bw_slots_try_end: the slot in force is the chip's file again and what
+ * the session wrote is dropped.
+ */
+int  bw_slots_try_begin(const char *path);
+/* path NULL: the save built into the program (sdk/preview_save.c), unpacked
+ * into memory and given to the chip from there, with no file at all.
+ * bw_slots_try_embedded: 1 when the program has it. */
+int  bw_slots_try_embedded(void);
+int  bw_slots_try_active(void);
+int  bw_slots_try_boot(void);
+int  bw_slots_try_reload(void);     /* the game reads the session's save again: 1 loaded */
+void bw_slots_try_leave(void);
+void bw_slots_try_end(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -202,8 +202,12 @@ int  g2d_nanr_frame_data(const G2dNanr *nanr, u32 seq, u32 frame, G2dFrame *out)
  * The frame index active at elapsed time `t` (NDS frames), summing the
  * per-entry durations and looping from loopStartFrameIdx once the
  * sequence's own total is exceeded -- the same walk func_020643CC runs.
+ * A zero-duration frame takes no time and is never the answer.
  */
 u32 g2d_nanr_frame_at_time(const G2dNanr *nanr, u32 seq, u32 t);
+
+/* One frame's duration in ticks (0 when the sequence has no such frame). */
+u32 g2d_nanr_frame_duration(const G2dNanr *nanr, u32 seq, u32 frame);
 
 /* ------------------------------------------------------------------ */
 /* NMCR -- multi-cell node placement                                   */
@@ -344,6 +348,19 @@ typedef struct G2dPose {
 int  g2d_compose_pose(const G2dNcgr *ncgr, const G2dNcer *ncer,
                       const G2dNanr *nanr, const G2dMcGroup *group,
                       u32 t, u32 n_pal_colors, G2dPose *out);
+
+/* The same picture with every node's cell animation frame given (one entry
+ * a node of the group: the sequence its animation plays and that
+ * sequence's frame), for a caller that plays the animations itself
+ * (g2d_rig_play_pose). */
+typedef struct G2dNodeFrame {
+    u16 seq;
+    u16 frame;
+} G2dNodeFrame;
+
+int  g2d_compose_pose_frames(const G2dNcgr *ncgr, const G2dNcer *ncer,
+                             const G2dNanr *nanr, const G2dMcGroup *group,
+                             const G2dNodeFrame *frames, u32 n_pal_colors, G2dPose *out);
 void g2d_pose_free(G2dPose *pose);
 
 /*
@@ -1114,6 +1131,8 @@ typedef struct G2dRig {
     int        has_nanr;
     u8       **owned;     /* the decompressed member buffers */
     u32        owned_count;
+    G2dNanr    nmar;      /* the multi-cell animation (the first RAMN) */
+    int        has_nmar;
 } G2dRig;
 
 /*
@@ -1131,6 +1150,46 @@ int  g2d_rig_load(G2dRig *rig, BwArcFile *arc, u32 block_start, u32 block_size);
  * apart.  Returns 0 on success. */
 int  g2d_rig_load_palette(G2dRig *rig, BwArcFile *arc, u32 index);
 void g2d_rig_free(G2dRig *rig);
+
+/*
+ * A rig playing one of its multi-cell animations the way the game plays a
+ * Pokemon's picture (mcss.c over the library's NNS_G2dTickMCAnimation): the
+ * NMAR sequence says which multi-cell shows and for how long, and every
+ * time it steps to its next frame the cell animations of that multi-cell
+ * start again (a node in the "continue" play mode is moved on to the time
+ * the whole animation has run).  The cell animations are kept one a slot
+ * (the node's cellAnimIdx), shared by the nodes that name the same slot.
+ * One tick is one game frame.  A rig without an NMAR plays multi-cell 0.
+ */
+#define G2D_RIG_SLOTS 256
+
+typedef struct G2dAnimCtl {     /* the library's animation controller */
+    u16 seq;                    /* its sequence in the bank */
+    u16 num;                    /* that sequence's frames (0: none, never shown) */
+    s32 cur;                    /* the frame it is on (pCurrent) */
+    s32 act;                    /* the last frame with a duration (pActiveCurrent) */
+    u32 time;                   /* ticks spent on it */
+    u16 spin;                   /* frames stepped in one call (ours: a guard) */
+    u8  active, reverse;
+} G2dAnimCtl;
+
+typedef struct G2dRigPlay {
+    const G2dRig *rig;
+    u32 t;                      /* ticks played */
+    u16 total;                  /* the library's totalFrames */
+    u16 group;                  /* the multi-cell whose cell animations run */
+    G2dAnimCtl mc;              /* over the NMAR */
+    G2dAnimCtl cell[G2D_RIG_SLOTS];
+    u8  inited[G2D_RIG_SLOTS];
+} G2dRigPlay;
+
+/* Start NMAR sequence `seq` (0: the standing loop) at its first tick. */
+void g2d_rig_play_start(G2dRigPlay *p, const G2dRig *rig, u32 seq);
+void g2d_rig_play_tick(G2dRigPlay *p);
+/* The picture now: the multi-cell composed, turned and scaled by the
+ * animation frame's own pose when it has one, its origin moved by that
+ * pose's offset.  Returns 0 on success (g2d_pose_free the result). */
+int  g2d_rig_play_pose(const G2dRigPlay *p, G2dPose *out);
 
 #ifdef __cplusplus
 }

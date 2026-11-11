@@ -32,11 +32,13 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "theme.h"
 #include "input.h"
 #include "choice_list.h"
 #include "textbox.h"
 #include "g2d.h"
 #include "port.h"
+#include "settings.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define TT_WEAK __attribute__((weak))
@@ -521,12 +523,15 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         if (on) {
             const char *s = "PRESS START";
             int tw = ui_text_w(s, UI_FONT_LARGE), pw = tw + 36, ph = 26;
-            int px = (W - pw) / 2;
+            int px = (W - pw) / 2, themed;
 
             hh = 17;
             y = H - hh - ph - clampi(H / 10, 8, 30);
-            ui_panel(c, px, y, pw, ph, CUT_DEF, 5, UI_BODY, UI_EDGE2, 215);
-            {
+            themed = ui_app_window(c, "press-start", &px, &y, &pw, &ph);
+            if (!themed) {
+                ui_panel(c, px, y, pw, ph, CUT_DEF, 5, UI_BODY, UI_EDGE2, 215);
+            }
+            if (!themed) {
                 /* the bar's top follows the cut corner, a pixel inside it
                  * (the panel's inside starts where column + row >= 8) */
                 int bx;
@@ -859,6 +864,8 @@ static void row_draw(EidosUiCtx *c, int x, int y, int w, int h, const char *labe
     }
 }
 
+static int g_card_lr;           /* the card's saves change with left and right */
+
 #define CARD_LIGHT  0x9CF4FFu
 #define CARD_SHADE  0x00506Au
 
@@ -914,10 +921,20 @@ static int card_draw(EidosUiCtx *c, int x, int y, int w, int h, const SaveInfo *
         dr = ur;
         dr.y = mid + 12;
         dr.h = bot - dr.y;
-        tri_up(c, sx + (sw - 11) / 2, ur.y + (ur.h - 6) / 2, 11,
-               eidos_ui_hit(ur) & EIDOS_UI_HOVER ? UI_WHITE : CARD_LIGHT);
-        tri_down(c, sx + (sw - 11) / 2, dr.y + (dr.h - 6) / 2, 11,
-                 eidos_ui_hit(dr) & EIDOS_UI_HOVER ? UI_WHITE : CARD_LIGHT);
+        if (g_card_lr) {
+            /* the saves change with left and right here */
+            ui_text(c, sx + (sw - ui_text_w("\xE2\x86\x90", UI_FONT_LARGE)) / 2, ur.y + (ur.h - 12) / 2,
+                    "\xE2\x86\x90", eidos_ui_hit(ur) & EIDOS_UI_HOVER ? UI_WHITE : CARD_LIGHT, CARD_SHADE,
+                    UI_FONT_LARGE, 1);
+            ui_text(c, sx + (sw - ui_text_w("\xE2\x86\x92", UI_FONT_LARGE)) / 2, dr.y + (dr.h - 12) / 2,
+                    "\xE2\x86\x92", eidos_ui_hit(dr) & EIDOS_UI_HOVER ? UI_WHITE : CARD_LIGHT, CARD_SHADE,
+                    UI_FONT_LARGE, 1);
+        } else {
+            tri_up(c, sx + (sw - 11) / 2, ur.y + (ur.h - 6) / 2, 11,
+                   eidos_ui_hit(ur) & EIDOS_UI_HOVER ? UI_WHITE : CARD_LIGHT);
+            tri_down(c, sx + (sw - 11) / 2, dr.y + (dr.h - 6) / 2, 11,
+                     eidos_ui_hit(dr) & EIDOS_UI_HOVER ? UI_WHITE : CARD_LIGHT);
+        }
         ui_text(c, sx + (sw - ui_text_w(cur, UI_FONT_SMALL)) / 2, mid - 11, cur, UI_WHITE,
                 CARD_SHADE, UI_FONT_SMALL, 1);
         ui_fill(c, sx + 6, mid, sw - 12, 1, CARD_LIGHT, 255);
@@ -1052,13 +1069,24 @@ static void title_yes_no(EidosUiCtx *c, const EidosUiFrame *in, const u8 *menu, 
     h = 4 + 2 * rh + 4;
     x = right - w;
     y = foot - h;
-    ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
+    if (ui_theme_active()->textbox != NULL) {
+        ui_textbox_frame(c, UI_TEXTBOX_SYSTEM, x, y, w, h);
+    } else {
+        ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x464850u, 240);
+    }
     for (i = 0; i < 2; i++) {
         int ry = y + 4 + i * rh, lit = i == sel, st, rr;
         EidosUiRect r;
 
         r.x = x + 3; r.y = ry; r.w = w - 6; r.h = rh;
         st = eidos_ui_hit(r);
+        if (ui_theme_active()->choice_row != NULL) {
+            ui_theme_active()->choice_row(c, UI_CHOICE_SYSTEM, r.x, ry, r.w, rh, label[i], lit);
+            if (st & EIDOS_UI_CLICK) {
+                eidos_ui_press(lit ? BW_KEY_A : (i < sel ? BW_KEY_UP : BW_KEY_DOWN), 2);
+            }
+            continue;
+        }
         if (lit) {
             ui_panel(c, r.x, ry - 1, r.w, rh, UI_CUT_TL | UI_CUT_BR, 5, 0x05343Eu, 0x008BACu, 250);
             for (rr = 3; rr < rh - 3; rr++) {
@@ -1077,6 +1105,698 @@ static void title_yes_no(EidosUiCtx *c, const EidosUiFrame *in, const u8 *menu, 
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* The interface style: its flag on the menu, and its chooser          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The three styles' signs (13 x 13, the interface's own pixels): a spark
+ * for Kosmos, a bolt for Plasma, two notes for Harmonia.  W white, L light,
+ * B the sign's colour, D its shade.  The style in use glows (a ring of its
+ * colour, one pixel) and stands on a white line; the others are grey.
+ */
+static const char *const k_style_id[3] = { "kosmos", "plasma", "harmonia" };
+static const char *const k_style_name[3] = { "KOSMOS", "PLASMA", "HARMONIA" };
+static const char *const k_style_line[3] = { "Clean and dark", "Bold, leaning", "As on the DS" };
+static const u32 k_sign_tone[3][3] = {       /* light, colour, shade */
+    { 0xA0EEFAu, 0x00C8E8u, 0x0084A4u },
+    { 0xFFEA96u, 0xF8BC28u, 0xC4840Cu },
+    { 0xA8D0FAu, 0x489CECu, 0x2464B8u },
+};
+static const char *const k_sign[3][13] = {
+    {
+        "......D......",
+        "......D...L..",
+        "......B..LWL.",
+        ".....BLB..L..",
+        "....BLLLB....",
+        "...BLLWLLB...",
+        "DDBLLWWWLLBDD",
+        "...BLLWLLB...",
+        "....BLLLB....",
+        ".....BLB.....",
+        "......B......",
+        "......D......",
+        "......D......"
+    },
+    {
+        ".......LLLLL.",
+        "......LBBBD..",
+        ".....LBBBD...",
+        "....LBBBD....",
+        "...LBBBBBBBD.",
+        "..LBDDBBBBD..",
+        "......LBBD...",
+        ".....LBBD....",
+        "....LBDD.....",
+        "...LBD.......",
+        "..LBD........",
+        ".LD..........",
+        "L............"
+    },
+    {
+        ".............",
+        "...LLLLLLLLLL",
+        "...BBBBBBBBBB",
+        "...BD......BD",
+        "...BD......BD",
+        "...BD......BD",
+        "...BD......BD",
+        "...BD......BD",
+        "...BD......BD",
+        ".LLBB....LLBB",
+        "LBBBB...LBBBB",
+        "DBBBD...DBBBD",
+        ".DDD.....DDD."
+    }
+};
+
+static int sign_at(int which, int i, int j)
+{
+    return i >= 0 && j >= 0 && i < 13 && j < 13 && k_sign[which][j][i] != '.';
+}
+
+static void style_sign(EidosUiCtx *c, int x, int y, int which, int lit)
+{
+    int i, j;
+
+    for (j = -1; j <= 13; j++) {
+        for (i = -1; i <= 13; i++) {
+            u32 col;
+            char t;
+
+            if (!sign_at(which, i, j)) {
+                if (lit && (sign_at(which, i - 1, j) || sign_at(which, i + 1, j) || sign_at(which, i, j - 1)
+                            || sign_at(which, i, j + 1))) {
+                    ui_fill(c, x + i, y + j, 1, 1, UI_RAW(k_sign_tone[which][1]), 78);
+                }
+                continue;
+            }
+            t = k_sign[which][j][i];
+            col = t == 'W' ? 0xFFFFFFu : k_sign_tone[which][t == 'L' ? 0 : t == 'B' ? 1 : 2];
+            if (!lit) {
+                u32 v = (((col >> 16) & 255u) * 30u + ((col >> 8) & 255u) * 59u + (col & 255u) * 11u) / 100u;
+
+                v = 70u + v * 90u / 255u;
+                col = v << 16 | v << 8 | (v + 8u);
+            }
+            ui_fill(c, x + i, y + j, 1, 1, UI_RAW(col), 255);
+        }
+    }
+}
+
+/* The sign alone, each of its points `k` pixels across (a card that has no
+ * picture yet shows it in the picture's place). */
+static void style_sign_big(EidosUiCtx *c, int x, int y, int which, int lit, int k)
+{
+    int i, j;
+
+    for (j = 0; j < 13; j++) {
+        for (i = 0; i < 13; i++) {
+            u32 col;
+            char t;
+
+            if (!sign_at(which, i, j)) {
+                continue;
+            }
+            t = k_sign[which][j][i];
+            col = t == 'W' ? 0xFFFFFFu : k_sign_tone[which][t == 'L' ? 0 : t == 'B' ? 1 : 2];
+            if (!lit) {
+                u32 v = (((col >> 16) & 255u) * 30u + ((col >> 8) & 255u) * 59u + (col & 255u) * 11u) / 100u;
+
+                v = 70u + v * 90u / 255u;
+                col = v << 16 | v << 8 | (v + 8u);
+            }
+            ui_fill(c, x + i * k, y + j * k, k, k, UI_RAW(col), 255);
+        }
+    }
+}
+
+/* The style in use, as the settings number them (0 Kosmos, 1 Plasma, 2 Harmonia). */
+static int style_now(void)
+{
+    const char *id = ui_theme_active()->id;
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        if (id != NULL && strcmp(id, k_style_id[i]) == 0) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+#define STYLE_FLAG_W 70
+#define STYLE_FLAG_H 30
+
+/* The flag at the menu's top right: the style's name over the three signs.
+ * Drawn as the menu's own entries are:
+ * through the same panel call (Kosmos's cut panel, Harmonia's black box in a
+ * white line), or by the style itself (hook "style-flag": in x, y, w, h the
+ * flag's box, h negative under the pointer; out x the contents' left at the
+ * box's foot, w how far the box leans to the right at its top).  Returns
+ * its box for the pointer. */
+static EidosUiRect style_flag(EidosUiCtx *c, int W, int hot)
+{
+    EidosUiRect r;
+    int cur = style_now(), fx, fy, fw, fh, lean = 0, left, i, cwid;
+    const char *name = k_style_name[cur];
+
+    r.w = STYLE_FLAG_W;
+    r.h = STYLE_FLAG_H;
+    r.x = W - r.w - 10 - c->safe_r;
+    r.y = 0;
+    fx = r.x;
+    fy = r.y;
+    fw = r.w;
+    fh = hot ? -r.h : r.h;
+    if (ui_app_window(c, "style-flag", &fx, &fy, &fw, &fh)) {
+        left = fx;
+        lean = fw;
+        cwid = r.w - 22;                /* (the plate's rule at its left, its slant at its right) */
+    } else {
+        ui_panel(c, r.x, r.y - 8, r.w, r.h + 8, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, hot ? UI_CYAN : UI_EDGE, 240);
+        left = r.x + 8;
+        cwid = r.w - 16;
+    }
+#define FLAG_X(row) (left + lean * (r.h - (row)) / r.h)
+    ui_text(c, FLAG_X(6) + (cwid - ui_text_w(name, UI_FONT_SMALL)) / 2, r.y + 3, name, UI_RAW(0xF8F8F8u),
+            (s32)UI_RAW(0x101014u), UI_FONT_SMALL, 1);
+    for (i = 0; i < 3; i++) {
+        int sx = FLAG_X(19) + i * (cwid - 13) / 2;
+
+        style_sign(c, sx, r.y + 12, i, i == cur);
+        if (i == cur) {
+            ui_fill(c, sx, r.y + 12 + 14, 13, 1, UI_RAW(0xFFFFFFu), 255);
+        }
+    }
+#undef FLAG_X
+    return r;
+}
+
+/* The chooser's sounds are the title menu's own: 0x548 a move, 0x54C a
+ * choice, 0x551 a step back. */
+/* The chooser is up (its cards). */
+static int g_style_open, g_style_first, g_style_before, g_style_cool, g_style_asked, g_style_demo, g_style_go;
+
+extern int  bw_slots_try_begin(const char *path) TT_WEAK;
+extern int  bw_slots_try_embedded(void) TT_WEAK;
+extern void eidos_boot_restart_to(int what) TT_WEAK;
+
+/* A test's own files for the chooser, in the folder EIDOS_DEMO_DIR names:
+ * demo.sav (a save for the preview in the built-in one's place) and
+ * kosmos.bmp, plasma.bmp, harmonia.bmp (card pictures).  1 when the file is
+ * there.  Without the variable nothing is read: the preview's save is in
+ * the program and the cards' pictures are the player's own. */
+static int demo_file(const char *name, char *out, size_t n)
+{
+    const char *dir = getenv("EIDOS_DEMO_DIR");
+    FILE *f;
+
+    if (dir == NULL || dir[0] == '\0') {
+        return 0;
+    }
+    snprintf(out, n, "%s/%s", dir, name);
+    if ((f = fopen(out, "rb")) == NULL) {
+        return 0;
+    }
+    fclose(f);
+    return 1;
+}
+
+/* A card's picture: the file as read (src), and at the card's size (px). */
+static struct {
+    u8 *src, *px;
+    int sw, sh, w, h, tried;
+} g_pic[3];
+
+static u32 le32(const u8 *p)
+{
+    return (u32)p[0] | (u32)p[1] << 8 | (u32)p[2] << 16 | (u32)p[3] << 24;
+}
+
+extern const char *bw_save_dir(void) TT_WEAK;
+extern int bw_plat_mkdirs(const char *path) TT_WEAK;
+
+/* An uncompressed 24 or 32 bit BMP of at most `limit` bytes, as RGBA. */
+static u8 *bmp_read(const char *path, long limit, int *w_out, int *h_out)
+{
+    FILE *f = fopen(path, "rb");
+    long size;
+    u8 *file, *px = NULL;
+
+    if (f == NULL) {
+        return NULL;
+    }
+    fseek(f, 0, SEEK_END);
+    size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    file = size > 54 && size < limit ? (u8 *)malloc((size_t)size) : NULL;
+    if (file != NULL && fread(file, 1, (size_t)size, f) == (size_t)size && file[0] == 'B' && file[1] == 'M') {
+        u32 off = le32(file + 10);
+        int w = (int)le32(file + 18), h = (int)le32(file + 22), bpp = file[28] | file[29] << 8, up = h > 0, x, y;
+        int bytes = bpp / 8, stride = (w * bytes + 3) & ~3;
+
+        h = h < 0 ? -h : h;
+        if ((bpp == 24 || bpp == 32) && w > 0 && h > 0 && w <= 8192 && h <= 8192
+            && (u32)size >= off + (u32)stride * (u32)h) {
+            px = (u8 *)malloc((size_t)w * (size_t)h * 4u);
+            for (y = 0; px != NULL && y < h; y++) {
+                const u8 *row = file + off + (size_t)stride * (size_t)(up ? h - 1 - y : y);
+
+                for (x = 0; x < w; x++) {
+                    px[((size_t)y * (size_t)w + (size_t)x) * 4u + 0] = row[x * bytes + 2];
+                    px[((size_t)y * (size_t)w + (size_t)x) * 4u + 1] = row[x * bytes + 1];
+                    px[((size_t)y * (size_t)w + (size_t)x) * 4u + 2] = row[x * bytes + 0];
+                    px[((size_t)y * (size_t)w + (size_t)x) * 4u + 3] = 255;
+                }
+            }
+            *w_out = w;
+            *h_out = h;
+        }
+    }
+    free(file);
+    fclose(f);
+    return px;
+}
+
+/* RGBA as a 24 bit BMP.  0 when written. */
+static int bmp_write(const char *path, const u8 *rgba, int w, int h)
+{
+    int stride = (w * 3 + 3) & ~3, x, y;
+    u32 size = 54u + (u32)stride * (u32)h;
+    u8 head[54], *row;
+    FILE *f;
+
+    row = (u8 *)calloc(1, (size_t)stride);
+    f = row != NULL ? fopen(path, "wb") : NULL;
+    if (f == NULL) {
+        free(row);
+        return -1;
+    }
+    memset(head, 0, sizeof head);
+    head[0] = 'B';
+    head[1] = 'M';
+    head[2] = (u8)size;
+    head[3] = (u8)(size >> 8);
+    head[4] = (u8)(size >> 16);
+    head[5] = (u8)(size >> 24);
+    head[10] = 54;
+    head[14] = 40;
+    head[18] = (u8)w;
+    head[19] = (u8)(w >> 8);
+    head[22] = (u8)h;
+    head[23] = (u8)(h >> 8);
+    head[26] = 1;
+    head[28] = 24;
+    fwrite(head, 1, sizeof head, f);
+    for (y = h - 1; y >= 0; y--) {
+        for (x = 0; x < w; x++) {
+            const u8 *sp = rgba + ((size_t)y * (size_t)w + (size_t)x) * 4u;
+
+            row[x * 3 + 0] = sp[2];
+            row[x * 3 + 1] = sp[1];
+            row[x * 3 + 2] = sp[0];
+        }
+        fwrite(row, 1, (size_t)stride, f);
+    }
+    free(row);
+    return fclose(f) == 0 ? 0 : -1;
+}
+
+/* The player's own cards: <the save folder>/style-cards/<style>.bmp, the
+ * pictures the game takes of its own battle screen while the chooser's
+ * preview runs (eidos_ui_style_card_from).  A release carries no picture
+ * of the game. */
+static int cards_dir(char *out, size_t n)
+{
+    const char *sd = bw_save_dir != NULL ? bw_save_dir() : NULL;
+
+    if (sd == NULL || sd[0] == '\0') {
+        return 0;
+    }
+    snprintf(out, n, "%s/style-cards", sd);
+    return 1;
+}
+
+/* A card's picture: the player's own, else the test builds' (the folder
+ * "demo" beside the game). */
+static void pic_load(int t)
+{
+    char path[700], dir[600], name[32];
+    FILE *f = NULL;
+
+    g_pic[t].tried = 1;
+    if (cards_dir(dir, sizeof dir)) {
+        snprintf(path, sizeof path, "%s/%s.bmp", dir, k_style_id[t]);
+        f = fopen(path, "rb");
+    }
+    if (f != NULL) {
+        fclose(f);
+    } else {
+        snprintf(name, sizeof name, "%s.bmp", k_style_id[t]);
+        if (!demo_file(name, path, sizeof path)) {
+            return;
+        }
+    }
+    g_pic[t].src = bmp_read(path, 16L * 1024 * 1024, &g_pic[t].sw, &g_pic[t].sh);
+}
+
+/* Where the game's picture of its window goes before it is made a card. */
+int eidos_ui_style_card_tmp(char *out, int cap)
+{
+    char dir[600];
+
+    if (!cards_dir(dir, sizeof dir)) {
+        return 0;
+    }
+    if (bw_plat_mkdirs != NULL) {
+        (void)bw_plat_mkdirs(dir);
+    }
+    snprintf(out, (size_t)cap, "%s/shot.bmp", dir);
+    return 1;
+}
+
+/* The game's picture of the style's battle screen (ui.c, the preview) as
+ * that style's card: brought down to 640 across (each pixel the mean of
+ * those it stands for), the big file removed, the chooser's copy dropped. */
+void eidos_ui_style_card_from(const char *bmp, int t)
+{
+    char path[700], dir[600];
+    int W = 0, H = 0, cw, chh, x, y;
+    u8 *src, *px;
+
+    if (t < 0 || t > 2 || bmp == NULL || !cards_dir(dir, sizeof dir)) {
+        return;
+    }
+    src = bmp_read(bmp, 96L * 1024 * 1024, &W, &H);
+    (void)remove(bmp);
+    if (src == NULL) {
+        return;
+    }
+    cw = W > 640 ? 640 : W;
+    chh = (int)((long)H * cw / W);
+    px = chh > 0 ? (u8 *)malloc((size_t)cw * (size_t)chh * 4u) : NULL;
+    for (y = 0; px != NULL && y < chh; y++) {
+        int y0 = y * H / chh, y1 = (y + 1) * H / chh;
+
+        for (x = 0; x < cw; x++) {
+            int x0 = x * W / cw, x1 = (x + 1) * W / cw, xx, yy;
+            u32 r = 0, g = 0, b = 0, n = 0;
+
+            for (yy = y0; yy < y1 || yy == y0; yy++) {
+                const u8 *sp = src + ((size_t)yy * (size_t)W + (size_t)x0) * 4u;
+
+                for (xx = x0; xx < x1 || xx == x0; xx++, sp += 4) {
+                    r += sp[0];
+                    g += sp[1];
+                    b += sp[2];
+                    n++;
+                }
+            }
+            px[((size_t)y * (size_t)cw + (size_t)x) * 4u + 0] = (u8)(r / n);
+            px[((size_t)y * (size_t)cw + (size_t)x) * 4u + 1] = (u8)(g / n);
+            px[((size_t)y * (size_t)cw + (size_t)x) * 4u + 2] = (u8)(b / n);
+            px[((size_t)y * (size_t)cw + (size_t)x) * 4u + 3] = 255;
+        }
+    }
+    snprintf(path, sizeof path, "%s/%s.bmp", dir, k_style_id[t]);
+    if (px != NULL && bmp_write(path, px, cw, chh) == 0) {
+        /* the chooser reads it again when it next opens */
+        free(g_pic[t].src);
+        free(g_pic[t].px);
+        memset(&g_pic[t], 0, sizeof(g_pic[t]));
+    }
+    free(px);
+    free(src);
+}
+
+/* The picture at the card's size (each pixel the mean of those it stands for). */
+static void pic_fit(int t, int cw, int chh)
+{
+    int x, y, W, H;
+    u8 *px;
+
+    if (!g_pic[t].tried) {
+        pic_load(t);
+    }
+    if (g_pic[t].src == NULL || cw < 8 || chh < 8 || (g_pic[t].px != NULL && g_pic[t].w == cw && g_pic[t].h == chh)) {
+        return;
+    }
+    px = (u8 *)realloc(g_pic[t].px, (size_t)cw * (size_t)chh * 4u);
+    if (px == NULL) {
+        return;
+    }
+    g_pic[t].px = px;
+    g_pic[t].w = cw;
+    g_pic[t].h = chh;
+    W = g_pic[t].sw;
+    H = g_pic[t].sh;
+    for (y = 0; y < chh; y++) {
+        int y0 = y * H / chh, y1 = (y + 1) * H / chh;
+
+        for (x = 0; x < cw; x++) {
+            int x0 = x * W / cw, x1 = (x + 1) * W / cw, xx, yy;
+            u32 r = 0, g = 0, b = 0, n = 0;
+
+            for (yy = y0; yy < y1 || yy == y0; yy++) {
+                const u8 *sp = g_pic[t].src + ((size_t)yy * (size_t)W + (size_t)x0) * 4u;
+
+                for (xx = x0; xx < x1 || xx == x0; xx++, sp += 4) {
+                    r += sp[0];
+                    g += sp[1];
+                    b += sp[2];
+                    n++;
+                }
+            }
+            px[((size_t)y * (size_t)cw + (size_t)x) * 4u + 0] = (u8)(r / n);
+            px[((size_t)y * (size_t)cw + (size_t)x) * 4u + 1] = (u8)(g / n);
+            px[((size_t)y * (size_t)cw + (size_t)x) * 4u + 2] = (u8)(b / n);
+            px[((size_t)y * (size_t)cw + (size_t)x) * 4u + 3] = 255;
+        }
+    }
+}
+
+static void style_set(int which)
+{
+    which = which < 0 ? 2 : which > 2 ? 0 : which;
+    if (which != style_now()) {
+        (void)eidos_settings_set(EIDOS_OPT_UI_THEME, which);
+        ui_theme_select(k_style_id[which]);         /* now: the rest of this frame is in it */
+        if (ui_theme_active()->frame_begin != NULL) {
+            ui_theme_active()->frame_begin();
+        }
+        eidos_ui_sound(0x548);
+    }
+}
+
+static void style_close(int keep)
+{
+    if (keep) {
+        (void)eidos_settings_set(EIDOS_OPT_UI_THEME, style_now());
+        (void)eidos_settings_commit();
+    } else {
+        style_set(g_style_before);
+    }
+    g_style_open = 0;
+    g_style_first = 0;
+    g_style_cool = 15;
+    eidos_ui_crossfade();
+}
+
+static void style_show(void)
+{
+    char path[600];
+
+    g_style_open = 1;
+    /* the preview: the save built into the program (or a test's own file) */
+    g_style_demo = bw_slots_try_begin != NULL && eidos_boot_restart_to != NULL
+                   && (demo_file("demo.sav", path, sizeof path)
+                       || (bw_slots_try_embedded != NULL && bw_slots_try_embedded()));
+}
+
+/* The preview: the real game on the chooser's save, kept in memory.  On the
+ * game's thread: it changes the save the game holds.  The game starts
+ * again on that save at once: no Continue row, so none of its questions. */
+static void style_try_start(void *arg)
+{
+    char path[600];
+
+    (void)arg;
+    if (bw_slots_try_begin(demo_file("demo.sav", path, sizeof path) ? path : NULL)) {
+        eidos_boot_restart_to(1);
+    } else {
+        eidos_ui_try_clear();                   /* no save in the file: the chooser again */
+        g_style_open = 1;
+    }
+}
+
+/* The chooser in the title menu's place.  1 while it is up: the menu is
+ * not drawn and takes no key. */
+static int style_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, int W, int H, int ready)
+{
+    u32 k = eidos_ui_keys_pressed();
+    int bar = ui_bar_h(c), cur, i;
+
+    if (eidos_ui_try_state() >= 2 && ready) {
+        /* back from the preview's game */
+        eidos_ui_try_clear();
+        g_style_asked = 1;
+        style_show();
+        k = 0;
+    }
+    if (eidos_ui_try_state() != 0) {
+        /* the preview is going in (or coming back): the menu, under the
+         * preview's cover, takes no key; the game starts on the preview's
+         * save once the key's sound has played */
+        eidos_ui_take_keys(BW_KEY_GAME);
+        if (g_style_go && --g_style_cool <= 0) {
+            g_style_go = 0;
+            g_style_cool = 0;
+            (void)eidos_ui_game_call(style_try_start, NULL);
+        }
+        return 0;
+    }
+    if (!g_style_asked && ready) {
+        /* the first time the menu is up: ask, when no style was ever chosen
+         * (not while a test names the style) */
+        g_style_asked = 1;
+        if (!eidos_settings_style_chosen() && getenv("EIDOS_UI_THEME") == NULL) {
+            style_show();
+            g_style_first = 1;
+            g_style_before = style_now();
+        }
+    }
+    eidos_ui_take_keys(BW_KEY_SELECT);
+    if (g_style_cool > 0) {
+        g_style_cool--;                 /* the key that closed it is not the menu's */
+        eidos_ui_take_keys(BW_KEY_GAME);
+    }
+    if (!g_style_open) {
+        if (ready && g_style_cool == 0 && (k & BW_KEY_SELECT)) {
+            style_show();
+            g_style_before = style_now();
+            eidos_ui_sound(0x54C);
+            eidos_ui_crossfade();
+        } else {
+            return 0;
+        }
+        k = 0;
+    }
+    eidos_ui_take_keys(BW_KEY_GAME);
+    if (k & BW_KEY_LEFT) {
+        style_set(style_now() - 1);
+    } else if (k & BW_KEY_RIGHT) {
+        style_set(style_now() + 1);
+    }
+    cur = style_now();
+    {
+        const char *hp[8];
+        u32 hk[4];
+        int hn = 0;
+        const char *head = "Choose a style";
+        const char *sub = g_style_first ? "You can change it later from this menu."
+                                        : "It changes at once.";
+        int m = W >= 560 ? 14 : 8, gap = 8, cw = (W - 2 * m - 2 * gap) / 3, chh = cw * 9 / 16;
+        int block = 52 + chh + 22, top = (H - bar - block) / 2 + 52, act = -1, x;
+
+        if (top < 52) {
+            top = 52;
+        }
+        /* on the title's own floor, dimmed (as the menu's questions are):
+         * the world behind the menu is no picture of its own (after a
+         * preview it is still the preview's last one) */
+        (void)view;
+        backdrop(c, W, H, (int)in->frame);
+        ui_fill(c, 0, 0, W, H, UI_RAW(0x000000u), 150);
+        ui_text(c, (W - ui_text_w(head, UI_FONT_LARGE) * 2) / 2, top - 52, head, UI_RAW(0xFFFFFFu),
+                (s32)UI_RAW(0x101014u), UI_FONT_LARGE, 2);
+        ui_text(c, (W - ui_text_w(sub, UI_FONT_SMALL)) / 2, top - 16, sub, UI_RAW(0xBEC4D0u), (s32)UI_RAW(0x101014u),
+                UI_FONT_SMALL, 1);
+        for (i = 0; i < 3; i++) {
+            EidosUiRect r;
+            UiImage im;
+            int lit = i == cur, st;
+
+            x = m + i * (cw + gap);
+            r.x = x;
+            r.y = top;
+            r.w = cw;
+            r.h = chh + 20;
+            st = eidos_ui_hit(r);
+            if (st & EIDOS_UI_CLICK) {
+                act = i;
+            }
+            if (lit) {
+                ui_fill(c, x - 2, top - 2, cw + 4, chh + 24, UI_RAW(0xFFFFFFu), 255);
+            } else if (st & EIDOS_UI_HOVER) {
+                ui_fill(c, x - 1, top - 1, cw + 2, chh + 22, UI_RAW(0x8A90A0u), 255);
+            }
+            ui_fill(c, x, top, cw, chh + 20, UI_RAW(0x0A0C10u), 255);
+            pic_fit(i, cw, chh);
+            im.w = g_pic[i].w;
+            im.h = g_pic[i].h;
+            im.rgba = g_pic[i].px;
+            if (im.rgba != NULL && im.w == cw) {
+                ui_image(c, x, top, &im, 1);
+                if (!lit) {
+                    ui_fill(c, x, top, cw, chh, UI_RAW(0x000000u), 110);
+                }
+            } else {
+                /* no picture of this style yet (the game takes its own while
+                 * the preview runs): the style's sign in its place */
+                int k = chh >= 100 ? 4 : 3;
+
+                ui_fill(c, x, top, cw, chh, UI_RAW(lit ? 0x161B24u : 0x10141Au), 255);
+                style_sign_big(c, x + (cw - 13 * k) / 2, top + (chh - 13 * k) / 2, i, lit, k);
+            }
+            style_sign(c, x + 5, top + chh + 4, i, lit);
+            ui_text(c, x + 23, top + chh + ui_text_y(20, UI_FONT_LARGE), k_style_name[i],
+                    UI_RAW(lit ? 0xFFFFFFu : 0x9AA0AEu), (s32)UI_RAW(0x000000u), UI_FONT_LARGE, 1);
+            if (ui_text_w(k_style_name[i], UI_FONT_LARGE) + ui_text_w(k_style_line[i], UI_FONT_SMALL) + 36 <= cw) {
+                ui_text(c, x + cw - 5 - ui_text_w(k_style_line[i], UI_FONT_SMALL),
+                        top + chh + ui_text_y(20, UI_FONT_SMALL), k_style_line[i], UI_RAW(lit ? 0xAAB0BEu : 0x6E7482u),
+                        -1, UI_FONT_SMALL, 1);
+            }
+        }
+        hp[2 * hn] = "A";
+        hp[2 * hn + 1] = "Choose";
+        hk[hn++] = BW_KEY_A;
+        if (g_style_demo) {
+            hp[2 * hn] = "Y";
+            hp[2 * hn + 1] = "Preview";
+            hk[hn++] = BW_KEY_Y;
+        }
+        hp[2 * hn] = "\xE2\x86\x90\xE2\x86\x92";
+        hp[2 * hn + 1] = "Style";
+        hk[hn++] = BW_KEY_RIGHT;
+        if (!g_style_first) {
+            hp[2 * hn] = "B";
+            hp[2 * hn + 1] = "Back";
+            hk[hn++] = BW_KEY_B;
+        }
+        ui_hints(c, H - bar, W, hp, hn, hk);
+        if (act >= 0 && act != cur) {
+            style_set(act);
+        } else if (act == cur || (k & BW_KEY_A)) {
+            eidos_ui_sound(0x54C);
+            style_close(1);
+        } else if ((k & BW_KEY_Y) && g_style_demo) {
+            /* the real game, on the chooser's save: its X menu, party, Bag
+             * and a battle (ui.c); back here from its START */
+            eidos_ui_sound(0x54C);
+            g_style_open = 0;
+            g_style_go = 1;
+            g_style_cool = 10;
+            eidos_ui_try_begin();
+        } else if ((k & BW_KEY_B) || eidos_ui_right_click()) {
+            eidos_ui_sound(g_style_first ? 0x54C : 0x551);
+            style_close(g_style_first);     /* the first time there is no style to go back to */
+        }
+    }
+    return 1;
+}
+
 static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     TtProc *p = NULL;
@@ -1092,11 +1812,16 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static const char *const hints_one[] = { "A", "Choose", "B", "Back" };
     static const char *const hints_slots[] = { "A", "Choose", "\xE2\x86\x91\xE2\x86\x93", "Save",
                                                "B", "Back" };
+    static const char *const hints_slots_lr[] = { "A", "Choose", "\xE2\x86\x90\xE2\x86\x92", "Save",
+                                                  "B", "Back" };
     static const char *const hints_ask[] = { "A", "Confirm", "B", "Cancel" };
     static const u32 keys_one[] = { BW_KEY_A, BW_KEY_B };
     static const u32 keys_slots[] = { BW_KEY_A, BW_KEY_RIGHT, BW_KEY_B };
     EidosUiRect all;
     char *dbg;
+    UiTitleMenuLayout tl;
+    const UiThemeOps *theme = ui_theme_active();
+    int stacked = 0, across = 0, logo_x = 0;
 
     view->mode = EIDOS_VIEW_WORLD;
     view->zoom = title_zoom(in);
@@ -1113,6 +1838,9 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     all.y = 0;
     all.w = W;
     all.h = H - ui_bar_h(c);
+    if (style_screen(c, view, in, W, H, state == SM_STATE_SELECT)) {
+        return;
+    }
 
     /* the game's own questions and notices (states 7 to 10): its windows stay
      * visible, only the keys are offered.  CONTINUE passes through them for
@@ -1180,11 +1908,70 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         info = info_get((void *)work, in, state);
     }
     slots = slot_count();
+    memset(&tl, 0, sizeof tl);
+    tl.w = W;
+    tl.h = H - ui_bar_h(c);
+    tl.n_rows = nrows;
+    tl.has_card = card >= 0;
+    if (theme->title_menu_layout != NULL && W * 10 >= H * 15) {
+        theme->title_menu_layout(&tl, 0);
+        stacked = tl.stacked;
+        across = stacked ? 0 : tl.across;   /* the rows side by side: this many a row */
+    }
 
+    if (across) {
+        /* the rows side by side under the card: left and right move among
+         * them (on the card they choose the save, the game's own keys), up
+         * and down go between the card and the rows */
+        static int last_row = -1;
+        u32 k = state == SM_STATE_SELECT ? eidos_ui_keys_pressed() : 0;
+        int to = cursor;
+
+        eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT);
+        if (cursor != card) {
+            last_row = cursor;
+        }
+        if (k & (BW_KEY_UP | BW_KEY_DOWN)) {
+            /* a row's place among the rows, the card apart */
+            int j = cursor - (card >= 0 && cursor > card ? 1 : 0);
+
+            if (card >= 0 && cursor == card && (k & BW_KEY_DOWN)) {
+                to = last_row >= 0 && last_row < n && last_row != card ? last_row : (card == 0 ? 1 : 0);
+            } else if (cursor != card && (k & BW_KEY_UP)) {
+                if (j >= across) {
+                    j -= across;                /* the row of chips above */
+                    to = j + (card >= 0 && j >= card ? 1 : 0);
+                } else if (card >= 0) {
+                    to = card;
+                }
+            } else if (cursor != card && (k & BW_KEY_DOWN) && j + across < nrows) {
+                j += across;
+                to = j + (card >= 0 && j >= card ? 1 : 0);
+            }
+        } else if (k & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
+            int d = (k & BW_KEY_LEFT) ? -1 : 1;
+
+            if (cursor == card) {
+                if (slots > 1) {
+                    eidos_ui_press(d < 0 ? BW_KEY_LEFT : BW_KEY_RIGHT, 2);
+                }
+            } else {
+                to = cursor + d;
+                if (to == card) {
+                    to += d;
+                }
+            }
+        }
+        if (to >= 0 && to < n && to != cursor) {
+            *((u8 *)work + SM_CURSOR) = (u8)to;
+            cursor = to;
+            eidos_ui_sound(0x548);  /* the menu's cursor sound */
+        }
+    } else
     /* Two columns, moved like two columns: left and right go between the
      * card and the rows, up and down move inside a column; on the card up
      * and down choose the save (the game's left and right). */
-    if (card >= 0 && W * 10 >= H * 15) {
+    if (card >= 0 && W * 10 >= H * 15 && !stacked) {
         static int last_row = -1;
         /* the arrows are the interface's in every state of the menu (a key
          * that reached the game while it scrolls would cross columns); they
@@ -1236,7 +2023,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* the layout: two columns on a wide canvas (the logo and the card, the
      * rows), one column otherwise */
     avail = H - ui_bar_h(c) - 12;
-    wide = W * 10 >= H * 15 && n > 0;
+    wide = W * 10 >= H * 15 && n > 0 && !stacked;
     logo_load();
     if (g_logo_have == 1) {
         int x0, y0, x1, y1;
@@ -1246,6 +2033,8 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             logo_h = (y1 - y0) * logo_w / (x1 - x0);
         }
     }
+    tl.logo_w = logo_w;
+    tl.logo_h = logo_h;
     if (wide) {
         int total_w = clampi(W * 84 / 100, 380, 600);
         int block_h, gap = 8;
@@ -1278,9 +2067,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         y = top + (logo_h > 0 ? logo_h + gap : 0);        /* the card's top */
         rows_h = card_h;
         row_h = nrows > 0 ? clampi((rows_h - (nrows - 1) * 5) / nrows, 20, 34) : 26;
-        if (logo_h > 0) {
-            logo_draw(c, left_x + (left_w - logo_w) / 2, logo_y, logo_w, 255);
-        }
+        logo_x = left_x + (left_w - logo_w) / 2;
         rows_y = y + (rows_h - (nrows * row_h + (nrows - 1) * 5)) / 2;
     } else {
         int tot, gap = 4;
@@ -1302,7 +2089,10 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
         top = 6 + (avail - tot) / 2;
         if (logo_h > 0 && top - 4 >= logo_h) {
-            logo_draw(c, (W - logo_w) / 2, top - logo_h - 4, logo_w, 255);
+            logo_x = (W - logo_w) / 2;
+            logo_y = top - logo_h - 4;
+        } else {
+            logo_h = 0;
         }
         y = top;
         rows_y = y + (card >= 0 ? card_h + gap : 0);
@@ -1310,21 +2100,64 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     (void)rows_h;
 
+    /* the places, then the theme's own */
+    {
+        int ry = rows_y, j = 0;
+
+        if (logo_h > 0) {
+            tl.logo.x = logo_x;
+            tl.logo.y = logo_y;
+            tl.logo.w = logo_w;
+            tl.logo.h = logo_h;
+        }
+        tl.card.x = left_x;
+        tl.card.y = y;
+        tl.card.w = left_w;
+        tl.card.h = card_h;
+        for (i = 0; i < n; i++) {
+            if (kinds[i] == 0) {
+                continue;
+            }
+            tl.row[j].x = right_x;
+            tl.row[j].y = ry;
+            tl.row[j].w = right_w;
+            tl.row[j].h = row_h;
+            j++;
+            ry += row_h + (wide ? 5 : 3);
+        }
+        {
+            int jj = 0;
+
+            for (i = 0; i < n && jj < 8; i++) {
+                if (kinds[i] != 0) {
+                    tl.label[jj++] = kind_label(kinds[i], hook, settings_row);
+                }
+            }
+        }
+        if (theme->title_menu_layout != NULL && W * 10 >= H * 15) {
+            theme->title_menu_layout(&tl, 1);
+        }
+        if (theme->title_menu_backdrop != NULL) {
+            theme->title_menu_backdrop(c, &tl);
+        }
+        if (tl.logo.w > 0) {
+            logo_draw(c, tl.logo.x, tl.logo.y, tl.logo.w, 255);
+        }
+    }
+
     /* the card */
     if (card >= 0) {
         EidosUiRect r;
         int st, act;
 
-        r.x = left_x;
-        r.y = y;
-        r.w = left_w;
-        r.h = card_h;
+        r = tl.card;
         st = eidos_ui_hit(r);
         hover_card = (st & EIDOS_UI_HOVER) != 0;
         if (st & EIDOS_UI_CLICK) {
             request(card, ACT_A);
         }
-        act = card_draw(c, left_x, y, left_w, card_h, info, card == cursor, hover_card,
+        g_card_lr = stacked || across || !wide;
+        act = card_draw(c, tl.card.x, tl.card.y, tl.card.w, tl.card.h, info, card == cursor, hover_card,
                         label, slots, in);
         if (act >= 0) {
             request(card, act);
@@ -1333,7 +2166,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     /* the other rows */
     {
-        int ry = rows_y;
+        int j = 0;
 
         for (i = 0; i < n; i++) {
             EidosUiRect r;
@@ -1342,17 +2175,18 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             if (kinds[i] == 0) {
                 continue;
             }
-            r.x = right_x;
-            r.y = ry;
-            r.w = right_w;
-            r.h = row_h;
+            r = tl.row[j++];
             st = eidos_ui_hit(r);
             if (st & EIDOS_UI_CLICK) {
                 request(i, ACT_A);
             }
-            row_draw(c, right_x, ry, right_w, row_h, kind_label(kinds[i], hook, settings_row),
-                     i == cursor && eidos_ui_keys_lit(), (st & EIDOS_UI_HOVER) != 0);
-            ry += row_h + (wide ? 5 : 3);
+            if (theme->title_menu_row != NULL) {
+                theme->title_menu_row(c, r.x, r.y, r.w, r.h, kind_label(kinds[i], hook, settings_row),
+                                      i == cursor && eidos_ui_keys_lit(), (st & EIDOS_UI_HOVER) != 0);
+            } else {
+                row_draw(c, r.x, r.y, r.w, r.h, kind_label(kinds[i], hook, settings_row),
+                         i == cursor && eidos_ui_keys_lit(), (st & EIDOS_UI_HOVER) != 0);
+            }
         }
     }
 
@@ -1405,8 +2239,38 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
-    ui_hints(c, H - ui_bar_h(c), W, slots > 1 && card >= 0 ? hints_slots : hints_one,
-             slots > 1 && card >= 0 ? 3 : 2, slots > 1 && card >= 0 ? keys_slots : keys_one);
+    {
+        /* the flag of the interface's style, and its key in the bar */
+        const char *const *base = slots > 1 && card >= 0 ? (stacked || across || !wide ? hints_slots_lr : hints_slots)
+                                                          : hints_one;
+        const u32 *bk = slots > 1 && card >= 0 ? keys_slots : keys_one;
+        int bn = slots > 1 && card >= 0 ? 3 : 2, j;
+        const char *hp[8];
+        u32 hk[4];
+        EidosUiRect fr;
+
+        fr.w = STYLE_FLAG_W;
+        fr.h = STYLE_FLAG_H;
+        fr.x = W - fr.w - 10 - c->safe_r;
+        fr.y = 0;
+        j = eidos_ui_hit(fr);
+        (void)style_flag(c, W, (j & EIDOS_UI_HOVER) != 0);
+        if ((j & EIDOS_UI_CLICK) && state == SM_STATE_SELECT && g_style_cool == 0 && eidos_ui_try_state() == 0) {
+            style_show();
+            g_style_before = style_now();
+            eidos_ui_sound(0x54C);
+            eidos_ui_crossfade();
+        }
+        for (j = 0; j < bn; j++) {
+            hp[2 * j] = base[2 * j];
+            hp[2 * j + 1] = base[2 * j + 1];
+            hk[j] = bk[j];
+        }
+        hp[2 * bn] = "SELECT";
+        hp[2 * bn + 1] = "Style";
+        hk[bn] = BW_KEY_SELECT;
+        ui_hints(c, H - ui_bar_h(c), W, hp, bn + 1, hk);
+    }
     dbg = getenv("EIDOS_TITLE_DEBUG");
     if (dbg != NULL && (in->frame % 30) == 0) {
         fprintf(stderr, "menu: frame %u state %d cursor %d n %d card %d target %d\n", in->frame,

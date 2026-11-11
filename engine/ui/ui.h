@@ -196,6 +196,34 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
  * scale (the window's height over 192), so text the recipe shows in the
  * game's letters is as big as the game shows it (engine/ui/textbox.c). */
 void eidos_ui_want_ds_scale(void);
+/* The same, but the canvas keeps at least `rows` rows (a scene that shows
+ * the game's lower screen as a sheet beside its text needs 216): the
+ * largest whole scale that leaves them. */
+void eidos_ui_want_ds_scale_rows(int rows);
+
+/* The style chooser's preview: the real game on a save kept in memory
+ * (sdk/save_slots.h, bw_slots_try_begin).  State: 0 none, 1 going in, 2 in
+ * the game, 3 going back to the title menu (where the chooser opens
+ * again).  It shows four screens: the X menu, the party, the Bag, a
+ * battle's command menu; Y goes to the next, by the game's own ways, under
+ * a cover.  SELECT is the next style, START goes back.
+ * eidos_ui_try_menu_want: the X menu's button the way there presses now
+ * (1 Pokemon, 3 Bag; 0 none), taken by the X menu's recipe.
+ * eidos_ui_quiet: the cover is up, the game under it is not to be heard. */
+void eidos_ui_try_begin(void);
+int  eidos_ui_try_state(void);
+void eidos_ui_try_clear(void);
+int  eidos_ui_try_menu_want(void);
+int  eidos_ui_quiet(void);
+/* The chooser's cards are the player's own: while the preview stands on the
+ * battle's command menu the game takes one picture of its window for the
+ * style on show (once a preview, each style).  eidos_ui_card_shot: 1 when
+ * the frame just shown is that picture, with the file to write (the boot
+ * asks after each frame it shows); the interface then makes the card of it
+ * (recipe_title.c). */
+int  eidos_ui_card_shot(char *path, int cap);
+int  eidos_ui_style_card_tmp(char *out, int cap);
+void eidos_ui_style_card_from(const char *bmp, int style);
 
 /* The frame being drawn, for a recipe's match (NULL outside
  * eidos_ui_frame). */
@@ -324,10 +352,20 @@ int eidos_ui_holding(void);
 /* This frame's recipe shows its own change of screen (the Pokedex's doors):
  * no crossfade when the held picture lets go. */
 void eidos_ui_own_reveal(void);
+/* This frame's recipe draws through the game's fade between two screens of
+ * its app (the Pokedex's device opening): its picture is not held. */
+void eidos_ui_no_hold(void);
 /* A Pokemon's cry, queued like eidos_ui_sound and played on the game's
  * thread at its next frame. */
 void eidos_ui_cry(u32 species);
 void eidos_ui_game_frame(void);
+/* EIDOS_UI_SCRIPT (docs/test-switches.md): a test's steps, run once a game
+ * frame.  _draw: this frame must be shown (a picture is about to be taken);
+ * _shot: a picture is due now, its name in `name`; _quit: the script ended
+ * (1) or failed (2). */
+int  eidos_ui_script_draw(void);
+int  eidos_ui_script_shot(char *name, int cap);
+int  eidos_ui_script_quit(void);
 /* Run fn(arg) on the game's thread at the start of its next frame, in the
  * order queued (a recipe that applies a change through the game's own
  * functions: they allocate and draw, so only the game's thread may call

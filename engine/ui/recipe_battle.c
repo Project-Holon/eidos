@@ -685,8 +685,10 @@ static void draw_hint_strip_h(EidosUiCtx *c, int x, int w, const char *const *pa
 {
     int i, y = c->canvas->h - bh, at = x + 6;
 
-    ui_fill(c, x, y, w, bh, UI_BODY2, 235);
-    ui_fill(c, x, y, w, 1, UI_EDGE, 255);
+    if (!ui_hint_ground(c, x, y, w, bh)) {
+        ui_fill(c, x, y, w, bh, UI_BODY2, 235);
+        ui_fill(c, x, y, w, 1, UI_EDGE, 255);
+    }
     for (i = 0; i < n; i++) {
         const char *key = pairs[2 * i], *what = pairs[2 * i + 1];
         int kw = ui_keycap_w(key);
@@ -813,6 +815,7 @@ static char g_mv_name[MV_MAX][MV_NAME];
 static int g_mv_ready;
 
 static int strbuf_text(const u8 *sb, char *out, int cap);
+extern int bw_battle_yesno_is_kept(const void *record) __attribute__((weak));
 
 static void mv_names_load(void)
 {
@@ -918,7 +921,8 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
     const u8 *px;
     int bw, bh, cnt[16] = { 0 }, ground = 0, ink = -1, i, yy, xx, any = 0;
     u8 hit[64][256];
-    u32 mcol = 0, mdark = 0;
+    u32 mcol = 0, mdark = 0, tcol = UI_WHITE;
+    s32 tsh = (s32)UI_EDGE;
 
     if (bmp == NULL || (px = rdp(bmp, 0x00)) == NULL) {
         return 0;
@@ -975,6 +979,19 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
         }
     }
     battle_box(c, x, y, w, h, 225);
+    {
+        /* the letters and their shadow are text: the theme's colours for
+         * the surface they stand on (dark ink on a light box) */
+        int bx = c->ox + x + 10, by = c->oy + y + h / 2;
+        u32 behind = 0;
+
+        if (bx >= 0 && by >= 0 && bx < c->canvas->w && by < c->canvas->h) {
+            const u8 *cp = c->canvas->rgba + ((size_t)by * (size_t)c->canvas->w + (size_t)bx) * 4u;
+
+            behind = ((u32)cp[0] << 16) | ((u32)cp[1] << 8) | cp[2];
+        }
+        ui_theme_text(&tcol, &tsh, behind);
+    }
     for (yy = 0; yy < bh && yy + 4 < h; yy++) {
         for (xx = 0; xx < bw && xx + 10 < w; xx++) {
             int v = msg_px(px, bw, xx, yy);
@@ -984,7 +1001,7 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
             }
             ui_fill(c, x + 10 + xx, y + (h - bh) / 2 + yy, 1, 1,
                     hit[yy][xx] == 1 ? mcol : hit[yy][xx] == 2 ? mdark
-                                                               : v == ink ? UI_WHITE : UI_EDGE,
+                                                               : v == ink ? UI_RAW(tcol) : UI_RAW((u32)tsh),
                     255);
             any = 1;
         }
@@ -1010,7 +1027,15 @@ enum { LV_NONE, LV_GAINS, LV_WAIT_TOTALS, LV_TOTALS };
 
 /* Where shell_draw put each own plate last: the level-up rows grow out of the
  * plate of the Pokemon that levelled. */
-static struct { const u8 *poke; int x, y, w; } g_plate[3];
+static struct { const u8 *poke; int x, y, w, h; } g_plate[3];
+
+/* A theme's level-up: the levelling Pokemon's plate rises by g_lv_lift and
+ * the stats stand under it, in the place it left.  g_lv_anim runs 0 to
+ * LV_ANIM as it rises, and back as it comes down. */
+#define LV_ANIM  9
+#define LV_BOX_H (6 * 15 + 8)
+static int g_lv_anim, g_lv_lift, g_lv_vp = -1, g_lv_shown;
+static u32 g_lv_frame;
 
 static int g_lv_phase;
 
@@ -1051,21 +1076,39 @@ static void levelup_draw(EidosUiCtx *c, const Bt *b, int phase)
     const u8 *scu = rdp(b->core, 0x17C);
     const u8 *poke = scu != NULL ? rdp(scu, 0x16C) : NULL;
     int px = c->canvas->w - 176, py = c->canvas->h - 107, pw = 170;
-    int rh = 13, h = 6 * rh + 8, y, i, on_field = 0, head = 0;
-    int ty = ui_text_y(rh, UI_FONT_SMALL);
+    int themed = ui_theme_active_has_frame(), light = 0, font = themed ? UI_FONT_LARGE : UI_FONT_SMALL;
+    int plate_h = 0, clipped = 0;
+    EidosUiRect lv_clip;
+    int rh = themed ? 15 : 13, h = 6 * rh + 8, y, i, on_field = 0, head = 0;
+    int ty = ui_text_y(rh, font);
 
     for (i = 0; i < 3; i++) {
         if (g_plate[i].poke != NULL && g_plate[i].poke == poke) {
             px = g_plate[i].x;
             py = g_plate[i].y;
             pw = g_plate[i].w;
+            plate_h = g_plate[i].h;
             on_field = 1;
         }
     }
     if (on_field) {
         /* one piece with the plate: the box ends on the plate's top edge */
         y = py - h + 1;
-        ui_panel(c, px, y, pw, h, UI_CUT_TL, 6, UI_BODY, UI_EDGE, 225);
+        if (themed) {
+            /* under the plate, in the place it left: what shows is as tall
+             * as the plate has risen */
+            int fx = px, fy, fw = pw, fh = h;
+
+            y = py + plate_h;
+            fy = y;
+            ui_push(c, 0, 0, &lv_clip);
+            ui_clip(c, 0, y, c->canvas->w, g_lv_lift);
+            clipped = 1;
+            (void)ui_app_window(c, "levelup", &fx, &fy, &fw, &fh);
+            light = fh == 1;
+        } else {
+            ui_panel(c, px, y, pw, h, UI_CUT_TL, 6, UI_BODY, UI_EDGE, 225);
+        }
     } else {
         /* a Pokemon with no plate (benched, or Exp. Share): its own box
          * at the top left, with the name, gender and level */
@@ -1079,7 +1122,17 @@ static void levelup_draw(EidosUiCtx *c, const Bt *b, int phase)
         head = 17;
         h += head;
         y = 26;
-        ui_panel(c, px, y, pw, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
+        if (themed) {
+            int fx = px, fy = y, fw = pw, fh = h;
+
+            (void)ui_app_window(c, "levelup", &fx, &fy, &fw, &fh);
+            light = fh == 1;
+        } else {
+            ui_panel(c, px, y, pw, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
+        }
+        if (light) {
+            nx = ui_text(c, px + 10, y + 3, m.name, UI_RAW(0x202020u), (s32)UI_RAW(0xC4C4C4u), UI_FONT_LARGE, 1);
+        } else
         nx = ui_text(c, px + 10, y + 3, m.name, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         ui_gender(c, nx + 3, y + 3, m.gender, UI_FONT_LARGE);
         snprintf(lv, sizeof(lv), "%s%d", ui_tr("Lv."), rd16(scu, 0x170) & 0xFF);
@@ -1093,12 +1146,28 @@ static void levelup_draw(EidosUiCtx *c, const Bt *b, int phase)
         int ry = y + 5 + head + i * rh;
 
         snprintf(val, sizeof(val), phase == LV_GAINS ? "+%d" : "%d", v);
+        if (themed) {
+            /* a theme's box: the large letters, in its own colours */
+            u32 lab = light ? UI_RAW(0x40404Au) : UI_RAW(0xD8D8D8u), sh = light ? UI_RAW(0xC4C4C4u) : UI_RAW(0x0C0C0Cu);
+            u32 num = phase == LV_GAINS ? (light ? UI_RAW(0x008C3Cu) : UI_RAW(0x40F070u))
+                                        : (light ? UI_RAW(0x202020u) : UI_RAW(0xFFFFFFu));
+
+            ui_text(c, px + 10, ry + ty, ui_tr(names[i]), lab, (s32)sh, font, 1);
+            ui_text(c, px + pw - 10 - ui_text_w(val, font), ry + ty, val, num, (s32)sh, font, 1);
+            if (i > 0) {
+                ui_fill(c, px + 8, ry - 1, pw - 16, 1, light ? UI_RAW(0x000000u) : UI_RAW(0xFFFFFFu), 34);
+            }
+            continue;
+        }
         ui_text(c, px + 10, ry + ty, names[i], UI_GREY, UI_EDGE, UI_FONT_SMALL, 1);
         ui_text(c, px + pw - 10 - ui_text_w(val, UI_FONT_SMALL), ry + ty, val,
                 phase == LV_GAINS ? UI_HP_G : UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
         if (i > 0) {
             ui_fill(c, px + 8, ry - 1, pw - 16, 1, UI_EDGE, 160);
         }
+    }
+    if (clipped) {
+        ui_pop(c, 0, 0, &lv_clip);
     }
 }
 
@@ -1124,10 +1193,22 @@ static u32 g_msg_frame;                 /* the last frame with text          */
  * bmp +0x04 (18 x 4 tiles, 144 x 32), templatePixels +0x10, isShown bit 0
  * of +0x22.  Plate 0 is the player's side, 1 the opponent's.
  */
-static void draw_name_plates(EidosUiCtx *c, const Bt *b)
+/* The plates slide in from their side and out again, as the game's do: a
+ * plate's words are kept while it leaves. */
+#define ABILITY_SLIDE 8
+static struct {
+    u8 words[32][144];          /* 1 a letter's pixel, 2 its shadow's */
+    int x0, x1, y0, y1;
+    int live;
+    u32 since, gone, seen;
+} g_ability[2];
+
+static void draw_name_plates(EidosUiCtx *c, const Bt *b, const UiBattleLayout *l)
 {
     const u8 *scu = b->core != NULL ? rdp(b->core, 0x17C) : NULL;
+    const UiThemeOps *theme = ui_theme_active();
     int i, w = c->canvas->w, h = c->canvas->h;
+    u32 now = bw_input_frame_number();
 
     if (scu == NULL) {
         return;
@@ -1135,34 +1216,70 @@ static void draw_name_plates(EidosUiCtx *c, const Bt *b)
     for (i = 0; i < 2; i++) {
         const u8 *pl = scu + 0x90 + 0x24 * i;
         const u8 *bmp = rdp(pl, 0x04), *tpl = rdp(pl, 0x10), *px;
-        int x, y, xx, yy, x0 = 144, x1 = 0, y0 = 32, y1 = 0, pw, ph = 34;
+        int x, y, xx, yy, pw, ph, tw, th, tx, ty, leaving = 0, shown;
+        u32 t;
 
-        if (!(pl[0x22] & 1u) || bmp == NULL || tpl == NULL || (px = rdp(bmp, 0)) == NULL) {
-            continue;
+        if (now - g_ability[i].seen > 60u) {
+            g_ability[i].live = 0;          /* another battle: nothing leaves */
+            g_ability[i].gone = now - ABILITY_SLIDE;
         }
-        for (yy = 0; yy < 32; yy++) {
-            for (xx = 0; xx < 144; xx++) {
-                int v = msg_px(px, 144, xx, yy);
+        g_ability[i].seen = now;
+        shown = (pl[0x22] & 1u) && bmp != NULL && tpl != NULL && (px = rdp(bmp, 0)) != NULL;
+        if (shown) {
+            int x0 = 144, x1 = 0, y0 = 32, y1 = 0;
 
-                if ((v == 1 || v == 2) && v != msg_px(tpl, 144, xx, yy)) {
-                    if (xx < x0) x0 = xx;
-                    if (xx + 1 > x1) x1 = xx + 1;
-                    if (yy < y0) y0 = yy;
-                    if (yy + 1 > y1) y1 = yy + 1;
+            for (yy = 0; yy < 32; yy++) {
+                for (xx = 0; xx < 144; xx++) {
+                    int v = msg_px(px, 144, xx, yy);
+
+                    v = (v == 1 || v == 2) && v != msg_px(tpl, 144, xx, yy) ? v : 0;
+                    g_ability[i].words[yy][xx] = (u8)v;
+                    if (v != 0) {
+                        if (xx < x0) x0 = xx;
+                        if (xx + 1 > x1) x1 = xx + 1;
+                        if (yy < y0) y0 = yy;
+                        if (yy + 1 > y1) y1 = yy + 1;
+                    }
                 }
             }
+            if (x1 <= x0) {
+                continue;                   /* nothing printed yet         */
+            }
+            g_ability[i].x0 = x0;
+            g_ability[i].x1 = x1;
+            g_ability[i].y0 = y0;
+            g_ability[i].y1 = y1;
+            if (!g_ability[i].live) {
+                g_ability[i].live = 1;
+                g_ability[i].since = now;
+            }
+            t = now - g_ability[i].since;
+        } else {
+            if (g_ability[i].live) {
+                g_ability[i].live = 0;
+                g_ability[i].gone = now;
+            }
+            t = now - g_ability[i].gone;
+            if (t >= ABILITY_SLIDE) {
+                continue;
+            }
+            leaving = 1;
         }
-        if (x1 <= x0) {
-            continue;                       /* nothing printed yet         */
-        }
-        pw = (x1 - x0) + 26;
-        ph = (y1 - y0) + 10;
-        x = i == 0 ? 6 : w - 6 - pw;
-        y = i == 0 ? h / 2 - 10 : 44;
-        ui_panel(c, x, y, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x008BACu, 240);
-        {
-            int rr;
+        tw = g_ability[i].x1 - g_ability[i].x0;
+        th = g_ability[i].y1 - g_ability[i].y0;
+        if (theme->battle_ability != NULL) {
+            theme->battle_ability(c, l, i, tw, th, t, leaving, &tx, &ty);
+        } else {
+            /* Kosmos's: a dark tile with the blue edge and strip, from
+             * its side's edge */
+            int rr, off = t >= ABILITY_SLIDE ? 0 : (int)(ABILITY_SLIDE - t);
 
+            pw = tw + 26;
+            ph = th + 10;
+            off = (leaving ? (int)t : off) * (pw + 8) / ABILITY_SLIDE;
+            x = i == 0 ? 6 - off : w - 6 - pw + off;
+            y = i == 0 ? h / 2 - 10 : 44;
+            ui_panel(c, x, y, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, 0x000000u, 0x008BACu, 240);
             for (rr = 3; rr < ph - 3; rr++) {
                 int left = 3 + (rr < 8 ? 8 - rr : 0);
 
@@ -1170,13 +1287,16 @@ static void draw_name_plates(EidosUiCtx *c, const Bt *b)
                     ui_fill(c, x + left, y + rr, 6 - left, 1, 0x008BACu, 255);
                 }
             }
+            tx = x + 14;
+            ty = y + 5;
         }
-        for (yy = y0; yy < y1; yy++) {
-            for (xx = x0; xx < x1; xx++) {
-                int v = msg_px(px, 144, xx, yy);
+        for (yy = g_ability[i].y0; yy < g_ability[i].y1; yy++) {
+            for (xx = g_ability[i].x0; xx < g_ability[i].x1; xx++) {
+                int v = g_ability[i].words[yy][xx];
 
-                if ((v == 1 || v == 2) && v != msg_px(tpl, 144, xx, yy)) {
-                    ui_fill(c, x + 14 + xx - x0, y + 5 + yy - y0, 1, 1, v == 1 ? UI_WHITE : 0x464850u, 255);
+                if (v != 0) {
+                    ui_fill(c, tx + xx - g_ability[i].x0, ty + yy - g_ability[i].y0, 1, 1,
+                            v == 1 ? UI_WHITE : 0x464850u, 255);
                 }
             }
         }
@@ -1204,6 +1324,37 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         u32 now = bw_input_frame_number(), since;
 
         view->hide_2d = 1;
+        lv = levelup_phase(&b);
+        if (ui_theme_active_has_frame()) {
+            /* the plate rises while the stats show and comes back after */
+            const u8 *scu = rdp(b.core, 0x17C);
+            const u8 *poke = scu != NULL ? rdp(scu, 0x16C) : NULL;
+            int vp;
+
+            if (lv != LV_NONE) {
+                g_lv_shown = lv;
+                g_lv_vp = -1;
+                for (vp = 2; vp <= 6; vp += 2) {
+                    if (poke != NULL && poke_at_view(&b, vp) == poke) {
+                        g_lv_vp = vp;
+                    }
+                }
+                g_lv_anim = g_lv_anim < LV_ANIM ? g_lv_anim + 1 : LV_ANIM;
+            } else {
+                g_lv_anim = g_lv_anim > 0 ? g_lv_anim - 1 : 0;
+            }
+            {
+                /* eased: fast at first, settling */
+                int t256 = g_lv_anim * 256 / LV_ANIM;
+
+                t256 = 256 - (256 - t256) * (256 - t256) / 256;
+                g_lv_lift = g_lv_vp >= 0 ? LV_BOX_H * t256 / 256 : 0;
+            }
+            g_lv_frame = now;
+        } else {
+            g_lv_lift = 0;
+            g_lv_anim = 0;
+        }
         shell_layout(c, &b, &sh);
         battle_begin(c, &sh, &l, UI_BATTLE_MESSAGE);
         shell_draw(c, &b, &sh, NULL, 0);
@@ -1215,11 +1366,12 @@ static void plain_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
             battle_box(c, l.msg.x, l.msg.y, l.msg.w, l.msg.h, a);
         }
-        lv = levelup_phase(&b);
         if (lv != LV_NONE) {
             levelup_draw(c, &b, lv);
+        } else if (g_lv_anim > 0 && g_lv_lift > 0) {
+            levelup_draw(c, &b, g_lv_shown);        /* the plate coming back down over them */
         }
-        draw_name_plates(c, &b);
+        draw_name_plates(c, &b, &l);
     } else {
         /* a frame the battle's state is not readable (a screen changing):
          * the last picture stays, and the game's own plates stay hidden */
@@ -1443,7 +1595,7 @@ static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s)
 }
 
 /*
- * The places of the screen's parts (theme.h's UiBattleLayout): Remaster's
+ * The places of the screen's parts (theme.h's UiBattleLayout): Kosmos's
  * (the plates bottom right with the 2x2 sheets above them, the foes' plates
  * top left, the message bottom left), then the theme's changes.  `what`:
  * UI_BATTLE_MESSAGE, _COMMANDS or _MOVES.
@@ -1487,6 +1639,23 @@ static void battle_place(EidosUiCtx *c, const Shell *s, UiBattleLayout *l, int w
     l->info_y = y0 - 13;
     if (t->battle_layout != NULL) {
         t->battle_layout(l, what);
+        if (g_lv_lift > 0 && bw_input_frame_number() - g_lv_frame <= 1u) {
+            /* a level-up: the levelling Pokemon's plate, and the plates over
+             * it, stand higher (the stats are under it) */
+            int k = -1;
+
+            for (i = 0; i < s->n && i < 3; i++) {
+                if (s->own_vp[i] == g_lv_vp) {
+                    k = i;
+                }
+            }
+            for (i = 0; i <= k; i++) {
+                l->own[i].y -= g_lv_lift;
+            }
+            if (k >= 0) {
+                l->own_balls_y -= g_lv_lift;
+            }
+        }
     }
 }
 
@@ -1503,7 +1672,7 @@ static void battle_begin(EidosUiCtx *c, Shell *s, UiBattleLayout *l, int what)
     }
 }
 
-/* The box behind a message or the prompt: the theme's, or Remaster's panel. */
+/* The box behind a message or the prompt: the theme's, or Kosmos's panel. */
 static void battle_box(EidosUiCtx *c, int x, int y, int w, int h, int a)
 {
     const UiThemeOps *t = ui_theme_active();
@@ -1521,58 +1690,83 @@ static void battle_box(EidosUiCtx *c, int x, int y, int w, int h, int a)
  * game's, so a trainer's team size never showed). */
 extern int bw_ui_ballbar_of(int side, int kinds[6], u32 *since) __attribute__((weak));
 
-static void ball_dot(EidosUiCtx *c, int cx, int cy, int r, int kind, int alpha)
+/* The game's own reading of a party's balls (ov093/btlv_scu.c), and the
+ * clients of the two sides. */
+extern void ov093_BTLV_SCU_GetBallStates(void *scu, u32 *out, u32 clientA, u32 clientB, u32 sideFlag)
+    __attribute__((weak));
+extern u32 ov093_BTL_MAIN_GetOwnClientId(void *btlMain) __attribute__((weak));
+extern u32 ov093_BTL_MAIN_GetOpponentClient(void *btlMain, u32 client, u32 idx) __attribute__((weak));
+
+/*
+ * A side's six balls now, and the frames since they first showed.  The game
+ * shows its bars for a moment only (a trainer's team before the battle, a
+ * side's when it sends a Pokemon out); the interface keeps them up from
+ * then to the battle's end, read each frame as the game reads them for its
+ * bars (BTLV_SCU_GetBallStates), so a faint or a status shows at once.  A
+ * wild Pokemon's side never shows a bar, so it has no balls here either.
+ */
+static int balls_now(const Bt *b, int side, int kinds[6], u32 *t)
 {
-    u32 top = kind == 1 ? 0xE8403Au : kind == 3 ? 0xF0A030u : 0x4A4F58u;
-    u32 bot = kind == 2 ? 0x8A9099u : 0xF4F4F4u;
-    int dy;
+    static const u8 *core;
+    static u32 first[2], last_call;
+    static int seen[2], kept[2][6];
+    u32 since = 0, now = bw_input_frame_number();
+    u8 *scu = b->core != NULL ? rdp(b->core, 0x17C) : NULL;
+    int i;
 
-    for (dy = -r; dy <= r; dy++) {
-        int hw = 0;
-
-        while ((hw + 1) * (hw + 1) + dy * dy <= r * r) {
-            hw++;
-        }
-        if (kind == 0) {
-            /* no Pokemon: a faint disc where a ball would be */
-            ui_fill(c, cx - hw, cy + dy, 2 * hw + 1, 1, UI_GREY, alpha / 4);
-            continue;
-        }
-        ui_fill(c, cx - hw, cy + dy, 2 * hw + 1, 1, dy < 0 ? top : dy == 0 ? 0x202428u : bot, alpha);
+    if (b->core != core || now - last_call > 120u) {
+        core = b->core;                 /* another battle */
+        seen[0] = seen[1] = 0;
     }
-    if (kind != 0) {
-        ui_fill(c, cx - 1, cy - 1, 3, 3, 0x202428u, alpha);
-        ui_fill(c, cx, cy, 1, 1, 0xF4F4F4u, alpha);
+    last_call = now;
+    if (bw_ui_ballbar_of != NULL && bw_ui_ballbar_of(side, kinds, &since)) {
+        if (!seen[side]) {
+            seen[side] = 1;
+            first[side] = since;
+        }
+        memcpy(kept[side], kinds, sizeof(kept[side]));
+    } else if (!seen[side]) {
+        return 0;
+    } else if (scu != NULL && b->main != NULL && ov093_BTLV_SCU_GetBallStates != NULL
+               && ov093_BTL_MAIN_GetOwnClientId != NULL && ov093_BTL_MAIN_GetOpponentClient != NULL) {
+        u32 st[7], own = ov093_BTL_MAIN_GetOwnClientId(b->main);
+
+        ov093_BTLV_SCU_GetBallStates(scu, st, side == 0 ? own : ov093_BTL_MAIN_GetOpponentClient(b->main, own, 0),
+                                     4, (u32)side);
+        for (i = 0; i < 6; i++) {
+            kept[side][i] = (int)st[1 + i];
+        }
+    }
+    memcpy(kinds, kept[side], sizeof(kept[side]));
+    *t = now - first[side];
+    return 1;
+}
+
+/* A side's balls where the theme puts them (Kosmos's are on its plates:
+ * plate_with_balls). */
+static void ballbar_draw(EidosUiCtx *c, const Bt *b, int side, int x, int y, int right)
+{
+    int kinds[6];
+    u32 t = 0;
+    const UiThemeOps *theme = ui_theme_active();
+
+    if (theme->battle_balls != NULL && balls_now(b, side, kinds, &t)) {
+        theme->battle_balls(c, side, x, y, right, kinds, t);
     }
 }
 
-static void ballbar_draw(EidosUiCtx *c, int side, int x, int y, int right)
+/* Before a side's first plate: its balls go on that plate when the theme
+ * has no place of its own for them.  Returns 1 when it set them (the
+ * caller clears them after the plate). */
+static int plate_with_balls(const Bt *b, int side, int kinds[6])
 {
-    int kinds[6], i, bw = 6 * 16 + 8, a, slide;
-    u32 since = 0, t;
+    u32 t = 0;
 
-    if (bw_ui_ballbar_of == NULL || !bw_ui_ballbar_of(side, kinds, &since)) {
-        return;
+    if (ui_theme_active()->battle_balls != NULL || !balls_now(b, side, kinds, &t)) {
+        return 0;
     }
-    t = bw_input_frame_number() - since;
-    /* the bar slides in from its side, then each ball, as the game's */
-    slide = t >= 10 ? 0 : (int)(10 - t) * (bw + 12) / 10;
-    a = t >= 10 ? 225 : 225 * (int)t / 10;
-    if (right) {
-        x = x - bw + slide;
-    } else {
-        x -= slide;
-    }
-    ui_panel(c, x, y, bw, 18, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, a);
-    for (i = 0; i < 6; i++) {
-        /* as the game lays them (BTLV_B_GAUGE_CreatePartyBallBar): the
-         * foe's first ball on the left, the player's on the right */
-        int k = side == 0 ? 5 - i : i;
-
-        if (t >= (u32)(10 + i * 3)) {
-            ball_dot(c, x + 4 + 8 + i * 16, y + 9, 5, kinds[k], 255);
-        }
-    }
+    ui_plate_set_balls(kinds, t);
+    return 1;
 }
 
 static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *prompt,
@@ -1582,6 +1776,15 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
     int vp, y, i;
 
     battle_place(c, s, &l, s->what);
+    {
+        /* every frame, plates or not: the game shows a trainer's bar
+         * before any plate is up */
+        int kinds[6];
+        u32 t;
+
+        (void)balls_now(b, 0, kinds, &t);
+        (void)balls_now(b, 1, kinds, &t);
+    }
     y = l.foe_y;
     for (vp = 3; vp <= 7; vp += 2) {
         u8 *poke = poke_at_view(b, vp);
@@ -1614,12 +1817,21 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
             m.maxhp = gv.maxhp;
             m.level = gv.level;
         }
-        ui_plate(c, l.foe_x, y, l.foe_w, m.name, m.gender, m.level, m.hp, m.maxhp, 0, 0);
+        {
+            int kinds[6], set = y == l.foe_y && plate_with_balls(b, 1, kinds);
+
+            ui_plate(c, l.foe_x, y, l.foe_w, m.name, m.gender, m.level, m.hp, m.maxhp, 0, 0);
+            if (set) {
+                ui_plate_set_balls(NULL, 0);
+            }
+        }
         ui_plate_status(c, l.foe_x, y, l.foe_w, m.level, gauge_badge(b, vp));
         y += l.foe_step;
     }
-    ballbar_draw(c, 1, l.foe_balls_x, l.foe_balls_y >= 0 ? l.foe_balls_y : y + 2, 0);
-    ballbar_draw(c, 0, l.own_balls_x, l.own_balls_y, l.own_balls_right);
+    /* the foe's balls come with its plate, as yours do */
+    if (y != l.foe_y) {
+        ballbar_draw(c, b, 1, l.foe_balls_x, l.foe_balls_y >= 0 ? l.foe_balls_y : y + 2, 0);
+    }
     memset(g_plate, 0, sizeof(g_plate));
     for (i = 0; i < s->n && i < 3; i++) {
         u8 *poke = poke_at_view(b, s->own_vp[i]);
@@ -1639,12 +1851,25 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
                 num = 0;
             }
         }
-        ui_plate(c, l.own[i].x, l.own[i].y, l.own[i].w, m.name, m.gender, m.level, m.hp, m.maxhp, num, den);
+        {
+            int kinds[6], set = i == 0 && plate_with_balls(b, 0, kinds);
+
+            ui_plate(c, l.own[i].x, l.own[i].y, l.own[i].w, m.name, m.gender, m.level, m.hp, m.maxhp, num, den);
+            if (set) {
+                ui_plate_set_balls(NULL, 0);
+            }
+        }
         ui_plate_status(c, l.own[i].x, l.own[i].y, l.own[i].w, m.level, gauge_badge(b, s->own_vp[i]));
         g_plate[i].poke = poke;
         g_plate[i].x = l.own[i].x;
         g_plate[i].y = l.own[i].y;
         g_plate[i].w = l.own[i].w;
+        g_plate[i].h = l.own[i].h;
+    }
+    /* after your plates, and only with one: your balls are part of your
+     * plate (a theme may put them on it), never up before it */
+    if (s->n > 0) {
+        ballbar_draw(c, b, 0, l.own_balls_x, l.own_balls_y, l.own_balls_right);
     }
     /* The prompt stands in the box of the game's messages (plain_run), and
      * while the game's own window holds text that text is shown: a crossfade
@@ -1652,10 +1877,20 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
      * message and the prompt a line apart.  `own`: the interface's line even
      * then (a prompt the game does not print). */
     if (prompt != NULL) {
-        if (own || !draw_battle_message(c, b, l.msg.x, l.msg.y, l.msg.w, l.msg.h)) {
+        /* wider than its place and the place is tall: the interface's line, on two lines (the
+         * game's own picture of it is one line and would be cut) */
+        int wide = ui_text_w(prompt, UI_FONT_LARGE) > l.msg.w - 16 && l.msg.h >= 34;
+
+        if (own || wide || !draw_battle_message(c, b, l.msg.x, l.msg.y, l.msg.w, l.msg.h)) {
             battle_box(c, l.msg.x, l.msg.y, l.msg.w, l.msg.h, 225);
-            ui_text(c, l.msg.x + 10, l.msg.y + ui_text_y(l.msg.h, UI_FONT_LARGE), prompt, UI_WHITE,
-                    UI_EDGE, UI_FONT_LARGE, 1);
+            if (wide) {
+                /* wider than its place and the place is tall: two lines about the same middle */
+                draw_wrapped(c, l.msg.x + 10, l.msg.y + ui_text_y(l.msg.h, UI_FONT_LARGE) - 7, l.msg.w - 16, prompt,
+                             UI_FONT_LARGE, 14, 2, UI_WHITE, (s32)UI_EDGE);
+            } else {
+                ui_text(c, l.msg.x + 10, l.msg.y + ui_text_y(l.msg.h, UI_FONT_LARGE), prompt, UI_WHITE,
+                        UI_EDGE, UI_FONT_LARGE, 1);
+            }
         }
     }
 }
@@ -1737,7 +1972,7 @@ static void move_tile(EidosUiCtx *c, int x, int y, int w, int h, int type, const
 /* The arrows over a 2 x 2 sheet (entry = row * 2 + column): left and
  * right change the column, up and down the row; a disabled entry is not
  * a stop.  Returns the new entry, or -1. */
-static int grid_step(const int *enabled, int cur)
+static int grid_step(const int *enabled, int cur, const EidosUiRect *at)
 {
     u32 k = eidos_ui_keys_pressed();
     int to;
@@ -1745,6 +1980,32 @@ static int grid_step(const int *enabled, int cur)
     eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT);
     if (cur < 0 || cur > 3) {
         cur = 0;
+    }
+    if (at != NULL) {
+        /* a theme's places (a row, a column, a diamond): the nearest
+         * enabled entry in the arrow's direction */
+        int dx = (k & BW_KEY_RIGHT) ? 1 : (k & BW_KEY_LEFT) ? -1 : 0;
+        int dy = dx != 0 ? 0 : (k & BW_KEY_DOWN) ? 1 : (k & BW_KEY_UP) ? -1 : 0;
+        int i, best = -1, best_cost = 0;
+
+        if (dx == 0 && dy == 0) {
+            return -1;
+        }
+        for (i = 0; i < 4; i++) {
+            int ex = (at[i].x + at[i].w / 2) - (at[cur].x + at[cur].w / 2);
+            int ey = (at[i].y + at[i].h / 2) - (at[cur].y + at[cur].h / 2);
+            int along = ex * dx + ey * dy, across = ex * dy + ey * dx, cost;
+
+            if (i == cur || !enabled[i] || along <= 0) {
+                continue;
+            }
+            cost = along + 2 * (across < 0 ? -across : across);
+            if (best < 0 || cost < best_cost) {
+                best = i;
+                best_cost = cost;
+            }
+        }
+        return best;
     }
     if (k & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
         to = cur ^ 1;
@@ -1754,6 +2015,28 @@ static int grid_step(const int *enabled, int cur)
         return -1;
     }
     return enabled[to] ? to : -1;
+}
+
+/*
+ * EIDOS_DEBUG_AUTO_PLAYER (a test switch, docs/test-switches.md): the
+ * trainer AI chose a move for the player's side (sdk/ui_text.c holds it),
+ * and the menus pick it as a player would: FIGHT after a moment, then the
+ * cursor steps over the moves to that one, rests on it and chooses it.
+ */
+extern int bw_ui_battle_auto_move(void) __attribute__((weak));
+
+/* Frames a menu (1 the commands, 2 the moves) has been up, for the steps. */
+static int auto_tick(int menu, u32 frame)
+{
+    static int which, t;
+    static u32 seen;
+
+    if (menu != which || frame - seen > 2u) {
+        which = menu;
+        t = 0;
+    }
+    seen = frame;
+    return t++;
 }
 
 /* "What will X do?" for the Pokemon that is choosing. */
@@ -1914,12 +2197,18 @@ static void set_input_cursor(const Bt *b, int to)
 
 /* Up and down along a column of entries in display order; disabled ones are
  * skipped.  Returns the new entry, or -1 when the keys did not move. */
+static int g_column_across;     /* column_step: the entries are side by side */
+
 static int column_step(const int *order, int n, const int *enabled, int cur)
 {
     u32 k = eidos_ui_keys_pressed();
     int pos = 0, i, step;
 
     eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT);
+    if (g_column_across) {
+        /* the entries stand side by side: left and right step through them */
+        k = ((k & BW_KEY_LEFT) ? BW_KEY_UP : 0) | ((k & BW_KEY_RIGHT) ? BW_KEY_DOWN : 0);
+    }
     if ((k & (BW_KEY_UP | BW_KEY_DOWN)) == 0) {
         return -1;
     }
@@ -2088,8 +2377,19 @@ static void action_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             cur = i;
         }
     }
+    if (bw_ui_battle_auto_move != NULL && bw_ui_battle_auto_move() != 0 && en[0]) {
+        int t = auto_tick(1, in->frame);
+
+        eidos_ui_take_keys(BW_KEY_A | BW_KEY_B);
+
+        if (t >= 40 && (t - 40) % 60 == 0) {
+            tap_request(tap_x[0], tap_y[0], bt_sig(&b, 1), in->frame);
+            note_click(&b, 0);
+            cur = 0;
+        }
+    }
     {
-        int to = grid_step(en, cur);
+        int to = grid_step(en, cur, theme->battle_layout != NULL ? l.cmd : NULL);
 
         if (to >= 0) {
             set_input_cursor(&b, to);
@@ -2226,7 +2526,7 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     x0 = l.move[0].x;
     info_y = l.info_y;
     if (struggle) {
-        /* one tile across the last row (Remaster: the plates' width) */
+        /* one tile across the last row (Kosmos: the plates' width) */
         int sw = theme->battle_layout != NULL ? l.move[3].x + l.move[3].w - l.move[2].x : sh.pw;
         int st = hit(c, l.move[2].x, l.move[2].y, sw, th);
 
@@ -2255,8 +2555,31 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 cur = i;
             }
         }
+        if (bw_ui_battle_auto_move != NULL && bw_ui_battle_auto_move() != 0) {
+            int want = bw_ui_battle_auto_move(), k = 0, j, t = auto_tick(2, in->frame);
+
+            eidos_ui_take_keys(BW_KEY_A | BW_KEY_B);
+
+            for (i = 0; i < 4; i++) {
+                if (mv[i].id == want) {
+                    k = i;
+                }
+            }
+            /* a step every 30 frames up to the move, 130 frames on it */
+            for (j = 0; j <= k; j++) {
+                if (t == 30 * j && en[j]) {
+                    set_input_cursor(&b, j);
+                    cur = j;
+                }
+            }
+            if (t >= 30 * k + 130 && (t - (30 * k + 130)) % 60 == 0) {
+                tap_request(tap_x[k], tap_y[k], bt_sig(&b, 2), in->frame);
+                note_click(&b, k);
+                cur = k;
+            }
+        }
         {
-            int to = grid_step(en, cur);
+            int to = grid_step(en, cur, theme->battle_layout != NULL ? l.move : NULL);
 
             if (to >= 0) {
                 set_input_cursor(&b, to);
@@ -2289,12 +2612,26 @@ static void move_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             int shown = hovered >= 0 ? hovered : (cur >= 0 && cur < 4 ? cur : 0);
 
             if (mv[shown].id != 0 && theme->battle_move_info != NULL) {
-                char name[40];
+                char name[40], desc[256];
+                const char *d = ui_game_text(2, 202, (u32)mv[shown].id);
+                UiMoveInfo mi;
+                int n = 0;
 
                 move_name(mv[shown].id, name, sizeof(name));
-                theme->battle_move_info(c, &l, name,
-                                        mv[shown].category == 2 ? 1 : mv[shown].category == 1 ? 0 : 2,
-                                        mv[shown].power, mv[shown].accuracy);
+                /* the description on one line */
+                for (; d != NULL && *d != '\0' && n < (int)sizeof(desc) - 1; d++) {
+                    desc[n++] = *d == '\n' ? ' ' : *d;
+                }
+                desc[n] = '\0';
+                mi.name = name;
+                mi.desc = desc;
+                mi.type = mv[shown].type;
+                mi.category = mv[shown].category == 2 ? 1 : mv[shown].category == 1 ? 0 : 2;
+                mi.power = mv[shown].power;
+                mi.accuracy = mv[shown].accuracy;
+                mi.pp = mv[shown].pp;
+                mi.maxpp = mv[shown].maxpp;
+                theme->battle_move_info(c, &l, &mi);
             } else if (mv[shown].id != 0) {
                 char info[48];
 
@@ -2369,8 +2706,11 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     static const int t_y[6] = { 108, 60, 108, 60, 108, 60 };
     Bt b;
     Shell sh;
-    int cw, x, y, i, rows = 0, back_y, hovered = -1, cur, corner, group;
+    int cw, x, y, i, rows = 0, back_y, hovered = -1, cur, corner, group, back_hot = 0;
     int vp_list[6], legal[6];
+    int themed = ui_theme_active()->battle_layout != NULL;
+    UiBattleLayout tl;
+    EidosUiRect back;
     char prompt_buf[96];
     const u8 *targets;
     int count;
@@ -2383,6 +2723,9 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     shell_layout(c, &b, &sh);
     cw = sh.pw;
     x = sh.px;
+    if (themed) {
+        battle_begin(c, &sh, &tl, UI_BATTLE_MESSAGE);      /* the theme's message ground */
+    }
     keys_live(&b);
     cur = input_cursor(&b);
     targets = b.aux + 0x80;
@@ -2516,6 +2859,17 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             }
             /* one lit at a time, a move that hits several too (taking any
              * of them takes the move) */
+            if (themed) {
+                /* every Pokemon that can be chosen is marked, the chosen
+                 * one with the theme's own mark */
+                for (i = 0; i < rows; i++) {
+                    int fx = mr[i].x, fy = mr[i].y, fw = mr[i].w, fh = i == ci ? -mr[i].h : mr[i].h;
+
+                    if (legal[i] && !ui_app_window(c, "target-mark", &fx, &fy, &fw, &fh) && i == ci) {
+                        ui_cursor_corners(c, mr[i].x, mr[i].y, mr[i].w, mr[i].h, UI_CYAN);
+                    }
+                }
+            } else
             ui_cursor_corners(c, mr[ci].x, mr[ci].y, mr[ci].w, mr[ci].h, UI_CYAN);
         }
     }
@@ -2590,14 +2944,27 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             ui_fill(c, x + 3, ry + 3, cw - 6, 16, UI_INK, 120);
         }
     }
+    back.x = x;
+    back.y = back_y;
+    back.w = cw;
+    back.h = 20;
+    if (themed) {
+        /* inside the message box, at its right end (above it when narrow) */
+        back.w = 72;
+        back.h = 24;
+        back.x = tl.msg.x + tl.msg.w - 10 - back.w;
+        back.y = tl.msg.w >= 400 ? tl.msg.y + (tl.msg.h - back.h) / 2 : tl.msg.y - back.h - 4;
+    }
     {
-        int st = hit(c, x, back_y, cw, 20);
-        int sel = (st & EIDOS_UI_HOVER) != 0;
+        int st = hit(c, back.x, back.y, back.w, back.h);
 
+        back_hot = (st & EIDOS_UI_HOVER) != 0;
         if (st & EIDOS_UI_CLICK) {
             tap_request(215, 167, bt_sig(&b, 3), in->frame);
         }
-        ui_cmd_button(c, x, back_y, cw, 20, "BACK", UI_GREY, sel);
+        if (!themed) {
+            ui_cmd_button(c, back.x, back.y, back.w, back.h, "BACK", UI_GREY, back_hot);
+        }
     }
     tap_service(bt_sig(&b, 3), in->frame);
     if (eidos_ui_right_click()) {
@@ -2613,6 +2980,9 @@ static void target_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         snprintf(prompt_buf, sizeof(prompt_buf), ui_trf("Use %s on which?"), mname);
     }
     shell_draw(c, &b, &sh, prompt_buf, 1);
+    if (themed) {
+        ui_cmd_button(c, back.x, back.y, back.w, back.h, "BACK", UI_GREY, back_hot);
+    }
     draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
 }
 
@@ -2656,7 +3026,17 @@ static void modal_back(EidosUiCtx *c, const Modal *m, const EidosUiFrame *in, in
 static void modal_frame(EidosUiCtx *c, const Modal *m, const char *title, const char *sub,
                         const char *right, u32 accent, u32 fill, u32 edge)
 {
-    ui_panel(c, m->x, m->y, m->w, m->h, UI_CUT_TL | UI_CUT_BR, 8, fill, edge, 245);
+    {
+        int x = m->x, y = m->y, w = m->w, h = m->h;
+
+        /* (forget-a-move has a name of its own: a style may give it its own colours) */
+        const char *app = title[0] == 'B' ? "battle-bag"
+                          : sub != NULL && strcmp(sub, "FORGET A MOVE") == 0 ? "battle-forget" : "battle-party";
+
+        if (!ui_app_window(c, app, &x, &y, &w, &h)) {
+            ui_panel(c, m->x, m->y, m->w, m->h, UI_CUT_TL | UI_CUT_BR, 8, fill, edge, 245);
+        }
+    }
     ui_header(c, m->x + 3, m->y + 3, m->w - 6, title, sub, right, accent);
 }
 
@@ -2669,6 +3049,15 @@ static int push_button(EidosUiCtx *c, int x, int y, int w, int h, const char *te
 
     ui_cmd_button(c, x, y, w, h, text, enabled ? color : UI_EDGE2, sel);
     return enabled ? st : 0;
+}
+
+/* A BACK button's width: 54, or what its word needs in a theme's large type
+ * (RETOUR, INDIETRO). */
+static int back_w(void)
+{
+    int w = ui_text_w("BACK", UI_FONT_LARGE) + 16;
+
+    return ui_theme_active_has_frame() && w > 54 ? w : 54;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2762,23 +3151,67 @@ static int bag_match(void)
     return bt_read(&b) && b.bag != NULL;
 }
 
-static const char *pocket_name(int pocket, char *buf, int cap)
+/* What stands between a pocket name's two words: nothing after a hyphen
+ * (German ends the first word with one: "KP-/AP-" "ERHOLUNG"). */
+static const char *word_gap(const char *first)
+{
+    size_t n = strlen(first);
+
+    return n > 0 && first[n - 1] == '-' ? "" : " ";
+}
+
+/* The game's two words of a pocket's name as one. */
+static const char *two_words(char *buf, int cap, u32 i1, const char *f1, u32 i2, const char *f2)
 {
     char a[40], d[40];
+    const char *w1 = label(MSG_BAG_UI, i1, f1, a, sizeof(a));
+    const char *w2 = label(MSG_BAG_UI, i2, f2, d, sizeof(d));
 
+    if (snprintf(buf, (size_t)cap, "%s%s%s", w1, word_gap(w1), w2) >= cap) {
+        buf[cap - 1] = '\0';     /* cut to the buffer; the text stays terminated */
+    }
+    return buf;
+}
+
+static const char *pocket_name(int pocket, char *buf, int cap);
+
+/* A pocket's name on two lines: the game's two words for the first two
+ * pockets, the others broken at the space nearest their middle (l2 empty
+ * when the name is one word). */
+static void pocket_lines(int pocket, char *l1, char *l2, int cap)
+{
+    char a[40], whole[64];
+    const char *nm;
+    int n, i, best = -1;
+
+    l1[0] = l2[0] = '\0';
+    if (pocket == 0 || pocket == 1) {
+        snprintf(l1, (size_t)cap, "%s", label(MSG_BAG_UI, pocket == 0 ? 22 : 24, pocket == 0 ? "HP/PP" : "STATUS", a, sizeof(a)));
+        snprintf(l2, (size_t)cap, "%s", label(MSG_BAG_UI, pocket == 0 ? 23 : 25, "RESTORE", a, sizeof(a)));
+        return;
+    }
+    nm = pocket_name(pocket, whole, sizeof(whole));
+    n = (int)strlen(nm);
+    for (i = 1; i < n - 1; i++) {
+        if (nm[i] == ' ' && (best < 0 || abs(2 * i - n) < abs(2 * best - n))) {
+            best = i;
+        }
+    }
+    if (best < 0) {
+        snprintf(l1, (size_t)cap, "%s", nm);
+        return;
+    }
+    snprintf(l1, (size_t)cap, "%.*s", best, nm);
+    snprintf(l2, (size_t)cap, "%s", nm + best + 1);
+}
+
+static const char *pocket_name(int pocket, char *buf, int cap)
+{
     switch (pocket) {
     case 0:
-        if (snprintf(buf, (size_t)cap, "%s %s", label(MSG_BAG_UI, 22, "HP/PP", a, sizeof(a)),
-                     label(MSG_BAG_UI, 23, "RESTORE", d, sizeof(d))) >= cap) {
-            buf[cap - 1] = '\0';     /* cut to the buffer; the text stays terminated */
-        }
-        return buf;
+        return two_words(buf, cap, 22, "HP/PP", 23, "RESTORE");
     case 1:
-        if (snprintf(buf, (size_t)cap, "%s %s", label(MSG_BAG_UI, 24, "STATUS", a, sizeof(a)),
-                     label(MSG_BAG_UI, 25, "RESTORE", d, sizeof(d))) >= cap) {
-            buf[cap - 1] = '\0';     /* cut to the buffer; the text stays terminated */
-        }
-        return buf;
+        return two_words(buf, cap, 24, "STATUS", 25, "RESTORE");
     case 2:
         return label(MSG_BAG_UI, 26, "POK\xC3\x89 BALLS", buf, cap);
     default:
@@ -2799,6 +3232,301 @@ static u32 bag_sig(const BagV *v)
            ((u32)(v->p[0x530]) & 0xFFu);
 }
 
+
+/* ---- a theme's pocket page (hook "bag-pockets") ---- */
+
+static int g_bag_hist[4];           /* the last items used in battle, newest first (the port's own list) */
+static int g_bag_pick;              /* an item of that list being fetched: its pocket, its page, its place */
+static u32 g_bag_pick_since;
+static int g_bagp_cur, g_bagp_back; /* the interface's cursor on a theme's page (0-3 pockets, 4-7 list, 8 BACK) */
+static u32 g_bagp_frame;
+
+/* Where an item is: its pocket and its place in it; its count (0: none left). */
+static int bag_find(const BagV *v, int item, int *pocket, int *index)
+{
+    int pk, n, q;
+
+    for (pk = 0; pk < 4; pk++) {
+        for (n = 0; n < 36; n++) {
+            if (bag_item(v, pk, n, &q) == item && q > 0) {
+                *pocket = pk;
+                *index = n;
+                return q;
+            }
+        }
+    }
+    return 0;
+}
+
+static void bag_hist_note(int item)
+{
+    int i, at = 3;
+
+    if (item == 0 || g_bag_hist[0] == item) {
+        return;
+    }
+    for (i = 0; i < 4; i++) {
+        if (g_bag_hist[i] == item) {
+            at = i;
+        }
+    }
+    for (i = at; i > 0; i--) {
+        g_bag_hist[i] = g_bag_hist[i - 1];
+    }
+    g_bag_hist[0] = item;
+}
+
+static int bag_pockets_theme(EidosUiCtx *c, const EidosUiFrame *in, const BagV *v, u32 sig, int ix, int iy, int iw,
+                             int ih, const int *pocket_x, const int *pocket_y)
+{
+    int kind = ix, ky = iy, kw = iw, kh = ih, i, n_hist = 0, hist[4], hq[4], usable = v->key_item != 0;
+    u32 pressed = eidos_ui_keys_pressed();
+    char buf[64], name[48], cnt[16];
+    int act = -1;                       /* what A or a click chose this frame */
+    EidosUiRect r[8];
+
+    if (!ui_app_window(c, "bag-pockets", &kind, &ky, &kw, &kh) || (kind != 1 && kind != 2)) {
+        return 0;
+    }
+    if (in->frame - g_bagp_frame > 2u) {
+        g_bagp_cur = 0;                 /* the page opens on the first pocket */
+    }
+    g_bagp_frame = in->frame;
+    memset(r, 0, sizeof r);
+    if (kind == 1) {
+        int ph = (ih - 3 * 5) / 4, cwid = iw * 47 / 100, lx = ix + cwid + 8, lw = iw - cwid - 8, lh = ih - 24;
+
+        for (i = 0; i < 4; i++) {
+            int pk, at;
+
+            if (g_bag_hist[i] != 0 && (hq[n_hist] = bag_find(v, g_bag_hist[i], &pk, &at)) > 0) {
+                hist[n_hist++] = g_bag_hist[i];
+            }
+        }
+        for (i = 0; i < 4; i++) {
+            r[i].x = ix;
+            r[i].y = iy + i * (ph + 5);
+            r[i].w = cwid;
+            r[i].h = ph;
+        }
+        for (i = 0; i < n_hist; i++) {
+            r[4 + i].x = lx + 5;
+            r[4 + i].y = iy + 18 + i * 34;
+            r[4 + i].w = lw - 10;
+            r[4 + i].h = 30;
+        }
+        /* the keys: up and down in a column, left and right between the two, down from the list to BACK */
+        eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_A);
+        if (g_bagp_cur < 4) {
+            g_bagp_cur += (pressed & BW_KEY_DOWN) && g_bagp_cur < 3 ? 1 : (pressed & BW_KEY_UP) && g_bagp_cur > 0 ? -1 : 0;
+            if (pressed & BW_KEY_RIGHT) {
+                g_bagp_cur = n_hist > 0 ? 4 + (g_bagp_cur < n_hist ? g_bagp_cur : n_hist - 1) : 8;
+            }
+        } else if (g_bagp_cur < 8) {
+            if (pressed & BW_KEY_LEFT) {
+                g_bagp_cur -= 4;
+            } else if (pressed & BW_KEY_DOWN) {
+                g_bagp_cur = g_bagp_cur - 4 < n_hist - 1 ? g_bagp_cur + 1 : 8;
+            } else if ((pressed & BW_KEY_UP) && g_bagp_cur > 4) {
+                g_bagp_cur--;
+            }
+            if (g_bagp_cur < 8 && g_bagp_cur - 4 >= n_hist) {
+                g_bagp_cur = n_hist > 0 ? 4 + n_hist - 1 : 0;
+            }
+        } else if (pressed & (BW_KEY_UP | BW_KEY_LEFT)) {
+            g_bagp_cur = (pressed & BW_KEY_UP) && n_hist > 0 ? 4 + n_hist - 1 : 3;
+        }
+        for (i = 0; i < 4 + n_hist; i++) {
+            int st = hit(c, r[i].x, r[i].y, r[i].w, r[i].h);
+
+            if (st & EIDOS_UI_HOVER) {
+                g_bagp_cur = i;
+            }
+            if (st & EIDOS_UI_CLICK) {
+                act = i;
+            }
+        }
+        if ((pressed & BW_KEY_A) && act < 0) {
+            act = g_bagp_cur;
+        }
+        for (i = 0; i < 4; i++) {
+            int sel = g_bagp_cur == i;
+            const UiImage *icon = ui_item_icon((u16)pocket_icon_item(i));
+
+            ui_panel(c, r[i].x, r[i].y, r[i].w, r[i].h, UI_CUT_TL | UI_CUT_BR, 5, sel ? UI_PINK2 : 0x3C0A1Au,
+                     sel ? UI_WHITE : UI_RED, 255);
+            if (icon != NULL) {
+                ui_image(c, r[i].x + 8, r[i].y + (ph - icon->h) / 2, icon, 1);
+            }
+            ui_text(c, r[i].x + 40, r[i].y + ui_text_y(ph, UI_FONT_LARGE), pocket_name(i, buf, sizeof(buf)), UI_WHITE,
+                    UI_RED2, UI_FONT_LARGE, 1);
+            put_num(cnt, sizeof(cnt), v->count[i]);
+            ui_text(c, r[i].x + cwid - 10 - ui_text_w(cnt, UI_FONT_SMALL), r[i].y + ui_text_y(ph, UI_FONT_SMALL), cnt,
+                    UI_LIGHT, UI_RED2, UI_FONT_SMALL, 1);
+        }
+        ui_panel(c, lx, iy, lw, lh, UI_CUT_TL | UI_CUT_BR, 6, 0x3C0A1Au, UI_RED, 255);
+        ui_text(c, lx + 8, iy + 4, label(MSG_BAG_UI, 8, "LAST USED ITEM", buf, sizeof(buf)), UI_PINK, UI_RED2,
+                UI_FONT_SMALL, 1);
+        for (i = 0; i < n_hist; i++) {
+            const EidosUiRect *q = &r[4 + i];
+            const UiImage *icon = ui_item_icon((u16)hist[i]);
+            int sel = g_bagp_cur == 4 + i;
+            char qty[24];
+
+            ui_panel(c, q->x, q->y, q->w, q->h, UI_CUT_TL | UI_CUT_BR, 4, sel ? UI_PINK2 : 0x3C0A1Au,
+                     sel ? UI_WHITE : UI_RED, 255);
+            if (icon != NULL) {
+                ui_image(c, q->x + 6, q->y + (q->h - icon->h) / 2, icon, 1);
+            }
+            item_name(hist[i], name, sizeof(name));
+            ui_text(c, q->x + 34, q->y + ui_text_y(q->h, UI_FONT_LARGE), name, UI_WHITE, UI_RED2, UI_FONT_LARGE, 1);
+            snprintf(qty, sizeof(qty), "\xC3\x97%d", hq[i]);
+            ui_text(c, q->x + q->w - 8 - ui_text_w(qty, UI_FONT_LARGE), q->y + ui_text_y(q->h, UI_FONT_LARGE), qty,
+                    UI_WHITE, UI_RED2, UI_FONT_LARGE, 1);
+        }
+        if (n_hist == 0) {
+            const char *none = "No item used yet";
+
+            ui_text(c, lx + (lw - ui_text_w(none, UI_FONT_LARGE)) / 2, iy + ui_text_y(lh, UI_FONT_LARGE), none, UI_GREY,
+                    UI_RED2, UI_FONT_LARGE, 1);
+        }
+        if (act >= 4 && act < 4 + n_hist) {
+            if (hist[act - 4] == v->key_item) {
+                tap_request(107, 171, sig, in->frame);      /* the game's own last item */
+            } else {
+                g_bag_pick = hist[act - 4];
+                g_bag_pick_since = in->frame;
+            }
+        }
+    } else {
+        /* one row of four leaning plates, no gaps; under it the last item, leaning too */
+        static const int of_row[4] = { 0, 2, 1, 3 };
+        int ph = ih - 72 - 26, lean = ph / 5, pw = (iw - lean) / 4, row_font = UI_FONT_LARGE, two = 0;
+        char ln1[4][40], ln2[4][40];
+
+        /* one type for the four names.  Every name on one line in the large
+         * type when they fit; else the names on two lines (the DS's pocket
+         * buttons have them so), in the largest type every line fits in */
+        for (i = 0; i < 4; i++) {
+            pocket_lines(i, ln1[i], ln2[i], 40);
+            if (ui_text_w(pocket_name(i, buf, sizeof(buf)), UI_FONT_LARGE) > pw - 6) {
+                two = 1;
+            }
+        }
+        for (i = 0; two && i < 4; i++) {
+            while (row_font != UI_FONT_SMALL
+                   && (ui_text_w(ln1[i], row_font) > pw - 6 || ui_text_w(ln2[i], row_font) > pw - 6)) {
+                row_font = row_font == UI_FONT_LARGE ? UI_FONT_MEDIUM : UI_FONT_SMALL;
+            }
+        }
+
+        for (i = 0; i < 4; i++) {
+            r[i].x = ix + i * pw;
+            r[i].y = iy;
+            r[i].w = pw;
+            r[i].h = ph;
+        }
+        r[4].x = ix;
+        r[4].y = iy + ph + 6;
+        r[4].w = iw - 80;
+        r[4].h = ih - ph - 6 - 4;
+        eidos_ui_take_keys(BW_KEY_UP | BW_KEY_DOWN | BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_A);
+        if (g_bagp_cur < 4) {
+            g_bagp_cur += (pressed & BW_KEY_RIGHT) && g_bagp_cur < 3 ? 1 : (pressed & BW_KEY_LEFT) && g_bagp_cur > 0 ? -1 : 0;
+            if (pressed & BW_KEY_DOWN) {
+                g_bagp_cur = usable ? 4 : 8;
+            }
+        } else if (g_bagp_cur == 4) {
+            g_bagp_cur = (pressed & BW_KEY_UP) ? 0 : (pressed & BW_KEY_RIGHT) ? 8 : 4;
+        } else if (pressed & (BW_KEY_UP | BW_KEY_LEFT)) {
+            g_bagp_cur = (pressed & BW_KEY_LEFT) && usable ? 4 : 3;
+        }
+        for (i = 0; i < 5; i++) {
+            int st = hit(c, r[i].x + (i < 4 ? lean / 2 : 0), r[i].y, r[i].w, r[i].h);
+
+            if ((st & EIDOS_UI_HOVER) && (i < 4 || usable)) {
+                g_bagp_cur = i;
+            }
+            if ((st & EIDOS_UI_CLICK) && (i < 4 || usable)) {
+                act = i;
+            }
+        }
+        if ((pressed & BW_KEY_A) && act < 0) {
+            act = g_bagp_cur;
+        }
+        for (i = 0; i < 5; i++) {
+            int px = r[i].x, py = r[i].y, pw2 = r[i].w, sel = g_bagp_cur == i, fh = sel ? -r[i].h : r[i].h, ln = 0, mid;
+            u32 ink;
+
+            (void)ui_app_window(c, "bag-plate", &px, &py, &pw2, &fh);
+            ln = pw2;                   /* the plate's lean, as the theme drew it */
+            ink = fh == 1 ? 0x181818u : 0xF8F8F8u;
+            mid = r[i].x + r[i].w / 2 + ln / 2;
+            if (i < 4) {
+                int pk = of_row[i], font = row_font;
+                const UiImage *icon = ui_item_icon((u16)pocket_icon_item(pk));
+                const char *nm = pocket_name(pk, buf, sizeof(buf));
+
+                if (icon != NULL) {
+                    ui_image(c, mid + ln / 6 - icon->w, r[i].y + ph * 36 / 100 - icon->h, icon, 2);
+                }
+                if (two && ln2[pk][0] != '\0') {
+                    /* two lines, each at the leaning plate's middle at its own height */
+                    int y1 = r[i].y + ph * 72 / 100 - 7, y2 = y1 + 13;
+                    int c1 = r[i].x + r[i].w / 2 + ln * (r[i].y + ph - (y1 + 6)) / ph;
+                    int c2 = r[i].x + r[i].w / 2 + ln * (r[i].y + ph - (y2 + 6)) / ph;
+
+                    ui_text(c, c1 - ui_text_w(ln1[pk], font) / 2, y1, ln1[pk], UI_RAW(ink), -1, font, 1);
+                    ui_text(c, c2 - ui_text_w(ln2[pk], font) / 2, y2, ln2[pk], UI_RAW(ink), -1, font, 1);
+                } else {
+                    /* the plate's middle at the name's height (78% of the way down: 0.22 of the lean) */
+                    ui_text(c, mid - ln * 28 / 100 - ui_text_w(nm, font) / 2, r[i].y + ph * 72 / 100, nm, UI_RAW(ink), -1, font,
+                            1);
+                }
+                put_num(cnt, sizeof(cnt), v->count[pk]);
+                ui_text(c, r[i].x + r[i].w + ln - 10 - ui_text_w(cnt, UI_FONT_SMALL), r[i].y + 6, cnt, UI_RAW(ink), -1,
+                        UI_FONT_SMALL, 1);
+            } else {
+                ui_text(c, r[4].x + ln + 10, r[4].y + 5, label(MSG_BAG_UI, 8, "LAST USED ITEM", buf, sizeof(buf)),
+                        UI_RAW(fh == 1 ? 0xB02050u : 0xF06088u), -1, UI_FONT_SMALL, 1);
+                if (usable) {
+                    const UiImage *icon = ui_item_icon((u16)v->key_item);
+                    char qty[24];
+                    int tw;
+
+                    item_name(v->key_item, name, sizeof(name));
+                    snprintf(qty, sizeof(qty), "\xC3\x97%d", bag_qty_of(v, v->key_slot, v->key_item));
+                    tw = ui_text_w(name, UI_FONT_LARGE);
+                    if (icon != NULL) {
+                        ui_image(c, mid - tw / 2 - icon->w - 8, r[4].y + 8 + (r[4].h - 8 - icon->h) / 2, icon, 1);
+                    }
+                    ui_text(c, mid - tw / 2, r[4].y + 8 + ui_text_y(r[4].h - 8, UI_FONT_LARGE), name, UI_RAW(ink), -1,
+                            UI_FONT_LARGE, 1);
+                    ui_text(c, r[4].x + r[4].w - 12 - ui_text_w(qty, UI_FONT_LARGE),
+                            r[4].y + 8 + ui_text_y(r[4].h - 8, UI_FONT_LARGE), qty, UI_RAW(ink), -1, UI_FONT_LARGE, 1);
+                } else {
+                    const char *none = "No item used yet";
+
+                    ui_text(c, mid - ui_text_w(none, UI_FONT_LARGE) / 2, r[4].y + 8 + ui_text_y(r[4].h - 8, UI_FONT_LARGE),
+                            none, UI_RAW(0x9A9AA0u), -1, UI_FONT_LARGE, 1);
+                }
+            }
+        }
+        if (act >= 0 && act < 4) {
+            act = of_row[act];
+        } else if (act == 4) {
+            tap_request(107, 171, sig, in->frame);
+            act = -1;
+        }
+    }
+    if (act >= 0 && act < 4) {
+        tap_request(pocket_x[act], pocket_y[act], sig, in->frame);
+    } else if (act == 8) {
+        tap_request(235, 171, sig, in->frame);
+    }
+    g_bagp_back = g_bagp_cur == 8;
+    return 1;
+}
 
 static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
@@ -2823,6 +3551,44 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     cursor_wake(rdp(b.bag, 0x144));
     bag_read(b.bag, &v);
     sig = bag_sig(&v);
+    bag_hist_note(v.key_item);
+    {
+        /* the item on the confirm page, and its count then: used when the
+         * Bag is next seen with fewer of it */
+        static int ask_item, ask_qty;
+        int q = 0;
+
+        if (v.page == 2) {
+            ask_item = bag_item(&v, v.pocket, v.scroll * 6 + v.slot, &q);
+            ask_qty = q;
+        } else if (ask_item != 0) {
+            int pk, at;
+
+            if (bag_find(&v, ask_item, &pk, &at) < ask_qty) {
+                bag_hist_note(ask_item);
+            }
+            ask_item = 0;
+        }
+    }
+    g_bagp_back = 0;
+    if (g_bag_pick != 0) {
+        /* an item of the last-used list: its pocket, its page, its place, as the player's own taps */
+        int pk = 0, at = 0;
+
+        if (bag_find(&v, g_bag_pick, &pk, &at) == 0 || v.page == 2 || in->frame - g_bag_pick_since > 240u) {
+            g_bag_pick = 0;
+        } else if (!g_pend) {
+            if (v.page == 0) {
+                tap_request(pocket_x[pk], pocket_y[pk], sig, in->frame);
+            } else if (v.pocket != pk) {
+                tap_request(235, 171, sig, in->frame);
+            } else if (v.scroll != at / 6) {
+                tap_request(v.scroll < at / 6 ? 59 : 19, 171, sig, in->frame);
+            } else {
+                tap_request(list_x[at % 6], list_y[at % 6], sig, in->frame);
+            }
+        }
+    }
     if (debug_on()) {
         static u32 last_sig;
 
@@ -2842,10 +3608,18 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     iw = m.w - 12;
     ih = m.h - iy - 6;
 
-    if (v.page == 0) {
+    if (v.page == 0 && bag_pockets_theme(c, in, &v, sig, ix, iy, iw, ih, pocket_x, pocket_y)) {
+        /* a theme's own arrangement of the page (above) */
+    } else if (v.page == 0) {
         /* the four pockets, column by column as the game lays them out */
         int pw = (iw - 6) / 2, ph = 30;
         int last_y, last_h;
+
+        if (ui_theme_active_has_frame()) {
+            /* a theme's window: the pockets are large buttons, the last
+             * used item a bar under them */
+            ph = clampi((ih - 52 - 8) / 2, 30, 64);
+        }
 
         for (i = 0; i < 4; i++) {
             int px = ix + (i / 2) * (pw + 6);
@@ -3044,13 +3818,14 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         /* BACK: bottom right, where the game has it, so the arrows reach it
          * from the same side (the game's cursor: 5 on the pockets, 6 on the
          * list) */
-        int bx = m.x + m.w - 6 - 54;
+        int bwid = back_w();
+        int bx = m.x + m.w - 6 - bwid;
         int by = m.y + m.h - 6 - 18;
         int bh = 18;
-        int st = hit(c, bx, by, 54, bh);
-        int keyed = eidos_ui_keys_lit() && v.cursor == (v.page == 0 ? 5 : 6);
+        int st = hit(c, bx, by, bwid, bh);
+        int keyed = (eidos_ui_keys_lit() && v.cursor == (v.page == 0 ? 5 : 6)) || (v.page == 0 && g_bagp_back);
 
-        ui_cmd_button(c, bx, by, 54, bh, "BACK", UI_GREY, (st & EIDOS_UI_HOVER) != 0 || keyed);
+        ui_cmd_button(c, bx, by, bwid, bh, "BACK", UI_GREY, (st & EIDOS_UI_HOVER) != 0 || keyed);
         if (st & EIDOS_UI_CLICK) {
             tap_request(235, 171, sig, in->frame);
         }
@@ -3324,7 +4099,7 @@ static void pl_summary(EidosUiCtx *c, const PlV *v, int ix, int iy, int iw, int 
             tap_request(103, 171, sig, in->frame);
         }
     }
-    st = push_button(c, ix + iw - 54, nav_y, 54, 18, "BACK", UI_GREY, 1);
+    st = push_button(c, ix + iw - back_w(), nav_y, back_w(), 18, "BACK", UI_GREY, 1);
     if (st & EIDOS_UI_CLICK) {
         tap_request(235, 171, sig, in->frame);
     }
@@ -3384,6 +4159,12 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
     view->mode = EIDOS_VIEW_WORLD;
     view->blur = 1;
     m = modal_rect(c, 84, 320, 460, 84, 190, 260);
+    if (ui_theme_active_has_frame() && !(v.mode >= 2 && v.mode <= 7) && m.h > 218) {
+        /* a theme's window: as tall as the list, the message and the
+         * buttons need */
+        m.y += (m.h - 218) / 2;
+        m.h = 218;
+    }
     sub = v.mode == 6 || v.mode == 7 ? "FORGET A MOVE" : v.list_type == 3 ? "ITEM" : "SWITCH";
     modal_frame(c, &m, "POK\xC3\x89MON", sub, "", UI_PINK, UI_BODY2, UI_EDGE);
     ui_push(c, m.x, m.y, &saved);
@@ -3436,6 +4217,9 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
             }
             sel = menu_open ? (v.row == i) : (hov >= 0 ? hov == i : v.cursor == i);
             icon = ui_mon_icon((u16)rd16(s, 4), s[0x15], 0);
+            /* what it holds (B_PlistSlot.heldItem, +0x1A): the mark the DS's
+             * battle list has on the plate, on the row's icon here */
+            ui_party_row_held((s[0x16] >> 7) != 0 ? 0 : ui_held_kind(rd16(s, 0x1A)));
             ui_party_row(c, px, py, colw, i, name, s[0x17] & 7, s[0x16] & 0x7F, (int)rd16(s, 0x10),
                          (int)rd16(s, 0x12), icon, sel);
             badge = pl_status_badge(s);
@@ -3460,10 +4244,14 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
             }
         }
         ui_panel(c, ix, msg_y, iw, msg_h, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 235);
-        ui_text(c, ix + 10, msg_y + ui_text_y(msg_h, UI_FONT_LARGE), msg, UI_WHITE, UI_EDGE,
-                UI_FONT_LARGE, 1);
+        /* a theme's menu stands as a row at the box's foot: the words go to
+         * its head then */
+        ui_text(c, ix + 10,
+                menu_open && ui_theme_active_has_frame() && iw >= 4 * 70 + 30 ? msg_y + 5
+                                                                             : msg_y + ui_text_y(msg_h, UI_FONT_LARGE),
+                msg, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         {
-            int st = push_button(c, ix + iw - 54, iy + ih - 18, 54, 18, "BACK", UI_GREY, !menu_open);
+            int st = push_button(c, ix + iw - back_w(), iy + ih - 18, back_w(), 18, "BACK", UI_GREY, !menu_open);
 
             if (st & EIDOS_UI_CLICK) {
                 tap_request(235, 171, sig, in->frame);
@@ -3477,6 +4265,10 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
             /* the Pokemon menu: SHIFT (or why not), SUMMARY, CHECK MOVES, BACK */
             int mw = 150, mh = 4 * 28 + 4;
             int mx = ix + (iw - mw) / 2, my = iy + (ih - mh) / 2;
+            /* a theme's menu: its four entries side by side at the foot of
+             * the message's box, over nothing */
+            int across = ui_theme_active_has_frame() && iw >= 4 * 70 + 30;
+            int aw = (iw - 16 - 3 * 4) / 4;
             u8 *s = pl_row(&v, v.row);
             const char *first;
             char b1[40], b2[40], b3[40], b4[40];
@@ -3492,7 +4284,11 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
                 static const int order[4] = { 0, 1, 2, 3 };
                 static const int all[4] = { 1, 1, 1, 1 };
                 u8 *cm = rdp(v.p, 0x2184);
-                int to = column_step(order, 4, all, v.cursor);
+                int to;
+
+                g_column_across = across;
+                to = column_step(order, 4, all, v.cursor);
+                g_column_across = 0;
 
                 if (to >= 0 && gptr_ok(cm)) {
                     eidos_ui_sound(0x552);
@@ -3501,8 +4297,10 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
                     v.cursor = to;
                 }
             }
-            ui_fill(c, 0, 0, m.w, m.h, UI_INK, 120);
-            ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_SKY, 250);
+            if (!across) {
+                ui_fill(c, 0, 0, m.w, m.h, UI_INK, 120);
+                ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_SKY, 250);
+            }
             if (s != NULL && (int)rd16(s, 0x10) == 0) {
                 first = label(MSG_PLIST_UI, 26, "CANNOT BATTLE", b1, sizeof(b1));
             } else if (s != NULL && v.row < (int)v.host[0x22]) {
@@ -3515,13 +4313,20 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
             names[2] = label(MSG_PLIST_UI, 25, "CHECK MOVES", b3, sizeof(b3));
             names[3] = label(MSG_PLIST_UI, 69, "CANCEL", b4, sizeof(b4));
             for (i = 0; i < 4; i++) {
-                st = push_button(c, mx + 6, my + 4 + i * 28, mw - 12, 24, names[i],
+                int bx = mx + 6, by = my + 4 + i * 28, bw = mw - 12;
+
+                if (across) {
+                    bx = ix + 8 + i * (aw + 4);
+                    by = msg_y + msg_h - 24 - 5;
+                    bw = aw;
+                }
+                st = push_button(c, bx, by, bw, 24, names[i],
                                  i == 0 ? UI_MON : (i == 3 ? UI_GREY : UI_SKY), 1);
                 if (st & EIDOS_UI_CLICK) {
                     tap_request(tx2[i], ty2[i], sig, in->frame);
                 }
                 if (v.cursor == i && (st & EIDOS_UI_HOVER) == 0 && eidos_ui_keys_lit()) {
-                    ui_cursor_corners(c, mx + 6, my + 4 + i * 28, mw - 12, 24, UI_WHITE);
+                    ui_cursor_corners(c, bx, by, bw, 24, UI_WHITE);
                 }
             }
         }
@@ -3544,7 +4349,9 @@ static int strbuf_text(const u8 *sb, char *out, int cap)
     u32 len;
 
     out[0] = '\0';
-    if (!gptr_ok(sb)) {
+    /* a string in the game's memory, or one of the port's kept copies of a
+     * question's answers (sdk/battle_yesno.c) */
+    if (!gptr_ok(sb) && !(bw_battle_yesno_is_kept != NULL && sb != NULL && bw_battle_yesno_is_kept(sb))) {
         return 0;
     }
     len = rd16(sb, 2);
@@ -3625,6 +4432,58 @@ static void choice_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     y = sh.top - 2 * 28 - 3;
     keys_live(&b);
     cur = input_cursor(&b);
+    if (ui_theme_active()->battle_layout != NULL) {
+        /* a theme: the question in its message box, the two answers side by
+         * side inside the box at its right end (above it when it is narrow) */
+        UiBattleLayout l;
+        EidosUiRect r[2];
+        int bh2 = 24, wide;
+
+        battle_place(c, &sh, &l, UI_BATTLE_MESSAGE);
+        /* each as wide as its words; side by side in the box when the box
+         * has the room beside the question, else over its right end */
+        r[0].w = clampi(ui_text_w(text[0], UI_FONT_LARGE) + 30, 72, 170);
+        r[1].w = clampi(ui_text_w(text[1], UI_FONT_LARGE) + 30, 72, 170);
+        wide = l.msg.w >= 220 + r[0].w + r[1].w + 22;
+        r[1].x = l.msg.x + l.msg.w - 10 - r[1].w;
+        r[0].x = r[1].x - 6 - r[0].w;
+        for (i = 0; i < 2; i++) {
+            r[i].h = bh2;
+            r[i].y = wide ? l.msg.y + (l.msg.h - bh2) / 2 : l.msg.y - bh2 - 4;
+        }
+        for (i = 0; i < 2; i++) {
+            int st = hit(c, r[i].x, r[i].y, r[i].w, r[i].h);
+
+            if (st & EIDOS_UI_HOVER) {
+                hovered = i;
+            }
+            if (st & EIDOS_UI_CLICK) {
+                tap_request(127, tap_y[i], bt_sig(&b, 4), in->frame);
+            }
+        }
+        {
+            /* side by side: left and right move the game's cursor too */
+            u32 k = eidos_ui_keys_pressed();
+
+            eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT);
+            if ((k & BW_KEY_LEFT) && cur == 1) {
+                eidos_ui_press(BW_KEY_UP, 2);
+            } else if ((k & BW_KEY_RIGHT) && cur == 0) {
+                eidos_ui_press(BW_KEY_DOWN, 2);
+            }
+        }
+        tap_service(bt_sig(&b, 4), in->frame);
+        if (eidos_ui_right_click()) {
+            eidos_ui_press(BW_KEY_B, 2);
+        }
+        shell_draw(c, &b, &sh, question, 0);
+        for (i = 0; i < 2; i++) {
+            ui_cmd_button(c, r[i].x, r[i].y, r[i].w, r[i].h, text[i], i == 0 ? UI_MON : UI_GREY,
+                          hovered >= 0 ? hovered == i : cur == i);
+        }
+        draw_hint_strip(c, 0, c->canvas->w, hints, 2, keys);
+        return;
+    }
     for (i = 0; i < 2; i++) {
         int st = hit(c, x, y + i * 31, cw, 28);
 

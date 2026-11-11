@@ -850,7 +850,31 @@ static void boot_world_backdrop(BootRun *run, u32 bright)
     eidos_platform_set_world_backdrop(run->plat, rgb);
 }
 
+static void boot_gpu3d_do(BootRun *run, int behind_done, const char **why);
+
+/* The 3D's path for the next frame (the GPU, or the software rasteriser
+ * when the GPU cannot take this one).  A change of path is logged with its
+ * reason: the software rasteriser costs about 10 ms a frame more. */
 static void boot_gpu3d(BootRun *run, int behind_done)
+{
+    static int last = -1;
+    static const char *last_why;
+    const char *why = "";
+
+    boot_gpu3d_do(run, behind_done, &why);
+    if (run->plat != NULL && eidos_platform_gpu3d(run->plat) && (run->gpu3d_ok != last || (!run->gpu3d_ok && why != last_why))) {
+        const G3dSnapshot *snap = g3d_hw_snapshot();
+
+        fprintf(stderr, "eidos: 3D %s from frame %llu%s%s (snapshot flags 0x%X)\n",
+                run->gpu3d_ok ? "on the GPU" : "on the software rasteriser",
+                (unsigned long long)eidos_frame_count(&run->loop), why[0] != '\0' ? ": " : "", why,
+                snap != NULL ? (unsigned)snap->unsupported : 0xFFFFFFFFu);
+        last = run->gpu3d_ok;
+        last_why = why;
+    }
+}
+
+static void boot_gpu3d_do(BootRun *run, int behind_done, const char **why)
 {
     const G3dSnapshot *snap;
     u32 dispcnt, bright;
@@ -867,6 +891,7 @@ static void boot_gpu3d(BootRun *run, int behind_done)
         || (dispcnt & 0x100u) == 0u || ((dispcnt >> 16) & 3u) != 1u) {
         (void)eidos_platform_set_3d(run->plat, -1, NULL, NULL, 1, 0, 0.f, 0);
         run->gpu3d_ok = snap != NULL && snap->unsupported == 0u;
+        *why = snap == NULL ? "no snapshot" : snap->unsupported != 0u ? "a feature the GPU path lacks" : "";
         return;
     }
     if (run->gpu2d3d) {
@@ -874,6 +899,7 @@ static void boot_gpu3d(BootRun *run, int behind_done)
         const G2dGpuFrame *mf = g2d_gpu_frame(0);
 
         if (mf == NULL || !mf->valid) {
+            *why = "no 2D frame for the shader";
             return;
         }
         main_on_top = (bw_io_read16(0x04000304u) & 0x8000u) != 0;
@@ -881,12 +907,15 @@ static void boot_gpu3d(BootRun *run, int behind_done)
             if (eidos_platform_set_3d2d(run->plat, main_on_top ? 0 : 1, snap,
                                         eidos_settings_internal_scale()) == 0) {
                 run->gpu3d_ok = 1;
+            } else {
+                *why = "the GPU did not draw the frame (set_3d2d)";
             }
             return;
         }
         /* the world view: its own composite, with the screens it takes
          * made by the shader (below) */
     } else if (!behind_done || run->behind == NULL) {
+        *why = "the compositor did not make the screen with the 3D off";
         return;     /* the compositor did not make the 3D-off screen */
     }
     main_on_top = (bw_io_read16(0x04000304u) & 0x8000u) != 0;
@@ -928,6 +957,8 @@ static void boot_gpu3d(BootRun *run, int behind_done)
                                              bmode == 1u || bmode == 2u ? (int)bmode : 0,
                                              (float)f / 16.f) == 0) {
                 run->gpu3d_ok = 1;
+            } else {
+                *why = "the GPU did not draw the frame (set_3d_from2d)";
             }
             return;
         }
@@ -959,6 +990,8 @@ static void boot_gpu3d(BootRun *run, int behind_done)
                                   bmode == 1u || bmode == 2u ? (int)bmode : 0,
                                   (float)f / 16.f, run->gpu_real) == 0) {
             run->gpu3d_ok = 1;
+        } else {
+            *why = "the GPU did not draw the frame (set_3d)";
         }
     }
 }
@@ -1268,6 +1301,9 @@ static void boot_ui_frame(BootRun *run)
         eidos_platform_set_view(run->plat, &view);
         eidos_platform_set_ui_canvas(run->plat, canvas);
         dt = eidos_platform_now_ns(run->plat) - t0;
+        if (eidos_prof_on) {
+            eidos_prof_end(EIDOS_PROF_UI, eidos_prof_begin() - dt);
+        }
         spent += dt;
         worst = dt > worst ? dt : worst;
         if (++n == 300) {
@@ -1594,9 +1630,21 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
     (void)top;
     (void)bottom;
 #if EIDOS_BOOT_SDL
+    if (run->ff_skip && eidos_ui_quiet()) {
+        /* the style chooser's preview covers the game while it goes to
+         * another screen, and this frame is not shown: the interface has
+         * nothing to draw for it (it runs with the frames that are shown) */
+        return;
+    }
     boot_ui_frame(run);
     if (run->ff_skip) {
         return;     /* fast forward: this frame is not shown (boot_frame) */
+    }
+    if (eidos_ui_quiet() && (bw_io_read32(0x04000064u) & 0x80000000u) == 0u) {
+        /* the preview's cut covers the whole window: the game's screens and
+         * its 3D are not drawn for it (the frame shown is the cut over the
+         * last picture; not while the display capture reads the frame) */
+        return;
     }
 #endif
     /*
@@ -1887,6 +1935,9 @@ static void boot_audio_fast(BootRun *run)
         n = 1024u;
     }
     bw_snd_render(buf, n);
+    if (eidos_ui_quiet()) {
+        return;         /* the interface covers a jump in the game: not heard */
+    }
     if (eidos_platform_audio_queued(run->plat) < AUDIO_LATENCY_FRAMES) {
         eidos_platform_queue_audio(run->plat, buf, n);
     }
@@ -1915,7 +1966,8 @@ static void boot_audio_fast(BootRun *run)
 typedef enum BootRunNext {
     BOOT_RUN_TITLE = 0,    /* the title screen, as the port's reset leaves it */
     BOOT_RUN_NEW_GAME,     /* a new game, without the title                   */
-    BOOT_RUN_CONTINUE      /* the save that is in force                       */
+    BOOT_RUN_CONTINUE,     /* the save that is in force                       */
+    BOOT_RUN_MENU          /* the title menu, without the logos and the title */
 } BootRunNext;
 
 /*
@@ -2240,6 +2292,94 @@ extern void *SAVE_CONTROL_Get(void) __attribute__((weak));
 extern void *SAVE_CONTROL_Get(void);
 #endif
 
+/*
+ * The interface's own restarts (the style chooser's preview, engine/ui/
+ * ui.c): 1 the game starts again on the save in force, with no title and
+ * no menu; 2 it starts again at the title menu, with no logos and no title
+ * screen.  Carried out at the frame loop's next safe point.
+ */
+static int g_run_quick;     /* the start takes the logo screen's place (boot_proc_pushing_logo) */
+static int g_boot_push;     /* boot_start_game queues a push, not a replace */
+
+void eidos_boot_restart_to(int what)
+{
+    g_run_next = what == 1 ? BOOT_RUN_CONTINUE : what == 2 ? BOOT_RUN_MENU : BOOT_RUN_TITLE;
+    g_run_quick = g_run_next != BOOT_RUN_TITLE;
+    g_restart_pending = 1;
+}
+
+/*
+ * The game's process manager (arm9's procsys.c).  The launch driver at the
+ * bottom pushes the boot's processes one after the other, and a push shares
+ * its queue with a replace: a replace asked for while the driver is on top
+ * is lost to its next push (the flag stays, the table does not, and the
+ * child's end starts a process with no table).  1 while one of the driver's
+ * children is on top and nothing is queued: a replace then takes that
+ * child's place, the way the title's rows replace the title menu.
+ */
+typedef struct BootProc {
+    const void *data;
+    u32 overlayId, seq, subSeq;
+    void *procWork, *work;
+    struct BootProc *prev, *next;
+} BootProc;
+
+typedef struct BootProcSys {
+    u16 heapId, padding02;
+    u32 unused04;
+    BootProc *current;
+    u32 pushPending, replacePending, nextOverlayId;
+    const void *nextData;
+    void *nextProcWork;
+} BootProcSys;
+
+#if defined(__GNUC__) || defined(__clang__)
+extern BootProcSys *g_ProcSys __attribute__((weak));
+extern void *bw_dsref_g_ProcSys __attribute__((weak));
+#else
+extern BootProcSys *g_ProcSys;
+extern void *bw_dsref_g_ProcSys;
+#endif
+
+static int boot_proc_replaceable(void)
+{
+    BootProcSys *sys = NULL;
+
+    if (&g_ProcSys != NULL) {
+        sys = g_ProcSys;
+    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+        memcpy(&sys, bw_dsref_g_ProcSys, sizeof(sys));
+    } else {
+        return 1;                   /* (not in reach in this build: as it was) */
+    }
+    return sys != NULL && sys->current != NULL && sys->current->prev != NULL
+           && sys->pushPending == 0u && sys->replacePending == 0u;
+}
+
+/*
+ * 1 while the launch driver is on top with its first push queued: the logo
+ * screen (ov088's STARTMENU_LogoScreen, the ProcData at 0x021BD8E8), which
+ * has not begun.  A push queued now takes its place in the queue, so the
+ * process it names starts where the logo screen would have; when that
+ * process ends the driver goes on with its next one, as after the logo
+ * screen.
+ */
+#define BOOT_LOGO_PROC_ADDR 0x021BD8E8u
+
+static int boot_proc_pushing_logo(void)
+{
+    BootProcSys *sys = NULL;
+
+    if (&g_ProcSys != NULL) {
+        sys = g_ProcSys;
+    } else if (&bw_dsref_g_ProcSys != NULL && bw_dsref_g_ProcSys != NULL) {
+        memcpy(&sys, bw_dsref_g_ProcSys, sizeof(sys));
+    }
+    return sys != NULL && sys->current != NULL && sys->current->prev == NULL
+           && sys->pushPending != 0u && sys->replacePending == 0u && sys->nextOverlayId == 88u
+           && sys->nextData != NULL && sys->nextData == bw_ds_try_ptr(BOOT_LOGO_PROC_ADDR);
+}
+
 /* Multiplayer boots a joiner's game on the save the host sent. */
 static void boot_mp_boot(int new_game)
 {
@@ -2251,6 +2391,8 @@ static void boot_mp_boot(int new_game)
 }
 
 /* The halt hook: one frame of time passing. */
+static unsigned long long g_game_since;     /* the end of the last frame function (the profiler's clock) */
+
 static void boot_frame(void *user)
 {
     BootRun *run = (BootRun *)user;
@@ -2399,8 +2541,17 @@ static void boot_frame(void *user)
         SAVE_CONTROL_Get != NULL && SAVE_CONTROL_Get() != NULL) {
         /* the game's own start-up has made its save control: the game
          * systems are up, and the title's own continue would run now */
-        boot_start_game(g_run_next);
-        g_run_next = BOOT_RUN_TITLE;
+        if (g_run_quick && boot_proc_pushing_logo()) {
+            g_boot_push = 1;            /* in the logo screen's place */
+            boot_start_game(g_run_next);
+            g_boot_push = 0;
+            g_run_next = BOOT_RUN_TITLE;
+            g_run_quick = 0;
+        } else if (boot_proc_replaceable()) {
+            boot_start_game(g_run_next);
+            g_run_next = BOOT_RUN_TITLE;
+            g_run_quick = 0;
+        }
     }
 
 #if EIDOS_BOOT_SDL
@@ -2411,6 +2562,31 @@ static void boot_frame(void *user)
 
     if (eidos_frame_count(&run->loop) >= run->limit) {
         boot_finish(0, "ran");
+    }
+    if (eidos_ui_script_quit()) {
+        boot_finish(eidos_ui_script_quit() == 2 ? 3 : 0, "the test script ended");
+    }
+
+    if (eidos_prof_on && g_game_since != 0) {
+        unsigned long long now = eidos_prof_begin();
+
+        eidos_prof_end(EIDOS_PROF_GAME, g_game_since);
+        eidos_hitch_frame((double)(now - g_game_since) / 1e6, eidos_frame_count(&run->loop));
+        {
+            /* the VRAM bank map's share of a slow frame (sdk/dsmem.c) */
+            extern unsigned bw_vram_stat_remaps, bw_vram_stat_moves;
+            extern unsigned long long bw_vram_stat_bytes, bw_vram_stat_ns;
+
+            if (now - g_game_since >= 50000000ull && getenv("EIDOS_HITCH_MS") != NULL) {
+                fprintf(stderr, "eidos: hitch vram: %u remaps, %u bank moves, %.1f MB copied, %.1f ms\n",
+                        bw_vram_stat_remaps, bw_vram_stat_moves, (double)bw_vram_stat_bytes / 1048576.0,
+                        (double)bw_vram_stat_ns / 1e6);
+            }
+            bw_vram_stat_remaps = bw_vram_stat_moves = 0;
+            bw_vram_stat_bytes = bw_vram_stat_ns = 0;
+        }
+    } else {
+        eidos_hitch_frame(0.0, 0);      /* EIDOS_HITCH_MS turns the profiler's clock on */
     }
 
     /* Line 0 of the next frame: the vblank flag drops. */
@@ -2448,7 +2624,8 @@ static void boot_frame(void *user)
 
         run->ff_skip = ff > 1 && run->ff_since + 1u < (u32)ff
             && eidos_platform_now_ns(run->plat) - run->ff_shown_ns < 16666667ull
-            && (bw_io_read32(0x04000064u) & 0x80000000u) == 0u;
+            && (bw_io_read32(0x04000064u) & 0x80000000u) == 0u
+            && !eidos_ui_script_draw();     /* a test's picture is about to be taken */
         run->ff_since = run->ff_skip ? run->ff_since + 1u : 0u;
     }
 #endif
@@ -2465,6 +2642,23 @@ static void boot_frame(void *user)
         int i;
         for (i = 0; i < g_shot_count; i++) {
             if (g_shots[i] == n) {
+                boot_screenshot(run, n);
+            }
+        }
+        {
+            /* EIDOS_SHOT_EVERY=N: a screenshot every N frames from frame
+             * EIDOS_SHOT_FROM on (a recording of a whole scene, which
+             * --screenshot's list is too short for) */
+            static int every = -1;
+            static u64 from;
+
+            if (every < 0) {
+                const char *e = getenv("EIDOS_SHOT_EVERY"), *f = getenv("EIDOS_SHOT_FROM");
+
+                every = e != NULL ? atoi(e) : 0;
+                from = f != NULL ? strtoull(f, NULL, 10) : 0;
+            }
+            if (every > 0 && n >= from && (n - from) % (u64)every == 0) {
                 boot_screenshot(run, n);
             }
         }
@@ -2497,6 +2691,30 @@ static void boot_frame(void *user)
             }
         }
         eidos_prof_end(EIDOS_PROF_PRESENT, t_ph);
+        {
+            /* EIDOS_UI_SCRIPT's "shot NAME": the window as just shown */
+            char name[80], path[1024];
+
+            if (eidos_ui_script_shot(name, (int)sizeof name)) {
+                snprintf(path, sizeof(path), "%s/%s.bmp", g_shot_dir, name);
+                if (eidos_platform_screenshot(run->plat, path) == 0) {
+                    printf("eidos_boot: script shot %s (frame %llu)\n", path,
+                           (unsigned long long)eidos_frame_count(&run->loop));
+                } else {
+                    fprintf(stderr, "eidos_boot: cannot write %s\n", path);
+                }
+                fflush(stdout);
+            }
+        }
+        {
+            /* the style chooser's card: the window as just shown, when the
+             * interface asks for it (ui.h, eidos_ui_card_shot) */
+            char path[1024];
+
+            if (eidos_ui_card_shot(path, (int)sizeof path)) {
+                (void)eidos_platform_screenshot(run->plat, path);
+            }
+        }
         audio_device = eidos_platform_audio_open(run->plat);
         t_ph = eidos_prof_begin();
         if (audio_device && speed > 1) {
@@ -2514,6 +2732,7 @@ static void boot_frame(void *user)
         boot_audio_silent(boot_audio_frames(run));
     }
     eidos_prof_frame(eidos_frame_count(&run->loop));
+    g_game_since = eidos_prof_begin();  /* the game's own threads run from here */
 }
 
 /*
@@ -2610,8 +2829,32 @@ extern void *GAMESYSTEM_SetupInitWork(u32 mode, u16 zoneId, void *position,
                                        int direction) BW_BOOT_WEAK;
 extern void  PROCSYS_ReplaceGlobal(u32 overlayId, const void *data,
                                     void *procWork) BW_BOOT_WEAK;
+extern void  PROCSYS_PushGlobal(u32 overlayId, const void *data,
+                                 void *procWork) BW_BOOT_WEAK;
+
+/* The process the game goes on with: in the top process's place, or (a
+ * start in the logo screen's place) as the push that is queued. */
+static void boot_proc_set(u32 overlayId, const void *data, void *procWork)
+{
+    if (g_boot_push && PROCSYS_PushGlobal != NULL) {
+        PROCSYS_PushGlobal(overlayId, data, procWork);
+    } else {
+        PROCSYS_ReplaceGlobal(overlayId, data, procWork);
+    }
+}
 extern void *PLAYER_LOCATION_GetData(void *save) BW_BOOT_WEAK;
 extern u16   PLAYER_LOCATION_GetZoneId(const void *location) BW_BOOT_WEAK;
+extern void  PLAYER_LOCATION_CopyRecord(void *save, void *dest) BW_BOOT_WEAK;
+
+/* The save's location record as the title's Continue reads it (ov088's
+ * startmenu.c, SaveLocation: 0x1C bytes). */
+typedef struct BootSaveLocation {
+    u16 mapId, pad02;
+    u32 position[3];
+    u32 spawnX, spawnY;
+    s16 facing, spawnFlags;
+    u32 spare;
+} BootSaveLocation;
 
 /*
  * The game's main process: the one the title replaces the global process
@@ -2623,6 +2866,15 @@ extern u16   PLAYER_LOCATION_GetZoneId(const void *location) BW_BOOT_WEAK;
 /* The init work's modes (ov020's event_mapchange.c). */
 #define BOOT_INIT_FIRST    0u
 #define BOOT_INIT_CONTINUE 1u
+
+/*
+ * The title menu's process: the one the title screen replaces the global
+ * process with at START (ov088's startmenu.c, STARTMENU_TitleDemoExit: the
+ * ProcData at overlay 88's 0x021BD66C).
+ */
+#define BOOT_MENU_OVERLAY   88u
+#define BOOT_MENU_PROC_ADDR 0x021BD66Cu
+extern const char d_021BD66C[] BW_BOOT_WEAK;
 
 /*
  * The game goes on: the global process is replaced with the game's own main
@@ -2639,6 +2891,20 @@ static void boot_start_game(BootRunNext next)
     if (PROCSYS_ReplaceGlobal == NULL || GAMESYSTEM_SetupInitWork == NULL) {
         fprintf(stderr, "eidos_boot: the game's own calls are not in this "
                         "build; the game stays at the title\n");
+        return;
+    }
+    if (next == BOOT_RUN_MENU) {
+        /* The title menu at once, the way the title screen hands over to it
+         * (it made nothing the menu needs: its own heap is gone by then). */
+        const void *menu = d_021BD66C != NULL ? (const void *)d_021BD66C
+                                              : bw_ds_try_ptr(BOOT_MENU_PROC_ADDR);
+
+        if (menu == NULL) {
+            fprintf(stderr, "eidos_boot: the title menu's process is not in "
+                            "this build; the game stays at the title\n");
+            return;
+        }
+        boot_proc_set(BOOT_MENU_OVERLAY, menu, NULL);
         return;
     }
     main_proc = bw_ds_try_ptr(BOOT_MAIN_PROC_ADDR);
@@ -2660,15 +2926,38 @@ static void boot_start_game(BootRunNext next)
         u16 zone = 0;
         void *save = (SAVE_CONTROL_Get != NULL) ? SAVE_CONTROL_Get() : NULL;
 
-        if (save != NULL && PLAYER_LOCATION_GetData != NULL &&
-            PLAYER_LOCATION_GetZoneId != NULL) {
-            zone = PLAYER_LOCATION_GetZoneId(PLAYER_LOCATION_GetData(save));
+        /* The style chooser's preview: its save is read again first, as the
+         * title's own Continue reads the player's (ov088's
+         * STARTMENU_BattleFlagProcEnd); a file that does not load leaves
+         * the game at the title. */
+        if (bw_slots_try_active() && !bw_slots_try_reload()) {
+            fprintf(stderr, "eidos_boot: the preview's save did not load; "
+                            "the game stays at the title\n");
+            return;
         }
-        init = GAMESYSTEM_SetupInitWork(BOOT_INIT_CONTINUE, zone, pos, 0);
+
+        if (save != NULL && PLAYER_LOCATION_CopyRecord != NULL) {
+            /* where the player stands: the record's map, position and
+             * facing, as the title's Continue gives them */
+            BootSaveLocation loc;
+
+            memset(&loc, 0, sizeof loc);
+            PLAYER_LOCATION_CopyRecord(save, &loc);
+            printf("eidos_boot: the game goes on in zone %u, facing %d\n",
+                   (unsigned)loc.mapId, (int)loc.facing);
+            fflush(stdout);
+            init = GAMESYSTEM_SetupInitWork(BOOT_INIT_CONTINUE, loc.mapId, loc.position, loc.facing);
+        } else {
+            if (save != NULL && PLAYER_LOCATION_GetData != NULL &&
+                PLAYER_LOCATION_GetZoneId != NULL) {
+                zone = PLAYER_LOCATION_GetZoneId(PLAYER_LOCATION_GetData(save));
+            }
+            init = GAMESYSTEM_SetupInitWork(BOOT_INIT_CONTINUE, zone, pos, 0);
+        }
     } else {
         return;
     }
-    PROCSYS_ReplaceGlobal((u32)-1, main_proc, init);
+    boot_proc_set((u32)-1, main_proc, init);
     /* The port's own run starts here: the run-status panel shows its time,
      * and the mod layer's timer measures it in the port's own ticks
      * (sdk/mod_timer.c).  No mod is in force, so this is the port's run. */
@@ -2762,7 +3051,10 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     }
     /* The save slot in force is the backup chip's file (sdk/save_slots.h);
      * a multiplayer game holds its own file and keeps it. */
-    if (bw_mp_state() == BW_MP_OFF || bw_mp_state() == BW_MP_ENDED) {
+    if (bw_slots_try_boot()) {
+        /* the style chooser's preview: its save, held in memory, through
+         * this restart too */
+    } else if (bw_mp_state() == BW_MP_OFF || bw_mp_state() == BW_MP_ENDED) {
         bw_slots_apply();
     }
 #if EIDOS_BOOT_SDL
@@ -2830,6 +3122,7 @@ static void boot_run_restart(void)
     printf("eidos_boot: the run starts again (%s) at input frame %u\n",
            g_run_next == BOOT_RUN_NEW_GAME ? "a new game" :
            g_run_next == BOOT_RUN_CONTINUE ? "the save in force" :
+           g_run_next == BOOT_RUN_MENU ? "the title menu" :
            "the title screen", (unsigned)bw_input_frame_number());
     fflush(stdout);
     /* The image is in place before the reset, which copies it into main

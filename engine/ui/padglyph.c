@@ -29,6 +29,7 @@
 #include <string.h>
 
 #include "padglyph.h"
+#include "theme.h"
 
 /* ------------------------------------------------------------------ */
 /* Pixels                                                              */
@@ -344,9 +345,14 @@ static void face_gc(EidosUiCtx *c, int x, int y, const Fam *f, int i)
     }
 }
 
+/* The glyph being drawn: its family, and the theme's make (0 the family's
+ * own colours, 1 white buttons with ink marks, 2 the DS's blue-grey buttons
+ * with white marks). */
+static int g_family, g_make;
+
 static void face(EidosUiCtx *c, int x, int y, const Fam *f, int i)
 {
-    if (f == &k_fam[UI_PAD_GAMECUBE]) {
+    if (g_family == UI_PAD_GAMECUBE && g_make == 0) {
         face_gc(c, x, y, f, i);
         return;
     }
@@ -554,10 +560,39 @@ int ui_pad_glyph(EidosUiCtx *c, int x, int y, int family, int control)
     const Fam *f;
     int ps = family == UI_PAD_PS3 || family == UI_PAD_PS4 || family == UI_PAD_PS5;
 
+    static Fam made;
+    const UiThemeOps *t = ui_theme_active();
+
     if (ui_pad_glyph_w(family, control) == 0) {
         return 0;
     }
     f = &k_fam[family];
+    g_family = family;
+    g_make = t != NULL && t->id != NULL ? (t->id[0] == 'p' ? 1 : t->id[0] == 'h' ? 2 : 0) : 0;
+    if (g_make != 0) {
+        int i;
+
+        made = k_fam[family];
+        made.gem = 0;
+        made.hi = 0;
+        if (g_make == 1) {
+            made.body = made.sbody = 0xF4F4F8;
+            made.rim = made.srim = 0x141414;
+            made.ink = made.sink = 0x202020;
+        } else {
+            made.body = made.sbody = 0x4A5262;
+            made.rim = made.srim = 0x181820;
+            made.hi = 0x7B8B9C;
+            made.ink = made.sink = 0xFFFFFF;
+        }
+        for (i = 0; i < 4; i++) {
+            /* a letter is the make's ink; a PlayStation shape keeps its
+             * colour, set to read on the make's body */
+            made.face[i] = made.letter[i] != NULL ? made.ink
+                           : g_make == 1 ? darken(k_fam[family].face[i], 3, 5) : lighten(k_fam[family].face[i], 45);
+        }
+        f = &made;
+    }
     switch (control) {
     case UI_PAD_SOUTH:
     case UI_PAD_EAST:

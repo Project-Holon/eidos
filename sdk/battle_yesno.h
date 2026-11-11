@@ -16,4 +16,7 @@ int bw_battle_yesno_on(void);
  * answer `which` (0 the first, 1 the second); the copy, or NULL. */
 void *bw_battle_yesno_keep(int which, const void *record);
 
+/* 1 when `record` is one of the port's two kept copies. */
+int bw_battle_yesno_is_kept(const void *record);
+
 #endif /* BW_PORT_BATTLE_YESNO_H */
