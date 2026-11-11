@@ -1896,9 +1896,16 @@ static void cutin_view(EidosUiView *view, const FieldNow *f, int cw, int ch)
     const u8 *ev = cutin_event(f);
     u32 step = ev != NULL ? rd32(ev + 2 * sizeof(void *)) : 0;
     const u8 *work = ev != NULL ? rdp(ev + 2 * sizeof(void *) + 4) : NULL;
+    /* The DS screen's width over the window's: a 16:9 window shows the
+     * banner as the DS does, edge to edge.  Not past that (on a wider
+     * window the banner's top would leave the window), and no bigger on a
+     * window taller than the DS screen (there the DS picture already fills
+     * the width; a bigger one cut both trainers off). */
     float zc = (cw > 0 && ch > 0) ? (float)((double)cw / (double)ch / (4.0 / 3.0)) : 1.0f;
-    if (zc < 1.0f && cw > 0 && ch > 0) {
-        zc = (float)((4.0 / 3.0) / ((double)cw / (double)ch));
+    if (zc < 1.0f) {
+        zc = 1.0f;
+    } else if (zc > 4.0f / 3.0f) {
+        zc = 4.0f / 3.0f;
     }
     /* the bigger picture from the capture on: the screen is white then, so
      * the field is not seen to change size (it did, for the frames of the
