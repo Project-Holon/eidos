@@ -835,6 +835,29 @@ static void mv_names_load(void)
     g_mv_ready = n > 100;
 }
 
+/* A letter or a digit: what a word is made of (any byte past ASCII too). */
+static int mv_word_char(char ch)
+{
+    u8 b = (u8)ch;
+
+    return b >= 0x80 || (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z');
+}
+
+/* Is the name in the text as a word of its own?  Charm is not in
+ * "Charmander", nor Growl in "Growlithe". */
+static int mv_in_text(const char *text, const char *name, size_t l)
+{
+    const char *at = text;
+
+    while ((at = strstr(at, name)) != NULL) {
+        if ((at == text || !mv_word_char(at[-1])) && !mv_word_char(at[l])) {
+            return 1;
+        }
+        at++;
+    }
+    return 0;
+}
+
 /* The longest move name inside the message text, as a move id (0: none). */
 static int mv_find(const char *text)
 {
@@ -844,7 +867,7 @@ static int mv_find(const char *text)
     for (id = 1; id < MV_MAX; id++) {
         size_t l = strlen(g_mv_name[id]);
 
-        if (l > bl && strstr(text, g_mv_name[id]) != NULL) {
+        if (l > bl && mv_in_text(text, g_mv_name[id], l)) {
             best = id;
             bl = l;
         }
