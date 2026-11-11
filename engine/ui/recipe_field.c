@@ -1891,7 +1891,8 @@ static void cutin_view(EidosUiView *view, const FieldNow *f, int cw, int ch)
      * 0 fades the field to white, 2 and 3 capture the screen, 4 loads the
      * sequence and halves the capture's colours when the sequence says so
      * (Fld3dCiEventWork.seq.darkenScreen, at +0x34 of the event's work),
-     * 5 fades in, 7 plays.  A step's number is the one the game runs next. */
+     * 5 fades in, 7 plays, 8 ends the sequence and draws the field again.
+     * A step's number is the one the game runs next. */
     const u8 *ev = cutin_event(f);
     u32 step = ev != NULL ? rd32(ev + 2 * sizeof(void *)) : 0;
     const u8 *work = ev != NULL ? rdp(ev + 2 * sizeof(void *) + 4) : NULL;
@@ -1901,8 +1902,9 @@ static void cutin_view(EidosUiView *view, const FieldNow *f, int cw, int ch)
     }
     /* the bigger picture from the capture on: the screen is white then, so
      * the field is not seen to change size (it did, for the frames of the
-     * fade, and that bigger field was then kept as the picture behind) */
-    if (step >= 2u) {
+     * fade, and that bigger field was then kept as the picture behind);
+     * and no longer once the game draws the field again */
+    if (step >= 2u && step <= 8u) {
         view->zoom = zc;
     }
     view->hide_2d = 0;
