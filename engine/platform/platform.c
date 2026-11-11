@@ -2504,6 +2504,11 @@ int eidos_platform_world_active(const EidosPlatform *p)
     return world_active(p);
 }
 
+int eidos_platform_world_2d_hidden(const EidosPlatform *p, int screen)
+{
+    return world_active(p) && p->ui_view.hide_2d != 0 && screen == p->ui_view.world_screen;
+}
+
 void eidos_platform_view_scale(const EidosPlatform *p, s32 *kx, s32 *ky)
 {
     EidosWorldGeometry wg;

@@ -1036,6 +1036,7 @@ static u8 *boot_sentinel(BootRun *run)
  */
 typedef struct BootCapture {
     int plan, blend, bank, eva, evb;
+    int no2d;           /* the one-screen world shows this screen's 3D alone */
     const u8 *bankp;
     const u8 *b1x;
 } BootCapture;
@@ -1070,8 +1071,8 @@ static void boot_capture_plan(BootRun *run, BootCapture *c)
         return;
     }
     if (run->cap_a == NULL) {
-        run->cap_a = (u8 *)malloc((size_t)256 * 192 * 4);
-        run->cap_behind = (u8 *)malloc((size_t)256 * 192 * 4);
+        run->cap_a = (u8 *)calloc(1, (size_t)256 * 192 * 4);
+        run->cap_behind = (u8 *)calloc(1, (size_t)256 * 192 * 4);
         run->cap_b = (u8 *)malloc((size_t)256 * 192 * 4);
     }
     if (run->cap_a == NULL || run->cap_behind == NULL || run->cap_b == NULL
@@ -1097,8 +1098,15 @@ static void boot_capture_plan(BootRun *run, BootCapture *c)
         }
         c->b1x = run->cap_b;
     }
-    if (g2d_hw_main_graphics_pair_dsmem(run->sentinel, run->cap_a,
-                                        run->cap_behind) == 0) {
+    /* The one-screen world with the screen's 2D layers left out (the title's
+     * Press Start screen: the interface draws the logo and the text itself)
+     * shows the 3D over the backdrop colour alone.  The screen's two 2D
+     * pictures, each a whole compose of the main engine, are then looked at
+     * by nothing, so they are not made. */
+    c->no2d = eidos_ui_enabled()
+              && eidos_platform_world_2d_hidden(run->plat, (bw_io_read16(0x04000304u) & 0x8000u) != 0 ? 0 : 1);
+    if (c->no2d || g2d_hw_main_graphics_pair_dsmem(run->sentinel, run->cap_a,
+                                                   run->cap_behind) == 0) {
         c->plan = 1;
     }
 }
@@ -1129,7 +1137,7 @@ static void boot_capture_run(BootRun *run, const BootCapture *c)
         int scr = main_on_top ? 0 : 1;
         u8 *dst = scr == 0 ? run->hi_top : run->hi_bottom;
 
-        if (run->hi_n == 1u && dst != NULL) {
+        if (run->hi_n == 1u && dst != NULL && !c->no2d) {
             memcpy(dst, run->cap_a, (size_t)256 * 192 * 4);
         }
         if (eidos_platform_set_3d(run->plat, scr, run->cap_behind,
