@@ -160,48 +160,83 @@ void ui_clip(EidosUiCtx *c, int x, int y, int w, int h)
     c->clip.h = y1 > y0 ? y1 - y0 : 0;
 }
 
-/* Blend one colour over a canvas pixel (straight alpha). */
-static void blend_at(EidosUiCanvas *cv, int px, int py, u32 rgb, int a)
+/* 2^40 / (oa * 255) rounded up, for an output alpha oa of 1 to 255: with it
+ * (x * k) >> 40 is x / (oa * 255) exactly for every x below 2^24, and the
+ * blend's numerators are below that (at most 255 * (65025 + 127) + 32512).
+ * Checked for every x and every oa. */
+static unsigned long long g_blend_recip[256];
+
+static void blend_recip_init(void)
 {
-    u8 *d = cv->rgba + ((size_t)py * (size_t)cv->w + (size_t)px) * 4;
+    unsigned oa;
+
+    for (oa = 1; oa < 256u; oa++) {
+        unsigned den = oa * 255u;
+
+        g_blend_recip[oa] = ((1ull << 40) + den - 1u) / den;
+    }
+}
+
+/* Blend one colour over `n` canvas pixels in a row at `d` (straight alpha). */
+static void blend_run(u8 *d, int n, u32 rgb, int a)
+{
     int sr = (int)((rgb >> 16) & 255), sg = (int)((rgb >> 8) & 255), sb = (int)(rgb & 255);
-    int da = d[3];
+    int ia = 255 - a, ws = a * 255;     /* source weight (x255)        */
+    u8 *end = d + (size_t)(n > 0 ? n : 0) * 4u;
 
     if (a <= 0) {
         return;
     }
-    if (a >= 255 || da == 0) {
-        d[0] = (u8)sr;
-        d[1] = (u8)sg;
-        d[2] = (u8)sb;
-        d[3] = (u8)(a > 255 ? 255 : a);
+    if (a >= 255) {
+        for (; d < end; d += 4) {
+            d[0] = (u8)sr;
+            d[1] = (u8)sg;
+            d[2] = (u8)sb;
+            d[3] = 255;
+        }
         return;
     }
-    if (da == 255) {
-        /* over an opaque pixel (most of a full-screen menu): the general
-         * case below comes to (s * a + d * (255 - a) + 127) / 255, and the
-         * division by 255 is exact as two shifts for values under 65536 */
-        int ia = 255 - a, t;
-
-        t = sr * a + d[0] * ia + 127;
-        d[0] = (u8)((t + 1 + (t >> 8)) >> 8);
-        t = sg * a + d[1] * ia + 127;
-        d[1] = (u8)((t + 1 + (t >> 8)) >> 8);
-        t = sb * a + d[2] * ia + 127;
-        d[2] = (u8)((t + 1 + (t >> 8)) >> 8);
-        return;
+    if (g_blend_recip[1] == 0) {
+        blend_recip_init();
     }
-    {
-        int oa = a + (da * (255 - a) + 127) / 255;
-        int wd = da * (255 - a);           /* destination weight (x255)   */
-        int ws = a * 255;                  /* source weight (x255)        */
-        int den = oa * 255;
+    for (; d < end; d += 4) {
+        int da = d[3];
 
-        d[0] = (u8)((sr * ws + d[0] * wd + den / 2) / den);
-        d[1] = (u8)((sg * ws + d[1] * wd + den / 2) / den);
-        d[2] = (u8)((sb * ws + d[2] * wd + den / 2) / den);
-        d[3] = (u8)oa;
+        if (da == 0) {
+            d[0] = (u8)sr;
+            d[1] = (u8)sg;
+            d[2] = (u8)sb;
+            d[3] = (u8)a;
+        } else if (da == 255) {
+            /* over an opaque pixel (most of a full-screen menu): the general
+             * case below comes to (s * a + d * (255 - a) + 127) / 255, and the
+             * division by 255 is exact as two shifts for values under 65536 */
+            int t;
+
+            t = sr * a + d[0] * ia + 127;
+            d[0] = (u8)((t + 1 + (t >> 8)) >> 8);
+            t = sg * a + d[1] * ia + 127;
+            d[1] = (u8)((t + 1 + (t >> 8)) >> 8);
+            t = sb * a + d[2] * ia + 127;
+            d[2] = (u8)((t + 1 + (t >> 8)) >> 8);
+        } else {
+            int oa = a + (da * ia + 127) / 255;
+            int wd = da * ia;                  /* destination weight (x255)   */
+            int den = oa * 255;
+            unsigned long long k = g_blend_recip[oa];   /* x / den as (x * k) >> 40 */
+
+            d[0] = (u8)(((unsigned long long)(unsigned)(sr * ws + d[0] * wd + den / 2) * k) >> 40);
+            d[1] = (u8)(((unsigned long long)(unsigned)(sg * ws + d[1] * wd + den / 2) * k) >> 40);
+            d[2] = (u8)(((unsigned long long)(unsigned)(sb * ws + d[2] * wd + den / 2) * k) >> 40);
+            d[3] = (u8)oa;
+        }
     }
+}
+
+/* Blend one colour over a canvas pixel. */
+static void blend_at(EidosUiCanvas *cv, int px, int py, u32 rgb, int a)
+{
+    blend_run(cv->rgba + ((size_t)py * (size_t)cv->w + (size_t)px) * 4, 1, rgb, a);
 }
 
 /* One pixel at (x, y) in the current origin, clipped. */
@@ -265,9 +300,7 @@ void ui_fill(EidosUiCtx *c, int x, int y, int w, int h, u32 rgb, int a)
         return;
     }
     for (py = y0; py < y1; py++) {
-        for (px = x0; px < x1; px++) {
-            blend_at(c->canvas, px, py, rgb, a);
-        }
+        blend_run(c->canvas->rgba + ((size_t)py * (size_t)c->canvas->w + (size_t)x0) * 4u, x1 - x0, rgb, a);
     }
 }
 
@@ -339,7 +372,7 @@ static void ellipse_row(int yy, int w, int h, int *first, int *last)
  * map), clipped as put() clips. */
 static void span(EidosUiCtx *c, int x0, int x1, int y, u32 rgb, int a)
 {
-    int px0 = c->ox + x0, px1 = c->ox + x1 + 1, py = c->oy + y, px;
+    int px0 = c->ox + x0, px1 = c->ox + x1 + 1, py = c->oy + y;
 
     if (py < c->clip.y || py >= c->clip.y + c->clip.h || py < 0 || py >= c->canvas->h) {
         return;
@@ -348,8 +381,8 @@ static void span(EidosUiCtx *c, int x0, int x1, int y, u32 rgb, int a)
     if (px1 > c->clip.x + c->clip.w) px1 = c->clip.x + c->clip.w;
     if (px0 < 0) px0 = 0;
     if (px1 > c->canvas->w) px1 = c->canvas->w;
-    for (px = px0; px < px1; px++) {
-        blend_at(c->canvas, px, py, rgb, a);
+    if (px0 < px1) {
+        blend_run(c->canvas->rgba + ((size_t)py * (size_t)c->canvas->w + (size_t)px0) * 4u, px1 - px0, rgb, a);
     }
 }
 
@@ -774,20 +807,23 @@ static void panel_split(EidosUiCtx *c, int x, int y, int w, int h, int cut,
             hi--;
         }
         if (lo <= hi) {
-            int py = c->oy + y + yy, x0 = c->ox + x + lo, x1 = c->ox + x + hi + 1, px;
+            int py = c->oy + y + yy, x0 = c->ox + x + lo, x1 = c->ox + x + hi + 1;
 
             if (py >= c->clip.y && py < c->clip.y + c->clip.h && py >= 0 && py < c->canvas->h) {
                 if (x0 < c->clip.x) x0 = c->clip.x;
                 if (x0 < 0) x0 = 0;
                 if (x1 > c->clip.x + c->clip.w) x1 = c->clip.x + c->clip.w;
                 if (x1 > c->canvas->w) x1 = c->canvas->w;
-                for (px = x0; px < x1; px++) {
-                    u32 col = fill;
+                if (x0 < x1) {
+                    /* the fill up to the split's column, the split's colour
+                     * from it on (px - c->ox - x >= split_x + (h - yy)) */
+                    u8 *row = c->canvas->rgba + (size_t)py * (size_t)c->canvas->w * 4u;
+                    int sx = split_rgb != UI_NONE ? c->ox + x + split_x + (h - yy) : x1;
 
-                    if (split_rgb != UI_NONE && px - c->ox - x >= split_x + (h - yy)) {
-                        col = split_rgb;
-                    }
-                    blend_at(c->canvas, px, py, col, a);
+                    if (sx < x0) sx = x0;
+                    if (sx > x1) sx = x1;
+                    blend_run(row + (size_t)x0 * 4u, sx - x0, fill, a);
+                    blend_run(row + (size_t)sx * 4u, x1 - sx, split_rgb, a);
                 }
             }
         }
