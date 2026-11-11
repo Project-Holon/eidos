@@ -1342,7 +1342,7 @@ static void render(EidosPlatform *p)
                              ((p->ui_view.cap_mix & 31) << 13) |
                              (p->ui_view.ds_only ? 1 << 18 : 0) |
                              (p->ui_view.spare_world ? 1 << 19 : 0) |
-                             (p->ui_view.held_backdrop ? 1 << 20 : 0));
+                             (p->ui_view.held_backdrop ? (p->ui_view.held_backdrop & 3) << 20 : 0));
         } else {
             eidos_gpu_one_set(p->gl, 0, 0, 0, NULL, 0, 0, 0);
         }

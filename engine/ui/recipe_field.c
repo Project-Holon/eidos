@@ -65,7 +65,7 @@ static int power_card(EidosUiCtx *c, const struct FieldNow *f);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
 static int item_show_active(void);
 static int cutin_other(const struct FieldNow *f);
-static void cutin_view(EidosUiView *view);
+static void cutin_view(EidosUiView *view, const struct FieldNow *f, int cw, int ch);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1723,13 +1723,21 @@ static int cutin_other(const FieldNow *f)
     return !g_show.on && !g_mon_show.on && cutin_running(f);
 }
 
-static void cutin_view(EidosUiView *view)
+static void cutin_view(EidosUiView *view, const FieldNow *f, int cw, int ch)
 {
+    int seq = cutin_sequence(f, NULL);
+    float zc = (cw > 0 && ch > 0) ? (float)((double)cw / (double)ch / (4.0 / 3.0)) : 1.0f;
+    if (zc < 1.0f && cw > 0 && ch > 0) {
+        zc = (float)((4.0 / 3.0) / ((double)cw / (double)ch));
+    }
+    view->zoom = zc;
     view->hide_2d = 0;
     view->cap_mix = 0;
     view->stretch = 0;
     view->hold_world = 0;
-    view->held_backdrop = 1;
+    /* NARC 117 darkenScreen == 0 for seq 3, 20, 21, 22 -> full brightness (2);
+     * all darkened VS/Plasma/boss cut-ins (seq 13..16, 23..25) halve held (1). */
+    view->held_backdrop = (seq == 3 || seq == 20 || seq == 21 || seq == 22) ? 2 : 1;
 }
 
 static int field_choices(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
@@ -2137,7 +2145,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->stretch = encounter_effect();
         if (cutin_other(&f)) {
             /* a cut-in as the battle starts (the VS banner) */
-            cutin_view(view);
+            cutin_view(view, &f, cw, ch);
         }
         return;
     }
@@ -2215,7 +2223,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->hold_world = 1;
     } else if (cutin_other(&f)) {
         /* another cut-in (a VS banner) */
-        cutin_view(view);
+        cutin_view(view, &f, cw, ch);
     }
     choosing = !plain_field() && field_choices(c, in, &f);
     if (choosing) {

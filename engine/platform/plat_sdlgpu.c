@@ -535,7 +535,7 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
             /* the kept picture beyond the DS screen (a cut-in: the VS) */
             tb[4].texture = frozen ? s->frozen : s->behind.tex;
             tb[0].sampler = tb[1].sampler = tb[2].sampler = tb[3].sampler = tb[4].sampler = s->linear;
-            m2[1] = s->under && frozen;
+            m2[1] = (s->under && frozen) ? s->under : 0;
             u[0] = (float)s->ds.x;
             u[1] = (float)s->ds.y;
             u[2] = (float)s->ds.w;
@@ -830,7 +830,7 @@ static void op_one_set(EidosGpu *g, int on, int world, int screen, const SDL_Rec
     s->hold = (no_fade & 2) != 0;
     s->keep = (no_fade & 4) != 0;
     s->spare = (no_fade & (1 << 19)) != 0;
-    s->under = (no_fade & (1 << 20)) != 0;
+    s->under = (no_fade >> 20) & 3;
     s->dark = (no_fade >> 8) & 31;
     s->mix = (no_fade >> 13) & 31;
     if (ds != NULL) {
