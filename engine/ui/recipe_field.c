@@ -1260,6 +1260,18 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     if (banner_shown(f)) {
         hide |= 0x8u | 0x10u;           /* the game's banner: BG3, its letters */
     }
+    {
+        static u32 s_last_hide;
+        static int s_hide_hold;
+
+        if (hide != 0) {
+            s_last_hide = hide;
+            s_hide_hold = 2;
+        } else if (s_hide_hold > 0) {
+            hide = s_last_hide;
+            s_hide_hold--;
+        }
+    }
     if (g2d_hw_hide_main_bgs != NULL) {
         g2d_hw_hide_main_bgs(hide);
     }

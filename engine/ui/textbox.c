@@ -106,61 +106,60 @@ static int bmp_scan(const u8 *bmp, WinBmp *b)
             b->ground = i;
         }
     }
-    b->ink = -1;
-    {
-        /* the two commonest colours after the ground are the letters and
-         * their shadow; the shadow sits one pixel right of, below, or
-         * diagonally from the letter, so the colour that more often has the
-         * other one there is the letter */
-        int c1 = -1, c2 = -1, ab = 0, ba = 0;
-
-        for (i = 0; i < 16; i++) {
-            if (i == b->ground || cnt[i] == 0) {
-                continue;
-            }
-            if (c1 < 0 || cnt[i] > cnt[c1]) {
-                c2 = c1;
-                c1 = i;
-            } else if (c2 < 0 || cnt[i] > cnt[c2]) {
-                c2 = i;
-            }
-        }
-        b->ink = c1;
-        if (c1 >= 0 && c2 >= 0) {
-            for (y = 0; y + 1 < b->h; y++) {
-                for (x = 0; x + 1 < b->w; x++) {
-                    int v = bmp_px(b->px, b->w, x, y);
-                    int r = bmp_px(b->px, b->w, x + 1, y), d = bmp_px(b->px, b->w, x, y + 1);
-                    int dd = bmp_px(b->px, b->w, x + 1, y + 1);
-
-                    if (v == c1 && (r == c2 || d == c2 || dd == c2)) ab++;
-                    if (v == c2 && (r == c1 || d == c1 || dd == c1)) ba++;
-                }
-            }
-            b->ink = ab >= ba ? c1 : c2;
-        }
-    }
     {
         /* every colour: a letter has its shadow right of, below or
          * diagonally from it; a shadow has its letter left of or above it */
         int as_letter[16] = { 0 }, as_shadow[16] = { 0 };
 
-        for (y = 0; y + 1 < b->h; y++) {
-            for (x = 0; x + 1 < b->w; x++) {
+        for (y = 0; y < b->h; y++) {
+            for (x = 0; x < b->w; x++) {
                 int v = bmp_px(b->px, b->w, x, y);
-                int r = bmp_px(b->px, b->w, x + 1, y), d = bmp_px(b->px, b->w, x, y + 1);
 
                 if (v == b->ground) {
                     continue;
                 }
-                if (r != b->ground && r != v) { as_letter[v]++; as_shadow[r]++; }
-                if (d != b->ground && d != v) { as_letter[v]++; as_shadow[d]++; }
+                if (x + 1 < b->w) {
+                    int r = bmp_px(b->px, b->w, x + 1, y);
+
+                    if (r != b->ground && r != v) { as_letter[v]++; as_shadow[r]++; }
+                }
+                if (y + 1 < b->h) {
+                    int d = bmp_px(b->px, b->w, x, y + 1);
+
+                    if (d != b->ground && d != v) { as_letter[v]++; as_shadow[d]++; }
+                    if (x + 1 < b->w) {
+                        int dd = bmp_px(b->px, b->w, x + 1, y + 1);
+
+                        if (dd != b->ground && dd != v) { as_letter[v]++; as_shadow[dd]++; }
+                    }
+                }
             }
         }
         b->letters = 0;
         for (i = 0; i < 16; i++) {
             if (i != b->ground && cnt[i] > 0 && as_letter[i] > as_shadow[i]) {
                 b->letters |= (u16)(1u << i);
+            }
+        }
+    }
+    /* prefer default ink (palette index 1) among confirmed letter colours so
+     * accented/highlighted substrings never flip the main text to accent;
+     * fall back to the dominant pixel colour only for unshadowed bitmaps */
+    b->ink = -1;
+    if ((b->letters & (1u << 1)) != 0u) {
+        b->ink = 1;
+    } else if (b->letters != 0u) {
+        for (i = 0; i < 16; i++) {
+            if (((b->letters >> i) & 1u) != 0u
+                && (b->ink < 0 || cnt[i] > cnt[b->ink])) {
+                b->ink = i;
+            }
+        }
+    } else {
+        for (i = 0; i < 16; i++) {
+            if (i != b->ground && cnt[i] > 0
+                && (b->ink < 0 || cnt[i] > cnt[b->ink])) {
+                b->ink = i;
             }
         }
         if (b->ink >= 0) {
@@ -461,17 +460,30 @@ static int field_wins(void *fm, FieldWin *out, int max, u32 *hide, const void *s
     sysf = rd16(bg + 0x004);
     talk = rdp(bg + 0x15C);
     if (talk != NULL) {
+        int any_talk = 0;
+
         for (i = 0; i < 32 && n < max; i++) {
             const u8 *w = talk + 0x18 + 0x64 * i;
             u16 st = rd16(w);
             const u8 *bw = rdp(w + 0x0C);
 
-            if ((st == 3 || st == 4) && bw != NULL) {
+            if (st != 0 && st != 6) {
+                any_talk = 1;
+                if (bw != NULL && bw[2] < 4) {
+                    *hide |= 1u << bw[2];
+                }
+            }
+            if ((st == 3 || st == 4 || st == 5) && bw != NULL) {
                 out[n].bmpwin = bw;
                 out[n].kind = w[2] ? UI_TEXTBOX_NARRATION : UI_TEXTBOX_BALLOON;
                 out[n].talkwin = w;
                 n++;
             }
+        }
+        if (any_talk) {
+            if (rd32(talk + 0x10) < 4) *hide |= 1u << rd32(talk + 0x10);
+            if (frame < 4) *hide |= 1u << frame;
+            if (sysf < 4) *hide |= 1u << sysf;
         }
     }
     if (bw_ui_field_wins != NULL) {
