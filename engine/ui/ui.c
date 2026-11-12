@@ -171,15 +171,11 @@ void eidos_ui_drag(int x0, int y0, int x1, int y1)
 }
 
 static u32 g_b_frame = 0x80000000u;     /* the input frame of the last B (the player's or a recipe's) */
-static u32 g_a_frame = 0x80000000u;     /* and of the last A */
 
 void eidos_ui_press(u32 keys, u32 frames)
 {
     if (keys & BW_KEY_B) {
         g_b_frame = bw_input_frame_number();
-    }
-    if (keys & BW_KEY_A) {
-        g_a_frame = bw_input_frame_number();
     }
     (void)bw_input_inject(keys & BW_KEY_GAME, frames == 0 ? 1 : frames);
 }
@@ -444,7 +440,6 @@ void eidos_ui_own_reveal(void)
 }
 
 static int g_no_hold;            /* the recipe draws through the game's fade */
-extern void eidos_platform_fast_wait(int waiting) __attribute__((weak));
 
 void eidos_ui_no_hold(void)
 {
@@ -512,8 +507,6 @@ static void app_state(u32 *ov, u32 *seq, u32 *child_ov, u32 *child_seq)
  * until the process's end confirms it. */
 extern int WIPE_SYS_EndCheck(void) __attribute__((weak));
 static u32 g_leave_guess;
-static int g_menu_hold;             /* the last scene was the menu or an app over the world */
-static u32 g_menu_dark = 16u;      /* how dark the open menu keeps the field (its own dimming) */
 
 static void leave_check(EidosUiView *view)
 {
@@ -589,30 +582,8 @@ static void leave_check(EidosUiView *view)
         fade_start();
     }
     g_dark_prev = dark;
-    /* a still picture while the game fades or loads: the wait is run at
-     * twice the speed (set again below when a picture is held) */
-    if (eidos_platform_fast_wait != NULL) {
-        /* and from B in an app, through the game's own pressed-button
-         * animation and its wipe: nothing of those shows here */
-        int wipe = WIPE_SYS_EndCheck != NULL && WIPE_SYS_EndCheck() == 0;
-        int closing = view->blur && ((g_scene_frames > 30 && bw_input_frame_number() - g_b_frame < 24u) || wipe);
-        /* an entry of the menu opens: the game fades the field out, loads
-         * the app and wipes it in, about 40 frames with the menu's picture
-         * held.  The speed set here stays through the frames with no scene. */
-        /* (from A: the game plays its "chosen" animation on the menu's icon
-         * for about 29 frames before it fades) */
-        int opening = strcmp(g_scene, "field-menu") == 0
-                      && (wipe || dark > g_menu_dark
-                          || (g_scene_frames > 10 && bw_input_frame_number() - g_a_frame < 34u));
-
-        g_menu_hold = view->blur || strcmp(g_scene, "field-menu") == 0;
-
-        if (strcmp(g_scene, "field-menu") == 0 && g_scene_frames > 20 && !fading_out) {
-            g_menu_dark = dark;         /* the menu's own dimming of the field */
-        }
-        eidos_platform_fast_wait(g_leaving || closing || opening
-                                 || (view->blur && fading_out && g_scene_frames > 0 && !g_no_hold));
-    }
+    /* (A still picture is held while the game fades or loads; the game keeps
+     * its own speed through that wait: run faster, its music ran faster too.) */
     if (g_leaving) {
         /* the modal's last picture stays, over the blurred world, until the
          * next scene is up and crossfades from it: no empty frames while
@@ -3332,9 +3303,6 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     if (g_keys_edge & BW_KEY_B) {
         g_b_frame = bw_input_frame_number();
     }
-    if (g_keys_edge & BW_KEY_A) {
-        g_a_frame = bw_input_frame_number();
-    }
     if (g_mx != g_last_mx || g_my != g_last_my) {
         /* a move (not the first sighting of the pointer) */
         if (g_last_mx >= 0 && g_mx >= 0) {
@@ -3534,12 +3502,6 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
              * show the game's own DS screen under it for those frames */
             if (g_prev != NULL && g_prev_w == g_canvas.w && g_prev_h == g_canvas.h) {
                 memcpy(g_canvas.rgba, g_prev, (size_t)g_prev_w * (size_t)g_prev_h * 4);
-            }
-            /* the menu's or an app's last picture is held while the game
-             * fades and loads (an app opening or closing): the waiting
-             * speed, which only a running recipe set until now */
-            if (g_menu_hold && eidos_platform_fast_wait != NULL) {
-                eidos_platform_fast_wait(1);
             }
             /* the game faded its screen to white (the flash before a
              * battle): the whole window takes it, not a DS-sized box of it

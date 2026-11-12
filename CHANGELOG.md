@@ -9,6 +9,7 @@ Each release's notes on GitHub start with its section here
 - **Dowsing Machine**: The Dowsing Machine's rods now show on a small card at the top right instead of the whole lower screen, which hid the player in 4:3 and tall windows; the top bar's `Menu` button reads `Close` while the machine is on, thanks @aqali1 (#36).
 
 ### Fixes
+- **Menu Speed**: Fixed the game and its music running at twice their speed for a moment each time a pause-menu entry opened or closed in one-screen mode.
 - **Move Name Colours**: Fixed battle messages colouring the start of a Pokémon's name that reads like a move ("Charm" in "Charmander", "Dig" in "Diglett used Dig!") instead of the move itself, thanks @aqali1 (#35).
 
 ## 0.2.5

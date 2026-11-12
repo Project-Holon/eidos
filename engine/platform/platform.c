@@ -660,12 +660,6 @@ u32 eidos_platform_late_frames(const EidosPlatform *p)
 }
 
 static int g_fast_forward_locked;
-static int g_fast_wait;          /* the interface waits on the game this frame */
-
-void eidos_platform_fast_wait(int waiting)
-{
-    g_fast_wait = waiting != 0;
-}
 
 void eidos_platform_fast_forward_lock(int locked)
 {
@@ -702,19 +696,6 @@ int eidos_platform_fast_forward(const EidosPlatform *p)
                  || keys[SDL_SCANCODE_LGUI] || keys[SDL_SCANCODE_RGUI])) {
             return keys[SDL_SCANCODE_LSHIFT] ? EIDOS_FAST_FORWARD_MAX
                                              : EIDOS_FAST_FORWARD;
-        }
-    }
-    if (g_fast_wait) {
-        /* the interface holds a still picture and waits for the game */
-        static int off = -1;
-
-        if (off < 0) {
-            const char *v = getenv("EIDOS_UI_FAST_WAIT");
-
-            off = v != NULL && strcmp(v, "0") == 0;
-        }
-        if (!off) {
-            return EIDOS_FAST_FORWARD;
         }
     }
     /* EIDOS_FAST_UNTIL_BATTLE (the spot editor's Preview in game): as fast
