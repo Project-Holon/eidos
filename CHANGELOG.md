@@ -3,6 +3,11 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.6
+
+### Fixes
+- **Move Name Colours**: Fixed battle messages colouring the start of a Pokémon's name that reads like a move ("Charm" in "Charmander", "Dig" in "Diglett used Dig!") instead of the move itself, thanks @aqali1 (#35).
+
 ## 0.2.5
 
 ### One-Screen Mode & UI
