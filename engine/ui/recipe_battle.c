@@ -843,36 +843,53 @@ static int mv_word_char(char ch)
     return b >= 0x80 || (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z');
 }
 
-/* Is the name in the text as a word of its own?  Charm is not in
- * "Charmander", nor Growl in "Growlithe". */
+/* Where is the name in the text as a word of its own (-1: nowhere)?  Charm
+ * is not in "Charmander", nor Growl in "Growlithe". */
 static int mv_in_text(const char *text, const char *name, size_t l)
 {
     const char *at = text;
 
     while ((at = strstr(at, name)) != NULL) {
         if ((at == text || !mv_word_char(at[-1])) && !mv_word_char(at[l])) {
-            return 1;
+            return (int)(at - text);
         }
         at++;
     }
-    return 0;
+    return -1;
 }
 
-/* The longest move name inside the message text, as a move id (0: none). */
-static int mv_find(const char *text)
+/* The longest move name inside the message text, as a move id (0: none),
+ * and where it stands in the text. */
+static int mv_find(const char *text, int *at)
 {
     int id, best = 0;
     size_t bl = 0;
 
     for (id = 1; id < MV_MAX; id++) {
         size_t l = strlen(g_mv_name[id]);
+        int pos = l > bl ? mv_in_text(text, g_mv_name[id], l) : -1;
 
-        if (l > bl && mv_in_text(text, g_mv_name[id], l)) {
+        if (pos >= 0) {
             best = id;
             bl = l;
+            *at = pos;
         }
     }
     return best;
+}
+
+/* How many times the name's first k letters stand in the text before `at`:
+ * the words before the move's that start as it does ("Diglett used Dig!"). */
+static int mv_before(const char *text, int at, const char *name, int k)
+{
+    int i, n = 0;
+
+    for (i = 0; i < at; i++) {
+        if (strncmp(text + i, name, (size_t)k) == 0) {
+            n++;
+        }
+    }
+    return n;
 }
 
 /* Does the name's first n letters, set in the game's font with the pen at
@@ -901,13 +918,15 @@ static int mv_fit(const u8 *px, int bw, int bh, int ink, const UiGlyph *g, int n
 }
 
 /* Find the move name (or its typed start) in the bitmap and mark the pixels
- * of its box in hit[]: 1 for the letter colour, 2 for the rest.  Returns
- * whether a name was found. */
+ * of its box in hit[]: 1 for the letter colour, 2 for the rest.  The name
+ * stands at `at` in the text: the same letters earlier in the text (a
+ * Pokemon's name that starts as its move does) are passed over, in reading
+ * order.  Returns whether a name was found. */
 static int mv_mark(const u8 *px, int bw, int bh, int ground, int ink, const char *name,
-                   u8 (*hit)[256])
+                   const char *text, int at, u8 (*hit)[256])
 {
     UiGlyph g[MV_NAME];
-    int n = 0, k, ox, oy, end, x, y;
+    int n = 0, k, ox, oy, end, x, y, skip;
 
     for (; name[n] != '\0' && n < MV_NAME; n++) {
         if ((u8)name[n] >= 0x80 || !ui_font_glyph(MV_FONT, (u32)(u8)name[n], &g[n])
@@ -916,9 +935,15 @@ static int mv_mark(const u8 *px, int bw, int bh, int ground, int ink, const char
         }
     }
     for (k = n; k >= 3; k--) {
+        skip = mv_before(text, at, name, k);
         for (oy = 0; oy + g[0].cell_h <= bh; oy++) {
             for (ox = -2; ox < bw; ox++) {
                 if (mv_fit(px, bw, bh, ink, g, k, ox, oy, &end)) {
+                    if (skip > 0) {
+                        skip--;
+                        ox = end - 1;
+                        continue;
+                    }
                     for (y = oy; y < oy + g[0].cell_h && y < bh; y++) {
                         for (x = ox < 0 ? 0 : ox; x <= end && x < bw; x++) {
                             int v = msg_px(px, bw, x, y);
@@ -989,9 +1014,10 @@ static int draw_battle_message(EidosUiCtx *c, const Bt *b, int x, int y, int w, 
 
         mv_names_load();
         for (i = 0; i < 2; i++) {
-            int id = strbuf_text(src[i], text, sizeof(text)) ? mv_find(text) : 0;
+            int at = 0;
+            int id = strbuf_text(src[i], text, sizeof(text)) ? mv_find(text, &at) : 0;
 
-            if (id != 0 && mv_mark(px, bw, bh, ground, MV_FILL, g_mv_name[id], hit)) {
+            if (id != 0 && mv_mark(px, bw, bh, ground, MV_FILL, g_mv_name[id], text, at, hit)) {
                 int type = WAZA_TOOL_GetParam != NULL ? (int)WAZA_TOOL_GetParam((u32)id, 0) : 0;
 
                 mcol = ui_type_color(type);
