@@ -322,6 +322,10 @@ static int logo_bounds(int *x0, int *y0, int *x1, int *y1)
 static int logo_draw(EidosUiCtx *c, int x, int y, int w, int alpha)
 {
     static u8 out[400 * 260 * 4];
+    /* what `out` holds: the logo is the same picture frame after frame, so
+     * it is scaled again only when its place in the source, its size or its
+     * alpha changes */
+    static int c_bx0 = -1, c_by0, c_sw, c_sh, c_dw, c_dh, c_alpha;
     UiImage im;
     int bx0, by0, bx1, by1, sw, sh, dw, dh, ox, oy;
 
@@ -335,37 +339,47 @@ static int logo_draw(EidosUiCtx *c, int x, int y, int w, int alpha)
     if (dh > 260) {
         dh = 260;
     }
-    for (oy = 0; oy < dh; oy++) {
-        for (ox = 0; ox < dw; ox++) {
-            int sx0 = bx0 + ox * sw / dw, sx1 = bx0 + (ox + 1) * sw / dw;
-            int sy0 = by0 + oy * sh / dh, sy1 = by0 + (oy + 1) * sh / dh;
-            int xx, yy, n = 0, na = 0, r = 0, g = 0, b = 0;
-            u8 *q = out + ((size_t)oy * (size_t)dw + (size_t)ox) * 4;
+    if (c_bx0 != bx0 || c_by0 != by0 || c_sw != sw || c_sh != sh
+        || c_dw != dw || c_dh != dh || c_alpha != alpha) {
+        for (oy = 0; oy < dh; oy++) {
+            for (ox = 0; ox < dw; ox++) {
+                int sx0 = bx0 + ox * sw / dw, sx1 = bx0 + (ox + 1) * sw / dw;
+                int sy0 = by0 + oy * sh / dh, sy1 = by0 + (oy + 1) * sh / dh;
+                int xx, yy, n = 0, na = 0, r = 0, g = 0, b = 0;
+                u8 *q = out + ((size_t)oy * (size_t)dw + (size_t)ox) * 4;
 
-            if (sx1 <= sx0) sx1 = sx0 + 1;
-            if (sy1 <= sy0) sy1 = sy0 + 1;
-            for (yy = sy0; yy < sy1; yy++) {
-                for (xx = sx0; xx < sx1; xx++) {
-                    const u8 *p = g_logo_px + ((size_t)yy * LOGO_W + (size_t)xx) * 4;
+                if (sx1 <= sx0) sx1 = sx0 + 1;
+                if (sy1 <= sy0) sy1 = sy0 + 1;
+                for (yy = sy0; yy < sy1; yy++) {
+                    for (xx = sx0; xx < sx1; xx++) {
+                        const u8 *p = g_logo_px + ((size_t)yy * LOGO_W + (size_t)xx) * 4;
 
-                    n++;
-                    if (p[3] != 0) {
-                        na++;
-                        r += p[0];
-                        g += p[1];
-                        b += p[2];
+                        n++;
+                        if (p[3] != 0) {
+                            na++;
+                            r += p[0];
+                            g += p[1];
+                            b += p[2];
+                        }
                     }
                 }
-            }
-            if (na == 0) {
-                q[0] = q[1] = q[2] = q[3] = 0;
-            } else {
-                q[0] = (u8)(r / na);
-                q[1] = (u8)(g / na);
-                q[2] = (u8)(b / na);
-                q[3] = (u8)(255 * na / n * alpha / 255);
+                if (na == 0) {
+                    q[0] = q[1] = q[2] = q[3] = 0;
+                } else {
+                    q[0] = (u8)(r / na);
+                    q[1] = (u8)(g / na);
+                    q[2] = (u8)(b / na);
+                    q[3] = (u8)(255 * na / n * alpha / 255);
+                }
             }
         }
+        c_bx0 = bx0;
+        c_by0 = by0;
+        c_sw = sw;
+        c_sh = sh;
+        c_dw = dw;
+        c_dh = dh;
+        c_alpha = alpha;
     }
     im.w = dw;
     im.h = dh;

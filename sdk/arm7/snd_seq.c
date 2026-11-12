@@ -1567,7 +1567,7 @@ u32 bw_sndseq_status(void)
     u32 s = 0;
     int i;
     for (i = 0; i < PLAYERS; i++)
-        if (g.pl[i].active)
+        if (g.pl[i].active || g.pl[i].prepared)
             s |= 1u << i;
     return s;
 }

@@ -692,12 +692,17 @@ int eidos_platform_fast_forward(const EidosPlatform *p)
     if (g_fast_hidden) {
         return EIDOS_FAST_FORWARD_MAX;
     }
-    /* SDL keeps the state of the window with keyboard focus only, so the
-     * key does nothing while another program has the focus. */
-    keys = SDL_GetKeyboardState(NULL);
-    if (keys != NULL && keys[SDL_SCANCODE_TAB]) {
-        return keys[SDL_SCANCODE_LSHIFT] ? EIDOS_FAST_FORWARD_MAX
-                                         : EIDOS_FAST_FORWARD;
+    /* Only trigger fast-forward when this window actually holds keyboard focus
+     * and Tab is not part of a desktop shortcut (Alt+Tab / Ctrl+Tab / Super+Tab). */
+    if (SDL_GetWindowFlags(p->window) & SDL_WINDOW_INPUT_FOCUS) {
+        keys = SDL_GetKeyboardState(NULL);
+        if (keys != NULL && keys[SDL_SCANCODE_TAB]
+            && !(keys[SDL_SCANCODE_LALT] || keys[SDL_SCANCODE_RALT]
+                 || keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]
+                 || keys[SDL_SCANCODE_LGUI] || keys[SDL_SCANCODE_RGUI])) {
+            return keys[SDL_SCANCODE_LSHIFT] ? EIDOS_FAST_FORWARD_MAX
+                                             : EIDOS_FAST_FORWARD;
+        }
     }
     if (g_fast_wait) {
         /* the interface holds a still picture and waits for the game */
@@ -1366,7 +1371,7 @@ static void render(EidosPlatform *p)
                              ((p->ui_view.cap_mix & 31) << 13) |
                              (p->ui_view.ds_only ? 1 << 18 : 0) |
                              (p->ui_view.spare_world ? 1 << 19 : 0) |
-                             (p->ui_view.held_backdrop ? 1 << 20 : 0));
+                             (p->ui_view.held_backdrop ? (p->ui_view.held_backdrop & 3) << 20 : 0));
         } else {
             eidos_gpu_one_set(p->gl, 0, 0, 0, NULL, 0, 0, 0);
         }
@@ -2497,6 +2502,11 @@ void eidos_platform_set_ui_canvas(EidosPlatform *p, const struct EidosUiCanvas *
 int eidos_platform_world_active(const EidosPlatform *p)
 {
     return world_active(p);
+}
+
+int eidos_platform_world_2d_hidden(const EidosPlatform *p, int screen)
+{
+    return world_active(p) && p->ui_view.hide_2d != 0 && screen == p->ui_view.world_screen;
 }
 
 void eidos_platform_view_scale(const EidosPlatform *p, s32 *kx, s32 *ky)

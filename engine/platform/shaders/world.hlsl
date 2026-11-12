@@ -63,7 +63,7 @@ float4 fs_main(VSOut i) : SV_Target0
         return float4(0.0, 0.0, 0.0, 1.0);
     // outside the DS rectangle: a black or one-colour layer across the row
     // (a wipe, a fade the game draws with a layer) reaches the window's edge
-    if (!inside && m.w == 0 && duv.y >= 0.0 && duv.y < 1.0) {
+    if (!inside && m.w == 0 && m2.y == 0 && duv.y >= 0.0 && duv.y < 1.0) {
         int2 sz0 = int2(texsize);
         int2 e = int2(duv.x < 0.0 ? 0 : sz0.x - 1, clamp(int(floor(duv.y * texsize.y)), 0, sz0.y - 1));
         float3 T = tex.Load(int3(e, 0)).rgb;
@@ -80,15 +80,17 @@ float4 fs_main(VSOut i) : SV_Target0
             }
         }
     }
-    // outside: the 3D over the DS screen's own backdrop colour
+    float3 B_held = float3(0.0, 0.0, 0.0);
+    if (m2.y != 0) {
+        // Keep the unzoomed native-res field behind cut-ins; halve when
+        // FLD3D_CI_DarkenCapturedScreen ran (m2.y == 1) and apply master fades.
+        B_held = held.Sample(s4, fc / win).rgb * (m2.y == 2 ? 1.0 : 0.5);
+        if (m.x == 1) B_held = (1.0 - bfac) * B_held + bfac;
+        else if (m.x == 2) B_held = (1.0 - bfac) * B_held;
+    }
+    // outside: the 3D over the DS screen's own backdrop colour (or held)
     if (!inside) {
-        float3 B = bd.rgb;
-        if (m2.y != 0) {
-            // the kept picture, as dark as the game makes its captured
-            // screen for a cut-in (FLD3D_CI_DarkenCapturedScreen halves
-            // every colour)
-            B = held.Sample(s4, fc / win).rgb * 0.5;
-        }
+        float3 B = m2.y != 0 ? B_held : bd.rgb;
         return float4(P + (1.0 - A) * B, 1.0);
     }
     int2 sz = int2(texsize);
@@ -102,8 +104,8 @@ float4 fs_main(VSOut i) : SV_Target0
             if (any(tex.Load(int3(q, 0)).rgb != behind.Load(int3(q, 0)).rgb)) mk = true;
         }
     }
-    if (!mk) return float4(sharp(tex, s0, duv, texsize, dstsize), 1.0);
-    float3 b = sharp(behind, s1, duv, texsize, dstsize);
+    if (!mk) return float4(m2.y != 0 ? B_held : sharp(tex, s0, duv, texsize, dstsize), 1.0);
+    float3 b = m2.y != 0 ? B_held : sharp(behind, s1, duv, texsize, dstsize);
     float3 d = P + (1.0 - A) * b;
     if (m.z != 0) {
         int2 c = clamp(ip, int2(0, 0), sz - 1);
