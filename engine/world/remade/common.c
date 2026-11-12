@@ -25,6 +25,41 @@ void rm_drop(RmOut *o, unsigned id)
     o->drop[o->ndrop++] = id;
 }
 
+void rm_two(RmOut *o, unsigned id)
+{
+    if (o->ntwo == o->ctwo) {
+        unsigned cap = o->ctwo ? o->ctwo * 2u : 16u;
+        unsigned *nw = (unsigned *)realloc(o->two, cap * sizeof *nw);
+
+        if (nw == NULL) {
+            o->fail = 1;
+            return;
+        }
+        o->two = nw;
+        o->ctwo = cap;
+    }
+    o->two[o->ntwo++] = id;
+}
+
+void rm_turn(RmOut *o, unsigned id, double cx, double cz)
+{
+    if (o->nturn == o->cturn) {
+        unsigned cap = o->cturn ? o->cturn * 2u : 16u;
+        RmTurn *nw = (RmTurn *)realloc(o->turn, cap * sizeof *nw);
+
+        if (nw == NULL) {
+            o->fail = 1;
+            return;
+        }
+        o->turn = nw;
+        o->cturn = cap;
+    }
+    o->turn[o->nturn].id = id;
+    o->turn[o->nturn].cx = (float)cx;
+    o->turn[o->nturn].cz = (float)cz;
+    o->nturn++;
+}
+
 void rm_drop_all(RmOut *o, const RmBatch *b)
 {
     unsigned i;

@@ -2145,7 +2145,7 @@ out:
 
 static void rest_bodies(BmapScene *s)
 {
-    typedef struct { unsigned obj; float lo, hi, x0, x1, z0, z1, best; } Body;
+    typedef struct { unsigned obj; float lo, hi, x0, x1, z0, z1, best; int sheet; } Body;
     Body *b = NULL;
     unsigned nb = 0, cap = 0, i, j, last = 0;
 
@@ -2208,6 +2208,26 @@ static void rest_bodies(BmapScene *s)
             }
         }
     }
+    /* a body whose foot is a level sheet (a table's shadow on the floor): it lies a hair over the floor */
+    last = 0;
+    for (i = 0; i + 2 < s->nv; i += 3) {
+        const BmapVertex *v = &s->v[i];
+
+        if ((v->obj & 0xC0000000u) != 0xC0000000u || !level_tri(v)) {
+            continue;
+        }
+        if (b[last].obj != v->obj) {
+            for (last = 0; last < nb && b[last].obj != v->obj; last++) {
+            }
+            if (last == nb) {
+                last = 0;
+                continue;
+            }
+        }
+        if (v->y < b[last].lo + 0.01f) {
+            b[last].sheet = 1;
+        }
+    }
     last = 0;
     for (i = 0; i < s->nv; i++) {
         BmapVertex *v = &s->v[i];
@@ -2221,7 +2241,7 @@ static void rest_bodies(BmapScene *s)
         }
         if (b[last].best > -1e29f) {
             /* (a flat sheet lies a hair over the floor, as a floor picture does, so it still draws over it) */
-            v->y += b[last].best - b[last].lo + (b[last].hi - b[last].lo < 0.01f ? DECAL_LIFT : 0.0f);
+            v->y += b[last].best - b[last].lo + (b[last].sheet || b[last].hi - b[last].lo < 0.01f ? DECAL_LIFT : 0.0f);
         }
     }
     if (getenv("BMAP_PLACE_LOG") != NULL) {

@@ -2023,7 +2023,7 @@ static int add_tri_raw(Ctx *c, const BmapVertex t[3], const TriTag *tag, const f
  *          command: lit by the game with its normal, or in the colour given;
  *          its texture the draw's own or one of the record's
  */
-typedef struct { u32 id; float cx, cz; } DoneTurn;
+typedef RmTurn DoneTurn;        /* a turned copy (remade/remade.h) */
 typedef RmNew DoneTri;          /* a new triangle (remade/remade.h) */
 typedef struct Done {
     char key[24];
@@ -2280,6 +2280,9 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                         }
                         tv[k].a = (u8)(mt->alpha * 255u / 31u);
                         tv[k].obj = ground == 1 ? 0u : c->obj;
+                        if ((dn->flags & 1u) && !g_research_ids && ground != 1) {
+                            tv[k].obj |= 0xC0000000u;   /* (it rests on the floor with the model) */
+                        }
                     }
                     if (add_tri(c, tv, &tag, (const float (*)[3])tp, 0, 0) != 0) {
                         free(tl.v);
@@ -2414,7 +2417,7 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                     /* (the top bit: a completion's own triangles, which the battle's search for flat
                      * cut-out cards passes over: they are a body, and there are thousands) */
                     bv[k].obj = ground == 1 ? 0u : (c->obj | 0x80000000u);
-                    if (x->kind == 2 && ground != 1) {
+                    if ((x->kind == 2 || (dn->flags & 1u)) && ground != 1) {
                         bv[k].obj |= 0x40000000u;   /* a body that rests on the floor under it (rest_bodies) */
                     }
                 }
@@ -3746,6 +3749,11 @@ static int remade_make(Done *d, const BmapRemade *e, Model *md, const char *setk
             if (k == 0) {
                 q->id = v->obj;
             }
+            if (k == 2) {
+                q->rgb[0] = (u8)(((unsigned)v[-2].r + v[-1].r + v->r) / 3u);
+                q->rgb[1] = (u8)(((unsigned)v[-2].g + v[-1].g + v->g) / 3u);
+                q->rgb[2] = (u8)(((unsigned)v[-2].b + v[-1].b + v->b) / 3u);
+            }
             sum[0] += v->r; sum[1] += v->g; sum[2] += v->b;
         }
         for (j = 0; j < 3; j++) {
@@ -3753,19 +3761,21 @@ static int remade_make(Done *d, const BmapRemade *e, Model *md, const char *setk
         }
     }
     e->build(bt, nb, tx, (unsigned)c->ntex, e->opt, &o);
-    if (o.fail || (o.ntri == 0 && o.ndrop == 0 && o.flags == 0)) {
+    if (o.fail || (o.ntri == 0 && o.ndrop == 0 && o.ntwo == 0 && o.nturn == 0 && o.flags == 0)) {
         goto out;
     }
     qsort(o.drop, o.ndrop, sizeof *o.drop, u32_cmp);
+    qsort(o.two, o.ntwo, sizeof *o.two, u32_cmp);
+    qsort(o.turn, o.nturn, sizeof *o.turn, u32_cmp);      /* (by the triangle's name, its first member) */
     d->flags = o.flags;
     d->ndrop = o.ndrop;
     d->drop = o.drop != NULL ? o.drop : (u32 *)calloc(1, sizeof(u32));
     d->ntri = o.ntri;
     d->tri = o.tri != NULL ? o.tri : (DoneTri *)calloc(1, sizeof(DoneTri));
-    d->ntwo = 0;
-    d->two = (u32 *)calloc(1, sizeof(u32));
-    d->nturn = 0;
-    d->turn = (DoneTurn *)calloc(1, sizeof(DoneTurn));
+    d->ntwo = o.ntwo;
+    d->two = o.two != NULL ? o.two : (u32 *)calloc(1, sizeof(u32));
+    d->nturn = o.nturn;
+    d->turn = o.turn != NULL ? o.turn : (DoneTurn *)calloc(1, sizeof(DoneTurn));
     d->ntex = o.ntex;
     for (i = 0; i < (unsigned)o.ntex; i++) {
         d->tex[i].w = o.tex[i].w;
@@ -3781,7 +3791,7 @@ static int remade_make(Done *d, const BmapRemade *e, Model *md, const char *setk
         snprintf(path, sizeof path, "%s/%s.bmc", getenv("BMAP_REMADE_DUMP"), d->key);
         f = fopen(path, "wb");
         if (f != NULL) {
-            u32 n5[5] = { (u32)d->ntex, 0, d->ndrop, 0, d->ntri };
+            u32 n5[5] = { (u32)d->ntex, d->ntwo, d->ndrop, d->nturn, d->ntri };
 
             fwrite("BMC2", 1, 4, f);
             fwrite(&d->flags, 4, 1, f);
@@ -3794,7 +3804,9 @@ static int remade_make(Done *d, const BmapRemade *e, Model *md, const char *setk
                 fwrite(fl, 1, 4, f);
                 fwrite(d->tex[i].rgba, 4, (size_t)wh[0] * (size_t)wh[1], f);
             }
+            fwrite(d->two, 4, d->ntwo, f);
             fwrite(d->drop, 4, d->ndrop, f);
+            fwrite(d->turn, sizeof(DoneTurn), d->nturn, f);
             for (i = 0; i < d->ntri; i++) {
                 const DoneTri *x = &d->tri[i];
                 u8 f8[8] = { x->cull, x->lit, x->rgb[0], x->rgb[1], x->rgb[2], x->kind, x->alpha, 0 };
@@ -3811,6 +3823,8 @@ static int remade_make(Done *d, const BmapRemade *e, Model *md, const char *setk
     }
 out:
     free(o.drop);
+    free(o.two);
+    free(o.turn);
     free(o.tri);
     for (i = 0; i < 8u; i++) {
         free(o.tex[i].rgba);

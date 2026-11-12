@@ -31,6 +31,9 @@ static const BmapRemade k_remade[] = {
     { "b1_00192", rm_disc, PAD_RISE },              /* warp pad (Pokemon League) */
     { "b0_00108", rm_disc, PAD_RISE },              /* warp pad (Opelucid Gym) */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
+    { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
+    { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
+    { "b0_00060", rm_backwall, "" },                /* container (Cold Storage): its far end */
     { "b0_00061", rm_floor, "" },                   /* boxes (Cold Storage) */
     { "b0_00111", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
     { "b0_00112", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
