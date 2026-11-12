@@ -104,8 +104,6 @@ typedef struct BdVertexUniforms {
 
 typedef struct BdFragmentUniforms {
     float eye[4];
-    float atm[4];
-    float sky[4];
     float fog[4];
     float fogc[4];
     int flags[4];       /* textured, front pass, Pokemon count */
@@ -449,7 +447,6 @@ typedef struct BdBound {
 typedef struct SgBd {
     const void *scene;
     unsigned gen;
-    float reach;
     SDL_GPUTexture **tex;
     unsigned char *wrap;        /* per texture: repeat s, t, flip s, t bits */
     unsigned n_tex, tex_gen;
@@ -742,20 +739,6 @@ static void bd_upload(SdlGpu *s, SgBd *b, SDL_GPUCopyPass *cp, const BmapScene *
                                          (t->flip_s ? 4 : 0) | (t->flip_t ? 8 : 0));
         }
     }
-    {
-        float x0 = 0.0f, x1 = 0.0f, z0 = 7.0f, z1 = 7.0f;
-        unsigned n;
-
-        for (n = 0; n < sc->nv; n++) {
-            const BmapVertex *v = &sc->v[n];
-
-            x0 = v->x < x0 ? v->x : x0;
-            x1 = v->x > x1 ? v->x : x1;
-            z0 = v->z < z0 ? v->z : z0;
-            z1 = v->z > z1 ? v->z : z1;
-        }
-        b->reach = fminf(fminf(-x0, x1), fminf(7.0f - z0, z1 - 7.0f));
-    }
     b->bound = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof *b->bound) : NULL;
     if (b->bound != NULL) {
         unsigned d, k;
@@ -996,7 +979,6 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     SgBd *b = bd_of(s);
     const BmapScene *sc = (const BmapScene *)bk->scene;
     float r[4][4], fwd[3];
-    float atm[4] = { 0.0f, 7.0f, 0.0f, 0.0f };
     unsigned pass_i, i;
     unsigned uv_frame = (unsigned)(SDL_GetTicks() * 60u / 1000u);
     BdVertexUniforms vu;
@@ -1019,14 +1001,6 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
         vu.eye[i] = bk->eye[i];
         fu.eye[i] = bk->eye[i];
     }
-    if (b->reach > 40.0f) {
-        atm[2] = 0.45f * b->reach;
-        atm[3] = 0.97f * b->reach;
-    }
-    memcpy(fu.atm, atm, sizeof fu.atm);
-    fu.sky[0] = (float)bk->sky[0] / 255.0f;
-    fu.sky[1] = (float)bk->sky[1] / 255.0f;
-    fu.sky[2] = (float)bk->sky[2] / 255.0f;
     fu.flags[1] = front;
     fu.flags[2] = (int)(bk->n_poke > G3D_BACKDROP_SPRITES ? G3D_BACKDROP_SPRITES : bk->n_poke);
     memcpy(fu.poke, bk->poke, sizeof fu.poke);
@@ -1091,9 +1065,8 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
                 const BdBound *bb = &b->bound[di];
                 float depth = fwd[0] * (bb->c[0] - bk->eye[0]) + fwd[1] * (bb->c[1] - bk->eye[1])
                               + fwd[2] * (bb->c[2] - bk->eye[2]);
-                float ax = bb->c[0] - atm[0], az = bb->c[2] - atm[1];
 
-                if (depth < -bb->r || (atm[3] > 0.0f && sqrtf(ax * ax + az * az) - bb->r > atm[3])) {
+                if (depth < -bb->r) {
                     i += run - 1;
                     continue;
                 }
@@ -1131,8 +1104,10 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
                 vu.uv0[0] = 1.0f; vu.uv0[1] = 0.0f; vu.uv0[2] = 0.0f;
                 vu.uv1[0] = 0.0f; vu.uv1[1] = 1.0f; vu.uv1[2] = 0.0f;
             }
-            vu.bb[0] = d->billboard;
+            vu.bb[0] = d->billboard == 3 ? 0 : d->billboard;    /* (3: placed as one, never turned) */
             memcpy(vu.pivot, d->pivot, 3 * sizeof(float));
+            /* (the fourth: a moving object's rise this frame, as its animation in the field: 30 frames a second) */
+            vu.pivot[3] = d->bob && sc->bob_n > 0u ? sc->place_k * sc->bob_y[(SDL_GetTicks() * 30u / 1000u) % sc->bob_n] : 0.0f;
             fu.cut[0] = (float)d->alpha / 31.0f;
             if (pass_i == 0) {
                 fu.cut[1] = d->translucent ? BD_CORE_CUT : 0.5f;

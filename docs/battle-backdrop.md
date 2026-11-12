@@ -12,7 +12,8 @@ camera.
 |---|---|
 | `sdk/battle_view.c` | Wraps the game's scenery draws. At the first battle frame it reads where the battle started (zone, position, facing, season, time) and starts a worker thread. It hands the camera and the scene to the renderer each frame. |
 | `engine/world/bmap_data.c` | Builds the scene: the ground chunks, buildings and placed objects around the player, with lit vertex colours and textures from the ROM archives. It also keeps the game's walk grid (which tiles are floor, wall, water or outside the map, and which have wild encounters) and a ground index for heights. |
-| `engine/world/bmap_gimmick.c` | Adds the gym puzzle models (doors, curtains and the like) that the field places through its gimmick code. |
+| `engine/world/bmap_gimmick.c` | Adds the gym puzzle models (doors, curtains and the like) that the field places through its gimmick code. A battle that starts from the field takes the field's own objects in their state instead (see The field's objects). |
+| `engine/world/bmap_remade.c`, `engine/world/remade/` | The remade models: a flat picture of the map (a rock, a seat, a bottle) built as a body (see Remade models). |
 | `engine/world/bmap_data.c` (Black City, White Forest) | Their buildings and trees are not in their maps: the game stamps 8x8-tile blocks chosen from the save into them (ov021 `field_wfbc.c`, `land_data_patch.c`). `bmap_wfbc_grid` chooses the blocks the same way (the residents, the player's id) and the build stamps them, buildings and walk tiles. A battle takes the save's; the spot editor shows the place full. |
 | `engine/world/bmap_place.c` | Moves the scene into battle space: the spot under the own Pokemon, the angle, one fixed scale. It can search near a start point for a clear spot. |
 | `engine/world/bmap_spots.c` | The spot table: one row for each place a battle can start, and how its battle is placed. |
@@ -295,12 +296,54 @@ To take the edited rows into the source:
 
 Then rebuild.
 
+## Remade models
+
+The map draws many small things as one flat picture, or leaves out the sides the field's steep camera never
+sees. A battle camera low over the ground shows that. A remade model is such a thing built as a body.
+
+- `engine/world/remade/` holds one C file for each kind of thing (a builder): `rock.c` (rocks and a vase, with
+  the rocks' hand-drawn side faces in `rock_faces.c`), `cushion.c`, `bottles.c`, `disc.c`, `gate.c`, `floor.c`.
+  `remade.h` says what a builder gets and what it makes.
+- `engine/world/bmap_remade.c` is the table: one line a model, its builder and the builder's settings.
+- The first time a battle map holds a model of the table, `bmap_data.c` (`remade_make`) builds the model
+  standing alone, as the map makes it, gives its triangles and textures to the builder, and keeps what the
+  builder made for every copy and every later battle. All of it is made in memory from the player's own game
+  data; nothing built is in this repository or written to disk.
+- A builder can mark a body to rest on the floor. The map holds some pictures at a height over the floor that
+  differs by room; `bmap_place.c` (`rest_bodies`) moves such a body onto the highest level surface under it.
+- Chunks far from the player keep the map's own pictures.
+
+The status of every building model of the game is in `docs/remade-models.md`. To add a model: write or reuse
+a builder, add the model's line to the table, and judge the result from every side before any battle picture.
+`EIDOS_NO_REMADE=1` leaves every model as the map has it.
+
+## The field's objects
+
+A battle map built from the map's files alone shows everything in its first state: a gym's curtains closed
+again, a pushed boulder back in its place. So `sdk/battle_view.c` notes every 3D object the field draws, each
+field frame (the game's two object draw calls are wrapped): its model, textures, animation frames, place and
+size. When a battle starts, the last frame's objects go to the map builder (`bmap_live_set`), which stands
+them in the scene as the field drew them and leaves out the same objects from the map's files. It is one
+mechanism for every kind of object. A model made for the field's camera alone (Chargestone Cave's floating
+stones) is stood where that camera shows it. Texture and material animations of such objects are not played.
+
+## The sea and the far distance
+
+Where water lies on the edge of everything loaded, the scene continues it outward at the same height with the
+same texture, far past what a battle camera sees, with its bed. The scene no longer fades into the sky colour
+in the distance.
+
 ## Test switches
 
 These are for tests only and come out before release:
 `EIDOS_DEBUG_BMAP_AT`, `EIDOS_DEBUG_SPOT`, `EIDOS_DEBUG_BMAP_K`,
 `BMAP_TOPVIEW`. The spot editor's `--shot` and `--script` options are for
 its own tests.
+
+Research switches of the map builder, all off unless set (`docs/test-switches.md`): `BMAP_DUMP`,
+`BMAP_MODELS_DUMP`, `BMAP_MODEL_LOG`, `BMAP_PLACE_LOG`, `BMAP_FOOT_LOG`, `BMAP_REMADE_DUMP`, `BMAP_CAM_YAW`,
+`BMAP_FORCE_FACING`, `BMAP_FREE_ANGLE`, `BMAP_DEBUG_BACK`, `BMAP_FIX_BACKS`, `BMAP_JOIN`, `BMAP_JOIN_MODE`,
+`EIDOS_LIVE_LOG`.
 
 ## Sprite sizes
 

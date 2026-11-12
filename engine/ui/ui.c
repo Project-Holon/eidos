@@ -1932,6 +1932,53 @@ extern int ov010_FLDMMDL_SysSearchUseMmdl(const void *sys, void **out, u32 *iter
 extern void *ov010_FLDMMDL_SysSearchPlayer(void *sys) __attribute__((weak));
 extern void ov010_FLDMMDL_GetGridNowPos(const void *mmdl, s16 *out) __attribute__((weak));
 
+/* EIDOS_LIVE_LOG=1: the field's moving objects (their id, object code and place), once in each zone, a few
+ * seconds after it is entered.  For finding the object behind something the field shows. */
+extern u16 ov010_FLDMMDL_GetObjId(void *mmdl) __attribute__((weak));
+extern u16 ov010_FLDMMDL_GetObjCode(void *mmdl) __attribute__((weak));
+extern void ov010_FLDMMDL_GetPos(const void *mmdl, s32 *out) __attribute__((weak));
+
+static void live_objects_log(void)
+{
+    static unsigned last_zone = 0xFFFFu;
+    static int seen, said;
+    unsigned zone;
+    u8 *gs, *fm, *gd;
+    const u8 *pw;
+    void *sys, *o;
+    u32 iter = 0;
+
+    if (getenv("EIDOS_LIVE_LOG") == NULL || ov021_FIELDMAP_GetMmdlSys == NULL || ov010_FLDMMDL_SysSearchUseMmdl == NULL
+        || ov010_FLDMMDL_GetObjId == NULL || ov010_FLDMMDL_GetObjCode == NULL || ov010_FLDMMDL_GetPos == NULL
+        || &bw_dsref__GameSystemGlobal == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    fm = gs != NULL ? *(u8 **)(gs + 0x20) : NULL;
+    if (fm == NULL || (sys = ov021_FIELDMAP_GetMmdlSys(fm)) == NULL) {
+        return;                         /* not in the field */
+    }
+    gd = *(u8 **)(gs + 0x1C);
+    pw = gd + 4 + 4 * 0x44;
+    zone = (unsigned)(pw[0] | (pw[1] << 8));
+    if (zone != last_zone) {
+        last_zone = zone;
+        seen = 0;
+        said = 0;
+    }
+    if (said || ++seen <= 200) {
+        return;
+    }
+    said = 1;
+    while (ov010_FLDMMDL_SysSearchUseMmdl(sys, &o, &iter)) {
+        s32 q[3] = { 0, 0, 0 };
+
+        ov010_FLDMMDL_GetPos(o, q);
+        fprintf(stderr, "eidos: field object id %u code %u at (%.0f, %.0f, %.0f) zone %u\n", (unsigned)ov010_FLDMMDL_GetObjId(o),
+                (unsigned)ov010_FLDMMDL_GetObjCode(o), q[0] / 4096.0, q[1] / 4096.0, q[2] / 4096.0, zone);
+    }
+}
+
 static void debug_seek(u32 frame)
 {
     static u32 next;
@@ -2172,6 +2219,15 @@ static void debug_move(u32 frame)
         }
         break;
     }
+    }
+    {
+        /* the player's own place in the world (a rail map keeps no tile) */
+        s32 wp[3] = { 0, 0, 0 };
+
+        if (ov010_FLDMMDL_GetPos != NULL) {
+            ov010_FLDMMDL_GetPos(me, wp);
+            fprintf(stderr, "eidos: debug move place (%.1f, %.1f, %.1f)\n", wp[0] / 4096.0, wp[1] / 4096.0, wp[2] / 4096.0);
+        }
     }
     fprintf(stderr, "eidos: debug move %d at %u: tile (%d, %d) facing %d%s\n", cur, (unsigned)frame, p[0], p[2],
             (int)ov010_FLDMMDL_GetDirDisp(me),
@@ -2818,6 +2874,7 @@ void eidos_ui_game_frame(void)
         debug_warp();
         debug_cutin();
         debug_where();
+        live_objects_log();
         event_log();
         debug_battle();
         debug_script();

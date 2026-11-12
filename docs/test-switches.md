@@ -56,6 +56,15 @@ holds the move steps (their frames then count from when it opens), and
 | `EIDOS_GL_STATE=N` | At the Nth present, logs the presenter's GL state (viewport, scissor, framebuffer, the screens' rectangles), how far a full-window clear reaches and which columns the frame lights (`engine/platform/plat_gl.c`). |
 | `EIDOS_EVENT_LOG=1` | Logs the running game event's chain whenever it changes, as offsets from `GAMESYSTEM_GetEvent`: add the offset to that function's address in `nm` of the program to name each event. Finds which code runs a scene. |
 | `EIDOS_OVERLAY_LOG=1` | Logs each overlay load and unload with its frame (`sdk/overlay.c`). |
+| `EIDOS_LIVE_LOG=1` | Logs the field's moving objects (id, object code, place) once in each zone, and each 3D object the field draws that the battle map takes over (`engine/ui/ui.c`, `sdk/battle_view.c`). |
+| `EIDOS_NO_REMADE=1` | The battle map keeps every model as the map has it: no remade models (`docs/battle-backdrop.md`). For comparing. |
+| `BMAP_MODEL_LOG=1` (or `all`) | Logs each building model the battle map places near the player (`all`: the far ones too), with its place and whether it is remade. |
+| `BMAP_PLACE_LOG=1` | Logs the battle map's placement: timings of its stages, the live objects, the bodies stood on the floor. |
+| `BMAP_REMADE_DUMP=DIR` | Writes what each builder of a remade model made as `DIR/<model>.bmc`, for comparing two builds triangle by triangle. |
+| `BMAP_DUMP=FILE`, `BMAP_MODELS_DUMP=DIR` | Research: write the whole battle scene, or every building model standing alone, for tools outside the game. |
+| `BMAP_DEBUG_BACK=1` | Research: paints the never-drawn side of every one-sided draw magenta. |
+| `BMAP_CAM_YAW=DEG`, `BMAP_FORCE_FACING`, `BMAP_FREE_ANGLE` | Research: turn the battle cameras or fix the placement's facing. |
+| `BMAP_FIX_BACKS=1`, `BMAP_JOIN=...`, `BMAP_JOIN_MODE=...` | Research, not for use: tries that were shelved (`docs/research/battle-real-map-2026-11.md`). |
 | `EIDOS_DEBUG_WHERE=1` | Logs the player's zone and position once the field runs, as an `EIDOS_DEBUG_WARP` value: a test can then start from that spot with any save. |
 | `EIDOS_FLASH_WATCH=0` | Turns off the flash watch (on by default, #5): when one frame of the upper screen's picture differs strongly from the frames on both sides while those agree, the three frames' 2D state goes to `eidos_flash.log` in the saves folder and the first six events' pictures to `eidos_flash_<n>_<a,b,c>.png` beside it. Only three frames in a row count, so fast forward logs nothing. |
 | `EIDOS_FLASH_TEST=N` | Draws garbage tiles over the upper half of the first picture from frame N, to check the flash watch. |
