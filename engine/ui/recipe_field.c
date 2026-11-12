@@ -25,8 +25,9 @@
  *                pointer as the stylus, until Close, a right click or B.
  *
  *   field-lower  the field's other lower screens (the Union Room, the
- *                Entralink's map, dowsing): the world, and the game's
- *                lower screen as the same sheet.  The save report has its
+ *                Entralink's map): the world, and the game's lower
+ *                screen as the same sheet; the Dowsing Machine's rods
+ *                on a small card (dowsing_card).  The save report has its
  *                own recipe (engine/ui/recipe_menus.c).
  *
  * The game's state is read the way sdk/mp.c reads it: the game system's
@@ -64,6 +65,7 @@ static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
 static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldNow *f);
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
 static int power_card(EidosUiCtx *c, const struct FieldNow *f);
+static int dowsing_card(EidosUiCtx *c, const EidosUiFrame *in);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
 static int item_show_active(void);
 static int cutin_other(const struct FieldNow *f);
@@ -2726,8 +2728,13 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     tab_w = ui_text_w("00:00", UI_FONT_LARGE) + 24;
     tab_l = cw / 2 - tab_w / 2;
     tab_r = cw / 2 + tab_w / 2;
-    x = tab_r + 6 + small_button_w("Menu", "X");
-    st = small_button(c, &x, 0, "Menu", bh, "X");
+    {
+        /* with the Dowsing Machine on, X puts it away and no menu opens */
+        const char *menu = f.mode == 6 ? "Close" : "Menu";
+
+        x = tab_r + 6 + small_button_w(menu, "X");
+        st = small_button(c, &x, 0, menu, bh, "X");
+    }
     if (st & EIDOS_UI_CLICK) {
         open_menu = 1;
     }
@@ -2956,7 +2963,7 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
     own = plain_field() ? 0 : (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
-          || (f.mode == 9 && power_card(c, &f));
+          || (f.mode == 9 && power_card(c, &f)) || (f.mode == 6 && dowsing_card(c, in));
     if (own && f.mode == 9) {
         /* the game's banner on the top screen points at the lower one */
         view->hide_2d = 1;
@@ -2964,6 +2971,52 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The Dowsing Machine                                                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Dowsing Machine (mode 6, ov033 dowsing.c): its rods, cut from the
+ * game's lower screen, on a small card at the top right under the bar,
+ * clear of the player in the middle of the window (the whole screen as a
+ * sheet covered them).  The game closes it with X (the bar's button says
+ * Close meanwhile) or a tap on its cross: the card's Close button taps the
+ * cross.
+ *
+ * The cut is the grid inside the game's frame.  Over the machine's eight
+ * directions and "found" the rods, the arrow and the mark use x 18..237 and
+ * y 34..157 of the screen; the frame's top tab ends at row 28, its sides
+ * start at columns 11 and 239, and its bottom tab starts at row 155, where
+ * its tip (x 108..147) stands between the rods' lowest ends.  That tip is
+ * covered with the grid's own pixels: the grid is one 8 x 8 tile, so a
+ * place nothing ever covers (x 20, y 35), a whole number of tiles away,
+ * shows the same pixels.
+ */
+static int dowsing_card(EidosUiCtx *c, const EidosUiFrame *in)
+{
+    const int sx = 17, sy = 30, w = 222, h = 130, head = 16;
+    const int tab_x = 108, tab_y = 155, tab_w = 40, grid_x = 20, grid_y = 35;
+    int cw = c->canvas->w, x, y, bx;
+
+    if (in->screen_rgba[1] == NULL || cw < w + 16) {
+        return 0;
+    }
+    x = cw - w - 10;
+    y = 16 + 6;
+    ui_panel(c, x - 4, y - 2, w + 8, head + h + 6, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 240);
+    ui_text(c, x + 4, y + ui_text_y(head, UI_FONT_SMALL), "DOWSING MCHN", UI_WHITE, UI_EDGE,
+            UI_FONT_SMALL, 1);
+    bx = x + w;
+    if (small_button(c, &bx, y, "Close", head - 2, NULL) & EIDOS_UI_CLICK) {
+        eidos_ui_tap(0xF0, 0xB0, 3);
+    }
+    ui_fill(c, x - 1, y + head - 1, w + 2, h + 2, UI_INK, 255);
+    ui_blit_screen(c, x, y + head, in->screen_rgba[1], sx, sy, w, h, 1, 0);
+    ui_blit_screen(c, x + tab_x - sx, y + head + tab_y - sy, in->screen_rgba[1], grid_x, grid_y, tab_w,
+                   sy + h - tab_y, 1, 0);
+    return 1;
 }
 
 /* ------------------------------------------------------------------ */

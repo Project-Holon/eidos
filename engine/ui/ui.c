@@ -1692,6 +1692,8 @@ static void debug_script(void)
  *                 field's step check starts, SYMBOL_MAP_CreatePokeEventTask)
  *   "box M"       the PC's boxes in mode M (as the PC's script command opens
  *                 them: 0 organize, 1 withdraw, 2 deposit, ...)
+ *   "dowsing"     the Dowsing Machine on the lower screen, as using the
+ *                 item does (FIELD_SUBSCREEN_RequestMode, mode 6)
  *   "union"       into the Union Room, as its receptionist's script does
  *                 (EVENT_MAPCHANGE_CreateFixedZoneEvent: the room and its
  *                 link; the C-Gear's wireless must be on)
@@ -1700,6 +1702,7 @@ static void debug_script(void)
  *                 partner's), for the trade screen's tests
  * The save these run on is a test copy: the game clear saves. */
 extern void *ov010_EVENT_GAMECLEAR_Create(void *gsys, u32 mode) __attribute__((weak));
+extern int ov021_FIELD_SUBSCREEN_RequestMode(void *subscreen, u32 mode) __attribute__((weak));
 extern void *ov021_FLD_TRADE_CreateEvent(void *gsys, u32 tradeId, u32 partyIndex) __attribute__((weak));
 extern void *ov021_EVENT_NAMEIN_Create(void *gsys, void *fieldMap, void *parent, u32 mode, u16 *result)
     __attribute__((weak));
@@ -1829,6 +1832,14 @@ static void debug_open(void)
         static u16 result;
 
         ev = ov021_EVENT_NAMEIN_Create(gs, fm, NULL, 7, &result);
+    } else if (strcmp(what, "dowsing") == 0 && ov021_FIELD_SUBSCREEN_RequestMode != NULL) {
+        void *sub = *(void **)(fm + 0x24);
+
+        if (sub != NULL) {
+            (void)ov021_FIELD_SUBSCREEN_RequestMode(sub, 6);
+        }
+        fprintf(stderr, "eidos: debug open %s\n", what);
+        return;
     } else if (strcmp(what, "union") == 0 && ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent != NULL) {
         ev = ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent(gs, fm);
     } else if (strcmp(what, "ltrade") == 0 && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
