@@ -95,6 +95,7 @@ RmBuild rm_floor;               /* floor.c: the model as it is, on the floor    
 RmBuild rm_rock;                /* rock.c: a rock, a vase: a body of pixel-sized blocks */
 RmBuild rm_turned;              /* turned.c: a thing alike front and back, its missing back as its front turned */
 RmBuild rm_backwall;            /* backwall.c: a flat back for a long box, in its side wall's pixels */
+RmBuild rm_building;            /* building.c: a building's back wall and its roof's far slope */
 
 /* --- helpers (common.c) --- */
 

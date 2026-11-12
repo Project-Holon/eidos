@@ -34,6 +34,30 @@ static const BmapRemade k_remade[] = {
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
     { "b0_00060", rm_backwall, "" },                /* container (Cold Storage): its far end */
+    { "b1_00016", rm_building, "" },
+    { "b1_00018", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00030", rm_building,                      /* kiln (Dreamyard): its back is its brick side, leaning as the sides do */
+      "src=east,span=-19:20,lean=4,flare=4.5,roof=0" },
+    { "b1_00039", rm_building,                      /* warehouse (Cold Storage): its front without the two doors and the plate */
+      "erase=-48:42:2:51,plain=46" },
+    { "b1_00045", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00046", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00049", rm_building,                      /* house (Driftveil): its front without the door, its posts and the sign over it */
+      "erase=-23:7:2:34+-20:20:34:44,plain=22" },
+    { "b1_00090", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00100", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00122", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00146", rm_building,                      /* stone tower (Route 8): its back is its side */
+      "src=east,span=-108:46,near=20,roof=0,twosided=1" },
+    { "b1_00148", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00161", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00169", rm_building, "wall=0" },              /* no battle place behind it: its roof and small pieces only */
+    { "b1_00177", rm_building,                      /* hut on posts (Abundant Shrine): its front with planks in place of the doors */
+      "erase=-9.8:9.8:25:43,plain=-10.6,foot=20,roof=0,twosided=1" },
+    { "b1_00243", rm_building,                      /* stone huts (Village Bridge): plain stone, no windows at the back */
+      "at=100,erase=-33:33:2:37,plain=34.4,roof=0" },
+    { "b0_00019", rm_rock, "cards=1,sink=0,high=1" },   /* potted plant: its leaves, a card over the pot, made a body */
+    { "b1_00290", rm_turned, "rest=0" },            /* bell arch (Celestial Tower) */
     { "b0_00061", rm_floor, "" },                   /* boxes (Cold Storage) */
     { "b0_00111", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
     { "b0_00112", rm_floor, "" },                   /* floor glow (Chargestone Cave) */

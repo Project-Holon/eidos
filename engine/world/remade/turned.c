@@ -161,7 +161,6 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
 
     (void)tex;
     (void)ntex;
-    (void)opt;
     for (bi = 0; bi < nb; bi++) {
         n += b[bi].bb ? 0u : b[bi].n;
     }
@@ -258,6 +257,9 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
     }
     cx = (lo[0] + hi[0]) / 2.0;
     cz = (lo[2] + hi[2]) / 2.0;
+    if (rm_optf(opt, "turn", 1) == 0.0) {
+        goto cards;                     /* (`turn=0`: only the cards from both sides) */
+    }
     /* each piece's brightest colour (a piece painted black all over: the thing's brightest) */
     {
         unsigned char top[3] = { 0, 0, 0 };
@@ -335,7 +337,19 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             tr[n++] = q;
         }
     }
-    out->flags |= RM_FLAG_REST;
+cards:
+    /* an upright flat piece (a plant's leaves drawn on a card) is shown from both sides */
+    for (i = 0; i < n0; i++) {
+        double nv[3];
+
+        normal_of(tr[i].p, nv);
+        if (tr[i].flat && rm_norm(nv) > 1e-6 && fabs(nv[1]) < 0.9) {
+            rm_two(out, tr[i].id);
+        }
+    }
+    if (rm_optf(opt, "rest", 1) != 0.0) {
+        out->flags |= RM_FLAG_REST;
+    }
     free(tr);
     free(parent);
 }

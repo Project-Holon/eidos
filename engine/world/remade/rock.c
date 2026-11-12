@@ -1131,15 +1131,63 @@ done:
 #undef BOSS_END
 }
 
+/* Is corner p a corner of a triangle other than the pair (pb, pi), (pb, pi + 1)? */
+static int shared(const RmBatch *b, unsigned nb, unsigned pb, unsigned pi, const float *p)
+{
+    unsigned bi, i;
+    int k;
+
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; i < b[bi].n; i++) {
+            if (bi == pb && (i == pi || i == pi + 1u)) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                const float *q = b[bi].tri[i].p[k];
+
+                if (fabs(q[0] - p[0]) < 0.3 && fabs(q[1] - p[1]) < 0.3 && fabs(q[2] - p[2]) < 0.3) {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 void rm_rock(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
     char lb[8];
-    int lean = rm_opt(opt, "lean", lb, sizeof lb) != NULL;
+    int lean = rm_opt(opt, "lean", lb, sizeof lb) != NULL, cards = rm_opt(opt, "cards", lb, sizeof lb) != NULL;
     unsigned bi;
 
     for (bi = 0; bi < nb; bi++) {
         const RmBatch *bt = &b[bi];
 
+        if (cards) {
+            /* `cards=1`: only a picture card that stands by itself in the model (a plant's leaves over its pot:
+             * two triangles that share no corner with the rest), each made a body */
+            unsigned i;
+
+            for (i = 0; !bt->bb && i + 1u < bt->n && bt->tex >= 0 && (unsigned)bt->tex < ntex && tex[bt->tex].rgba != NULL; i++) {
+                RmBatch one = *bt;
+                int k, alone = 1;
+
+                for (k = 0; k < 3 && alone; k++) {
+                    alone = !shared(b, nb, bi, i, bt->tri[i].p[k]) && !shared(b, nb, bi, i, bt->tri[i + 1u].p[k]);
+                }
+                if (!alone) {
+                    continue;
+                }
+                one.tri = &bt->tri[i];
+                one.n = 2;
+                if (build(&one, &tex[bt->tex], opt, out)) {
+                    rm_drop(out, bt->tri[i].id);
+                    rm_drop(out, bt->tri[i + 1u].id);
+                }
+                i++;
+            }
+            continue;
+        }
         if ((!bt->bb && !lean) || bt->n < 2 || bt->tex < 0 || (unsigned)bt->tex >= ntex || tex[bt->tex].rgba == NULL) {
             continue;
         }
