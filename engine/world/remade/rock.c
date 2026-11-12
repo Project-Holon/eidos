@@ -44,6 +44,7 @@
  */
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -458,6 +459,16 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
          * edge is not that place: the picture leans back about its middle) */
         foot[0] = bt->pivot[0]; foot[1] = bt->pivot[1]; foot[2] = bt->pivot[2];
     }
+    /* `shift=X:Z`: the body stands that far from the card's foot (a plant's card leans from the pot's front
+     * edge; its body stands over the pot's middle) */
+    if (rm_opt(opt, "shift", ob, sizeof ob) != NULL) {
+        double sx = 0.0, sz = 0.0;
+
+        if (sscanf(ob, "%lf:%lf", &sx, &sz) == 2) {
+            foot[0] += sx;
+            foot[2] += sz;
+        }
+    }
     s = width / W;                      /* one picture pixel, in map units: a block's edge */
     /* A block is as high as a pixel of the leaning picture stands as the battle's command camera sees it: that
      * camera looks 12.5 degrees down, so a picture leaning at the angle a shows sin(a + 12.5) of its length.
@@ -624,7 +635,8 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     facesn = rm_opt(opt, "faces", ob, sizeof ob);
     if (facesn != NULL) {
         const char *const *lines = strcmp(facesn, "cave") == 0 ? k_rock_faces_cave : strcmp(facesn, "open") == 0 ? k_rock_faces_open
-                                   : strcmp(facesn, "water") == 0 ? k_rock_faces_water : NULL;
+                                   : strcmp(facesn, "water") == 0 ? k_rock_faces_water
+                                   : strcmp(facesn, "plant") == 0 ? k_rock_faces_plant : NULL;
 
         if (lines != NULL && faces_load(r, lines)) {
             r->HH = 4 * H;

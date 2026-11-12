@@ -95,12 +95,17 @@ RmBuild rm_floor;               /* floor.c: the model as it is, on the floor    
 RmBuild rm_rock;                /* rock.c: a rock, a vase: a body of pixel-sized blocks */
 RmBuild rm_turned;              /* turned.c: a thing alike front and back, its missing back as its front turned */
 RmBuild rm_backwall;            /* backwall.c: a flat back for a long box, in its side wall's pixels */
+RmBuild rm_plant;               /* plant.c: the potted plant: foliage a body, the pot closed */
 RmBuild rm_building;            /* building.c: a building's back wall and its roof's far slope */
 
 /* --- helpers (common.c) --- */
 
 void rm_drop(RmOut *o, unsigned id);
 void rm_drop_all(RmOut *o, const RmBatch *b);
+/* No face is seen from its undrawn side: every one-sided triangle of the remade model (the model's own that
+ * are kept, their turned copies, the new ones without a texture of their own) gets a back in its own pixels,
+ * `shade` darker.  Called last by a builder of a thing the map left open. */
+void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade);
 void rm_two(RmOut *o, unsigned id);
 void rm_turn(RmOut *o, unsigned id, double cx, double cz);
 /* Adds a triangle to the output; its normal is its corners' own. */

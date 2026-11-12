@@ -32,6 +32,7 @@
  */
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -157,7 +158,7 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
     Tr *tr;
     int *parent;
     double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, cx, cz;
-    int any = 0;
+    int any = 0, mirror = rm_optf(opt, "mirror", 0) != 0.0, copies = rm_optf(opt, "copies", 1) != 0.0;
 
     (void)tex;
     (void)ntex;
@@ -213,12 +214,25 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
         tr[i].flat = 1;
     }
     for (i = 0; i < n0; i++) {
-        double n1v[3], n2v[3], zlo = 1e30, zhi = -1e30;
+        double n1v[3], n2v[3], zlo = 1e30, zhi = -1e30, pymin = 1e30;
         int first = -1;
 
         for (j = 0; j < n0; j++) {
             if (tr[j].piece == tr[i].piece) {
+                for (k = 0; k < 3; k++) {
+                    pymin = tr[j].p[k][1] < pymin ? tr[j].p[k][1] : pymin;
+                }
+            }
+        }
+        for (j = 0; j < n0; j++) {
+            if (tr[j].piece == tr[i].piece) {
+                double nj[3];
+
                 first = first < 0 ? (int)j : first;
+                normal_of(tr[j].p, nj);
+                if (rm_norm(nj) > 1e-6 && fabs(nj[1]) > 0.98 && tr[j].p[0][1] < pymin + 0.3) {
+                    continue;           /* (the level sheet at its foot, a shadow: no part of its shape) */
+                }
                 for (k = 0; k < 3; k++) {
                     zlo = tr[j].p[k][2] < zlo ? tr[j].p[k][2] : zlo;
                     zhi = tr[j].p[k][2] > zhi ? tr[j].p[k][2] : zhi;
@@ -257,6 +271,13 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
     }
     cx = (lo[0] + hi[0]) / 2.0;
     cz = (lo[2] + hi[2]) / 2.0;
+    {
+        char cb[48];
+
+        if (rm_opt(opt, "centre", cb, sizeof cb) != NULL) {
+            sscanf(cb, "%lf:%lf", &cx, &cz);
+        }
+    }
     if (rm_optf(opt, "turn", 1) == 0.0) {
         goto cards;                     /* (`turn=0`: only the cards from both sides) */
     }
@@ -291,15 +312,41 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
     /* 1. the turned copies */
     for (i = 0; i < n0; i++) {
         Tr q = tr[i];
+        double nv0[3];
 
         if (tr[i].flat) {
             continue;
+        }
+        if (!copies) {
+            continue;
+        }
+        normal_of(tr[i].p, nv0);
+        if (rm_norm(nv0) > 1e-6 && fabs(nv0[1]) > 0.98 && tr[i].p[0][1] < lo[1] + 0.3) {
+            continue;                   /* (a level sheet at the thing's foot: its shadow on the floor) */
         }
         for (j = 0; j < 3; j++) {
             q.p[j][0] = (float)(2.0 * cx - tr[i].p[j][0]);
             q.p[j][2] = (float)(2.0 * cz - tr[i].p[j][2]);
         }
         q.pz = 2.0 * cz - tr[i].pz;
+        if (mirror) {
+            /* mirrored north to south: the corners the other way round, so it looks outward */
+            for (j = 0; j < 3; j++) {
+                unsigned sidx = j == 0 ? 0u : 3u - j;
+
+                q.p[j][0] = tr[i].p[sidx][0];
+                q.p[j][1] = tr[i].p[sidx][1];
+                q.p[j][2] = (float)(2.0 * cz - tr[i].p[sidx][2]);
+                q.uv[j][0] = tr[i].uv[sidx][0];
+                q.uv[j][1] = tr[i].uv[sidx][1];
+            }
+            if (!there(tr, n, q.p)) {
+                memcpy(q.ref, tr[i].rgb, 3u);
+                painted(out, &q);
+                tr[n++] = q;
+            }
+            continue;
+        }
         if (!there(tr, n, q.p)) {
             if (q.black) {
                 painted(out, &q);
@@ -350,6 +397,7 @@ cards:
     if (rm_optf(opt, "rest", 1) != 0.0) {
         out->flags |= RM_FLAG_REST;
     }
+    rm_seal(b, nb, out, 0.7);
     free(tr);
     free(parent);
 }

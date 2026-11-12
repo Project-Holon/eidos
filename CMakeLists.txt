@@ -880,6 +880,7 @@ set(BW_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
 
     # engine/audio/ -- the SDAT sequencer and mixer, the host's stand-in for
     # the ARM7 sound core.  No SDL here either: the platform layer's audio
@@ -2728,6 +2729,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_npc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bcam_sim.c
@@ -2770,6 +2772,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
     target_include_directories(bmap_npc_dump PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world
@@ -3098,7 +3101,8 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c)
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c)
     target_sources(eidos_boot PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
     target_include_directories(eidos_boot PRIVATE

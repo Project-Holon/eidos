@@ -160,7 +160,7 @@ void rm_backwall(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
     {
         /* (a quarter unit out from the end: the box's inside has its own dark end wall right there, shown
          * from both sides, and two walls in one plane would flicker) */
-        const double zw = z0 - 0.25;
+        const double zw = z0 - 0.03;
         const double q[4][3] = { { xb, yb, zw }, { xb, ya, zw }, { xa, yb, zw }, { xa, ya, zw } };
         const double t[4][2] = { { 1, 0 }, { 1, 1 }, { 0, 0 }, { 0, 1 } };
         unsigned first = out->ntri;
@@ -180,4 +180,5 @@ void rm_backwall(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
     out->tex[out->ntex].h = Hm;
     out->tex[out->ntex].rgba = px;
     out->ntex++;
+    rm_seal(b, nb, out, 0.7);
 }

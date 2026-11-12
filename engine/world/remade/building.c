@@ -184,8 +184,9 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
     unsigned bi, i, j, n = 0, n0, ne = 0, nq = 0;
     Tr *tr;
     Edge *ed = NULL;
-    double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, y0, over = 0.0, wx0 = 1e30, wx1 = -1e30;
+    double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, y0, over = 0.0, wx0 = 1e30, wx1 = -1e30, wzn = 1e30;
     double (*quad)[4][3] = NULL;
+    int fitted = 0;
     unsigned char *qside = NULL;
     double *minz = NULL;
     int k, nbin;
@@ -406,8 +407,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         }
     }
     if (!do_wall) {
-        free(tr);
-        return;
+        goto done;
     }
     /* 2. the edges where the model ends: an edge of one triangle only */
     ed = (Edge *)calloc((size_t)n * 3u, sizeof *ed);
@@ -532,6 +532,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         for (j = 0; j < 3u; j++) {
             wx0 = tr[i].p[j][0] < wx0 ? tr[i].p[j][0] : wx0;
             wx1 = tr[i].p[j][0] > wx1 ? tr[i].p[j][0] : wx1;
+            wzn = tr[i].p[j][2] < wzn ? tr[i].p[j][2] : wzn;
         }
     }
     {
@@ -625,7 +626,10 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 /* the wall: set in from the edge, up to the roof over it, down to the ground */
                 for (j = 0; j < 2u; j++) {
                     const double *src = j == 0 ? a : bb2;
-                    double top[3] = { src[0] - ox * over, src[1], src[2] - oz * over }, upd[3] = { 0.0, 1.0, 0.0 }, ro[3], best = -1.0;
+                    /* (a back wall is set in straight south, so two pieces of it share their corners exactly
+                     * and no crack opens between them; a side wall along its own way in) */
+                    double top[3] = { side ? src[0] - ox * over : src[0], src[1], side ? src[2] - oz * over : src[2] + over };
+                    double upd[3] = { 0.0, 1.0, 0.0 }, ro[3], best = -1.0;
 
                     if (over > 0.0) {
                         ro[0] = top[0]; ro[1] = top[1] - 0.2; ro[2] = top[2];
@@ -693,6 +697,70 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
             }
         }
     }
+    /* `fit=1`: the back is one wall from the west side wall's north edge to the east side wall's (a kiln, whose
+     * sides lean: a wall under the roof's edge met neither side) */
+    if (nq > 0 && rm_optf(opt, "fit", 0) != 0.0) {
+        double c[2][2][3], ytop = -1e30, cxm = (lo[0] + hi[0]) / 2.0;      /* [west, east][foot, top] */
+        int have[2][2] = { { 0, 0 }, { 0, 0 } }, sd, lv;
+/* a side wall of the body: looks east or west and reaches the ground (a chimney's side does not) */
+#define BIG_SIDE(i_) (fabs(tr[i_].n[0]) > 0.5 && fabs(tr[i_].n[1]) < 0.45 && \
+                      (tr[i_].p[0][1] < y0 + 1.0 || tr[i_].p[1][1] < y0 + 1.0 || tr[i_].p[2][1] < y0 + 1.0))
+
+        for (i = 0; i < n0; i++) {
+            if (BIG_SIDE(i)) {
+                for (j = 0; j < 3u; j++) {
+                    ytop = tr[i].p[j][1] > ytop ? tr[i].p[j][1] : ytop;
+                }
+            }
+        }
+        for (i = 0; i < n0; i++) {
+            if (!BIG_SIDE(i)) {
+                continue;
+            }
+            for (j = 0; j < 3u; j++) {
+                const double *v = tr[i].p[j];
+
+                sd = v[0] > cxm;
+                lv = v[1] > ytop - 1.0 ? 1 : v[1] < y0 + 1.0 ? 0 : -1;
+                if (lv >= 0 && (!have[sd][lv] || v[2] < c[sd][lv][2])) {
+                    memcpy(c[sd][lv], v, sizeof c[sd][lv]);
+                    have[sd][lv] = 1;
+                }
+            }
+        }
+        if (have[0][0] && have[0][1] && have[1][0] && have[1][1]) {
+            /* (corners counter-clockwise seen from the north: outside) */
+            memcpy(quad[0][0], c[1][1], sizeof quad[0][0]);
+            memcpy(quad[0][1], c[0][1], sizeof quad[0][1]);
+            memcpy(quad[0][2], c[0][0], sizeof quad[0][2]);
+            memcpy(quad[0][3], c[1][0], sizeof quad[0][3]);
+            qside[0] = 0;
+            nq = 1;
+            fitted = 1;
+        }
+    }
+#undef BIG_SIDE
+    /* back wall pieces that stand within 2 units of the northmost are one plane: no slit between them */
+    {
+        double zn = 1e30;
+        unsigned q2;
+
+        for (q2 = 0; q2 < nq; q2++) {
+            for (j = 0; !qside[q2] && j < 4u; j++) {
+                zn = quad[q2][j][2] < zn ? quad[q2][j][2] : zn;
+            }
+        }
+        if (wzn < 1e29 && fabs(zn - wzn) < 8.0) {
+            zn = wzn;                   /* where the side walls end */
+        }
+        for (q2 = 0; !fitted && q2 < nq; q2++) {
+            for (j = 0; !qside[q2] && j < 4u; j++) {
+                if (fabs(quad[q2][j][2] - zn) < 8.0) {
+                    quad[q2][j][2] = zn;
+                }
+            }
+        }
+    }
     /* The back wall's picture: the building's own front as it is seen square on from the south (its walls,
      * not its roof), a pixel for each half map unit; what belongs to the entrance (`erase`) is plain wall, each
      * row taken from the front's plain place `plain` at the same height; above the front wall's top (a gable)
@@ -704,6 +772,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         const int east = rm_opt(opt, "src", sb, sizeof sb) != NULL && strcmp(sb, "east") == 0;
         const int ax = east ? 2 : 0, dp = east ? 0 : 2;     /* the picture's across, and the way it is looked at */
         double er[8][4], plain = rm_optf(opt, "plain", 1e30), xa = lo[ax], xb = hi[ax], yb = hi[1], wz = hi[dp];
+        const int flatw = rm_optf(opt, "flat", 0) != 0.0;     /* (`flat=1`: the plain place's column all across: bands, no openings) */
         const double at_most = rm_optf(opt, "at", 1e30);      /* (`at=Z`: the front wall that stands at most there: a model of two huts) */
         double sp0 = xa, sp1 = xb, qx0 = 1e30, qx1 = -1e30, lean = rm_optf(opt, "lean", 0.0), flare = rm_optf(opt, "flare", 0.0);
         unsigned char *px, *ok, white[3], dark[3] = { 0, 0, 0 };
@@ -768,7 +837,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                         continue;           /* (not a wall that looks that way) */
                     }
                     cz3 = (tr[i].p[0][dp] + tr[i].p[1][dp] + tr[i].p[2][dp]) / 3.0;
-                    if (cz3 > wz + rm_optf(opt, "near", 1.5) || cz3 < wz - 8.0) {
+                    if (cz3 > wz + rm_optf(opt, "near", 1.5) || cz3 < wz - rm_optf(opt, "far", 8.0)) {
                         continue;           /* (the eave's board in front of the wall, a chimney far behind it) */
                     }
                     hd = ray_hit(&tr[i], o, d);
@@ -861,7 +930,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 ux[j] = quad[q][j][0];
             }
             for (j = 0; j < 4u; j++) {
-                if (j >= 2u) {
+                if (j >= 2u && !fitted) {
                     quad[q][j][1] = foot;       /* (a house on posts: its wall ends at its floor) */
                     quad[q][j][2] -= lean;      /* (`lean`: the foot stands out, as the sides' feet do) */
                     if (flare != 0.0 && qx1 > qx0) {
@@ -872,9 +941,9 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 if (east) {
                     double zz = qx1 > qx0 ? sp1 + (ux[j] - qx0) / (qx1 - qx0) * (sp0 - sp1) : sp0;
 
-                    t[j][0] = ((qside[q] && plain < 1e29 ? plain : zz) - xa) / (xb - xa);
+                    t[j][0] = (((qside[q] || flatw) && plain < 1e29 ? plain : zz) - xa) / (xb - xa);
                 } else
-                t[j][0] = ((qside[q] && plain < 1e29 ? plain : ux[j]) - xa) / (xb - xa);
+                t[j][0] = (((qside[q] || flatw) && plain < 1e29 ? plain : ux[j]) - xa) / (xb - xa);
                 t[j][1] = (yb - quad[q][j][1]) / (yb - y0);
                 in[j][0] = quad[q][j][0];
                 in[j][1] = quad[q][j][1];
@@ -892,7 +961,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 rm_norm(nn);
                 for (j = 0; j < 4u; j++) {
                     for (k = 0; k < 3; k++) {
-                        in[j][k] -= nn[k] * 0.25;
+                        in[j][k] -= nn[k] * 0.0;    /* (in the wall's own plane: the two look opposite ways, one is drawn) */
                     }
                 }
             }
@@ -912,6 +981,9 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         out->ntex++;
     }
 done:
+    if (!out->fail) {
+        rm_seal(b, nb, out, 0.7);
+    }
     free(tr);
     free(ed);
     free(minz);

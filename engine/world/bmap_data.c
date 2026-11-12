@@ -3761,6 +3761,10 @@ static int remade_make(Done *d, const BmapRemade *e, Model *md, const char *setk
         }
     }
     e->build(bt, nb, tx, (unsigned)c->ntex, e->opt, &o);
+    if (getenv("BMAP_REMADE_DUMP") != NULL) {
+        fprintf(stderr, "bmap: remade %s: %u new, %u left out, %u turned, %u both sides, flags %u%s\n", d->key, o.ntri, o.ndrop,
+                o.nturn, o.ntwo, o.flags, o.fail ? ", FAILED" : "");
+    }
     if (o.fail || (o.ntri == 0 && o.ndrop == 0 && o.ntwo == 0 && o.nturn == 0 && o.flags == 0)) {
         goto out;
     }

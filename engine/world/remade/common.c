@@ -246,3 +246,119 @@ double rm_norm(double v[3])
     }
     return len;
 }
+
+typedef struct { double p[3][3], c[3], r2; float uv[3][2]; unsigned src; int tex, one, kind; unsigned char rgb[3]; } SealTri;
+
+static int seal_u32(const void *a, const void *b)
+{
+    unsigned x = *(const unsigned *)a, y = *(const unsigned *)b;
+
+    return x < y ? -1 : x > y;
+}
+
+void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
+{
+    SealTri *g;
+    unsigned bi, i, j, n = 0, cap = out->ntri, ng, *drop = NULL, *two = NULL;
+    unsigned char *add;
+    int k;
+
+    for (bi = 0; bi < nb; bi++) {
+        cap += b[bi].bb ? 0u : b[bi].n * 2u;
+    }
+    g = (SealTri *)calloc(cap ? cap : 1u, sizeof *g);
+    add = (unsigned char *)calloc(cap ? cap : 1u, 1);
+    drop = (unsigned *)malloc((out->ndrop + 1u) * sizeof *drop);
+    two = (unsigned *)malloc((out->ntwo + 1u) * sizeof *two);
+    if (g == NULL || add == NULL || drop == NULL || two == NULL) {
+        free(g); free(add); free(drop); free(two);
+        out->fail = 1;
+        return;
+    }
+    if (out->ndrop) {
+        memcpy(drop, out->drop, out->ndrop * sizeof *drop);
+    }
+    if (out->ntwo) {
+        memcpy(two, out->two, out->ntwo * sizeof *two);
+    }
+    qsort(drop, out->ndrop, sizeof *drop, seal_u32);
+    qsort(two, out->ntwo, sizeof *two, seal_u32);
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+            const RmTri *t = &b[bi].tri[i];
+            SealTri *q;
+
+            if (bsearch(&t->id, drop, out->ndrop, sizeof *drop, seal_u32) != NULL) {
+                continue;
+            }
+            q = &g[n++];
+            for (j = 0; j < 3u; j++) {
+                for (k = 0; k < 3; k++) {
+                    q->p[j][k] = t->p[j][k];
+                }
+            }
+            memcpy(q->uv, t->uv, sizeof q->uv);
+            q->src = t->id;
+            q->tex = -1;
+            q->one = b[bi].cull == 1 && bsearch(&t->id, two, out->ntwo, sizeof *two, seal_u32) == NULL;
+            memcpy(q->rgb, t->rgb, 3u);
+            /* its turned copy */
+            for (j = 0; j < out->nturn; j++) {
+                if (out->turn[j].id == t->id && n < cap) {
+                    SealTri *c = &g[n++];
+                    unsigned m;
+
+                    *c = *q;
+                    for (m = 0; m < 3u; m++) {
+                        c->p[m][0] = 2.0 * out->turn[j].cx - q->p[m][0];
+                        c->p[m][2] = 2.0 * out->turn[j].cz - q->p[m][2];
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    for (i = 0; i < out->ntri && n < cap; i++) {
+        const RmNew *t = &out->tri[i];
+        SealTri *q;
+
+        if (t->alpha != 0 || t->kind == 1) {
+            continue;                   /* (a shadow) */
+        }
+        q = &g[n++];
+        for (j = 0; j < 3u; j++) {
+            for (k = 0; k < 3; k++) {
+                q->p[j][k] = t->p[j][k];
+            }
+        }
+        memcpy(q->uv, t->uv, sizeof q->uv);
+        q->src = t->src;
+        q->tex = t->tex;
+        q->one = t->cull == 1 && t->tex < 0;        /* (a body with a texture of its own is closed by its making) */
+        q->kind = t->kind;
+        memcpy(q->rgb, t->rgb, 3u);
+    }
+    ng = n;
+    for (i = 0; i < ng; i++) {
+        add[i] = (unsigned char)g[i].one;
+    }
+    for (i = 0; i < ng && !out->fail; i++) {
+        unsigned char rgb[3];
+        double t0[2], t1[2], t2[2];
+
+        if (!add[i]) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            rgb[k] = (unsigned char)(g[i].rgb[k] * shade);
+        }
+        t0[0] = g[i].uv[0][0]; t0[1] = g[i].uv[0][1];
+        t1[0] = g[i].uv[1][0]; t1[1] = g[i].uv[1][1];
+        t2[0] = g[i].uv[2][0]; t2[1] = g[i].uv[2][1];
+        rm_tri(out, g[i].src, g[i].tex, 1, rgb, g[i].p[0], g[i].p[2], g[i].p[1], t0, t2, t1, g[i].kind, 0);
+    }
+    free(g);
+    free(add);
+    free(drop);
+    free(two);
+}
