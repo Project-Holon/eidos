@@ -91,7 +91,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00126", rm_tower, "corner=6,wall=24:-24:24:-24:4:48,mirror=-24:24:41:49:0:15:22,props=42.5:40" },   /* pale green building, roof deck chair: plain back in its sides, the parapet inside, the chair closed */
     { "b1_00144", rm_tower, "corner=0,wall=-80:-80:0:-48:8:64+-72:-72:-8:-40:64:96+80:8:80:-40:8:48+72:16:72:-32:48:96,mirror=-78:-2:10:62:0+-70:-10:68:94:0+10:78:16:46:0+18:70:48:94:0" },   /* two glass office blocks: each part's back in its sides' window grid */
     { "b1_00155", rm_tower, "corner=2,wall=12:-12:12:-8:3:40" },   /* vending machine: a plain back panel in its sides' metal */
-    { "b1_00157", rm_tower, "" },   /* (in progress) */
+    { "b1_00157", rm_tower, "corner=4,mirror=-56:72:59.9:84.5:-0.25:46:53+-56:-44:3:61:-2.75:50:53+60:72:3:61:-2.75:50:53+-79:-55:3:46:-2:40:50+71:95:3:46:-2:40:50,wall=72:-44:60:-48.6:4:60" },   /* station hall, glass vault: the arch and the wings turned round, a plain back below the arch (no doors) */
     { "b1_00160", rm_tower, "" },   /* (in progress) */
     { "b1_00246", rm_tower, "" },   /* (in progress) */
     { "b1_00057", rm_tower, "corner=6,mirror=-30:30:84:120.5:20+-52:-43:58:72:20,wall=52.8:-52.9:52.8:-34.7:4:44+59.2:-52.5:52.5:-40:44:56+20:-20:20:-4:50.2:84,under=44+84" },   /* control tower: its north faces, back walls and undersides */
