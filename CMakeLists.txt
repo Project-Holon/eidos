@@ -1169,6 +1169,8 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_replace.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl3d.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/texpack.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/pixup.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl2d.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl_view.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl_ops.c

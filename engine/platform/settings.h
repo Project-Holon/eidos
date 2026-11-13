@@ -113,6 +113,9 @@ enum {
     EIDOS_OPT_UI_THEME,             /* the one-screen interface's style
                                        (engine/ui/theme.h): 0 Kosmos (the
                                        default), 1 Plasma, 2 Harmonia      */
+    EIDOS_OPT_TEXTURE_PACK,         /* the GPU 3D's HD textures: 0 off, 1
+                                       textures/<hash>.png, 2 those, else
+                                       upscaled (texpack.c)                */
     EIDOS_OPT_COUNT
 };
 

@@ -41,6 +41,7 @@
 static const char *const k_modes[] = { "windowed", "fullscreen", "borderless" };
 static const char *const k_arrangements[] = { "vertical", "horizontal", "one" };
 static const char *const k_offon[] = { "off", "on" };
+static const char *const k_hdtex[] = { "off", "pack", "auto" };
 static const char *const k_backdrops[] = { "real map", "original" };
 static const char *const k_outlines[] = { "off", "thin" };
 static const char *const k_ui_themes[] = { "kosmos", "plasma", "harmonia" };
@@ -95,6 +96,8 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, k_offon, "", 0, NULL },
     { "Layout", "ui_theme", "Interface style", EIDOS_OPTKIND_CHOICE, 0, 2, 1,
       0, k_ui_themes, "", 0, NULL },
+    { "Display", "texture_pack", "HD textures", EIDOS_OPTKIND_CHOICE, 0, 2, 1,
+      0, k_hdtex, "", 0, NULL },
 };
 
 /* sdk/field_fade.c reads this option by number */

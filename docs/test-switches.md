@@ -67,6 +67,7 @@ holds the move steps (their frames then count from when it opens), and
 | `BMAP_FIX_BACKS=1`, `BMAP_JOIN=...`, `BMAP_JOIN_MODE=...` | Research, not for use: tries that were shelved (`docs/research/battle-real-map-2026-11.md`). |
 | `EIDOS_DEBUG_WHERE=1` | Logs the player's zone and position once the field runs, as an `EIDOS_DEBUG_WARP` value: a test can then start from that spot with any save. |
 | `EIDOS_FLASH_WATCH=0` | Turns off the flash watch (on by default, #5): when one frame of the upper screen's picture differs strongly from the frames on both sides while those agree, the three frames' 2D state goes to `eidos_flash.log` in the saves folder and the first six events' pictures to `eidos_flash_<n>_<a,b,c>.png` beside it. Only three frames in a row count, so fast forward logs nothing. |
+| `EIDOS_TEXTURE_DUMP=1` | Writes each new 3D texture to `textures/dump/<hash>.png` (once per texture), the originals a texture pack is made from: a file of the same name in `textures/`, at a whole multiple of the size, replaces it while HD textures is Pack or Auto. |
 | `EIDOS_FLASH_TEST=N` | Draws garbage tiles over the upper half of the first picture from frame N, to check the flash watch. |
 | `EIDOS_AUDIO_WAV=FILE` | With `EIDOS_NO_AUDIO=1`, writes the game's sound to a WAV (16-bit stereo, 32768 Hz). Each frame writes its own share, so the sound lines up with `--screenshot` frames at any speed: frame N starts at N x 560190 / 33513982 s. |
 

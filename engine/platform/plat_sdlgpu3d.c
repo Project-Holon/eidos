@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "plat_sdlgpu_int.h"
+#include "texpack.h"
 #include "shaders/shaders_gen.h"
 #ifdef far
 #undef far /* the windows headers define it; BmapDraw has a member of that name */
@@ -76,7 +77,7 @@ typedef struct G3dUniforms {
     int b[4];           /* texture w, h, alpha ref, ID  */
     int wrap[4];
     int c[4];           /* toon, highlight, front, back */
-    int d[4];           /* w-buffer                     */
+    int d[4];           /* w-buffer, HD scale           */
     float toon[32][4];
 } G3dUniforms;
 
@@ -1162,6 +1163,10 @@ static int upload_textures(SdlGpu *s, SDL_GPUCopyPass *cp, const G3dSnapshot *sn
     Uint32 total = 0, at = 0;
     unsigned char *dst;
     int any = 0;
+    const unsigned char **src;
+    int *sw, *sh;
+    unsigned char *later;
+    int pending = 0;
 
     while (s->n_gtex < snap->n_tex) {
         if (s->n_gtex == s->cap_gtex) {
@@ -1180,15 +1185,31 @@ static int upload_textures(SdlGpu *s, SDL_GPUCopyPass *cp, const G3dSnapshot *sn
             h = realloc(s->gtex_h, c * sizeof *s->gtex_h);
             if (h == NULL) return SG_FAIL();
             s->gtex_h = (int *)h;
+            {
+                void *hd = realloc(s->gtex_hd, c);
+                if (hd == NULL) return -1;
+                s->gtex_hd = (unsigned char *)hd;
+            }
             s->cap_gtex = c;
         }
         s->gtex[s->n_gtex] = NULL;
         s->gtex_key[s->n_gtex] = 0;
         s->gtex_w[s->n_gtex] = s->gtex_h[s->n_gtex] = 0;
+        s->gtex_hd[s->n_gtex] = 1;
         s->n_gtex++;
     }
     if (s->tex_serial_valid && s->tex_serial == snap->serial) {
         return 0;
+    }
+    /* each changed texture's pixels, its HD copy's when there is one
+     * (texpack.c, as plat_gl3d.c) */
+    src = (const unsigned char **)calloc(snap->n_tex ? snap->n_tex : 1u, sizeof *src);
+    sw = (int *)calloc(snap->n_tex ? snap->n_tex : 1u, sizeof *sw);
+    sh = (int *)calloc(snap->n_tex ? snap->n_tex : 1u, sizeof *sh);
+    later = (unsigned char *)calloc(snap->n_tex ? snap->n_tex : 1u, 1);
+    if (src == NULL || sw == NULL || sh == NULL || later == NULL) {
+        free((void *)src); free(sw); free(sh); free(later);
+        return -1;
     }
     for (i = 0; i < snap->n_tex; i++) {
         unsigned key = tex_key(&snap->tex[i]);
@@ -1199,7 +1220,19 @@ static int upload_textures(SdlGpu *s, SDL_GPUCopyPass *cp, const G3dSnapshot *sn
         if (snap->tex[i].rgba == NULL || snap->tex[i].w == 0 || snap->tex[i].h == 0) {
             continue;
         }
-        total += ((Uint32)(snap->tex[i].w * snap->tex[i].h * 4u) + 511u) & ~511u;
+        {
+            int hw = 0, hh = 0, lt = 0;
+            const unsigned char *hd = eidos_texpack_find(snap->tex[i].rgba, (int)snap->tex[i].w,
+                                                         (int)snap->tex[i].h, &hw, &hh, &lt);
+            later[i] = (unsigned char)(lt != 0);
+            pending |= lt != 0;
+            if (hd != NULL && hw > 0 && hh > 0) {
+                src[i] = hd; sw[i] = hw; sh[i] = hh;
+            } else {
+                src[i] = snap->tex[i].rgba; sw[i] = (int)snap->tex[i].w; sh[i] = (int)snap->tex[i].h;
+            }
+        }
+        total += ((Uint32)(sw[i] * sh[i] * 4) + 511u) & ~511u;
     }
     if (total > 0) {
         if (s->stage == NULL || s->stage_size < total) {
@@ -1233,19 +1266,24 @@ static int upload_textures(SdlGpu *s, SDL_GPUCopyPass *cp, const G3dSnapshot *sn
                 t->w == 0 || t->h == 0) {
                 continue;
             }
-            if (s->gtex[i] == NULL || s->gtex_w[i] != (int)t->w || s->gtex_h[i] != (int)t->h) {
+            if (src[i] == NULL) {
+                continue;
+            }
+            if (s->gtex[i] == NULL || s->gtex_w[i] != sw[i] || s->gtex_h[i] != sh[i]) {
                 if (s->gtex[i] != NULL) SDL_ReleaseGPUTexture(s->dev, s->gtex[i]);
-                s->gtex[i] = sg_texture(s, SG_RGBA, (int)t->w, (int)t->h, 1, 0);
-                s->gtex_w[i] = (int)t->w;
-                s->gtex_h[i] = (int)t->h;
+                s->gtex[i] = sg_texture(s, SG_RGBA, sw[i], sh[i], 1, 0);
+                s->gtex_w[i] = sw[i];
+                s->gtex_h[i] = sh[i];
             }
             if (s->gtex[i] == NULL) {
                 continue;
             }
-            bytes = t->w * t->h * 4u;
-            memcpy(dst + at, t->rgba, bytes);
+            bytes = (Uint32)(sw[i] * sh[i] * 4);
+            memcpy(dst + at, src[i], bytes);
             where[i] = at;
-            s->gtex_key[i] = key;
+            s->gtex_hd[i] = (unsigned char)(sw[i] / (int)t->w);
+            /* upscaled on a later frame: sent again then */
+            s->gtex_key[i] = later[i] ? 0u : key;
             at += (bytes + 511u) & ~511u;
         }
         SDL_UnmapGPUTransferBuffer(s->dev, s->stage);
@@ -1260,20 +1298,23 @@ static int upload_textures(SdlGpu *s, SDL_GPUCopyPass *cp, const G3dSnapshot *sn
             memset(&to, 0, sizeof to);
             from.transfer_buffer = s->stage;
             from.offset = where[i];
-            from.pixels_per_row = snap->tex[i].w;
-            from.rows_per_layer = snap->tex[i].h;
+            from.pixels_per_row = (Uint32)sw[i];
+            from.rows_per_layer = (Uint32)sh[i];
             to.texture = s->gtex[i];
-            to.w = snap->tex[i].w;
-            to.h = snap->tex[i].h;
+            to.w = (Uint32)sw[i];
+            to.h = (Uint32)sh[i];
             to.d = 1;
             SDL_UploadToGPUTexture(cp, &from, &to, false);
             any = 1;
         }
         free(where);
     }
+    free((void *)src); free(sw); free(sh); free(later);
     (void)any;
     s->tex_serial = snap->serial;
-    s->tex_serial_valid = 1;
+    /* an HD copy still being made: look again next frame, even when no
+     * texture changes */
+    s->tex_serial_valid = !pending;
     return 0;
 }
 
@@ -1303,6 +1344,7 @@ static void draw_run(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pa
         u->a[2] = 1;
         u->b[0] = (int)snap->tex[d->slot].w;
         u->b[1] = (int)snap->tex[d->slot].h;
+        u->d[1] = s->gtex_hd != NULL ? (int)s->gtex_hd[d->slot] : 1;
         u->wrap[0] = d->wrap & 1;
         u->wrap[1] = (d->wrap >> 1) & 1;
         u->wrap[2] = (d->wrap >> 2) & 1;
@@ -1955,6 +1997,7 @@ void sg3d_destroy(SdlGpu *s)
     free(s->gtex_key);
     free(s->gtex_w);
     free(s->gtex_h);
+    free(s->gtex_hd);
     free(s->vtx);
     if (s->stage != NULL) SDL_ReleaseGPUTransferBuffer(s->dev, s->stage);
     if (s->down != NULL) SDL_ReleaseGPUTransferBuffer(s->dev, s->down);

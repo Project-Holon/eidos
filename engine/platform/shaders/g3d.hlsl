@@ -44,7 +44,7 @@ cbuffer FragmentUniforms : register(b0, space3)
     int4 b;         // texsize x, y, alpharef, id
     int4 wrap;      // repeat s, repeat t, flip s, flip t
     int4 c;         // toon, highlight, front, back
-    int4 d;         // wbuf
+    int4 d;         // wbuf, HD scale (an HD texture is d.y times the DS size)
     float4 toontab[32];
 };
 
@@ -100,7 +100,18 @@ FSOut fs_main(VSOut i, bool front : SV_IsFrontFace)
     if (a.z == 1) {
         int x = wrapc(int(floor(i.st.x / 16.0)), b.x, wrap.x, wrap.z);
         int y = wrapc(int(floor(i.st.y / 16.0)), b.y, wrap.y, wrap.w);
-        int4 tc = int4(tex.Load(int3(x, y, 0)) * 255.0 + 0.5);
+        int4 tc;
+        if (d.y > 1) {
+            // the wrap stays in DS texels, the sample lands inside the HD texel
+            float2 fr = frac(i.st / 16.0);
+            int sx = int(floor(i.st.x / 16.0)), sy = int(floor(i.st.y / 16.0));
+            if (wrap.x != 0 && wrap.z != 0 && (sx & (b.x * 2 - 1)) >= b.x) fr.x = 1.0 - fr.x;
+            if (wrap.y != 0 && wrap.w != 0 && (sy & (b.y * 2 - 1)) >= b.y) fr.y = 1.0 - fr.y;
+            int2 hp = int2(x, y) * d.y + min(int2(fr * float(d.y)), int2(d.y - 1, d.y - 1));
+            tc = int4(tex.Load(int3(hp, 0)) * 255.0 + 0.5);
+        } else {
+            tc = int4(tex.Load(int3(x, y, 0)) * 255.0 + 0.5);
+        }
         if (a.x == 1) {
             int ta = tc.a >> 3;
             colr = (tc.rgb * ta + col3 * (31 - ta)) / 31;
