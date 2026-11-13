@@ -36,6 +36,7 @@
  *       to Y0 under its open edges in that box, in the hole's own wall colours.
  *   two=X0:X1:Y0:Y1+..  the faces in that box shown from both sides (a
  *       railing's bars, a parasol's cloth).
+ *   snap=X:Y:Z:NZ+..  a corner of the model out of line moved to z = NZ first.
  *   clipz=Z  the model's faces that reach behind z = Z are cut there.
  *   mirror's box may end :Z0:Z1, the faces whose middle lies between.
  *   corner=W  the side's corner columns (map units, default 6); 0: no corner
@@ -1208,6 +1209,12 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
                         uv[j][1] = pf[i].t->uv[j][1];
                     }
                     turned(p, uv, pf[i].n, 3, cx, cz, q, quv, qn);
+                    /* (a quarter unit out along its facing: a leaf turned round may land on a wall or post's face) */
+                    for (j = 0; j < 3u; j++) {
+                        for (k = 0; k < 3; k++) {
+                            q[j][k] += qn[k] * 0.25;
+                        }
+                    }
                     rm_tri(out, pf[i].t->id, -1, 0, pf[i].t->rgb, q[0], q[1], q[2], quv[0], quv[1], quv[2], 0, 0);
                 }
             }
@@ -1215,6 +1222,9 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
         }
         if (flat) {
             continue;                   /* (a flat piece of more than a card: a shadow, a mat; nothing to close) */
+        }
+        if (pf[0].b->cull == 0) {
+            continue;                   /* (its draw is shown from both sides already (vines): no undrawn side) */
         }
         {
             /* (a piece standing turned on its spot (a lounger set at a slant, a stool turned): mirrored along x and
@@ -1438,6 +1448,8 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     const double cw = rm_optf(opt, "corner", 6.0);
     unsigned bi, i, nf = 0, cap = 0;
     Ft *f;
+    RmTri *fixed = NULL;
+    unsigned nsnap = 0;
     char buf[512];
     const char *ep;
 
@@ -1457,6 +1469,62 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             f[nf].b = &b[bi];
             normal_of(f[nf].t, f[nf].n);
             nf++;
+        }
+    }
+    /* `snap=X:Y:Z:NZ+..`: a corner of the model at (X, Y, Z) that is out of line with its part (the map's own slip:
+     * a post whose top corner stands 4 units behind the rest) goes to z = NZ: its triangles are left out and drawn
+     * again with it moved, and every later pass sees the moved one */
+    if (rm_opt(opt, "snap", buf, sizeof buf) != NULL && nf > 0) {
+        fixed = (RmTri *)malloc((size_t)nf * sizeof *fixed);
+        if (fixed == NULL) {
+            free(f);
+            out->fail = 1;
+            return;
+        }
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double sp[4];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf", &sp[0], &sp[1], &sp[2], &sp[3]) == 4) {
+                for (i = 0; i < nf; i++) {
+                    int j, hit = -1;
+
+                    for (j = 0; j < 3; j++) {
+                        if (fabs(f[i].t->p[j][0] - sp[0]) < 0.05 && fabs(f[i].t->p[j][1] - sp[1]) < 0.05
+                            && fabs(f[i].t->p[j][2] - sp[2]) < 0.05) {
+                            hit = j;
+                        }
+                    }
+                    if (hit < 0) {
+                        continue;
+                    }
+                    if (f[i].t != &fixed[i]) {
+                        fixed[i] = *f[i].t;
+                        f[i].t = &fixed[i];
+                    }
+                    fixed[i].p[hit][2] = (float)sp[3];
+                    normal_of(f[i].t, f[i].n);
+                    nsnap++;
+                }
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+        for (i = 0; i < nf; i++) {
+            if (f[i].t == &fixed[i]) {
+                double pa[3][3], ua[3][2];
+                int j, k;
+
+                for (j = 0; j < 3; j++) {
+                    for (k = 0; k < 3; k++) {
+                        pa[j][k] = fixed[i].p[j][k];
+                    }
+                    ua[j][0] = fixed[i].uv[j][0];
+                    ua[j][1] = fixed[i].uv[j][1];
+                }
+                rm_drop(out, fixed[i].id);
+                rm_tri(out, fixed[i].id, -1, f[i].b->cull, fixed[i].rgb, pa[0], pa[1], pa[2], ua[0], ua[1], ua[2], 0, 0);
+                out->tri[out->ntri - 1].lit = 1;
+            }
         }
     }
     if (rm_opt(opt, "clipz", buf, sizeof buf) != NULL) {
@@ -1596,6 +1664,8 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
         }
     }
     free(f);
+    free(fixed);
+    (void)nsnap;
     /* (`seal=0`: no dark backs: a missing face shows as an open side, for finding them) */
     if (rm_optf(opt, "seal", 1) != 0.0) {
         rm_seal(b, nb, out, 0.7);
