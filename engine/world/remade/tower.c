@@ -16,7 +16,7 @@
  *       (a block's, a parapet's, a shaft's), in the texture of the side face
  *       at x = SX that reaches furthest back: its corner columns at each end,
  *       its plain column between, row by row, as the sides are.
- *   panel=SX:SZ:SY:X0:X1:Z:Y0:Y1+..  a back wall at z = Z in the picture of the
+ *   panel=SX:SZ:SY:X0:X1:Z:Y0:Y1[:ZTOP]+..  a back wall at z = Z in the picture of the
  *       side face at x = SX holding (SZ, SY), repeated along at its own width.
  *   panelx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR+..  an end wall at x = X looking along DIR
  *       (-1, 1), in the picture of the face at x = SX holding (SZ, SY).
@@ -449,7 +449,7 @@ static void wall_strip(RmOut *out, const Ft *f, unsigned nf, const Ft *sf, const
  * holds the point (SZ, SY) is the picture (its texture place, as wide as that face is long); the wall at z = Z from
  * X0 to X1 and Y0 to Y1 wears it again and again along, at the face's own width, the picture's full height over the
  * wall's (a storey's panel, stretched as the building stretches it per storey). */
-static void do_panel(const Ft *f, unsigned nf, RmOut *out, const double p[8])
+static void do_panel(const Ft *f, unsigned nf, RmOut *out, const double p[9], const RmTex *tex, unsigned ntex)
 {
     const Ft *src = NULL;
     double u0 = 1e30, u1 = -1e30, v0 = 1e30, v1 = -1e30, len = 0.0, x;
@@ -485,6 +485,41 @@ static void do_panel(const Ft *f, unsigned nf, RmOut *out, const double p[8])
         v0 = src->t->uv[j][1] < v0 ? src->t->uv[j][1] : v0;
         v1 = src->t->uv[j][1] > v1 ? src->t->uv[j][1] : v1;
     }
+    /* (a picture's see-through edge columns are not carried round: u0..u1 shrunk to the columns that are solid all
+     * the way down) */
+    if (src->b->tex >= 0 && (unsigned)src->b->tex < ntex && tex[src->b->tex].rgba != NULL) {
+        const RmTex *tx = &tex[src->b->tex];
+        const double fu0 = u0 - floor(u0);
+        const int c0 = (int)floor(fu0 * tx->w), c1 = (int)ceil((fu0 + (u1 - u0)) * tx->w) - 1;
+        const int r0 = (int)floor((v0 - floor(v0)) * tx->h), r1 = (int)ceil((v0 - floor(v0) + (v1 - v0)) * tx->h) - 1;
+        int c, r, a = c0, z = c1;
+
+        for (c = c0; c <= c1; c++) {
+            int solid = 1;
+
+            for (r = r0; r <= r1 && solid; r++) {
+                solid = tx->rgba[(((size_t)(((r % tx->h) + tx->h) % tx->h)) * tx->w + (size_t)(((c % tx->w) + tx->w) % tx->w)) * 4u + 3u] > 127;
+            }
+            if (!solid && c == a) {
+                a++;
+            }
+        }
+        for (c = c1; c >= a; c--) {
+            int solid = 1;
+
+            for (r = r0; r <= r1 && solid; r++) {
+                solid = tx->rgba[(((size_t)(((r % tx->h) + tx->h) % tx->h)) * tx->w + (size_t)(((c % tx->w) + tx->w) % tx->w)) * 4u + 3u] > 127;
+            }
+            if (solid) {
+                break;
+            }
+            z--;
+        }
+        if (z >= a && (a > c0 || z < c1)) {
+            u0 = floor(u0) + (double)a / tx->w + 0.5 / tx->w * 0.0;
+            u1 = floor(u0) + (double)(z + 1) / tx->w;
+        }
+    }
     for (x = p[3]; x < p[4] - 0.05; x += len) {
         const double xe = x + len < p[4] ? x + len : p[4], ue = u0 + (u1 - u0) * (xe - x) / len;
         const double outn[3] = { 0, 0, -1 };
@@ -492,8 +527,8 @@ static void do_panel(const Ft *f, unsigned nf, RmOut *out, const double p[8])
 
         q[0][0] = x;  q[0][1] = p[6]; q[0][2] = p[5];
         q[1][0] = xe; q[1][1] = p[6]; q[1][2] = p[5];
-        q[2][0] = xe; q[2][1] = p[7]; q[2][2] = p[5];
-        q[3][0] = x;  q[3][1] = p[7]; q[3][2] = p[5];
+        q[2][0] = xe; q[2][1] = p[7]; q[2][2] = p[8];   /* (p[8]: its top's depth, a wall that leans) */
+        q[3][0] = x;  q[3][1] = p[7]; q[3][2] = p[8];
         /* (seen from behind, x runs right to left: the picture's start at the wall's high-x end of each piece) */
         t[0][0] = ue; t[0][1] = v1;
         t[1][0] = u0; t[1][1] = v1;
@@ -1453,8 +1488,6 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     char buf[512];
     const char *ep;
 
-    (void)tex;
-    (void)ntex;
     for (bi = 0; bi < nb; bi++) {
         cap += b[bi].n;
     }
@@ -1609,10 +1642,14 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     }
     if (rm_opt(opt, "panel", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double pp[8];
+            double pp[9];
+            const int got = sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &pp[0], &pp[1], &pp[2], &pp[3], &pp[4], &pp[5], &pp[6], &pp[7], &pp[8]);
 
-            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &pp[0], &pp[1], &pp[2], &pp[3], &pp[4], &pp[5], &pp[6], &pp[7]) == 8) {
-                do_panel(f, nf, out, pp);
+            if (got >= 8) {
+                if (got == 8) {
+                    pp[8] = pp[5];
+                }
+                do_panel(f, nf, out, pp, tex, ntex);
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
