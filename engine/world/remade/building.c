@@ -389,9 +389,12 @@ static void rim(const Tr *tr, unsigned n, RmOut *out, const char *opt)
     if (zs - zn < 1.0) {
         return;
     }
-    /* (the eaves: the lowest corner of the slopes that reach the roof's end, their tops and their undersides) */
+    /* (the eaves: the lowest corner of the slopes that reach the roof's end, their tops and their undersides; only
+     * slopes of the roof itself, whose plane runs on to its far end: a little sloped hood or sill at the front is
+     * no roof, and with it the corner pillars under the eaves were copied too) */
     for (i = 0; i < n; i++) {
-        int reach = 0;
+        int reach = 0, roof = 0;
+        unsigned m;
 
         if (tr[i].added || !(fabs(tr[i].n[1]) > 0.25 && fabs(tr[i].n[1]) < 0.98)) {
             continue;
@@ -399,7 +402,23 @@ static void rim(const Tr *tr, unsigned n, RmOut *out, const char *opt)
         for (j = 0; j < 3u; j++) {
             reach |= fabs(tr[i].p[j][2] - zs) < 0.3;
         }
-        for (j = 0; reach && j < 3u; j++) {
+        for (m = 0; reach && !roof && m < n; m++) {
+            double d[3];
+
+            if (tr[m].added || rm_dot(tr[m].n, tr[i].n) < 0.999) {
+                continue;
+            }
+            for (j = 0; j < 3u; j++) {
+                d[j] = tr[m].p[0][j] - tr[i].p[0][j];
+            }
+            if (fabs(rm_dot(d, tr[i].n)) > 0.3) {
+                continue;
+            }
+            for (j = 0; j < 3u; j++) {
+                roof |= tr[m].p[j][2] < zn + 0.3;
+            }
+        }
+        for (j = 0; reach && roof && j < 3u; j++) {
             yeave = tr[i].p[j][1] < yeave ? tr[i].p[j][1] : yeave;
         }
     }
