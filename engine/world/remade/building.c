@@ -1344,6 +1344,9 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         const double at_least = rm_optf(opt, "atleast", -1e30);
         double spn[8][4];
         unsigned nspan = 0;
+        double gb[7], gd[16][3];       /* (`gable`: its numbers; each set-in piece's way back out to the wall) */
+        unsigned gq[16], ngq = 0;
+        int gable = 0;
         double sp0 = xa, sp1 = xb, qx0 = 1e30, qx1 = -1e30, lean = rm_optf(opt, "lean", 0.0), flare = rm_optf(opt, "flare", 0.0);
         unsigned char *px, *ok, white[3], dark[3] = { 0, 0, 0 };
         unsigned q, first = out->ntri, ner = 0, src = tr[0].id;
@@ -1600,14 +1603,94 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 qx1 = quad[q][j][0] > qx1 ? quad[q][j][0] : qx1;
             }
         }
+        /* `gable=XA:XB:XC:XD:YI:YO:D`: the gable under a roof band copied by `rim` built as the front's is: the band's
+         * feet stand on two pillars (XA..XB, XC..XD) in the wall's plane, cut to the band's lower end (YI at the inner
+         * side, YO at the outer), and the wall between them over YI is set D into the house, behind the band. Without
+         * it the band lay on a flat wall, in front of it. */
+        if (rm_opt(opt, "gable", eb, sizeof eb) != NULL
+            && sscanf(eb, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &gb[0], &gb[1], &gb[2], &gb[3], &gb[4], &gb[5], &gb[6]) == 7) {
+            unsigned q0 = nq, c;
+
+            /* (cut at the pillars' sides: corners 0 and 3 at one x, 1 and 2 at the other, 0 and 1 the top) */
+            for (c = 0; c < 4u; c++) {
+                for (q = 0; q < q0 && nq < n * 3u; q++) {
+                    double xc = gb[c], a = quad[q][0][0], b = quad[q][1][0], f;
+
+                    if (!((xc > a + 0.05 && xc < b - 0.05) || (xc > b + 0.05 && xc < a - 0.05))) {
+                        continue;
+                    }
+                    f = (xc - a) / (b - a);
+                    memcpy(quad[nq], quad[q], sizeof quad[q]);
+                    qside[nq] = qside[q];
+                    for (k = 0; k < 3; k++) {
+                        double top = quad[q][0][k] + (quad[q][1][k] - quad[q][0][k]) * f;
+                        double bot = quad[q][3][k] + (quad[q][2][k] - quad[q][3][k]) * f;
+
+                        quad[q][1][k] = top;        /* (this one: from corner 0 to the cut) */
+                        quad[q][2][k] = bot;
+                        quad[nq][0][k] = top;       /* (the new one: from the cut to corner 1) */
+                        quad[nq][3][k] = bot;
+                    }
+                    nq++;
+                }
+                q0 = nq;
+            }
+            for (q = 0, q0 = nq; q < q0; q++) {
+                const double qm = (quad[q][0][0] + quad[q][1][0]) / 2.0;
+                const int lft = qm > gb[0] && qm < gb[1], rgt = qm > gb[2] && qm < gb[3];
+
+                if (lft || rgt) {
+                    /* (a pillar: its top is the band's lower end) */
+                    for (j = 0; j < 2u; j++) {
+                        const double x = quad[q][j][0];
+                        const double f = lft ? (gb[1] - x) / (gb[1] - gb[0]) : (x - gb[2]) / (gb[3] - gb[2]);
+                        const double yt = gb[4] + (gb[5] - gb[4]) * f;
+
+                        quad[q][j][1] = quad[q][j][1] > yt ? yt : quad[q][j][1];
+                    }
+                } else if (qm > gb[1] && qm < gb[2] && quad[q][0][1] > gb[4] + 0.05 && quad[q][1][1] > gb[4] + 0.05
+                           && nq < n * 3u && ngq < 16u) {
+                    /* (between the pillars: the part over YI goes into the house) */
+                    double e1[3], e2[3], nn[3];
+
+                    for (k = 0; k < 3; k++) {
+                        e1[k] = quad[q][1][k] - quad[q][0][k];
+                        e2[k] = quad[q][2][k] - quad[q][0][k];
+                    }
+                    rm_cross(e1, e2, nn);
+                    rm_norm(nn);
+                    memcpy(quad[nq], quad[q], sizeof quad[q]);
+                    qside[nq] = qside[q];
+                    quad[nq][2][1] = gb[4];
+                    quad[nq][3][1] = gb[4];
+                    for (j = 0; j < 4u; j++) {
+                        for (k = 0; k < 3; k++) {
+                            quad[nq][j][k] -= nn[k] * gb[6];
+                        }
+                    }
+                    quad[q][0][1] = gb[4];
+                    quad[q][1][1] = gb[4];
+                    for (k = 0; k < 3; k++) {
+                        gd[ngq][k] = nn[k] * gb[6];     /* (from the set-in gable back out to the wall's plane) */
+                    }
+                    gq[ngq++] = nq;
+                    nq++;
+                }
+            }
+            gable = 1;
+        }
         for (q = 0; q < nq; q++) {
             double t[4][2], in[4][3], foot = rm_optf(opt, "foot", y0), ux[4];
+            int high = 0;       /* (`gable`'s set-in piece: it stands on the ledge, not on the ground) */
 
+            for (j = 0; j < ngq; j++) {
+                high |= gq[j] == q;
+            }
             for (j = 0; j < 4u; j++) {
                 ux[j] = quad[q][j][0];
             }
             for (j = 0; j < 4u; j++) {
-                if (j >= 2u && !fitted) {
+                if (j >= 2u && !fitted && !high) {
                     quad[q][j][1] = foot;       /* (a house on posts: its wall ends at its floor) */
                     quad[q][j][2] -= lean;      /* (`lean`: the foot stands out, as the sides' feet do) */
                     if (flare != 0.0 && qx1 > qx0) {
@@ -1662,6 +1745,48 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
             /* its inner side, dark: through an open door or a window the house is dark inside, as the field shows it */
             rm_tri(out, src, out->ntex, 1, dark, in[0], in[2], in[1], t[0], t[2], t[1], 0, 0);
             rm_tri(out, src, out->ntex, 1, dark, in[0], in[3], in[2], t[0], t[3], t[2], 0, 0);
+        }
+        /* `gable`'s ledge at YI and the pillars' inner sides, from the wall's plane to the set-in gable, in plain
+         * stone (both ways: seen from either side, nothing behind them) */
+        for (q = 0; gable && q < ngq; q++) {
+            const double tu = plain < 1e29 ? (plain - xa) / (xb - xa) : 0.5;
+            const double *g0 = quad[gq[q]][3], *g1 = quad[gq[q]][2];
+            double f[4][3], tf[4][2];
+            int s;
+
+            /* (the ledge under this piece of the set-in gable) */
+            for (k = 0; k < 3; k++) {
+                f[0][k] = g0[k]; f[1][k] = g1[k];
+                f[2][k] = g1[k] + gd[q][k]; f[3][k] = g0[k] + gd[q][k];
+            }
+            for (j = 0; j < 4u; j++) {
+                tf[j][0] = tu;
+                tf[j][1] = (yb - f[j][1]) / (yb - y0);
+            }
+            rm_tri(out, src, out->ntex, 1, white, f[0], f[1], f[2], tf[0], tf[1], tf[2], 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, f[0], f[2], f[3], tf[0], tf[2], tf[3], 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, f[0], f[2], f[1], tf[0], tf[2], tf[1], 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, f[0], f[3], f[2], tf[0], tf[3], tf[2], 0, 0);
+            /* (a pillar's inner side where this piece ends at XB or XC) */
+            for (s = 0; s < 2; s++) {
+                const double *top = quad[gq[q]][s == 0 ? 0 : 1], *bot = quad[gq[q]][s == 0 ? 3 : 2];
+
+                if (fabs(top[0] - gb[1]) > 0.05 && fabs(top[0] - gb[2]) > 0.05) {
+                    continue;
+                }
+                for (k = 0; k < 3; k++) {
+                    f[0][k] = bot[k]; f[1][k] = top[k];
+                    f[2][k] = top[k] + gd[q][k]; f[3][k] = bot[k] + gd[q][k];
+                }
+                for (j = 0; j < 4u; j++) {
+                    tf[j][0] = tu;
+                    tf[j][1] = (yb - f[j][1]) / (yb - y0);
+                }
+                rm_tri(out, src, out->ntex, 1, white, f[0], f[1], f[2], tf[0], tf[1], tf[2], 0, 0);
+                rm_tri(out, src, out->ntex, 1, white, f[0], f[2], f[3], tf[0], tf[2], tf[3], 0, 0);
+                rm_tri(out, src, out->ntex, 1, white, f[0], f[2], f[1], tf[0], tf[2], tf[1], 0, 0);
+                rm_tri(out, src, out->ntex, 1, white, f[0], f[3], f[2], tf[0], tf[3], tf[2], 0, 0);
+            }
         }
         /* `flush=1`: the side walls carried on from where they end to the back wall, as tall as the back wall is
          * at that end, in the back wall's own picture at its end column (the corner post) */
