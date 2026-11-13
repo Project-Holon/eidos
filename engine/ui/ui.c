@@ -995,6 +995,35 @@ static void save_failing_notice(EidosUiCtx *c)
     }
 }
 
+/* Fast forward: while it runs, a yellow badge at the top right says how
+ * fast (">> x2" with Tab, ">> x4" with Tab and F, ">> MAX" with left Shift
+ * and Tab).  The boot loop passes the speed in every frame. */
+static int g_speed = 1;
+
+void eidos_ui_set_speed(int speed)
+{
+    g_speed = speed;
+}
+
+static void speed_badge(EidosUiCtx *c)
+{
+    char msg[16];
+    int w, x;
+
+    if (g_speed <= 1) {
+        return;
+    }
+    if (g_speed >= 100) {
+        snprintf(msg, sizeof msg, ">> MAX");
+    } else {
+        snprintf(msg, sizeof msg, ">> x%d", g_speed);
+    }
+    w = ui_text_w(msg, UI_FONT_LARGE) + 20;
+    x = c->canvas->w - w - 6;
+    ui_panel(c, x, 20, w, 22, UI_CUT_TL | UI_CUT_BR, 5, 0xF2B33Du, 0x7A4E00u, 235);
+    ui_text(c, x + 10, 20 + ui_text_y(22, UI_FONT_LARGE), msg, 0x1A1408u, 0xF2B33Du, UI_FONT_LARGE, 1);
+}
+
 /* ------------------------------------------------------------------ */
 /* The style chooser's preview: the real game                          */
 /* ------------------------------------------------------------------ */
@@ -3521,6 +3550,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
         r->run(&g_ctx, view, &f);
         try_overlay(&g_ctx);
         save_failing_notice(&g_ctx);
+        speed_badge(&g_ctx);
         if (getenv("EIDOS_UI_TRACE") != NULL) {
             fprintf(stderr, "eidos: ui trace %u done\n", (unsigned)in->frame);
             fflush(stderr);
