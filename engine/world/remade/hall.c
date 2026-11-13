@@ -365,19 +365,20 @@ void rm_hall(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
             map_at(&om, tz0, ty0, vb);
             for (q = 0; q < n; q++) {
                 const double za = tz0 + q * L + (q > 0 ? gap / 2 : 0.0), zz = tz0 + (q + 1) * L - (q + 1 < n ? gap / 2 : 0.0);
-                const double xa = xo < xin ? xo : xin, xb = xo < xin ? xin : xo, zm = (za + zz) / 2.0;
+                const double xa = xo < xin ? xo : xin, xb = xo < xin ? xin : xo;
                 const double fl = floor(vt[0]);
                 double p[4][3], t[4][2];
                 const double n_out[3] = { side < 0.0 ? -1.0 : 1.0, 0, 0 }, n_up[3] = { 0, 1, 0 };
                 int e;
 
-                /* its face: the picture once, its middle bar in the tank's middle */
+                /* its face: the picture once, from its middle bar to the next: the bar (a pipe down the picture)
+                 * is where two tanks meet, as the map shows them */
                 p[0][0] = xo; p[0][1] = ty0; p[0][2] = za;
                 p[1][0] = xo; p[1][1] = ty0; p[1][2] = zz;
                 p[2][0] = xo; p[2][1] = ty1; p[2][2] = zz;
                 p[3][0] = xo; p[3][1] = ty1; p[3][2] = za;
                 for (i = 0; i < 4u; i++) {
-                    t[i][0] = fl + (p[i][2] - za) / (zz - za);
+                    t[i][0] = fl + 0.5 + (p[i][2] - za) / (zz - za);
                     t[i][1] = p[i][1] > ty0 + 0.01 ? vt[1] : vb[1];
                 }
                 quad(out, of->id, k0->rgb, p, t, n_out);
@@ -401,19 +402,24 @@ void rm_hall(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
                 p[2][0] = xb; p[2][1] = ty1; p[2][2] = zz;
                 p[3][0] = xa; p[3][1] = ty1; p[3][2] = zz;
                 for (i = 0; i < 4u; i++) {
-                    t[i][0] = fl + (p[i][2] - za) / (zz - za);
+                    t[i][0] = fl + 0.5 + (p[i][2] - za) / (zz - za);
                     t[i][1] = vt[1] + 0.02;
                 }
                 quad(out, of->id, k0->rgb, p, t, n_up);
-                /* its pipe: up from the tank's outer half, then along into the wall */
-                {
+                /* a pipe where it meets the tank before it (and one at the last tank's far end; the front end
+                 * keeps the map's own): up from the tanks' outer half, then along into the wall */
+                for (e = 0; e < (q == 0 ? 2 : 1); e++) {
+                    const double zj = e == 1 ? tz0 + pw / 2 : q + 1 == n ? -1e30 : tz0 + (q + 1) * L;
                     const double px = xo + dir * (pw / 2 + 0.8), yh = ytop - pw;
                     const double uv0[2] = { fl + 0.44, floor(vt[1]) + 0.05 }, uv1[2] = { fl + 0.56, floor(vt[1]) + 0.2 };
                     double lo[3], hi[3];
 
+                    if (zj < -1e29) {
+                        continue;
+                    }
                     lo[0] = px - pw / 2; hi[0] = px + pw / 2;
                     lo[1] = ty1; hi[1] = yh + pw / 2;
-                    lo[2] = zm - pw / 2; hi[2] = zm + pw / 2;
+                    lo[2] = zj - pw / 2; hi[2] = zj + pw / 2;
                     box(out, of->id, k0->rgb, lo, hi, uv0, uv1, 1u << 2);
                     if (dir > 0.0) {
                         lo[0] = px + pw / 2; hi[0] = xin;
@@ -424,6 +430,21 @@ void rm_hall(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
                     box(out, of->id, k0->rgb, lo, hi, uv0, uv1, 3u);
                 }
             }
+        }
+        /* the rail along the tanks' tops at their outer edge, that the pipes rise from (the map's picture draws
+         * it at the foot of its pipes) */
+        {
+            const double dir = side < 0.0 ? 1.0 : -1.0, fl = 0.0;
+            double vt[2], lo[3], hi[3], uv0[2], uv1[2];
+
+            map_at(&om, tz0, ty1, vt);
+            uv0[0] = fl + 0.44; uv0[1] = floor(vt[1]) + 0.05;
+            uv1[0] = fl + 0.56; uv1[1] = floor(vt[1]) + 0.2;
+            lo[0] = dir > 0.0 ? xo : xo - pw; hi[0] = dir > 0.0 ? xo + pw : xo;
+            lo[0] += dir * 0.3; hi[0] += dir * 0.3;
+            lo[1] = ty1; hi[1] = ty1 + pw;
+            lo[2] = tz0; hi[2] = tz1 - 0.1;
+            box(out, of->id, k0->rgb, lo, hi, uv0, uv1, 1u << 2);
         }
     }
     /* (the model's own walls end a hair short of a corner here and there: their insides get a back) */
