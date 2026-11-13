@@ -868,6 +868,64 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 }
             }
         }
+        /*
+         * `fill=1`: the back is composed, not cut out of the front.  The whole picture is first the wall's own
+         * plain material: each row the plain place's pixel of that row; a row above the plain place's top
+         * takes the row `period` map units lower (boards and courses repeat), so the material goes on unbroken
+         * up to the roof.  Then `keep=X0:X1:Y0:Y1+..` puts back the front's own pixels in those places only (a
+         * corner post, a beam, one window).  Nothing of the front's roof edge, door or trim comes along.
+         */
+        if (rm_optf(opt, "fill", 0) != 0.0 && plain < 1e29) {
+            unsigned char *orig = (unsigned char *)malloc((size_t)Wm * Hm * 4u), *ook = (unsigned char *)malloc((size_t)Wm * Hm);
+            int per = (int)rint(rm_optf(opt, "period", 8.0) * ppu), ftx = (int)((plain - xa) * ppu);
+            const double filltop = rm_optf(opt, "filltop", 1e30);
+            char kb[256], *kp;
+
+            ftx = ftx < 0 ? 0 : ftx >= Wm ? Wm - 1 : ftx;
+            per = per < 1 ? 1 : per;
+            if (orig != NULL && ook != NULL) {
+                memcpy(orig, px, (size_t)Wm * Hm * 4u);
+                memcpy(ook, ok, (size_t)Wm * Hm);
+                for (y = Hm - 1; y >= 0; y--) {
+                    int sy = y;
+
+                    /* (`filltop=Y`: the plain place is the wall's material up to that height only: over it
+                     * the front has a beam, a gable, the roof's edge) */
+                    while (sy < Hm && (!ook[(size_t)sy * Wm + (size_t)ftx] || yb - (sy + 0.5) / ppu > filltop)) {
+                        sy += per;
+                    }
+                    if (sy >= Hm) {
+                        continue;
+                    }
+                    for (x = 0; x < Wm; x++) {
+                        memcpy(px + ((size_t)y * Wm + (size_t)x) * 4u, orig + ((size_t)sy * Wm + (size_t)ftx) * 4u, 4u);
+                        ok[(size_t)y * Wm + (size_t)x] = 1;
+                    }
+                }
+                if (rm_opt(opt, "keep", kb, sizeof kb) != NULL) {
+                    for (kp = kb; kp != NULL && *kp != '\0'; ) {
+                        double k0, k1, k2, k3;
+
+                        if (sscanf(kp, "%lf:%lf:%lf:%lf", &k0, &k1, &k2, &k3) == 4) {
+                            int x0 = (int)floor((k0 - xa) * ppu), x1 = (int)ceil((k1 - xa) * ppu);
+                            int y1 = (int)ceil((yb - k2) * ppu), y0p = (int)floor((yb - k3) * ppu);
+
+                            for (y = y0p < 0 ? 0 : y0p; y < y1 && y < Hm; y++) {
+                                for (x = x0 < 0 ? 0 : x0; x < x1 && x < Wm; x++) {
+                                    if (ook[(size_t)y * Wm + (size_t)x]) {
+                                        memcpy(px + ((size_t)y * Wm + (size_t)x) * 4u, orig + ((size_t)y * Wm + (size_t)x) * 4u, 4u);
+                                    }
+                                }
+                            }
+                        }
+                        kp = strchr(kp, '+');
+                        kp = kp != NULL ? kp + 1 : NULL;
+                    }
+                }
+            }
+            free(orig);
+            free(ook);
+        }
         if (flatw && plain > 1e29) {
             /* `flat=1` alone: the plain place is the picture's middle, and each row there is the row's mean
              * colour (a brushed-metal side is drawn in dots: one column of it, repeated, is noise) */
