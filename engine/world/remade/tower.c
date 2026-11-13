@@ -26,6 +26,9 @@
  *       model face holding (SX, SY), read DX along x (a band's plain stretch).
  *   uclamp=X0:X1:Y0:Y1:ZMAX:UMIN:UMAX+..  new faces in that box: u held within
  *       UMIN..UMAX (a picture's edge column left out).
+ *   shell=X0:X1:Y0:Y1:Z0:Z1:D:U+..  a wall the map has only as its inner lining: an
+ *       outer skin D behind it, in the outer faces' texture column u = U, v by height.
+ *   hide=X0:X1:Y0:Y1:Z0:Z1:TEX+..  the model's faces of texture TEX in that box left out.
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
  *       colour of the face over it.
@@ -732,6 +735,90 @@ static void do_retex(const Ft *f, unsigned nf, RmOut *out, unsigned first, const
         }
         n->src = src->t->id;
         n->tex = -1;
+    }
+}
+
+/* `shell=X0:X1:Y0:Y1:Z0:Z1:D:U+..`: a wall the map has only as its inner lining (faces whose middle lies in that box):
+ * an outer skin, each face copied looking the other way, D behind it, in the texture column u = U that the model's
+ * own outer faces wear, its v at each corner the one those faces have at the same height (a cloth whose shade goes
+ * by height only). */
+static void do_shell(const Ft *f, unsigned nf, RmOut *out, const double s[8])
+{
+    double ys[512], vs[512];
+    unsigned char rgb[3] = { 255, 255, 255 };
+    unsigned i, np = 0;
+    int j, k, got = 0;
+
+    /* (the height -> v pairs of the outer faces in the column, and their colour) */
+    for (i = 0; i < nf && np < 500u; i++) {
+        const RmTri *t = f[i].t;
+        int col = 1;
+
+        for (j = 0; j < 3; j++) {
+            col &= fabs(t->uv[j][0] - s[7]) < 0.02;
+        }
+        if (col && !got) {
+            memcpy(rgb, t->rgb, 3);
+            got = 1;
+        }
+        for (j = 0; col && j < 3 && np < 500u; j++) {
+            ys[np] = t->p[j][1];
+            vs[np] = t->uv[j][1];
+            np++;
+        }
+    }
+    if (np < 2u) {
+        return;
+    }
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double c[3] = { 0, 0, 0 }, p[3][3], uv[3][2];
+
+        for (j = 0; j < 3; j++) {
+            for (k = 0; k < 3; k++) {
+                c[k] += t->p[j][k] / 3.0;
+            }
+        }
+        if (c[0] < s[0] || c[0] > s[1] || c[1] < s[2] || c[1] > s[3] || c[2] < s[4] || c[2] > s[5]) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            const int q = j == 0 ? 0 : 3 - j;       /* (corners the other way round: it looks the other way) */
+            double best = 1e30, v = 0.0;
+            unsigned a, b;
+
+            for (k = 0; k < 3; k++) {
+                p[j][k] = t->p[q][k] - f[i].n[k] * s[6];
+            }
+            /* (v at this height: between the two nearest heights of the column, one under, one over) */
+            {
+                double ylo = -1e30, yhi = 1e30, vlo = vs[0], vhi = vs[0];
+
+                for (a = 0; a < np; a++) {
+                    if (ys[a] <= p[j][1] && ys[a] > ylo) {
+                        ylo = ys[a];
+                        vlo = vs[a];
+                    }
+                    if (ys[a] >= p[j][1] && ys[a] < yhi) {
+                        yhi = ys[a];
+                        vhi = vs[a];
+                    }
+                }
+                if (ylo < -1e29) {
+                    v = vhi;
+                } else if (yhi > 1e29) {
+                    v = vlo;
+                } else {
+                    v = yhi - ylo > 1e-6 ? vlo + (vhi - vlo) * (p[j][1] - ylo) / (yhi - ylo) : vlo;
+                }
+            }
+            (void)best;
+            (void)b;
+            uv[j][0] = s[7];
+            uv[j][1] = v;
+        }
+        rm_tri(out, t->id, -1, 1, rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+        out->tri[out->ntri - 1].lit = 1;
     }
 }
 
@@ -1795,6 +1882,38 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
                     }
                     for (j = 0; in && j < 3; j++) {
                         nw->uv[j][0] = nw->uv[j][0] < uc[5] ? (float)uc[5] : nw->uv[j][0] > uc[6] ? (float)uc[6] : nw->uv[j][0];
+                    }
+                }
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "shell", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double sh[8];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &sh[0], &sh[1], &sh[2], &sh[3], &sh[4], &sh[5], &sh[6], &sh[7]) == 8) {
+                do_shell(f, nf, out, sh);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "hide", buf, sizeof buf) != NULL) {
+        /* `hide=X0:X1:Y0:Y1:Z0:Z1:TEX+..`: the model's faces of texture TEX whose middle lies in the box are left out */
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double h[7];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &h[0], &h[1], &h[2], &h[3], &h[4], &h[5], &h[6]) == 7) {
+                for (i = 0; i < nf; i++) {
+                    const RmTri *t = f[i].t;
+                    const double cx = ((double)t->p[0][0] + t->p[1][0] + t->p[2][0]) / 3.0;
+                    const double cy = ((double)t->p[0][1] + t->p[1][1] + t->p[2][1]) / 3.0;
+                    const double cz = ((double)t->p[0][2] + t->p[1][2] + t->p[2][2]) / 3.0;
+
+                    if (f[i].b->tex == (int)h[6] && cx >= h[0] && cx <= h[1] && cy >= h[2] && cy <= h[3] && cz >= h[4] && cz <= h[5]) {
+                        rm_drop(out, t->id);
                     }
                 }
             }
