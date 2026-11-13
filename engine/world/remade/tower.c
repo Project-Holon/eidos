@@ -503,22 +503,139 @@ static void do_clip(const Ft *f, unsigned nf, RmOut *out, double zc)
     }
 }
 
-/* `props=Y0:SIZE`: the small things standing above Y0 (a stool, a chair, a planter; pieces of triangles that share
- * corners, smaller than SIZE across): each is closed about its own middle as `mirror` closes a part; a piece that
- * is one flat card (a leaf) is shown from both sides. */
+/* A new face of the furniture pass, kept so later faces can be tested against it and whole pieces copied with it. */
+typedef struct {
+    double p[3][3], uv[3][2], n[3];
+    unsigned id;
+    unsigned char rgb[3], cull;
+} Nt;
+
+/* Is the face (corners p, looking along n) already covered: does a point of it (its middle, or two thirds of the way
+ * to a corner) lie on one of the faces f or the new faces nt that look the same way, within 0.05 of their plane? */
+static int covered(const Ft *f, unsigned nf, const Nt *nt, unsigned nn, const double p[3][3], const double n[3])
+{
+    double c[3], q[4][3];
+    unsigned i;
+    int k, s;
+
+    for (k = 0; k < 3; k++) {
+        c[k] = (p[0][k] + p[1][k] + p[2][k]) / 3.0;
+    }
+    for (s = 0; s < 4; s++) {
+        for (k = 0; k < 3; k++) {
+            q[s][k] = s == 0 ? c[k] : c[k] + (p[s - 1][k] - c[k]) * 0.66;
+        }
+    }
+    for (s = 0; s < 4; s++) {
+        if (on_face(f, nf, q[s], n)) {
+            return 1;
+        }
+        for (i = 0; i < nn; i++) {
+            double e1[3], e2[3], w[3], a0[3], a1[3], a2[3], c1[3], c2[3], c3[3], d[3];
+
+            if (rm_dot(nt[i].n, n) < 0.9) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                d[k] = q[s][k] - nt[i].p[0][k];
+                e1[k] = nt[i].p[1][k] - nt[i].p[0][k];
+                e2[k] = nt[i].p[2][k] - nt[i].p[1][k];
+                w[k] = nt[i].p[0][k] - nt[i].p[2][k];
+                a0[k] = q[s][k] - nt[i].p[0][k];
+                a1[k] = q[s][k] - nt[i].p[1][k];
+                a2[k] = q[s][k] - nt[i].p[2][k];
+            }
+            if (fabs(rm_dot(d, nt[i].n)) > 0.05) {
+                continue;
+            }
+            rm_cross(e1, a0, c1);
+            rm_cross(e2, a1, c2);
+            rm_cross(w, a2, c3);
+            if (rm_dot(c1, nt[i].n) >= -1e-3 && rm_dot(c2, nt[i].n) >= -1e-3 && rm_dot(c3, nt[i].n) >= -1e-3) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* a face turned about the upright through (cx, cz): mode 1 front to back, 2 side to side, 3 both (a half turn) */
+static void turned(const double p[3][3], const double uv[3][2], const double n[3], int mode, double cx, double cz,
+                   double q[3][3], double quv[3][2], double qn[3])
+{
+    int j;
+
+    for (j = 0; j < 3; j++) {
+        const int s = mode == 3 || j == 0 ? j : 3 - j;      /* (one mirror: corners the other way round) */
+
+        q[j][0] = mode & 2 ? 2.0 * cx - p[s][0] : p[s][0];
+        q[j][1] = p[s][1];
+        q[j][2] = mode & 1 ? 2.0 * cz - p[s][2] : p[s][2];
+        quv[j][0] = uv[s][0];
+        quv[j][1] = uv[s][1];
+    }
+    qn[0] = mode & 2 ? -n[0] : n[0];
+    qn[1] = n[1];
+    qn[2] = mode & 1 ? -n[2] : n[2];
+}
+
+static void add_nt(RmOut *out, Nt *nt, unsigned *nn, unsigned cap, const double p[3][3], const double uv[3][2],
+                   const double n[3], unsigned id, const unsigned char rgb[3], unsigned char cull)
+{
+    int j, k;
+
+    if (*nn >= cap) {
+        return;
+    }
+    for (j = 0; j < 3; j++) {
+        for (k = 0; k < 3; k++) {
+            nt[*nn].p[j][k] = p[j][k];
+        }
+        nt[*nn].uv[j][0] = uv[j][0];
+        nt[*nn].uv[j][1] = uv[j][1];
+        nt[*nn].n[j] = n[j];
+        nt[*nn].rgb[j] = rgb[j];
+    }
+    nt[*nn].id = id;
+    nt[*nn].cull = cull;
+    (*nn)++;
+    rm_tri(out, id, -1, cull, rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+}
+
+/* `props=Y0:SIZE`: the small things standing above Y0 (a stool, a planter on a bench; pieces of triangles that share
+ * corners, smaller than SIZE across).  The map has only what the field's camera sees of them.
+ *   - a piece that is one flat card (a leaf) is shown from both sides, with a copy turned half round where it stands
+ *     (from behind a leaf, not the edge of a card that leans to the front);
+ *   - every other piece is closed about its own middle: its faces turned front to back, side to side and both, where
+ *     it has none (a planter's far side and end, a leg's back);
+ *   - a thing (pieces whose boxes touch: a bench, its legs, the planter on it) that is not round gets a whole piece
+ *     turned about the thing's middle where the thing has nothing at all (the bench's far legs).  A round thing (a
+ *     stool turned on its spot) has all its legs. */
 static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double size)
 {
     unsigned *grp = (unsigned *)malloc((size_t)(nf ? nf : 1) * sizeof *grp);
-    unsigned i, j, g;
+    unsigned *thing = (unsigned *)malloc((size_t)(nf ? nf : 1) * sizeof *thing);
+    unsigned *cnt = (unsigned *)calloc(nf ? nf : 1, sizeof *cnt), *nt0 = (unsigned *)calloc(nf ? nf : 1, sizeof *nt0);
+    unsigned *nt1 = (unsigned *)calloc(nf ? nf : 1, sizeof *nt1);
+    unsigned char *use = (unsigned char *)calloc(nf ? nf : 1, 1);
+    double (*lo)[3] = (double (*)[3])malloc((size_t)(nf ? nf : 1) * sizeof *lo);
+    double (*hi)[3] = (double (*)[3])malloc((size_t)(nf ? nf : 1) * sizeof *hi);
+    const unsigned cap = nf * 8u + 16u;
+    Nt *nt = (Nt *)malloc((size_t)cap * sizeof *nt);
+    Ft *pf = (Ft *)malloc((size_t)(nf ? nf : 1) * sizeof *pf);
+    unsigned i, j, g, nn = 0;
+    int k;
 
-    if (grp == NULL) {
+    if (grp == NULL || thing == NULL || cnt == NULL || nt0 == NULL || nt1 == NULL || use == NULL || lo == NULL
+        || hi == NULL || nt == NULL || pf == NULL) {
         out->fail = 1;
-        return;
-    }
-    for (i = 0; i < nf; i++) {
-        grp[i] = i;
+        goto done;
     }
     /* (pieces: triangles of one draw that share a corner) */
+    for (i = 0; i < nf; i++) {
+        grp[i] = i;
+        thing[i] = i;
+    }
     for (i = 0; i < nf; i++) {
         for (j = i + 1; j < nf; j++) {
             int a, c, touch = 0;
@@ -552,56 +669,218 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
         grp[i] = grp[grp[i]];
     }
     for (g = 0; g < nf; g++) {
-        double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, bx[7];
-        unsigned cnt = 0;
-        int k, flat = 1;
-
-        for (i = 0; i < nf; i++) {
-            if (grp[i] != g) {
-                continue;
-            }
-            for (j = 0; j < 3u; j++) {
-                for (k = 0; k < 3; k++) {
-                    lo[k] = f[i].t->p[j][k] < lo[k] ? f[i].t->p[j][k] : lo[k];
-                    hi[k] = f[i].t->p[j][k] > hi[k] ? f[i].t->p[j][k] : hi[k];
-                }
-            }
-            flat &= rm_dot(f[i].n, f[g].n) > 0.99;
-            cnt++;
-        }
-        if (cnt == 0 || lo[1] < y0 || (hi[0] - lo[0]) + (hi[2] - lo[2]) > size) {
-            continue;
-        }
-        if (flat && cnt <= 4u) {
-            for (i = 0; i < nf; i++) {
-                if (grp[i] == g) {
-                    rm_two(out, f[i].t->id);
-                }
-            }
-            continue;
-        }
-        /* (its own faces only: mirror the piece about its own middle) */
-        {
-            Ft *pf = (Ft *)malloc((size_t)cnt * sizeof *pf);
-            unsigned np = 0;
-
-            if (pf == NULL) {
-                out->fail = 1;
-                break;
-            }
-            for (i = 0; i < nf; i++) {
-                if (grp[i] == g) {
-                    pf[np++] = f[i];
-                }
-            }
-            bx[0] = lo[0]; bx[1] = hi[0]; bx[2] = lo[1]; bx[3] = hi[1];
-            bx[4] = (lo[2] + hi[2]) / 2.0;
-            bx[5] = bx[6] = 0.0;
-            do_mirror(pf, np, out, bx);
-            free(pf);
+        for (k = 0; k < 3; k++) {
+            lo[g][k] = 1e30;
+            hi[g][k] = -1e30;
         }
     }
-    free(grp);
+    for (i = 0; i < nf; i++) {
+        g = grp[i];
+        for (j = 0; j < 3u; j++) {
+            for (k = 0; k < 3; k++) {
+                lo[g][k] = f[i].t->p[j][k] < lo[g][k] ? f[i].t->p[j][k] : lo[g][k];
+                hi[g][k] = f[i].t->p[j][k] > hi[g][k] ? f[i].t->p[j][k] : hi[g][k];
+            }
+        }
+        cnt[g]++;
+    }
+    /* leaves; and each other piece closed about its own middle */
+    for (g = 0; g < nf; g++) {
+        const double cx = (lo[g][0] + hi[g][0]) / 2.0, cz = (lo[g][2] + hi[g][2]) / 2.0;
+        unsigned np = 0;
+        int flat = 1, mode;
+
+        if (cnt[g] == 0 || lo[g][1] < y0 || (hi[g][0] - lo[g][0]) + (hi[g][2] - lo[g][2]) > size) {
+            continue;
+        }
+        for (i = 0; i < nf; i++) {
+            if (grp[i] == g) {
+                flat &= rm_dot(f[i].n, f[g].n) > 0.99;
+                pf[np++] = f[i];
+            }
+        }
+        if (flat && np <= 4u) {
+            for (i = 0; i < np; i++) {
+                rm_two(out, pf[i].t->id);
+                if (fabs(pf[i].n[2]) > 0.3) {
+                    double p[3][3], uv[3][2], q[3][3], quv[3][2], qn[3];
+
+                    for (j = 0; j < 3u; j++) {
+                        for (k = 0; k < 3; k++) {
+                            p[j][k] = pf[i].t->p[j][k];
+                        }
+                        uv[j][0] = pf[i].t->uv[j][0];
+                        uv[j][1] = pf[i].t->uv[j][1];
+                    }
+                    turned(p, uv, pf[i].n, 3, cx, cz, q, quv, qn);
+                    rm_tri(out, pf[i].t->id, -1, 0, pf[i].t->rgb, q[0], q[1], q[2], quv[0], quv[1], quv[2], 0, 0);
+                }
+            }
+            continue;
+        }
+        use[g] = 1;
+        nt0[g] = nn;
+        for (mode = 1; mode <= 3; mode++) {
+            for (i = 0; i < np; i++) {
+                double p[3][3], uv[3][2], q[3][3], quv[3][2], qn[3];
+
+                for (j = 0; j < 3u; j++) {
+                    for (k = 0; k < 3; k++) {
+                        p[j][k] = pf[i].t->p[j][k];
+                    }
+                    uv[j][0] = pf[i].t->uv[j][0];
+                    uv[j][1] = pf[i].t->uv[j][1];
+                }
+                turned(p, uv, pf[i].n, mode, cx, cz, q, quv, qn);
+                if (!covered(pf, np, nt + nt0[g], nn - nt0[g], q, qn)) {
+                    add_nt(out, nt, &nn, cap, q, quv, qn, pf[i].t->id, pf[i].t->rgb, pf[i].b->cull);
+                }
+            }
+        }
+        nt1[g] = nn;
+    }
+    /* things: pieces whose boxes touch */
+    for (g = 0; g < nf; g++) {
+        for (j = g + 1; use[g] && j < nf; j++) {
+            unsigned rg = g, rj = j;
+            int touch = use[j];
+
+            for (k = 0; touch && k < 3; k++) {
+                touch = lo[g][k] <= hi[j][k] + 0.5 && lo[j][k] <= hi[g][k] + 0.5;
+            }
+            if (!touch) {
+                continue;
+            }
+            while (thing[rg] != rg) {
+                rg = thing[rg];
+            }
+            while (thing[rj] != rj) {
+                rj = thing[rj];
+            }
+            thing[rj > rg ? rj : rg] = rj > rg ? rg : rj;
+        }
+    }
+    for (g = 0; g < nf; g++) {
+        unsigned r = g, m, seen = 0, dirs = 0, nplaced = 0;
+        double tl[3] = { 1e30, 1e30, 1e30 }, th[3] = { -1e30, -1e30, -1e30 }, cx, cz, placed[64][4];
+        int mode;
+
+        if (!use[g]) {
+            continue;
+        }
+        while (thing[r] != r) {
+            r = thing[r];
+        }
+        if (r != g) {
+            continue;                   /* (each thing once, at its first piece) */
+        }
+        for (m = 0; m < nf; m++) {
+            unsigned rm = m;
+
+            if (!use[m]) {
+                continue;
+            }
+            while (thing[rm] != rm) {
+                rm = thing[rm];
+            }
+            if (rm != r) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                tl[k] = lo[m][k] < tl[k] ? lo[m][k] : tl[k];
+                th[k] = hi[m][k] > th[k] ? hi[m][k] : th[k];
+            }
+            for (i = 0; i < nf; i++) {
+                if (grp[i] == m && fabs(f[i].n[1]) < 0.5) {
+                    const double a = atan2(f[i].n[2], f[i].n[0]);
+
+                    seen |= 1u << ((unsigned)((a + 3.14159265358979) / (2.0 * 3.14159265358979) * 12.0) % 12u);
+                }
+            }
+        }
+        for (i = 0; i < 12u; i++) {
+            dirs += (seen >> i) & 1u;
+        }
+        if (dirs >= 7u) {
+            continue;                   /* (round: its legs are all there) */
+        }
+        cx = (tl[0] + th[0]) / 2.0;
+        cz = (tl[2] + th[2]) / 2.0;
+        for (m = 0; m < nf; m++) {
+            unsigned rm = m;
+
+            if (!use[m]) {
+                continue;
+            }
+            while (thing[rm] != rm) {
+                rm = thing[rm];
+            }
+            if (rm != r) {
+                continue;
+            }
+            for (mode = 1; mode <= 3; mode++) {
+                /* the piece turned about the thing's middle: where the thing has no piece at all, it goes there */
+                const double ml0 = mode & 2 ? 2.0 * cx - hi[m][0] : lo[m][0], mh0 = mode & 2 ? 2.0 * cx - lo[m][0] : hi[m][0];
+                const double ml2 = mode & 1 ? 2.0 * cz - hi[m][2] : lo[m][2], mh2 = mode & 1 ? 2.0 * cz - lo[m][2] : hi[m][2];
+                unsigned o;
+                int free_ = 1;
+
+                for (o = 0; o < nf && free_; o++) {
+                    unsigned ro = o;
+
+                    if (!use[o]) {
+                        continue;
+                    }
+                    while (thing[ro] != ro) {
+                        ro = thing[ro];
+                    }
+                    if (ro != r) {
+                        continue;
+                    }
+                    free_ = !(ml0 < hi[o][0] - 0.2 && lo[o][0] < mh0 - 0.2 && ml2 < hi[o][2] - 0.2 && lo[o][2] < mh2 - 0.2
+                              && lo[m][1] < hi[o][1] - 0.2 && lo[o][1] < hi[m][1] - 0.2);
+                }
+                for (o = 0; o < nplaced && free_; o++) {
+                    free_ = !(ml0 < placed[o][1] - 0.2 && placed[o][0] < mh0 - 0.2 && ml2 < placed[o][3] - 0.2
+                              && placed[o][2] < mh2 - 0.2);
+                }
+                if (!free_ || nplaced >= 64u) {
+                    continue;
+                }
+                /* (a copy placed: the next turn of another piece does not go there too) */
+                placed[nplaced][0] = ml0;
+                placed[nplaced][1] = mh0;
+                placed[nplaced][2] = ml2;
+                placed[nplaced][3] = mh2;
+                nplaced++;
+                /* (its own faces and those the piece's closing added) */
+                for (i = 0; i < nf; i++) {
+                    double p[3][3], uv[3][2], q[3][3], quv[3][2], qn[3];
+
+                    if (grp[i] != m) {
+                        continue;
+                    }
+                    for (j = 0; j < 3u; j++) {
+                        for (k = 0; k < 3; k++) {
+                            p[j][k] = f[i].t->p[j][k];
+                        }
+                        uv[j][0] = f[i].t->uv[j][0];
+                        uv[j][1] = f[i].t->uv[j][1];
+                    }
+                    turned(p, uv, f[i].n, mode, cx, cz, q, quv, qn);
+                    rm_tri(out, f[i].t->id, -1, f[i].b->cull, f[i].t->rgb, q[0], q[1], q[2], quv[0], quv[1], quv[2], 0, 0);
+                }
+                for (i = nt0[m]; i < nt1[m]; i++) {
+                    double q[3][3], quv[3][2], qn[3];
+
+                    turned(nt[i].p, nt[i].uv, nt[i].n, mode, cx, cz, q, quv, qn);
+                    rm_tri(out, nt[i].id, -1, nt[i].cull, nt[i].rgb, q[0], q[1], q[2], quv[0], quv[1], quv[2], 0, 0);
+                }
+            }
+        }
+    }
+done:
+    free(grp); free(thing); free(cnt); free(nt0); free(nt1); free(use); free(lo); free(hi); free(nt); free(pf);
 }
 
 void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
