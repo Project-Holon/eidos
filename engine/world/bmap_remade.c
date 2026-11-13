@@ -30,6 +30,9 @@ static const BmapRemade k_remade[] = {
       "stand=4:0:1+1+1+1+2+3+3+3+3+3+3+3+3+3,lie=8:8:15:3,own=523939+9C7B52+6A5252,line=414141+393939+313131+395A5A" },
     { "b1_00192", rm_disc, PAD_RISE },              /* warp pad (Pokemon League) */
     { "b0_00108", rm_disc, PAD_RISE },              /* warp pad (Opelucid Gym) */
+    { "b0_00106", rm_tower, "two=-20:20:3.2:40" },   /* warp pad, green (Opelucid Gym): its glowing rings seen from both sides */
+    { "b0_00107", rm_tower, "two=-20:20:3.2:40" },   /* warp pad, blue (Nimbasa City, Pokemon League): its glowing rings seen from both sides */
+    { "b0_00066", rm_tower, "two=-30:30:0:20" },   /* broken bench (Dreamyard): the bent plank and its legs seen from both sides */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
