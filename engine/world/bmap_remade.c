@@ -88,7 +88,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00114", rm_tower, "corner=6,clipz=-36:-48:48,wall=48:-48:48:-36:4:96,mirror=-40:40:84:97:-2:20:30,rimwalls=84:-20:26:-22:12,two=46:61.5:54:71+-43:-19:107:120,props=54:30" },   /* grey-green building, roof pool: plain back in its sides, the parapet inside, railing and parasol both sides, balcony pots closed */
     { "b1_00119", rm_tower, "corner=4,wall=36:-36:36:-42:3:44.6+-36:-36:2.3:-42:44.6:50.5+36:2.3:36:-42:44.6:59+38:2.3:38:-42:59:65.5,under=59.9,reside=36:-36:3:50.5" },   /* beige two-block building: its back in its sides, block by block */
     { "b1_00120", rm_tower, "corner=4,halfturn=-36.8:6:70:90:135,mirror=-120:-16:0:70:6+-24:105:104:114:12.1:30:60+62:137:62:72:17.3:60:82,twoback=-20,clipz=-32.8:-16.1:-15.9,two=-112:-16:20:63.5+-24:105:105:114+62:129:57:72,wall=136:16.2:136:-46.4:2:71.4+-16:-16:96.4:-32.8:71.4:105.4+16.2:16.2:24.2:-46.8:71.4:92+63:63:68.3:-43.4:71.4:88.6" },   /* white round-ended building: round wing closed by mirror and half turn, back walls in its sides, inside-only walls both ways */
-    { "b1_00126", rm_tower, "" },   /* (in progress) */
+    { "b1_00126", rm_tower, "corner=6,wall=24:-24:24:-24:4:48,mirror=-24:24:41:49:0:15:22,props=42.5:40" },   /* pale green building, roof deck chair: plain back in its sides, the parapet inside, the chair closed */
     { "b1_00144", rm_tower, "" },   /* (in progress) */
     { "b1_00155", rm_tower, "" },   /* (in progress) */
     { "b1_00157", rm_tower, "" },   /* (in progress) */

@@ -1038,6 +1038,29 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
             }
             continue;
         }
+        if (flat) {
+            continue;                   /* (a flat piece of more than a card: a shadow, a mat; nothing to close) */
+        }
+        {
+            /* (a piece standing turned on its spot (a lounger set at a slant, a stool turned): mirrored along x and
+             * z it would cross itself; its faces are shown from both sides instead, thin slats and legs as they are) */
+            unsigned up = 0, off = 0;
+
+            for (i = 0; i < np; i++) {
+                if (fabs(pf[i].n[1]) < 0.7) {
+                    const double h = sqrt(pf[i].n[0] * pf[i].n[0] + pf[i].n[2] * pf[i].n[2]);
+
+                    up++;
+                    off += h > 1e-6 && fabs(pf[i].n[0]) / h < 0.97 && fabs(pf[i].n[2]) / h < 0.97;
+                }
+            }
+            if (up > 0 && off * 2u > up) {
+                for (i = 0; i < np; i++) {
+                    rm_two(out, pf[i].t->id);
+                }
+                continue;
+            }
+        }
         use[g] = 1;
         nt0[g] = nn;
         for (mode = 1; mode <= 3; mode++) {
@@ -1052,6 +1075,24 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
                     uv[j][1] = pf[i].t->uv[j][1];
                 }
                 turned(p, uv, pf[i].n, mode, cx, cz, q, quv, qn);
+                {
+                    /* (a face that closes a box-like piece lies on its outer box: its middle on one of the box's
+                     * sides; a slab that leans (a chair's back) turned about its middle crosses itself instead) */
+                    double c[3];
+                    int on = 0;
+
+                    for (k = 0; k < 3; k++) {
+                        c[k] = (q[0][k] + q[1][k] + q[2][k]) / 3.0;
+                    }
+                    for (k = 0; k < 3 && !on; k++) {
+                        const double tol = (hi[g][k] - lo[g][k]) * 0.15 > 0.6 ? (hi[g][k] - lo[g][k]) * 0.15 : 0.6;
+
+                        on = fabs(c[k] - lo[g][k]) < tol || fabs(c[k] - hi[g][k]) < tol;
+                    }
+                    if (!on) {
+                        continue;
+                    }
+                }
                 if (!covered(pf, np, nt + nt0[g], nn - nt0[g], q, qn)) {
                     add_nt(out, nt, &nn, cap, q, quv, qn, pf[i].t->id, pf[i].t->rgb, pf[i].b->cull);
                 }
@@ -1137,6 +1178,9 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
             }
             if (rm != r) {
                 continue;
+            }
+            if (lo[m][1] > tl[1] + 0.5) {
+                continue;               /* (only what stands on the thing's floor: legs; a backrest is one of a kind) */
             }
             for (mode = 1; mode <= 3; mode++) {
                 /* the piece turned about the thing's middle: where the thing has no piece at all, it goes there */
