@@ -11,5 +11,7 @@ extern const char *const k_rock_faces_cave[];
 extern const char *const k_rock_faces_open[];
 extern const char *const k_rock_faces_water[];
 extern const char *const k_rock_faces_plant[];
+extern const char *const k_rock_faces_flowers[];
+extern const char *const k_rock_faces_statue[];
 
 #endif /* EIDOS_ENGINE_WORLD_REMADE_ROCK_H */

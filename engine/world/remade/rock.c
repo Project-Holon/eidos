@@ -313,6 +313,7 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     int mouth_n, mouth_j0 = 0, lip_n, lip_px[MAXPX][2], nlip = 0, rim_n, lathe, has_reach, fat, has_bump;
     int face_row[4] = { 0, 0, 0, 0 };
     double ua, ub, va, vb, foot[3], width, stand, s, sv, sink, look, cen[MAXPX], rbase[MAXPX], rcap = 0.0, per, reach, bump;
+    double dfac[MAXPX], doff[MAXPX];
     double shc = 0.0, lift;
     int planes[6][MAXPX * 2 + 8], nplane[6];
     unsigned first_tri = out->ntri, src = bt->tri[0].id;
@@ -338,6 +339,13 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
         ub = bt->tri[xmax / 3u].uv[xmax % 3u][0];
         va = bt->tri[ymax / 3u].uv[ymax % 3u][1];      /* top */
         vb = bt->tri[ymin / 3u].uv[ymin % 3u][1];      /* bottom */
+    }
+    /* (a texture that repeats: a card may show a repeat other than the first; the same pixels) */
+    {
+        double fu = floor((ua < ub ? ua : ub) + 1e-6), fv = floor((va < vb ? va : vb) + 1e-6);
+
+        ua -= fu; ub -= fu;
+        va -= fv; vb -= fv;
     }
     i0 = (int)rint(ua * w); i1 = (int)rint(ub * w);
     j0 = (int)rint(va * h); j1 = (int)rint(vb * h);
@@ -459,6 +467,16 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
          * edge is not that place: the picture leans back about its middle) */
         foot[0] = bt->pivot[0]; foot[1] = bt->pivot[1]; foot[2] = bt->pivot[2];
     }
+    /* `at=X:Z` (given by rm_rock for `centre=1`): the body stands there, over the middle of what it stands on;
+     * the card is set off it in the map only so the flat picture shows from the field's camera */
+    if (rm_opt(opt, "at", ob, sizeof ob) != NULL) {
+        double ax = 0.0, az = 0.0;
+
+        if (sscanf(ob, "%lf:%lf", &ax, &az) == 2) {
+            foot[0] = ax;
+            foot[2] = az;
+        }
+    }
     /* `shift=X:Z`: the body stands that far from the card's foot (a plant's card leans from the pot's front
      * edge; its body stands over the pot's middle) */
     if (rm_opt(opt, "shift", ob, sizeof ob) != NULL) {
@@ -540,6 +558,28 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     r->jlast = r->rowlast;              /* every row as the picture has it */
     R = (W + 1) / 2 + 1;
     D = 2 * R;
+    /* `depth=J0:J1:F:O+..`: rows J0..J1 are F as deep as they are wide, and O pixels south of the middle */
+    for (j = 0; j < MAXPX; j++) {
+        dfac[j] = 1.0;
+        doff[j] = 0.0;
+    }
+    if (rm_opt(opt, "depth", ob, sizeof ob) != NULL) {
+        const char *dp = ob;
+
+        while (dp != NULL && *dp != '\0') {
+            int ja, jb;
+            double f, o;
+
+            if (sscanf(dp, "%d:%d:%lf:%lf", &ja, &jb, &f, &o) == 4 && f > 0.05) {
+                for (j = ja < 0 ? 0 : ja; j <= jb && j < MAXPX; j++) {
+                    dfac[j] = f;
+                    doff[j] = o;
+                }
+            }
+            dp = strchr(dp, '+');
+            dp = dp != NULL ? dp + 1 : NULL;
+        }
+    }
     vox = (unsigned char *)calloc((size_t)H * D * W, 1);
     colp = (short *)calloc((size_t)H * D * W * 2u, sizeof *colp);
     if (vox == NULL || colp == NULL) {
@@ -624,7 +664,9 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
         } else {
             for (k = 0; k < D; k++) {
                 for (c = a; c < e; c++) {
-                    double ii = c + 0.5 - cc, kk = k + 0.5 - R;
+                    /* (`depth`: the slice is that much as deep as wide, and that far south: a statue's ears are
+                     * thin, its head less deep than its body, its feet before it) */
+                    double ii = c + 0.5 - cc, kk = (k + 0.5 - R - doff[j]) / dfac[j];
 
                     VOX(j, k, c) = (unsigned char)(ii * ii + kk * kk <= rr * rr + 0.25);
                 }
@@ -636,7 +678,9 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     if (facesn != NULL) {
         const char *const *lines = strcmp(facesn, "cave") == 0 ? k_rock_faces_cave : strcmp(facesn, "open") == 0 ? k_rock_faces_open
                                    : strcmp(facesn, "water") == 0 ? k_rock_faces_water
-                                   : strcmp(facesn, "plant") == 0 ? k_rock_faces_plant : NULL;
+                                   : strcmp(facesn, "plant") == 0 ? k_rock_faces_plant
+                                   : strcmp(facesn, "flowers") == 0 ? k_rock_faces_flowers
+                                   : strcmp(facesn, "statue") == 0 ? k_rock_faces_statue : NULL;
 
         if (lines != NULL && faces_load(r, lines)) {
             r->HH = 4 * H;
@@ -655,7 +699,7 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
                     continue;
                 }
                 ii = c + 0.5 - cen[j];
-                kk = k + 0.5 - R;
+                kk = lathe ? k + 0.5 - R : (k + 0.5 - R - doff[j]) / dfac[j];      /* (as a round slice: `depth`) */
                 side = fabs(kk) >= fabs(ii) ? (kk > 0 ? 0 : 2) : (ii > 0 ? 1 : 3);
                 if (lathe) {
                     /* a thing turned on a wheel: the same all round, its picture's middle repeated `around`
@@ -1168,10 +1212,53 @@ static int shared(const RmBatch *b, unsigned nb, unsigned pb, unsigned pi, const
 
 void rm_rock(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
-    char lb[8];
+    char lb[8], ob2[512];
     int lean = rm_opt(opt, "lean", lb, sizeof lb) != NULL, cards = rm_opt(opt, "cards", lb, sizeof lb) != NULL;
     unsigned bi;
 
+    /* `centre=1`: a card's body stands over the middle of the rest of the model (a pot, a pedestal), seen
+     * from above: the box of every triangle that is no card and no flat sheet on the ground */
+    if (cards && rm_optf(opt, "centre", 0) != 0.0) {
+        double lo[2] = { 1e30, 1e30 }, hi[2] = { -1e30, -1e30 }, yg = 1e30;
+        unsigned i, k;
+
+        for (bi = 0; bi < nb; bi++) {
+            for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+                for (k = 0; k < 3u; k++) {
+                    yg = b[bi].tri[i].p[k][1] < yg ? b[bi].tri[i].p[k][1] : yg;
+                }
+            }
+        }
+        for (bi = 0; bi < nb; bi++) {
+            for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+                const RmTri *t = &b[bi].tri[i];
+                int card = 1, card2 = i > 0, flat = 1;
+
+                /* (a card's two triangles: alone apart from each other, this one and the next or the last) */
+                for (k = 0; k < 3u; k++) {
+                    card &= !shared(b, nb, bi, i, t->p[k]);
+                    card2 &= i > 0 && !shared(b, nb, bi, i - 1u, t->p[k]);
+                }
+                card |= card2;
+                for (k = 0; k < 3u; k++) {
+                    flat &= t->p[k][1] < yg + 0.5;
+                }
+                if (card || flat) {
+                    continue;
+                }
+                for (k = 0; k < 3u; k++) {
+                    lo[0] = t->p[k][0] < lo[0] ? t->p[k][0] : lo[0];
+                    hi[0] = t->p[k][0] > hi[0] ? t->p[k][0] : hi[0];
+                    lo[1] = t->p[k][2] < lo[1] ? t->p[k][2] : lo[1];
+                    hi[1] = t->p[k][2] > hi[1] ? t->p[k][2] : hi[1];
+                }
+            }
+        }
+        if (lo[0] < hi[0] && strlen(opt) + 64u < sizeof ob2) {
+            snprintf(ob2, sizeof ob2, "%s,at=%.3f:%.3f", opt, (lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0);
+            opt = ob2;
+        }
+    }
     for (bi = 0; bi < nb; bi++) {
         const RmBatch *bt = &b[bi];
 

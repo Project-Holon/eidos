@@ -3760,6 +3760,49 @@ static int remade_make(Done *d, const BmapRemade *e, Model *md, const char *setk
             x->rgb[j] = (u8)(sum[j] / (double)n);
         }
     }
+    /* (research: BMAP_REMADE_IN=dir writes what the builder gets, dir/<name>.rmi, so a small tool can run the
+     * builders on it alone in a second, without the game: tools/rmrun.c) */
+    if (getenv("BMAP_REMADE_IN") != NULL) {
+        char path[600];
+        FILE *f;
+
+        snprintf(path, sizeof path, "%s/%s.rmi", getenv("BMAP_REMADE_IN"), d->key);
+        f = fopen(path, "wb");
+        if (f != NULL) {
+            u32 n2[2] = { nb, (u32)c->ntex };
+
+            fwrite("RMI1", 1, 4, f);
+            fwrite(n2, 4, 2, f);
+            for (i = 0; i < (unsigned)c->ntex; i++) {
+                int wh[2] = { tx[i].w, tx[i].h }, has = tx[i].rgba != NULL;
+
+                fwrite(wh, 4, 2, f);
+                fwrite(&has, 4, 1, f);
+                if (has) {
+                    fwrite(tx[i].rgba, 4, (size_t)wh[0] * (size_t)wh[1], f);
+                }
+            }
+            for (i = 0; i < nb; i++) {
+                const RmBatch *x = &bt[i];
+                u8 f8[8] = { x->cull, x->bb, x->rgb[0], x->rgb[1], x->rgb[2], 0, 0, 0 };
+
+                fwrite(&x->n, 4, 1, f);
+                fwrite(&x->tex, 4, 1, f);
+                fwrite(f8, 1, 8, f);
+                fwrite(x->pivot, 4, 3, f);
+                for (j = 0; j < x->n; j++) {
+                    const RmTri *q = &x->tri[j];
+                    u8 c4[4] = { q->rgb[0], q->rgb[1], q->rgb[2], 0 };
+
+                    fwrite(q->p, 4, 9, f);
+                    fwrite(q->uv, 4, 6, f);
+                    fwrite(&q->id, 4, 1, f);
+                    fwrite(c4, 1, 4, f);
+                }
+            }
+            fclose(f);
+        }
+    }
     e->build(bt, nb, tx, (unsigned)c->ntex, e->opt, &o);
     if (getenv("BMAP_REMADE_DUMP") != NULL) {
         fprintf(stderr, "bmap: remade %s: %u new, %u left out, %u turned, %u both sides, flags %u%s\n", d->key, o.ntri, o.ndrop,
