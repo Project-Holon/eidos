@@ -30,6 +30,8 @@
  *       outer skin D behind it, in the outer faces' texture column u = U, v by height.
  *   hide=X0:X1:Y0:Y1:Z0:Z1:TEX+..  the model's faces of texture TEX in that box left out.
  *   cutx=X0:X1:Z0:Z1+..  the model's faces wholly between Z0 and Z1 cut to X0..X1.
+ *   decal=SZ:SX:SY:X0:X1:Y0:Y1:TX:TY:Z+..  a rectangle of a south face's picture laid on
+ *       the back at z = Z, its middle at (TX, TY), looking north.
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
  *       colour of the face over it.
@@ -894,6 +896,76 @@ static void do_cutx(const Ft *f, unsigned nf, RmOut *out, const double c[4])
             uc[0] = a[j + 1][3]; uc[1] = a[j + 1][4];
             rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, pa, pb, pc, ua, ub, uc, 0, 0);
         }
+    }
+}
+
+/* `decal=SZ:SX:SY:X0:X1:Y0:Y1:TX:TY:Z+..`: a rectangle X0..X1, Y0..Y1 of the picture of the model's face that looks
+ * south at z = SZ and holds (SX, SY), laid on the back at z = Z looking north, its middle at (TX, TY), the right way
+ * round seen from behind: one of the house's own windows in a plain back wall. */
+static void do_decal(const Ft *f, unsigned nf, RmOut *out, const double d[10])
+{
+    const Ft *src = NULL;
+    double m[2][3];
+    unsigned i;
+    int j, k;
+
+    for (i = 0; i < nf && src == NULL; i++) {
+        const RmTri *t = f[i].t;
+        double den, w0, w1;
+        int at = 1;
+
+        if (f[i].n[2] < 0.9 || f[i].b->tex < 0) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][2] - d[0]) < 0.1;
+        }
+        den = ((double)t->p[1][1] - t->p[2][1]) * ((double)t->p[0][0] - t->p[2][0])
+              + ((double)t->p[2][0] - t->p[1][0]) * ((double)t->p[0][1] - t->p[2][1]);
+        if (!at || fabs(den) < 1e-9) {
+            continue;
+        }
+        w0 = (((double)t->p[1][1] - t->p[2][1]) * (d[1] - t->p[2][0]) + ((double)t->p[2][0] - t->p[1][0]) * (d[2] - t->p[2][1])) / den;
+        w1 = (((double)t->p[2][1] - t->p[0][1]) * (d[1] - t->p[2][0]) + ((double)t->p[0][0] - t->p[2][0]) * (d[2] - t->p[2][1])) / den;
+        if (w0 >= -1e-3 && w1 >= -1e-3 && 1.0 - w0 - w1 >= -1e-3) {
+            src = &f[i];
+        }
+    }
+    if (src == NULL) {
+        return;
+    }
+    {
+        const RmTri *t = src->t;
+        const double x0 = t->p[0][0], y0 = t->p[0][1];
+        const double x1 = t->p[1][0] - x0, y1 = t->p[1][1] - y0, x2 = t->p[2][0] - x0, y2 = t->p[2][1] - y0;
+        const double det = x1 * y2 - x2 * y1;
+
+        if (fabs(det) < 1e-9) {
+            return;
+        }
+        for (k = 0; k < 2; k++) {
+            const double d1 = (double)t->uv[1][k] - t->uv[0][k], d2 = (double)t->uv[2][k] - t->uv[0][k];
+
+            m[k][0] = (d1 * y2 - d2 * y1) / det;
+            m[k][1] = (d2 * x1 - d1 * x2) / det;
+            m[k][2] = t->uv[0][k] - m[k][0] * x0 - m[k][1] * y0;
+        }
+    }
+    {
+        const double outn[3] = { 0, 0, -1 };
+        const double cx = (d[3] + d[4]) / 2.0, cy = (d[5] + d[6]) / 2.0;
+        double q[4][3], uv[4][2];
+        const double sx[4] = { d[3], d[4], d[4], d[3] }, sy[4] = { d[5], d[5], d[6], d[6] };
+
+        for (j = 0; j < 4; j++) {
+            /* (seen from behind x runs the other way: the picture's left at the back's high x) */
+            q[j][0] = d[7] - (sx[j] - cx);
+            q[j][1] = d[8] + (sy[j] - cy);
+            q[j][2] = d[9];
+            uv[j][0] = m[0][0] * sx[j] + m[0][1] * sy[j] + m[0][2];
+            uv[j][1] = m[1][0] * sx[j] + m[1][1] * sy[j] + m[1][2];
+        }
+        quad(out, src->t->id, src->t->rgb, q, uv, outn);
     }
 }
 
@@ -2006,6 +2078,17 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
                         rm_drop(out, t->id);
                     }
                 }
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "decal", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double dc[10];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &dc[0], &dc[1], &dc[2], &dc[3], &dc[4], &dc[5], &dc[6], &dc[7], &dc[8], &dc[9]) == 10) {
+                do_decal(f, nf, out, dc);
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
