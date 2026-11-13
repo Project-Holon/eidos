@@ -82,7 +82,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00013", rm_building, "src=east,span=20:-46,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,twin=38:40,plain=0,erase=-35:5:28:72,door=20:-34:-12:39:58:0.083:0.002:0.155:0.65" },   /* brick warehouse with an outside stair: its side's brick at the back */
     { "b1_00014", rm_building, "src=east,span=18:-43,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,pipes=2.4:55:0.18:0.5" },   /* brick warehouse, blue doors: its side's brick at the back */
     { "b1_00015", rm_building, "src=east,span=18:-43,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,twin=38:40" },   /* brick warehouse, green doors: its side's brick at the back */
-    { "b1_00040", rm_building, "roof=0,over=0,rim=1,flat=1,plain=-28" },   /* warehouse, glass roof: a plain back, its front's wall without the shutters */
+    { "b1_00040", rm_hall, "corner=8.4,tanks=0:6:0.8,pipe=2.2" },   /* warehouse, glass roof: its sides' wall at the back, the roof's end, six copper tanks */
     { "b0_00119", rm_chandelier, "candle=3,flame=2,glow=1" },   /* candle chandelier: a round frame, round candles, flames from any side */
     { "b0_00061", rm_floor, "" },                   /* boxes (Cold Storage) */
     { "b0_00111", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
