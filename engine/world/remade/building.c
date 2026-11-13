@@ -22,7 +22,8 @@
  *
  * Settings: roof=0 (no roof twin), wall=0 (no back wall), shade (0.85: the
  * back wall's shade of the front's colours: it stands in the shade),
- * erase=X0:X1:Y0:Y1+.. and plain=X (map units of the model's own space),
+ * erase=X0:X1:Y0:Y1[:DX]+.. and plain=X (map units of the model's own space;
+ * with DX a place takes the wall DX to its side: windows go on where a door was),
  * foot=Y (where the wall ends at the bottom: a house on posts), src=east
  * with span=Z0:Z1 (the picture is the east side's, that stretch of it laid
  * across the back: a tower's back is its side), lean=D (the wall's foot
@@ -372,12 +373,19 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         zr = cnt ? zr / cnt : 0.0;
         for (i = 0; cnt && i < n0; i++) {
             Tr q = tr[i];
+            char sb0[16];
             double c[3] = { 0, 0, 0 };
             double low = tr[i].p[0][1] < tr[i].p[1][1] ? tr[i].p[0][1] : tr[i].p[1][1];
 
             low = tr[i].p[2][1] < low ? tr[i].p[2][1] : low;
-            if (!(tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98 && tr[i].n[2] > 0.3) || low < y0 + 0.45 * (hi[1] - y0)) {
+            if (!(tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98 && tr[i].n[2] > 0.3)
+                || low < rm_optf(opt, "rooflow", y0 + 0.45 * (hi[1] - y0))) {
                 continue;               /* (not a slope that looks south, or low on the house: a window's sill) */
+            }
+            /* (`rooflow=Y`: slopes from that height up, so an awning over the ground floor goes round the back
+             * too; a white slope is an arch or a sign, no roof) */
+            if (tr[i].rgb[0] > 190 && tr[i].rgb[1] > 190 && tr[i].rgb[2] > 170 && rm_opt(opt, "rooflow", sb0, sizeof sb0) != NULL) {
+                continue;
             }
             for (j = 0; j < 3; j++) {       /* mirrored through the ridge, corners the other way round */
                 unsigned s = j == 0 ? 0u : 3u - j;
@@ -771,7 +779,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         char sb[16];
         const int east = rm_opt(opt, "src", sb, sizeof sb) != NULL && strcmp(sb, "east") == 0;
         const int ax = east ? 2 : 0, dp = east ? 0 : 2;     /* the picture's across, and the way it is looked at */
-        double er[8][4], plain = rm_optf(opt, "plain", 1e30), xa = lo[ax], xb = hi[ax], yb = hi[1], wz = hi[dp];
+        double er[8][5], plain = rm_optf(opt, "plain", 1e30), xa = lo[ax], xb = hi[ax], yb = hi[1], wz = hi[dp];
         const int flatw = rm_optf(opt, "flat", 0) != 0.0;     /* (`flat=1`: the plain place's column all across: bands, no openings) */
         const double at_most = rm_optf(opt, "at", 1e30);      /* (`at=Z`: the front wall that stands at most there: a model of two huts) */
         double sp0 = xa, sp1 = xb, qx0 = 1e30, qx1 = -1e30, lean = rm_optf(opt, "lean", 0.0), flare = rm_optf(opt, "flare", 0.0);
@@ -781,7 +789,11 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
 
         if (rm_opt(opt, "erase", eb, sizeof eb) != NULL) {
             for (ep = eb; ep != NULL && *ep != '\0' && ner < 8u; ) {
-                if (sscanf(ep, "%lf:%lf:%lf:%lf", &er[ner][0], &er[ner][1], &er[ner][2], &er[ner][3]) == 4) {
+                int got;
+
+                er[ner][4] = 0.0;
+                got = sscanf(ep, "%lf:%lf:%lf:%lf:%lf", &er[ner][0], &er[ner][1], &er[ner][2], &er[ner][3], &er[ner][4]);
+                if (got >= 4) {
                     ner++;
                 }
                 ep = strchr(ep, '+');
@@ -884,14 +896,19 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
             tx = (int)((plain - xa) * ppu);
             tx = tx < 0 ? 0 : tx >= Wm ? Wm - 1 : tx;
         }
-        for (q = 0; q < ner && tx >= 0; q++) {
+        for (q = 0; q < ner && (tx >= 0 || er[q][4] != 0.0); q++) {
             int x0 = (int)floor((er[q][0] - xa) * ppu), x1 = (int)ceil((er[q][1] - xa) * ppu);
             int y1 = (int)ceil((yb - er[q][2]) * ppu), y0p = (int)floor((yb - er[q][3]) * ppu);
 
             for (y = y0p < 0 ? 0 : y0p; y < y1 && y < Hm; y++) {
                 for (x = x0 < 0 ? 0 : x0; x < x1 && x < Wm; x++) {
-                    memcpy(px + ((size_t)y * Wm + (size_t)x) * 4u, px + ((size_t)y * Wm + (size_t)tx) * 4u, 4u);
-                    ok[(size_t)y * Wm + (size_t)x] = ok[(size_t)y * Wm + (size_t)tx];
+                    int sx2 = er[q][4] != 0.0 ? x + (int)rint(er[q][4] * ppu) : tx;
+
+                    if (sx2 < 0 || sx2 >= Wm) {
+                        continue;
+                    }
+                    memcpy(px + ((size_t)y * Wm + (size_t)x) * 4u, px + ((size_t)y * Wm + (size_t)sx2) * 4u, 4u);
+                    ok[(size_t)y * Wm + (size_t)x] = ok[(size_t)y * Wm + (size_t)sx2];
                 }
             }
         }
