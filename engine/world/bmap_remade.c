@@ -38,7 +38,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00006", rm_tower, "seal=0" },   /* (in progress) */
     { "b1_00017", rm_tower, "seal=0" },   /* (in progress) */
     { "b1_00032", rm_tower, "seal=0" },   /* (in progress) */
-    { "b1_00044", rm_tower, "seal=0" },   /* (in progress) */
+    { "b1_00044", rm_tower, "corner=1,wall=36:-36:36:-24:4:34,panel=36:-20:36:-36:36:-24:34:46,mirror=23.5:30.6:48:58:-16.1:-20:-12+-30.6:-23.5:48:58:-16.1:-20:-12+23.5:30.6:48:58:12.35:9:16+-30.6:-23.5:48:58:12.35:9:16" },   /* cottage, orange roof (Striaton): a back wall in its sides' plaster up under the eave, the chimneys closed */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
