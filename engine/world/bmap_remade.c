@@ -58,8 +58,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00243", rm_building,                      /* stone huts (Village Bridge): plain stone, no windows at the back */
       "at=100,erase=-33:33:2:37,plain=34.4,roof=0" },
     { "b0_00019", rm_plant, "" },                   /* potted plant */
-    { "b0_00035", rm_sprite,                        /* flowers in a pot: the blooms (oranges, yellows) and the leaves each round */
-      "group=DE7B31+FF8B39+FFA45A+FFAC6A+FFBD83+FFC59C/DEBD29+EED541+FFE65A/529431+62AC39,back=mirror" },
+    { "b0_00035", rm_plant, "centre=1,bunch=flowers,front=1,top=0,roundpot=1" },   /* flowers in a pot: a round bunch of blooms, its south the picture */
     { "b0_00079", rm_sprite,                        /* statue: the sprite a little thick, its back the creature's stone back */
       "split=52526A,soften=7B7B7B,back=one,slab=2,dome=2,relief=statue,keep=DEE6E6:2:4,recolor=FFFFFF:B4B4A4+DEE6E6:B4B4A4+7B7B7B:B4B4A4,"
       "part=6:9:0.5:0+10:4:0.5:1+10:15:0.5:1+15:6:0.4:1+15:13:0.4:1+13:9:0.4:0" },

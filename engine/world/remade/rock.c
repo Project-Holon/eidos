@@ -67,6 +67,7 @@ typedef struct {
     unsigned char mask[MAXPX][MAXPX], mmask[MAXPX][MAXPX];
     int has[MAXPX], sa[MAXPX], se[MAXPX];       /* a row's kept pixels: columns sa .. se - 1 */
     int jtop, jlast, rowlast;
+    int topskip;                /* the picture's first rows that are its outline alone (2; `top`) */
     Cell *cell;
     unsigned ncell, ccell;
     int fail;
@@ -107,7 +108,7 @@ static void cell_add(Rk *r, int kind, int plane, int a, int b, int pi, int pj)
 /* The kept pixel nearest column i of row j (the top two rows: the row under them). */
 static void pix(const Rk *r, int j, int i, int *pi, int *pj)
 {
-    int lim = r->jtop + 2 < r->jlast ? r->jtop + 2 : r->jlast, c, best = -1, bd = 1 << 30;
+    int lim = r->jtop + r->topskip < r->jlast ? r->jtop + r->topskip : r->jlast, c, best = -1, bd = 1 << 30;
 
     j = j > lim ? j : lim;
     for (c = 0; c < r->W; c++) {
@@ -311,6 +312,8 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     int nlay = 0, shadow_layer = -1, ring_layer = -1, made = 0;
     int w = tx->w, h = tx->h, W, H, i0, i1, j0, j1, flip_x, flip_y, j, k, c, n, R, D, rmax = 0, jwide, AH;
     int mouth_n, mouth_j0 = 0, lip_n, lip_px[MAXPX][2], nlip = 0, rim_n, lathe, has_reach, fat, has_bump;
+    const int front = rm_optf(opt, "front", 0) != 0.0;
+    int top_j0 = -1, top_j1 = -2;
     int face_row[4] = { 0, 0, 0, 0 };
     double ua, ub, va, vb, foot[3], width, stand, s, sv, sink, look, cen[MAXPX], rbase[MAXPX], rcap = 0.0, per, reach, bump;
     double dfac[MAXPX], doff[MAXPX];
@@ -393,6 +396,8 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
             memset(r->mask[j], 0, sizeof r->mask[j]);
         }
     }
+    /* (`top=N`: the picture's first N rows are its dark outline alone, 2; a picture without an outline: 0) */
+    r->topskip = (int)rm_optf(opt, "top", 2);
     r->jtop = -1;
     for (j = 0, n = 0; j < H; j++) {
         int a = -1, e = -1;
@@ -678,9 +683,7 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     if (facesn != NULL) {
         const char *const *lines = strcmp(facesn, "cave") == 0 ? k_rock_faces_cave : strcmp(facesn, "open") == 0 ? k_rock_faces_open
                                    : strcmp(facesn, "water") == 0 ? k_rock_faces_water
-                                   : strcmp(facesn, "plant") == 0 ? k_rock_faces_plant
-                                   : strcmp(facesn, "flowers") == 0 ? k_rock_faces_flowers
-                                   : strcmp(facesn, "statue") == 0 ? k_rock_faces_statue : NULL;
+                                   : strcmp(facesn, "plant") == 0 ? k_rock_faces_plant : NULL;
 
         if (lines != NULL && faces_load(r, lines)) {
             r->HH = 4 * H;
@@ -733,6 +736,86 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
             }
         }
     }
+    /*
+     * `bunch=flowers`: a bunch of flowers.  The body's blocks take their colours from blooms set on its surface
+     * (rock_faces.c: where each is, its kind, its size), not from a flat picture a side: a bloom goes on round a
+     * corner and over the top's edge, so the sides and the top are one surface.  A block is its nearest bloom's
+     * (by the blooms' sizes): light where it lies over the bloom's middle, darker under it, the bloom's darkest
+     * where two blooms meet; the body's last rows are leaves.  The colours are the picture's own (a kind's ramp,
+     * light to dark).  With `front=1` the faces that look south stay the picture.
+     */
+    if (rm_opt(opt, "bunch", ob, sizeof ob) != NULL && strcmp(ob, "flowers") == 0) {
+        static const unsigned ramp_o[4] = { 0xFFBD83, 0xFFA45A, 0xFF8B39, 0xDE7B31 };
+        static const unsigned ramp_y[3] = { 0xFFE65A, 0xEED541, 0xDEBD29 };
+        static const unsigned ramp_p[5] = { 0xFFC59C, 0xFFBD83, 0xFFAC6A, 0xFFA45A, 0xFF8B39 };
+        static const unsigned leaf[2] = { 0x529431, 0x62AC39 };
+        const RockBloom *bl;
+        double bx[64], by[64], bz[64], brad[64];
+        char bkind[64];
+        int nbl = 0;
+
+        for (bl = k_bunch_flowers; bl->kind != 0 && nbl < 64; bl++) {
+            int jr = (int)floor(bl->row);
+            double rr, a = bl->angle * PI / 180.0;
+
+            jr = jr < r->jtop ? r->jtop : jr > r->jlast ? r->jlast : jr;
+            rr = (r->se[jr] - r->sa[jr]) / 2.0 * bl->out;
+            bx[nbl] = cen[jr] + rr * sin(a);
+            bz[nbl] = R + rr * cos(a);            /* (+k is south: 0 degrees) */
+            by[nbl] = bl->row;
+            brad[nbl] = bl->rad;
+            bkind[nbl] = bl->kind;
+            nbl++;
+        }
+        for (j = 0; j < H && nbl > 0; j++) {
+            for (k = 0; k < D; k++) {
+                for (c = 0; c < W; c++) {
+                    short *cp = &colp[(((size_t)j * D + (size_t)k) * W + (size_t)c) * 2u];
+                    double d1 = 1e30, d2 = 1e30, t, up, v;
+                    int i1 = 0, q, y2, x2, found = 0;
+                    unsigned want;
+
+                    if (!VOX(j, k, c)) {
+                        continue;
+                    }
+                    for (q = 0; q < nbl; q++) {
+                        const double dx = c + 0.5 - bx[q], dy = j + 0.5 - by[q], dz = k + 0.5 - bz[q];
+                        const double dn = sqrt(dx * dx + dy * dy + dz * dz) / brad[q];
+
+                        if (dn < d1) {
+                            d2 = d1;
+                            d1 = dn;
+                            i1 = q;
+                        } else if (dn < d2) {
+                            d2 = dn;
+                        }
+                    }
+                    t = d1;
+                    up = (by[i1] - (j + 0.5)) / brad[i1];       /* (over the bloom's middle: lighter) */
+                    v = t - 0.35 * up;
+                    if (j >= r->jlast - 1 || (j == r->jlast - 2 && (c * 7 + k * 13) % 3 == 0)) {
+                        want = leaf[(c + k) & 1];
+                    } else if (bkind[i1] == 'Y') {
+                        want = d2 - d1 < 0.12 ? ramp_y[2] : ramp_y[v < 0.5 ? 0 : v < 1.0 ? 1 : 2];
+                    } else if (bkind[i1] == 'P') {
+                        want = d2 - d1 < 0.14 ? ramp_p[4] : ramp_p[v < 0.3 ? 0 : v < 0.55 ? 1 : v < 0.8 ? 2 : 3];
+                    } else {
+                        want = d2 - d1 < 0.14 ? ramp_o[3] : ramp_o[v < 0.3 ? 0 : v < 0.6 ? 1 : 2];
+                    }
+                    for (y2 = 0; y2 < H && !found; y2++) {
+                        for (x2 = 0; x2 < W; x2++) {
+                            if (r->mask[y2][x2] && rgb_of(pp(r, x2, y2)) == want) {
+                                cp[0] = (short)x2;
+                                cp[1] = (short)y2;
+                                found = 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     /* The body sits in the ground by half of what it has under its widest row: standing on its narrow foot
      * alone it hung over its shadow.  (`sink`, in rows: a vase stands on its foot, 0.) */
     jwide = r->jtop;
@@ -750,6 +833,9 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
 #define Z_OF(kk) (foot[2] + ((kk) - R) * s)                           /* +z is south */
     /* the faces of each of the six directions */
     rim_n = (int)rm_optf(opt, "rim", 2);
+    if (rm_opt(opt, "toppic", ob, sizeof ob) != NULL) {
+        sscanf(ob, "%d:%d", &top_j0, &top_j1);
+    }
     memset(nplane, 0, sizeof nplane);
 #define ADD(kind_, plane_, a_, b_, pi_, pj_) do { \
         int q_; \
@@ -765,7 +851,15 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
                 if (!VOX(j, k, c)) {
                     continue;
                 }
-                if (!FILLED(j, k + 1, c)) ADD(SOUTH, k, c, j, cp[0], cp[1]);
+                if (!FILLED(j, k + 1, c)) {
+                    /* (`front=1`: a face that looks south is the picture's own pixel there, whichever side its
+                     * block belongs to: seen from the south the body is the picture, to its last column) */
+                    if (front && r->mask[j][c]) {
+                        ADD(SOUTH, k, c, j, c, j);
+                    } else {
+                        ADD(SOUTH, k, c, j, cp[0], cp[1]);
+                    }
+                }
                 if (!FILLED(j, k - 1, c)) ADD(NORTH, k, c, j, cp[0], cp[1]);
                 if (!FILLED(j, k, c + 1)) ADD(EAST, c, k, j, cp[0], cp[1]);
                 if (!FILLED(j, k, c - 1)) ADD(WEST, c, k, j, cp[0], cp[1]);
@@ -789,6 +883,27 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
                         fr_ = fr_ < 0.0 ? 0.0 : fr_ > 0.999 ? 0.999 : fr_;
                         if (nmc > 0) {
                             ADD(TOP, j, c, k, mc[(int)(fr_ * nmc)], mj);
+                        }
+                    } else if (top_j1 >= top_j0 && top_j0 >= 0) {
+                        /* `toppic=J0:J1`: seen from above the body is the picture too, laid flat: its rows J0..J1
+                         * from the back to the front over the body's depth, a face its own column's pixel (the
+                         * nearest of the row's) */
+                        double tt = (k + 0.5 - (R - rmax / 2.0)) / (rmax > 0 ? rmax : 1);
+                        int tj, tc, bd = 1 << 30, x;
+
+                        tt = tt < 0.0 ? 0.0 : tt > 0.999 ? 0.999 : tt;
+                        tj = top_j0 + (int)(tt * (top_j1 - top_j0 + 1));
+                        tj = tj >= H ? H - 1 : tj;
+                        for (x = 0, tc = -1; x < W; x++) {
+                            if (r->mask[tj][x] && abs(x - c) < bd) {
+                                bd = abs(x - c);
+                                tc = x;
+                            }
+                        }
+                        if (tc >= 0) {
+                            ADD(TOP, j, c, k, tc, tj);
+                        } else {
+                            ADD(TOP, j, c, k, cp[0], cp[1]);
                         }
                     } else {
                         ADD(TOP, j, c, k, cp[0], cp[1]);
@@ -1279,6 +1394,10 @@ void rm_rock(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
                 }
                 one.tri = &bt->tri[i];
                 one.n = 2;
+                /* (the card's own colour, not its draw's mean: a pot drawn with it is shaded darker) */
+                for (k = 0; k < 3; k++) {
+                    one.rgb[k] = (unsigned char)(((unsigned)bt->tri[i].rgb[k] + bt->tri[i + 1u].rgb[k]) / 2u);
+                }
                 if (build(&one, &tex[bt->tex], opt, out)) {
                     rm_drop(out, bt->tri[i].id);
                     rm_drop(out, bt->tri[i + 1u].id);

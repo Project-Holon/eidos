@@ -28,5 +28,7 @@ void rm_plant(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
 
     snprintf(ro, sizeof ro, "cards=1,sink=0,high=1,%s", opt != NULL && opt[0] != '\0' ? opt : "faces=plant,shift=-0.15:-2.3");
     rm_rock(b, nb, tex, ntex, ro, out);
-    rm_turned(b, nb, tex, ntex, "rest=0,copies=0", out);
+    /* (`roundpot=1`: the stand is a round pot: its far side is its near side turned about its axis, lit as the
+     * game lights it; without, each of its pieces is closed with a twin) */
+    rm_turned(b, nb, tex, ntex, rm_optf(opt, "roundpot", 0) != 0.0 ? "rest=0,round=1" : "rest=0,copies=0", out);
 }

@@ -279,6 +279,18 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             sscanf(cb, "%lf:%lf", &cx, &cz);
         }
     }
+    /* `round=1`: a round thing whose far side is missing (a pot): its box ends short at the north, so the box's
+     * middle is not its axis.  It is as deep as it is wide: its axis stands half its width behind its south end,
+     * and every piece's middle is the axis.  Its far side is then its near side turned, lit by the game as the
+     * near side is (the same smooth light, corner by corner), and no twin is made beside it. */
+    if (rm_optf(opt, "round", 0) != 0.0) {
+        cz = hi[2] - (hi[0] - lo[0]) / 2.0;
+        for (i = 0; i < n0; i++) {
+            if (!tr[i].flat) {
+                tr[i].pz = cz;
+            }
+        }
+    }
     if (rm_optf(opt, "turn", 1) == 0.0) {
         goto cards;                     /* (`turn=0`: only the cards from both sides) */
     }
