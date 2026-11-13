@@ -45,7 +45,8 @@
  *       railing's bars, a parasol's cloth).
  *   snap=X:Y:Z:NZ+..  a corner of the model out of line moved to z = NZ first.
  *   clipz=Z  the model's faces that reach behind z = Z are cut there.
- *   mirror's box may end :Z0:Z1, the faces whose middle lies between.
+ *   mirror's box may end :Z0:Z1[:W], the faces whose middle lies between (and at
+ *       least W wide in x).
  *   corner=W  the side's corner columns (map units, default 6); 0: no corner
  *       columns, the side's picture runs on along the back wall (boards).
  */
@@ -224,7 +225,7 @@ static void quad(RmOut *o, unsigned src, const unsigned char rgb[3], const doubl
     }
 }
 
-static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[7])
+static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[8])
 {
     unsigned i;
 
@@ -244,6 +245,16 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[7])
         for (j = 0; j < 3; j++) {
             in &= t->p[j][0] >= bx[0] - 0.05 && t->p[j][0] <= bx[1] + 0.05 && t->p[j][1] >= bx[2] - 0.05
                   && t->p[j][1] <= bx[3] + 0.05;
+        }
+        if (in && bx[7] > 0.0) {
+            /* (`:W`: only faces at least W wide in x) */
+            double xl = t->p[0][0], xh = t->p[0][0];
+
+            for (j = 1; j < 3; j++) {
+                xl = t->p[j][0] < xl ? t->p[j][0] : xl;
+                xh = t->p[j][0] > xh ? t->p[j][0] : xh;
+            }
+            in = xh - xl >= bx[7];
         }
         if (in && bx[6] > bx[5]) {
             /* (`:Z0:Z1`: only faces whose middle lies between) */
@@ -1749,9 +1760,9 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     }
     if (rm_opt(opt, "mirror", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double bx[7] = { 0, 0, 0, 0, 0, 0, 0 };
+            double bx[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
-            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3], &bx[4], &bx[5], &bx[6]) >= 5) {
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3], &bx[4], &bx[5], &bx[6], &bx[7]) >= 5) {
                 do_mirror(f, nf, out, bx);
             }
             ep = strchr(ep, '+');

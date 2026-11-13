@@ -35,7 +35,7 @@ static const BmapRemade k_remade[] = {
     { "b0_00066", rm_tower, "two=-30:30:0:20" },   /* broken bench (Dreamyard): the bent plank and its legs seen from both sides */
     { "b0_00122", rm_tower, "hide=-240:-30:280:450:-220:-160:0,shell=-240:-30:280:400:-215:-165:0.15:-0.309,two=-240:-30:280:450" },   /* draped tent (Pokemon League): its fabric seen from outside too (the back is the lining seen through the door) */
     { "b0_00137", rm_tower, "props=0:2000:3" },   /* Cold Storage walkway: each crate and ice block closed about its own middle */
-    { "b1_00006", rm_tower, "seal=0" },   /* (in progress) */
+    { "b1_00006", rm_tower, "corner=2,wall=43:-43:43:-39.3:3.5:39,mirror=-46:46:38:62:-11.15:12:23:60+-69.5:-42.5:3:86:-11.55:7:10:11+-68:-61:38:92:-24.3:-22:-20,two=42.9:53.2:3:56" },   /* house, curved orange roof (Striaton): back wall in its sides' plaster, the roof's curve and the west wing turned round, chimney closed */
     { "b1_00017", rm_tower, "seal=0" },   /* (in progress) */
     { "b1_00032", rm_tower, "seal=0" },   /* (in progress) */
     { "b1_00044", rm_tower, "corner=1,wall=36:-36:36:-24:4:34,panel=36:-20:36:-36:36:-24:34:46,mirror=23.5:30.6:48:58:-16.1:-20:-12+-30.6:-23.5:48:58:-16.1:-20:-12+23.5:30.6:48:58:12.35:9:16+-30.6:-23.5:48:58:12.35:9:16" },   /* cottage, orange roof (Striaton): a back wall in its sides' plaster up under the eave, the chimneys closed */
