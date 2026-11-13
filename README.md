@@ -50,7 +50,7 @@ The main story is playable, though crashes and visual glitches can still occur. 
 - **Single-Screen & Dual-Screen Modes:** Play in a unified widescreen window with adapted UI layouts for the overworld, battles, menus, and C-Gear/Pokédex apps, or use the classic dual-screen DS layout.
 - **Remaster Battles:** Battles take place directly in the surrounding overworld map, using hand-tuned camera placements across ~150 locations.
 - **Hardware-Accelerated 3D:** High-resolution internal rendering with fog, edge marking, and anti-aliasing. Uses OpenGL by default, with native backends for Direct3D 12, Metal, and Vulkan.
-- **Display & Speed Controls:** Native refresh-rate VSync, instant text, and fast-forward (`Tab` for 2× speed, `Left Shift + Tab` for uncapped).
+- **Display & Speed Controls:** Native refresh-rate VSync, instant text, and fast-forward (`Tab` for 2× speed, `Tab + F` for 4×, `Left Shift + Tab` for uncapped).
 - **Input & Settings:** Remappable keyboard, gamepad, and touch controls, with port settings integrated directly into the in-game Options menu.
 - **Mod Support:** Built-in mod loader supporting asset overrides, rule tweaks, and code mods (`docs/modding.md`), browsable from the launcher's mod index.
 - **Multiplayer & WFC (Experimental):** Co-op overworld presence, online Union Room trades and battles, and Mystery Gift distribution via a custom relay server.
@@ -138,7 +138,7 @@ Save files are stored in:
 | L | Q | R | E |
 | SELECT | Right Shift | Touch | Left click |
 
-**Shortcuts:** `Tab` (2× fast-forward), `Left Shift + Tab` (uncapped fast-forward), `Alt + Return` (fullscreen), `F12` (screenshot).
+**Shortcuts:** `Tab` (2× fast-forward), `Tab + F` (4× fast-forward), `Left Shift + Tab` (uncapped fast-forward), `Alt + Return` (fullscreen), `F12` (screenshot).
 
 ## Community
 

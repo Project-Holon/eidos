@@ -695,7 +695,8 @@ int eidos_platform_fast_forward(const EidosPlatform *p)
                  || keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]
                  || keys[SDL_SCANCODE_LGUI] || keys[SDL_SCANCODE_RGUI])) {
             return keys[SDL_SCANCODE_LSHIFT] ? EIDOS_FAST_FORWARD_MAX
-                                             : EIDOS_FAST_FORWARD;
+                 : keys[SDL_SCANCODE_F] ? EIDOS_FAST_FORWARD_X4
+                                        : EIDOS_FAST_FORWARD;
         }
     }
     /* EIDOS_FAST_UNTIL_BATTLE (the spot editor's Preview in game): as fast
@@ -719,8 +720,8 @@ int eidos_platform_fast_forward(const EidosPlatform *p)
             }
         }
     }
-    /* EIDOS_FAST_FORWARD=1 holds Tab down for a whole run, =max left Shift
-     * and Tab (tests, timing). */
+    /* EIDOS_FAST_FORWARD=1 holds Tab down for a whole run, =4 Tab and F,
+     * =max left Shift and Tab (tests, timing). */
     {
         static int env = -1;
 
@@ -728,6 +729,7 @@ int eidos_platform_fast_forward(const EidosPlatform *p)
             const char *v = getenv("EIDOS_FAST_FORWARD");
             env = (v == NULL || *v == '\0' || strcmp(v, "0") == 0) ? 1
                 : strcmp(v, "max") == 0 ? EIDOS_FAST_FORWARD_MAX
+                : strcmp(v, "4") == 0 ? EIDOS_FAST_FORWARD_X4
                 : EIDOS_FAST_FORWARD;
         }
         return env;
