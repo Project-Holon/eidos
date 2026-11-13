@@ -34,7 +34,7 @@ static const BmapRemade k_remade[] = {
     { "b0_00107", rm_tower, "two=-20:20:3.2:40" },   /* warp pad, blue (Nimbasa City, Pokemon League): its glowing rings seen from both sides */
     { "b0_00066", rm_tower, "two=-30:30:0:20" },   /* broken bench (Dreamyard): the bent plank and its legs seen from both sides */
     { "b0_00122", rm_tower, "hide=-240:-30:280:450:-220:-160:0,shell=-240:-30:280:400:-215:-165:0.15:-0.309,two=-240:-30:280:450" },   /* draped tent (Pokemon League): its fabric seen from outside too (the back is the lining seen through the door) */
-    { "b0_00137", rm_tower, "seal=0" },   /* (in progress) */
+    { "b0_00137", rm_tower, "props=0:2000:3" },   /* Cold Storage walkway: each crate and ice block closed about its own middle */
     { "b1_00006", rm_tower, "seal=0" },   /* (in progress) */
     { "b1_00017", rm_tower, "seal=0" },   /* (in progress) */
     { "b1_00032", rm_tower, "seal=0" },   /* (in progress) */
