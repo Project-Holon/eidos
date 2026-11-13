@@ -16,6 +16,10 @@
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
  *       colour of the face over it.
+ *   props=Y0:SIZE  the small things standing above Y0 (roof furniture), each
+ *       closed about its own middle; a single flat card (a leaf) both sides.
+ *   clipz=Z  the model's faces that reach behind z = Z are cut there.
+ *   mirror's box may end :Z0:Z1, the faces whose middle lies between.
  *   corner=W  the side's corner columns (map units, default 6); 0: no corner
  *       columns, the side's picture runs on along the back wall (boards).
  */
@@ -142,7 +146,7 @@ static void quad(RmOut *o, unsigned src, const unsigned char rgb[3], const doubl
     }
 }
 
-static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[5])
+static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[7])
 {
     unsigned i;
 
@@ -162,6 +166,12 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[5])
         for (j = 0; j < 3; j++) {
             in &= t->p[j][0] >= bx[0] - 0.05 && t->p[j][0] <= bx[1] + 0.05 && t->p[j][1] >= bx[2] - 0.05
                   && t->p[j][1] <= bx[3] + 0.05;
+        }
+        if (in && bx[6] > bx[5]) {
+            /* (`:Z0:Z1`: only faces whose middle lies between) */
+            const double cz = ((double)t->p[0][2] + t->p[1][2] + t->p[2][2]) / 3.0;
+
+            in = cz >= bx[5] && cz <= bx[6];
         }
         if (!in) {
             continue;
@@ -188,17 +198,74 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[5])
     }
 }
 
-static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], double cw)
+/* the texture place of the side at x = sx, at (z, y): from the side's own triangle there, among those over the heights
+ * y0..y1 (a quad's two triangles may map the picture differently; one's mapping carried past its edge is wrong) */
+static int side_uv(const Ft *f, unsigned nf, double sx, double z, double y, double y0, double y1, double uv[2])
 {
-    const Ft *sf = NULL;
-    double best = 1e30, zend = 0.0;
     unsigned i;
-    Map m;
 
-    /* the side face at x = SX that reaches furthest back, over the wall's heights */
     for (i = 0; i < nf; i++) {
         const RmTri *t = f[i].t;
-        double zlo = 1e30, ylo = 1e30, yhi = -1e30;
+        double ylo = 1e30, yhi = -1e30, den, w0, w1, w2;
+        int j, at = 1;
+
+        if (fabs(f[i].n[0]) < 0.9 || f[i].b->tex < 0) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][0] - sx) < 0.1;
+            ylo = t->p[j][1] < ylo ? t->p[j][1] : ylo;
+            yhi = t->p[j][1] > yhi ? t->p[j][1] : yhi;
+        }
+        if (!at || ylo < y0 - 0.05 || yhi > y1 + 0.05) {
+            continue;
+        }
+        den = ((double)t->p[1][1] - t->p[2][1]) * ((double)t->p[0][2] - t->p[2][2])
+              + ((double)t->p[2][2] - t->p[1][2]) * ((double)t->p[0][1] - t->p[2][1]);
+        if (fabs(den) < 1e-9) {
+            continue;
+        }
+        w0 = (((double)t->p[1][1] - t->p[2][1]) * (z - t->p[2][2]) + ((double)t->p[2][2] - t->p[1][2]) * (y - t->p[2][1])) / den;
+        w1 = (((double)t->p[2][1] - t->p[0][1]) * (z - t->p[2][2]) + ((double)t->p[0][2] - t->p[2][2]) * (y - t->p[2][1])) / den;
+        w2 = 1.0 - w0 - w1;
+        if (w0 >= -1e-3 && w1 >= -1e-3 && w2 >= -1e-3) {
+            uv[0] = w0 * t->uv[0][0] + w1 * t->uv[1][0] + w2 * t->uv[2][0];
+            uv[1] = w0 * t->uv[0][1] + w1 * t->uv[1][1] + w2 * t->uv[2][1];
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* the back wall over the heights y0..y1 in one side face's texture */
+static void wall_strip(RmOut *out, const Ft *f, unsigned nf, const Ft *sf, const double w[6], double cw, double zend,
+                       double y0, double y1);
+
+static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], double cw)
+{
+    double best = 1e30;
+    unsigned i;
+
+    /* how far back the side at x = SX reaches */
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        int j, at = 1;
+
+        if (fabs(f[i].n[0]) < 0.9 || f[i].b->tex < 0) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][0] - w[0]) < 0.1;
+        }
+        for (j = 0; at && j < 3; j++) {
+            best = t->p[j][2] < best ? t->p[j][2] : best;
+        }
+    }
+    /* each of its faces that reaches that far, band by band (a side made of bands, each in its own place of the
+     * texture): the wall over that band's heights in that face's texture */
+    for (i = 0; best < 1e29 && i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double ylo = 1e30, yhi = -1e30, zlo = 1e30;
         int j, at = 1;
 
         if (fabs(f[i].n[0]) < 0.9 || f[i].b->tex < 0) {
@@ -210,15 +277,48 @@ static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], dou
             ylo = t->p[j][1] < ylo ? t->p[j][1] : ylo;
             yhi = t->p[j][1] > yhi ? t->p[j][1] : yhi;
         }
-        if (at && ylo < w[5] - 0.5 && yhi > w[4] + 0.5 && zlo < best) {
-            best = zlo;
-            sf = &f[i];
+        ylo = ylo < w[4] ? w[4] : ylo;
+        yhi = yhi > w[5] ? w[5] : yhi;
+        if (!at || zlo > best + 0.05 || yhi - ylo < 0.05) {
+            continue;
+        }
+        /* (the band's two triangles both reach back: one strip a band) */
+        {
+            unsigned q;
+            int dup = 0;
+
+            for (q = 0; q < i && !dup; q++) {
+                double qlo = 1e30, qhi = -1e30, qz = 1e30;
+                int at2 = 1;
+
+                if (fabs(f[q].n[0]) < 0.9 || f[q].b->tex < 0) {
+                    continue;
+                }
+                for (j = 0; j < 3; j++) {
+                    at2 &= fabs(f[q].t->p[j][0] - w[0]) < 0.1;
+                    qz = f[q].t->p[j][2] < qz ? f[q].t->p[j][2] : qz;
+                    qlo = f[q].t->p[j][1] < qlo ? f[q].t->p[j][1] : qlo;
+                    qhi = f[q].t->p[j][1] > qhi ? f[q].t->p[j][1] : qhi;
+                }
+                qlo = qlo < w[4] ? w[4] : qlo;
+                qhi = qhi > w[5] ? w[5] : qhi;
+                dup = at2 && qz <= best + 0.05 && fabs(qlo - ylo) < 0.05 && fabs(qhi - yhi) < 0.05;
+            }
+            if (!dup) {
+                wall_strip(out, f, nf, &f[i], w, cw, best, ylo, yhi);
+            }
         }
     }
-    if (sf == NULL || map_of(sf->t, &m) != 0) {
+}
+
+static void wall_strip(RmOut *out, const Ft *f, unsigned nf, const Ft *sf, const double w[6], double cw, double zend,
+                       double y0, double y1)
+{
+    Map m;
+
+    if (map_of(sf->t, &m) != 0) {
         return;
     }
-    zend = best;
     {
         const double outn[3] = { 0, 0, -1 };
         const double c = w[2] - w[1] > 3.0 * cw ? cw : (w[2] - w[1]) / 3.0;
@@ -230,18 +330,19 @@ static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], dou
             const double xa = e == 0 ? w[2] : e == 1 ? w[1] : w[1] + c, xb = e == 0 ? w[2] - c : e == 1 ? w[1] + c : w[2] - c;
             unsigned q;
 
-            p[0][0] = xa; p[0][1] = w[4];
-            p[1][0] = xb; p[1][1] = w[4];
-            p[2][0] = xb; p[2][1] = w[5];
-            p[3][0] = xa; p[3][1] = w[5];
+            p[0][0] = xa; p[0][1] = y0;
+            p[1][0] = xb; p[1][1] = y0;
+            p[2][0] = xb; p[2][1] = y1;
+            p[3][0] = xa; p[3][1] = y1;
             for (q = 0; q < 4u; q++) {
                 p[q][2] = w[3];
-                if (cw <= 0.0) {
-                    /* (`corner=0`: the side's picture runs on along the wall, at its own scale: boards, their
-                     * joints where the side has them) */
-                    map_at(&m, zend + (p[q][0] - w[1]), p[q][1], t[q]);
-                } else {
-                    map_at(&m, e < 2 ? zend + fabs(p[q][0] - xa) : zend + c - 0.3, p[q][1], t[q]);
+                /* (`corner=0`: the side's picture runs on along the wall, at its own scale: boards, their
+                 * joints where the side has them) */
+                const double zs = cw <= 0.0 ? zend + (p[q][0] - w[1]) : e < 2 ? zend + fabs(p[q][0] - xa) : zend + c - 0.3;
+                const double ys = p[q][1] + (q < 2u ? 0.01 : -0.01);     /* (just inside the band) */
+
+                if (!side_uv(f, nf, w[0], zs, ys, y0, y1, t[q])) {
+                    map_at(&m, zs, p[q][1], t[q]);
                 }
             }
             quad(out, sf->t->id, sf->b->rgb, p, t, outn);
@@ -343,6 +444,166 @@ static void do_under(const Ft *f, unsigned nf, RmOut *out, double y)
     }
 }
 
+/* `clipz=Z`: the model's own faces that reach behind the back line z = Z (a flat picture inside a wall that runs on
+ * past the house's back: the field never saw its end) are cut there; wholly behind, left out */
+static void do_clip(const Ft *f, unsigned nf, RmOut *out, double zc)
+{
+    unsigned i;
+
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double poly[6][5], pz[4][5];
+        int j, k, n = 0, behind = 0;
+
+        for (j = 0; j < 3; j++) {
+            behind += t->p[j][2] < zc - 0.01;
+            pz[j][0] = t->p[j][0];
+            pz[j][1] = t->p[j][1];
+            pz[j][2] = t->p[j][2];
+            pz[j][3] = t->uv[j][0];
+            pz[j][4] = t->uv[j][1];
+        }
+        if (behind == 0) {
+            continue;
+        }
+        rm_drop(out, t->id);
+        if (behind == 3) {
+            continue;
+        }
+        /* (Sutherland-Hodgman against z >= zc) */
+        for (j = 0; j < 3; j++) {
+            const double *a = pz[j], *b = pz[(j + 1) % 3];
+            const int ain = a[2] >= zc - 0.01, bin = b[2] >= zc - 0.01;
+
+            if (ain) {
+                memcpy(poly[n++], a, sizeof poly[0]);
+            }
+            if (ain != bin) {
+                const double s = (zc - a[2]) / (b[2] - a[2]);
+
+                for (k = 0; k < 5; k++) {
+                    poly[n][k] = a[k] + (b[k] - a[k]) * s;
+                }
+                n++;
+            }
+        }
+        for (j = 1; j + 1 < n; j++) {
+            double pa[3], pb[3], pc[3], ua[2], ub[2], uc[2];
+
+            for (k = 0; k < 3; k++) {
+                pa[k] = poly[0][k];
+                pb[k] = poly[j][k];
+                pc[k] = poly[j + 1][k];
+            }
+            ua[0] = poly[0][3]; ua[1] = poly[0][4];
+            ub[0] = poly[j][3]; ub[1] = poly[j][4];
+            uc[0] = poly[j + 1][3]; uc[1] = poly[j + 1][4];
+            rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, pa, pb, pc, ua, ub, uc, 0, 0);
+        }
+    }
+}
+
+/* `props=Y0:SIZE`: the small things standing above Y0 (a stool, a chair, a planter; pieces of triangles that share
+ * corners, smaller than SIZE across): each is closed about its own middle as `mirror` closes a part; a piece that
+ * is one flat card (a leaf) is shown from both sides. */
+static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double size)
+{
+    unsigned *grp = (unsigned *)malloc((size_t)(nf ? nf : 1) * sizeof *grp);
+    unsigned i, j, g;
+
+    if (grp == NULL) {
+        out->fail = 1;
+        return;
+    }
+    for (i = 0; i < nf; i++) {
+        grp[i] = i;
+    }
+    /* (pieces: triangles of one draw that share a corner) */
+    for (i = 0; i < nf; i++) {
+        for (j = i + 1; j < nf; j++) {
+            int a, c, touch = 0;
+
+            if (f[i].b != f[j].b) {
+                continue;
+            }
+            for (a = 0; a < 3 && !touch; a++) {
+                for (c = 0; c < 3 && !touch; c++) {
+                    touch = fabs(f[i].t->p[a][0] - f[j].t->p[c][0]) < 0.01 && fabs(f[i].t->p[a][1] - f[j].t->p[c][1]) < 0.01
+                            && fabs(f[i].t->p[a][2] - f[j].t->p[c][2]) < 0.01;
+                }
+            }
+            if (touch) {
+                unsigned ri = i, rj = j;
+
+                while (grp[ri] != ri) {
+                    ri = grp[ri];
+                }
+                while (grp[rj] != rj) {
+                    rj = grp[rj];
+                }
+                grp[rj > ri ? rj : ri] = rj > ri ? ri : rj;
+            }
+        }
+    }
+    for (i = 0; i < nf; i++) {
+        while (grp[grp[i]] != grp[i]) {
+            grp[i] = grp[grp[i]];
+        }
+        grp[i] = grp[grp[i]];
+    }
+    for (g = 0; g < nf; g++) {
+        double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, bx[7];
+        unsigned cnt = 0;
+        int k, flat = 1;
+
+        for (i = 0; i < nf; i++) {
+            if (grp[i] != g) {
+                continue;
+            }
+            for (j = 0; j < 3u; j++) {
+                for (k = 0; k < 3; k++) {
+                    lo[k] = f[i].t->p[j][k] < lo[k] ? f[i].t->p[j][k] : lo[k];
+                    hi[k] = f[i].t->p[j][k] > hi[k] ? f[i].t->p[j][k] : hi[k];
+                }
+            }
+            flat &= rm_dot(f[i].n, f[g].n) > 0.99;
+            cnt++;
+        }
+        if (cnt == 0 || lo[1] < y0 || (hi[0] - lo[0]) + (hi[2] - lo[2]) > size) {
+            continue;
+        }
+        if (flat && cnt <= 4u) {
+            for (i = 0; i < nf; i++) {
+                if (grp[i] == g) {
+                    rm_two(out, f[i].t->id);
+                }
+            }
+            continue;
+        }
+        /* (its own faces only: mirror the piece about its own middle) */
+        {
+            Ft *pf = (Ft *)malloc((size_t)cnt * sizeof *pf);
+            unsigned np = 0;
+
+            if (pf == NULL) {
+                out->fail = 1;
+                break;
+            }
+            for (i = 0; i < nf; i++) {
+                if (grp[i] == g) {
+                    pf[np++] = f[i];
+                }
+            }
+            bx[0] = lo[0]; bx[1] = hi[0]; bx[2] = lo[1]; bx[3] = hi[1];
+            bx[4] = (lo[2] + hi[2]) / 2.0;
+            bx[5] = bx[6] = 0.0;
+            do_mirror(pf, np, out, bx);
+            free(pf);
+        }
+    }
+    free(grp);
+}
+
 void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
     const double cw = rm_optf(opt, "corner", 6.0);
@@ -369,11 +630,14 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             nf++;
         }
     }
+    if (rm_optf(opt, "clipz", 1e30) < 1e29) {
+        do_clip(f, nf, out, rm_optf(opt, "clipz", 0.0));
+    }
     if (rm_opt(opt, "mirror", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double bx[5];
+            double bx[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
-            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3], &bx[4]) == 5) {
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3], &bx[4], &bx[5], &bx[6]) >= 5) {
                 do_mirror(f, nf, out, bx);
             }
             ep = strchr(ep, '+');
@@ -389,6 +653,13 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "props", buf, sizeof buf) != NULL) {
+        double y0 = 0.0, size = 0.0;
+
+        if (sscanf(buf, "%lf:%lf", &y0, &size) == 2) {
+            do_props(f, nf, out, y0, size);
         }
     }
     if (rm_opt(opt, "under", buf, sizeof buf) != NULL) {
