@@ -64,7 +64,7 @@ static const BmapRemade k_remade[] = {
     { "b0_00012", rm_backwall, "" },                /* cupboard, green: a plain back panel in its side's material */
     { "b0_00015", rm_backwall, "" },                /* bookshelf: a plain back panel in its side's material */
     { "b0_00017", rm_counter,                       /* kitchen counter: back and corner, the sink's wall, the tap and the stove standing up */
-      "lift=0:0:0.35:0.43:1.2+0.55:0.07:1:0.49:0.5" },
+      "lift=0:0:0.35:0.43:1.2:1+0.55:0.07:1:0.49:0.5" },
     { "b0_00018", rm_building, "src=east,flat=1,roof=0,small=0,shade=0.9" },   /* fridge: a plain back, its side's middle column */
     { "b0_00081", rm_backwall, "" },                /* server cabinet, black: a plain back panel in its side's material */
     { "b0_00082", rm_backwall, "" },                /* server cabinet, grey: a plain back panel in its side's material */

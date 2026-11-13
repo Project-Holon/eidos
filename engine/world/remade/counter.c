@@ -19,8 +19,9 @@
  *   edge=U:V0:V1    the top's edge: the texture's column U, rows V0 (at the top) to V1
  *   panel=U:V0:V1   the panel under it, the same way (V1: at the floor)
  *   post=U:W        the panel's posts at its outer corners: the texture's column U, W map units wide
- *   lift=U0:V0:U1:V1:H+..  the pictures that stand up: a place of the texture
- *                   and the blocks' height in map units
+ *   lift=U0:V0:U1:V1:H[:CUT]+..  the pictures that stand up: a place of the texture
+ *                   and the blocks' height in map units; CUT 1: a sloped end of the
+ *                   board the picture is painted on is left out
  */
 
 #include <math.h>
@@ -450,7 +451,7 @@ static void quad(RmOut *out, const Ct *s, const unsigned char rgb[3], const doub
 }
 
 /* 3. a painted picture standing up from its face: a block a pixel */
-static void lift(const Ct *t, unsigned nt, const RmTex *tex, unsigned ntex, const double r[5], RmOut *out)
+static void lift(const Ct *t, unsigned nt, const RmTex *tex, unsigned ntex, const double r[6], RmOut *out)
 {
     const RmTex *st = NULL;
     int x0, x1, y0, y1, x, y, w;
@@ -514,6 +515,24 @@ static void lift(const Ct *t, unsigned nt, const RmTex *tex, unsigned ntex, cons
         }
     }
     free(cnt);
+    /* (CUT: only what is painted on the picture's flattest face stands up; a sloped end of the board it is
+     * painted on is left out, with its part of the picture: a tap's end bent down the slope) */
+    if (r[5] != 0.0) {
+        short flat = -1;
+        size_t q;
+
+        for (q = 0; q < (size_t)w * (y1 - y0); q++) {
+            if (owner[q] >= 0 && (flat < 0 || t[owner[q]].n[1] > t[flat].n[1])) {
+                flat = owner[q];
+            }
+        }
+        for (q = 0; q < (size_t)w * (y1 - y0); q++) {
+            if (owner[q] >= 0 && t[owner[q]].n[1] < t[flat].n[1] - 0.01) {
+                rm_drop(out, t[owner[q]].id);
+                owner[q] = -1;
+            }
+        }
+    }
 #define PX(x_, y_) (st->rgba + ((size_t)(y_) * st->w + (size_t)(x_)) * 4u)
 #define UP(x_, y_) ((x_) >= x0 && (x_) < x1 && (y_) >= y0 && (y_) < y1 && owner[(size_t)((y_) - y0) * w + ((x_) - x0)] >= 0 \
                     && PX(x_, y_)[3] >= 128 && (abs((PX(x_, y_)[0] >> 4) - (int)(bg >> 8)) + abs((PX(x_, y_)[1] >> 4) - (int)((bg >> 4) & 15)) \
@@ -622,9 +641,9 @@ void rm_counter(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, 
     sink(t, nt, out);
     if (rm_opt(opt, "lift", lb, sizeof lb) != NULL) {
         for (lp = lb; lp != NULL && *lp != '\0'; ) {
-            double r[5];
+            double r[6] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
 
-            if (sscanf(lp, "%lf:%lf:%lf:%lf:%lf", &r[0], &r[1], &r[2], &r[3], &r[4]) == 5) {
+            if (sscanf(lp, "%lf:%lf:%lf:%lf:%lf:%lf", &r[0], &r[1], &r[2], &r[3], &r[4], &r[5]) >= 5) {
                 lift(t, nt, tex, ntex, r, out);
             }
             lp = strchr(lp, '+');
