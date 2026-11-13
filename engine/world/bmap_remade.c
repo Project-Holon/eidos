@@ -78,6 +78,11 @@ static const BmapRemade k_remade[] = {
       "roof=0,near=40,far=40,plain=-45,erase=-24:0:2:29:-26+0:24:2:29:26+-60:60:29:45+-13:0:45:70:-26+0:13:45:70:26" },
     { "b1_00005", rm_building,                      /* house with a blue roof: its gable front without the door, its awning and the window */
       "roof=0,over=0,rim=1,valley=1,near=30,far=4,plain=7,fill=1,filltop=38,period=6,keep=-30:-23:2:40+21.5:28:2:40+-25.5:23.5:39.5:45+-14.5:-4:46:57.5" },
+    { "b1_00011", rm_building, "src=east,atleast=45,span=-39:21,roof=0,over=0,rim=1" },   /* tan stone hall, blue roof: its side's stone and windows at the back */
+    { "b1_00013", rm_building, "src=east,roof=0,over=0,rim=1,plain=0,erase=-35:5:28:72" },   /* brick warehouse with an outside stair: its side's brick at the back */
+    { "b1_00014", rm_building, "src=east,roof=0,over=0,rim=1" },   /* brick warehouse, blue doors: its side's brick at the back */
+    { "b1_00015", rm_building, "src=east,roof=0,over=0,rim=1" },   /* brick warehouse, green doors: its side's brick at the back */
+    { "b1_00040", rm_building, "src=east,roof=0,over=0,rim=1" },   /* warehouse, glass roof: its side's wall at the back */
     { "b0_00119", rm_chandelier, "candle=3,flame=2,glow=1" },   /* candle chandelier: a round frame, round candles, flames from any side */
     { "b0_00061", rm_floor, "" },                   /* boxes (Cold Storage) */
     { "b0_00111", rm_floor, "" },                   /* floor glow (Chargestone Cave) */

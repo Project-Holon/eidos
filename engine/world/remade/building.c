@@ -1011,6 +1011,8 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         double er[8][5], plain = rm_optf(opt, "plain", 1e30), xa = lo[ax], xb = hi[ax], yb = hi[1], wz = hi[dp];
         const int flatw = rm_optf(opt, "flat", 0) != 0.0;     /* (`flat=1`: the plain place's column all across: bands, no openings) */
         const double at_most = rm_optf(opt, "at", 1e30);      /* (`at=Z`: the front wall that stands at most there: a model of two huts) */
+        /* (`atleast=Z`: and at least there: the outer wall, not a taller block's side further in) */
+        const double at_least = rm_optf(opt, "atleast", -1e30);
         double sp0 = xa, sp1 = xb, qx0 = 1e30, qx1 = -1e30, lean = rm_optf(opt, "lean", 0.0), flare = rm_optf(opt, "flare", 0.0);
         unsigned char *px, *ok, white[3], dark[3] = { 0, 0, 0 };
         unsigned q, first = out->ntri, ner = 0, src = tr[0].id;
@@ -1032,6 +1034,11 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         if (Wm < 2 || Hm < 2 || Wm > 1024 || Hm > 1024) {
             goto done;
         }
+        /* (`nodark=1`: a face the model paints near black, the shade behind a window or inside a recess, is no
+         * wall's material: it is passed over, when the wall is chosen and when its picture is read) */
+        const int nodark = rm_optf(opt, "nodark", 0) != 0.0;
+#define DARK(i_) (nodark && tr[i_].rgb[0] < 80 && tr[i_].rgb[1] < 80 && tr[i_].rgb[2] < 80)
+
         /* the front wall's plane: where the biggest upright triangle that looks south stands */
         {
             double big = 0.0;
@@ -1039,7 +1046,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
             for (i = 0; i < n0; i++) {
                 double e1[3], e2[3], c3[3], area;
 
-                if (tr[i].n[dp] < 0.9 || tr[i].p[0][dp] > at_most) {
+                if (tr[i].n[dp] < 0.9 || tr[i].p[0][dp] > at_most || tr[i].p[0][dp] < at_least || DARK(i)) {
                     continue;
                 }
                 for (k = 0; k < 3; k++) {
@@ -1074,7 +1081,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 for (i = 0; i < n0; i++) {
                     double hd;
 
-                    if (tr[i].n[dp] < 0.2 || tr[i].n[1] > 0.25) {
+                    if (tr[i].n[dp] < 0.2 || tr[i].n[1] > 0.25 || DARK(i)) {
                         continue;           /* (not a wall that looks that way) */
                     }
                     cz3 = (tr[i].p[0][dp] + tr[i].p[1][dp] + tr[i].p[2][dp]) / 3.0;
