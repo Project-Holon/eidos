@@ -21,7 +21,8 @@
  *   post=U:W        the panel's posts at its outer corners: the texture's column U, W map units wide
  *   lift=U0:V0:U1:V1:H[:CUT]+..  the pictures that stand up: a place of the texture
  *                   and the blocks' height in map units; CUT 1: a sloped end of the
- *                   board the picture is painted on is left out
+ *                   board the picture is painted on is left out; CUT 2: and its part
+ *                   of the picture goes on straight, level with the rest
  */
 
 #include <math.h>
@@ -529,7 +530,8 @@ static void lift(const Ct *t, unsigned nt, const RmTex *tex, unsigned ntex, cons
         for (q = 0; q < (size_t)w * (y1 - y0); q++) {
             if (owner[q] >= 0 && t[owner[q]].n[1] < t[flat].n[1] - 0.01) {
                 rm_drop(out, t[owner[q]].id);
-                owner[q] = -1;
+                /* (CUT 2: that part of the picture goes on straight, level with the rest) */
+                owner[q] = r[5] == 2.0 ? flat : -1;
             }
         }
     }
