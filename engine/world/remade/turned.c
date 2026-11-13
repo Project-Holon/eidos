@@ -302,6 +302,40 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             }
         }
     }
+    /* A side is never brighter than the front.  The model lights each face by the field's one light: a table
+     * top's east and west edges come out much brighter than its south edge, and read as part of the top.  An
+     * upright face that looks east or west and is brighter than the south faces of its piece takes their colour
+     * (and painted() shades it as a side). */
+    for (i = 0; i < n0; i++) {
+        double nv[3], fr[3] = { 0.0, 0.0, 0.0 };
+        unsigned cnt = 0;
+
+        if (tr[i].flat || tr[i].black) {
+            continue;
+        }
+        normal_of(tr[i].p, nv);
+        if (rm_norm(nv) <= 1e-6 || fabs(nv[0]) < 0.7 || fabs(nv[1]) > 0.3) {
+            continue;
+        }
+        for (j = 0; j < n0; j++) {
+            double nj[3];
+
+            if (tr[j].piece != tr[i].piece || tr[j].black) {
+                continue;
+            }
+            normal_of(tr[j].p, nj);
+            if (rm_norm(nj) > 1e-6 && nj[2] > 0.9) {
+                fr[0] += tr[j].rgb[0]; fr[1] += tr[j].rgb[1]; fr[2] += tr[j].rgb[2];
+                cnt++;
+            }
+        }
+        if (cnt > 0 && tr[i].rgb[0] + tr[i].rgb[1] + tr[i].rgb[2] > (fr[0] + fr[1] + fr[2]) / cnt + 12.0) {
+            tr[i].ref[0] = (unsigned char)(fr[0] / cnt);
+            tr[i].ref[1] = (unsigned char)(fr[1] / cnt);
+            tr[i].ref[2] = (unsigned char)(fr[2] / cnt);
+            tr[i].black = 1;            /* (repainted below, and its turned copy and twin with it) */
+        }
+    }
     /* 3. (first, for the model's own triangles) the faces painted black, repainted */
     for (i = 0; i < n0; i++) {
         if (!tr[i].flat && tr[i].black) {
