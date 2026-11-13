@@ -18,6 +18,8 @@
  *       colour of the face over it.
  *   props=Y0:SIZE  the small things standing above Y0 (roof furniture), each
  *       closed about its own middle; a single flat card (a leaf) both sides.
+ *   reside=FROM:TO:Y0:Y1  the side at x = TO (painted plain) takes the faces of
+ *       the side at x = FROM between Y0 and Y1, mirrored across.
  *   rimwalls=Y0:X0:X1:Z0:Z1  a hole in a level floor (a roof pool): walls down
  *       to Y0 under its open edges in that box, in the hole's own wall colours.
  *   two=X0:X1:Y0:Y1+..  the faces in that box shown from both sides (a
@@ -576,6 +578,103 @@ static void do_rimwalls(const Ft *f, unsigned nf, RmOut *out, const double r[5])
     }
 }
 
+/* `reside=FROM:TO:Y0:Y1`: a side wall the map painted plain while the other side wears the building's bands: the faces
+ * of the side at x = TO between Y0 and Y1 give way to those of the side at x = FROM, mirrored across and cut to Y0..Y1,
+ * in the light of the side they replace (one building, one pattern all round). */
+static void do_reside(const Ft *f, unsigned nf, RmOut *out, const double r[4])
+{
+    const double xm = (r[0] + r[1]) / 2.0;
+    unsigned char rgb[3] = { 255, 255, 255 };
+    double zlo = 1e30, zhi = -1e30;       /* (the side it replaces: as long as that, no longer) */
+    unsigned i;
+    int got = 0, j, k;
+
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        int at = 1, in = 1;
+
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][0] - r[1]) < 0.1;
+            in &= t->p[j][1] >= r[2] - 0.05 && t->p[j][1] <= r[3] + 0.05;
+        }
+        if (at && in && fabs(f[i].n[0]) > 0.9) {
+            if (!got) {
+                memcpy(rgb, t->rgb, 3);
+                got = 1;
+            }
+            for (j = 0; j < 3; j++) {
+                zlo = t->p[j][2] < zlo ? t->p[j][2] : zlo;
+                zhi = t->p[j][2] > zhi ? t->p[j][2] : zhi;
+            }
+            rm_drop(out, t->id);
+        }
+    }
+    if (!got) {
+        return;
+    }
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double a[8][5], b[8][5];
+        int at = 1, na = 3, nb, s;
+
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][0] - r[0]) < 0.1;
+        }
+        if (!at || fabs(f[i].n[0]) < 0.9) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            for (k = 0; k < 3; k++) {
+                a[j][k] = t->p[j][k];
+            }
+            a[j][3] = t->uv[j][0];
+            a[j][4] = t->uv[j][1];
+        }
+        /* (cut to Y0..Y1 and to the replaced side's length: y >= Y0, y <= Y1, z >= its start, z <= its end) */
+        for (s = 0; s < 4; s++) {
+            const int ax = s < 2 ? 1 : 2;
+            const double lim = s == 0 ? r[2] : s == 1 ? r[3] : s == 2 ? zlo : zhi, sg = s % 2 == 0 ? 1.0 : -1.0;
+
+            nb = 0;
+            for (j = 0; j < na; j++) {
+                const double *p = a[j], *q = a[(j + 1) % na];
+                const int pin = sg * (p[ax] - lim) >= -1e-6, qin = sg * (q[ax] - lim) >= -1e-6;
+
+                if (pin && nb < 8) {
+                    memcpy(b[nb++], p, sizeof b[0]);
+                }
+                if (pin != qin && nb < 8) {
+                    const double u = (lim - p[ax]) / (q[ax] - p[ax]);
+
+                    for (k = 0; k < 5; k++) {
+                        b[nb][k] = p[k] + (q[k] - p[k]) * u;
+                    }
+                    nb++;
+                }
+            }
+            memcpy(a, b, sizeof a);
+            na = nb;
+        }
+        /* (mirrored across: corners the other way round) */
+        for (j = 1; j + 1 < na; j++) {
+            double pa[3], pb[3], pc[3], ua[2], ub[2], uc[2];
+
+            for (k = 0; k < 3; k++) {
+                pa[k] = a[0][k];
+                pb[k] = a[j + 1][k];
+                pc[k] = a[j][k];
+            }
+            pa[0] = 2.0 * xm - pa[0];
+            pb[0] = 2.0 * xm - pb[0];
+            pc[0] = 2.0 * xm - pc[0];
+            ua[0] = a[0][3]; ua[1] = a[0][4];
+            ub[0] = a[j + 1][3]; ub[1] = a[j + 1][4];
+            uc[0] = a[j][3]; uc[1] = a[j][4];
+            rm_tri(out, t->id, -1, f[i].b->cull, rgb, pa, pb, pc, ua, ub, uc, 0, 0);
+        }
+    }
+}
+
 /* `clipz=Z[:X0:X1]`: the model's own faces that reach behind the back line z = Z (a flat picture inside a wall that
  * runs on past the house's back: the field never saw its end) are cut there; wholly behind, left out.  With X0:X1
  * only faces wholly between (the house, not a balcony that stands out past its back on purpose). */
@@ -1080,6 +1179,13 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "reside", buf, sizeof buf) != NULL) {
+        double r[4];
+
+        if (sscanf(buf, "%lf:%lf:%lf:%lf", &r[0], &r[1], &r[2], &r[3]) == 4) {
+            do_reside(f, nf, out, r);
         }
     }
     if (rm_opt(opt, "rimwalls", buf, sizeof buf) != NULL) {

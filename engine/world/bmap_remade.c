@@ -86,7 +86,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00058", rm_tower, "corner=0,mirror=-40:40:40:70:0+-31:-26:16:35:0+26:31:16:35:0+23:31:3:46:0+-31:-23:3:46:0,wall=28:-23.7:23.7:-28:4:40.3" },   /* wooden house, red roof: its back in its sides' boards, the gable and the roof's end turned round */
     { "b1_00113", rm_tower, "corner=6,clipz=-32,wall=32:-32:32:-32:5:56,mirror=-32:32:49:57:-1:20:30,props=50.5:40" },   /* light blue shop, roof terrace: its back wall in its sides, the parapet inside, the furniture closed */
     { "b1_00114", rm_tower, "corner=6,clipz=-36:-48:48,wall=48:-48:48:-36:4:96,mirror=-40:40:84:97:-2:20:30,rimwalls=84:-20:26:-22:12,two=46:61.5:54:71+-43:-19:107:120,props=54:30" },   /* grey-green building, roof pool: plain back in its sides, the parapet inside, railing and parasol both sides, balcony pots closed */
-    { "b1_00119", rm_tower, "corner=4,wall=36:-36:36:-42:3:44.6+-36:-36:2.3:-42:44.6:50.5+36:2.3:36:-42:44.6:59+38:2.3:38:-42:59:65.5,under=59.9" },   /* beige two-block building: its back in its sides, block by block */
+    { "b1_00119", rm_tower, "corner=4,wall=36:-36:36:-42:3:44.6+-36:-36:2.3:-42:44.6:50.5+36:2.3:36:-42:44.6:59+38:2.3:38:-42:59:65.5,under=59.9,reside=36:-36:3:50.5" },   /* beige two-block building: its back in its sides, block by block */
     { "b1_00120", rm_tower, "" },   /* (in progress) */
     { "b1_00126", rm_tower, "" },   /* (in progress) */
     { "b1_00144", rm_tower, "" },   /* (in progress) */
