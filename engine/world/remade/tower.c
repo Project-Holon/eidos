@@ -5,6 +5,9 @@
  * back it is open.
  *
  * What is made, from the model's own faces and texture pixels:
+ *   halfturn=CX:CZ:R0:A0:A1  a round wing's faces past R0 from (CX, CZ), between
+ *       the angles A0..A1, copied turned half round there (a back arc whose
+ *       front is another part).
  *   mirror=X0:X1:Y0:Y1:ZC+..  the parts within that box are round about
  *       z = ZC (a balcony, a glass cab, its roof, lamps): their faces that
  *       look south are turned to look north, where the model has none (a face
@@ -18,6 +21,9 @@
  *       colour of the face over it.
  *   props=Y0:SIZE  the small things standing above Y0 (roof furniture), each
  *       closed about its own middle; a single flat card (a leaf) both sides.
+ *   twoback=Z  back walls the map has only from inside (upright, behind Z,
+ *       looking south) shown from both sides.  seal=0: no dark backs (to find
+ *       missing faces with pink.py).
  *   reside=FROM:TO:Y0:Y1  the side at x = TO (painted plain) takes the faces of
  *       the side at x = FROM between Y0 and Y1, mirrored across.
  *   rimwalls=Y0:X0:X1:Z0:Z1  a hole in a level floor (a roof pool): walls down
@@ -127,6 +133,58 @@ static void map_at(const Map *m, double z, double y, double uv[2])
     uv[1] = m->v0 + m->va * (z - m->a0) + m->vb * (y - m->b0);
 }
 
+/* `halfturn=CX:CZ:R0:A0:A1`: a round wing whose back arc has no front arc to mirror (the front there is another part's
+ * facade): its faces further than R0 from the upright through (CX, CZ) and between the angles A0..A1 (degrees, from
+ * +x towards +z) are copied turned half round that upright, where the model has no face either way. */
+static void do_halfturn(const Ft *f, unsigned nf, RmOut *out, const double h[5])
+{
+    const double pi = 3.14159265358979;
+    unsigned i;
+
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double p[3][3], c[3] = { 0, 0, 0 }, mn[3], back[3], uv[3][2];
+        int j, k, in = 1, s, hit = 0;
+
+        for (j = 0; j < 3; j++) {
+            const double dx = t->p[j][0] - h[0], dz = t->p[j][2] - h[1];
+            double a = atan2(dz, dx) * 180.0 / pi;
+
+            in &= sqrt(dx * dx + dz * dz) >= h[2] && a >= h[3] - 0.5 && a <= h[4] + 0.5;
+        }
+        if (!in) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            p[j][0] = 2.0 * h[0] - t->p[j][0];
+            p[j][1] = t->p[j][1];
+            p[j][2] = 2.0 * h[1] - t->p[j][2];
+            uv[j][0] = t->uv[j][0];
+            uv[j][1] = t->uv[j][1];
+            for (k = 0; k < 3; k++) {
+                c[k] += p[j][k] / 3.0;
+            }
+        }
+        mn[0] = -f[i].n[0];
+        mn[1] = f[i].n[1];
+        mn[2] = -f[i].n[2];
+        for (k = 0; k < 3; k++) {
+            back[k] = -mn[k];
+        }
+        for (s = 0; s < 4 && !hit; s++) {
+            double q[3];
+
+            for (k = 0; k < 3; k++) {
+                q[k] = s == 0 ? c[k] : c[k] + (p[s - 1][k] - c[k]) * 0.66;
+            }
+            hit = on_face(f, nf, q, mn) || on_face(f, nf, q, back);
+        }
+        if (!hit) {
+            rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+        }
+    }
+}
+
 /* a four-cornered face drawn from both sides, lit by the game, its corners turned to look along `outn` */
 static void quad(RmOut *o, unsigned src, const unsigned char rgb[3], const double p[4][3], const double t[4][2],
                  const double outn[3])
@@ -197,8 +255,26 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[7])
         mn[0] = f[i].n[0];
         mn[1] = f[i].n[1];
         mn[2] = -f[i].n[2];
-        if (on_face(f, nf, c, mn)) {
-            continue;           /* (the model has that face already) */
+        {
+            /* (the model has that face already, or part of it: its middle or a point two thirds of the way to a
+             * corner on one of the model's faces; half on one, it would flicker with it) */
+            int s, hit = 0;
+
+            const double back[3] = { -mn[0], -mn[1], -mn[2] };
+
+            /* (either way: a face the model has looking the other way in that plane is the wall's other side; the
+             * copy would stand inside the wall) */
+            for (s = 0; s < 4 && !hit; s++) {
+                double q[3];
+
+                for (k = 0; k < 3; k++) {
+                    q[k] = s == 0 ? c[k] : c[k] + (p[s - 1][k] - c[k]) * 0.66;
+                }
+                hit = on_face(f, nf, q, mn) || on_face(f, nf, q, back);
+            }
+            if (hit) {
+                continue;
+            }
         }
         rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
     }
@@ -252,9 +328,10 @@ static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], dou
     double best = 1e30;
     unsigned i;
 
-    /* how far back the side at x = SX reaches */
+    /* how far back the side at x = SX reaches over the wall's heights (lower down it may reach further: a wing) */
     for (i = 0; i < nf; i++) {
         const RmTri *t = f[i].t;
+        double ylo = 1e30, yhi = -1e30;
         int j, at = 1;
 
         if (fabs(f[i].n[0]) < 0.9 || f[i].b->tex < 0) {
@@ -262,8 +339,13 @@ static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], dou
         }
         for (j = 0; j < 3; j++) {
             at &= fabs(t->p[j][0] - w[0]) < 0.1;
+            ylo = t->p[j][1] < ylo ? t->p[j][1] : ylo;
+            yhi = t->p[j][1] > yhi ? t->p[j][1] : yhi;
         }
-        for (j = 0; at && j < 3; j++) {
+        if (!at || yhi < w[4] + 0.5 || ylo > w[5] - 0.5) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
             best = t->p[j][2] < best ? t->p[j][2] : best;
         }
     }
@@ -285,7 +367,7 @@ static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], dou
         }
         ylo = ylo < w[4] ? w[4] : ylo;
         yhi = yhi > w[5] ? w[5] : yhi;
-        if (!at || zlo > best + 0.05 || yhi - ylo < 0.05) {
+        if (!at || zlo > best + 0.2 || yhi - ylo < 0.05) {
             continue;
         }
         /* (the band's two triangles both reach back: one strip a band) */
@@ -308,7 +390,7 @@ static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], dou
                 }
                 qlo = qlo < w[4] ? w[4] : qlo;
                 qhi = qhi > w[5] ? w[5] : qhi;
-                dup = at2 && qz <= best + 0.05 && fabs(qlo - ylo) < 0.05 && fabs(qhi - yhi) < 0.05;
+                dup = at2 && qz <= best + 0.2 && fabs(qlo - ylo) < 0.05 && fabs(qhi - yhi) < 0.05;
             }
             if (!dup) {
                 wall_strip(out, f, nf, &f[i], w, cw, best, ylo, yhi);
@@ -1159,6 +1241,13 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             do_clip(f, nf, out, cz, x0, x1);
         }
     }
+    if (rm_opt(opt, "halfturn", buf, sizeof buf) != NULL) {
+        double h[5];
+
+        if (sscanf(buf, "%lf:%lf:%lf:%lf:%lf", &h[0], &h[1], &h[2], &h[3], &h[4]) == 5) {
+            do_halfturn(f, nf, out, h);
+        }
+    }
     if (rm_opt(opt, "mirror", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
             double bx[7] = { 0, 0, 0, 0, 0, 0, 0 };
@@ -1232,6 +1321,25 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             ep = ep != NULL ? ep + 1 : NULL;
         }
     }
+    if (rm_optf(opt, "twoback", 1e30) < 1e29) {
+        /* `twoback=Z`: a back wall the map has only from inside (an upright face behind Z that looks south, at the
+         * field's camera over the lower roofs): shown from both sides, its outside is the back */
+        const double zb = rm_optf(opt, "twoback", 0.0);
+
+        for (i = 0; i < nf; i++) {
+            int j, in = 1;
+
+            for (j = 0; j < 3; j++) {
+                in &= f[i].t->p[j][2] < zb;
+            }
+            if (in && fabs(f[i].n[1]) < 0.3 && f[i].n[2] > 0.7) {
+                rm_two(out, f[i].t->id);
+            }
+        }
+    }
     free(f);
-    rm_seal(b, nb, out, 0.7);
+    /* (`seal=0`: no dark backs: a missing face shows as an open side, for finding them) */
+    if (rm_optf(opt, "seal", 1) != 0.0) {
+        rm_seal(b, nb, out, 0.7);
+    }
 }
