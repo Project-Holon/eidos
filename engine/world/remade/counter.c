@@ -450,10 +450,10 @@ static void quad(RmOut *out, const Ct *s, const unsigned char rgb[3], const doub
 }
 
 /* 3. a painted picture standing up from its face: a block a pixel */
-static void lift(const Ct *t, unsigned nt, const RmTex *tex, unsigned ntex, const double r[6], RmOut *out)
+static void lift(const Ct *t, unsigned nt, const RmTex *tex, unsigned ntex, const double r[5], RmOut *out)
 {
     const RmTex *st = NULL;
-    int x0, x1, y0, y1, x, y, w, last = -1;
+    int x0, x1, y0, y1, x, y, w;
     unsigned i, best = 0;
     short *owner;
     unsigned *cnt;
@@ -514,33 +514,10 @@ static void lift(const Ct *t, unsigned nt, const RmTex *tex, unsigned ntex, cons
         }
     }
     free(cnt);
-    /* (a DROP: the whole picture on its flattest face, carried on straight past the face's end, so a tap's arm
-     * runs out level; its end, the picture's last row, hangs straight down from there) */
-    if (r[5] > 0.0) {
-        short flat = -1;
-        size_t q;
-
-        for (q = 0; q < (size_t)w * (y1 - y0); q++) {
-            if (owner[q] >= 0 && (flat < 0 || t[owner[q]].n[1] > t[flat].n[1])) {
-                flat = owner[q];
-            }
-        }
-        for (q = 0; q < (size_t)w * (y1 - y0); q++) {
-            if (owner[q] >= 0 && owner[q] != flat && t[owner[q]].n[1] < t[flat].n[1] - 0.01) {
-                rm_drop(out, t[owner[q]].id);       /* (the sloped end of the board it was painted on) */
-            }
-            owner[q] = owner[q] >= 0 ? flat : owner[q];
-        }
-    }
 #define PX(x_, y_) (st->rgba + ((size_t)(y_) * st->w + (size_t)(x_)) * 4u)
 #define UP(x_, y_) ((x_) >= x0 && (x_) < x1 && (y_) >= y0 && (y_) < y1 && owner[(size_t)((y_) - y0) * w + ((x_) - x0)] >= 0 \
                     && PX(x_, y_)[3] >= 128 && (abs((PX(x_, y_)[0] >> 4) - (int)(bg >> 8)) + abs((PX(x_, y_)[1] >> 4) - (int)((bg >> 4) & 15)) \
                                                 + abs((PX(x_, y_)[2] >> 4) - (int)(bg & 15))) >= 3)
-    for (y = y0; y < y1; y++) {
-        for (x = x0; x < x1; x++) {
-            last = UP(x, y) ? y : last;
-        }
-    }
     for (y = y0; y < y1; y++) {
         for (x = x0; x < x1; x++) {
             const Ct *f;
@@ -590,39 +567,6 @@ static void lift(const Ct *t, unsigned nt, const RmTex *tex, unsigned ntex, cons
                     sn[k] = mid[k] - cen[k];
                 }
                 quad(out, f, dark, side, uv, sn);
-            }
-            /* the last row of a DROP: straight down from the face, at a right angle, by DROP */
-            if (r[5] > 0.0 && y == last) {
-                double low[4][3], dn[3];
-
-                for (j = 0; j < 4; j++) {
-                    for (k = 0; k < 3; k++) {
-                        low[j][k] = c[j][k] - f->n[k] * r[5];
-                    }
-                }
-                for (k = 0; k < 3; k++) {
-                    dn[k] = -f->n[k];
-                }
-                quad(out, f, dark, low, uv, dn);
-                for (j = 0; j < 4; j++) {
-                    const int nx = x + (j == 1 ? 1 : j == 3 ? -1 : 0), ny = y + (j == 2 ? 1 : j == 0 ? -1 : 0);
-                    const int a = j, b = (j + 1) % 4;
-                    double sn[3], mid[3], cen[3];
-
-                    if (ny == last && UP(nx, ny)) {
-                        continue;           /* (the next pixel of the row hangs down too) */
-                    }
-                    for (k = 0; k < 3; k++) {
-                        side[0][k] = low[a][k];
-                        side[1][k] = low[b][k];
-                        side[2][k] = c[b][k];
-                        side[3][k] = c[a][k];
-                        mid[k] = (c[a][k] + c[b][k]) / 2.0;
-                        cen[k] = (c[0][k] + c[1][k] + c[2][k] + c[3][k]) / 4.0;
-                        sn[k] = mid[k] - cen[k];
-                    }
-                    quad(out, f, j == 2 ? f->rgb : dark, side, uv, sn);
-                }
             }
         }
     }
@@ -678,9 +622,9 @@ void rm_counter(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, 
     sink(t, nt, out);
     if (rm_opt(opt, "lift", lb, sizeof lb) != NULL) {
         for (lp = lb; lp != NULL && *lp != '\0'; ) {
-            double r[6] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+            double r[5];
 
-            if (sscanf(lp, "%lf:%lf:%lf:%lf:%lf:%lf", &r[0], &r[1], &r[2], &r[3], &r[4], &r[5]) >= 5) {
+            if (sscanf(lp, "%lf:%lf:%lf:%lf:%lf", &r[0], &r[1], &r[2], &r[3], &r[4]) == 5) {
                 lift(t, nt, tex, ntex, r, out);
             }
             lp = strchr(lp, '+');
