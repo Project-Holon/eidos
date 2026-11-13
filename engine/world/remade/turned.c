@@ -159,6 +159,7 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
     int *parent;
     double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, cx, cz;
     int any = 0, mirror = rm_optf(opt, "mirror", 0) != 0.0, copies = rm_optf(opt, "copies", 1) != 0.0;
+    const int plainback = rm_optf(opt, "plainback", 0) != 0.0;
 
     (void)tex;
     (void)ntex;
@@ -412,6 +413,38 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             q.p[j][2] = (float)(2.0 * tr[i].pz - tr[i].p[s][2]);
             q.uv[j][0] = tr[i].uv[s][0];
             q.uv[j][1] = tr[i].uv[s][1];
+        }
+        if (plainback) {
+            /* `plainback=1`: the twin does not wear the front's picture (a television's back has no screen): it
+             * is plain, in one pixel of its piece's side, the middle of the biggest face that looks east or west */
+            double best = 0.0;
+            int sidx = -1;
+
+            for (j = 0; j < n0; j++) {
+                double nj[3], area;
+
+                if (tr[j].piece != tr[i].piece) {
+                    continue;
+                }
+                normal_of(tr[j].p, nj);
+                area = rm_norm(nj);
+                if (area > best && fabs(nj[0]) > 0.7) {
+                    best = area;
+                    sidx = (int)j;
+                }
+            }
+            if (sidx >= 0) {
+                float u = (tr[sidx].uv[0][0] + tr[sidx].uv[1][0] + tr[sidx].uv[2][0]) / 3.0f;
+                float v = (tr[sidx].uv[0][1] + tr[sidx].uv[1][1] + tr[sidx].uv[2][1]) / 3.0f;
+
+                for (j = 0; j < 3; j++) {
+                    q.uv[j][0] = u;
+                    q.uv[j][1] = v;
+                }
+                q.id = tr[sidx].id;
+                q.bt = tr[sidx].bt;
+                memcpy(q.ref, tr[sidx].black ? tr[sidx].ref : tr[sidx].rgb, 3u);
+            }
         }
         if (!there(tr, n, q.p)) {
             painted(out, &q);

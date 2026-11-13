@@ -853,6 +853,32 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 }
             }
         }
+        if (flatw && plain > 1e29) {
+            /* `flat=1` alone: the plain place is the picture's middle, and each row there is the row's mean
+             * colour (a brushed-metal side is drawn in dots: one column of it, repeated, is noise) */
+            plain = (xa + xb) / 2.0;
+            tx = (int)((plain - xa) * ppu);
+            tx = tx < 0 ? 0 : tx >= Wm ? Wm - 1 : tx;
+            for (y = 0; y < Hm; y++) {
+                unsigned long sum[3] = { 0, 0, 0 }, cnt = 0;
+
+                for (x = 0; x < Wm; x++) {
+                    if (ok[(size_t)y * Wm + (size_t)x]) {
+                        const unsigned char *o4 = px + ((size_t)y * Wm + (size_t)x) * 4u;
+
+                        sum[0] += o4[0]; sum[1] += o4[1]; sum[2] += o4[2];
+                        cnt++;
+                    }
+                }
+                if (cnt > 0) {
+                    unsigned char *o4 = px + ((size_t)y * Wm + (size_t)tx) * 4u;
+
+                    o4[0] = (unsigned char)(sum[0] / cnt); o4[1] = (unsigned char)(sum[1] / cnt); o4[2] = (unsigned char)(sum[2] / cnt);
+                    o4[3] = 255;
+                    ok[(size_t)y * Wm + (size_t)tx] = 1;
+                }
+            }
+        }
         /* the entrance taken out: plain wall, row by row from the plain place */
         if (plain < 1e29) {
             tx = (int)((plain - xa) * ppu);

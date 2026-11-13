@@ -59,6 +59,15 @@ static const BmapRemade k_remade[] = {
       "at=100,erase=-33:33:2:37,plain=34.4,roof=0" },
     { "b0_00019", rm_plant, "" },                   /* potted plant */
     { "b1_00290", rm_turned, "rest=0" },            /* bell arch (Celestial Tower) */
+    { "b0_00002", rm_turned, "rest=0,copies=0,plainback=1" },   /* television: the screen and the stand each closed with a plain back */
+    { "b0_00011", rm_building, "src=east,flat=1,roof=0,small=0,shade=0.9" },   /* cupboard, wood: a plain back, its side's middle column */
+    { "b0_00012", rm_backwall, "" },                /* cupboard, green: a plain back panel in its side's material */
+    { "b0_00015", rm_backwall, "" },                /* bookshelf: a plain back panel in its side's material */
+    { "b0_00018", rm_building, "src=east,flat=1,roof=0,small=0,shade=0.9" },   /* fridge: a plain back, its side's middle column */
+    { "b0_00081", rm_backwall, "" },                /* server cabinet, black: a plain back panel in its side's material */
+    { "b0_00082", rm_backwall, "" },                /* server cabinet, grey: a plain back panel in its side's material */
+    { "b0_00086", rm_backwall, "" },                /* vending machine: a plain back panel in its side's material */
+    { "b0_00126", rm_backwall, "" },                /* lockers: a plain back panel in its side's material */
     { "b0_00061", rm_floor, "" },                   /* boxes (Cold Storage) */
     { "b0_00111", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
     { "b0_00112", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
