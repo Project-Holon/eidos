@@ -518,6 +518,9 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         }
         free(smp);
     }
+    /* (`over=D`: the back wall stands D in from the roof's back edge; 0: flush with it, a gable closed at the
+     * roof's end, so nobody looks up under the roof from behind) */
+    over = rm_optf(opt, "over", over);
     /* the edges at the north side, high over the ground, with no wall under them: the northmost at each place */
     for (k = 0; k < nbin; k++) {
         minz[k] = 1e30;
