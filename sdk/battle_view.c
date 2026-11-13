@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "battle_view.h"
 #include "bmap.h"
@@ -558,6 +559,7 @@ static void job_main(void *arg)
     BvJob *j = (BvJob *)arg;
     BvBase *b = j->base;
     BvPlaced *p;
+    clock_t t_job = clock();       /* research: how long the battle waits for its map */
 
     j->rc = 0;
     if (b == NULL) {
@@ -581,6 +583,9 @@ static void job_main(void *arg)
         b->cx = j->px;
         b->cz = j->pz;
         j->built = b;
+        if (getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: built in %.0f ms\n", 1000.0 * (double)(clock() - t_job) / CLOCKS_PER_SEC);
+        }
     }
     p = (BvPlaced *)calloc(1, sizeof *p);
     if (p == NULL || bmap_copy(&p->s, &b->s) != 0) {
@@ -592,6 +597,9 @@ static void job_main(void *arg)
     p->base = b;
     bmap_place_spec(&p->s, &j->spec);
     j->placed = p;
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        fprintf(stderr, "bmap: ready in %.0f ms\n", 1000.0 * (double)(clock() - t_job) / CLOCKS_PER_SEC);
+    }
     j->done = 1;
 }
 
@@ -1016,6 +1024,8 @@ static void job_drop(void)
 /* The first battle frame: read the place and start the build. */
 static void sprite_size_reset(void);
 
+static void field_hand_over(void);
+
 static void battle_begin(uintptr_t eff)
 {
     BvJob *j;
@@ -1023,6 +1033,7 @@ static void battle_begin(uintptr_t eff)
 
     job_drop();
     sprite_size_reset();
+    field_hand_over();
     /* a scene from an earlier battle must not show under this one's start */
     if (g_cur != NULL) {
         retire();
@@ -1516,10 +1527,189 @@ void __wrap_MCSS_Draw(void *sys)
     }
 }
 
+/*
+ * What the field draws (research: the state carry).  Every 3D object of the field (a gym's curtain, a door, a
+ * stone's effect) is drawn by G3D_SYSTEM_DrawObject or G3D_SYSTEM_DrawObjectCulling with the object (its
+ * model resource, its texture resource, its animations with their present frames: aletheia arm9
+ * g3d_system_types.h) and a status (place, scale, turn).  Noted here while the field runs.
+ */
+typedef struct { uint16_t magic; uint16_t type; void *file; } GResource;
+typedef struct { uint16_t magic; void *rnd; GResource *mdl, *tex; } GRender;
+typedef struct { uint16_t magic; void *anm; const GResource *res; } GAnime;
+typedef struct { uint16_t magic; GRender *render; GAnime **anm; uint16_t nanm; } GObject;
+extern int G3D_SYSTEM_GetObjectAnimeFrame(void *obj, uint32_t idx, int32_t *frame) WEAK;
+int __real_G3D_SYSTEM_DrawObjectCulling(void *obj, void *status);
+
+extern void *ov021_FIELDMAP_GetCamera(void *fieldMap) WEAK;
+extern uint16_t ov021_FIELD_CAMERA_GetPitch(void *camera) WEAK;
+
+/* The game's files copied out of its memory (the field frees them before the battle's first frame). */
+typedef struct { const void *src; unsigned n; uint32_t sum; unsigned char *copy; } FileCopy;
+static FileCopy g_fc[96];
+static unsigned g_nfc;
+
+static const unsigned char *file_copy(const void *src, unsigned *n_out)
+{
+    const uint8_t *f = (const uint8_t *)src;
+    unsigned n, k;
+    uint32_t sum = 0;
+
+    *n_out = 0;
+    if (f == NULL || f[0] != 'B' || f[3] != '0') {
+        return NULL;
+    }
+    n = (unsigned)(f[8] | (f[9] << 8) | (f[10] << 16) | ((unsigned)f[11] << 24));
+    if (n < 16u || n > 0x400000u) {
+        return NULL;
+    }
+    for (k = 0; k < 64u && k < n; k++) {
+        sum = sum * 31u + f[k];
+    }
+    for (k = 0; k < g_nfc; k++) {
+        if (g_fc[k].src == src && g_fc[k].n == n && g_fc[k].sum == sum) {
+            *n_out = n;
+            return g_fc[k].copy;
+        }
+    }
+    if (g_nfc >= 96u) {
+        return NULL;
+    }
+    g_fc[g_nfc].copy = (unsigned char *)malloc(n);
+    if (g_fc[g_nfc].copy == NULL) {
+        return NULL;
+    }
+    memcpy(g_fc[g_nfc].copy, f, n);
+    g_fc[g_nfc].src = src;
+    g_fc[g_nfc].n = n;
+    g_fc[g_nfc].sum = sum;
+    *n_out = n;
+    return g_fc[g_nfc++].copy;
+}
+
+typedef struct { const void *obj; uint32_t frame; BmapLive live; } FieldObj;
+static FieldObj g_fo[160];
+static unsigned g_nfo, g_fo_zone = 0xFFFFFFFFu;
+static uint32_t g_fo_last;
+
+static void field_note(void *obj_, const void *status_)
+{
+    const GObject *o = (const GObject *)obj_;
+    const int32_t *st = (const int32_t *)status_;
+    FieldObj *e = NULL;
+    BmapLive *l;
+    uintptr_t gs, fm;
+    unsigned zone, k, a, b;
+
+    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL || o == NULL || st == NULL) {
+        return;
+    }
+    gs = (uintptr_t)*(void **)bw_dsref__GameSystemGlobal;
+    fm = gs != 0 ? (uintptr_t)*(void **)(gs + 0x20) : 0;
+    if (fm == 0 || g_in_battle || o->render == NULL || o->render->mdl == NULL) {
+        return;                         /* (not in the field) */
+    }
+    {
+        const uint8_t *pw = *(uint8_t **)(gs + 0x1C) + 4 + 4 * 0x44;
+
+        zone = (unsigned)(pw[0] | (pw[1] << 8));
+    }
+    if (zone != g_fo_zone) {            /* another place: its objects are other objects */
+        g_fo_zone = zone;
+        g_nfo = 0;
+        if (g_job == NULL) {            /* (no map is being built from the copies) */
+            for (k = 0; k < g_nfc; k++) {
+                free(g_fc[k].copy);
+            }
+            g_nfc = 0;
+        }
+    }
+    for (k = 0; k < g_nfo; k++) {
+        if (g_fo[k].obj == obj_) {
+            e = &g_fo[k];
+            break;
+        }
+    }
+    if (e == NULL) {
+        if (g_nfo >= 160u) {
+            return;
+        }
+        e = &g_fo[g_nfo++];
+        memset(e, 0, sizeof *e);
+        e->obj = obj_;
+        if (getenv("EIDOS_LIVE_LOG") != NULL) {
+            fprintf(stderr, "eidos: field draws: zone %u object %p at (%.1f, %.1f, %.1f), %u animations\n", zone, obj_,
+                    st[0] / 4096.0, st[1] / 4096.0, st[2] / 4096.0, (unsigned)o->nanm);
+        }
+    }
+    l = &e->live;
+    e->frame = bw_input_frame_number();
+    g_fo_last = e->frame;
+    l->mdl = file_copy(o->render->mdl->file, &l->mdl_n);
+    l->tex = NULL;
+    l->tex_n = 0;
+    if (o->render->tex != NULL && o->render->tex != o->render->mdl) {
+        l->tex = file_copy(o->render->tex->file, &l->tex_n);
+    }
+    l->nanim = 0;
+    for (k = 0; k < o->nanm && l->nanim < BMAP_LIVE_ANIMS; k++) {
+        int32_t fr = 0;
+
+        if (o->anm == NULL || o->anm[k] == NULL || o->anm[k]->res == NULL) {
+            continue;
+        }
+        l->anim[l->nanim].p = file_copy(o->anm[k]->res->file, &l->anim[l->nanim].n);
+        if (l->anim[l->nanim].p == NULL) {
+            continue;
+        }
+        if (G3D_SYSTEM_GetObjectAnimeFrame != NULL) {
+            G3D_SYSTEM_GetObjectAnimeFrame(obj_, k, &fr);
+        }
+        l->anim[l->nanim].frame = fr / 4096;
+        l->nanim++;
+    }
+    /* the status: place, size, turn (a row of the turn is where an axis of the model goes) */
+    for (a = 0; a < 3u; a++) {
+        l->t[a] = (float)st[a] / 4096.0f;
+        for (b = 0; b < 3u; b++) {
+            l->r[a][b] = (float)st[6 + a * 3 + b] / 4096.0f * ((float)st[3 + a] / 4096.0f);
+        }
+    }
+    l->field_tan = 0.0f;
+    if (ov021_FIELDMAP_GetCamera != NULL && ov021_FIELD_CAMERA_GetPitch != NULL && ov021_FIELDMAP_GetCamera((void *)fm) != NULL) {
+        float ang = (float)ov021_FIELD_CAMERA_GetPitch(ov021_FIELDMAP_GetCamera((void *)fm)) * 6.2831853f / 65536.0f;
+
+        if (ang > 0.1f && ang < 1.5f) {
+            l->field_tan = tanf(ang);
+        }
+    }
+}
+
+/* A battle begins: the objects the field drew in its last frames go to the map's builder. */
+static void field_hand_over(void)
+{
+    static BmapLive list[160];
+    unsigned k, n = 0;
+
+    for (k = 0; k < g_nfo; k++) {
+        if (g_fo_last - g_fo[k].frame <= 2u && g_fo[k].live.mdl != NULL) {
+            list[n++] = g_fo[k].live;
+        }
+    }
+    bmap_live_set(g_fo_zone, list, n);
+}
+
+int __wrap_G3D_SYSTEM_DrawObjectCulling(void *obj, void *status)
+{
+    field_note(obj, status);
+    return __real_G3D_SYSTEM_DrawObjectCulling(obj, status);
+}
+
 void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
 {
     uintptr_t eff = 0;
     int kind;
+
+    field_note(obj, status);
 
     spots_user_file();
     kind = classify(obj, &eff);

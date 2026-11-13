@@ -24,6 +24,23 @@ typedef struct BmapVertex {
                                the ground chunks (never removed)                */
 } BmapVertex;
 
+/* A 3D object the field was drawing when the battle began (a gym's curtain, a door, a stone the player pushed),
+ * in the state it was drawn in: the game's own model, texture and animation files as they lay in its memory
+ * (copies the caller keeps alive), each animation at its frame, and the place, turn and size of the draw.
+ * The game notes them while the field runs (sdk/battle_view.c) and hands them over when a battle begins
+ * (bmap_live_set); the scene built next for that zone stands them in it, and leaves out the same objects in
+ * their starting state from the game's files. */
+#define BMAP_LIVE_ANIMS 4
+typedef struct BmapLive {
+    const unsigned char *mdl, *tex;     /* the model file; the texture file, or NULL: the model's own */
+    unsigned mdl_n, tex_n;
+    struct { const unsigned char *p; unsigned n; int frame; } anim[BMAP_LIVE_ANIMS];
+    unsigned nanim;
+    float t[3], r[3][3];                /* a corner v of the model goes to t + v[0] r[0] + v[1] r[1] + v[2] r[2] */
+    float field_tan;                    /* the tangent of the field camera's pitch (for a model made for that camera) */
+} BmapLive;
+void bmap_live_set(unsigned zone, const BmapLive *list, unsigned n);
+
 typedef struct BmapTexture {
     int w, h;
     unsigned char *rgba;    /* w*h*4, straight alpha                            */
@@ -53,6 +70,8 @@ typedef struct BmapDraw {
     unsigned char grass;       /* a tall-grass tuft (bmap_place): drawn again over the
                                   Pokemon it stands in front of                     */
     unsigned short uvanim;     /* 1 + its index in BmapScene.uva; 0 none            */
+    unsigned char bob;         /* 1: rises and falls by BmapScene.bob_y (a moving object
+                                  of the game with its own animation)               */
 } BmapDraw;
 
 /* A place's own intro camera (the intro's and the send-out's, the cameras
@@ -70,7 +89,10 @@ typedef struct BmapIntro {
                                from where it stands                           */
 } BmapIntro;
 
+#define BMAP_BOB_MAX 128
 typedef struct BmapScene {
+    float bob_y[BMAP_BOB_MAX]; unsigned bob_n;  /* the rise of the `bob` draws at each frame of their animation
+                                                   (map units; 30 frames a second, as the field plays it) */
     BmapVertex *v; unsigned nv;
     BmapDraw *d; unsigned nd;
     BmapTexture *t; unsigned nt;

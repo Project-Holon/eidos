@@ -363,13 +363,14 @@ static const char *k_fsw =
      * master brightness as the DS screen is (`bd` has it), so a scene with
      * little 3D, or a fade to white, fills the window like the DS
      * rectangle and does not leave it a square */
+    "    vec3 B_held = vec3(0.0);\n"
+    "    if (under != 0) {\n"
+    "        B_held = texture(held, (gl_FragCoord.xy - vec2(0.0, vpy)) / win).rgb * (under == 2 ? 1.0 : 0.5);\n"
+    "        if (bmode == 1) B_held = (1.0 - bfac) * B_held + bfac;\n"
+    "        else if (bmode == 2) B_held = (1.0 - bfac) * B_held;\n"
+    "    }\n"
     "    if (!inside) {\n"
-    "        vec3 B = bd;\n"
-    /* the kept picture, as dark as the game makes its captured screen for a
-     * cut-in (FLD3D_CI_DarkenCapturedScreen halves every colour) */
-    "        if (under != 0) {\n"
-    "            B = texture(held, (gl_FragCoord.xy - vec2(0.0, vpy)) / win).rgb * 0.5;\n"
-    "        }\n"
+    "        vec3 B = (under != 0) ? B_held : bd;\n"
     "        color = vec4(P + (1.0 - A) * B, 1.0);\n"
     "        return;\n"
     "    }\n"
@@ -385,10 +386,10 @@ static const char *k_fsw =
     "        }\n"
     "    }\n"
     "    if (!m) {\n"
-    "        color = vec4(sharp(tex, duv, texsize, dstsize), 1.0);\n"
+    "        color = vec4(under != 0 ? B_held : sharp(tex, duv, texsize, dstsize), 1.0);\n"
     "        return;\n"
     "    }\n"
-    "    vec3 b = sharp(behind, duv, texsize, dstsize);\n"
+    "    vec3 b = (under != 0) ? B_held : sharp(behind, duv, texsize, dstsize);\n"
     "    vec3 d = P + (1.0 - A) * b;\n"
     "    if (hasz != 0) {\n"
     "        ivec2 c = clamp(ip, ivec2(0), sz - 1);\n"
@@ -1433,7 +1434,7 @@ void eidos_gl_one_set(EidosGl *g, int on, int world, int screen,
     g_one.hold = (no_fade & 2) != 0;
     g_one.keep = (no_fade & 4) != 0;
     g_one.spare = (no_fade & (1 << 19)) != 0;
-    g_one.under = (no_fade & (1 << 20)) != 0;
+    g_one.under = (no_fade >> 20) & 3;
     g_one.dark = (no_fade >> 8) & 31;
     g_one.mix = (no_fade >> 13) & 31;
     if (ds != NULL) {
@@ -1659,7 +1660,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         }
         g->glUniform3fv(g_one.w_sent, 1, sent);
         g->glUniform1i(g_one.w_held, 4);
-        g->glUniform1i(g_one.w_under, g_one.under && frozen && g_one.frozen != 0);
+        g->glUniform1i(g_one.w_under, (g_one.under && frozen && g_one.frozen != 0) ? g_one.under : 0);
         g->glUniform1f(g_one.w_vpy, (float)g_vp_y);
         g->glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D, g_one.frozen != 0 ? g_one.frozen : g->behind_tex);

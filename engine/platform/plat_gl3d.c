@@ -370,6 +370,7 @@ static const char *k_vsb =
     "uniform vec4 u_r3;\n"
     "uniform vec3 u_eye;\n"
     "uniform vec3 u_pivot;\n"
+    "uniform float u_lift;\n"
     "uniform int u_bb;\n"
     "uniform vec3 u_uv0;\n"
     "uniform vec3 u_uv1;\n"
@@ -390,6 +391,7 @@ static const char *k_vsb =
     "        vec3 o = a_pos - u_pivot;\n"
     "        q = u_pivot + x * o.x + y * o.y + z * o.z;\n"
     "    }\n"
+    "    q.y += u_lift;      /* a moving object's rise this frame */\n"
     "    vec4 p = vec4(q, 1.0);\n"
     "    v_pos = q;\n"
     "    /* the draw's texture animation this frame (identity: none) */\n"
@@ -407,8 +409,6 @@ static const char *k_fsb =
     "layout(location = 0) out vec4 o;\n"
     "uniform vec3 u_eye;\n"
     "uniform vec3 u_foc;\n"
-    "uniform vec4 u_atm;\n"
-    "uniform vec3 u_sky;\n"
     "uniform vec4 u_fog;\n"
     "uniform vec3 u_fogc;\n"
     "uniform int u_tex;\n"
@@ -462,11 +462,6 @@ static const char *k_fsb =
     "        float f = clamp((length(v_pos.xz - u_fog.xy) - u_fog.z) / u_fog.w, 0.0, 1.0);\n"
     "        c.rgb = mix(c.rgb, u_fogc, f);\n"
     "    }\n"
-    "    if (u_atm.w > 0.0) {\n"
-    "        /* the far part fades into the sky before the map ends */\n"
-    "        float f = smoothstep(u_atm.z, u_atm.w, length(v_pos.xz - u_atm.xy));\n"
-    "        c.rgb = mix(c.rgb, u_sky, f);\n"
-    "    }\n"
     "    o = vec4(c.rgb * a, a);\n"
     "}\n";
 
@@ -500,11 +495,11 @@ typedef struct BdBound {
 
 typedef struct Gl3dBackdrop {
     GLuint prog, vao, vbo, ibo;
-    GLint u_r[4], u_pivot, u_bb, u_atm, u_sky, u_eye, u_foc, u_fog, u_fogc, u_tex, u_texture, u_alpha, u_cut, u_cut_hi;
+    GLint u_lift;
+    GLint u_r[4], u_pivot, u_bb, u_eye, u_foc, u_fog, u_fogc, u_tex, u_texture, u_alpha, u_cut, u_cut_hi;
     GLint u_front, u_poke, u_npoke, u_grass, u_uv0, u_uv1;
     const void *scene;          /* the scene on the GPU                    */
     unsigned gen;
-    float reach;                /* half-width of the placed map, battle units */
     GLuint *tex;
     unsigned n_tex;
     unsigned tex_gen;           /* the scene textures' BmapScene.tex_gen */
@@ -660,9 +655,8 @@ static int backdrop_init(EidosGl *g)
     g_bd.u_eye = g->glGetUniformLocation(g_bd.prog, "u_eye");
     g_bd.u_foc = g->glGetUniformLocation(g_bd.prog, "u_foc");
     g_bd.u_pivot = g->glGetUniformLocation(g_bd.prog, "u_pivot");
+    g_bd.u_lift = g->glGetUniformLocation(g_bd.prog, "u_lift");
     g_bd.u_bb = g->glGetUniformLocation(g_bd.prog, "u_bb");
-    g_bd.u_atm = g->glGetUniformLocation(g_bd.prog, "u_atm");
-    g_bd.u_sky = g->glGetUniformLocation(g_bd.prog, "u_sky");
     g_bd.u_fog = g->glGetUniformLocation(g_bd.prog, "u_fog");
     g_bd.u_fogc = g->glGetUniformLocation(g_bd.prog, "u_fogc");
     g_bd.u_tex = g->glGetUniformLocation(g_bd.prog, "u_tex");
@@ -822,21 +816,6 @@ static void backdrop_upload(EidosGl *g, const BmapScene *sc)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
                         !t->repeat_t ? GL_CLAMP_TO_EDGE
                         : t->flip_t ? GL_MIRRORED_REPEAT : GL_REPEAT);
-    }
-    {
-        /* the half-width of the placed map around the player tile */
-        float x0 = 0.0f, x1 = 0.0f, z0 = 7.0f, z1 = 7.0f;
-        unsigned n;
-
-        for (n = 0; n < sc->nv; n++) {
-            const BmapVertex *v = &sc->v[n];
-
-            x0 = v->x < x0 ? v->x : x0;
-            x1 = v->x > x1 ? v->x : x1;
-            z0 = v->z < z0 ? v->z : z0;
-            z1 = v->z > z1 ? v->z : z1;
-        }
-        g_bd.reach = fminf(fminf(-x0, x1), fminf(7.0f - z0, z1 - 7.0f));
     }
     free(g_bd.bound);
     g_bd.bound = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof *g_bd.bound) : NULL;
@@ -1037,7 +1016,6 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
 {
     const BmapScene *sc = (const BmapScene *)b->scene;
     float r[4][4], fwd[3];
-    float atm[4] = { 0.0f, 7.0f, 0.0f, 0.0f };   /* the far map's fade (u_atm) */
     unsigned pass, i;
     /* the field plays its animations a frame a field frame (60 a second) */
     unsigned uv_frame = (unsigned)(SDL_GetTicks() * 60u / 1000u);
@@ -1063,19 +1041,6 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     g->glBindBuffer(GL_ARRAY_BUFFER, g_bd.vbo);
     for (i = 0; i < 4; i++) {
         g->glUniform4f(g_bd.u_r[i], r[i][0], r[i][1], r[i][2], r[i][3]);
-    }
-    {
-        if (g_bd.reach > 40.0f) {
-            atm[2] = 0.45f * g_bd.reach;
-            atm[3] = 0.97f * g_bd.reach;
-        }
-        g->glUniform4f(g_bd.u_atm, atm[0], atm[1], atm[2], atm[3]);
-        float sk[3];
-
-        sk[0] = (float)b->sky[0] / 255.0f;
-        sk[1] = (float)b->sky[1] / 255.0f;
-        sk[2] = (float)b->sky[2] / 255.0f;
-        g->glUniform3fv(g_bd.u_sky, 1, sk);
     }
     g->glUniform3fv(g_bd.u_eye, 1, b->eye);
     g->glUniform1i(g_bd.u_front, front);
@@ -1181,16 +1146,13 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                 first = d->first;
                 count = d->count;
             }
-            /* a draw wholly behind the camera, or wholly past where the far
-             * map has faded into the sky (u_atm), is not sent */
+            /* a draw wholly behind the camera is not sent */
             if (g_bd.bound != NULL && di < sc->nd) {
                 const BdBound *bb = &g_bd.bound[di];
                 float depth = fwd[0] * (bb->c[0] - b->eye[0]) + fwd[1] * (bb->c[1] - b->eye[1])
                               + fwd[2] * (bb->c[2] - b->eye[2]);
-                float ax = bb->c[0] - atm[0], az = bb->c[2] - atm[1];
 
-                if (depth < -bb->r
-                    || (atm[3] > 0.0f && sqrtf(ax * ax + az * az) - bb->r > atm[3])) {
+                if (depth < -bb->r) {
                     i += run - 1;
                     continue;
                 }
@@ -1229,9 +1191,12 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                 g->glUniform3fv(g_bd.u_uv1, 1, id + 3);
                 uv_set = 0;
             }
-            g->glUniform1i(g_bd.u_bb, d->billboard);
+            g->glUniform1i(g_bd.u_bb, d->billboard == 3 ? 0 : d->billboard);   /* (3: placed as one, never turned) */
             g->glUniform1i(g_bd.u_grass, d->grass);
             g->glUniform3fv(g_bd.u_pivot, 1, d->pivot);
+            /* a moving object rises and falls as its animation does in the field (30 frames a second) */
+            g->glUniform1f(g_bd.u_lift, d->bob && sc->bob_n > 0u
+                           ? sc->place_k * sc->bob_y[(SDL_GetTicks() * 30u / 1000u) % sc->bob_n] : 0.0f);
             g->glUniform1f(g_bd.u_alpha, (float)d->alpha / 31.0f);
             if (pass == 0) {
                 g->glUniform1f(g_bd.u_cut, d->translucent ? BD_CORE_CUT : 0.5f);
@@ -1610,6 +1575,7 @@ static int msaa_target(EidosGl *g, GlFb *f, int w, int h)
      * take fewer samples (macOS: GL_MAX_INTEGER_SAMPLES is 1) rejects its
      * storage with GL_INVALID_OPERATION, and that error failed the frame */
     static GLint samples = -1;
+    int fresh;
 
     if (samples < 0) {
         GLint any = 0, integer = 0;
@@ -1630,7 +1596,8 @@ static int msaa_target(EidosGl *g, GlFb *f, int w, int h)
         g->glGenRenderbuffers(1, &f->ms_depth);
         g->glGenRenderbuffers(1, &f->ms_id);
     }
-    if (f->ms_w != w || f->ms_h != h) {
+    fresh = f->ms_w != w || f->ms_h != h;
+    if (fresh) {
         g->glBindRenderbuffer(GL_RENDERBUFFER, f->ms_color);
         g->glRenderbufferStorageMultisample(GL_RENDERBUFFER, MSAA_SAMPLES, GL_RGBA8, w, h);
         g->glBindRenderbuffer(GL_RENDERBUFFER, f->ms_depth);
@@ -1652,7 +1619,10 @@ static int msaa_target(EidosGl *g, GlFb *f, int w, int h)
         f->ms_h = h;
     }
     g->glBindFramebuffer(GL_FRAMEBUFFER, f->ms_fbo);
-    if (g->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    /* asked when the storage is made, not every frame: the answer does not
+     * change while the storage stands, and the question waits for the
+     * driver's own thread (a target that fails is made again next frame) */
+    if (fresh && g->glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         f->ms_w = 0;
         return 0;
     }

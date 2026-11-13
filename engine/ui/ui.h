@@ -112,12 +112,9 @@ typedef struct EidosUiView {
                                the field (an evolution after a Rare Candy):
                                the kept picture of the field stays for the
                                app it goes back to                          */
-    int held_backdrop;      /* non-zero: the live world, but beyond the DS
-                               screen the kept picture of the field instead
-                               of the screen's backdrop colour (a cut-in the
-                               game draws over a capture of its screen: the
-                               VS banner); the kept picture is left as it
-                               is                                           */
+    int held_backdrop;      /* 1: live world with kept picture halved behind it;
+                               2: kept picture at full brightness (cut-in with
+                               darkenScreen == 0). Set only on cut-in overlays */
     int dark;               /* how far the game has faded the world's
                                screen to black, 0..16 (filled by
                                eidos_ui_frame): the kept picture fades with

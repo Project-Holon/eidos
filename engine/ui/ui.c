@@ -171,15 +171,11 @@ void eidos_ui_drag(int x0, int y0, int x1, int y1)
 }
 
 static u32 g_b_frame = 0x80000000u;     /* the input frame of the last B (the player's or a recipe's) */
-static u32 g_a_frame = 0x80000000u;     /* and of the last A */
 
 void eidos_ui_press(u32 keys, u32 frames)
 {
     if (keys & BW_KEY_B) {
         g_b_frame = bw_input_frame_number();
-    }
-    if (keys & BW_KEY_A) {
-        g_a_frame = bw_input_frame_number();
     }
     (void)bw_input_inject(keys & BW_KEY_GAME, frames == 0 ? 1 : frames);
 }
@@ -444,7 +440,6 @@ void eidos_ui_own_reveal(void)
 }
 
 static int g_no_hold;            /* the recipe draws through the game's fade */
-extern void eidos_platform_fast_wait(int waiting) __attribute__((weak));
 
 void eidos_ui_no_hold(void)
 {
@@ -512,8 +507,6 @@ static void app_state(u32 *ov, u32 *seq, u32 *child_ov, u32 *child_seq)
  * until the process's end confirms it. */
 extern int WIPE_SYS_EndCheck(void) __attribute__((weak));
 static u32 g_leave_guess;
-static int g_menu_hold;             /* the last scene was the menu or an app over the world */
-static u32 g_menu_dark = 16u;      /* how dark the open menu keeps the field (its own dimming) */
 
 static void leave_check(EidosUiView *view)
 {
@@ -589,30 +582,8 @@ static void leave_check(EidosUiView *view)
         fade_start();
     }
     g_dark_prev = dark;
-    /* a still picture while the game fades or loads: the wait is run at
-     * twice the speed (set again below when a picture is held) */
-    if (eidos_platform_fast_wait != NULL) {
-        /* and from B in an app, through the game's own pressed-button
-         * animation and its wipe: nothing of those shows here */
-        int wipe = WIPE_SYS_EndCheck != NULL && WIPE_SYS_EndCheck() == 0;
-        int closing = view->blur && ((g_scene_frames > 30 && bw_input_frame_number() - g_b_frame < 24u) || wipe);
-        /* an entry of the menu opens: the game fades the field out, loads
-         * the app and wipes it in, about 40 frames with the menu's picture
-         * held.  The speed set here stays through the frames with no scene. */
-        /* (from A: the game plays its "chosen" animation on the menu's icon
-         * for about 29 frames before it fades) */
-        int opening = strcmp(g_scene, "field-menu") == 0
-                      && (wipe || dark > g_menu_dark
-                          || (g_scene_frames > 10 && bw_input_frame_number() - g_a_frame < 34u));
-
-        g_menu_hold = view->blur || strcmp(g_scene, "field-menu") == 0;
-
-        if (strcmp(g_scene, "field-menu") == 0 && g_scene_frames > 20 && !fading_out) {
-            g_menu_dark = dark;         /* the menu's own dimming of the field */
-        }
-        eidos_platform_fast_wait(g_leaving || closing || opening
-                                 || (view->blur && fading_out && g_scene_frames > 0 && !g_no_hold));
-    }
+    /* (A still picture is held while the game fades or loads; the game keeps
+     * its own speed through that wait: run faster, its music ran faster too.) */
     if (g_leaving) {
         /* the modal's last picture stays, over the blurred world, until the
          * next scene is up and crossfades from it: no empty frames while
@@ -1692,6 +1663,8 @@ static void debug_script(void)
  *                 field's step check starts, SYMBOL_MAP_CreatePokeEventTask)
  *   "box M"       the PC's boxes in mode M (as the PC's script command opens
  *                 them: 0 organize, 1 withdraw, 2 deposit, ...)
+ *   "dowsing"     the Dowsing Machine on the lower screen, as using the
+ *                 item does (FIELD_SUBSCREEN_RequestMode, mode 6)
  *   "union"       into the Union Room, as its receptionist's script does
  *                 (EVENT_MAPCHANGE_CreateFixedZoneEvent: the room and its
  *                 link; the C-Gear's wireless must be on)
@@ -1700,6 +1673,7 @@ static void debug_script(void)
  *                 partner's), for the trade screen's tests
  * The save these run on is a test copy: the game clear saves. */
 extern void *ov010_EVENT_GAMECLEAR_Create(void *gsys, u32 mode) __attribute__((weak));
+extern int ov021_FIELD_SUBSCREEN_RequestMode(void *subscreen, u32 mode) __attribute__((weak));
 extern void *ov021_FLD_TRADE_CreateEvent(void *gsys, u32 tradeId, u32 partyIndex) __attribute__((weak));
 extern void *ov021_EVENT_NAMEIN_Create(void *gsys, void *fieldMap, void *parent, u32 mode, u16 *result)
     __attribute__((weak));
@@ -1829,6 +1803,14 @@ static void debug_open(void)
         static u16 result;
 
         ev = ov021_EVENT_NAMEIN_Create(gs, fm, NULL, 7, &result);
+    } else if (strcmp(what, "dowsing") == 0 && ov021_FIELD_SUBSCREEN_RequestMode != NULL) {
+        void *sub = *(void **)(fm + 0x24);
+
+        if (sub != NULL) {
+            (void)ov021_FIELD_SUBSCREEN_RequestMode(sub, 6);
+        }
+        fprintf(stderr, "eidos: debug open %s\n", what);
+        return;
     } else if (strcmp(what, "union") == 0 && ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent != NULL) {
         ev = ov020_EVENT_MAPCHANGE_CreateFixedZoneEvent(gs, fm);
     } else if (strcmp(what, "ltrade") == 0 && FIELD_STATUS_CreateSubProcCallbackEvent != NULL
@@ -1949,6 +1931,53 @@ extern void *ov021_FIELDMAP_GetMmdlSys(void *fieldMap) __attribute__((weak));
 extern int ov010_FLDMMDL_SysSearchUseMmdl(const void *sys, void **out, u32 *iter) __attribute__((weak));
 extern void *ov010_FLDMMDL_SysSearchPlayer(void *sys) __attribute__((weak));
 extern void ov010_FLDMMDL_GetGridNowPos(const void *mmdl, s16 *out) __attribute__((weak));
+
+/* EIDOS_LIVE_LOG=1: the field's moving objects (their id, object code and place), once in each zone, a few
+ * seconds after it is entered.  For finding the object behind something the field shows. */
+extern u16 ov010_FLDMMDL_GetObjId(void *mmdl) __attribute__((weak));
+extern u16 ov010_FLDMMDL_GetObjCode(void *mmdl) __attribute__((weak));
+extern void ov010_FLDMMDL_GetPos(const void *mmdl, s32 *out) __attribute__((weak));
+
+static void live_objects_log(void)
+{
+    static unsigned last_zone = 0xFFFFu;
+    static int seen, said;
+    unsigned zone;
+    u8 *gs, *fm, *gd;
+    const u8 *pw;
+    void *sys, *o;
+    u32 iter = 0;
+
+    if (getenv("EIDOS_LIVE_LOG") == NULL || ov021_FIELDMAP_GetMmdlSys == NULL || ov010_FLDMMDL_SysSearchUseMmdl == NULL
+        || ov010_FLDMMDL_GetObjId == NULL || ov010_FLDMMDL_GetObjCode == NULL || ov010_FLDMMDL_GetPos == NULL
+        || &bw_dsref__GameSystemGlobal == NULL) {
+        return;
+    }
+    gs = *(u8 **)bw_dsref__GameSystemGlobal;
+    fm = gs != NULL ? *(u8 **)(gs + 0x20) : NULL;
+    if (fm == NULL || (sys = ov021_FIELDMAP_GetMmdlSys(fm)) == NULL) {
+        return;                         /* not in the field */
+    }
+    gd = *(u8 **)(gs + 0x1C);
+    pw = gd + 4 + 4 * 0x44;
+    zone = (unsigned)(pw[0] | (pw[1] << 8));
+    if (zone != last_zone) {
+        last_zone = zone;
+        seen = 0;
+        said = 0;
+    }
+    if (said || ++seen <= 200) {
+        return;
+    }
+    said = 1;
+    while (ov010_FLDMMDL_SysSearchUseMmdl(sys, &o, &iter)) {
+        s32 q[3] = { 0, 0, 0 };
+
+        ov010_FLDMMDL_GetPos(o, q);
+        fprintf(stderr, "eidos: field object id %u code %u at (%.0f, %.0f, %.0f) zone %u\n", (unsigned)ov010_FLDMMDL_GetObjId(o),
+                (unsigned)ov010_FLDMMDL_GetObjCode(o), q[0] / 4096.0, q[1] / 4096.0, q[2] / 4096.0, zone);
+    }
+}
 
 static void debug_seek(u32 frame)
 {
@@ -2190,6 +2219,15 @@ static void debug_move(u32 frame)
         }
         break;
     }
+    }
+    {
+        /* the player's own place in the world (a rail map keeps no tile) */
+        s32 wp[3] = { 0, 0, 0 };
+
+        if (ov010_FLDMMDL_GetPos != NULL) {
+            ov010_FLDMMDL_GetPos(me, wp);
+            fprintf(stderr, "eidos: debug move place (%.1f, %.1f, %.1f)\n", wp[0] / 4096.0, wp[1] / 4096.0, wp[2] / 4096.0);
+        }
     }
     fprintf(stderr, "eidos: debug move %d at %u: tile (%d, %d) facing %d%s\n", cur, (unsigned)frame, p[0], p[2],
             (int)ov010_FLDMMDL_GetDirDisp(me),
@@ -2836,6 +2874,7 @@ void eidos_ui_game_frame(void)
         debug_warp();
         debug_cutin();
         debug_where();
+        live_objects_log();
         event_log();
         debug_battle();
         debug_script();
@@ -3321,9 +3360,6 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     if (g_keys_edge & BW_KEY_B) {
         g_b_frame = bw_input_frame_number();
     }
-    if (g_keys_edge & BW_KEY_A) {
-        g_a_frame = bw_input_frame_number();
-    }
     if (g_mx != g_last_mx || g_my != g_last_my) {
         /* a move (not the first sighting of the pointer) */
         if (g_last_mx >= 0 && g_mx >= 0) {
@@ -3523,12 +3559,6 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
              * show the game's own DS screen under it for those frames */
             if (g_prev != NULL && g_prev_w == g_canvas.w && g_prev_h == g_canvas.h) {
                 memcpy(g_canvas.rgba, g_prev, (size_t)g_prev_w * (size_t)g_prev_h * 4);
-            }
-            /* the menu's or an app's last picture is held while the game
-             * fades and loads (an app opening or closing): the waiting
-             * speed, which only a running recipe set until now */
-            if (g_menu_hold && eidos_platform_fast_wait != NULL) {
-                eidos_platform_fast_wait(1);
             }
             /* the game faded its screen to white (the flash before a
              * battle): the whole window takes it, not a DS-sized box of it

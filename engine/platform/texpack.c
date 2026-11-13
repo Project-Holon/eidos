@@ -1,6 +1,6 @@
 /*
  * engine/platform/texpack.c -- HD textures for the GPU 3D (Display, "HD
- * textures" and "Dump textures", both off by default).
+ * textures", off by default).
  *
  * Everything the DS draws in 3D is a texture: the world, the people and
  * Pokemon of the field, the battle Pokemon and trainers.  Each texture the
@@ -8,9 +8,9 @@
  * and size), so the same image has the same name on every run and every
  * computer.
  *
- *   textures/dump/<hash>.png    written once per new texture while "Dump
- *                               textures" is on: the originals, to paint
- *                               over or upscale
+ *   textures/dump/<hash>.png    written once per new texture with
+ *                               EIDOS_TEXTURE_DUMP=1: the originals, to
+ *                               paint over or upscale
  *   textures/auto/<hash>-<w>.png  an Auto copy, saved once made, so a
  *                               later run reads it instead of upscaling
  *   textures/<hash>.png         a replacement, used while "HD textures" is
@@ -901,6 +901,19 @@ static const unsigned char *auto_hd(uint64_t hash, const unsigned char *rgba,
 /* The caller's side                                                   */
 /* ------------------------------------------------------------------ */
 
+/* EIDOS_TEXTURE_DUMP=1: for making a pack (docs/test-switches.md). */
+static int dump_wanted(void)
+{
+    static int on = -1;
+
+    if (on < 0) {
+        const char *e = getenv("EIDOS_TEXTURE_DUMP");
+
+        on = e != NULL && e[0] == '1';
+    }
+    return on;
+}
+
 const unsigned char *eidos_texpack_find(const unsigned char *rgba, int w, int h,
                                         int *out_w, int *out_h, int *later)
 {
@@ -912,7 +925,7 @@ const unsigned char *eidos_texpack_find(const unsigned char *rgba, int w, int h,
         return NULL;
     }
     mode = eidos_settings_get(EIDOS_OPT_TEXTURE_PACK);
-    dumping = eidos_settings_get(EIDOS_OPT_TEXTURE_DUMP) == 1;
+    dumping = dump_wanted();
     if (mode == 0 && !dumping) {
         return NULL;
     }

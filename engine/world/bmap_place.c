@@ -515,11 +515,22 @@ static float place_score(const BmapScene *s, const unsigned char *grass, float p
         if (d->far || d->count == 0 || (grass != NULL && grass[i]) || d->first + d->count > s->nv) {
             continue;
         }
+        if ((s->v[d->first].obj & 0x80000000u) && (s->v[d->first + d->count - 3u].obj & 0x80000000u)) {
+            /* research: a draw of completed bodies' faces, passed over as a whole (the search runs this loop
+             * for every spot and angle it tries: face by face, thousands of faces a rock made it ten times
+             * slower, and the battle's map came on screen a second late) */
+            continue;
+        }
         for (j = d->first; j + 2 < d->first + d->count; j += 3) {
             const BmapVertex *v = &s->v[j];
             float p[3][3], lo[3], hi[3];
 
             if ((v->x - px) * (v->x - px) + (v->z - pz) * (v->z - pz) > near2) {
+                continue;
+            }
+            if (v->obj & 0x80000000u) {
+                /* research: a completed body's small faces (thousands a rock) are not weighed one by one;
+                 * the search does not see such a body yet (to do: a stand-in of a few faces) */
                 continue;
             }
             {
@@ -657,6 +668,298 @@ static void topview_dump(const BmapScene *s, unsigned nd0, int gone, const float
         fwrite(t0, sizeof(int), 2, f);
         for (z = 0; z < 64; z++) {
             for (x = 0; x < 64; x++) {
+                unsigned char t = (unsigned char)bmap_tile(s, (float)(t0[0] + x) * 16.0f + 8.0f,
+                                                           (float)(t0[1] + z) * 16.0f + 8.0f);
+
+                fwrite(&t, 1, 1, f);
+            }
+        }
+    }
+    fclose(f);
+}
+
+/* Research (BMAP_FIX_BACKS=1): a north side for the placed objects that have
+ * none.  The map's buildings are made for the field camera, which looks
+ * north: their south, east and west faces are there, their north faces are
+ * not.  An object whose faces toward the north are under a fifth of its
+ * faces toward the south gets those south faces again, turned half round
+ * about the upright through its middle: the front as its back, a little
+ * darker.  In map units, before the placement. */
+static void fix_backs(BmapScene *s)
+{
+    typedef struct { float lo[3], hi[3], south, north; int any; } Ob;
+    unsigned i, j, nd0 = s->nd, maxobj = 0, extra = 0, at, made = 0;
+    Ob *ob;
+    BmapVertex *v;
+    BmapDraw *d;
+
+    if (getenv("BMAP_FIX_BACKS") == NULL) {
+        return;
+    }
+    for (i = 0; i < s->nv; i++) {
+        if (s->v[i].obj > maxobj) {
+            maxobj = s->v[i].obj;
+        }
+    }
+    if (maxobj == 0 || maxobj > 100000u) {
+        return;
+    }
+    ob = (Ob *)calloc(maxobj + 1u, sizeof *ob);
+    if (ob == NULL) {
+        return;
+    }
+#define TRI_N(p, n, len) do { \
+        float e1[3] = { (p)[1].x - (p)[0].x, (p)[1].y - (p)[0].y, (p)[1].z - (p)[0].z }; \
+        float e2[3] = { (p)[2].x - (p)[0].x, (p)[2].y - (p)[0].y, (p)[2].z - (p)[0].z }; \
+        (n)[0] = e1[1] * e2[2] - e1[2] * e2[1]; (n)[1] = e1[2] * e2[0] - e1[0] * e2[2]; (n)[2] = e1[0] * e2[1] - e1[1] * e2[0]; \
+        (len) = sqrtf((n)[0] * (n)[0] + (n)[1] * (n)[1] + (n)[2] * (n)[2]); \
+    } while (0)
+    for (i = 0; i < nd0; i++) {
+        const BmapDraw *dr = &s->d[i];
+
+        if (dr->cull != 1 || dr->billboard || dr->first + dr->count > s->nv) {
+            continue;
+        }
+        for (j = 0; j + 2 < dr->count; j += 3) {
+            const BmapVertex *p = &s->v[dr->first + j];
+            float n[3], len;
+            Ob *o = &ob[p->obj];
+            int q;
+
+            if (p->obj == 0) {
+                continue;
+            }
+            TRI_N(p, n, len);
+            for (q = 0; q < 3; q++) {
+                float c[3] = { p[q].x, p[q].y, p[q].z };
+                int a;
+
+                for (a = 0; a < 3; a++) {
+                    if (!o->any || c[a] < o->lo[a]) o->lo[a] = c[a];
+                    if (!o->any || c[a] > o->hi[a]) o->hi[a] = c[a];
+                }
+                o->any = 1;
+            }
+            if (n[2] > 0.0f) {
+                o->south += n[2] * 0.5f;        /* the area it shows a camera to its south */
+            } else {
+                o->north -= n[2] * 0.5f;
+            }
+            (void)len;
+        }
+    }
+    for (i = 0; i < nd0; i++) {
+        const BmapDraw *dr = &s->d[i];
+
+        if (dr->cull != 1 || dr->billboard || dr->first + dr->count > s->nv) {
+            continue;
+        }
+        for (j = 0; j + 2 < dr->count; j += 3) {
+            const BmapVertex *p = &s->v[dr->first + j];
+            const Ob *o = &ob[p->obj];
+            float n[3], len;
+
+            if (p->obj == 0 || o->hi[1] - o->lo[1] < 8.0f || o->south < 64.0f || o->north > 0.2f * o->south) {
+                continue;
+            }
+            TRI_N(p, n, len);
+            if (len > 0.0f && n[2] / len > 0.3f) {
+                extra += 3;
+            }
+        }
+    }
+    v = extra > 0 ? (BmapVertex *)realloc(s->v, (s->nv + extra + 1u) * sizeof *v) : NULL;
+    d = v != NULL ? (BmapDraw *)realloc(s->d, (s->nd * 2u + 1u) * sizeof *d) : NULL;
+    if (v != NULL) {
+        s->v = v;
+    }
+    if (d == NULL) {
+        free(ob);
+        return;
+    }
+    s->d = d;
+    at = s->nv;
+    for (i = 0; i < nd0; i++) {
+        BmapDraw nw = s->d[i];
+        unsigned first = at;
+
+        if (nw.cull != 1 || nw.billboard || nw.first + nw.count > s->nv) {
+            continue;
+        }
+        for (j = 0; j + 2 < nw.count; j += 3) {
+            const BmapVertex *p = &s->v[nw.first + j];
+            const Ob *o = &ob[p->obj];
+            float n[3], len, cx, cz;
+            int q;
+
+            if (p->obj == 0 || o->hi[1] - o->lo[1] < 8.0f || o->south < 64.0f || o->north > 0.2f * o->south) {
+                continue;
+            }
+            TRI_N(p, n, len);
+            if (!(len > 0.0f && n[2] / len > 0.3f)) {
+                continue;
+            }
+            cx = o->lo[0] + o->hi[0];
+            cz = o->lo[2] + o->hi[2];
+            for (q = 0; q < 3; q++) {
+                BmapVertex *w = &s->v[at + (unsigned)q];
+
+                *w = p[q];
+                w->x = cx - p[q].x;
+                w->z = cz - p[q].z;
+                w->r = (unsigned char)(p[q].r * 85 / 100);
+                w->g = (unsigned char)(p[q].g * 85 / 100);
+                w->b = (unsigned char)(p[q].b * 85 / 100);
+            }
+            at += 3;
+        }
+        if (at > first) {
+            nw.first = first;
+            nw.count = at - first;
+            nw.grass = 0;
+            s->d[s->nd++] = nw;
+            made++;
+        }
+    }
+    s->nv = at;
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        unsigned k2, nobj = 0;
+
+        for (k2 = 1; k2 <= maxobj; k2++) {
+            const Ob *o = &ob[k2];
+
+            nobj += o->any && o->hi[1] - o->lo[1] >= 8.0f && o->south >= 64.0f && o->north <= 0.2f * o->south;
+        }
+        fprintf(stderr, "bmap: backs made for %u objects, %u triangles in %u draws\n", nobj, extra / 3, made);
+    }
+#undef TRI_N
+    free(ob);
+}
+
+/* Research (BMAP_DEBUG_BACK=1): the other side of every one-sided draw (the
+ * map culls its back faces: a wall seen from behind is not drawn at all) as
+ * plain magenta, so a picture shows where a camera looks at a model from the
+ * side its makers never drew. */
+static void debug_backs(BmapScene *s)
+{
+    unsigned i, j, nd0 = s->nd, extra = 0, at;
+    BmapVertex *v;
+    BmapDraw *d;
+
+    if (getenv("BMAP_DEBUG_BACK") == NULL) {
+        return;
+    }
+    for (i = 0; i < nd0; i++) {
+        if (s->d[i].cull == 1 && !s->d[i].billboard && s->d[i].first + s->d[i].count <= s->nv) {
+            extra += s->d[i].count;
+        }
+    }
+    v = (BmapVertex *)realloc(s->v, (s->nv + extra + 1u) * sizeof *v);
+    if (v == NULL) {
+        return;
+    }
+    s->v = v;
+    d = (BmapDraw *)realloc(s->d, (s->nd * 2u + 1u) * sizeof *d);
+    if (d == NULL) {
+        return;
+    }
+    s->d = d;
+    at = s->nv;
+    for (i = 0; i < nd0; i++) {
+        BmapDraw n = s->d[i];
+
+        if (n.cull != 1 || n.billboard || n.first + n.count > s->nv || n.count < 3) {
+            continue;
+        }
+        for (j = 0; j + 2 < n.count; j += 3) {
+            const BmapVertex *o = &s->v[n.first + j];
+            int q;
+
+            s->v[at + j] = o[0];
+            s->v[at + j + 1] = o[2];
+            s->v[at + j + 2] = o[1];
+            for (q = 0; q < 3; q++) {
+                s->v[at + j + q].r = 255;
+                s->v[at + j + q].g = 0;
+                s->v[at + j + q].b = 255;
+                s->v[at + j + q].a = 255;
+            }
+        }
+        n.first = at;
+        n.count = n.count / 3 * 3;
+        n.tex = -1;
+        n.alpha = 31;
+        n.translucent = 0;
+        n.grass = 0;
+        n.uvanim = 0;
+        s->d[s->nd++] = n;
+        at += n.count;
+    }
+    s->nv = at;
+}
+
+/* Research (BMAP_DUMP=file): the whole scene in map units as the battle is
+ * about to place it: vertices, draws and textures, with the placement chosen. */
+static void scene_dump(const BmapScene *s, const float hdr[6])
+{
+    const char *path = getenv("BMAP_DUMP");
+    FILE *f;
+    unsigned i;
+
+    if (path == NULL || (f = fopen(path, "wb")) == NULL) {
+        return;
+    }
+    fwrite("BMD1", 1, 4, f);
+    fwrite(hdr, sizeof(float), 6, f);
+    fwrite(&s->nv, 4, 1, f);
+    fwrite(&s->nd, 4, 1, f);
+    fwrite(&s->nt, 4, 1, f);
+    fwrite(s->clear, 1, 3, f);
+    fwrite(s->fog, 1, 3, f);
+    {
+        unsigned char on = (unsigned char)s->fog_on, pad = 0;
+
+        fwrite(&on, 1, 1, f);
+        fwrite(&pad, 1, 1, f);
+    }
+    fwrite(&s->fog_start, sizeof(float), 1, f);
+    fwrite(&s->fog_end, sizeof(float), 1, f);
+    for (i = 0; i < s->nv; i++) {
+        const BmapVertex *v = &s->v[i];
+
+        fwrite(&v->x, sizeof(float), 5, f);
+        fwrite(&v->r, 1, 4, f);
+        fwrite(&v->obj, 4, 1, f);
+    }
+    for (i = 0; i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+        unsigned char b[8] = { d->alpha, d->cull, d->translucent, d->billboard, d->far, d->grass, 0, 0 };
+
+        fwrite(&d->tex, 4, 1, f);
+        fwrite(&d->first, 4, 1, f);
+        fwrite(&d->count, 4, 1, f);
+        fwrite(b, 1, 8, f);
+        fwrite(d->pivot, sizeof(float), 3, f);
+    }
+    for (i = 0; i < s->nt; i++) {
+        const BmapTexture *t = &s->t[i];
+        int wh[2] = { t->rgba != NULL ? t->w : 0, t->rgba != NULL ? t->h : 0 };
+        unsigned char b[4] = { t->repeat_s, t->repeat_t, t->flip_s, t->flip_t };
+
+        fwrite(wh, 4, 2, f);
+        fwrite(b, 1, 4, f);
+        if (wh[0] > 0 && wh[1] > 0) {
+            fwrite(t->rgba, 4, (size_t)wh[0] * (size_t)wh[1], f);
+        }
+    }
+    {                                   /* the walk grid, 128 x 128 tiles around the start */
+        int t0[2], x, z;
+
+        t0[0] = (int)floorf(hdr[0] / 16.0f) - 64;
+        t0[1] = (int)floorf(hdr[1] / 16.0f) - 64;
+        fwrite(t0, sizeof(int), 2, f);
+        for (z = 0; z < 128; z++) {
+            for (x = 0; x < 128; x++) {
                 unsigned char t = (unsigned char)bmap_tile(s, (float)(t0[0] + x) * 16.0f + 8.0f,
                                                            (float)(t0[1] + z) * 16.0f + 8.0f);
 
@@ -1237,7 +1540,7 @@ static void corner_grid_make(const BmapScene *s, CornerGrid *g)
         const BmapVertex *v = &s->v[k];
         unsigned b;
 
-        if (v->obj == 0) {
+        if (v->obj == 0 || (v->obj & 0x80000000u) != 0u) {     /* (a completed body: not a card, nor joined to one) */
             continue;
         }
         b = corner_bucket(corner_cell(v->x), corner_cell(v->y), corner_cell(v->z), g->mask);
@@ -1341,7 +1644,7 @@ static void stand_cards(BmapScene *s)
             while (end + 3 <= d->first + d->count && s->v[end].obj == s->v[first].obj) {
                 end += 3;
             }
-            for (a = first; s->v[first].obj != 0 && a < end; a += 3) {
+            for (a = first; s->v[first].obj != 0 && (s->v[first].obj & 0x80000000u) == 0 && a < end; a += 3) {
                 float n[3], dist, n2[3], d2;
                 unsigned b, base = 0;
                 Card c;
@@ -1692,6 +1995,10 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
         const BmapVertex *v = &s->v[t * 3];
         int k;
 
+        if (v->obj & 0x80000000u) {    /* (a completed body: nothing is laid on it, and it has thousands of faces) */
+            level[t] = 0;
+            continue;
+        }
         level[t] = (unsigned char)level_tri(v);
         if (!level[t]) {
             for (k = 0; k < 3; k++) {
@@ -1778,6 +2085,12 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
 
         t = order[i];
         v = &s->v[t * 3];
+        if (v[0].obj & 0x80000000u) {
+            /* research: a completed body's own flat pieces (its shadow) keep the height they were made at.
+             * Laid one triangle at a time, each on whatever lay under its own middle, the pieces of one shadow
+             * ended at different heights and the ground showed through between them as a slit. */
+            continue;
+        }
         if (bmap_tile_encounter(s, (v[0].x + v[1].x + v[2].x) / 3.0f, (v[0].z + v[1].z + v[2].z) / 3.0f)) {
             continue;                   /* the grass's stacked layers: their height is their volume */
         }
@@ -1816,6 +2129,107 @@ out:
     free(fill);
     free(idx);
     free(order);
+}
+
+/*
+ * research: a completed body that rests on the floor (a completion piece of
+ * kind 2: bit 30 of its corners' object number).  The map holds its flat
+ * picture at some height over the floor, another in every room; the body is
+ * made from that picture and so hangs as high.  Each such body (the pieces of
+ * one object) is moved down, or up, as a whole until its lowest corner is on
+ * the highest level surface of the map under its middle: one at most
+ * REST_MAX_H under its foot, and under its top.  In map units, before the
+ * placement.
+ */
+#define REST_MAX_H 10.0f
+
+static void rest_bodies(BmapScene *s)
+{
+    typedef struct { unsigned obj; float lo, hi, x0, x1, z0, z1, best; } Body;
+    Body *b = NULL;
+    unsigned nb = 0, cap = 0, i, j, last = 0;
+
+    for (i = 0; i < s->nv; i++) {
+        const BmapVertex *v = &s->v[i];
+
+        if ((v->obj & 0xC0000000u) != 0xC0000000u) {
+            continue;
+        }
+        if (nb == 0 || b[last].obj != v->obj) {
+            for (j = 0; j < nb && b[j].obj != v->obj; j++) {
+            }
+            if (j == nb) {
+                if (nb == cap) {
+                    Body *nw = (Body *)realloc(b, (cap = cap ? cap * 2 : 16) * sizeof *b);
+
+                    if (nw == NULL) {
+                        free(b);
+                        return;
+                    }
+                    b = nw;
+                }
+                b[nb].obj = v->obj;
+                b[nb].lo = b[nb].x0 = b[nb].z0 = 1e30f;
+                b[nb].hi = b[nb].x1 = b[nb].z1 = b[nb].best = -1e30f;
+                nb++;
+            }
+            last = j;
+        }
+        b[last].lo = fminf(b[last].lo, v->y);
+        b[last].hi = fmaxf(b[last].hi, v->y);
+        b[last].x0 = fminf(b[last].x0, v->x);
+        b[last].x1 = fmaxf(b[last].x1, v->x);
+        b[last].z0 = fminf(b[last].z0, v->z);
+        b[last].z1 = fmaxf(b[last].z1, v->z);
+    }
+    if (nb == 0) {
+        free(b);
+        return;
+    }
+    for (i = 0; i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+        unsigned t;
+
+        if (d->billboard || d->translucent || d->first + d->count > s->nv) {
+            continue;                   /* (a picture, a see-through sheet, a shadow: nothing rests on it) */
+        }
+        for (t = d->first; t + 2 < d->first + d->count; t += 3) {
+            const BmapVertex *u = &s->v[t];
+
+            if ((u->obj & 0x80000000u) || !level_tri(u)) {
+                continue;
+            }
+            for (j = 0; j < nb; j++) {
+                float cx = (b[j].x0 + b[j].x1) / 2.0f, cz = (b[j].z0 + b[j].z1) / 2.0f;
+
+                if (u->y > b[j].best && u->y < b[j].hi - 0.05f && u->y >= b[j].lo - REST_MAX_H && in_tri_xz(u, cx, cz)) {
+                    b[j].best = u->y;
+                }
+            }
+        }
+    }
+    last = 0;
+    for (i = 0; i < s->nv; i++) {
+        BmapVertex *v = &s->v[i];
+
+        if ((v->obj & 0xC0000000u) != 0xC0000000u) {
+            continue;
+        }
+        if (b[last].obj != v->obj) {
+            for (last = 0; b[last].obj != v->obj; last++) {
+            }
+        }
+        if (b[last].best > -1e29f) {
+            /* (a flat sheet lies a hair over the floor, as a floor picture does, so it still draws over it) */
+            v->y += b[last].best - b[last].lo + (b[last].hi - b[last].lo < 0.01f ? DECAL_LIFT : 0.0f);
+        }
+    }
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        for (j = 0; j < nb; j++) {
+            fprintf(stderr, "bmap: resting body %u: foot %.2f, floor %.2f\n", b[j].obj & 0x3FFFFFFFu, b[j].lo, b[j].best);
+        }
+    }
+    free(b);
 }
 
 int bmap_wild_height(const BmapScene *s, float x0, float z0, float x1, float z1, float *y)
@@ -1903,10 +2317,15 @@ void bmap_place_prepare(BmapScene *s, int field)
         return;
     }
     /* the same map for the battle and the editor's free field view */
+    clock_t t0 = clock(), t1, t2;       /* research: where the time goes */
+
     stand_cards(s);
+    t1 = clock();
     if (!field) {
         drop_cave_light(s);
+        fix_backs(s);                   /* research: before the search, which then keeps clear of them */
     }
+    t2 = clock();
     nd0 = s->nd;
     ntri = s->nv / 3 + 1;
     free(s->prep);
@@ -1970,15 +2389,51 @@ void bmap_place_prepare(BmapScene *s, int field)
     }
     /* after the grass: a grass sheet is told by lying flat as a whole, and
      * is laid down (and grown into tufts) by its own rule */
-    lay_decals(s, grass, nd0);
+    {
+        clock_t t3 = clock();
+
+        lay_decals(s, grass, nd0);
+        rest_bodies(s);
+        if (getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: prepare: cards %.0f, light and backs %.0f, grass %.0f, decals %.0f ms\n",
+                    1000.0 * (double)(t1 - t0) / CLOCKS_PER_SEC, 1000.0 * (double)(t2 - t1) / CLOCKS_PER_SEC,
+                    1000.0 * (double)(t3 - t2) / CLOCKS_PER_SEC, 1000.0 * (double)(clock() - t3) / CLOCKS_PER_SEC);
+        }
+    }
 }
 
-void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
+/* Research (BMAP_CAM_YAW="command,intro" degrees): the battle's cameras
+ * turned about the battle's centre, added to the row's own turn (a camera
+ * on the other side of the battle line: about -40,-51). */
+static BmapPlaceSpec research_spec(const BmapPlaceSpec *sp0)
 {
+    BmapPlaceSpec sp = *sp0;
+    const char *e = getenv("BMAP_CAM_YAW");
+    float c = 0.0f, i = 0.0f;
+
+    if (e != NULL && sscanf(e, "%f,%f", &c, &i) >= 1) {
+        sp.cam.yaw += c;
+        sp.intro.yaw += i;
+    }
+    return sp;
+}
+
+void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
+{
+    const BmapPlaceSpec loc = research_spec(sp0), *sp = &loc;
     const double pi = 3.14159265358979323846;
     double a = (double)(sp->facing & 0xFFFFu) * 2.0 * pi / 65536.0;
     float px = sp->px, pz = sp->pz;
     int reach = sp->reach, q;
+    /* research (BMAP_FREE_ANGLE=1): the facing exactly as given, with the
+     * search for a clear spot still on: no turn, no turning round */
+    int free_angle = getenv("BMAP_FREE_ANGLE") != NULL;
+    int no_back = sp->no_back && !free_angle, turn = free_angle ? 0 : sp->turn;
+
+    if (free_angle && getenv("BMAP_FORCE_FACING") != NULL) {
+        /* ... and that facing, whatever the row says (a trainer's row looks at the trainer) */
+        a = (double)((unsigned)atoi(getenv("BMAP_FORCE_FACING")) & 0xFFFFu) * 2.0 * pi / 65536.0;
+    }
 
     g_foe_z = FOE_SZ_GAME - sp->foe_dz;
     for (q = 3; q < N_SIGHT; q++) {
@@ -2020,7 +2475,13 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
         k = (float)atof(getenv("EIDOS_DEBUG_BMAP_K"));
     }
     if (!s->prepared) {
+        clock_t t_prep = clock();
+
         bmap_place_prepare(s, sp->field);
+        if (getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: prepared in %.0f ms (%u triangles)\n", 1000.0 * (double)(clock() - t_prep) / CLOCKS_PER_SEC,
+                    s->nv / 3u);
+        }
     }
     nd0 = s->prep_nd0;
     grass = s->prep;                    /* NULL when its memory ran out */
@@ -2029,7 +2490,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
         px = fminf(fmaxf(px, sp->x0), sp->x1);
         pz = fminf(fmaxf(pz, sp->z0), sp->z1);
     }
-    if (sp->no_back && reach >= 0 && cos(a) < BACK_COS) {
+    if (no_back && reach >= 0 && cos(a) < BACK_COS) {
         /* the battle would look toward the field camera: the same line from
          * its other end, the own Pokemon where the foe would stand */
         float fx, fz;
@@ -2064,12 +2525,12 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
                 if (dist > (float)reach + 0.5f) {
                     continue;
                 }
-                for (n = 0; n <= 2 * sp->turn && n < 8; n++) {
+                for (n = 0; n <= 2 * turn && n < 8; n++) {
                     double an = a + (double)((n + 1) / 2) * ((n & 1) ? 1.0 : -1.0) * pi / 4.0;
                     float cx = px + (float)dx * 16.0f, cz = pz + (float)dz * 16.0f;
                     float sc;
 
-                    if (sp->no_back && cos(an) < BACK_COS) {
+                    if (no_back && cos(an) < BACK_COS) {
                         continue;           /* a turn toward the field camera */
                     }
 
@@ -2118,8 +2579,11 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
                         float cca = (float)cos(an), csa = (float)sin(an), ox, oz, fx, fz, sc;
                         int in = 0;
 
-                        if (sp->no_back && cos(an) < BACK_COS) {
+                        if (no_back && cos(an) < BACK_COS) {
                             continue;       /* toward the field camera */
+                        }
+                        if (free_angle && getenv("BMAP_FORCE_FACING") != NULL && cos(an - a) < 0.99) {
+                            continue;       /* research: the forced facing alone */
                         }
 
                         to_map(0.5f, PLACE_SZ, x, z, cca, csa, k, &ox, &oz);
@@ -2151,6 +2615,8 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
         s->place_k = k;
         th[0] = px; th[1] = pz; th[2] = bx; th[3] = bz; th[4] = (float)ba; th[5] = k;
         topview_dump(s, nd0, 0, th);
+        scene_dump(s, th);
+        debug_backs(s);
         px = bx;
         pz = bz;
         a = ba;
@@ -2162,6 +2628,10 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
         if (getenv("BMAP_PLACE_LOG") != NULL) {
             fprintf(stderr, "bmap: placed at %.0f %.0f angle %.0f scale %.2f score %.1f (%.0f ms)\n", px, pz,
                     a * 180.0 / pi, k, best, 1000.0 * (double)(clock() - t_start) / CLOCKS_PER_SEC);
+            /* research: the sky colour and the fog, for the picture measurements */
+            fprintf(stderr, "bmap: sky %u %u %u fog %d %u %u %u %.0f %.0f draws %u verts %u\n", s->clear[0], s->clear[1],
+                    s->clear[2], s->fog_on, s->fog[0], s->fog[1], s->fog[2], (double)s->fog_start, (double)s->fog_end,
+                    s->nd, s->nv);
         }
     }
     ca = (float)cos(a);
@@ -2237,4 +2707,19 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp)
         grass_grow_fixed(s, grass, nd0, 16.0f * k);
     }
     g_tmask = NULL;                     /* the scene's own (prep) */
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        /* research: how far the placed map's four edges lie from the own slot */
+        float x0 = 0.0f, x1 = 0.0f, z0 = PLACE_SZ, z1 = PLACE_SZ;
+
+        for (i = 0; i < s->nv; i++) {
+            const BmapVertex *v = &s->v[i];
+
+            if (v->y <= -900.0f) {
+                continue;
+            }
+            x0 = fminf(x0, v->x); x1 = fmaxf(x1, v->x); z0 = fminf(z0, v->z); z1 = fmaxf(z1, v->z);
+        }
+        fprintf(stderr, "bmap: edges left %.0f right %.0f far %.0f near %.0f (battle units from the own slot)\n",
+                -x0, x1, PLACE_SZ - z0, z1 - PLACE_SZ);
+    }
 }

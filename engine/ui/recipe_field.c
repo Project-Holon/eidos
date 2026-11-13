@@ -25,8 +25,9 @@
  *                pointer as the stylus, until Close, a right click or B.
  *
  *   field-lower  the field's other lower screens (the Union Room, the
- *                Entralink's map, dowsing): the world, and the game's
- *                lower screen as the same sheet.  The save report has its
+ *                Entralink's map): the world, and the game's lower
+ *                screen as the same sheet; the Dowsing Machine's rods
+ *                on a small card (dowsing_card).  The save report has its
  *                own recipe (engine/ui/recipe_menus.c).
  *
  * The game's state is read the way sdk/mp.c reads it: the game system's
@@ -64,10 +65,11 @@ static int choices_now(const struct FieldNow *f, u8 **list, u8 **win);
 static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const struct FieldNow *f);
 static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in);
 static int power_card(EidosUiCtx *c, const struct FieldNow *f);
+static int dowsing_card(EidosUiCtx *c, const EidosUiFrame *in);
 static void item_card(EidosUiCtx *c, const struct FieldNow *f, int text_up);
 static int item_show_active(void);
 static int cutin_other(const struct FieldNow *f);
-static void cutin_view(EidosUiView *view);
+static void cutin_view(EidosUiView *view, const struct FieldNow *f, int cw, int ch);
 extern void bw_mod_restart(u32 flags) WEAK;
 
 static void title_restart(void *arg)
@@ -1416,6 +1418,18 @@ static int field_text(EidosUiCtx *c, const FieldNow *f)
     if (banner_shown(f)) {
         hide |= 0x8u | 0x10u;           /* the game's banner: BG3, its letters */
     }
+    {
+        static u32 s_last_hide;
+        static int s_hide_hold;
+
+        if (hide != 0) {
+            s_last_hide = hide;
+            s_hide_hold = 2;
+        } else if (s_hide_hold > 0) {
+            hide = s_last_hide;
+            s_hide_hold--;
+        }
+    }
     if (g2d_hw_hide_main_bgs != NULL) {
         g2d_hw_hide_main_bgs(hide);
     }
@@ -1613,23 +1627,29 @@ static int item_show_active(void)
     return g_show.on;
 }
 
-/* The game's cut-in event is running (it, or a task it pushed). */
-static int cutin_running(const FieldNow *f)
+/* The game's cut-in event when it is running (it, or a task it pushed), or
+ * NULL (struct GameEvent: parent, func, seq, work). */
+static const u8 *cutin_event(const FieldNow *f)
 {
     const u8 *ev;
     int i;
 
     if (GAMESYSTEM_GetEvent == NULL || ov021_FLD3D_CI_EventMain == NULL || f->gs == NULL) {
-        return 0;
+        return NULL;
     }
     ev = (const u8 *)GAMESYSTEM_GetEvent(f->gs);
     for (i = 0; i < 4 && ev != NULL; i++) {
         if (*(void *const *)(ev + sizeof(void *)) == (void *)ov021_FLD3D_CI_EventMain) {
-            return 1;
+            return ev;
         }
         ev = *(const u8 *const *)ev;
     }
-    return 0;
+    return NULL;
+}
+
+static int cutin_running(const FieldNow *f)
+{
+    return cutin_event(f) != NULL;
 }
 
 /*
@@ -1867,13 +1887,43 @@ static int cutin_other(const FieldNow *f)
     return !g_show.on && !g_mon_show.on && cutin_running(f);
 }
 
-static void cutin_view(EidosUiView *view)
+static void cutin_view(EidosUiView *view, const FieldNow *f, int cw, int ch)
 {
+    /* The game's own steps (FLD3D_CI_EventMain's state, the event's seq):
+     * 0 fades the field to white, 2 and 3 capture the screen, 4 loads the
+     * sequence and halves the capture's colours when the sequence says so
+     * (Fld3dCiEventWork.seq.darkenScreen, at +0x34 of the event's work),
+     * 5 fades in, 7 plays, 8 ends the sequence and draws the field again.
+     * A step's number is the one the game runs next. */
+    const u8 *ev = cutin_event(f);
+    u32 step = ev != NULL ? rd32(ev + 2 * sizeof(void *)) : 0;
+    const u8 *work = ev != NULL ? rdp(ev + 2 * sizeof(void *) + 4) : NULL;
+    /* The DS screen's width over the window's: a 16:9 window shows the
+     * banner as the DS does, edge to edge.  Not past that (on a wider
+     * window the banner's top would leave the window), and no bigger on a
+     * window taller than the DS screen (there the DS picture already fills
+     * the width; a bigger one cut both trainers off). */
+    float zc = (cw > 0 && ch > 0) ? (float)((double)cw / (double)ch / (4.0 / 3.0)) : 1.0f;
+    if (zc < 1.0f) {
+        zc = 1.0f;
+    } else if (zc > 4.0f / 3.0f) {
+        zc = 4.0f / 3.0f;
+    }
+    /* the bigger picture from the capture on: the screen is white then, so
+     * the field is not seen to change size (it did, for the frames of the
+     * fade, and that bigger field was then kept as the picture behind);
+     * and no longer once the game draws the field again */
+    if (step >= 2u && step <= 8u) {
+        view->zoom = zc;
+    }
     view->hide_2d = 0;
     view->cap_mix = 0;
     view->stretch = 0;
     view->hold_world = 0;
-    view->held_backdrop = 1;
+    /* the kept picture as the game shows its capture: halved (1) once the
+     * game has darkened it, as it is (2) before that and for a sequence
+     * that does not darken */
+    view->held_backdrop = (step >= 5u && work != NULL && rd32(work + 0x34) != 0u) ? 1 : 2;
 }
 
 /*
@@ -2481,7 +2531,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     FieldNow f;
     int cw = c->canvas->w, ch = c->canvas->h;
     const int bh = 16;
-    char place[64], clock[8];
+    char place[64], clock[8], s_m[4];
     u32 zone = 0, t3[3] = { 0, 0, 0 };
     int have_time = 0, comm = 0, last_cmd = 0;
     EidosUiRect bar;
@@ -2508,7 +2558,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->stretch = encounter_effect();
         if (cutin_other(&f)) {
             /* a cut-in as the battle starts (the VS banner) */
-            cutin_view(view);
+            cutin_view(view, &f, cw, ch);
         }
         return;
     }
@@ -2586,7 +2636,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         view->hold_world = 1;
     } else if (cutin_other(&f)) {
         /* another cut-in (a VS banner) */
-        cutin_view(view);
+        cutin_view(view, &f, cw, ch);
     }
     choosing = !plain_field() && field_choices(c, in, &f);
     if (g_shortcut_open) {
@@ -2650,8 +2700,8 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             t3[2] = (u32)tmv->tm_sec;
         }
     }
-    snprintf(clock, sizeof(clock), "%02u%c%02u", t3[0] % 100u, (t3[2] & 1u) ? ' ' : ':',
-             t3[1] % 100u);
+    snprintf(clock, sizeof(clock), "%02u", t3[0] % 100u);
+    snprintf(s_m, sizeof(s_m), "%02u", t3[1] % 100u);
     if (f.panel != NULL && (f.mode == 0 || f.mode == 8)) {
         comm = f.panel[0x45A] != 0;
         last_cmd = (int)rd32(f.panel + 0x218);
@@ -2678,8 +2728,13 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     tab_w = ui_text_w("00:00", UI_FONT_LARGE) + 24;
     tab_l = cw / 2 - tab_w / 2;
     tab_r = cw / 2 + tab_w / 2;
-    x = tab_r + 6 + small_button_w("Menu", "X");
-    st = small_button(c, &x, 0, "Menu", bh, "X");
+    {
+        /* with the Dowsing Machine on, X puts it away and no menu opens */
+        const char *menu = f.mode == 6 ? "Close" : "Menu";
+
+        x = tab_r + 6 + small_button_w(menu, "X");
+        st = small_button(c, &x, 0, menu, bh, "X");
+    }
     if (st & EIDOS_UI_CLICK) {
         open_menu = 1;
     }
@@ -2789,8 +2844,23 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     /* the middle: the time on its slanted tab */
     bar_trapezoid(c, cw / 2, tab_w, bh - 1, st_bar & EIDOS_UI_HOVER);
-    ui_text(c, cw / 2 - ui_text_w(clock, UI_FONT_LARGE) / 2,
-            ui_text_y(bh - 1, UI_FONT_LARGE), clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+    {
+        /* Clock: hours and minutes at fixed anchored positions so the
+         * digits never drift when the colon blinks.  The colon sits at
+         * the centre of the tab; h is to its left, m to its right. */
+        int colon_w = ui_text_w(":", UI_FONT_LARGE);
+        int h_w     = ui_text_w(clock, UI_FONT_LARGE);
+        int cy      = ui_text_y(bh - 1, UI_FONT_LARGE);
+        int colon_x = cw / 2 - colon_w / 2;
+        int h_x     = colon_x - h_w;          /* (the letters' own spacing, as "12:34" in one piece) */
+        int m_x     = colon_x + colon_w;
+
+        ui_text(c, h_x, cy, clock, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, m_x, cy, s_m,   UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        if ((t3[2] & 1u) == 0) {
+            ui_text(c, colon_x, cy, ":", UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        }
+    }
     ui_pop(c, 0, -g_bar_slide, &saved_clip);
     if (g_bar_slide > 0) {
         return;                             /* no clicks while it moves     */
@@ -2893,7 +2963,7 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
     own = plain_field() ? 0 : (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
-          || (f.mode == 9 && power_card(c, &f));
+          || (f.mode == 9 && power_card(c, &f)) || (f.mode == 6 && dowsing_card(c, in));
     if (own && f.mode == 9) {
         /* the game's banner on the top screen points at the lower one */
         view->hide_2d = 1;
@@ -2901,6 +2971,52 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The Dowsing Machine                                                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The Dowsing Machine (mode 6, ov033 dowsing.c): its rods, cut from the
+ * game's lower screen, on a small card at the top right under the bar,
+ * clear of the player in the middle of the window (the whole screen as a
+ * sheet covered them).  The game closes it with X (the bar's button says
+ * Close meanwhile) or a tap on its cross: the card's Close button taps the
+ * cross.
+ *
+ * The cut is the grid inside the game's frame.  Over the machine's eight
+ * directions and "found" the rods, the arrow and the mark use x 18..237 and
+ * y 34..157 of the screen; the frame's top tab ends at row 28, its sides
+ * start at columns 11 and 239, and its bottom tab starts at row 155, where
+ * its tip (x 108..147) stands between the rods' lowest ends.  That tip is
+ * covered with the grid's own pixels: the grid is one 8 x 8 tile, so a
+ * place nothing ever covers (x 20, y 35), a whole number of tiles away,
+ * shows the same pixels.
+ */
+static int dowsing_card(EidosUiCtx *c, const EidosUiFrame *in)
+{
+    const int sx = 17, sy = 30, w = 222, h = 130, head = 16;
+    const int tab_x = 108, tab_y = 155, tab_w = 40, grid_x = 20, grid_y = 35;
+    int cw = c->canvas->w, x, y, bx;
+
+    if (in->screen_rgba[1] == NULL || cw < w + 16) {
+        return 0;
+    }
+    x = cw - w - 10;
+    y = 16 + 6;
+    ui_panel(c, x - 4, y - 2, w + 8, head + h + 6, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 240);
+    ui_text(c, x + 4, y + ui_text_y(head, UI_FONT_SMALL), "DOWSING MCHN", UI_WHITE, UI_EDGE,
+            UI_FONT_SMALL, 1);
+    bx = x + w;
+    if (small_button(c, &bx, y, "Close", head - 2, NULL) & EIDOS_UI_CLICK) {
+        eidos_ui_tap(0xF0, 0xB0, 3);
+    }
+    ui_fill(c, x - 1, y + head - 1, w + 2, h + 2, UI_INK, 255);
+    ui_blit_screen(c, x, y + head, in->screen_rgba[1], sx, sy, w, h, 1, 0);
+    ui_blit_screen(c, x + tab_x - sx, y + head + tab_y - sy, in->screen_rgba[1], grid_x, grid_y, tab_w,
+                   sy + h - tab_y, 1, 0);
+    return 1;
 }
 
 /* ------------------------------------------------------------------ */

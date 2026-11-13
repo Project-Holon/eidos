@@ -3,6 +3,18 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.6
+
+### One-Screen Mode & UI
+- **Real-Map Battles, Solid Objects**: Rocks, the living rooms' pouffes, the Dreamyard's bottles, the warp pads, the Pokémon League's plaza gate and the Relic Castle's vases are bodies in battles on the real map instead of flat pictures, each with a shadow drawn the way the game draws a Pokémon's.
+- **Real-Map Battles, The Field As It Is**: A battle on the real map now shows the field's moving objects as you left them: a gym's opened curtains and switched devices, pushed boulders, Chargestone Cave's floating stones, the League's light pillars.
+- **Real-Map Battles, Sea & Distance**: The sea continues past the edge of the map instead of ending in a straight line, and the scenery no longer fades into the sky colour in the distance.
+- **Dowsing Machine**: The Dowsing Machine's rods now show on a small card at the top right instead of the whole lower screen, which hid the player in 4:3 and tall windows; the top bar's `Menu` button reads `Close` while the machine is on, thanks @aqali1 (#36).
+
+### Fixes
+- **Menu Speed**: Fixed the game and its music running at twice their speed for a moment each time a pause-menu entry opened or closed in one-screen mode.
+- **Move Name Colours**: Fixed battle messages colouring the start of a Pokémon's name that reads like a move ("Charm" in "Charmander", "Dig" in "Diglett used Dig!") instead of the move itself, thanks @aqali1 (#35).
+
 ## 0.2.5
 
 ### One-Screen Mode & UI
@@ -10,6 +22,8 @@ Each release's notes on GitHub start with its section here
 - **Style Chooser & Live Preview**: Prompt to select a UI style on first launch (reopenable anytime from the title menu with `SELECT`). Includes an interactive preview mode that lets you test the X menu, party, Bag, and battles across styles using a built-in in-memory save without touching your actual save file.
 - **Held Item Indicators**: Pokémon holding an item or Mail now display the native held-item or envelope icon in the party screen and battle Pokémon list.
 - **Animated Pokémon Sprites**: Fixed multi-part animated Pokémon sprites in the Pokédex and other screens so the full rig animation plays properly instead of looping only the first segment or drifting apart.
+- **Cut-in Overlays**: Trainer `VS` banners and the other field cut-ins fill the window as the DS frames them (up to 16:9) over the field's own sharp picture; fixed dark side strips on cut-ins that do not darken the screen, thanks @TbangIT (#34).
+- **Top Bar Clock**: Fixed the clock's digits shifting each time the colon blinks (#34).
 
 ### Engine & Performance
 - **Frame Time Reduction**: Reduced CPU frame times by roughly 50% across all renderers while keeping video and audio output bit-for-bit identical (38–66% faster in the overworld and battles on Windows across OpenGL, Direct3D 12, and Vulkan; ~50% faster in Switch emulation).
@@ -18,8 +32,12 @@ Each release's notes on GitHub start with its section here
 - **UI Alpha Blending**: Optimized translucent panel and fill rendering to blend whole scanlines without per-pixel division.
 - **File Lookup Caching**: Cache virtual filesystem path resolution (base data vs. mod overrides) with a 1-second TTL so newly added mod files are still picked up at runtime without per-frame stat overhead.
 - **Audio Mixer**: Skip silent audio channels during mixing.
+- **Title Screen**: Reduced `Press Start` frame work by about a quarter in one-screen mode by skipping 2D composition that nothing shows and caching the scaled logo (#34).
 
 ### Fixes
+- **Fast Forward**: Fixed `Tab` triggering fast forward during `Alt+Tab` and other window-switching shortcuts (#34).
+- **Sound Sequences**: A sequence prepared ahead of its start now reports as playing, as on the DS, so the game cannot drop it before it starts (#34).
+- **Text Colours**: A message with coloured words keeps the game's default ink for the rest of its text (#34).
 - **Elevators**: Fixed elevator floor menus only listing "Cancel" (#33).
 - **Bag Crash**: Fixed a crash when using a second Potion from the overworld Bag (#33).
 - **Town Map**: Removed the Fly prompt when opening the Town Map as a key item (#33).

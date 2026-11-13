@@ -43,6 +43,7 @@ VSOut vs_main(VSIn i)
         float3 d = i.pos - pivot.xyz;
         q = pivot.xyz + x * d.x + y * d.y + z * d.z;
     }
+    q.y += pivot.w;     // a moving object's rise this frame
     float4 p = float4(q, 1.0);
     o.wpos = q;
     // the draw's texture animation this frame (identity: none)
@@ -59,8 +60,6 @@ VSOut vs_main(VSIn i)
 cbuffer FragmentUniforms : register(b0, space3)
 {
     float4 feye;
-    float4 atm;
-    float4 sky;
     float4 fog;
     float4 fogc;
     int4 flags;         // textured, front pass, Pokemon count
@@ -111,11 +110,6 @@ FSOut fs_main(VSOut i)
     if (fog.z > 0.0) {
         float ff = clamp((length(i.wpos.xz - fog.xy) - fog.z) / fog.w, 0.0, 1.0);
         c.rgb = lerp(c.rgb, fogc.rgb, ff);
-    }
-    if (atm.w > 0.0) {
-        // the far part fades into the sky before the map ends
-        float ff = smoothstep(atm.z, atm.w, length(i.wpos.xz - atm.xy));
-        c.rgb = lerp(c.rgb, sky.rgb, ff);
     }
     o.color = float4(c.rgb * a, a);
     o.id = 0.0;

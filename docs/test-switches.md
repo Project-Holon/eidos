@@ -15,7 +15,7 @@ game. The code is in `engine/ui/ui.c` unless noted.
 | `EIDOS_DEBUG_HELD="item,item,..."` | What the party's members hold, in the party's order (0 leaves a member as it is). Set once the field runs, after `EIDOS_DEBUG_PARTY`'s party. Item 137 to 148 are the Mail items. |
 | `EIDOS_DEBUG_MOVES="member:move:slot,..."` | Teaches moves. |
 | `EIDOS_DEBUG_BATTLE="trainer ID"` | Starts that trainer's battle once the field is quiet, with the trainer's own rule (single, double, triple or rotation: trainer 18 is a double, 615 a rotation). A loss whites the player out, as after a wild battle. |
-| `EIDOS_DEBUG_OPEN="KIND ..."` | Opens a screen once the field is quiet: `relearn P` (the move relearner for party member P), `namein` (the game's free-text name entry, the beacon message's), `demo K` (3D demo K, 1 to 18: 1 the Royal Unova, 3 the Nimbasa Ferris wheel), `trade N M`, `clear N`, `box N`, `tvt N`, `union`, `ltrade`, `makeegg P`, `egg P`. |
+| `EIDOS_DEBUG_OPEN="KIND ..."` | Opens a screen once the field is quiet: `relearn P` (the move relearner for party member P), `namein` (the game's free-text name entry, the beacon message's), `demo K` (3D demo K, 1 to 18: 1 the Royal Unova, 3 the Nimbasa Ferris wheel), `trade N M`, `clear N`, `box N`, `tvt N`, `union`, `ltrade`, `makeegg P`, `egg P`, `dowsing` (the Dowsing Machine on the lower screen, as using the item does). |
 | `EIDOS_DEBUG_BATTLE="wild SPECIES LEVEL"` | Starts a scripted wild battle. A loss has no script to end it and the game goes back to the title: use a trainer battle to test a whiteout. |
 | `EIDOS_DEBUG_WARP="zone x y z dir"` | Warps the player when the field runs. |
 | `EIDOS_DEBUG_CUTIN="item N"`, `"seq N"` or `"mon P"` | Starts a field cut-in as the scripts do, after 90 quiet field frames (a third number sets the frames): a key item's (its item id), a sequence by its id (2 and 4 to 10 are the badges), or party member P's field-move cut-in. |
@@ -56,8 +56,18 @@ holds the move steps (their frames then count from when it opens), and
 | `EIDOS_GL_STATE=N` | At the Nth present, logs the presenter's GL state (viewport, scissor, framebuffer, the screens' rectangles), how far a full-window clear reaches and which columns the frame lights (`engine/platform/plat_gl.c`). |
 | `EIDOS_EVENT_LOG=1` | Logs the running game event's chain whenever it changes, as offsets from `GAMESYSTEM_GetEvent`: add the offset to that function's address in `nm` of the program to name each event. Finds which code runs a scene. |
 | `EIDOS_OVERLAY_LOG=1` | Logs each overlay load and unload with its frame (`sdk/overlay.c`). |
+| `EIDOS_LIVE_LOG=1` | Logs the field's moving objects (id, object code, place) once in each zone, and each 3D object the field draws that the battle map takes over (`engine/ui/ui.c`, `sdk/battle_view.c`). |
+| `EIDOS_NO_REMADE=1` | The battle map keeps every model as the map has it: no remade models (`docs/battle-backdrop.md`). For comparing. |
+| `BMAP_MODEL_LOG=1` (or `all`) | Logs each building model the battle map places near the player (`all`: the far ones too), with its place and whether it is remade. |
+| `BMAP_PLACE_LOG=1` | Logs the battle map's placement: timings of its stages, the live objects, the bodies stood on the floor. |
+| `BMAP_REMADE_DUMP=DIR` | Writes what each builder of a remade model made as `DIR/<model>.bmc`, for comparing two builds triangle by triangle. |
+| `BMAP_DUMP=FILE`, `BMAP_MODELS_DUMP=DIR` | Research: write the whole battle scene, or every building model standing alone, for tools outside the game. |
+| `BMAP_DEBUG_BACK=1` | Research: paints the never-drawn side of every one-sided draw magenta. |
+| `BMAP_CAM_YAW=DEG`, `BMAP_FORCE_FACING`, `BMAP_FREE_ANGLE` | Research: turn the battle cameras or fix the placement's facing. |
+| `BMAP_FIX_BACKS=1`, `BMAP_JOIN=...`, `BMAP_JOIN_MODE=...` | Research, not for use: tries that were shelved (`docs/research/battle-real-map-2026-11.md`). |
 | `EIDOS_DEBUG_WHERE=1` | Logs the player's zone and position once the field runs, as an `EIDOS_DEBUG_WARP` value: a test can then start from that spot with any save. |
 | `EIDOS_FLASH_WATCH=0` | Turns off the flash watch (on by default, #5): when one frame of the upper screen's picture differs strongly from the frames on both sides while those agree, the three frames' 2D state goes to `eidos_flash.log` in the saves folder and the first six events' pictures to `eidos_flash_<n>_<a,b,c>.png` beside it. Only three frames in a row count, so fast forward logs nothing. |
+| `EIDOS_TEXTURE_DUMP=1` | Writes each new 3D texture to `textures/dump/<hash>.png` (once per texture), the originals a texture pack is made from: a file of the same name in `textures/`, at a whole multiple of the size, replaces it while HD textures is Pack or Auto. |
 | `EIDOS_FLASH_TEST=N` | Draws garbage tiles over the upper half of the first picture from frame N, to check the flash watch. |
 | `EIDOS_AUDIO_WAV=FILE` | With `EIDOS_NO_AUDIO=1`, writes the game's sound to a WAV (16-bit stereo, 32768 Hz). Each frame writes its own share, so the sound lines up with `--screenshot` frames at any speed: frame N starts at N x 560190 / 33513982 s. |
 

@@ -17,7 +17,7 @@
 #
 
 cmake_minimum_required(VERSION 3.16)
-project(eidos VERSION 0.2.4 LANGUAGES C)
+project(eidos VERSION 0.2.5 LANGUAGES C)
 
 # The version players and the lobby see (docs/distribution.md).  A release
 # build (EIDOS_RELEASE=ON, the release workflow) is the plain number; any
@@ -868,6 +868,15 @@ set(BW_ENGINE_SOURCES
     # engine/world/ -- the overworld map as a lit, textured mesh (battle backdrop).
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c  # zone -> chunks -> world-space mesh
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_gimmick.c  # the gym puzzles' models
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_remade.c  # the remade models: which model, which builder
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/common.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/cushion.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/bottles.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/disc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/gate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/floor.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c
 
     # engine/audio/ -- the SDAT sequencer and mixer, the host's stand-in for
     # the ARM7 sound core.  No SDL here either: the platform layer's audio
@@ -2706,6 +2715,15 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_place.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_spots.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_gimmick.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_remade.c  # the remade models: which model, which builder
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/common.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/cushion.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/bottles.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/disc.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/gate.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/floor.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_npc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bcam_sim.c
@@ -2736,6 +2754,15 @@ if(EIDOS_SDL_FOUND)
     add_executable(bmap_npc_dump EXCLUDE_FROM_ALL ${CMAKE_CURRENT_SOURCE_DIR}/demo/bmap_npc_dump.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_npc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_gimmick.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_remade.c  # the remade models: which model, which builder
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/common.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/cushion.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/bottles.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/disc.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/gate.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/floor.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
     target_include_directories(bmap_npc_dump PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world
@@ -3052,7 +3079,16 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
         ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_view.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_place.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_spots.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_gimmick.c)
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_gimmick.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_remade.c  # the remade models: which model, which builder
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/common.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/cushion.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/bottles.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/disc.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/gate.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/floor.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c)
     target_sources(eidos_boot PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
     target_include_directories(eidos_boot PRIVATE
@@ -3061,6 +3097,7 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world)
     target_link_options(eidos_boot PRIVATE
         "-Wl,--wrap=G3D_SYSTEM_DrawObject"
+        "-Wl,--wrap=G3D_SYSTEM_DrawObjectCulling"
         "-Wl,--wrap=G3D_CAMERA_Reset"
         "-Wl,--wrap=MCSS_Draw")
 endif()

@@ -45,6 +45,7 @@
 
 #include "bmap.h"
 #include "bmap_gimmick.h"
+#include "bmap_remade.h"
 #include "port.h"
 #include "types.h"
 
@@ -455,6 +456,7 @@ typedef struct {
     char tex[17], pal[17];
     int has_tex, has_pal;
     unsigned alpha, cullbits;
+    unsigned polymode;      /* the hardware's polygon mode: 3 is a shadow volume, not a surface */
     int vertex_color;
     int repeat[2], flip[2];
     float diffuse[3], ambient[3], emission[3];
@@ -745,6 +747,7 @@ static int parse_materials(Model *md)
         dict_name(&d, i, mt->name);
         mt->cullbits = (poly >> 6) & 3u;
         mt->alpha = (poly >> 16) & 31u;
+        mt->polymode = (poly >> 4) & 3u;
         mt->vertex_color = (diff_amb & 0x8000u) != 0u;
         mt->repeat[0] = (tex & 0x10000u) != 0u;
         mt->repeat[1] = (tex & 0x20000u) != 0u;
@@ -1106,7 +1109,7 @@ typedef struct { float p[3][3]; u8 water, placed; } GTri;
 /* One chunk's walk grid (bmap_tile): a class per tile, BMAP_TILE_*. */
 typedef struct { int cx, cz; u8 cls[32 * 32]; } WalkChunk;
 
-typedef struct { int tex; u8 alpha, cull, translucent; int bb; float pivot[3]; u8 far; unsigned short uvanim; } TriTag;
+typedef struct { int tex; u8 alpha, cull, translucent; int bb; float pivot[3]; u8 far; unsigned short uvanim; u8 bob; } TriTag;
 
 typedef struct {
     ArcSlot arcs[16];
@@ -1133,9 +1136,20 @@ typedef struct {
     WalkChunk *walk;            /* the near chunks' walk grids               */
     size_t nwalk, walk_cap;
     unsigned obj;           /* the object add_model is adding (0: ground)  */
+    u8 cur_bob;             /* the triangles being added rise and fall (a live object) */
+    float bob_y[BMAP_BOB_MAX];
+    unsigned bob_n;
     BmapUvAnim *uva;        /* the texture animations, and what each is of */
     const u8 **uva_key;
     size_t nuva, uva_cap;
+    /* research (BMAP_JOIN): other zones' maps laid beside this one (see add_tri_research) */
+    struct {
+        unsigned zone;
+        float a[3], b[2], cs, sn;   /* the joined map's point b lies on this map's point a, turned about it */
+        float l[2], n[2], width;    /* the line between the two (a point, the joined map's side), the strip's half width (0: no limit) */
+    } joins[8];
+    int njoin, join_mode;           /* what both maps draw: 0 cut at the line, 1 whole objects go, 2 nothing goes */
+    int join_cur;                   /* -1: this map's own triangles; >= 0: that join's; -2: neither (added after) */
 } Ctx;
 
 static ArcSlot *arc_get(Ctx *c, const char *path)
@@ -1723,7 +1737,244 @@ static unsigned short uv_anim(Ctx *c, const BldAnim *an, const char *name)
     return 0;
 }
 
+static int add_tri_raw(Ctx *c, const BmapVertex t[3], const TriTag *tag, const float pos[3][3], int ground, int level_ok);
+
+/*
+ * Research (BMAP_JOIN): the map a door leads to, laid beside this one.
+ *
+ * Both maps draw the ground round the door, each in its own way (a street's
+ * map goes on past its door with a stub of road and a picture of a skyline;
+ * the plaza's map has a thin passage where the street is).  What happens to
+ * that doubled part is BMAP_JOIN_MODE:
+ *   line    both maps are cut at the door's line: this map ends there, the
+ *           joined one begins there (inside the strip's width, when it has one)
+ *   whole   nothing is cut through: an object (a building, a tree) goes or
+ *           stays as a whole, by its middle; only the ground is cut at the line
+ *   none    nothing goes: both maps as they are
+ */
+static float jn_d(const Ctx *c, int j, float x, float z)        /* over 0: the joined map's side of the line */
+{
+    return (x - c->joins[j].l[0]) * c->joins[j].n[0] + (z - c->joins[j].l[1]) * c->joins[j].n[1];
+}
+
+static float jn_l(const Ctx *c, int j, float x, float z)        /* along the line, from its point */
+{
+    return -(x - c->joins[j].l[0]) * c->joins[j].n[1] + (z - c->joins[j].l[1]) * c->joins[j].n[0];
+}
+
+/* Does this map's own point lie where a joined map takes over? */
+static int jn_base_gone(const Ctx *c, float x, float z)
+{
+    int j;
+
+    for (j = 0; j < c->njoin; j++) {
+        if (jn_d(c, j, x, z) > 0.0f && (c->joins[j].width <= 0.0f || fabsf(jn_l(c, j, x, z)) < c->joins[j].width)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Does a joined map's point (in this map's frame) lie in its own part? */
+static int jn_join_kept(const Ctx *c, int j, float x, float z)
+{
+    return jn_d(c, j, x, z) >= 0.0f && (c->joins[j].width <= 0.0f || fabsf(jn_l(c, j, x, z)) <= c->joins[j].width);
+}
+
+/* The part of a polygon where ax * x + az * z + k >= 0 (at most one corner more). */
+static int jn_clip(const BmapVertex *in, int n, BmapVertex *out, float ax, float az, float k0)
+{
+    int i, m = 0;
+
+    for (i = 0; i < n; i++) {
+        const BmapVertex *p = &in[i], *q = &in[(i + 1) % n];
+        float dp = ax * p->x + az * p->z + k0, dq = ax * q->x + az * q->z + k0;
+
+        if (dp >= 0.0f) {
+            out[m++] = *p;
+        }
+        if ((dp >= 0.0f) != (dq >= 0.0f)) {
+            float f = dp / (dp - dq);
+            BmapVertex v = *p;
+
+            v.x += f * (q->x - p->x); v.y += f * (q->y - p->y); v.z += f * (q->z - p->z);
+            v.u += f * (q->u - p->u); v.v += f * (q->v - p->v);
+            v.r = (u8)(p->r + f * ((float)q->r - (float)p->r) + 0.5f);
+            v.g = (u8)(p->g + f * ((float)q->g - (float)p->g) + 0.5f);
+            v.b = (u8)(p->b + f * ((float)q->b - (float)p->b) + 0.5f);
+            out[m++] = v;
+        }
+    }
+    return m;
+}
+
+static int jn_emit(Ctx *c, const BmapVertex *p, int n, const TriTag *tag, int ground, int level_ok)
+{
+    int i, k;
+
+    for (i = 1; i + 1 < n; i++) {
+        BmapVertex t[3];
+        float wp[3][3];
+
+        t[0] = p[0]; t[1] = p[i]; t[2] = p[i + 1];
+        for (k = 0; k < 3; k++) {
+            wp[k][0] = t[k].x; wp[k][1] = t[k].y; wp[k][2] = t[k].z;
+        }
+        if (add_tri_raw(c, t, tag, (const float (*)[3])wp, ground, level_ok) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+#define JN_CORNERS 16
+#define JN_PIECES 48
+
+static int add_tri_research(Ctx *c, const BmapVertex t[3], const TriTag *tag, int ground, int level_ok)
+{
+    BmapVertex v[3];
+    TriTag tg = *tag;
+    int k, j = c->join_cur;
+
+    memcpy(v, t, sizeof v);
+    if (j >= 0) {
+        /* a joined map's triangle: to its place in this map's frame */
+        for (k = 0; k < 3; k++) {
+            float dx = t[k].x - c->joins[j].b[0], dz = t[k].z - c->joins[j].b[1];
+
+            v[k].x = c->joins[j].a[0] + c->joins[j].cs * dx - c->joins[j].sn * dz;
+            v[k].y = t[k].y + c->joins[j].a[1];
+            v[k].z = c->joins[j].a[2] + c->joins[j].sn * dx + c->joins[j].cs * dz;
+        }
+        if (tg.bb != 0) {
+            float dx = tg.pivot[0] - c->joins[j].b[0], dz = tg.pivot[2] - c->joins[j].b[1];
+
+            tg.pivot[0] = c->joins[j].a[0] + c->joins[j].cs * dx - c->joins[j].sn * dz;
+            tg.pivot[1] += c->joins[j].a[1];
+            tg.pivot[2] = c->joins[j].a[2] + c->joins[j].sn * dx + c->joins[j].cs * dz;
+        }
+        tg.far = 1;
+        ground = 0;
+        level_ok = 0;
+        if (c->join_mode == 2 || (c->join_mode == 1 && v[0].obj != 0u && tg.bb == 0)) {
+            return jn_emit(c, v, 3, &tg, 0, 0);     /* (whole: its object is judged when the map is in) */
+        }
+        if (tg.bb != 0) {
+            return jn_join_kept(c, j, tg.pivot[0], tg.pivot[2]) ? jn_emit(c, v, 3, &tg, 0, 0) : 0;
+        }
+        {
+            BmapVertex a[JN_CORNERS], b[JN_CORNERS];
+            const float *n = c->joins[j].n, *l = c->joins[j].l;
+            float w = c->joins[j].width;
+            int m = jn_clip(v, 3, a, n[0], n[1], -(l[0] * n[0] + l[1] * n[1]));
+
+            if (m >= 3 && w > 0.0f) {
+                /* inside the strip: -w <= along <= w, along = -(x - lx) nz + (z - lz) nx */
+                float k0 = l[0] * n[1] - l[1] * n[0];
+
+                m = jn_clip(a, m, b, -n[1], n[0], k0 + w);
+                m = m >= 3 ? jn_clip(b, m, a, n[1], -n[0], -k0 + w) : 0;
+            }
+            return m >= 3 ? jn_emit(c, a, m, &tg, 0, 0) : 0;
+        }
+    }
+    /* this map's own triangle */
+    if (c->join_mode == 2 || (c->join_mode == 1 && v[0].obj != 0u && tg.bb == 0)) {
+        return jn_emit(c, v, 3, &tg, ground, level_ok);
+    }
+    if (tg.bb != 0) {
+        return jn_base_gone(c, tg.pivot[0], tg.pivot[2]) ? 0 : jn_emit(c, v, 3, &tg, ground, level_ok);
+    }
+    {
+        /* what is left of it outside every join's part: pieces, cut join by join */
+        static BmapVertex pc[2][JN_PIECES][JN_CORNERS];
+        int cnt[2][JN_PIECES], np[2] = { 1, 0 }, cur = 0, q;
+
+        memcpy(pc[0][0], v, sizeof v);
+        cnt[0][0] = 3;
+        for (j = 0; j < c->njoin; j++) {
+            const float *n = c->joins[j].n, *l = c->joins[j].l;
+            float w = c->joins[j].width, kd = -(l[0] * n[0] + l[1] * n[1]), ka = l[0] * n[1] - l[1] * n[0];
+            int nx = 1 - cur;
+
+            np[nx] = 0;
+            for (q = 0; q < np[cur]; q++) {
+                BmapVertex rest[JN_CORNERS];
+                int m, mr;
+
+                /* this map's side of the line stays */
+                if (np[nx] < JN_PIECES && (m = jn_clip(pc[cur][q], cnt[cur][q], pc[nx][np[nx]], -n[0], -n[1], -kd)) >= 3) {
+                    cnt[nx][np[nx]++] = m;
+                }
+                if (w <= 0.0f) {
+                    continue;
+                }
+                /* past the line, what lies beside the strip stays too */
+                mr = jn_clip(pc[cur][q], cnt[cur][q], rest, n[0], n[1], kd);
+                if (mr >= 3 && np[nx] < JN_PIECES && (m = jn_clip(rest, mr, pc[nx][np[nx]], -n[1], n[0], ka - w)) >= 3) {
+                    cnt[nx][np[nx]++] = m;
+                }
+                if (mr >= 3 && np[nx] < JN_PIECES && (m = jn_clip(rest, mr, pc[nx][np[nx]], n[1], -n[0], -ka - w)) >= 3) {
+                    cnt[nx][np[nx]++] = m;
+                }
+            }
+            cur = nx;
+        }
+        for (q = 0; q < np[cur]; q++) {
+            if (jn_emit(c, pc[cur][q], cnt[cur][q], &tg, ground, level_ok) != 0) {
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* BMAP_JOIN_MODE whole: the objects among the triangles from `first` on go or stay as a whole, by the middle of
+ * their corners (which < 0: this map's own objects; else that join's). */
+static void jn_drop_whole(Ctx *c, size_t first, int which)
+{
+    size_t i = first, out = first, n = c->ntag;
+
+    while (i < n) {
+        size_t e = i, k;
+        unsigned obj = c->v[i * 3u].obj;
+        double sx = 0.0, sz = 0.0;
+        int keep = 1;
+
+        while (e < n && c->v[e * 3u].obj == obj && (c->tag[e].bb != 0) == (c->tag[i].bb != 0)) {
+            e++;
+        }
+        if (obj != 0u && c->tag[i].bb == 0) {
+            for (k = i * 3u; k < e * 3u; k++) {
+                sx += c->v[k].x;
+                sz += c->v[k].z;
+            }
+            sx /= (double)((e - i) * 3u);
+            sz /= (double)((e - i) * 3u);
+            keep = which < 0 ? !jn_base_gone(c, (float)sx, (float)sz) : jn_join_kept(c, which, (float)sx, (float)sz);
+        }
+        if (keep) {
+            if (out != i) {
+                memmove(&c->v[out * 3u], &c->v[i * 3u], (e - i) * 3u * sizeof *c->v);
+                memmove(&c->tag[out], &c->tag[i], (e - i) * sizeof *c->tag);
+            }
+            out += e - i;
+        }
+        i = e;
+    }
+    c->ntag = out;
+    c->nv = out * 3u;
+}
+
 static int add_tri(Ctx *c, const BmapVertex t[3], const TriTag *tag, const float pos[3][3], int ground, int level_ok)
+{
+    if (c->njoin > 0 && c->join_cur != -2) {
+        return add_tri_research(c, t, tag, ground, level_ok);
+    }
+    return add_tri_raw(c, t, tag, pos, ground, level_ok);
+}
+
+static int add_tri_raw(Ctx *c, const BmapVertex t[3], const TriTag *tag, const float pos[3][3], int ground, int level_ok)
 {
     BmapVertex *nv;
     TriTag *ng;
@@ -1743,7 +1994,8 @@ static int add_tri(Ctx *c, const BmapVertex t[3], const TriTag *tag, const float
     c->tcap = cap2;
     memcpy(&c->v[c->nv], t, 3u * sizeof *t);
     c->nv += 3u;
-    c->tag[c->ntag++] = *tag;
+    c->tag[c->ntag] = *tag;
+    c->tag[c->ntag++].bob = c->cur_bob;
     if (ground && level_ok && !tag->far) {
         GTri *g = (GTri *)grow(c->gt, &c->gcap, c->ngt, sizeof *g);
 
@@ -1759,10 +2011,145 @@ static int add_tri(Ctx *c, const BmapVertex t[3], const TriTag *tag, const float
     return 0;
 }
 
+/*
+ * A remade model (bmap_remade.h): what its builder made of it, applied to
+ * every copy the map places.  A triangle of the model is named by its draw
+ * command and its place in that command's list: ((draw + 1) << 16) | triangle.
+ *   two    these triangles are shown from both sides
+ *   drop   these are left out (a flat picture replaced by a body)
+ *   turn   a copy of this triangle turned half round about the upright
+ *          through (cx, cz) in the model's own space, lit as the game lights it
+ *   tri    a new triangle in the model's space, with the material of a draw
+ *          command: lit by the game with its normal, or in the colour given;
+ *          its texture the draw's own or one of the record's
+ */
+typedef struct { u32 id; float cx, cz; } DoneTurn;
+typedef RmNew DoneTri;          /* a new triangle (remade/remade.h) */
+typedef struct Done {
+    char key[24];
+    int state;                  /* 1 made, -1 the builder made nothing */
+    int ntex;
+    struct { int w, h; u8 rs, rt; u8 *rgba; int scene; } tex[8];
+    u32 ntwo, ndrop, nturn, ntri;
+    u32 flags;                  /* 1: the model as a whole rests on the floor under it (rest_bodies) */
+    u32 *two, *drop;
+    DoneTurn *turn;
+    DoneTri *tri;
+    const void *owner;          /* the build its scene textures belong to */
+} Done;
+
+static Done g_dones[512];
+static unsigned g_ndones;
+static const Done *g_done;      /* the completion of the model add_model is adding */
+static int g_research_ids;      /* the models dump: a vertex's object number is its triangle's name */
+
+static int remade_make(struct Done *d, const BmapRemade *e, Model *md, const char *setkey, Buf set);
+
+static int done_has(const u32 *a, u32 n, u32 id)
+{
+    u32 lo = 0, hi = n;
+
+    while (lo < hi) {
+        u32 mid = (lo + hi) / 2u;
+
+        if (a[mid] < id) lo = mid + 1u; else hi = mid;
+    }
+    return lo < n && a[lo] == id;
+}
+
+/*
+ * The remade form of building model `id` of pack `pack`, or NULL: a flat
+ * picture of the map (a rock, a seat, a bottle, a gate) as a body for the
+ * battle's cameras (bmap_remade.h).  Made once, by the model's builder, from
+ * the model `md` standing alone with its textures (`setkey`, `set`), and
+ * kept for every copy and every later scene.  EIDOS_NO_REMADE=1 leaves
+ * every model as the map has it.
+ */
+static const Done *done_get(const void *owner, int pack, unsigned id, Model *md, const char *setkey, Buf set)
+{
+    char key[24];
+    unsigned i;
+    Done *d = NULL;
+
+    if (getenv("EIDOS_NO_REMADE") != NULL) {
+        return NULL;
+    }
+    snprintf(key, sizeof key, "b%d_%05u", pack, id);
+    for (i = 0; i < g_ndones && d == NULL; i++) {
+        if (strcmp(g_dones[i].key, key) == 0) {
+            d = &g_dones[i];
+        }
+    }
+    if (d == NULL) {
+        const BmapRemade *e = bmap_remade_find(key);
+
+        if (e == NULL || g_ndones >= 512u) {
+            return NULL;                /* (not remade: nothing is kept for it) */
+        }
+        d = &g_dones[g_ndones++];
+        memset(d, 0, sizeof *d);
+        snprintf(d->key, sizeof d->key, "%s", key);
+        d->state = remade_make(d, e, md, setkey, set) ? 1 : -1;
+    }
+    if (d->state != 1) {
+        return NULL;
+    }
+    if (d->owner != owner) {            /* a new build: its textures are not in this scene yet */
+        int t;
+
+        d->owner = owner;
+        for (t = 0; t < d->ntex; t++) {
+            d->tex[t].scene = -1;
+        }
+    }
+    return d;
+}
+
+/* A remade model's own texture as a scene texture. */
+static int done_tex(Ctx *c, Done *d, int t)
+{
+    size_t cap1 = c->tex_cap, cap2 = c->tex_cap;
+    BmapTexture *nt;
+    TexRef *nr;
+
+    if (t < 0 || t >= d->ntex) {
+        return -1;
+    }
+    if (d->tex[t].scene >= 0) {
+        return d->tex[t].scene;
+    }
+    nt = (BmapTexture *)grow(c->tex, &cap1, c->ntex, sizeof *nt);
+    if (nt == NULL) {
+        return -1;
+    }
+    c->tex = nt;
+    nr = (TexRef *)grow(c->texrefs, &cap2, c->ntex, sizeof *nr);
+    if (nr == NULL) {
+        return -1;
+    }
+    c->texrefs = nr;
+    c->tex_cap = cap1;
+    memset(&c->tex[c->ntex], 0, sizeof c->tex[0]);
+    c->tex[c->ntex].w = d->tex[t].w;
+    c->tex[c->ntex].h = d->tex[t].h;
+    c->tex[c->ntex].rgba = (u8 *)malloc((size_t)d->tex[t].w * (size_t)d->tex[t].h * 4u);
+    if (c->tex[c->ntex].rgba == NULL) {
+        return -1;
+    }
+    memcpy(c->tex[c->ntex].rgba, d->tex[t].rgba, (size_t)d->tex[t].w * (size_t)d->tex[t].h * 4u);
+    c->tex[c->ntex].repeat_s = d->tex[t].rs;
+    c->tex[c->ntex].repeat_t = d->tex[t].rt;
+    c->texrefs[c->ntex].ent = -1;
+    c->texrefs[c->ntex].flags = 0;
+    d->tex[t].scene = (int)c->ntex;
+    return (int)c->ntex++;
+}
+
 static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *base, int ground,
                      const BldAnim *anim)
 {
     unsigned di;
+    Done *dn = (Done *)g_done;
 
 
     for (di = 0; di < md->ndraws; di++) {
@@ -1778,6 +2165,9 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
 
         if (mt->alpha == 0u || mt->cullbits == 0u) {
             continue;
+        }
+        if (mt->polymode == 3u) {
+            continue;                   /* a shadow volume (a dark cave's mask round the player): not a surface */
         }
         if (mt->has_tex) {
             ent = tex_ent(c, setkey, set, mt);
@@ -1827,6 +2217,76 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
             BmapVertex bv[3];
             float wp[3][3];
             int k, shaded_all = 1;
+            u32 tri_id = ((u32)(di + 1u) << 16) | (u32)(ti / 3u);
+            TriTag tag1 = tag;
+
+            if (dn != NULL && done_has(dn->drop, dn->ndrop, tri_id)) {
+                continue;
+            }
+            if (dn != NULL && done_has(dn->two, dn->ntwo, tri_id)) {
+                tag1.cull = 0;
+            }
+            if (dn != NULL && dn->nturn > 0 && dc->bb == 0) {
+                /* its turned copy: the same corners turned half round in the model's
+                 * space, the normals with them, lit the same way */
+                u32 lo = 0, hi = dn->nturn;
+
+                while (lo < hi) {
+                    u32 mid = (lo + hi) / 2u;
+
+                    if (dn->turn[mid].id < tri_id) lo = mid + 1u; else hi = mid;
+                }
+                if (lo < dn->nturn && dn->turn[lo].id == tri_id) {
+                    const Aff *nw = &md->world[dc->node];
+                    BmapVertex tv[3];
+                    float tp[3][3];
+                    int tw = tex >= 0 ? c->tex[tex].w : 1, th = tex >= 0 ? c->tex[tex].h : 1;
+
+                    for (k = 0; k < 3; k++) {
+                        const Vtx *v = &tl.v[ti + (size_t)k];
+                        float lp[3], mp[3], col[3], mn[3], n[3];
+                        int q, shaded = 0;
+
+                        lp[0] = v->pos[0] * md->pos_scale;
+                        lp[1] = v->pos[1] * md->pos_scale;
+                        lp[2] = v->pos[2] * md->pos_scale;
+                        aff_apply(nw, lp, mp);
+                        mp[0] = 2.0f * dn->turn[lo].cx - mp[0];
+                        mp[2] = 2.0f * dn->turn[lo].cz - mp[2];
+                        aff_apply(base, mp, tp[k]);
+                        col[0] = v->col[0]; col[1] = v->col[1]; col[2] = v->col[2];
+                        if (lit && (v->nrm[0] != 0.0f || v->nrm[1] != 0.0f || v->nrm[2] != 0.0f)) {
+                            for (q = 0; q < 3; q++) {
+                                mn[q] = v->nrm[0] * nw->r[0][q] + v->nrm[1] * nw->r[1][q] + v->nrm[2] * nw->r[2][q];
+                            }
+                            mn[0] = -mn[0];
+                            mn[2] = -mn[2];
+                            for (q = 0; q < 3; q++) {
+                                n[q] = mn[0] * base->r[0][q] + mn[1] * base->r[1][q] + mn[2] * base->r[2][q];
+                            }
+                            vnorm(n);
+                            shade(&c->lights, mt, n, col);
+                            shaded = 1;
+                        }
+                        tv[k].x = tp[k][0]; tv[k].y = tp[k][1]; tv[k].z = tp[k][2];
+                        tv[k].u = v->uv[0] / (float)tw;
+                        tv[k].v = v->uv[1] / (float)th;
+                        if (mt->vertex_color || shaded) {
+                            for (q = 0; q < 3; q++) {
+                                (&tv[k].r)[q] = (u8)(col[q] * 255.0f + 0.5f);
+                            }
+                        } else {
+                            tv[k].r = tv[k].g = tv[k].b = 255;
+                        }
+                        tv[k].a = (u8)(mt->alpha * 255u / 31u);
+                        tv[k].obj = ground == 1 ? 0u : c->obj;
+                    }
+                    if (add_tri(c, tv, &tag, (const float (*)[3])tp, 0, 0) != 0) {
+                        free(tl.v);
+                        return -1;
+                    }
+                }
+            }
 
             for (k = 0; k < 3; k++) {
                 const Vtx *v = &tl.v[ti + (size_t)k];
@@ -1866,7 +2326,10 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                     bv[k].r = bv[k].g = bv[k].b = 255;
                 }
                 bv[k].a = (u8)(mt->alpha * 255u / 31u);
-                bv[k].obj = ground == 1 ? 0u : c->obj;   /* 2: a placed model, its own number */
+                bv[k].obj = g_research_ids ? tri_id : ground == 1 ? 0u : c->obj;   /* 2: a placed model, its own number */
+                if (dn != NULL && (dn->flags & 1u) && !g_research_ids && ground != 1) {
+                    bv[k].obj |= 0xC0000000u;   /* research: the whole model rests on the floor (rest_bodies) */
+                }
             }
             (void)shaded_all;
             {
@@ -1883,13 +2346,83 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                 len = sqrtf(nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]);
                 level_ok = len > 0.0f && fabsf(nn[1]) >= 0.5f * len && dc->bb == 0 &&
                            !(ent >= 0 && c->ents[ent].cutout);
-                if (add_tri(c, bv, &tag, (const float (*)[3])wp, ground, level_ok) != 0) {
+                if (add_tri(c, bv, &tag1, (const float (*)[3])wp, ground, level_ok) != 0) {
                     free(tl.v);
                     return -1;
                 }
             }
         }
         free(tl.v);
+        if (dn != NULL) {
+            /* the completion's new triangles that take this draw command's material */
+            u32 xi;
+
+            for (xi = 0; xi < dn->ntri; xi++) {
+                const DoneTri *x = &dn->tri[xi];
+                BmapVertex bv[3];
+                float wp[3][3], n[3], col[3];
+                TriTag xt = tag;
+                int k, q;
+
+                if ((x->src >> 16) != di + 1u) {
+                    continue;
+                }
+                xt.bb = 0;
+                xt.cull = x->cull;
+                xt.uvanim = 0;
+                if (x->kind == 1) {
+                    /* a piece that keeps the battle's own directions (a shadow that falls the way the
+                     * Pokemon's shadows fall, toward the foe's side): placed about the object's place with
+                     * its own axes as the battle's, as a camera-facing picture is, but never turned
+                     * (billboard kind 3: bmap_place_spec scales its offsets, the renderers leave it) */
+                    static const float zero[3] = { 0, 0, 0 };
+
+                    xt.bb = 3;
+                    aff_apply(base, zero, xt.pivot);
+                }
+                if (x->tex >= 0) {
+                    xt.tex = done_tex(c, dn, x->tex);
+                    xt.translucent = 0;
+                }
+                if (x->alpha != 0) {
+                    /* a see-through piece (a shadow, as the game draws a Pokemon's: half see-through) */
+                    xt.alpha = x->alpha;
+                    xt.translucent = 1;
+                }
+                for (q = 0; q < 3; q++) {
+                    n[q] = x->n[0] * base->r[0][q] + x->n[1] * base->r[1][q] + x->n[2] * base->r[2][q];
+                }
+                vnorm(n);
+                col[0] = x->rgb[0] / 255.0f; col[1] = x->rgb[1] / 255.0f; col[2] = x->rgb[2] / 255.0f;
+                if (x->lit && mt->light_mask != 0u) {
+                    shade(&c->lights, mt, n, col);
+                }
+                for (k = 0; k < 3; k++) {
+                    aff_apply(base, x->p[k], wp[k]);
+                    if (x->kind == 1) {
+                        for (q = 0; q < 3; q++) {
+                            wp[k][q] = xt.pivot[q] + x->p[k][q];
+                        }
+                    }
+                    bv[k].x = wp[k][0]; bv[k].y = wp[k][1]; bv[k].z = wp[k][2];
+                    bv[k].u = x->uv[k][0];
+                    bv[k].v = x->uv[k][1];
+                    for (q = 0; q < 3; q++) {
+                        (&bv[k].r)[q] = (u8)(col[q] * 255.0f + 0.5f);
+                    }
+                    bv[k].a = x->alpha != 0 ? (u8)(x->alpha * 255u / 31u) : 255;
+                    /* (the top bit: a completion's own triangles, which the battle's search for flat
+                     * cut-out cards passes over: they are a body, and there are thousands) */
+                    bv[k].obj = ground == 1 ? 0u : (c->obj | 0x80000000u);
+                    if (x->kind == 2 && ground != 1) {
+                        bv[k].obj |= 0x40000000u;   /* a body that rests on the floor under it (rest_bodies) */
+                    }
+                }
+                if (add_tri(c, bv, &xt, (const float (*)[3])wp, 0, 0) != 0) {
+                    return -1;
+                }
+            }
+        }
     }
     return 0;
 }
@@ -1980,7 +2513,9 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
         from = 12; to = 16;
     }
     if (!c->cur_far && from > 8u) {
-        add_walk(c, bb, from == 16u ? 2u : 1u, cx, cz);
+        if (c->join_cur < 0) {      /* (research: a joined zone is scenery, not ground to walk on) */
+            add_walk(c, bb, from == 16u ? 2u : 1u, cx, cz);
+        }
     }
     a = rd32(bb, from);
     e = rd32(bb, to);
@@ -2007,8 +2542,16 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
             t[2] = center[2] - (float)rds32(bb, at + 8) / 4096.0f;
             place = aff_yaw((float)rd16(bb, at + 12) / 65536.0f, t);
             c->obj++;
+            /* (far chunks keep the picture: 40 tiles away it is a few pixels) */
+            g_done = c->cur_far ? NULL : done_get(c, ar->indoor, (unsigned)id, &ar->bmodels[mi], bkey, bb_of(&ar->btex));
+            if (getenv("BMAP_MODEL_LOG") != NULL && (!c->cur_far || strcmp(getenv("BMAP_MODEL_LOG"), "all") == 0)) {
+                /* ("all": the far ones too: a census of what a zone places) */
+                fprintf(stderr, "bmap: model b%d_%05u at %.0f %.0f y %.0f%s\n", ar->indoor, (unsigned)id, (double)t[0], (double)t[2],
+                        (double)t[1], g_done != NULL ? " completed" : "");
+            }
             rc = add_model(c, &ar->bmodels[mi], bkey, bb_of(&ar->btex), &place, 2,
                            &ar->banims[mi]);   /* placed */
+            g_done = NULL;
             if (rc != 0) {
                 break;
             }
@@ -2202,7 +2745,9 @@ static int add_wfbc(Ctx *c, Area *ar, const BmapWfbc *g, int cx, int cz)
                     t[2] = center[1] - (float)rds32(bb, at + 8) / 4096.0f + (float)dz * TILE;
                     place = aff_yaw((float)rd16(bb, at + 12) / 65536.0f, t);
                     c->obj++;
+                    g_done = c->cur_far ? NULL : done_get(c, ar->indoor, (unsigned)ar->bids[mi], &ar->bmodels[mi], bkey, bb_of(&ar->btex));
                     rc = add_model(c, &ar->bmodels[mi], bkey, bb_of(&ar->btex), &place, 2, &ar->banims[mi]);
+                    g_done = NULL;
                     if (rc != 0) {
                         break;
                     }
@@ -2497,6 +3042,157 @@ static int model_pose(Model *md, Buf bca, int frame)
 /* The models a gym's field gimmick adds on top of the map (bmap_gimmick.c:
  * curtains, doors, ...), in their initial state.  Each is a BMD0 from the
  * gimmick's archive, placed at its world position like a building. */
+/* The field's 3D objects as they were when the battle began (bmap_live_set). */
+#define LIVE_MAX 160
+static BmapLive g_live[LIVE_MAX];
+static unsigned g_live_n, g_live_zone = 0xFFFFFFFFu;
+
+void bmap_live_set(unsigned zone, const BmapLive *list, unsigned n)
+{
+    n = n > LIVE_MAX ? LIVE_MAX : n;
+    if (n > 0) {
+        memcpy(g_live, list, n * sizeof *list);
+    }
+    g_live_zone = zone;
+    g_live_n = n;
+}
+
+static int live_has(unsigned zone)
+{
+    return g_live_zone == zone && g_live_n > 0u;
+}
+
+/* The name of a model file's first model ("" when it has none). */
+static void live_model_name(Buf f, char out[20])
+{
+    Buf mdl;
+    Dict d;
+
+    out[0] = '\0';
+    if (container_block(f, "MDL0", &mdl) == 0 && dict_parse(mdl, 8, &d) == 0 && d.count != 0u) {
+        char nm[17];
+
+        dict_name(&d, 0, nm);
+        memcpy(out, nm, 17);
+    }
+}
+
+/* Models made for the field's steep camera, by name.  Such a model is not over its place: it lies to the north
+ * of it and low, and the field's camera shows it over its place, hovering.  The battle's camera is low and
+ * turns, so the model goes where the field's camera shows it (over its own place, up by its offset times the
+ * tangent of that camera's pitch), and rises and falls as its first animation moves it.
+ *   d6_ishi_big01   Chargestone Cave's floating stone (aletheia ov021 fldeff_d06denki.c) */
+static int live_field_camera_model(const char *name)
+{
+    return strcmp(name, "d6_ishi_big01") == 0;
+}
+
+/* They stand in the battle's map where the field drew them. */
+static int add_live(Ctx *c, unsigned zone, float px, float pz)
+{
+    static BmapLive live[LIVE_MAX];
+    unsigned n = live_has(zone) ? g_live_n : 0u, i, shown = 0;
+
+    memcpy(live, g_live, sizeof live);
+    for (i = 0; i < n; i++) {
+        Buf mb = { live[i].mdl, live[i].mdl_n }, tb = { live[i].tex, live[i].tex_n };
+        Model md;
+        char setkey[40], name[20];
+        Aff place = aff_identity();
+        int rc, fieldcam;
+        unsigned a;
+        size_t v0, k;
+
+        if (mb.p == NULL || model_parse(mb, &md) != 0) {
+            continue;
+        }
+        live_model_name(mb, name);
+        fieldcam = live_field_camera_model(name) && live[i].field_tan > 0.0f;
+        if (fieldcam && c->bob_n == 0u && live[i].nanim > 0u && live[i].anim[0].n >= 4u && memcmp(live[i].anim[0].p, "BCA0", 4) == 0) {
+            /* its first animation's rise, a value a frame: the model is posed at each frame and built aside;
+             * how much higher its lowest corner lies than at frame 0 is that frame's rise */
+            Buf ab = { live[i].anim[0].p, live[i].anim[0].n }, jnt;
+            unsigned nf = 0, f;
+            float y0 = 0.0f;
+
+            if (container_block(ab, "JNT0", &jnt) == 0) {
+                Dict dj;
+
+                if (dict_parse(jnt, 8, &dj) == 0 && dj.count != 0u) {
+                    nf = rd16(sub(jnt, dict_off(&dj, 0)), 4);
+                }
+            }
+            nf = nf > BMAP_BOB_MAX ? BMAP_BOB_MAX : nf;
+            for (f = 0; f < nf; f++) {
+                size_t sv = c->nv, st = c->ntag, sg = c->ngt;
+                float lo = 1e30f;
+                Aff at = aff_identity();
+
+                model_pose(&md, ab, (int)f);
+                if (add_model(c, &md, "Lbob", tb.p != NULL ? tb : mb, &at, 0, NULL) != 0) {
+                    break;
+                }
+                for (k = sv; k < c->nv; k++) {
+                    lo = fminf(lo, c->v[k].y);
+                }
+                c->nv = sv;
+                c->ntag = st;
+                c->ngt = sg;
+                if (f == 0u) {
+                    y0 = lo;
+                }
+                c->bob_y[f] = lo - y0;
+            }
+            c->bob_n = f;
+        }
+        /* the pose: each joint animation at the frame the field had it on (a model that rises and falls by
+         * itself here starts from its animation's first frame) */
+        for (a = 0; a < live[i].nanim; a++) {
+            Buf ab = { live[i].anim[a].p, live[i].anim[a].n };
+
+            if (ab.p != NULL && ab.n >= 4u && memcmp(ab.p, "BCA0", 4) == 0) {
+                model_pose(&md, ab, fieldcam && a == 0u ? 0 : live[i].anim[a].frame);
+            }
+        }
+        memcpy(place.t, live[i].t, sizeof place.t);
+        memcpy(place.r, live[i].r, sizeof place.r);
+        snprintf(setkey, sizeof setkey, "L%p", (const void *)(tb.p != NULL ? tb.p : mb.p));
+        c->cur_far = (u8)(fabsf(live[i].t[0] - px) > NEAR_REACH || fabsf(live[i].t[2] - pz) > NEAR_REACH);
+        c->obj++;
+        v0 = c->nv;
+        c->cur_bob = (u8)(fieldcam && c->bob_n > 1u);
+        rc = add_model(c, &md, setkey, tb.p != NULL ? tb : mb, &place, 2, NULL);
+        c->cur_bob = 0;
+        if (rc == 0 && fieldcam && c->nv > v0) {
+            float z0 = 1e30f, z1 = -1e30f, d;
+
+            for (k = v0; k < c->nv; k++) {
+                z0 = fminf(z0, c->v[k].z);
+                z1 = fmaxf(z1, c->v[k].z);
+            }
+            d = live[i].t[2] - 0.5f * (z0 + z1);
+            for (k = v0; k < c->nv; k++) {
+                c->v[k].z += d;
+                c->v[k].y += d * live[i].field_tan;
+            }
+        }
+        model_free(&md);
+        if (rc != 0) {
+            return rc;
+        }
+        shown++;
+        if (getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: live %s at %.0f %.0f %.0f, %u animations (first at frame %d)%s\n", name, (double)live[i].t[0],
+                    (double)live[i].t[1], (double)live[i].t[2], live[i].nanim, live[i].nanim ? live[i].anim[0].frame : -1,
+                    fieldcam ? ", made for the field's camera" : "");
+        }
+    }
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        fprintf(stderr, "bmap: live objects: %u of %u shown in zone %u (noted for zone %u)\n", shown, n, zone, g_live_zone);
+    }
+    return 0;
+}
+
 static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
 {
     const BmapGimmickModel *gm;
@@ -2898,6 +3594,7 @@ static int key_cmp(const TriTag *x, const TriTag *y)
     if (x->far != y->far) return (int)x->far - (int)y->far;
     if (x->bb != y->bb) return x->bb - y->bb;
     if (x->uvanim != y->uvanim) return (int)x->uvanim - (int)y->uvanim;
+    if (x->bob != y->bob) return (int)x->bob - (int)y->bob;
     if (x->bb) {
         int k;
 
@@ -2955,6 +3652,7 @@ static int finish(Ctx *c, BmapScene *s)
             d->billboard = (unsigned char)t->bb;
             d->far = t->far;
             d->uvanim = t->uvanim;
+            d->bob = t->bob;
             memcpy(d->pivot, t->pivot, sizeof d->pivot);
         }
         d->count += 3u;
@@ -2967,10 +3665,512 @@ static int finish(Ctx *c, BmapScene *s)
     return 0;
 }
 
+static int u32_cmp(const void *a, const void *b)
+{
+    u32 x = *(const u32 *)a, y = *(const u32 *)b;
+
+    return x < y ? -1 : x > y;
+}
+
+/*
+ * Builds model `md`'s remade form into `d` (bmap_remade.h).  The model is
+ * made as the map makes it, standing alone at its own place under the fixed
+ * light, each triangle named ((draw command + 1) << 16) | its place in the
+ * command's list; the builder gets its draws and its textures and says which
+ * triangles it leaves out and which it adds.  Returns 1 when the builder
+ * changed the model.  Research: BMAP_REMADE_DUMP=dir writes what it made as
+ * dir/<name>.bmc (the record a comparison with an earlier build reads).
+ */
+static int remade_make(Done *d, const BmapRemade *e, Model *md, const char *setkey, Buf set)
+{
+    Ctx *c = (Ctx *)calloc(1, sizeof *c);
+    const Done *keep = g_done;
+    Aff base = aff_identity();
+    BmapScene t;
+    RmBatch *bt = NULL;
+    RmTri *tri = NULL;
+    RmTex *tx = NULL;
+    RmOut o;
+    unsigned i, j, nb = 0;
+    int rc, ok = 0;
+
+    memset(&t, 0, sizeof t);
+    memset(&o, 0, sizeof o);
+    if (c == NULL) {
+        return 0;
+    }
+    lights_fixed(&c->lights);
+    c->obj = 1;
+    g_done = NULL;
+    g_research_ids = 1;
+    rc = add_model(c, md, setkey, set, &base, 2, NULL);
+    g_research_ids = 0;
+    g_done = keep;
+    if (rc != 0 || c->ntag == 0 || finish(c, &t) != 0) {
+        goto out;
+    }
+    bt = (RmBatch *)calloc(t.nd ? t.nd : 1u, sizeof *bt);
+    tri = (RmTri *)calloc(t.nv / 3u + 1u, sizeof *tri);
+    tx = (RmTex *)calloc(c->ntex ? c->ntex : 1u, sizeof *tx);
+    if (bt == NULL || tri == NULL || tx == NULL) {
+        goto out;
+    }
+    for (i = 0; i < c->ntex; i++) {
+        tx[i].w = c->tex[i].w;
+        tx[i].h = c->tex[i].h;
+        tx[i].rgba = c->tex[i].rgba;
+    }
+    for (i = 0; i < t.nd; i++) {
+        const BmapDraw *dr = &t.d[i];
+        unsigned n = dr->count / 3u * 3u;
+        double sum[3] = { 0.0, 0.0, 0.0 };
+        RmBatch *x;
+
+        if (n == 0 || dr->first + n > t.nv) {
+            continue;
+        }
+        x = &bt[nb++];
+        x->tri = &tri[dr->first / 3u];
+        x->n = n / 3u;
+        x->tex = dr->tex;
+        x->cull = dr->cull;
+        x->bb = dr->billboard;
+        memcpy(x->pivot, dr->pivot, sizeof x->pivot);
+        for (j = 0; j < n; j++) {
+            const BmapVertex *v = &t.v[dr->first + j];
+            RmTri *q = &tri[(dr->first + j) / 3u];
+            unsigned k = j % 3u;
+
+            q->p[k][0] = v->x; q->p[k][1] = v->y; q->p[k][2] = v->z;
+            q->uv[k][0] = v->u; q->uv[k][1] = v->v;
+            if (k == 0) {
+                q->id = v->obj;
+            }
+            sum[0] += v->r; sum[1] += v->g; sum[2] += v->b;
+        }
+        for (j = 0; j < 3; j++) {
+            x->rgb[j] = (u8)(sum[j] / (double)n);
+        }
+    }
+    e->build(bt, nb, tx, (unsigned)c->ntex, e->opt, &o);
+    if (o.fail || (o.ntri == 0 && o.ndrop == 0 && o.flags == 0)) {
+        goto out;
+    }
+    qsort(o.drop, o.ndrop, sizeof *o.drop, u32_cmp);
+    d->flags = o.flags;
+    d->ndrop = o.ndrop;
+    d->drop = o.drop != NULL ? o.drop : (u32 *)calloc(1, sizeof(u32));
+    d->ntri = o.ntri;
+    d->tri = o.tri != NULL ? o.tri : (DoneTri *)calloc(1, sizeof(DoneTri));
+    d->ntwo = 0;
+    d->two = (u32 *)calloc(1, sizeof(u32));
+    d->nturn = 0;
+    d->turn = (DoneTurn *)calloc(1, sizeof(DoneTurn));
+    d->ntex = o.ntex;
+    for (i = 0; i < (unsigned)o.ntex; i++) {
+        d->tex[i].w = o.tex[i].w;
+        d->tex[i].h = o.tex[i].h;
+        d->tex[i].rgba = o.tex[i].rgba;
+    }
+    memset(&o, 0, sizeof o);            /* (its lists are the record's now) */
+    ok = d->drop != NULL && d->tri != NULL && d->two != NULL && d->turn != NULL;
+    if (ok && getenv("BMAP_REMADE_DUMP") != NULL) {
+        char path[600];
+        FILE *f;
+
+        snprintf(path, sizeof path, "%s/%s.bmc", getenv("BMAP_REMADE_DUMP"), d->key);
+        f = fopen(path, "wb");
+        if (f != NULL) {
+            u32 n5[5] = { (u32)d->ntex, 0, d->ndrop, 0, d->ntri };
+
+            fwrite("BMC2", 1, 4, f);
+            fwrite(&d->flags, 4, 1, f);
+            fwrite(n5, 4, 5, f);
+            for (i = 0; i < (unsigned)d->ntex; i++) {
+                int wh[2] = { d->tex[i].w, d->tex[i].h };
+                u8 fl[4] = { 0, 0, 0, 0 };
+
+                fwrite(wh, 4, 2, f);
+                fwrite(fl, 1, 4, f);
+                fwrite(d->tex[i].rgba, 4, (size_t)wh[0] * (size_t)wh[1], f);
+            }
+            fwrite(d->drop, 4, d->ndrop, f);
+            for (i = 0; i < d->ntri; i++) {
+                const DoneTri *x = &d->tri[i];
+                u8 f8[8] = { x->cull, x->lit, x->rgb[0], x->rgb[1], x->rgb[2], x->kind, x->alpha, 0 };
+
+                fwrite(&x->src, 4, 1, f);
+                fwrite(&x->tex, 4, 1, f);
+                fwrite(f8, 1, 8, f);
+                fwrite(x->p, 4, 9, f);
+                fwrite(x->uv, 4, 6, f);
+                fwrite(x->n, 4, 3, f);
+            }
+            fclose(f);
+        }
+    }
+out:
+    free(o.drop);
+    free(o.tri);
+    for (i = 0; i < 8u; i++) {
+        free(o.tex[i].rgba);
+    }
+    free(bt);
+    free(tri);
+    free(tx);
+    free(t.v);
+    free(t.d);
+    for (i = 0; i < c->nents; i++) {
+        free(c->ents[i].rgba);
+    }
+    if (c->tex != NULL) {
+        for (i = 0; i < c->ntex; i++) {
+            free(c->tex[i].rgba);
+        }
+    }
+    for (i = 0; i < c->narcs; i++) {
+        bw_arc_close(&c->arcs[i].f);
+    }
+    free(c->ents);
+    free(c->tex);
+    free(c->texrefs);
+    free(c->v);
+    free(c->tag);
+    free(c->gt);
+    free(c->walk);
+    for (i = 0; i < c->nuva; i++) {
+        free(c->uva[i].m);
+    }
+    free(c->uva);
+    free((void *)c->uva_key);
+    free(c);
+    return ok;
+}
+
+/* Research (BMAP_MODELS_DUMP=dir): every building model of the game, each
+ * once, as the map builder makes it (its own place and facing, the fixed
+ * light): the area packs of the open air (a/2/3/0, textures a/1/7/7) and of
+ * the insides (a/2/2/9, a/1/7/6).  One file a model, b<inside>_<id>.bmd, in
+ * the scene dump's format (bmap_place.c scene_dump), and a line a model in
+ * models.tsv (inside, id, the first pack that holds it, how many packs do). */
+static void research_models(const char *dir)
+{
+    int indoor;
+    char path[600];
+    FILE *list;
+
+    snprintf(path, sizeof path, "%s/models.tsv", dir);
+    list = fopen(path, "w");
+    for (indoor = 0; indoor < 2; indoor++) {
+        const char *arc = indoor ? "a/2/2/9" : "a/2/3/0", *tarc = indoor ? "a/1/7/6" : "a/1/7/7";
+        Ctx *c0 = (Ctx *)calloc(1, sizeof *c0);
+        ArcSlot *slot = c0 != NULL ? arc_get(c0, arc) : NULL;
+        static unsigned short packs[65536];
+        static unsigned short first[65536];
+        unsigned member, count = slot != NULL ? slot->f.count : 0u, id;
+
+        memset(packs, 0, sizeof packs);
+        for (member = 0; member < count; member++) {
+            Blob bfile, btex;
+            Buf m;
+            unsigned n, k;
+
+            memset(&bfile, 0, sizeof bfile);
+            memset(&btex, 0, sizeof btex);
+            if (arc_load(c0, arc, member, &bfile) != 0) {
+                continue;
+            }
+            arc_load(c0, tarc, member, &btex);
+            m = bb_of(&bfile);
+            n = m.n > 2u ? m.p[2] / 2u : 0u;
+            for (k = 0; k < n; k++) {
+                u32 def = rd32(m, 4u + k * 4u), file = rd32(m, 4u + (n + k) * 4u);
+                Model md;
+                Ctx *c;
+                BmapScene t;
+                Aff base = aff_identity();
+                char key[32];
+                FILE *f;
+                unsigned i;
+
+                if (file >= m.n || def + 2u > m.n) {
+                    continue;
+                }
+                id = rd16(m, def);
+                if (packs[id]++ != 0) {
+                    continue;                       /* dumped from an earlier pack */
+                }
+                first[id] = (unsigned short)member;
+                if (model_parse(sub(m, file), &md) != 0) {
+                    continue;
+                }
+                c = (Ctx *)calloc(1, sizeof *c);
+                if (c == NULL) {
+                    continue;
+                }
+                lights_fixed(&c->lights);
+                c->obj = 1;
+                memset(&t, 0, sizeof t);
+                snprintf(key, sizeof key, "r%d_%u", indoor, member);
+                g_research_ids = 1;
+                if (add_model(c, &md, key, bb_of(&btex), &base, 2, NULL) != 0 || c->ntag == 0 || finish(c, &t) != 0) {
+                    g_research_ids = 0;
+                    continue;
+                }
+                g_research_ids = 0;
+                snprintf(path, sizeof path, "%s/b%d_%05u.bmd", dir, indoor, id);
+                f = fopen(path, "wb");
+                if (f != NULL) {
+                    float hdr[6] = { 0 }, fog[2] = { 0 };
+                    unsigned nt = (unsigned)c->ntex;
+                    unsigned char pad[8] = { 0 };
+                    int t0[2] = { 0, 0 };
+                    static unsigned char grid[128 * 128];
+
+                    fwrite("BMD1", 1, 4, f);
+                    fwrite(hdr, sizeof(float), 6, f);
+                    fwrite(&t.nv, 4, 1, f);
+                    fwrite(&t.nd, 4, 1, f);
+                    fwrite(&nt, 4, 1, f);
+                    fwrite(pad, 1, 8, f);           /* clear, fog, fog_on, pad */
+                    fwrite(fog, sizeof(float), 2, f);
+                    for (i = 0; i < t.nv; i++) {
+                        fwrite(&t.v[i].x, sizeof(float), 5, f);
+                        fwrite(&t.v[i].r, 1, 4, f);
+                        fwrite(&t.v[i].obj, 4, 1, f);
+                    }
+                    for (i = 0; i < t.nd; i++) {
+                        const BmapDraw *d = &t.d[i];
+                        unsigned char b[8] = { d->alpha, d->cull, d->translucent, d->billboard, d->far, d->grass, 0, 0 };
+
+                        fwrite(&d->tex, 4, 1, f);
+                        fwrite(&d->first, 4, 1, f);
+                        fwrite(&d->count, 4, 1, f);
+                        fwrite(b, 1, 8, f);
+                        fwrite(d->pivot, sizeof(float), 3, f);
+                    }
+                    for (i = 0; i < nt; i++) {
+                        const BmapTexture *x = &c->tex[i];
+                        int wh[2] = { x->rgba != NULL ? x->w : 0, x->rgba != NULL ? x->h : 0 };
+                        unsigned char b[4] = { x->repeat_s, x->repeat_t, x->flip_s, x->flip_t };
+
+                        fwrite(wh, 4, 2, f);
+                        fwrite(b, 1, 4, f);
+                        if (wh[0] > 0 && wh[1] > 0) {
+                            fwrite(x->rgba, 4, (size_t)wh[0] * (size_t)wh[1], f);
+                        }
+                    }
+                    fwrite(t0, sizeof(int), 2, f);
+                    fwrite(grid, 1, sizeof grid, f);
+                    fclose(f);
+                }
+            }
+        }
+        for (id = 0; list != NULL && id < 65536u; id++) {
+            if (packs[id] != 0) {
+                fprintf(list, "%d\t%u\t%u\t%u\n", indoor, id, first[id], packs[id]);
+            }
+        }
+    }
+    if (list != NULL) {
+        fclose(list);
+    }
+}
+
+/*
+ * The sea goes on past the map's edge.
+ *
+ * A map ends where its model ends: the pier's sea is one sheet 61 by 65
+ * tiles, and beyond it there is nothing.  The field's steep camera never
+ * sees that edge; the battle's low camera does.  So where water lies on the
+ * edge of everything loaded (the scene's box), it is continued outward, far
+ * past what a battle camera sees: the same surface at the same height, with
+ * the same texture laid on as it was (so it joins without a seam and moves
+ * with the map's own water), and the bed under it the same way (the
+ * surface is see-through: without its bed the far sea had another colour).
+ *
+ * Water is what the loader already takes for water: a level see-through
+ * sheet (material alpha under 31).  The bed is whatever has a level edge on
+ * the same stretch of the box's side, up to WATER_MAX under the surface.
+ * Land on the box's side is left as it is.  At a corner of the box with
+ * water on both sides the two strips meet along the diagonal.
+ */
+#define SEA_REACH 8192.0f           /* map units past the edge: 512 tiles */
+
+typedef struct { int side; float a, b, y; } SeaEdge;    /* a stretch of water on a side of the box */
+
+/* The side of the box the edge (p, q) lies on: 0 west, 1 east, 2 north, 3 south; -1 none. */
+static int sea_side(const BmapVertex *p, const BmapVertex *q, const float lo[2], const float hi[2])
+{
+    const float e = 0.5f;
+
+    if (fabsf(p->x - lo[0]) < e && fabsf(q->x - lo[0]) < e) return 0;
+    if (fabsf(p->x - hi[0]) < e && fabsf(q->x - hi[0]) < e) return 1;
+    if (fabsf(p->z - lo[1]) < e && fabsf(q->z - lo[1]) < e) return 2;
+    if (fabsf(p->z - hi[1]) < e && fabsf(q->z - hi[1]) < e) return 3;
+    return -1;
+}
+
+/* Is the point t of a side under (or on: dy 0) a stretch of water of that side? */
+static int sea_over(const SeaEdge *se, size_t n, int side, float t, float y, float dy)
+{
+    size_t i;
+
+    for (i = 0; i < n; i++) {
+        if (se[i].side == side && t >= se[i].a - 1.0f && t <= se[i].b + 1.0f && se[i].y - y >= -0.01f && se[i].y - y <= dy) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int extend_sea(Ctx *c)
+{
+    size_t ntri = c->ntag, i, nse = 0, cap = 0, made = 0;
+    float lo[2] = { 1e30f, 1e30f }, hi[2] = { -1e30f, -1e30f };
+    SeaEdge *se = NULL;
+    int e, rc = 0;
+
+    for (i = 0; i < c->nv; i++) {
+        const BmapVertex *v = &c->v[i];
+
+        lo[0] = fminf(lo[0], v->x); hi[0] = fmaxf(hi[0], v->x);
+        lo[1] = fminf(lo[1], v->z); hi[1] = fmaxf(hi[1], v->z);
+    }
+    /* the water on the box's sides */
+    for (i = 0; i < ntri; i++) {
+        const TriTag *t = &c->tag[i];
+        const BmapVertex *v = &c->v[i * 3u];
+
+        if (t->bb != 0 || !t->translucent || t->alpha >= 31u || fabsf(v[1].y - v[0].y) > 0.01f || fabsf(v[2].y - v[0].y) > 0.01f) {
+            continue;
+        }
+        for (e = 0; e < 3; e++) {
+            const BmapVertex *p = &v[e], *q = &v[(e + 1) % 3];
+            int side = sea_side(p, q, lo, hi);
+            SeaEdge *ns;
+
+            if (side < 0) {
+                continue;
+            }
+            ns = (SeaEdge *)grow(se, &cap, nse + 1u, sizeof *ns);
+            if (ns == NULL) {
+                free(se);
+                return -1;
+            }
+            se = ns;
+            se[nse].side = side;
+            se[nse].a = side < 2 ? fminf(p->z, q->z) : fminf(p->x, q->x);
+            se[nse].b = side < 2 ? fmaxf(p->z, q->z) : fmaxf(p->x, q->x);
+            se[nse].y = p->y;
+            nse++;
+        }
+    }
+    /* every level edge on those stretches goes on outward: the water's own, and the bed's under it */
+    for (i = 0; i < ntri && nse > 0 && rc == 0; i++) {
+        TriTag tag = c->tag[i];
+        BmapVertex v[3];
+        int water;
+        float det, ax, az, bx, bz, ny;
+
+        memcpy(v, &c->v[i * 3u], sizeof v);
+        if (tag.bb != 0) {
+            continue;
+        }
+        water = tag.translucent && tag.alpha < 31u && fabsf(v[1].y - v[0].y) <= 0.01f && fabsf(v[2].y - v[0].y) <= 0.01f;
+        if (!water && tag.translucent) {
+            continue;               /* (a mist sheet, a light: not a bed) */
+        }
+        ax = v[1].x - v[0].x; az = v[1].z - v[0].z;
+        bx = v[2].x - v[0].x; bz = v[2].z - v[0].z;
+        det = ax * bz - bx * az;
+        if (fabsf(det) < 1e-4f) {
+            continue;               /* upright: no place on the ground to lay its texture by */
+        }
+        ny = az * bx - ax * bz;     /* the way it faces (its normal's height) */
+        for (e = 0; e < 3 && rc == 0; e++) {
+            BmapVertex p = v[e], q = v[(e + 1) % 3], bv[3], far_p, far_q;
+            int side = sea_side(&p, &q, lo, hi), k, tri;
+            float tp, tq, out[2] = { 0.0f, 0.0f }, wp[3][3];
+
+            if (side < 0 || fabsf(p.y - q.y) > 0.01f) {
+                continue;
+            }
+            tp = side < 2 ? p.z : p.x;
+            tq = side < 2 ? q.z : q.x;
+            if (!sea_over(se, nse, side, 0.5f * (tp + tq), p.y, water ? 0.01f : WATER_MAX)) {
+                continue;
+            }
+            out[side < 2 ? 0 : 1] = side == 0 || side == 2 ? -SEA_REACH : SEA_REACH;
+            far_p = p;
+            far_q = q;
+            far_p.x += out[0]; far_p.z += out[1];
+            far_q.x += out[0]; far_q.z += out[1];
+            /* an end at a corner of the box, with water on the other side there too: the far point goes
+             * out both ways (the strip of the other side does the same and meets this one on the diagonal) */
+            for (k = 0; k < 2; k++) {
+                BmapVertex *end = k == 0 ? &p : &q, *far_end = k == 0 ? &far_p : &far_q;
+                float t = side < 2 ? end->z : end->x;
+                int lo_c = fabsf(t - lo[side < 2 ? 1 : 0]) < 0.5f, hi_c = fabsf(t - hi[side < 2 ? 1 : 0]) < 0.5f;
+                int other = side < 2 ? (lo_c ? 2 : 3) : (lo_c ? 0 : 1);
+
+                if ((lo_c || hi_c) && sea_over(se, nse, other, side < 2 ? end->x : end->z, end->y, water ? 0.01f : WATER_MAX)) {
+                    if (side < 2) {
+                        far_end->z += lo_c ? -SEA_REACH : SEA_REACH;
+                    } else {
+                        far_end->x += lo_c ? -SEA_REACH : SEA_REACH;
+                    }
+                }
+            }
+            /* the texture goes on as the triangle lays it: its place is linear over the ground */
+            for (k = 0; k < 2; k++) {
+                BmapVertex *f = k == 0 ? &far_p : &far_q;
+                float dx = f->x - v[0].x, dz = f->z - v[0].z;
+                float s1 = (dx * bz - bx * dz) / det, s2 = (ax * dz - dx * az) / det;
+
+                f->u = v[0].u + s1 * (v[1].u - v[0].u) + s2 * (v[2].u - v[0].u);
+                f->v = v[0].v + s1 * (v[1].v - v[0].v) + s2 * (v[2].v - v[0].v);
+            }
+            for (tri = 0; tri < 2 && rc == 0; tri++) {
+                float e1x, e1z, e2x, e2z;
+
+                if (tri == 0) {
+                    bv[0] = p; bv[1] = q; bv[2] = far_q;
+                } else {
+                    bv[0] = p; bv[1] = far_q; bv[2] = far_p;
+                }
+                e1x = bv[1].x - bv[0].x; e1z = bv[1].z - bv[0].z;
+                e2x = bv[2].x - bv[0].x; e2z = bv[2].z - bv[0].z;
+                if ((e1z * e2x - e1x * e2z) * ny < 0.0f) {      /* facing as the triangle it continues */
+                    BmapVertex sw = bv[1];
+
+                    bv[1] = bv[2];
+                    bv[2] = sw;
+                }
+                for (k = 0; k < 3; k++) {
+                    wp[k][0] = bv[k].x; wp[k][1] = bv[k].y; wp[k][2] = bv[k].z;
+                }
+                rc = add_tri(c, bv, &tag, (const float (*)[3])wp, 0, 0);
+                made++;
+            }
+        }
+    }
+    free(se);
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        fprintf(stderr, "bmap: sea: %u stretches of water on the map's edge, %u triangles added\n", (unsigned)nse, (unsigned)made);
+    }
+    return rc;
+}
 
 int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int hour, int minute)
 {
     Ctx *c = (Ctx *)calloc(1, sizeof *c);
+
+    if (getenv("BMAP_MODELS_DUMP") != NULL) {
+        research_models(getenv("BMAP_MODELS_DUMP"));
+        fprintf(stderr, "bmap: models dumped\n");
+        exit(0);
+    }
     Blob headers, matrix;
     Buf hb, mb;
     unsigned pcx, pcz, area, matrix_id, mode, w, h, cell;
@@ -3021,6 +4221,39 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         goto out;
     }
     load_lights(c, player_area->light_type, hour, minute);
+    {
+        /* Research: BMAP_JOIN="zone ax ay az bx bz turn lx lz side width[;...]": another zone's whole map beside
+         * this one: its point (bx, bz) on this map's (ax, ay, az), turned `turn` degrees about it; the line between
+         * the two goes through (lx, lz), the joined map on the side `side` of it (degrees: 0 north, 90 east, 180
+         * south); `width`: the strip's half width along the line (0: no limit).  BMAP_JOIN_MODE: line, whole, none. */
+        const char *jn = getenv("BMAP_JOIN"), *jm = getenv("BMAP_JOIN_MODE");
+
+        c->join_mode = jm != NULL && strcmp(jm, "whole") == 0 ? 1 : jm != NULL && strcmp(jm, "none") == 0 ? 2 : 0;
+        c->join_cur = -1;
+        while (jn != NULL && *jn != '\0' && c->njoin < 8) {
+            unsigned jz = 0;
+            float f[10];
+
+            if (sscanf(jn, "%u %f %f %f %f %f %f %f %f %f %f", &jz, &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8], &f[9]) == 11
+                && (size_t)(jz + 1u) * 48u <= hb.n) {
+                int q = c->njoin++;
+
+                c->joins[q].zone = jz;
+                c->joins[q].a[0] = f[0]; c->joins[q].a[1] = f[1]; c->joins[q].a[2] = f[2];
+                c->joins[q].b[0] = f[3]; c->joins[q].b[1] = f[4];
+                c->joins[q].cs = cosf(f[5] * 3.14159265f / 180.0f);
+                c->joins[q].sn = sinf(f[5] * 3.14159265f / 180.0f);
+                c->joins[q].l[0] = f[6]; c->joins[q].l[1] = f[7];
+                c->joins[q].n[0] = sinf(f[8] * 3.14159265f / 180.0f);
+                c->joins[q].n[1] = -cosf(f[8] * 3.14159265f / 180.0f);
+                c->joins[q].width = f[9];
+            }
+            jn = strchr(jn, ';');
+            if (jn != NULL) {
+                jn++;
+            }
+        }
+    }
     pcx = (unsigned)(px / CELL_UNITS);
     pcz = (unsigned)(pz / CELL_UNITS);
     (void)pcx; (void)pcz;
@@ -3061,7 +4294,54 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
             goto out;
         }
     }
-    if (add_gimmicks(c, zone, px, pz) != 0) {
+    /* (the gym's devices from the game's files, in their starting state, only when the field's own objects were
+     * not noted: a battle without a field before it, the spot editor) */
+    if (!live_has(zone) && add_gimmicks(c, zone, px, pz) != 0) {
+        goto out;
+    }
+    if (add_live(c, zone, px, pz) != 0) {
+        goto out;
+    }
+    if (c->njoin > 0 && c->join_mode == 1) {
+        jn_drop_whole(c, 0, -1);
+    }
+    {
+        int q;
+
+        for (q = 0; q < c->njoin; q++) {
+            unsigned jz = c->joins[q].zone;
+            Blob jm;
+            Area *jar = area_get(c, rd16(hb, jz * 48u + 2u));
+            size_t added = c->ntag;
+
+            memset(&jm, 0, sizeof jm);
+            if (jar != NULL && arc_load(c, "a/0/0/9", rd16(hb, jz * 48u + 4u), &jm) == 0) {
+                Buf jmb = bb_of(&jm);
+                unsigned jw = rd16(jmb, 4), jh = rd16(jmb, 6), jc;
+
+                c->join_cur = q;
+                for (jc = 0; jw != 0u && jh != 0u && 8u + (size_t)jw * jh * 4u <= jmb.n && jc < jw * jh; jc++) {
+                    unsigned ch = rd32(jmb, 8u + jc * 4u);
+
+                    if (ch == NO_CHUNK) {
+                        continue;
+                    }
+                    c->cur_far = 1;
+                    if (add_chunk(c, jar, ch, (int)(jc % jw), (int)(jc / jw)) != 0) {
+                        blob_free(&jm);
+                        goto out;
+                    }
+                }
+                blob_free(&jm);
+                if (c->join_mode == 1) {
+                    jn_drop_whole(c, added, q);
+                }
+            }
+            fprintf(stderr, "bmap: joined zone %u (mode %d): %u triangles\n", jz, c->join_mode, (unsigned)(c->ntag - added));
+        }
+    }
+    c->join_cur = -2;
+    if (extend_sea(c) != 0) {
         goto out;
     }
     s->clear[0] = c->lights.clear[0]; s->clear[1] = c->lights.clear[1]; s->clear[2] = c->lights.clear[2];
@@ -3074,6 +4354,8 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     s->nt = (unsigned)c->ntex;
     s->tex_gen = bmap_tex_gen();
     c->tex = NULL;
+    memcpy(s->bob_y, c->bob_y, sizeof s->bob_y);
+    s->bob_n = c->bob_n;
     s->uva = c->uva;
     s->nuva = (unsigned)c->nuva;
     c->uva = NULL;

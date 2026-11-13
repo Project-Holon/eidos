@@ -469,6 +469,10 @@ void eidos_platform_set_view(EidosPlatform *p, const struct EidosUiView *v);
 void eidos_platform_set_ui_canvas(EidosPlatform *p,
                                   const struct EidosUiCanvas *c);
 int  eidos_platform_world_active(const EidosPlatform *p);
+/* The one-screen world shows `screen` (0 top, 1 bottom) as its 3D alone, the
+ * screen's 2D layers left out (the title): nothing looks at that screen's
+ * 2D pictures. */
+int  eidos_platform_world_2d_hidden(const EidosPlatform *p, int screen);
 void eidos_platform_view_scale(const EidosPlatform *p, s32 *kx, s32 *ky);
 int  eidos_platform_mouse(const EidosPlatform *p, struct EidosUiMouse *m);
 void eidos_platform_window_size(const EidosPlatform *p, int *w, int *h);
@@ -615,10 +619,6 @@ void eidos_platform_fast_forward_lock(int locked);
  * chooser's preview): eidos_platform_fast_forward answers
  * EIDOS_FAST_FORWARD_MAX meanwhile.  The caller sets it every frame. */
 void eidos_platform_fast_hidden(int hidden);
-/* The one-screen interface is showing a still picture while it waits for the
- * game (a fade between two screens, an app closing): the game runs at twice
- * its speed for that frame.  Set every frame; ignored while locked. */
-void eidos_platform_fast_wait(int waiting);
 
 /* Monotonic nanoseconds since the platform was created. */
 u64  eidos_platform_now_ns(const EidosPlatform *p);
