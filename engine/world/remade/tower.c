@@ -16,7 +16,8 @@
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
  *       colour of the face over it.
- *   corner=W  the side's corner columns (map units, default 6).
+ *   corner=W  the side's corner columns (map units, default 6); 0: no corner
+ *       columns, the side's picture runs on along the back wall (boards).
  */
 
 #include <math.h>
@@ -150,9 +151,14 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[5])
         double p[3][3], uv[3][2], c[3] = { 0, 0, 0 }, mn[3];
         int j, k, in = 1;
 
-        if (f[i].n[2] < 0.3) {
+        /* (a face that looks south; or any face of a part that lies in the south half: a beam's top) */
+        for (j = 0; j < 3; j++) {
+            c[2] += t->p[j][2] / 3.0;
+        }
+        if (f[i].n[2] < 0.3 && c[2] <= bx[4] + 0.5) {
             continue;
         }
+        c[2] = 0.0;
         for (j = 0; j < 3; j++) {
             in &= t->p[j][0] >= bx[0] - 0.05 && t->p[j][0] <= bx[1] + 0.05 && t->p[j][1] >= bx[2] - 0.05
                   && t->p[j][1] <= bx[3] + 0.05;
@@ -219,7 +225,7 @@ static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], dou
         double p[4][3], t[4][2];
         int e;
 
-        for (e = 0; e < 3; e++) {
+        for (e = cw <= 0.0 ? 2 : 0; e < 3; e++) {
             /* (e 0, 1: the corner pieces at X1 and X0; e 2: the plain wall between) */
             const double xa = e == 0 ? w[2] : e == 1 ? w[1] : w[1] + c, xb = e == 0 ? w[2] - c : e == 1 ? w[1] + c : w[2] - c;
             unsigned q;
@@ -230,7 +236,13 @@ static void do_wall(const Ft *f, unsigned nf, RmOut *out, const double w[6], dou
             p[3][0] = xa; p[3][1] = w[5];
             for (q = 0; q < 4u; q++) {
                 p[q][2] = w[3];
-                map_at(&m, e < 2 ? zend + fabs(p[q][0] - xa) : zend + c - 0.3, p[q][1], t[q]);
+                if (cw <= 0.0) {
+                    /* (`corner=0`: the side's picture runs on along the wall, at its own scale: boards, their
+                     * joints where the side has them) */
+                    map_at(&m, zend + (p[q][0] - w[1]), p[q][1], t[q]);
+                } else {
+                    map_at(&m, e < 2 ? zend + fabs(p[q][0] - xa) : zend + c - 0.3, p[q][1], t[q]);
+                }
             }
             quad(out, sf->t->id, sf->b->rgb, p, t, outn);
         }
