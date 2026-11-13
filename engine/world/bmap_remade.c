@@ -84,6 +84,8 @@ static const BmapRemade k_remade[] = {
     { "b1_00015", rm_building, "src=east,span=18:-43,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,twin=38:40" },   /* brick warehouse, green doors: its side's brick at the back */
     { "b1_00040", rm_hall, "corner=8.4,tanks=0:6:0.8,pipe=2.2" },   /* warehouse, glass roof: its sides' wall at the back, the roof's end, six copper tanks */
     { "b1_00058", rm_tower, "corner=0,mirror=-40:40:40:70:0+-31:-26:16:35:0+26:31:16:35:0+23:31:3:46:0+-31:-23:3:46:0,wall=28:-23.7:23.7:-28:4:40.3" },   /* wooden house, red roof: its back in its sides' boards, the gable and the roof's end turned round */
+    { "b1_00112", rm_tower, "mirror=-47:-9:0:45:0:15:30+9:32:0:45:0:15:30+-47:-9:0:45:0:12:14+9:32:0:45:0:12:14+-9:9:33.9:45:0+-23:-6:33.9:45:0,panelz=22:-15:12:-9:9:-22:4:20+21:-15:27:-9:9:-22:20:34:-20" },   /* caravan: its shell turned round, the door column at the back in its front panels, no second door */
+    { "b1_00129", rm_tower, "seal=0" },   /* (in progress) */
     { "b1_00105", rm_tower, "snap=-20:32:-58:-54,props=2.5:110:1" },   /* pergola with vines: each wooden frame and slat closed, the vines as they are (both sides) */
     { "b1_00113", rm_tower, "corner=6,clipz=-32,wall=32:-32:32:-32:5:56,mirror=-32:32:49:57:-1:20:30,props=50.5:40" },   /* light blue shop, roof terrace: its back wall in its sides, the parapet inside, the furniture closed */
     { "b1_00114", rm_tower, "corner=6,clipz=-36:-48:48,wall=48:-48:48:-36:4:96,mirror=-40:40:84:97:-2:20:30,rimwalls=84:-20:26:-22:12,two=46:61.5:54:71+-43:-19:107:120,props=54:30" },   /* grey-green building, roof pool: plain back in its sides, the parapet inside, railing and parasol both sides, balcony pots closed */
