@@ -1106,7 +1106,7 @@ static void add_nt(RmOut *out, Nt *nt, unsigned *nn, unsigned cap, const double 
  *   - a thing (pieces whose boxes touch: a bench, its legs, the planter on it) that is not round gets a whole piece
  *     turned about the thing's middle where the thing has nothing at all (the bench's far legs).  A round thing (a
  *     stool turned on its spot) has all its legs. */
-static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double size)
+static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double size, unsigned modes)
 {
     unsigned *grp = (unsigned *)malloc((size_t)(nf ? nf : 1) * sizeof *grp);
     unsigned *thing = (unsigned *)malloc((size_t)(nf ? nf : 1) * sizeof *thing);
@@ -1239,6 +1239,9 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
         use[g] = 1;
         nt0[g] = nn;
         for (mode = 1; mode <= 3; mode++) {
+            if (!(modes & (1u << (mode - 1)))) {
+                continue;       /* (`props=..:..:MODES`: 1 front to back, 2 side to side, 4 both) */
+            }
             for (i = 0; i < np; i++) {
                 double p[3][3], uv[3][2], q[3][3], quv[3][2], qn[3];
 
@@ -1268,7 +1271,7 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
                         continue;
                     }
                 }
-                if (!covered(pf, np, nt + nt0[g], nn - nt0[g], q, qn)) {
+                if (!covered(f, nf, nt + nt0[g], nn - nt0[g], q, qn)) {   /* (any face of the model: a post's front and back can be pieces apart) */
                     add_nt(out, nt, &nn, cap, q, quv, qn, pf[i].t->id, pf[i].t->rgb, pf[i].b->cull);
                 }
             }
@@ -1358,6 +1361,9 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
                 continue;               /* (only what stands on the thing's floor: legs; a backrest is one of a kind) */
             }
             for (mode = 1; mode <= 3; mode++) {
+                if (!(modes & (1u << (mode - 1)))) {
+                    continue;
+                }
                 /* the piece turned about the thing's middle: where the thing has no piece at all, it goes there */
                 const double ml0 = mode & 2 ? 2.0 * cx - hi[m][0] : lo[m][0], mh0 = mode & 2 ? 2.0 * cx - lo[m][0] : hi[m][0];
                 const double ml2 = mode & 1 ? 2.0 * cz - hi[m][2] : lo[m][2], mh2 = mode & 1 ? 2.0 * cz - lo[m][2] : hi[m][2];
@@ -1527,10 +1533,10 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
         }
     }
     if (rm_opt(opt, "props", buf, sizeof buf) != NULL) {
-        double y0 = 0.0, size = 0.0;
+        double y0 = 0.0, size = 0.0, md = 7.0;
 
-        if (sscanf(buf, "%lf:%lf", &y0, &size) == 2) {
-            do_props(f, nf, out, y0, size);
+        if (sscanf(buf, "%lf:%lf:%lf", &y0, &size, &md) >= 2) {
+            do_props(f, nf, out, y0, size, (unsigned)md);
         }
     }
     if (rm_opt(opt, "panel", buf, sizeof buf) != NULL) {
