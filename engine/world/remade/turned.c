@@ -48,6 +48,8 @@ typedef struct {
     unsigned char rgb[3];       /* its colour as the model paints it             */
     unsigned char ref[3];       /* the brightest colour of its piece             */
     int black;                  /* painted black by the model                    */
+    int own;                    /* `round=2`: turned about its piece's own axis (pax, pz) */
+    double pax;
 } Tr;
 
 static int find(int *parent, int a)
@@ -159,6 +161,7 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
     int *parent;
     double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, cx, cz;
     int any = 0, mirror = rm_optf(opt, "mirror", 0) != 0.0, copies = rm_optf(opt, "copies", 1) != 0.0;
+    const int plainback = rm_optf(opt, "plainback", 0) != 0.0;
 
     (void)tex;
     (void)ntex;
@@ -278,6 +281,42 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             sscanf(cb, "%lf:%lf", &cx, &cz);
         }
     }
+    /* `round=1`: a round thing whose far side is missing (a pot): its box ends short at the north, so the box's
+     * middle is not its axis.  It is as deep as it is wide: its axis stands half its width behind its south end,
+     * and every piece's middle is the axis.  Its far side is then its near side turned, lit by the game as the
+     * near side is (the same smooth light, corner by corner), and no twin is made beside it. */
+    if (rm_optf(opt, "round", 0) == 1.0) {
+        cz = hi[2] - (hi[0] - lo[0]) / 2.0;
+        for (i = 0; i < n0; i++) {
+            if (!tr[i].flat) {
+                tr[i].pz = cz;
+            }
+        }
+    }
+    /* `round=2`: each piece is round about its own axis (a chandelier's ring, each dish under a candle, its
+     * column): a piece's axis stands half the piece's width behind its south end, and its far side is its near
+     * side turned about it */
+    if (rm_optf(opt, "round", 0) == 2.0) {
+        for (i = 0; i < n0; i++) {
+            double px0 = 1e30, px1 = -1e30, pz1 = -1e30;
+
+            if (tr[i].flat) {
+                continue;
+            }
+            for (j = 0; j < n0; j++) {
+                if (tr[j].piece == tr[i].piece) {
+                    for (k = 0; k < 3; k++) {
+                        px0 = tr[j].p[k][0] < px0 ? tr[j].p[k][0] : px0;
+                        px1 = tr[j].p[k][0] > px1 ? tr[j].p[k][0] : px1;
+                        pz1 = tr[j].p[k][2] > pz1 ? tr[j].p[k][2] : pz1;
+                    }
+                }
+            }
+            tr[i].pax = (px0 + px1) / 2.0;
+            tr[i].pz = pz1 - (px1 - px0) / 2.0;
+            tr[i].own = 1;
+        }
+    }
     if (rm_optf(opt, "turn", 1) == 0.0) {
         goto cards;                     /* (`turn=0`: only the cards from both sides) */
     }
@@ -358,11 +397,15 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
         if (rm_norm(nv0) > 1e-6 && fabs(nv0[1]) > 0.98 && tr[i].p[0][1] < lo[1] + 0.3) {
             continue;                   /* (a level sheet at the thing's foot: its shadow on the floor) */
         }
-        for (j = 0; j < 3; j++) {
-            q.p[j][0] = (float)(2.0 * cx - tr[i].p[j][0]);
-            q.p[j][2] = (float)(2.0 * cz - tr[i].p[j][2]);
+        {
+            const double tcx = tr[i].own ? tr[i].pax : cx, tcz = tr[i].own ? tr[i].pz : cz;
+
+            for (j = 0; j < 3; j++) {
+                q.p[j][0] = (float)(2.0 * tcx - tr[i].p[j][0]);
+                q.p[j][2] = (float)(2.0 * tcz - tr[i].p[j][2]);
+            }
+            q.pz = 2.0 * tcz - tr[i].pz;
         }
-        q.pz = 2.0 * cz - tr[i].pz;
         if (mirror) {
             /* mirrored north to south: the corners the other way round, so it looks outward */
             for (j = 0; j < 3; j++) {
@@ -385,7 +428,7 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             if (q.black) {
                 painted(out, &q);
             } else {
-                rm_turn(out, tr[i].id, cx, cz);
+                rm_turn(out, tr[i].id, tr[i].own ? tr[i].pax : cx, tr[i].own ? tr[i].pz : cz);
             }
             tr[n++] = q;
         }
@@ -412,6 +455,38 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             q.p[j][2] = (float)(2.0 * tr[i].pz - tr[i].p[s][2]);
             q.uv[j][0] = tr[i].uv[s][0];
             q.uv[j][1] = tr[i].uv[s][1];
+        }
+        if (plainback) {
+            /* `plainback=1`: the twin does not wear the front's picture (a television's back has no screen): it
+             * is plain, in one pixel of its piece's side, the middle of the biggest face that looks east or west */
+            double best = 0.0;
+            int sidx = -1;
+
+            for (j = 0; j < n0; j++) {
+                double nj[3], area;
+
+                if (tr[j].piece != tr[i].piece) {
+                    continue;
+                }
+                normal_of(tr[j].p, nj);
+                area = rm_norm(nj);
+                if (area > best && fabs(nj[0]) > 0.7) {
+                    best = area;
+                    sidx = (int)j;
+                }
+            }
+            if (sidx >= 0) {
+                float u = (tr[sidx].uv[0][0] + tr[sidx].uv[1][0] + tr[sidx].uv[2][0]) / 3.0f;
+                float v = (tr[sidx].uv[0][1] + tr[sidx].uv[1][1] + tr[sidx].uv[2][1]) / 3.0f;
+
+                for (j = 0; j < 3; j++) {
+                    q.uv[j][0] = u;
+                    q.uv[j][1] = v;
+                }
+                q.id = tr[sidx].id;
+                q.bt = tr[sidx].bt;
+                memcpy(q.ref, tr[sidx].black ? tr[sidx].ref : tr[sidx].rgb, 3u);
+            }
         }
         if (!there(tr, n, q.p)) {
             painted(out, &q);

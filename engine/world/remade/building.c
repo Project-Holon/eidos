@@ -22,7 +22,8 @@
  *
  * Settings: roof=0 (no roof twin), wall=0 (no back wall), shade (0.85: the
  * back wall's shade of the front's colours: it stands in the shade),
- * erase=X0:X1:Y0:Y1+.. and plain=X (map units of the model's own space),
+ * erase=X0:X1:Y0:Y1[:DX]+.. and plain=X (map units of the model's own space;
+ * with DX a place takes the wall DX to its side: windows go on where a door was),
  * foot=Y (where the wall ends at the bottom: a house on posts), src=east
  * with span=Z0:Z1 (the picture is the east side's, that stretch of it laid
  * across the back: a tower's back is its side), lean=D (the wall's foot
@@ -170,6 +171,391 @@ static int wall_px(const Tr *t, const RmTex *tex, unsigned ntex, double x, doubl
     return 1;
 }
 
+/* The nearest roof (a slope) along the ray from o along d, a unit vector, past a twentieth of a unit: the
+ * distance, or -1.  Triangle `skip` is not looked at. */
+static double roof_hit(const Tr *tr, unsigned n, unsigned skip, const double o[3], const double d[3], double far)
+{
+    double best = -1.0;
+    unsigned i;
+
+    for (i = 0; i < n; i++) {
+        double hd;
+
+        if (i == skip || !(tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98)) {
+            continue;
+        }
+        hd = ray_hit(&tr[i], o, d);
+        if (hd > 0.05 && hd < far && (best < 0.0 || hd < best)) {
+            best = hd;
+        }
+    }
+    return best;
+}
+
+/*
+ * `valley=1`: a roof board whose low back edge ends in the air over the roof (a dormer's little roof, seen from
+ * behind: under it the dormer is open and dark) goes on down its own slope until it meets the roof under it, in
+ * its own picture.  Along the edge, the part that is under the roof already stays where it is.
+ */
+static void valley(const Tr *tr, unsigned n, RmOut *out, const char *opt)
+{
+    enum { S = 24 };
+    unsigned i, j, s, m;
+    int k;
+
+    if (rm_optf(opt, "valley", 0) == 0.0) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        const Tr *t = &tr[i];
+
+        if (t->added || !(t->n[1] > 0.25 && t->n[1] < 0.98)) {
+            continue;
+        }
+        for (j = 0; j < 3u; j++) {
+            const double *a = t->p[j], *b = t->p[(j + 1u) % 3u], *c = t->p[(j + 2u) % 3u];
+            double e[3], w[3], g[3], cr[3], len, we, f1[3], f2[3], den, up[3] = { 0.0, 1.0, 0.0 };
+            double pt[S + 1][3], pd[S + 1][3], ds[S + 1], uv[S + 1][2], uvd[S + 1][2];
+            int shared = 0, any = 0, flip;
+
+            if (c[1] < (a[1] > b[1] ? a[1] : b[1]) + 0.25) {
+                continue;               /* (not the triangle's low edge) */
+            }
+            /* (an edge another triangle has too is no end of the board) */
+            for (m = 0; m < n && !shared; m++) {
+                unsigned u, hits = 0;
+
+                for (u = 0; m != i && u < 3u; u++) {
+                    double da = fabs(tr[m].p[u][0] - a[0]) + fabs(tr[m].p[u][1] - a[1]) + fabs(tr[m].p[u][2] - a[2]);
+                    double db = fabs(tr[m].p[u][0] - b[0]) + fabs(tr[m].p[u][1] - b[1]) + fabs(tr[m].p[u][2] - b[2]);
+
+                    hits += da < 0.1 || db < 0.1;
+                }
+                shared = hits >= 2u;
+            }
+            if (shared) {
+                continue;
+            }
+            /* down the board: in its plane, square to the edge, away from its high corner */
+            for (k = 0; k < 3; k++) {
+                e[k] = b[k] - a[k];
+                w[k] = c[k] - a[k];
+            }
+            len = rm_norm(e);
+            if (len < 0.5) {
+                continue;
+            }
+            we = rm_dot(w, e);
+            for (k = 0; k < 3; k++) {
+                g[k] = -(w[k] - we * e[k]);
+            }
+            rm_norm(g);
+            if (g[1] > -0.1 || g[2] > -0.3) {
+                continue;               /* (it must go down, and to the back) */
+            }
+            /* the board's picture at a place of its plane: by the corners' weights, carried on past its edge */
+            for (k = 0; k < 3; k++) {
+                f1[k] = t->p[1][k] - t->p[0][k];
+                f2[k] = t->p[2][k] - t->p[0][k];
+            }
+            den = rm_dot(f1, f1) * rm_dot(f2, f2) - rm_dot(f1, f2) * rm_dot(f1, f2);
+            if (fabs(den) < 1e-9) {
+                continue;
+            }
+            for (s = 0; s <= (unsigned)S; s++) {
+                double d0;
+
+                for (k = 0; k < 3; k++) {
+                    pt[s][k] = a[k] + (b[k] - a[k]) * s / S;
+                }
+                ds[s] = 0.0;
+                if (roof_hit(tr, n, i, pt[s], up, 40.0) < 0.0) {        /* (under the roof: it stays) */
+                    d0 = roof_hit(tr, n, i, pt[s], g, 20.0);
+                    ds[s] = d0 > 0.0 ? d0 : 0.0;
+                    any |= d0 > 0.0;
+                }
+            }
+            if (!any) {
+                continue;
+            }
+            /* each place's end down the board, and the picture at both */
+            for (s = 0; s <= (unsigned)S; s++) {
+                unsigned v;
+
+                for (k = 0; k < 3; k++) {
+                    pd[s][k] = pt[s][k] + g[k] * ds[s];
+                }
+                for (v = 0; v < 2u; v++) {
+                    const double *q = v == 0 ? pt[s] : pd[s];
+                    double dd[3], w1, w2, *o = v == 0 ? uv[s] : uvd[s];
+
+                    for (k = 0; k < 3; k++) {
+                        dd[k] = q[k] - t->p[0][k];
+                    }
+                    w1 = (rm_dot(dd, f1) * rm_dot(f2, f2) - rm_dot(dd, f2) * rm_dot(f1, f2)) / den;
+                    w2 = (rm_dot(dd, f2) * rm_dot(f1, f1) - rm_dot(dd, f1) * rm_dot(f1, f2)) / den;
+                    o[0] = (1.0 - w1 - w2) * t->uv[0][0] + w1 * t->uv[1][0] + w2 * t->uv[2][0];
+                    o[1] = (1.0 - w1 - w2) * t->uv[0][1] + w1 * t->uv[1][1] + w2 * t->uv[2][1];
+                }
+            }
+            /* (turned the way the board looks: the edge, then down it) */
+            rm_cross(e, g, cr);
+            flip = rm_dot(cr, t->n) < 0.0;
+            /* the strip, piece by piece: the edge from one place to the next, and back along their ends down the
+             * board (where a place stays, its end is the place itself: that piece is one triangle) */
+            for (s = 1; s <= (unsigned)S; s++) {
+                if (ds[s] > 0.0) {
+                    if (flip) {
+                        rm_tri(out, t->id, -1, 1, t->rgb, pt[s - 1], pd[s], pt[s], uv[s - 1], uvd[s], uv[s], 0, 0);
+                    } else {
+                        rm_tri(out, t->id, -1, 1, t->rgb, pt[s - 1], pt[s], pd[s], uv[s - 1], uv[s], uvd[s], 0, 0);
+                    }
+                }
+                if (ds[s - 1] > 0.0) {
+                    if (flip) {
+                        rm_tri(out, t->id, -1, 1, t->rgb, pt[s - 1], pd[s - 1], pd[s], uv[s - 1], uvd[s - 1], uvd[s], 0, 0);
+                    } else {
+                        rm_tri(out, t->id, -1, 1, t->rgb, pt[s - 1], pd[s], pd[s - 1], uv[s - 1], uvd[s], uvd[s - 1], 0, 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/*
+ * `rim=1`: the roof's back end gets the edge its front end has.  The roof is a slab: at its south end its
+ * thickness is closed by upright faces (a blue band under the slope's edge, a trim board); at its north end the
+ * model has nothing.  Those faces, the model's own that look south and stand at the slopes' south end, are
+ * carried to the slopes' north end, looking north: the roof's edge stands out over the back wall as it does
+ * over the front.
+ */
+static void rim(const Tr *tr, unsigned n, RmOut *out, const char *opt)
+{
+    double zs = -1e30, zn = 1e30, yeave = 1e30;
+    /* (`rimdrop=D`: how far under the eaves the roof's end may hang, 2: a band under the roof's edge, more) */
+    const double rimdrop = rm_optf(opt, "rimdrop", 2.0);
+    /* (`rimout=D`: the copy stands D further out: a frame in the wall's own plane, in front of it, not in it) */
+    const double rimout = rm_optf(opt, "rimout", 0.0);
+    unsigned i, j;
+
+    if (rm_optf(opt, "rim", 0) == 0.0) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        if (!tr[i].added && tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98) {
+            for (j = 0; j < 3u; j++) {
+                zs = tr[i].p[j][2] > zs ? tr[i].p[j][2] : zs;
+                zn = tr[i].p[j][2] < zn ? tr[i].p[j][2] : zn;
+            }
+        }
+    }
+    /* (`rimat=Z`: the roof end at Z is the one copied, to the far end of the slopes that reach Z: a building of
+     * several roofs, or a little roof over the door further out than the main roof's end) */
+    if (rm_optf(opt, "rimat", 1e30) < 1e29) {
+        unsigned m;
+
+        zs = rm_optf(opt, "rimat", 0);
+        zn = 1e30;
+        /* (the slopes that reach Z, and every slope in the same plane as one of them: a roof cut in pieces along
+         * its length is one roof; its far end is the far end of its planes) */
+        for (i = 0; i < n; i++) {
+            int reach = 0;
+
+            if (tr[i].added || !(tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98)) {
+                continue;
+            }
+            for (j = 0; j < 3u; j++) {
+                reach |= fabs(tr[i].p[j][2] - zs) < 0.3;
+            }
+            for (m = 0; reach && m < n; m++) {
+                double d[3];
+
+                if (tr[m].added || rm_dot(tr[m].n, tr[i].n) < 0.999) {
+                    continue;
+                }
+                for (j = 0; j < 3u; j++) {
+                    d[j] = tr[m].p[0][j] - tr[i].p[0][j];
+                }
+                if (fabs(rm_dot(d, tr[i].n)) > 0.3) {
+                    continue;           /* (parallel, but another roof) */
+                }
+                for (j = 0; j < 3u; j++) {
+                    zn = tr[m].p[j][2] < zn ? tr[m].p[j][2] : zn;
+                }
+            }
+        }
+    }
+    if (zs - zn < 1.0) {
+        return;
+    }
+    /* (the eaves: the lowest corner of the slopes that reach the roof's end, their tops and their undersides; only
+     * slopes of the roof itself, whose plane runs on to its far end: a little sloped hood or sill at the front is
+     * no roof, and with it the corner pillars under the eaves were copied too) */
+    for (i = 0; i < n; i++) {
+        int reach = 0, roof = 0;
+        unsigned m;
+
+        if (tr[i].added || !(fabs(tr[i].n[1]) > 0.25 && fabs(tr[i].n[1]) < 0.98)) {
+            continue;
+        }
+        for (j = 0; j < 3u; j++) {
+            reach |= fabs(tr[i].p[j][2] - zs) < 0.3;
+        }
+        for (m = 0; reach && !roof && m < n; m++) {
+            double d[3];
+
+            if (tr[m].added || rm_dot(tr[m].n, tr[i].n) < 0.999) {
+                continue;
+            }
+            for (j = 0; j < 3u; j++) {
+                d[j] = tr[m].p[0][j] - tr[i].p[0][j];
+            }
+            if (fabs(rm_dot(d, tr[i].n)) > 0.3) {
+                continue;
+            }
+            for (j = 0; j < 3u; j++) {
+                roof |= tr[m].p[j][2] < zn + 0.3;
+            }
+        }
+        for (j = 0; reach && roof && j < 3u; j++) {
+            yeave = tr[i].p[j][1] < yeave ? tr[i].p[j][1] : yeave;
+        }
+    }
+    for (i = 0; i < n; i++) {
+        const Tr *t = &tr[i];
+        double p[3][3];
+        double uv[3][2];
+        int at_end = 1;
+
+        if (t->added || t->n[2] < 0.9) {
+            continue;
+        }
+        for (j = 0; j < 3u; j++) {
+            at_end &= fabs(t->p[j][2] - zs) < 0.3 && t->p[j][1] > yeave - rimdrop;
+        }
+        if (!at_end) {
+            continue;           /* (not at the roof's end; or under its eaves: a door's frame, no roof's edge) */
+        }
+        /* (mirrored along the roof: corners the other way round, so it looks north) */
+        for (j = 0; j < 3u; j++) {
+            unsigned s = j == 0 ? 0u : 3u - j;
+
+            p[j][0] = t->p[s][0];
+            p[j][1] = t->p[s][1];
+            p[j][2] = zn + (zs - t->p[s][2]) - rimout;
+            uv[j][0] = t->uv[s][0];
+            uv[j][1] = t->uv[s][1];
+        }
+        rm_tri(out, t->id, -1, 1, t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+    }
+}
+
+/*
+ * `door=X:Z0:Z1:Y0:Y1:U0:V0:U1:V1`: an opening that is only a black hole (a doorway at the top of a stair, open on
+ * nothing) gets a door: the model's faces in the upright plane x = X, between Z0 and Z1 and Y0 and Y1, give way
+ * to two door leaves side by side, the second mirrored, cut from the place U0..U1, V0..V1 of the same texture
+ * (the building's own door, from its front).
+ */
+static void door(const Tr *tr, unsigned n, RmOut *out, const char *opt)
+{
+    char db[128];
+    double d[9];
+    unsigned i, j, src = 0;
+    int found = 0;
+    unsigned char rgb[3] = { 255, 255, 255 };
+
+    if (rm_opt(opt, "door", db, sizeof db) == NULL
+        || sscanf(db, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &d[0], &d[1], &d[2], &d[3], &d[4], &d[5], &d[6], &d[7], &d[8]) != 9) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        int in = fabs(tr[i].n[0]) > 0.9;
+
+        for (j = 0; j < 3u && in; j++) {
+            in = fabs(tr[i].p[j][0] - d[0]) < 0.3 && tr[i].p[j][2] > d[1] - 0.3 && tr[i].p[j][2] < d[2] + 0.3
+                 && tr[i].p[j][1] > d[3] - 0.3 && tr[i].p[j][1] < d[4] + 0.3;
+        }
+        if (in) {
+            rm_drop(out, tr[i].id);
+            if (!found) {
+                src = tr[i].id;
+                memcpy(rgb, tr[i].rgb, 3u);
+                found = 1;
+            }
+        }
+    }
+    if (!found) {
+        return;
+    }
+    {
+        const double zm = (d[1] + d[2]) / 2.0;
+        int leaf;
+
+        for (leaf = 0; leaf < 2; leaf++) {
+            const double za = leaf == 0 ? d[1] : zm, zb = leaf == 0 ? zm : d[2];
+            const double ua = leaf == 0 ? d[5] : d[7], ub = leaf == 0 ? d[7] : d[5];
+            double p0[3] = { d[0], d[3], za }, p1[3] = { d[0], d[3], zb }, p2[3] = { d[0], d[4], zb }, p3[3] = { d[0], d[4], za };
+            double t0[2] = { ua, d[8] }, t1[2] = { ub, d[8] }, t2[2] = { ub, d[6] }, t3[2] = { ua, d[6] };
+
+            /* (both ways round: the door looks out of the wall, and from inside it is the door's back) */
+            rm_tri(out, src, -1, 0, rgb, p0, p1, p2, t0, t1, t2, 0, 0);
+            rm_tri(out, src, -1, 0, rgb, p0, p2, p3, t0, t2, t3, 0, 0);
+        }
+    }
+}
+
+/*
+ * `twin=Y0:Y1`: a band round the building between those heights (a ledge halfway up, a slab with a top, two ends
+ * and a front) has no back end: the camera never saw it.  Each of its faces that looks south gets its twin at the
+ * band's north end, looking north, in the same picture: from behind it is the ledge the sides show, not a line.
+ */
+static void twin_band(const Tr *tr, unsigned n, RmOut *out, const char *opt)
+{
+    char tb[48];
+    double y0b, y1b, zb = 1e30;
+    unsigned i, j;
+
+    if (rm_opt(opt, "twin", tb, sizeof tb) == NULL || sscanf(tb, "%lf:%lf", &y0b, &y1b) != 2) {
+        return;
+    }
+    /* (the band's north end: the northmost corner of its faces) */
+    for (i = 0; i < n; i++) {
+        int in = !tr[i].added;
+
+        for (j = 0; j < 3u && in; j++) {
+            in = tr[i].p[j][1] > y0b - 0.1 && tr[i].p[j][1] < y1b + 0.1;
+        }
+        for (j = 0; in && j < 3u; j++) {
+            zb = tr[i].p[j][2] < zb ? tr[i].p[j][2] : zb;
+        }
+    }
+    if (zb > 1e29) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        double p[3][3], uv[3][2];
+        int in = !tr[i].added && tr[i].n[2] > 0.9;
+
+        for (j = 0; j < 3u && in; j++) {
+            in = tr[i].p[j][1] > y0b - 0.1 && tr[i].p[j][1] < y1b + 0.1;
+        }
+        if (!in) {
+            continue;
+        }
+        for (j = 0; j < 3u; j++) {
+            const unsigned s = j == 0 ? 0u : 3u - j;      /* (corners the other way round: it looks north) */
+
+            p[j][0] = tr[i].p[s][0];
+            p[j][1] = tr[i].p[s][1];
+            p[j][2] = zb;
+            uv[j][0] = tr[i].uv[s][0];
+            uv[j][1] = tr[i].uv[s][1];
+        }
+        rm_tri(out, tr[i].id, -1, 1, tr[i].rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+    }
+}
+
 static int dbl_cmp(const void *a, const void *b)
 {
     double x = *(const double *)a, y = *(const double *)b;
@@ -184,8 +570,10 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
     unsigned bi, i, j, n = 0, n0, ne = 0, nq = 0;
     Tr *tr;
     Edge *ed = NULL;
-    double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, y0, over = 0.0, wx0 = 1e30, wx1 = -1e30, wzn = 1e30;
+    double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, y0, over = 0.0, wx0 = 1e30, wx1 = -1e30, wzn = 1e30, wzs = -1e30;
     double (*quad)[4][3] = NULL;
+    double ret[16][4];                  /* `inset`'s return walls: x, from z, to z, height */
+    unsigned nret = 0;
     int fitted = 0;
     unsigned char *qside = NULL;
     double *minz = NULL;
@@ -372,12 +760,19 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         zr = cnt ? zr / cnt : 0.0;
         for (i = 0; cnt && i < n0; i++) {
             Tr q = tr[i];
+            char sb0[16];
             double c[3] = { 0, 0, 0 };
             double low = tr[i].p[0][1] < tr[i].p[1][1] ? tr[i].p[0][1] : tr[i].p[1][1];
 
             low = tr[i].p[2][1] < low ? tr[i].p[2][1] : low;
-            if (!(tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98 && tr[i].n[2] > 0.3) || low < y0 + 0.45 * (hi[1] - y0)) {
+            if (!(tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98 && tr[i].n[2] > 0.3)
+                || low < rm_optf(opt, "rooflow", y0 + 0.45 * (hi[1] - y0))) {
                 continue;               /* (not a slope that looks south, or low on the house: a window's sill) */
+            }
+            /* (`rooflow=Y`: slopes from that height up, so an awning over the ground floor goes round the back
+             * too; a white slope is an arch or a sign, no roof) */
+            if (tr[i].rgb[0] > 190 && tr[i].rgb[1] > 190 && tr[i].rgb[2] > 170 && rm_opt(opt, "rooflow", sb0, sizeof sb0) != NULL) {
+                continue;
             }
             for (j = 0; j < 3; j++) {       /* mirrored through the ridge, corners the other way round */
                 unsigned s = j == 0 ? 0u : 3u - j;
@@ -406,6 +801,10 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
             tr[n++] = q;
         }
     }
+    door(tr, n0, out, opt);
+    twin_band(tr, n0, out, opt);
+    valley(tr, n, out, opt);
+    rim(tr, n, out, opt);
     if (!do_wall) {
         goto done;
     }
@@ -510,6 +909,9 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         }
         free(smp);
     }
+    /* (`over=D`: the back wall stands D in from the roof's back edge; 0: flush with it, a gable closed at the
+     * roof's end, so nobody looks up under the roof from behind) */
+    over = rm_optf(opt, "over", over);
     /* the edges at the north side, high over the ground, with no wall under them: the northmost at each place */
     for (k = 0; k < nbin; k++) {
         minz[k] = 1e30;
@@ -529,15 +931,92 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         if (sqrt(rm_dot(c3, c3)) < 0.02 * (hi[1] - y0) * (hi[2] - lo[2])) {
             continue;                   /* (a small one: a chimney's side, a post's) */
         }
+        /* (`groundwalls=1`: a side wall stands on the ground: a board under the eaves further out is the roof's) */
+        if (rm_optf(opt, "groundwalls", 0) != 0.0
+            && !(tr[i].p[0][1] < y0 + 3.0 || tr[i].p[1][1] < y0 + 3.0 || tr[i].p[2][1] < y0 + 3.0)) {
+            continue;
+        }
+        for (j = 0; j < 3u; j++) {
+            wzs = tr[i].p[j][2] > wzs ? tr[i].p[j][2] : wzs;
+        }
         for (j = 0; j < 3u; j++) {
             wx0 = tr[i].p[j][0] < wx0 ? tr[i].p[j][0] : wx0;
             wx1 = tr[i].p[j][0] > wx1 ? tr[i].p[j][0] : wx1;
             wzn = tr[i].p[j][2] < wzn ? tr[i].p[j][2] : wzn;
         }
     }
+    /* `pipes=W:YTOP:U:V`: a drainpipe at each corner of the walls, W square, from the ground up to YTOP, in the
+     * pixel U, V of the walls' own texture (the grey the model paints as a flat stripe on each wall at the corner):
+     * a pipe has sides; its sides shaded by the way they look */
+    {
+        char pb2[64];
+        double pw, ptop, pu, pv;
+
+        if (wx1 > wx0 && wzs > wzn && rm_opt(opt, "pipes", pb2, sizeof pb2) != NULL
+            && sscanf(pb2, "%lf:%lf:%lf:%lf", &pw, &ptop, &pu, &pv) == 4) {
+            unsigned src = 0;
+            unsigned char rgb[3] = { 255, 255, 255 };
+            int c4, f;
+
+            /* (the material: a side wall's, the texture the stripe is in) */
+            for (i = 0; i < n0; i++) {
+                if (fabs(tr[i].n[0]) > 0.9 && (tr[i].p[0][1] < y0 + 3.0 || tr[i].p[1][1] < y0 + 3.0)) {
+                    src = tr[i].id;
+                    memcpy(rgb, tr[i].rgb, 3u);
+                    break;
+                }
+            }
+            for (c4 = 0; c4 < 4; c4++) {
+                const double cx2 = c4 & 1 ? wx1 : wx0, cz2 = c4 & 2 ? wzs : wzn, h = pw / 2.0;
+                const double uvp[2] = { pu, pv };
+
+                for (f = 0; f < 4; f++) {
+                    /* the four sides: east, west, south, north */
+                    static const double sh4[4] = { 0.86, 0.86, 1.0, 0.72 };
+                    double q[4][3], e1[3], e2[3], cr[3], nn[3] = { 0, 0, 0 };
+                    unsigned char col[3];
+
+                    if (f < 2) {
+                        const double x2 = cx2 + (f == 0 ? h : -h);
+
+                        nn[0] = f == 0 ? 1 : -1;
+                        q[0][0] = q[1][0] = q[2][0] = q[3][0] = x2;
+                        q[0][2] = q[3][2] = cz2 - h; q[1][2] = q[2][2] = cz2 + h;
+                    } else {
+                        const double z2 = cz2 + (f == 2 ? h : -h);
+
+                        nn[2] = f == 2 ? 1 : -1;
+                        q[0][2] = q[1][2] = q[2][2] = q[3][2] = z2;
+                        q[0][0] = q[3][0] = cx2 - h; q[1][0] = q[2][0] = cx2 + h;
+                    }
+                    q[0][1] = q[1][1] = y0;
+                    q[2][1] = q[3][1] = ptop;
+                    for (k = 0; k < 3; k++) {
+                        e1[k] = q[1][k] - q[0][k];
+                        e2[k] = q[2][k] - q[0][k];
+                        col[k] = (unsigned char)(rgb[k] * sh4[f]);
+                    }
+                    rm_cross(e1, e2, cr);
+                    if (rm_dot(cr, nn) >= 0.0) {
+                        rm_tri(out, src, -1, 1, col, q[0], q[1], q[2], uvp, uvp, uvp, 0, 0);
+                        rm_tri(out, src, -1, 1, col, q[0], q[2], q[3], uvp, uvp, uvp, 0, 0);
+                    } else {
+                        rm_tri(out, src, -1, 1, col, q[0], q[2], q[1], uvp, uvp, uvp, 0, 0);
+                        rm_tri(out, src, -1, 1, col, q[0], q[3], q[2], uvp, uvp, uvp, 0, 0);
+                    }
+                }
+            }
+        }
+    }
     {
         unsigned e, pass;
+        double tw0 = 1e30, tw1 = -1e30;
+        char twb[48];
 
+        /* (`twin`'s band, a ledge round the building: its edges are its own, no roof's edge with a wall under it) */
+        if (rm_opt(opt, "twin", twb, sizeof twb) != NULL) {
+            sscanf(twb, "%lf:%lf", &tw0, &tw1);
+        }
         for (pass = 0; pass < 2u; pass++) {
             for (e = 0; e < ne; e++) {
                 const Tr *t = &tr[ed[e].owner];
@@ -553,8 +1032,11 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 }
                 ex = bb2[0] - a[0]; ez = bb2[2] - a[2];
                 len = sqrt(ex * ex + ez * ez);
-                if (len < 0.5 || fabs(bb2[1] - a[1]) > 1.2 * len || mid[1] - y0 < 4.0) {
-                    continue;           /* (short, steep, or at the ground) */
+                /* (`flush=1` or `rim=1`: a steep roof's edge too: a gable's steep side is no less a gable) */
+                if (len < 0.5
+                    || fabs(bb2[1] - a[1]) > (rm_optf(opt, "flush", 0) != 0.0 || rm_optf(opt, "rim", 0) != 0.0 ? 4.0 : 1.2) * len
+                    || mid[1] - y0 < 4.0 || (mid[1] > tw0 - 0.1 && mid[1] < tw1 + 0.1)) {
+                    continue;           /* (short, steep, at the ground, or the ledge's) */
                 }
                 ox = -ez / len; oz = ex / len;
                 if (fabs(t->n[1]) < 0.3) {
@@ -675,6 +1157,21 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                     if (skip) {
                         continue;
                     }
+                    /* (`groundwalls=1`: and a back wall that ends short of a side wall, under a roof that ends short of
+                     * it too, goes on to it: the corner is closed, no wall floats beside the building) */
+                    if (rm_optf(opt, "groundwalls", 0) != 0.0) {
+                        for (j = 0; j < 2u; j++) {
+                            const double xe = quad[nq][j][0], to = xe > (wx0 + wx1) / 2.0 ? wx1 : wx0;
+
+                            if (fabs(to - xe) > 0.05 && fabs(to - xe) < 6.0) {
+                                quad[nq][j][0] = to;
+                                quad[nq][3u - j][0] = to;
+                            }
+                        }
+                        if (fabs(quad[nq][0][0] - quad[nq][1][0]) < 0.05) {
+                            continue;       /* (a piece that was the corner's alone: nothing left of it) */
+                        }
+                    }
                 }
                 /* (kept facing outward: its corners counter-clockwise seen from outside) */
                 {
@@ -742,7 +1239,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
 #undef BIG_SIDE
     /* back wall pieces that stand within 2 units of the northmost are one plane: no slit between them */
     {
-        double zn = 1e30;
+        double zn = 1e30, zroof = 1e30;
         unsigned q2;
 
         for (q2 = 0; q2 < nq; q2++) {
@@ -753,10 +1250,79 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         if (wzn < 1e29 && fabs(zn - wzn) < 8.0) {
             zn = wzn;                   /* where the side walls end */
         }
+        /* (the roof's back edge: the northmost corner of a slope; a sheet on the ground can reach further) */
+        for (i = 0; i < n0; i++) {
+            if (tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98) {
+                for (j = 0; j < 3u; j++) {
+                    zroof = tr[i].p[j][2] < zroof ? tr[i].p[j][2] : zroof;
+                }
+            }
+        }
+        /* `flush=1`: the back wall stands at the roof's back edge (its northmost corner), not where the side
+         * walls end: seen from behind, nothing under the roof shows (its underside, the top of the storey under
+         * it).  The side walls are carried on to it (below, the corner strips). */
+        if (rm_optf(opt, "flush", 0) != 0.0 && zroof < 1e29) {
+            zn = zroof;
+        }
         for (q2 = 0; !fitted && q2 < nq; q2++) {
             for (j = 0; !qside[q2] && j < 4u; j++) {
                 if (fabs(quad[q2][j][2] - zn) < 8.0) {
                     quad[q2][j][2] = zn;
+                }
+            }
+        }
+        /* `inset=X0:X1:D+..`: the back wall pieces between X0 and X1 (by their middles) stand D further in, as the
+         * front's wall there stands in from its roof's end (a gable set back in the roof's frame) */
+        {
+            char ib[128], *ip;
+
+            if (rm_opt(opt, "inset", ib, sizeof ib) != NULL) {
+                for (ip = ib; ip != NULL && *ip != '\0'; ) {
+                    double i0, i1, idz;
+
+                    if (sscanf(ip, "%lf:%lf:%lf", &i0, &i1, &idz) == 3) {
+                        for (q2 = 0; q2 < nq; q2++) {
+                            const double qm = (quad[q2][0][0] + quad[q2][1][0] + quad[q2][2][0] + quad[q2][3][0]) / 4.0;
+
+                            /* (a piece of the back only: within a unit of the back wall's line) */
+                            if (!qside[q2] && qm > i0 && qm < i1 && fabs(quad[q2][0][2] - zn) < 1.0) {
+                                /* (where the piece's end meets a wall that stays, a return wall between the two, as
+                                 * tall as the one that stays is there) */
+                                unsigned e2, q3;
+
+                                for (e2 = 0; e2 < 2u; e2++) {
+                                    const double xe = quad[q2][e2 == 0 ? 0 : 1][0];
+                                    double h = -1e30;
+
+                                    for (q3 = 0; q3 < nq; q3++) {
+                                        const double qm3 = (quad[q3][0][0] + quad[q3][1][0] + quad[q3][2][0] + quad[q3][3][0]) / 4.0;
+                                        unsigned c4;
+
+                                        if (q3 == q2 || qside[q3] || (qm3 > i0 && qm3 < i1)) {
+                                            continue;
+                                        }
+                                        for (c4 = 0; c4 < 2u; c4++) {
+                                            if (fabs(quad[q3][c4][0] - xe) < 0.3 && quad[q3][c4][1] > h) {
+                                                h = quad[q3][c4][1];
+                                            }
+                                        }
+                                    }
+                                    if (h > y0 + 1.0 && nret < 16u) {
+                                        ret[nret][0] = xe;
+                                        ret[nret][1] = quad[q2][0][2];
+                                        ret[nret][2] = quad[q2][0][2] + idz;
+                                        ret[nret][3] = h;
+                                        nret++;
+                                    }
+                                }
+                                for (j = 0; j < 4u; j++) {
+                                    quad[q2][j][2] += idz;
+                                }
+                            }
+                        }
+                    }
+                    ip = strchr(ip, '+');
+                    ip = ip != NULL ? ip + 1 : NULL;
                 }
             }
         }
@@ -771,9 +1337,16 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         char sb[16];
         const int east = rm_opt(opt, "src", sb, sizeof sb) != NULL && strcmp(sb, "east") == 0;
         const int ax = east ? 2 : 0, dp = east ? 0 : 2;     /* the picture's across, and the way it is looked at */
-        double er[8][4], plain = rm_optf(opt, "plain", 1e30), xa = lo[ax], xb = hi[ax], yb = hi[1], wz = hi[dp];
+        double er[8][5], plain = rm_optf(opt, "plain", 1e30), xa = lo[ax], xb = hi[ax], yb = hi[1], wz = hi[dp];
         const int flatw = rm_optf(opt, "flat", 0) != 0.0;     /* (`flat=1`: the plain place's column all across: bands, no openings) */
         const double at_most = rm_optf(opt, "at", 1e30);      /* (`at=Z`: the front wall that stands at most there: a model of two huts) */
+        /* (`atleast=Z`: and at least there: the outer wall, not a taller block's side further in) */
+        const double at_least = rm_optf(opt, "atleast", -1e30);
+        double spn[8][4];
+        unsigned nspan = 0;
+        double gb[7], gd[16][3];       /* (`gable`: its numbers; each set-in piece's way back out to the wall) */
+        unsigned gq[16], ngq = 0;
+        int gable = 0;
         double sp0 = xa, sp1 = xb, qx0 = 1e30, qx1 = -1e30, lean = rm_optf(opt, "lean", 0.0), flare = rm_optf(opt, "flare", 0.0);
         unsigned char *px, *ok, white[3], dark[3] = { 0, 0, 0 };
         unsigned q, first = out->ntri, ner = 0, src = tr[0].id;
@@ -781,7 +1354,11 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
 
         if (rm_opt(opt, "erase", eb, sizeof eb) != NULL) {
             for (ep = eb; ep != NULL && *ep != '\0' && ner < 8u; ) {
-                if (sscanf(ep, "%lf:%lf:%lf:%lf", &er[ner][0], &er[ner][1], &er[ner][2], &er[ner][3]) == 4) {
+                int got;
+
+                er[ner][4] = 0.0;
+                got = sscanf(ep, "%lf:%lf:%lf:%lf:%lf", &er[ner][0], &er[ner][1], &er[ner][2], &er[ner][3], &er[ner][4]);
+                if (got >= 4) {
                     ner++;
                 }
                 ep = strchr(ep, '+');
@@ -791,6 +1368,11 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         if (Wm < 2 || Hm < 2 || Wm > 1024 || Hm > 1024) {
             goto done;
         }
+        /* (`nodark=1`: a face the model paints near black, the shade behind a window or inside a recess, is no
+         * wall's material: it is passed over, when the wall is chosen and when its picture is read) */
+        const int nodark = rm_optf(opt, "nodark", 0) != 0.0;
+#define DARK(i_) (nodark && tr[i_].rgb[0] < 80 && tr[i_].rgb[1] < 80 && tr[i_].rgb[2] < 80)
+
         /* the front wall's plane: where the biggest upright triangle that looks south stands */
         {
             double big = 0.0;
@@ -798,7 +1380,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
             for (i = 0; i < n0; i++) {
                 double e1[3], e2[3], c3[3], area;
 
-                if (tr[i].n[dp] < 0.9 || tr[i].p[0][dp] > at_most) {
+                if (tr[i].n[dp] < 0.9 || tr[i].p[0][dp] > at_most || tr[i].p[0][dp] < at_least || DARK(i)) {
                     continue;
                 }
                 for (k = 0; k < 3; k++) {
@@ -833,7 +1415,7 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 for (i = 0; i < n0; i++) {
                     double hd;
 
-                    if (tr[i].n[dp] < 0.2 || tr[i].n[1] > 0.25) {
+                    if (tr[i].n[dp] < 0.2 || tr[i].n[1] > 0.25 || DARK(i)) {
                         continue;           /* (not a wall that looks that way) */
                     }
                     cz3 = (tr[i].p[0][dp] + tr[i].p[1][dp] + tr[i].p[2][dp]) / 3.0;
@@ -853,19 +1435,108 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 }
             }
         }
+        /*
+         * `fill=1`: the back is composed, not cut out of the front.  The whole picture is first the wall's own
+         * plain material: each row the plain place's pixel of that row; a row above the plain place's top
+         * takes the row `period` map units lower (boards and courses repeat), so the material goes on unbroken
+         * up to the roof.  Then `keep=X0:X1:Y0:Y1+..` puts back the front's own pixels in those places only (a
+         * corner post, a beam, one window).  Nothing of the front's roof edge, door or trim comes along.
+         */
+        if (rm_optf(opt, "fill", 0) != 0.0 && plain < 1e29) {
+            unsigned char *orig = (unsigned char *)malloc((size_t)Wm * Hm * 4u), *ook = (unsigned char *)malloc((size_t)Wm * Hm);
+            int per = (int)rint(rm_optf(opt, "period", 8.0) * ppu), ftx = (int)((plain - xa) * ppu);
+            const double filltop = rm_optf(opt, "filltop", 1e30);
+            char kb[256], *kp;
+
+            ftx = ftx < 0 ? 0 : ftx >= Wm ? Wm - 1 : ftx;
+            per = per < 1 ? 1 : per;
+            if (orig != NULL && ook != NULL) {
+                memcpy(orig, px, (size_t)Wm * Hm * 4u);
+                memcpy(ook, ok, (size_t)Wm * Hm);
+                for (y = Hm - 1; y >= 0; y--) {
+                    int sy = y;
+
+                    /* (`filltop=Y`: the plain place is the wall's material up to that height only: over it
+                     * the front has a beam, a gable, the roof's edge) */
+                    while (sy < Hm && (!ook[(size_t)sy * Wm + (size_t)ftx] || yb - (sy + 0.5) / ppu > filltop)) {
+                        sy += per;
+                    }
+                    if (sy >= Hm) {
+                        continue;
+                    }
+                    for (x = 0; x < Wm; x++) {
+                        memcpy(px + ((size_t)y * Wm + (size_t)x) * 4u, orig + ((size_t)sy * Wm + (size_t)ftx) * 4u, 4u);
+                        ok[(size_t)y * Wm + (size_t)x] = 1;
+                    }
+                }
+                if (rm_opt(opt, "keep", kb, sizeof kb) != NULL) {
+                    for (kp = kb; kp != NULL && *kp != '\0'; ) {
+                        double k0, k1, k2, k3;
+
+                        if (sscanf(kp, "%lf:%lf:%lf:%lf", &k0, &k1, &k2, &k3) == 4) {
+                            int x0 = (int)floor((k0 - xa) * ppu), x1 = (int)ceil((k1 - xa) * ppu);
+                            int y1 = (int)ceil((yb - k2) * ppu), y0p = (int)floor((yb - k3) * ppu);
+
+                            for (y = y0p < 0 ? 0 : y0p; y < y1 && y < Hm; y++) {
+                                for (x = x0 < 0 ? 0 : x0; x < x1 && x < Wm; x++) {
+                                    if (ook[(size_t)y * Wm + (size_t)x]) {
+                                        memcpy(px + ((size_t)y * Wm + (size_t)x) * 4u, orig + ((size_t)y * Wm + (size_t)x) * 4u, 4u);
+                                    }
+                                }
+                            }
+                        }
+                        kp = strchr(kp, '+');
+                        kp = kp != NULL ? kp + 1 : NULL;
+                    }
+                }
+            }
+            free(orig);
+            free(ook);
+        }
+        if (flatw && plain > 1e29) {
+            /* `flat=1` alone: the plain place is the picture's middle, and each row there is the row's mean
+             * colour (a brushed-metal side is drawn in dots: one column of it, repeated, is noise) */
+            plain = (xa + xb) / 2.0;
+            tx = (int)((plain - xa) * ppu);
+            tx = tx < 0 ? 0 : tx >= Wm ? Wm - 1 : tx;
+            for (y = 0; y < Hm; y++) {
+                unsigned long sum[3] = { 0, 0, 0 }, cnt = 0;
+
+                for (x = 0; x < Wm; x++) {
+                    if (ok[(size_t)y * Wm + (size_t)x]) {
+                        const unsigned char *o4 = px + ((size_t)y * Wm + (size_t)x) * 4u;
+
+                        sum[0] += o4[0]; sum[1] += o4[1]; sum[2] += o4[2];
+                        cnt++;
+                    }
+                }
+                if (cnt > 0) {
+                    unsigned char *o4 = px + ((size_t)y * Wm + (size_t)tx) * 4u;
+
+                    o4[0] = (unsigned char)(sum[0] / cnt); o4[1] = (unsigned char)(sum[1] / cnt); o4[2] = (unsigned char)(sum[2] / cnt);
+                    o4[3] = 255;
+                    ok[(size_t)y * Wm + (size_t)tx] = 1;
+                }
+            }
+        }
         /* the entrance taken out: plain wall, row by row from the plain place */
         if (plain < 1e29) {
             tx = (int)((plain - xa) * ppu);
             tx = tx < 0 ? 0 : tx >= Wm ? Wm - 1 : tx;
         }
-        for (q = 0; q < ner && tx >= 0; q++) {
+        for (q = 0; q < ner && (tx >= 0 || er[q][4] != 0.0); q++) {
             int x0 = (int)floor((er[q][0] - xa) * ppu), x1 = (int)ceil((er[q][1] - xa) * ppu);
             int y1 = (int)ceil((yb - er[q][2]) * ppu), y0p = (int)floor((yb - er[q][3]) * ppu);
 
             for (y = y0p < 0 ? 0 : y0p; y < y1 && y < Hm; y++) {
                 for (x = x0 < 0 ? 0 : x0; x < x1 && x < Wm; x++) {
-                    memcpy(px + ((size_t)y * Wm + (size_t)x) * 4u, px + ((size_t)y * Wm + (size_t)tx) * 4u, 4u);
-                    ok[(size_t)y * Wm + (size_t)x] = ok[(size_t)y * Wm + (size_t)tx];
+                    int sx2 = er[q][4] != 0.0 ? x + (int)rint(er[q][4] * ppu) : tx;
+
+                    if (sx2 < 0 || sx2 >= Wm) {
+                        continue;
+                    }
+                    memcpy(px + ((size_t)y * Wm + (size_t)x) * 4u, px + ((size_t)y * Wm + (size_t)sx2) * 4u, 4u);
+                    ok[(size_t)y * Wm + (size_t)x] = ok[(size_t)y * Wm + (size_t)sx2];
                 }
             }
         }
@@ -917,20 +1588,109 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         if (rm_opt(opt, "span", eb, sizeof eb) != NULL) {
             sscanf(eb, "%lf:%lf", &sp0, &sp1);
         }
+        if (rm_opt(opt, "spans", eb, sizeof eb) != NULL) {
+            for (ep = eb; ep != NULL && *ep != '\0' && nspan < 8u; ) {
+                if (sscanf(ep, "%lf:%lf:%lf:%lf", &spn[nspan][0], &spn[nspan][1], &spn[nspan][2], &spn[nspan][3]) == 4) {
+                    nspan++;
+                }
+                ep = strchr(ep, '+');
+                ep = ep != NULL ? ep + 1 : NULL;
+            }
+        }
         for (q = 0; q < nq; q++) {
             for (j = 0; j < 4u; j++) {
                 qx0 = quad[q][j][0] < qx0 ? quad[q][j][0] : qx0;
                 qx1 = quad[q][j][0] > qx1 ? quad[q][j][0] : qx1;
             }
         }
+        /* `gable=XA:XB:XC:XD:YI:YO:D`: the gable under a roof band copied by `rim` built as the front's is: the band's
+         * feet stand on two pillars (XA..XB, XC..XD) in the wall's plane, cut to the band's lower end (YI at the inner
+         * side, YO at the outer), and the wall between them over YI is set D into the house, behind the band. Without
+         * it the band lay on a flat wall, in front of it. */
+        if (rm_opt(opt, "gable", eb, sizeof eb) != NULL
+            && sscanf(eb, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &gb[0], &gb[1], &gb[2], &gb[3], &gb[4], &gb[5], &gb[6]) == 7) {
+            unsigned q0 = nq, c;
+
+            /* (cut at the pillars' sides: corners 0 and 3 at one x, 1 and 2 at the other, 0 and 1 the top) */
+            for (c = 0; c < 4u; c++) {
+                for (q = 0; q < q0 && nq < n * 3u; q++) {
+                    double xc = gb[c], a = quad[q][0][0], b = quad[q][1][0], f;
+
+                    if (!((xc > a + 0.05 && xc < b - 0.05) || (xc > b + 0.05 && xc < a - 0.05))) {
+                        continue;
+                    }
+                    f = (xc - a) / (b - a);
+                    memcpy(quad[nq], quad[q], sizeof quad[q]);
+                    qside[nq] = qside[q];
+                    for (k = 0; k < 3; k++) {
+                        double top = quad[q][0][k] + (quad[q][1][k] - quad[q][0][k]) * f;
+                        double bot = quad[q][3][k] + (quad[q][2][k] - quad[q][3][k]) * f;
+
+                        quad[q][1][k] = top;        /* (this one: from corner 0 to the cut) */
+                        quad[q][2][k] = bot;
+                        quad[nq][0][k] = top;       /* (the new one: from the cut to corner 1) */
+                        quad[nq][3][k] = bot;
+                    }
+                    nq++;
+                }
+                q0 = nq;
+            }
+            for (q = 0, q0 = nq; q < q0; q++) {
+                const double qm = (quad[q][0][0] + quad[q][1][0]) / 2.0;
+                const int lft = qm > gb[0] && qm < gb[1], rgt = qm > gb[2] && qm < gb[3];
+
+                if (lft || rgt) {
+                    /* (a pillar: its top is the band's lower end) */
+                    for (j = 0; j < 2u; j++) {
+                        const double x = quad[q][j][0];
+                        const double f = lft ? (gb[1] - x) / (gb[1] - gb[0]) : (x - gb[2]) / (gb[3] - gb[2]);
+                        const double yt = gb[4] + (gb[5] - gb[4]) * f;
+
+                        quad[q][j][1] = quad[q][j][1] > yt ? yt : quad[q][j][1];
+                    }
+                } else if (qm > gb[1] && qm < gb[2] && quad[q][0][1] > gb[4] + 0.05 && quad[q][1][1] > gb[4] + 0.05
+                           && nq < n * 3u && ngq < 16u) {
+                    /* (between the pillars: the part over YI goes into the house) */
+                    double e1[3], e2[3], nn[3];
+
+                    for (k = 0; k < 3; k++) {
+                        e1[k] = quad[q][1][k] - quad[q][0][k];
+                        e2[k] = quad[q][2][k] - quad[q][0][k];
+                    }
+                    rm_cross(e1, e2, nn);
+                    rm_norm(nn);
+                    memcpy(quad[nq], quad[q], sizeof quad[q]);
+                    qside[nq] = qside[q];
+                    quad[nq][2][1] = gb[4];
+                    quad[nq][3][1] = gb[4];
+                    for (j = 0; j < 4u; j++) {
+                        for (k = 0; k < 3; k++) {
+                            quad[nq][j][k] -= nn[k] * gb[6];
+                        }
+                    }
+                    quad[q][0][1] = gb[4];
+                    quad[q][1][1] = gb[4];
+                    for (k = 0; k < 3; k++) {
+                        gd[ngq][k] = nn[k] * gb[6];     /* (from the set-in gable back out to the wall's plane) */
+                    }
+                    gq[ngq++] = nq;
+                    nq++;
+                }
+            }
+            gable = 1;
+        }
         for (q = 0; q < nq; q++) {
             double t[4][2], in[4][3], foot = rm_optf(opt, "foot", y0), ux[4];
+            int high = 0;       /* (`gable`'s set-in piece: it stands on the ledge, not on the ground) */
 
+            for (j = 0; j < ngq; j++) {
+                high |= gq[j] == q;
+            }
             for (j = 0; j < 4u; j++) {
                 ux[j] = quad[q][j][0];
             }
             for (j = 0; j < 4u; j++) {
-                if (j >= 2u && !fitted) {
+                if (j >= 2u && !fitted && !high) {
                     quad[q][j][1] = foot;       /* (a house on posts: its wall ends at its floor) */
                     quad[q][j][2] -= lean;      /* (`lean`: the foot stands out, as the sides' feet do) */
                     if (flare != 0.0 && qx1 > qx0) {
@@ -940,6 +1700,21 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                 /* (a side wall runs along the house: every place on it is the front's plain place) */
                 if (east) {
                     double zz = qx1 > qx0 ? sp1 + (ux[j] - qx0) / (qx1 - qx0) * (sp0 - sp1) : sp0;
+
+                    /* `spans=X0:X1:Z0:Z1+..`: the back's stretch X0..X1 (a wing, a middle block) takes the side's
+                     * stretch Z0..Z1, at the side's own scale: each part of a back its own window column, not the
+                     * whole side spread over the whole back (the piece by its middle) */
+                    {
+                        const double qm = (ux[0] + ux[1] + ux[2] + ux[3]) / 4.0;
+                        unsigned s4;
+
+                        for (s4 = 0; s4 < nspan; s4++) {
+                            if (qm >= spn[s4][0] - 0.01 && qm <= spn[s4][1] + 0.01 && spn[s4][1] > spn[s4][0]) {
+                                zz = spn[s4][2] + (ux[j] - spn[s4][0]) / (spn[s4][1] - spn[s4][0]) * (spn[s4][3] - spn[s4][2]);
+                                break;
+                            }
+                        }
+                    }
 
                     t[j][0] = (((qside[q] || flatw) && plain < 1e29 ? plain : zz) - xa) / (xb - xa);
                 } else
@@ -970,6 +1745,183 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
             /* its inner side, dark: through an open door or a window the house is dark inside, as the field shows it */
             rm_tri(out, src, out->ntex, 1, dark, in[0], in[2], in[1], t[0], t[2], t[1], 0, 0);
             rm_tri(out, src, out->ntex, 1, dark, in[0], in[3], in[2], t[0], t[3], t[2], 0, 0);
+        }
+        /* `gable`'s ledge at YI and the pillars' inner sides, from the wall's plane to the set-in gable, in plain
+         * stone (both ways: seen from either side, nothing behind them) */
+        for (q = 0; gable && q < ngq; q++) {
+            const double tu = plain < 1e29 ? (plain - xa) / (xb - xa) : 0.5;
+            const double *g0 = quad[gq[q]][3], *g1 = quad[gq[q]][2];
+            double f[4][3], tf[4][2];
+            int s;
+
+            /* (the ledge under this piece of the set-in gable) */
+            for (k = 0; k < 3; k++) {
+                f[0][k] = g0[k]; f[1][k] = g1[k];
+                f[2][k] = g1[k] + gd[q][k]; f[3][k] = g0[k] + gd[q][k];
+            }
+            for (j = 0; j < 4u; j++) {
+                tf[j][0] = tu;
+                tf[j][1] = (yb - f[j][1]) / (yb - y0);
+            }
+            rm_tri(out, src, out->ntex, 1, white, f[0], f[1], f[2], tf[0], tf[1], tf[2], 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, f[0], f[2], f[3], tf[0], tf[2], tf[3], 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, f[0], f[2], f[1], tf[0], tf[2], tf[1], 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, f[0], f[3], f[2], tf[0], tf[3], tf[2], 0, 0);
+            /* (a pillar's inner side where this piece ends at XB or XC) */
+            for (s = 0; s < 2; s++) {
+                const double *top = quad[gq[q]][s == 0 ? 0 : 1], *bot = quad[gq[q]][s == 0 ? 3 : 2];
+
+                if (fabs(top[0] - gb[1]) > 0.05 && fabs(top[0] - gb[2]) > 0.05) {
+                    continue;
+                }
+                for (k = 0; k < 3; k++) {
+                    f[0][k] = bot[k]; f[1][k] = top[k];
+                    f[2][k] = top[k] + gd[q][k]; f[3][k] = bot[k] + gd[q][k];
+                }
+                for (j = 0; j < 4u; j++) {
+                    tf[j][0] = tu;
+                    tf[j][1] = (yb - f[j][1]) / (yb - y0);
+                }
+                rm_tri(out, src, out->ntex, 1, white, f[0], f[1], f[2], tf[0], tf[1], tf[2], 0, 0);
+                rm_tri(out, src, out->ntex, 1, white, f[0], f[2], f[3], tf[0], tf[2], tf[3], 0, 0);
+                rm_tri(out, src, out->ntex, 1, white, f[0], f[2], f[1], tf[0], tf[2], tf[1], 0, 0);
+                rm_tri(out, src, out->ntex, 1, white, f[0], f[3], f[2], tf[0], tf[3], tf[2], 0, 0);
+            }
+        }
+        /* `flush=1`: the side walls carried on from where they end to the back wall, as tall as the back wall is
+         * at that end, in the back wall's own picture at its end column (the corner post) */
+        if (rm_optf(opt, "flush", 0) != 0.0 && wzn < 1e29 && wx1 > wx0) {
+            int e;
+
+            for (e = 0; e < 2; e++) {
+                double xe = e == 0 ? wx0 : wx1, ytop = -1e30, tu = (xe - xa) / (xb - xa), sgn = e == 0 ? -1.0 : 1.0, zb0 = 1e30;
+
+                for (q = 0; q < nq; q++) {
+                    for (j = 0; j < 2u; j++) {
+                        if (fabs(quad[q][j][0] - xe) < 0.6 && quad[q][j][1] > ytop) {
+                            ytop = quad[q][j][1];
+                        }
+                    }
+                }
+                for (q = 0; q < nq; q++) {
+                    zb0 = quad[q][0][2] < zb0 ? quad[q][0][2] : zb0;
+                }
+                if (ytop < y0 + 1.0 || wzn <= zb0 + 0.05) {
+                    continue;
+                }
+                tu = tu < 0.002 ? 0.002 : tu > 0.998 ? 0.998 : tu;
+                {
+                    double a0[3] = { xe, y0, zb0 }, a1[3] = { xe, y0, wzn }, a2[3] = { xe, ytop, wzn }, a3[3] = { xe, ytop, zb0 };
+                    double ta0[2] = { tu, 1.0 }, ta1[2] = { tu, 1.0 }, ta2[2] = { tu, (yb - ytop) / (yb - y0) }, ta3[2] = { tu, (yb - ytop) / (yb - y0) };
+
+                    /* (corners counter-clockwise seen from outside: from the west for the west end) */
+                    if (sgn < 0.0) {
+                        rm_tri(out, src, out->ntex, 1, white, a0, a1, a2, ta0, ta1, ta2, 0, 0);
+                        rm_tri(out, src, out->ntex, 1, white, a0, a2, a3, ta0, ta2, ta3, 0, 0);
+                        rm_tri(out, src, out->ntex, 1, dark, a0, a2, a1, ta0, ta2, ta1, 0, 0);
+                        rm_tri(out, src, out->ntex, 1, dark, a0, a3, a2, ta0, ta3, ta2, 0, 0);
+                    } else {
+                        rm_tri(out, src, out->ntex, 1, white, a0, a2, a1, ta0, ta2, ta1, 0, 0);
+                        rm_tri(out, src, out->ntex, 1, white, a0, a3, a2, ta0, ta3, ta2, 0, 0);
+                        rm_tri(out, src, out->ntex, 1, dark, a0, a1, a2, ta0, ta1, ta2, 0, 0);
+                        rm_tri(out, src, out->ntex, 1, dark, a0, a2, a3, ta0, ta2, ta3, 0, 0);
+                    }
+                }
+            }
+        }
+        /* `inset`'s return walls: from the wall that stays to the one set in, both sides, in plain stone */
+        for (q = 0; q < nret; q++) {
+            const double tu = plain < 1e29 ? (plain - xa) / (xb - xa) : 0.5;
+            double tb0[2] = { tu, 1.0 }, tt0[2] = { tu, (yb - ret[q][3]) / (yb - y0) };
+            double c0[3] = { ret[q][0], y0, ret[q][1] }, c1[3] = { ret[q][0], y0, ret[q][2] };
+            double c2[3] = { ret[q][0], ret[q][3], ret[q][2] }, c3[3] = { ret[q][0], ret[q][3], ret[q][1] };
+
+            /* (both ways: from the wing's side and from the set-in block's) */
+            rm_tri(out, src, out->ntex, 1, white, c0, c1, c2, tb0, tb0, tt0, 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, c0, c2, c3, tb0, tt0, tt0, 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, c0, c2, c1, tb0, tt0, tb0, 0, 0);
+            rm_tri(out, src, out->ntex, 1, white, c0, c3, c2, tb0, tt0, tt0, 0, 0);
+            /* the set-in block's own side wall in that plane (painted dark, above the wing's roof its side) reached
+             * the old back line: its corners there go to the new one, so it does not stand in the step */
+            for (i = 0; i < n0; i++) {
+                int hit = fabs(tr[i].n[0]) > 0.9, at_old = 0;
+                double pp[3][3], tt[3][2];
+
+                for (j = 0; j < 3u && hit; j++) {
+                    hit = fabs(tr[i].p[j][0] - ret[q][0]) < 0.05;
+                    at_old |= fabs(tr[i].p[j][2] - ret[q][1]) < 0.05;
+                }
+                if (!hit || !at_old) {
+                    continue;
+                }
+                for (j = 0; j < 3u; j++) {
+                    for (k = 0; k < 3; k++) {
+                        pp[j][k] = tr[i].p[j][k];
+                    }
+                    if (fabs(pp[j][2] - ret[q][1]) < 0.05) {
+                        pp[j][2] = ret[q][2];
+                    }
+                    tt[j][0] = tr[i].uv[j][0];
+                    tt[j][1] = tr[i].uv[j][1];
+                }
+                rm_drop(out, tr[i].id);
+                rm_tri(out, tr[i].id, -1, tr[i].bt != NULL ? tr[i].bt->cull : 1, tr[i].rgb, pp[0], pp[1], pp[2], tt[0], tt[1], tt[2], 0, 0);
+            }
+        }
+        /* `ledge=1`: a roof slope that looks to the back and ends short of the back wall, at the wall's top (a
+         * wing's roof behind a parapet): a level ledge from the slope's foot back to the wall, at that height, in the
+         * wall's plain stone; seen from behind the roof then meets the wall, and nobody looks down into the house */
+        if (rm_optf(opt, "ledge", 0) != 0.0) {
+            const double tu = plain < 1e29 ? (plain - xa) / (xb - xa) : 0.5;
+
+            for (i = 0; i < n0; i++) {
+                double ylo = 1e30, ex0 = 1e30, ex1 = -1e30, ez = 0.0;
+                int nlow = 0;
+
+                if (!(tr[i].n[1] > 0.25 && tr[i].n[1] < 0.98 && tr[i].n[2] < -0.3)) {
+                    continue;
+                }
+                for (j = 0; j < 3u; j++) {
+                    ylo = tr[i].p[j][1] < ylo ? tr[i].p[j][1] : ylo;
+                }
+                for (j = 0; j < 3u; j++) {
+                    if (tr[i].p[j][1] < ylo + 0.3) {
+                        ex0 = tr[i].p[j][0] < ex0 ? tr[i].p[j][0] : ex0;
+                        ex1 = tr[i].p[j][0] > ex1 ? tr[i].p[j][0] : ex1;
+                        ez = tr[i].p[j][2];
+                        nlow++;
+                    }
+                }
+                if (nlow < 2 || ex1 - ex0 < 0.5) {
+                    continue;               /* (the slope's foot is a corner, not an edge) */
+                }
+                for (q = 0; q < nq; q++) {
+                    double qx0l = 1e30, qx1l = -1e30, qtop = -1e30, zq = quad[q][0][2], a0, a1;
+
+                    if (qside[q]) {
+                        continue;
+                    }
+                    for (j = 0; j < 4u; j++) {
+                        qx0l = quad[q][j][0] < qx0l ? quad[q][j][0] : qx0l;
+                        qx1l = quad[q][j][0] > qx1l ? quad[q][j][0] : qx1l;
+                        qtop = quad[q][j][1] > qtop ? quad[q][j][1] : qtop;
+                    }
+                    a0 = ex0 > qx0l ? ex0 : qx0l;
+                    a1 = ex1 < qx1l ? ex1 : qx1l;
+                    if (a1 - a0 < 0.5 || zq > ez - 0.5 || fabs(qtop - ylo) > 1.5) {
+                        continue;           /* (not under it, not behind it, or not as tall as its foot) */
+                    }
+                    {
+                        const double tv = (yb - ylo) / (yb - y0) + 0.5 / Hm;
+                        double c0[3] = { a0, ylo, zq }, c1[3] = { a1, ylo, zq }, c2[3] = { a1, ylo, ez }, c3[3] = { a0, ylo, ez };
+                        double tt[2] = { tu, tv };
+
+                        /* (looking up) */
+                        rm_tri(out, src, out->ntex, 1, white, c0, c2, c1, tt, tt, tt, 0, 0);
+                        rm_tri(out, src, out->ntex, 1, white, c0, c3, c2, tt, tt, tt, 0, 0);
+                    }
+                }
+            }
         }
         if (out->fail || out->ntri == first) {
             free(px);

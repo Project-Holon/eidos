@@ -880,6 +880,11 @@ set(BW_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/counter.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/sprite.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/chandelier.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hall.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/tower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
 
     # engine/audio/ -- the SDAT sequencer and mixer, the host's stand-in for
@@ -1039,7 +1044,11 @@ else()
     message(STATUS "eidos: TLS for the relay off (run tools/fetch_mbedtls.py)")
 endif()
 
-target_compile_definitions(eidos PUBLIC EIDOS_VERSION="${EIDOS_VERSION_STRING}")
+# The version goes to the one file that reads it (sdk/mp.c), not to every
+# file of the game: it holds the commit, and a define every file has would
+# rebuild the whole game at each commit.
+set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mp.c APPEND PROPERTY
+    COMPILE_DEFINITIONS "EIDOS_VERSION=\"${EIDOS_VERSION_STRING}\"")
 # The public relay a session uses when the player has set none
 # (docs/distribution.md): `tls://name:port`.  Empty: no default.
 set(EIDOS_DEFAULT_RELAY "" CACHE STRING "The public relay (tls://name:port), empty for none")
@@ -2731,6 +2740,11 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/counter.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/sprite.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/chandelier.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hall.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/tower.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_npc.c
@@ -2774,6 +2788,11 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/counter.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/sprite.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/chandelier.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hall.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/tower.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
     target_include_directories(bmap_npc_dump PRIVATE
@@ -3104,6 +3123,11 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/counter.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/sprite.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/chandelier.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hall.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/tower.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c)
     target_sources(eidos_boot PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)

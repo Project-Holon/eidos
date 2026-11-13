@@ -321,3 +321,40 @@ const char *const k_rock_faces_plant[] = {
     "19 1 dc...cdffdc.c",
     NULL
 };
+
+/* the flowers in a pot (model b0_00035): the bunch's blooms (rock.c, `bunch`).  The first seven are the picture's
+ * own, where the picture has them (its south side): the sides go on from what the picture shows.  The others are
+ * set by hand round the body in three rings and on its top, the kinds mixed as the picture mixes them. */
+const RockBloom k_bunch_flowers[] = {
+    /* the picture's: yellow top left, orange top, peach left, orange middle and right, yellow low, orange low right */
+    { 318, 3.0f, 1.0f, 'Y', 2.2f },
+    {   5, 2.5f, 1.0f, 'O', 3.0f },
+    { 325, 6.0f, 1.0f, 'P', 2.8f },
+    {   0, 5.0f, 1.0f, 'O', 2.6f },
+    {  33, 5.5f, 1.0f, 'O', 3.0f },
+    { 350, 8.5f, 1.0f, 'Y', 2.6f },
+    {  36, 8.2f, 1.0f, 'O', 2.4f },
+    /* east */
+    {  80, 3.2f, 1.0f, 'Y', 2.4f },
+    { 100, 6.2f, 1.0f, 'O', 3.0f },
+    {  70, 8.8f, 1.0f, 'P', 2.4f },
+    { 125, 8.6f, 1.0f, 'Y', 2.4f },
+    { 135, 4.5f, 1.0f, 'P', 2.8f },
+    /* north */
+    { 170, 3.0f, 1.0f, 'O', 3.0f },
+    { 185, 6.2f, 1.0f, 'Y', 2.6f },
+    { 160, 8.8f, 1.0f, 'O', 2.6f },
+    { 210, 8.6f, 1.0f, 'O', 2.6f },
+    { 215, 4.6f, 1.0f, 'O', 2.8f },
+    /* west */
+    { 255, 3.2f, 1.0f, 'P', 2.6f },
+    { 265, 6.4f, 1.0f, 'O', 3.0f },
+    { 240, 8.8f, 1.0f, 'Y', 2.4f },
+    { 290, 8.8f, 1.0f, 'O', 2.4f },
+    { 295, 4.2f, 1.0f, 'O', 2.6f },
+    /* the top */
+    {   0, 1.6f, 0.0f, 'P', 2.6f },
+    { 120, 1.8f, 0.6f, 'Y', 2.2f },
+    { 240, 1.8f, 0.6f, 'O', 2.4f },
+    { 0, 0.0f, 0.0f, 0, 0.0f }
+};

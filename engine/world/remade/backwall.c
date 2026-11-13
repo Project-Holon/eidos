@@ -26,7 +26,7 @@ void rm_backwall(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
     const RmBatch *rb = NULL;
     const RmTri *rt = NULL;
     double best = 0.0, xa = 1e30, xb = -1e30, ya = 1e30, yb = -1e30, z0 = 1e30;
-    double dz1, dy1, dz2, dy2, det, uz, uy, vz, vy, zmin, ppu;
+    double dz1, dy1, dz2, dy2, det, uz, uy, vz, vy, zmin, zmax, ppu;
     unsigned bi, i;
     int k, Wm, Hm, x, y;
     unsigned char *px;
@@ -97,6 +97,8 @@ void rm_backwall(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
     vy = (((double)rt->uv[2][1] - rt->uv[0][1]) * dz1 - ((double)rt->uv[1][1] - rt->uv[0][1]) * dz2) / det;
     zmin = rt->p[0][2] < rt->p[1][2] ? rt->p[0][2] : rt->p[1][2];
     zmin = rt->p[2][2] < zmin ? rt->p[2][2] : zmin;
+    zmax = rt->p[0][2] > rt->p[1][2] ? rt->p[0][2] : rt->p[1][2];
+    zmax = rt->p[2][2] > zmax ? rt->p[2][2] : zmax;
     ppu = sqrt(uz * st->w * uz * st->w + vz * st->h * vz * st->h);      /* the side wall's own pixels a map unit */
     ppu = ppu < 1.0 ? 1.0 : ppu > 4.0 ? 4.0 : ppu;
     Wm = (int)rint((xb - xa) * ppu);
@@ -115,7 +117,10 @@ void rm_backwall(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
         double wy = yb - (y + 0.5) / ppu;
 
         for (x = 0; x < Wm; x++) {
-            double wx = xa + (x + 0.5) / ppu, sz = zmin + (x + 0.5) / ppu;
+            /* (a back wider than the side is deep: the side's picture goes there and back again, never past its
+             * own end into the texture's next part, which is another face's) */
+            double zlen = zmax - zmin > 0.5 ? zmax - zmin : 0.5, along = fmod((x + 0.5) / ppu, 2.0 * zlen);
+            double wx = xa + (x + 0.5) / ppu, sz = zmin + (along < zlen ? along : 2.0 * zlen - along) * 0.98 + zlen * 0.01;
             double su = rt->uv[0][0] + uz * (sz - rt->p[0][2]) + uy * (wy - rt->p[0][1]);
             double sv = rt->uv[0][1] + vz * (sz - rt->p[0][2]) + vy * (wy - rt->p[0][1]);
             int sx = (int)floor(su * st->w), sy = (int)floor(sv * st->h), in = 0;

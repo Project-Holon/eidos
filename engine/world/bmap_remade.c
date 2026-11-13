@@ -58,7 +58,44 @@ static const BmapRemade k_remade[] = {
     { "b1_00243", rm_building,                      /* stone huts (Village Bridge): plain stone, no windows at the back */
       "at=100,erase=-33:33:2:37,plain=34.4,roof=0" },
     { "b0_00019", rm_plant, "" },                   /* potted plant */
+    { "b0_00035", rm_plant, "centre=1,bunch=flowers,front=1,top=0,roundpot=1" },   /* flowers in a pot: a round bunch of blooms, its south the picture */
+    { "b0_00079", rm_sprite,                        /* statue: the sprite a little thick, its back the creature's stone back */
+      "split=52526A,soften=7B7B7B,back=one,slab=2,dome=2,relief=statue,keep=DEE6E6:2:4,recolor=FFFFFF:B4B4A4+DEE6E6:B4B4A4+7B7B7B:B4B4A4,"
+      "part=6:9:0.5:0+10:4:0.5:1+10:15:0.5:1+15:6:0.4:1+15:13:0.4:1+13:9:0.4:0" },
     { "b1_00290", rm_turned, "rest=0" },            /* bell arch (Celestial Tower) */
+    { "b0_00002", rm_turned, "rest=0,copies=0,plainback=1" },   /* television: the screen and the stand each closed with a plain back */
+    { "b0_00011", rm_building, "src=east,flat=1,roof=0,small=0,shade=0.9" },   /* cupboard, wood: a plain back, its side's middle column */
+    { "b0_00012", rm_backwall, "" },                /* cupboard, green: a plain back panel in its side's material */
+    { "b0_00015", rm_backwall, "" },                /* bookshelf: a plain back panel in its side's material */
+    { "b0_00017", rm_counter,                       /* kitchen counter: back and corner, the sink's wall, the tap and the stove standing up */
+      "lift=0:0:0.35:0.43:1.2:2+0.55:0.07:1:0.49:0.5" },
+    { "b0_00018", rm_building, "src=east,flat=1,roof=0,small=0,shade=0.9" },   /* fridge: a plain back, its side's middle column */
+    { "b0_00081", rm_backwall, "" },                /* server cabinet, black: a plain back panel in its side's material */
+    { "b0_00082", rm_backwall, "" },                /* server cabinet, grey: a plain back panel in its side's material */
+    { "b0_00086", rm_backwall, "" },                /* vending machine: a plain back panel in its side's material */
+    { "b0_00126", rm_backwall, "" },                /* lockers: a plain back panel in its side's material */
+    { "b1_00000", rm_building,                      /* Pokemon Center: its front with windows where the door and the sign are */
+      "roof=0,near=40,far=40,plain=-45,erase=-24:0:2:29:-26+0:24:2:29:26+-60:60:29:45+-13:0:45:70:-26+0:13:45:70:26" },
+    { "b1_00005", rm_building,                      /* house with a blue roof: its gable front without the door, its awning and the window */
+      "roof=0,over=0,rim=1,valley=1,near=30,far=4,plain=7,fill=1,filltop=38,period=6,keep=-30:-23:2:40+21.5:28:2:40+-25.5:23.5:39.5:45+-14.5:-4:46:57.5" },
+    { "b1_00011", rm_building, "src=east,atleast=45,roof=0,over=0,rim=1,rimat=21,groundwalls=1,ledge=1,gable=-17:-13:13:17:93.6:95.2:2,fill=1,plain=-9,filltop=74,period=8,keep=-7:11.5:12:66+-39:21:74:82,spans=-46:-17:17:-12+17:46:17:-12+-17:17:19.5:-14.5" },   /* tan stone hall, blue roof: its side's stone and windows at the back */
+    { "b1_00013", rm_building, "src=east,span=20:-46,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,twin=38:40,plain=0,erase=-35:5:28:72,door=20:-34:-12:39:58:0.083:0.002:0.155:0.65" },   /* brick warehouse with an outside stair: its side's brick at the back */
+    { "b1_00014", rm_building, "src=east,span=18:-43,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,pipes=2.4:55:0.18:0.5" },   /* brick warehouse, blue doors: its side's brick at the back */
+    { "b1_00015", rm_building, "src=east,span=18:-43,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,twin=38:40" },   /* brick warehouse, green doors: its side's brick at the back */
+    { "b1_00040", rm_hall, "corner=8.4,tanks=0:6:0.8,pipe=2.2" },   /* warehouse, glass roof: its sides' wall at the back, the roof's end, six copper tanks */
+    { "b1_00058", rm_tower, "corner=0,mirror=-40:40:40:70:0+-31:-26:16:35:0+26:31:16:35:0+23:31:3:46:0+-31:-23:3:46:0,wall=28:-23.7:23.7:-28:4:40.3" },   /* wooden house, red roof: its back in its sides' boards, the gable and the roof's end turned round */
+    { "b1_00113", rm_tower, "corner=6,clipz=-32,wall=32:-32:32:-32:5:56,mirror=-32:32:49:57:-1:20:30,props=50.5:40" },   /* light blue shop, roof terrace: its back wall in its sides, the parapet inside, the furniture closed */
+    { "b1_00114", rm_tower, "corner=6,clipz=-36:-48:48,wall=48:-48:48:-36:4:96,mirror=-40:40:84:97:-2:20:30,rimwalls=84:-20:26:-22:12,two=46:61.5:54:71+-43:-19:107:120,props=54:30" },   /* grey-green building, roof pool: plain back in its sides, the parapet inside, railing and parasol both sides, balcony pots closed */
+    { "b1_00119", rm_tower, "" },   /* (in progress) */
+    { "b1_00120", rm_tower, "" },   /* (in progress) */
+    { "b1_00126", rm_tower, "" },   /* (in progress) */
+    { "b1_00144", rm_tower, "" },   /* (in progress) */
+    { "b1_00155", rm_tower, "" },   /* (in progress) */
+    { "b1_00157", rm_tower, "" },   /* (in progress) */
+    { "b1_00160", rm_tower, "" },   /* (in progress) */
+    { "b1_00246", rm_tower, "" },   /* (in progress) */
+    { "b1_00057", rm_tower, "corner=6,mirror=-30:30:84:120.5:20+-52:-43:58:72:20,wall=52.8:-52.9:52.8:-34.7:4:44+59.2:-52.5:52.5:-40:44:56+20:-20:20:-4:50.2:84,under=44+84" },   /* control tower: its north faces, back walls and undersides */
+    { "b0_00119", rm_chandelier, "candle=3,flame=2,glow=1" },   /* candle chandelier: a round frame, round candles, flames from any side */
     { "b0_00061", rm_floor, "" },                   /* boxes (Cold Storage) */
     { "b0_00111", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
     { "b0_00112", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
