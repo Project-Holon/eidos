@@ -884,6 +884,7 @@ set(BW_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/sprite.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/chandelier.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hall.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/tower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
 
     # engine/audio/ -- the SDAT sequencer and mixer, the host's stand-in for
@@ -2741,6 +2742,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/sprite.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/chandelier.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hall.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/tower.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_npc.c
@@ -2788,6 +2790,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/sprite.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/chandelier.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hall.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/tower.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
     target_include_directories(bmap_npc_dump PRIVATE
@@ -3122,6 +3125,7 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/sprite.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/chandelier.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hall.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/tower.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plant.c)
     target_sources(eidos_boot PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)

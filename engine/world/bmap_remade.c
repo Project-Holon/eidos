@@ -83,6 +83,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00014", rm_building, "src=east,span=18:-43,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,pipes=2.4:55:0.18:0.5" },   /* brick warehouse, blue doors: its side's brick at the back */
     { "b1_00015", rm_building, "src=east,span=18:-43,roof=0,over=0,rim=1,rimat=22,rimdrop=6,groundwalls=1,twin=38:40" },   /* brick warehouse, green doors: its side's brick at the back */
     { "b1_00040", rm_hall, "corner=8.4,tanks=0:6:0.8,pipe=2.2" },   /* warehouse, glass roof: its sides' wall at the back, the roof's end, six copper tanks */
+    { "b1_00057", rm_tower, "corner=6,mirror=-30:30:84:120.5:20+-52:-43:58:72:20,wall=52.8:-52.9:52.8:-34.7:4:44+59.2:-52.5:52.5:-40:44:56+20:-20:20:-4:50.2:84,under=44+84" },   /* control tower: its north faces, back walls and undersides */
     { "b0_00119", rm_chandelier, "candle=3,flame=2,glow=1" },   /* candle chandelier: a round frame, round candles, flames from any side */
     { "b0_00061", rm_floor, "" },                   /* boxes (Cold Storage) */
     { "b0_00111", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
