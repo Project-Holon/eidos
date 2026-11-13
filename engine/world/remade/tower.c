@@ -20,6 +20,8 @@
  *       side face at x = SX holding (SZ, SY), repeated along at its own width.
  *   panelx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR+..  an end wall at x = X looking along DIR
  *       (-1, 1), in the picture of the face at x = SX holding (SZ, SY).
+ *   panelz=SZ:SX:SY:X0:X1:Z:Y0:Y1+..  as panel, the picture from a front face at
+ *       z = SZ holding (SX, SY): the front's wall at its own scale.
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
  *       colour of the face over it.
@@ -551,6 +553,62 @@ static void do_panelx(const Ft *f, unsigned nf, RmOut *out, const double p[9])
         t[1][0] = um + uw; t[1][1] = v1;
         t[2][0] = um + uw; t[2][1] = v0;
         t[3][0] = um - uw; t[3][1] = v0;
+        quad(out, src->t->id, src->b->rgb, q, t, outn);
+    }
+}
+
+/* `panelz=SZ:SX:SY:X0:X1:Z:Y0:Y1+..`: as `panel`, the picture taken from a face of the front (looking along z, at
+ * z = SZ, holding (SX, SY)): a back in the front's own wall at the front's own scale, without its door, piece by piece
+ * as wide as the front's pieces. */
+static void do_panelz(const Ft *f, unsigned nf, RmOut *out, const double p[8])
+{
+    const Ft *src = NULL;
+    double u0 = 1e30, u1 = -1e30, v0 = 1e30, v1 = -1e30, len = 0.0, x;
+    unsigned i;
+    int j;
+
+    for (i = 0; i < nf && src == NULL; i++) {
+        const RmTri *t = f[i].t;
+        double xlo = 1e30, xhi = -1e30, ylo = 1e30, yhi = -1e30;
+        int at = 1;
+
+        if (fabs(f[i].n[2]) < 0.9 || f[i].b->tex < 0) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][2] - p[0]) < 0.1;
+            xlo = t->p[j][0] < xlo ? t->p[j][0] : xlo;
+            xhi = t->p[j][0] > xhi ? t->p[j][0] : xhi;
+            ylo = t->p[j][1] < ylo ? t->p[j][1] : ylo;
+            yhi = t->p[j][1] > yhi ? t->p[j][1] : yhi;
+        }
+        if (at && p[1] >= xlo - 0.05 && p[1] <= xhi + 0.05 && p[2] >= ylo - 0.05 && p[2] <= yhi + 0.05) {
+            src = &f[i];
+            len = xhi - xlo;
+        }
+    }
+    if (src == NULL || len < 0.5) {
+        return;
+    }
+    for (j = 0; j < 3; j++) {
+        u0 = src->t->uv[j][0] < u0 ? src->t->uv[j][0] : u0;
+        u1 = src->t->uv[j][0] > u1 ? src->t->uv[j][0] : u1;
+        v0 = src->t->uv[j][1] < v0 ? src->t->uv[j][1] : v0;
+        v1 = src->t->uv[j][1] > v1 ? src->t->uv[j][1] : v1;
+    }
+    for (x = p[3]; x < p[4] - 0.05; x += len) {
+        const double xe = x + len < p[4] ? x + len : p[4], ue = u0 + (u1 - u0) * (xe - x) / len;
+        const double outn[3] = { 0, 0, -1 };
+        double q[4][3], t[4][2];
+
+        q[0][0] = x;  q[0][1] = p[6]; q[0][2] = p[5];
+        q[1][0] = xe; q[1][1] = p[6]; q[1][2] = p[5];
+        q[2][0] = xe; q[2][1] = p[7]; q[2][2] = p[5];
+        q[3][0] = x;  q[3][1] = p[7]; q[3][2] = p[5];
+        t[0][0] = ue; t[0][1] = v1;
+        t[1][0] = u0; t[1][1] = v1;
+        t[2][0] = u0; t[2][1] = v0;
+        t[3][0] = ue; t[3][1] = v0;
         quad(out, src->t->id, src->b->rgb, q, t, outn);
     }
 }
@@ -1492,6 +1550,17 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
 
             if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &pp[0], &pp[1], &pp[2], &pp[3], &pp[4], &pp[5], &pp[6], &pp[7], &pp[8]) == 9) {
                 do_panelx(f, nf, out, pp);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "panelz", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double pp[8];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &pp[0], &pp[1], &pp[2], &pp[3], &pp[4], &pp[5], &pp[6], &pp[7]) == 8) {
+                do_panelz(f, nf, out, pp);
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
