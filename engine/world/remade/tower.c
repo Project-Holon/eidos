@@ -29,6 +29,7 @@
  *   shell=X0:X1:Y0:Y1:Z0:Z1:D:U+..  a wall the map has only as its inner lining: an
  *       outer skin D behind it, in the outer faces' texture column u = U, v by height.
  *   hide=X0:X1:Y0:Y1:Z0:Z1:TEX+..  the model's faces of texture TEX in that box left out.
+ *   cutx=X0:X1:Z0:Z1+..  the model's faces wholly between Z0 and Z1 cut to X0..X1.
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
  *       colour of the face over it.
@@ -830,6 +831,69 @@ static void do_shell(const Ft *f, unsigned nf, RmOut *out, const double s[8])
         }
         rm_tri(out, t->id, -1, 1, rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
         out->tri[out->ntri - 1].lit = 1;
+    }
+}
+
+/* `cutx=X0:X1:Z0:Z1`: the model's faces lying wholly between Z0 and Z1 in z are cut to X0..X1 in x (left out when
+ * wholly outside): a shelf behind a doorway that runs on behind the thin wall beside it */
+static void do_cutx(const Ft *f, unsigned nf, RmOut *out, const double c[4])
+{
+    unsigned i;
+
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double a[8][5], b[8][5];
+        int j, k, na = 3, nb, s, inz = 1, out_ = 0;
+
+        for (j = 0; j < 3; j++) {
+            inz &= t->p[j][2] >= c[2] - 0.05 && t->p[j][2] <= c[3] + 0.05;
+            out_ += t->p[j][0] < c[0] - 0.01 || t->p[j][0] > c[1] + 0.01;
+            for (k = 0; k < 3; k++) {
+                a[j][k] = t->p[j][k];
+            }
+            a[j][3] = t->uv[j][0];
+            a[j][4] = t->uv[j][1];
+        }
+        if (!inz || out_ == 0) {
+            continue;
+        }
+        rm_drop(out, t->id);
+        for (s = 0; s < 2; s++) {
+            const double lim = s == 0 ? c[0] : c[1], sg = s == 0 ? 1.0 : -1.0;
+
+            nb = 0;
+            for (j = 0; j < na; j++) {
+                const double *p = a[j], *q = a[(j + 1) % na];
+                const int pin = sg * (p[0] - lim) >= -1e-6, qin = sg * (q[0] - lim) >= -1e-6;
+
+                if (pin && nb < 8) {
+                    memcpy(b[nb++], p, sizeof b[0]);
+                }
+                if (pin != qin && nb < 8) {
+                    const double u = (lim - p[0]) / (q[0] - p[0]);
+
+                    for (k = 0; k < 5; k++) {
+                        b[nb][k] = p[k] + (q[k] - p[k]) * u;
+                    }
+                    nb++;
+                }
+            }
+            memcpy(a, b, sizeof a);
+            na = nb;
+        }
+        for (j = 1; j + 1 < na; j++) {
+            double pa[3], pb[3], pc[3], ua[2], ub[2], uc[2];
+
+            for (k = 0; k < 3; k++) {
+                pa[k] = a[0][k];
+                pb[k] = a[j][k];
+                pc[k] = a[j + 1][k];
+            }
+            ua[0] = a[0][3]; ua[1] = a[0][4];
+            ub[0] = a[j][3]; ub[1] = a[j][4];
+            uc[0] = a[j + 1][3]; uc[1] = a[j + 1][4];
+            rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, pa, pb, pc, ua, ub, uc, 0, 0);
+        }
     }
 }
 
@@ -1745,10 +1809,14 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
         }
     }
     if (rm_opt(opt, "clipz", buf, sizeof buf) != NULL) {
-        double cz = 0.0, x0 = -1e30, x1 = 1e30;
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double cz = 0.0, x0 = -1e30, x1 = 1e30;
 
-        if (sscanf(buf, "%lf:%lf:%lf", &cz, &x0, &x1) >= 1) {
-            do_clip(f, nf, out, cz, x0, x1);
+            if (sscanf(ep, "%lf:%lf:%lf", &cz, &x0, &x1) >= 1) {
+                do_clip(f, nf, out, cz, x0, x1);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
         }
     }
     if (rm_opt(opt, "halfturn", buf, sizeof buf) != NULL) {
@@ -1756,6 +1824,17 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
 
         if (sscanf(buf, "%lf:%lf:%lf:%lf:%lf", &h[0], &h[1], &h[2], &h[3], &h[4]) == 5) {
             do_halfturn(f, nf, out, h);
+        }
+    }
+    if (rm_opt(opt, "cutx", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double cx4[4];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf", &cx4[0], &cx4[1], &cx4[2], &cx4[3]) == 4) {
+                do_cutx(f, nf, out, cx4);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
         }
     }
     if (rm_opt(opt, "mirror", buf, sizeof buf) != NULL) {
