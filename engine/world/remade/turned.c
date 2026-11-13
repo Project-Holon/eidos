@@ -48,6 +48,8 @@ typedef struct {
     unsigned char rgb[3];       /* its colour as the model paints it             */
     unsigned char ref[3];       /* the brightest colour of its piece             */
     int black;                  /* painted black by the model                    */
+    int own;                    /* `round=2`: turned about its piece's own axis (pax, pz) */
+    double pax;
 } Tr;
 
 static int find(int *parent, int a)
@@ -283,12 +285,36 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
      * middle is not its axis.  It is as deep as it is wide: its axis stands half its width behind its south end,
      * and every piece's middle is the axis.  Its far side is then its near side turned, lit by the game as the
      * near side is (the same smooth light, corner by corner), and no twin is made beside it. */
-    if (rm_optf(opt, "round", 0) != 0.0) {
+    if (rm_optf(opt, "round", 0) == 1.0) {
         cz = hi[2] - (hi[0] - lo[0]) / 2.0;
         for (i = 0; i < n0; i++) {
             if (!tr[i].flat) {
                 tr[i].pz = cz;
             }
+        }
+    }
+    /* `round=2`: each piece is round about its own axis (a chandelier's ring, each dish under a candle, its
+     * column): a piece's axis stands half the piece's width behind its south end, and its far side is its near
+     * side turned about it */
+    if (rm_optf(opt, "round", 0) == 2.0) {
+        for (i = 0; i < n0; i++) {
+            double px0 = 1e30, px1 = -1e30, pz1 = -1e30;
+
+            if (tr[i].flat) {
+                continue;
+            }
+            for (j = 0; j < n0; j++) {
+                if (tr[j].piece == tr[i].piece) {
+                    for (k = 0; k < 3; k++) {
+                        px0 = tr[j].p[k][0] < px0 ? tr[j].p[k][0] : px0;
+                        px1 = tr[j].p[k][0] > px1 ? tr[j].p[k][0] : px1;
+                        pz1 = tr[j].p[k][2] > pz1 ? tr[j].p[k][2] : pz1;
+                    }
+                }
+            }
+            tr[i].pax = (px0 + px1) / 2.0;
+            tr[i].pz = pz1 - (px1 - px0) / 2.0;
+            tr[i].own = 1;
         }
     }
     if (rm_optf(opt, "turn", 1) == 0.0) {
@@ -371,11 +397,15 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
         if (rm_norm(nv0) > 1e-6 && fabs(nv0[1]) > 0.98 && tr[i].p[0][1] < lo[1] + 0.3) {
             continue;                   /* (a level sheet at the thing's foot: its shadow on the floor) */
         }
-        for (j = 0; j < 3; j++) {
-            q.p[j][0] = (float)(2.0 * cx - tr[i].p[j][0]);
-            q.p[j][2] = (float)(2.0 * cz - tr[i].p[j][2]);
+        {
+            const double tcx = tr[i].own ? tr[i].pax : cx, tcz = tr[i].own ? tr[i].pz : cz;
+
+            for (j = 0; j < 3; j++) {
+                q.p[j][0] = (float)(2.0 * tcx - tr[i].p[j][0]);
+                q.p[j][2] = (float)(2.0 * tcz - tr[i].p[j][2]);
+            }
+            q.pz = 2.0 * tcz - tr[i].pz;
         }
-        q.pz = 2.0 * cz - tr[i].pz;
         if (mirror) {
             /* mirrored north to south: the corners the other way round, so it looks outward */
             for (j = 0; j < 3; j++) {
@@ -398,7 +428,7 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             if (q.black) {
                 painted(out, &q);
             } else {
-                rm_turn(out, tr[i].id, cx, cz);
+                rm_turn(out, tr[i].id, tr[i].own ? tr[i].pax : cx, tr[i].own ? tr[i].pz : cz);
             }
             tr[n++] = q;
         }

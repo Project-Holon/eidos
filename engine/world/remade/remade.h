@@ -98,7 +98,8 @@ RmBuild rm_backwall;            /* backwall.c: a flat back for a long box, in it
 RmBuild rm_plant;               /* plant.c: the potted plant: foliage a body, the pot closed */
 RmBuild rm_building;            /* building.c: a building's back wall and its roof's far slope */
 RmBuild rm_sprite;              /* sprite.c: a picture card over a stand: a body that is the picture from the front */
-RmBuild rm_counter;            /* counter.c: a kitchen counter: its back and corner, the sink's wall, tap and stove standing up */
+RmBuild rm_chandelier;          /* chandelier.c: a candle chandelier: a round frame, round candles, flames from any side */
+RmBuild rm_counter;           /* counter.c: a kitchen counter: its back and corner, the sink's wall, tap and stove standing up */
 
 /* --- helpers (common.c) --- */
 
