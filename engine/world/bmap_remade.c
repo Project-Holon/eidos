@@ -71,7 +71,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00000", rm_building,                      /* Pokemon Center: its front with windows where the door and the sign are */
       "roof=0,near=40,far=40,plain=-45,erase=-24:0:2:29:-26+0:24:2:29:26+-60:60:29:45+-13:0:45:70:-26+0:13:45:70:26" },
     { "b1_00005", rm_building,                      /* house with a blue roof: its gable front without the door, its awning and the window */
-      "roof=0,over=0,near=30,far=4,plain=7,fill=1,filltop=38,period=6,keep=-30:-23:2:40+21.5:28:2:40+-25.5:23.5:39.5:45+-14.5:-4:46:57.5" },
+      "roof=0,over=0,rim=1,valley=1,near=30,far=4,plain=7,fill=1,filltop=38,period=6,keep=-30:-23:2:40+21.5:28:2:40+-25.5:23.5:39.5:45+-14.5:-4:46:57.5" },
     { "b0_00061", rm_floor, "" },                   /* boxes (Cold Storage) */
     { "b0_00111", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
     { "b0_00112", rm_floor, "" },                   /* floor glow (Chargestone Cave) */
