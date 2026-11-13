@@ -97,6 +97,7 @@ RmBuild rm_turned;              /* turned.c: a thing alike front and back, its m
 RmBuild rm_backwall;            /* backwall.c: a flat back for a long box, in its side wall's pixels */
 RmBuild rm_plant;               /* plant.c: the potted plant: foliage a body, the pot closed */
 RmBuild rm_building;            /* building.c: a building's back wall and its roof's far slope */
+RmBuild rm_counter;             /* counter.c: a kitchen counter: its back and corner, the sink's wall, tap and stove standing up */
 
 /* --- helpers (common.c) --- */
 
