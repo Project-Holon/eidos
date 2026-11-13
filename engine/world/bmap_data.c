@@ -2549,8 +2549,8 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
             g_done = c->cur_far ? NULL : done_get(c, ar->indoor, (unsigned)id, &ar->bmodels[mi], bkey, bb_of(&ar->btex));
             if (getenv("BMAP_MODEL_LOG") != NULL && (!c->cur_far || strcmp(getenv("BMAP_MODEL_LOG"), "all") == 0)) {
                 /* ("all": the far ones too: a census of what a zone places) */
-                fprintf(stderr, "bmap: model b%d_%05u at %.0f %.0f y %.0f%s\n", ar->indoor, (unsigned)id, (double)t[0], (double)t[2],
-                        (double)t[1], g_done != NULL ? " completed" : "");
+                fprintf(stderr, "bmap: model b%d_%05u at %.0f %.0f y %.0f turn %u%s\n", ar->indoor, (unsigned)id, (double)t[0],
+                        (double)t[2], (double)t[1], (unsigned)rd16(bb, at + 12), g_done != NULL ? " completed" : "");
             }
             rc = add_model(c, &ar->bmodels[mi], bkey, bb_of(&ar->btex), &place, 2,
                            &ar->banims[mi]);   /* placed */
