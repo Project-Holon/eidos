@@ -20,8 +20,12 @@
  *       side face at x = SX holding (SZ, SY), repeated along at its own width.
  *   panelx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR+..  an end wall at x = X looking along DIR
  *       (-1, 1), in the picture of the face at x = SX holding (SZ, SY).
- *   panelz=SZ:SX:SY:X0:X1:Z:Y0:Y1[:ZTOP]+..  as panel, the picture from a front face at
+ *   panelz=SZ:SX:SY:X0:X1:Z:Y0:Y1[:ZTOP[:UA:UB]]+..  as panel, the picture from a front face at
  *       z = SZ holding (SX, SY): the front's wall at its own scale.
+ *   retex=X0:X1:Y0:Y1:ZMAX:SX:SY:DX[:S]+..  (S: read at SX + (x - middle) * S)  new faces in that box take the picture of the
+ *       model face holding (SX, SY), read DX along x (a band's plain stretch).
+ *   uclamp=X0:X1:Y0:Y1:ZMAX:UMIN:UMAX+..  new faces in that box: u held within
+ *       UMIN..UMAX (a picture's edge column left out).
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
  *       colour of the face over it.
@@ -596,7 +600,7 @@ static void do_panelx(const Ft *f, unsigned nf, RmOut *out, const double p[9])
 /* `panelz=SZ:SX:SY:X0:X1:Z:Y0:Y1+..`: as `panel`, the picture taken from a face of the front (looking along z, at
  * z = SZ, holding (SX, SY)): a back in the front's own wall at the front's own scale, without its door, piece by piece
  * as wide as the front's pieces. */
-static void do_panelz(const Ft *f, unsigned nf, RmOut *out, const double p[9])
+static void do_panelz(const Ft *f, unsigned nf, RmOut *out, const double p[11])
 {
     const Ft *src = NULL;
     double u0 = 1e30, u1 = -1e30, v0 = 1e30, v1 = -1e30, len = 0.0, x;
@@ -632,6 +636,14 @@ static void do_panelz(const Ft *f, unsigned nf, RmOut *out, const double p[9])
         v0 = src->t->uv[j][1] < v0 ? src->t->uv[j][1] : v0;
         v1 = src->t->uv[j][1] > v1 ? src->t->uv[j][1] : v1;
     }
+    /* (p[9]..p[10]: only that part of the picture across, as a fraction: a plain stretch of a panel) */
+    if (p[10] > p[9]) {
+        const double a0 = u0 + (u1 - u0) * p[9], a1 = u0 + (u1 - u0) * p[10];
+
+        len *= p[10] - p[9];
+        u0 = a0;
+        u1 = a1;
+    }
     for (x = p[3]; x < p[4] - 0.05; x += len) {
         const double xe = x + len < p[4] ? x + len : p[4], ue = u0 + (u1 - u0) * (xe - x) / len;
         const double outn[3] = { 0, 0, -1 };
@@ -646,6 +658,80 @@ static void do_panelz(const Ft *f, unsigned nf, RmOut *out, const double p[9])
         t[2][0] = u0; t[2][1] = v0;
         t[3][0] = ue; t[3][1] = v0;
         quad(out, src->t->id, src->b->rgb, q, t, outn);
+    }
+}
+
+/* `retex=X0:X1:Y0:Y1:ZMAX:SX:SY:DX+..`: the new faces made so far wholly in that box (x, y, and z <= ZMAX: the back)
+ * keep their shape but take their picture from the model's own face that holds (SX, SY) seen from the front (looking
+ * south, its x and y), read DX further along x: a stretch of a band over a door gets the plain band beside it. */
+static void do_retex(const Ft *f, unsigned nf, RmOut *out, unsigned first, const double r[9])
+{
+    const Ft *src = NULL;
+    double m[2][3];             /* u, v = a x + b y + c, from the source's corners */
+    unsigned i;
+    int j;
+
+    for (i = 0; i < nf && src == NULL; i++) {
+        const RmTri *t = f[i].t;
+        double den, w0, w1;
+
+        if (f[i].n[2] < 0.3) {
+            continue;
+        }
+        den = ((double)t->p[1][1] - t->p[2][1]) * ((double)t->p[0][0] - t->p[2][0])
+              + ((double)t->p[2][0] - t->p[1][0]) * ((double)t->p[0][1] - t->p[2][1]);
+        if (fabs(den) < 1e-9) {
+            continue;
+        }
+        w0 = (((double)t->p[1][1] - t->p[2][1]) * (r[5] - t->p[2][0]) + ((double)t->p[2][0] - t->p[1][0]) * (r[6] - t->p[2][1])) / den;
+        w1 = (((double)t->p[2][1] - t->p[0][1]) * (r[5] - t->p[2][0]) + ((double)t->p[0][0] - t->p[2][0]) * (r[6] - t->p[2][1])) / den;
+        if (w0 >= -1e-3 && w1 >= -1e-3 && 1.0 - w0 - w1 >= -1e-3) {
+            src = &f[i];
+        }
+    }
+    if (src == NULL) {
+        return;
+    }
+    {
+        /* (the affine map from (x, y) to (u, v) over the source triangle) */
+        const RmTri *t = src->t;
+        const double x0 = t->p[0][0], y0 = t->p[0][1];
+        const double x1 = t->p[1][0] - x0, y1 = t->p[1][1] - y0, x2 = t->p[2][0] - x0, y2 = t->p[2][1] - y0;
+        const double det = x1 * y2 - x2 * y1;
+        int k;
+
+        if (fabs(det) < 1e-9) {
+            return;
+        }
+        for (k = 0; k < 2; k++) {
+            const double d1 = (double)t->uv[1][k] - t->uv[0][k], d2 = (double)t->uv[2][k] - t->uv[0][k];
+
+            m[k][0] = (d1 * y2 - d2 * y1) / det;
+            m[k][1] = (d2 * x1 - d1 * x2) / det;
+            m[k][2] = t->uv[0][k] - m[k][0] * x0 - m[k][1] * y0;
+        }
+    }
+    for (i = first; i < out->ntri; i++) {
+        RmNew *n = &out->tri[i];
+        int in = 1;
+
+        for (j = 0; j < 3; j++) {
+            in &= n->p[j][0] >= r[0] - 0.05 && n->p[j][0] <= r[1] + 0.05 && n->p[j][1] >= r[2] - 0.05
+                  && n->p[j][1] <= r[3] + 0.05 && n->p[j][2] <= r[4];
+        }
+        if (!in) {
+            continue;
+        }
+        /* (a copy keeps its x: the source read DX along from it) */
+        for (j = 0; j < 3; j++) {
+            const double x = r[8] > 0.0 ? r[5] + (n->p[j][0] - (r[0] + r[1]) / 2.0) * r[8] : n->p[j][0] + r[7];
+            const double y = n->p[j][1];
+
+            n->uv[j][0] = (float)(m[0][0] * x + m[0][1] * y + m[0][2]);
+            n->uv[j][1] = (float)(m[1][0] * x + m[1][1] * y + m[1][2]);
+        }
+        n->src = src->t->id;
+        n->tex = -1;
     }
 }
 
@@ -1668,14 +1754,49 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     }
     if (rm_opt(opt, "panelz", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double pp[9];
-            const int got = sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &pp[0], &pp[1], &pp[2], &pp[3], &pp[4], &pp[5], &pp[6], &pp[7], &pp[8]);
+            double pp[11] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+            const int got = sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &pp[0], &pp[1], &pp[2], &pp[3], &pp[4], &pp[5], &pp[6], &pp[7], &pp[8], &pp[9], &pp[10]);
 
             if (got >= 8) {
                 if (got == 8) {
                     pp[8] = pp[5];
                 }
                 do_panelz(f, nf, out, pp);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "retex", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double rr[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &rr[0], &rr[1], &rr[2], &rr[3], &rr[4], &rr[5], &rr[6], &rr[7], &rr[8]) >= 8) {
+                do_retex(f, nf, out, 0, rr);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "uclamp", buf, sizeof buf) != NULL) {
+        /* `uclamp=X0:X1:Y0:Y1:ZMAX:UMIN:UMAX+..`: new faces in that box keep their picture, their corners' u held
+         * within UMIN..UMAX: a picture's edge column (a door frame's corner) left out; v untouched, trims stay lined up */
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double uc[7];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &uc[0], &uc[1], &uc[2], &uc[3], &uc[4], &uc[5], &uc[6]) == 7) {
+                for (i = 0; i < out->ntri; i++) {
+                    RmNew *nw = &out->tri[i];
+                    int j, in = 1;
+
+                    for (j = 0; j < 3; j++) {
+                        in &= nw->p[j][0] >= uc[0] - 0.05 && nw->p[j][0] <= uc[1] + 0.05 && nw->p[j][1] >= uc[2] - 0.05
+                              && nw->p[j][1] <= uc[3] + 0.05 && nw->p[j][2] <= uc[4];
+                    }
+                    for (j = 0; in && j < 3; j++) {
+                        nw->uv[j][0] = nw->uv[j][0] < uc[5] ? (float)uc[5] : nw->uv[j][0] > uc[6] ? (float)uc[6] : nw->uv[j][0];
+                    }
+                }
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
