@@ -18,6 +18,10 @@
  *       colour of the face over it.
  *   props=Y0:SIZE  the small things standing above Y0 (roof furniture), each
  *       closed about its own middle; a single flat card (a leaf) both sides.
+ *   rimwalls=Y0:X0:X1:Z0:Z1  a hole in a level floor (a roof pool): walls down
+ *       to Y0 under its open edges in that box, in the hole's own wall colours.
+ *   two=X0:X1:Y0:Y1+..  the faces in that box shown from both sides (a
+ *       railing's bars, a parasol's cloth).
  *   clipz=Z  the model's faces that reach behind z = Z are cut there.
  *   mirror's box may end :Z0:Z1, the faces whose middle lies between.
  *   corner=W  the side's corner columns (map units, default 6); 0: no corner
@@ -444,17 +448,152 @@ static void do_under(const Ft *f, unsigned nf, RmOut *out, double y)
     }
 }
 
-/* `clipz=Z`: the model's own faces that reach behind the back line z = Z (a flat picture inside a wall that runs on
- * past the house's back: the field never saw its end) are cut there; wholly behind, left out */
-static void do_clip(const Ft *f, unsigned nf, RmOut *out, double zc)
+/* `rimwalls=Y0:X0:X1:Z0:Z1`: a hole in a level floor (a pool in a roof) whose walls the map has only where the field's
+ * camera looks into it: under each open edge of a level face in that box, a wall down to Y0, looking into the hole,
+ * in the place of the texture the hole's own biggest wall uses (top row at the top, bottom row at the foot). */
+static void do_rimwalls(const Ft *f, unsigned nf, RmOut *out, const double r[5])
+{
+    const Ft *ref = NULL;
+    double best = 0.0, uvt[2] = { 0, 0 }, uvb[2] = { 0, 0 };
+    unsigned i, j;
+    int k;
+
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double e1[3], e2[3], n[3], a;
+        int in = 1;
+
+        if (fabs(f[i].n[1]) > 0.1) {
+            continue;
+        }
+        for (j = 0; j < 3u; j++) {
+            in &= t->p[j][0] >= r[1] - 0.05 && t->p[j][0] <= r[2] + 0.05 && t->p[j][2] >= r[3] - 0.05 && t->p[j][2] <= r[4] + 0.05;
+        }
+        for (k = 0; k < 3; k++) {
+            e1[k] = (double)t->p[1][k] - t->p[0][k];
+            e2[k] = (double)t->p[2][k] - t->p[0][k];
+        }
+        rm_cross(e1, e2, n);
+        a = rm_norm(n);
+        if (in && a > best) {
+            best = a;
+            ref = &f[i];
+        }
+    }
+    if (ref == NULL) {
+        return;
+    }
+    {
+        /* (its column: the corners' u, its top and its foot's v) */
+        double ytop = -1e30, ybot = 1e30;
+        int nt = 0, nb = 0;
+
+        for (j = 0; j < 3u; j++) {
+            ytop = ref->t->p[j][1] > ytop ? ref->t->p[j][1] : ytop;
+            ybot = ref->t->p[j][1] < ybot ? ref->t->p[j][1] : ybot;
+        }
+        for (j = 0; j < 3u; j++) {
+            if (fabs(ref->t->p[j][1] - ytop) < 0.05) {
+                uvt[0] += ref->t->uv[j][0];
+                uvt[1] += ref->t->uv[j][1];
+                nt++;
+            } else if (fabs(ref->t->p[j][1] - ybot) < 0.05) {
+                uvb[0] += ref->t->uv[j][0];
+                uvb[1] += ref->t->uv[j][1];
+                nb++;
+            }
+        }
+        if (nt == 0 || nb == 0) {
+            return;
+        }
+        uvt[0] /= nt; uvt[1] /= nt;
+        uvb[0] /= nb; uvb[1] /= nb;
+        uvb[0] = uvt[0];
+    }
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double c[3] = { 0, 0, 0 };
+
+        if (f[i].n[1] < 0.9) {
+            continue;
+        }
+        for (j = 0; j < 3u; j++) {
+            for (k = 0; k < 3; k++) {
+                c[k] += t->p[j][k] / 3.0;
+            }
+        }
+        for (j = 0; j < 3u; j++) {
+            const float *a = t->p[j], *b = t->p[(j + 1) % 3u];
+            double mid[3], nn[3], p[4][3], uv[4][2];
+            unsigned o;
+            int shared = 0, in;
+
+            in = a[0] >= r[1] - 0.05 && a[0] <= r[2] + 0.05 && a[2] >= r[3] - 0.05 && a[2] <= r[4] + 0.05
+                 && b[0] >= r[1] - 0.05 && b[0] <= r[2] + 0.05 && b[2] >= r[3] - 0.05 && b[2] <= r[4] + 0.05
+                 && a[1] > r[0] + 0.5 && fabs(a[1] - b[1]) < 0.05;
+            if (!in) {
+                continue;
+            }
+            /* (open: no other face has this edge; a wall already under it shares it) */
+            for (o = 0; o < nf && !shared; o++) {
+                unsigned q;
+                int ha = 0, hb = 0;
+
+                if (o == i) {
+                    continue;
+                }
+                for (q = 0; q < 3u; q++) {
+                    ha |= fabs(f[o].t->p[q][0] - a[0]) < 0.05 && fabs(f[o].t->p[q][1] - a[1]) < 0.05 && fabs(f[o].t->p[q][2] - a[2]) < 0.05;
+                    hb |= fabs(f[o].t->p[q][0] - b[0]) < 0.05 && fabs(f[o].t->p[q][1] - b[1]) < 0.05 && fabs(f[o].t->p[q][2] - b[2]) < 0.05;
+                }
+                shared = ha && hb;
+            }
+            if (shared) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                mid[k] = (a[k] + b[k]) / 2.0;
+            }
+            /* (looking into the hole: away from the floor face) */
+            nn[0] = -(b[2] - a[2]);
+            nn[1] = 0.0;
+            nn[2] = b[0] - a[0];
+            if (nn[0] * (c[0] - mid[0]) + nn[2] * (c[2] - mid[2]) > 0.0) {
+                nn[0] = -nn[0];
+                nn[2] = -nn[2];
+            }
+            p[0][0] = a[0]; p[0][1] = a[1]; p[0][2] = a[2];
+            p[1][0] = b[0]; p[1][1] = b[1]; p[1][2] = b[2];
+            p[2][0] = b[0]; p[2][1] = r[0]; p[2][2] = b[2];
+            p[3][0] = a[0]; p[3][1] = r[0]; p[3][2] = a[2];
+            uv[0][0] = uvt[0]; uv[0][1] = uvt[1];
+            uv[1][0] = uvt[0]; uv[1][1] = uvt[1];
+            uv[2][0] = uvb[0]; uv[2][1] = uvb[1];
+            uv[3][0] = uvb[0]; uv[3][1] = uvb[1];
+            rm_norm(nn);
+            quad(out, ref->t->id, ref->t->rgb, p, uv, nn);
+        }
+    }
+}
+
+/* `clipz=Z[:X0:X1]`: the model's own faces that reach behind the back line z = Z (a flat picture inside a wall that
+ * runs on past the house's back: the field never saw its end) are cut there; wholly behind, left out.  With X0:X1
+ * only faces wholly between (the house, not a balcony that stands out past its back on purpose). */
+static void do_clip(const Ft *f, unsigned nf, RmOut *out, double zc, double x0, double x1)
 {
     unsigned i;
 
     for (i = 0; i < nf; i++) {
         const RmTri *t = f[i].t;
         double poly[6][5], pz[4][5];
-        int j, k, n = 0, behind = 0;
+        int j, k, n = 0, behind = 0, in = 1;
 
+        for (j = 0; j < 3; j++) {
+            in &= t->p[j][0] >= x0 - 0.05 && t->p[j][0] <= x1 + 0.05;
+        }
+        if (!in) {
+            continue;
+        }
         for (j = 0; j < 3; j++) {
             behind += t->p[j][2] < zc - 0.01;
             pz[j][0] = t->p[j][0];
@@ -838,7 +977,7 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
                         continue;
                     }
                     free_ = !(ml0 < hi[o][0] - 0.2 && lo[o][0] < mh0 - 0.2 && ml2 < hi[o][2] - 0.2 && lo[o][2] < mh2 - 0.2
-                              && lo[m][1] < hi[o][1] - 0.2 && lo[o][1] < hi[m][1] - 0.2);
+                              && lo[m][1] <= hi[o][1] + 0.05 && lo[o][1] <= hi[m][1] + 0.05);
                 }
                 for (o = 0; o < nplaced && free_; o++) {
                     free_ = !(ml0 < placed[o][1] - 0.2 && placed[o][0] < mh0 - 0.2 && ml2 < placed[o][3] - 0.2
@@ -868,13 +1007,18 @@ static void do_props(const Ft *f, unsigned nf, RmOut *out, double y0, double siz
                         uv[j][1] = f[i].t->uv[j][1];
                     }
                     turned(p, uv, f[i].n, mode, cx, cz, q, quv, qn);
-                    rm_tri(out, f[i].t->id, -1, f[i].b->cull, f[i].t->rgb, q[0], q[1], q[2], quv[0], quv[1], quv[2], 0, 0);
+                    if (!covered(f, nf, nt, nn, q, qn)) {
+                        add_nt(out, nt, &nn, cap, q, quv, qn, f[i].t->id, f[i].t->rgb, f[i].b->cull);
+                    }
                 }
                 for (i = nt0[m]; i < nt1[m]; i++) {
                     double q[3][3], quv[3][2], qn[3];
+                    Nt src = nt[i];
 
-                    turned(nt[i].p, nt[i].uv, nt[i].n, mode, cx, cz, q, quv, qn);
-                    rm_tri(out, nt[i].id, -1, nt[i].cull, nt[i].rgb, q[0], q[1], q[2], quv[0], quv[1], quv[2], 0, 0);
+                    turned(src.p, src.uv, src.n, mode, cx, cz, q, quv, qn);
+                    if (!covered(f, nf, nt, nn, q, qn)) {
+                        add_nt(out, nt, &nn, cap, q, quv, qn, src.id, src.rgb, src.cull);
+                    }
                 }
             }
         }
@@ -909,8 +1053,12 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             nf++;
         }
     }
-    if (rm_optf(opt, "clipz", 1e30) < 1e29) {
-        do_clip(f, nf, out, rm_optf(opt, "clipz", 0.0));
+    if (rm_opt(opt, "clipz", buf, sizeof buf) != NULL) {
+        double cz = 0.0, x0 = -1e30, x1 = 1e30;
+
+        if (sscanf(buf, "%lf:%lf:%lf", &cz, &x0, &x1) >= 1) {
+            do_clip(f, nf, out, cz, x0, x1);
+        }
     }
     if (rm_opt(opt, "mirror", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
@@ -929,6 +1077,36 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
 
             if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf", &w[0], &w[1], &w[2], &w[3], &w[4], &w[5]) == 6) {
                 do_wall(f, nf, out, w, cw);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "rimwalls", buf, sizeof buf) != NULL) {
+        double r[5];
+
+        if (sscanf(buf, "%lf:%lf:%lf:%lf:%lf", &r[0], &r[1], &r[2], &r[3], &r[4]) == 5) {
+            do_rimwalls(f, nf, out, r);
+        }
+    }
+    if (rm_opt(opt, "two", buf, sizeof buf) != NULL) {
+        /* `two=X0:X1:Y0:Y1+..`: the faces in that box are shown from both sides (a railing's picture of bars, a
+         * parasol's cloth: thin things the map draws from the front only) */
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double bx[4];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3]) == 4) {
+                for (i = 0; i < nf; i++) {
+                    int j, in = 1;
+
+                    for (j = 0; j < 3; j++) {
+                        in &= f[i].t->p[j][0] >= bx[0] - 0.05 && f[i].t->p[j][0] <= bx[1] + 0.05
+                              && f[i].t->p[j][1] >= bx[2] - 0.05 && f[i].t->p[j][1] <= bx[3] + 0.05;
+                    }
+                    if (in) {
+                        rm_two(out, f[i].t->id);
+                    }
+                }
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
