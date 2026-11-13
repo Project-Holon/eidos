@@ -44,6 +44,7 @@
  */
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -458,6 +459,16 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
          * edge is not that place: the picture leans back about its middle) */
         foot[0] = bt->pivot[0]; foot[1] = bt->pivot[1]; foot[2] = bt->pivot[2];
     }
+    /* `shift=X:Z`: the body stands that far from the card's foot (a plant's card leans from the pot's front
+     * edge; its body stands over the pot's middle) */
+    if (rm_opt(opt, "shift", ob, sizeof ob) != NULL) {
+        double sx = 0.0, sz = 0.0;
+
+        if (sscanf(ob, "%lf:%lf", &sx, &sz) == 2) {
+            foot[0] += sx;
+            foot[2] += sz;
+        }
+    }
     s = width / W;                      /* one picture pixel, in map units: a block's edge */
     /* A block is as high as a pixel of the leaning picture stands as the battle's command camera sees it: that
      * camera looks 12.5 degrees down, so a picture leaning at the angle a shows sin(a + 12.5) of its length.
@@ -624,7 +635,8 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     facesn = rm_opt(opt, "faces", ob, sizeof ob);
     if (facesn != NULL) {
         const char *const *lines = strcmp(facesn, "cave") == 0 ? k_rock_faces_cave : strcmp(facesn, "open") == 0 ? k_rock_faces_open
-                                   : strcmp(facesn, "water") == 0 ? k_rock_faces_water : NULL;
+                                   : strcmp(facesn, "water") == 0 ? k_rock_faces_water
+                                   : strcmp(facesn, "plant") == 0 ? k_rock_faces_plant : NULL;
 
         if (lines != NULL && faces_load(r, lines)) {
             r->HH = 4 * H;
@@ -1131,15 +1143,63 @@ done:
 #undef BOSS_END
 }
 
+/* Is corner p a corner of a triangle other than the pair (pb, pi), (pb, pi + 1)? */
+static int shared(const RmBatch *b, unsigned nb, unsigned pb, unsigned pi, const float *p)
+{
+    unsigned bi, i;
+    int k;
+
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; i < b[bi].n; i++) {
+            if (bi == pb && (i == pi || i == pi + 1u)) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                const float *q = b[bi].tri[i].p[k];
+
+                if (fabs(q[0] - p[0]) < 0.3 && fabs(q[1] - p[1]) < 0.3 && fabs(q[2] - p[2]) < 0.3) {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 void rm_rock(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
     char lb[8];
-    int lean = rm_opt(opt, "lean", lb, sizeof lb) != NULL;
+    int lean = rm_opt(opt, "lean", lb, sizeof lb) != NULL, cards = rm_opt(opt, "cards", lb, sizeof lb) != NULL;
     unsigned bi;
 
     for (bi = 0; bi < nb; bi++) {
         const RmBatch *bt = &b[bi];
 
+        if (cards) {
+            /* `cards=1`: only a picture card that stands by itself in the model (a plant's leaves over its pot:
+             * two triangles that share no corner with the rest), each made a body */
+            unsigned i;
+
+            for (i = 0; !bt->bb && i + 1u < bt->n && bt->tex >= 0 && (unsigned)bt->tex < ntex && tex[bt->tex].rgba != NULL; i++) {
+                RmBatch one = *bt;
+                int k, alone = 1;
+
+                for (k = 0; k < 3 && alone; k++) {
+                    alone = !shared(b, nb, bi, i, bt->tri[i].p[k]) && !shared(b, nb, bi, i, bt->tri[i + 1u].p[k]);
+                }
+                if (!alone) {
+                    continue;
+                }
+                one.tri = &bt->tri[i];
+                one.n = 2;
+                if (build(&one, &tex[bt->tex], opt, out)) {
+                    rm_drop(out, bt->tri[i].id);
+                    rm_drop(out, bt->tri[i + 1u].id);
+                }
+                i++;
+            }
+            continue;
+        }
         if ((!bt->bb && !lean) || bt->n < 2 || bt->tex < 0 || (unsigned)bt->tex >= ntex || tex[bt->tex].rgba == NULL) {
             continue;
         }
