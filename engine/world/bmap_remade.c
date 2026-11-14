@@ -51,6 +51,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00204", rm_tower, "two=-53:-28:0:57,mirror=-63:-24:0:66:-0.5,halfturn=51:0:0:-180:180:62:400:-21:120:-1:1+37:0:0:-180:180:0:64:-25:120" },   /* tall tower: the shaft and the base turned half round without the sign, the porch's far side mirrored */
     { "b1_00291", rm_tower, "two=-14:19:0:40" },   /* parasol and chair: seen from both sides */
     { "b1_00286", rm_tower, "two=-25:265:74:114,mirror=-20:260:0:96:0:-30:30+-20:260:0:96:112:82:142" },   /* four double street lamps (Village Bridge): each lamp's back its front mirrored about its post, the glows seen from both sides */
+    { "b1_00303", rm_tower, "two=-25:25:74:114,mirror=-20:20:0:96:0" },   /* double street lamp (Village Bridge): its back the front mirrored about the post, the glow seen from both sides */
     { "b0_00071", rm_tower, "two=-9999:9999:-9999:9999" },   /* sand pile and falling sand (Relic Castle): seen from both sides */
     { "b0_00101", rm_tower, "two=-9999:9999:-9999:9999" },   /* hanging cable (Driftveil Gym): seen from both sides */
     { "b0_00117", rm_tower, "two=-9999:9999:-9999:9999" },   /* platform machine (Pokemon League): seen from both sides */
