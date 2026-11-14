@@ -50,6 +50,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00178", rm_tower, "wall=36:-31:36:-30:4:47,mirror=-41:45:35:65:-4" },   /* shrine house: a back wall in the sides' plaster, the roof's eave and ridge mirrored back */
     { "b1_00204", rm_tower, "two=-53:-28:0:57,mirror=-63:-24:0:66:-0.5,halfturn=51:0:0:-180:180:62:400:-21:120:-1:1+37:0:0:-180:180:0:64:-25:120" },   /* tall tower: the shaft and the base turned half round without the sign, the porch's far side mirrored */
     { "b1_00291", rm_tower, "two=-14:19:0:40" },   /* parasol and chair: seen from both sides */
+    { "b0_00071", rm_tower, "two=-9999:9999:-9999:9999" },   /* sand pile and falling sand (Relic Castle): seen from both sides */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
