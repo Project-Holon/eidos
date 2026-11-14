@@ -256,7 +256,7 @@ static int seal_u32(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
-void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
+void rm_seal_ex(const RmBatch *b, unsigned nb, RmOut *out, double shade, int skip_opposite)
 {
     SealTri *g;
     unsigned bi, i, j, n = 0, cap = out->ntri, ng, *drop = NULL, *two = NULL;
@@ -318,7 +318,7 @@ void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
             }
         }
     }
-    for (i = 0; i < out->ntri && n < cap; i++) {
+    for (i = out->seal_from; i < out->ntri && n < cap; i++) {
         const RmNew *t = &out->tri[i];
         SealTri *q;
 
@@ -342,6 +342,69 @@ void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
     for (i = 0; i < ng; i++) {
         add[i] = (unsigned char)g[i].one;
     }
+    /* (a face drawn both ways already: the model's other face in that plane looks the way the back would, over the
+     * face's middle) */
+    for (i = 0; i < ng && skip_opposite; i++) {
+        double ni[3], e1[3], e2[3], c[3], l;
+
+        if (!add[i]) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            e1[k] = g[i].p[1][k] - g[i].p[0][k];
+            e2[k] = g[i].p[2][k] - g[i].p[0][k];
+            c[k] = (g[i].p[0][k] + g[i].p[1][k] + g[i].p[2][k]) / 3.0;
+        }
+        rm_cross(e1, e2, ni);
+        l = sqrt(rm_dot(ni, ni));
+        if (l < 1e-9) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            ni[k] /= l;
+        }
+        for (j = 0; j < ng && add[i]; j++) {
+            double nj[3], a0[3], a1[3], a2[3], d[3], w0, w1, w2;
+
+            if (j == i) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                e1[k] = g[j].p[1][k] - g[j].p[0][k];
+                e2[k] = g[j].p[2][k] - g[j].p[0][k];
+                d[k] = c[k] - g[j].p[0][k];
+            }
+            rm_cross(e1, e2, nj);
+            l = sqrt(rm_dot(nj, nj));
+            if (l < 1e-9 || rm_dot(nj, ni) / l > -0.95 || fabs(rm_dot(d, nj) / l) > 0.05) {
+                continue;
+            }
+            /* (is the face's middle inside j: same side of j's three edges) */
+            for (k = 0; k < 3; k++) {
+                a0[k] = g[j].p[1][k] - g[j].p[0][k];
+                a1[k] = g[j].p[2][k] - g[j].p[1][k];
+                a2[k] = g[j].p[0][k] - g[j].p[2][k];
+            }
+            {
+                double q0[3], q1[3], q2[3], r0[3], r1[3], r2[3];
+
+                for (k = 0; k < 3; k++) {
+                    q0[k] = c[k] - g[j].p[0][k];
+                    q1[k] = c[k] - g[j].p[1][k];
+                    q2[k] = c[k] - g[j].p[2][k];
+                }
+                rm_cross(a0, q0, r0);
+                rm_cross(a1, q1, r1);
+                rm_cross(a2, q2, r2);
+                w0 = rm_dot(r0, nj);
+                w1 = rm_dot(r1, nj);
+                w2 = rm_dot(r2, nj);
+            }
+            if ((w0 >= -1e-6 && w1 >= -1e-6 && w2 >= -1e-6) || (w0 <= 1e-6 && w1 <= 1e-6 && w2 <= 1e-6)) {
+                add[i] = 0;
+            }
+        }
+    }
     for (i = 0; i < ng && !out->fail; i++) {
         unsigned char rgb[3];
         double t0[2], t1[2], t2[2];
@@ -361,4 +424,9 @@ void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
     free(add);
     free(drop);
     free(two);
+}
+
+void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
+{
+    rm_seal_ex(b, nb, out, shade, 0);
 }

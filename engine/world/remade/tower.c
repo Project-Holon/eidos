@@ -30,6 +30,8 @@
  *       outer skin D behind it, in the outer faces' texture column u = U, v by height.
  *   hide=X0:X1:Y0:Y1:Z0:Z1:TEX+..  the model's faces of texture TEX in that box left out.
  *   cutx=X0:X1:Z0:Z1+..  the model's faces wholly between Z0 and Z1 cut to X0..X1.
+ *   lid=SX:SZ:Y:X0:X1:Z0:Z1+..  a level face at height Y looking up, in the picture of the level face
+ *       at Y holding (SX, SZ) (a skirting's top carried on).
  *   band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1+..  a band of a wall at z = Z looking north, its foot
  *       and top rising along x, in the picture of the upright face at z = SZ holding (SX, SY).
  *   decal=SZ:SX:SY:X0:X1:Y0:Y1:TX:TY:Z+..  a rectangle of a south face's picture laid on
@@ -1010,6 +1012,99 @@ static void do_cutx(const Ft *f, unsigned nf, RmOut *out, const double c[4])
             ub[0] = a[j][3]; ub[1] = a[j][4];
             uc[0] = a[j + 1][3]; uc[1] = a[j + 1][4];
             rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, pa, pb, pc, ua, ub, uc, 0, 0);
+        }
+    }
+}
+
+/* `lid=SX:SZ:Y:X0:X1:Z0:Z1+..`: a level face at height Y looking up, from x X0 to X1 and z Z0 to Z1, in the picture
+ * of the model's own level face at height Y that holds (SX, SZ): the top of a skirting or a ledge carried on where
+ * a new wall sets one. */
+static void do_lid(const Ft *f, unsigned nf, RmOut *out, const double d[7])
+{
+    const Ft *src = NULL;
+    double m[2][3];
+    unsigned i;
+    int j, k;
+
+    for (i = 0; i < nf && src == NULL; i++) {
+        const RmTri *t = f[i].t;
+        double den, w0, w1;
+        int at = 1;
+
+        if (f[i].n[1] < 0.9 || f[i].b->tex < 0) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][1] - d[2]) < 0.1;
+        }
+        den = ((double)t->p[1][2] - t->p[2][2]) * ((double)t->p[0][0] - t->p[2][0])
+              + ((double)t->p[2][0] - t->p[1][0]) * ((double)t->p[0][2] - t->p[2][2]);
+        if (!at || fabs(den) < 1e-9) {
+            continue;
+        }
+        w0 = (((double)t->p[1][2] - t->p[2][2]) * (d[0] - t->p[2][0]) + ((double)t->p[2][0] - t->p[1][0]) * (d[1] - t->p[2][2])) / den;
+        w1 = (((double)t->p[2][2] - t->p[0][2]) * (d[0] - t->p[2][0]) + ((double)t->p[0][0] - t->p[2][0]) * (d[1] - t->p[2][2])) / den;
+        if (w0 >= -1e-3 && w1 >= -1e-3 && 1.0 - w0 - w1 >= -1e-3) {
+            src = &f[i];
+        }
+    }
+    if (src == NULL) {
+        return;
+    }
+    {
+        const RmTri *t = src->t;
+        const double x0 = t->p[0][0], z0 = t->p[0][2];
+        const double x1 = t->p[1][0] - x0, z1 = t->p[1][2] - z0, x2 = t->p[2][0] - x0, z2 = t->p[2][2] - z0;
+        const double det = x1 * z2 - x2 * z1;
+
+        if (fabs(det) < 1e-9) {
+            return;
+        }
+        for (k = 0; k < 2; k++) {
+            const double d1 = (double)t->uv[1][k] - t->uv[0][k], d2 = (double)t->uv[2][k] - t->uv[0][k];
+
+            m[k][0] = (d1 * z2 - d2 * z1) / det;
+            m[k][1] = (d2 * x1 - d1 * x2) / det;
+            m[k][2] = t->uv[0][k] - m[k][0] * x0 - m[k][1] * z0;
+        }
+    }
+    {
+        double q[4][3], uv[4][2];
+        const double xs[4] = { d[3], d[4], d[4], d[3] }, zs[4] = { d[5], d[5], d[6], d[6] };
+        unsigned first = out->ntri, ti;
+
+        for (j = 0; j < 4; j++) {
+            q[j][0] = xs[j];
+            q[j][1] = d[2];
+            q[j][2] = zs[j];
+            uv[j][0] = m[0][0] * xs[j] + m[0][1] * zs[j] + m[0][2];
+            uv[j][1] = m[1][0] * xs[j] + m[1][1] * zs[j] + m[1][2];
+        }
+        /* (looking up: x then z round is clockwise seen from above) */
+        rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+        rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
+        for (ti = first; ti < out->ntri; ti++) {
+            double e1[3], e2[3], n[3];
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = out->tri[ti].p[1][k] - out->tri[ti].p[0][k];
+                e2[k] = out->tri[ti].p[2][k] - out->tri[ti].p[0][k];
+            }
+            rm_cross(e1, e2, n);
+            if (n[1] < 0.0) {           /* (wound the wrong way: turn it) */
+                float tp[3], tu[2];
+
+                memcpy(tp, out->tri[ti].p[1], sizeof tp);
+                memcpy(out->tri[ti].p[1], out->tri[ti].p[2], sizeof tp);
+                memcpy(out->tri[ti].p[2], tp, sizeof tp);
+                memcpy(tu, out->tri[ti].uv[1], sizeof tu);
+                memcpy(out->tri[ti].uv[1], out->tri[ti].uv[2], sizeof tu);
+                memcpy(out->tri[ti].uv[2], tu, sizeof tu);
+                out->tri[ti].n[0] = -out->tri[ti].n[0];
+                out->tri[ti].n[1] = -out->tri[ti].n[1];
+                out->tri[ti].n[2] = -out->tri[ti].n[2];
+            }
+            out->tri[ti].lit = 1;
         }
     }
 }
@@ -2280,6 +2375,17 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             ep = ep != NULL ? ep + 1 : NULL;
         }
     }
+    if (rm_opt(opt, "lid", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double ld[7];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &ld[0], &ld[1], &ld[2], &ld[3], &ld[4], &ld[5], &ld[6]) == 7) {
+                do_lid(f, nf, out, ld);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
     if (rm_opt(opt, "band", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
             double bd[10];
@@ -2330,6 +2436,6 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     (void)nsnap;
     /* (`seal=0`: no dark backs: a missing face shows as an open side, for finding them) */
     if (rm_optf(opt, "seal", 1) != 0.0) {
-        rm_seal(b, nb, out, 0.7);
+        rm_seal_ex(b, nb, out, 0.7, rm_optf(opt, "seal", 1) >= 2.0);   /* (seal=2: not over a panel drawn both ways) */
     }
 }

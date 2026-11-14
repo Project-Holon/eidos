@@ -113,6 +113,160 @@ static int clip(const P2 *poly, int n, P2 a, P2 b, P2 *out)
     return m;
 }
 
+/* The chunky seats' outline, 8 corners: `round` an octagon `half` from the middle (flat sides facing the axes),
+ * else a square of `half` with its corners cut `rad` in; `inset` in from it. */
+#define CH_N 8
+#define CH_R 4
+
+static void loop8(double half, double rad, double inset, int round, P2 *out)
+{
+    int k;
+
+    for (k = 0; k < CH_N; k++) {
+        if (round) {
+            const double t = (k * 45.0 + 22.5) * PI / 180.0, r = (half - inset) / cos(22.5 * PI / 180.0);
+
+            out[k].x = r * cos(t);
+            out[k].z = r * sin(t);
+        } else {
+            static const int sx[4] = { 1, -1, -1, 1 }, sz[4] = { 1, 1, -1, -1 };
+            const int q = k / 2, first = (k % 2) == 0;
+            const double h = half - inset, c = rad - inset * 0.4 > 0.3 ? rad - inset * 0.4 : 0.3;
+            /* (corner q goes round from the x side to the z side) */
+            const double ax = q % 2 == 0 ? h : h - c, az = q % 2 == 0 ? h - c : h;
+            const double bx = q % 2 == 0 ? h - c : h, bz = q % 2 == 0 ? h : h - c;
+
+            out[k].x = sx[q] * (first ? ax : bx);
+            out[k].z = sz[q] * (first ? az : bz);
+        }
+    }
+}
+
+/*
+ * `round=1`: a round floor cushion drawn as a card lying on the floor (Liberty Garden's lighthouse room): the
+ * picture shows the cushion from above at the field's slant, a disc (its top, a button in the middle) over a band of
+ * its side, a shadow under it.  The body: round, `half` units across its middle, `high` tall, the pouffe's rolled edge;
+ * the top is the picture's disc laid on the round top (the disc's middle at the picture's (`cx`, `cy`) pixel, `rx`
+ * pixels across and `ry` pixels down to its edge: the slanted disc made round again); the side takes the picture's own
+ * side rows at the cushion's front column (`side` the row under the rim, `foot` the darker row at the floor).  Its
+ * foot stands at height `y` (the rug under it).  Each card of the batch (two triangles) is one cushion; its middle and
+ * its picture's directions come from the card's own corners.
+ */
+static void cushion_round(const RmBatch *bt, const char *opt, RmOut *out)
+{
+    static const double ring_y[CH_R] = { 0.0, 0.4, 4.9, 6.0 };      /* foot, straight side, one bevel */
+    static const double ring_in[CH_R] = { 0.35, 0.0, 0.0, 1.1 };
+    const double half = rm_optf(opt, "half", 8.5), high = rm_optf(opt, "high", 5.0), foot_y = rm_optf(opt, "y", 0.0);
+    const double px = rm_optf(opt, "px", 32.0), pcx = rm_optf(opt, "cx", 16.0), pcy = rm_optf(opt, "cy", 11.5);
+    const double prx = rm_optf(opt, "rx", 13.0), pry = rm_optf(opt, "ry", 10.0);
+    const double side_row = rm_optf(opt, "side", 23.0), foot_row = rm_optf(opt, "footrow", 26.0);
+    unsigned q;
+
+    for (q = 0; q + 1 < bt->n; q += 2) {
+        double lo[2] = { 1e30, 1e30 }, hi[2] = { -1e30, -1e30 }, mid[2], ua = 1e30, ub = -1e30, va = 1e30, vb = -1e30;
+        double u_at_lox = 0.0, v_at_loz = 0.0;
+        P2 loops[CH_R][CH_N];
+        int i, k, j;
+
+        for (j = 0; j < 2; j++) {
+            const RmTri *t = &bt->tri[q + j];
+
+            for (k = 0; k < 3; k++) {
+                if (t->p[k][0] < lo[0]) { lo[0] = t->p[k][0]; u_at_lox = t->uv[k][0]; }
+                hi[0] = t->p[k][0] > hi[0] ? t->p[k][0] : hi[0];
+                if (t->p[k][2] < lo[1]) { lo[1] = t->p[k][2]; v_at_loz = t->uv[k][1]; }
+                hi[1] = t->p[k][2] > hi[1] ? t->p[k][2] : hi[1];
+                ua = t->uv[k][0] < ua ? t->uv[k][0] : ua;
+                ub = t->uv[k][0] > ub ? t->uv[k][0] : ub;
+                va = t->uv[k][1] < va ? t->uv[k][1] : va;
+                vb = t->uv[k][1] > vb ? t->uv[k][1] : vb;
+            }
+        }
+        mid[0] = (lo[0] + hi[0]) * 0.5;
+        mid[1] = (lo[1] + hi[1]) * 0.5;
+        {
+            /* the picture's pixel (col, row) as uv; u runs with x, v with z either way the card lies */
+            const double su = (u_at_lox <= (ua + ub) * 0.5) ? 1.0 : -1.0, sv = (v_at_loz <= (va + vb) * 0.5) ? 1.0 : -1.0;
+            const double u0 = su > 0 ? ua : ub, v0 = sv > 0 ? va : vb, du = su * (ub - ua) / px, dv = sv * (vb - va) / px;
+            const unsigned char rgb[3] = { bt->rgb[0], bt->rgb[1], bt->rgb[2] };
+            const unsigned src = bt->tri[q].id;
+#define PUV(col, row, uv) do { (uv)[0] = u0 + (col) * du; (uv)[1] = v0 + (row) * dv; } while (0)
+
+            for (i = 0; i < CH_R; i++) {
+                loop8(half, half, ring_in[i], 1, loops[i]);
+            }
+            /* the side: rings from the floor up, each band in the picture's side rows at the front column under that
+             * angle (the side's light and shade go round with it) */
+            for (i = 1; i < CH_R; i++) {
+                const double ya = foot_y + ring_y[i - 1] * high / 6.0, yb = foot_y + ring_y[i] * high / 6.0;
+                const double row_a = i - 1 <= 1 ? (i - 1 == 0 ? foot_row : side_row) : side_row - 3.0;
+                const double row_b = i <= 1 ? (i == 0 ? foot_row : side_row) : i == 2 ? side_row - 1.0 : side_row - 3.0;
+
+                for (k = 0; k < CH_N; k++) {
+                    const int k2 = (k + 1) % CH_N;
+                    double a0[3], a1[3], b0[3], b1[3], uva0[2], uva1[2], uvb0[2], uvb1[2], n[3], e1[3], e2[3];
+                    const double ca = loops[i - 1][k].x / half, cb = loops[i - 1][k2].x / half;
+
+                    a0[0] = mid[0] + loops[i - 1][k].x;  a0[1] = ya; a0[2] = mid[1] + loops[i - 1][k].z;
+                    a1[0] = mid[0] + loops[i - 1][k2].x; a1[1] = ya; a1[2] = mid[1] + loops[i - 1][k2].z;
+                    b0[0] = mid[0] + loops[i][k].x;      b0[1] = yb; b0[2] = mid[1] + loops[i][k].z;
+                    b1[0] = mid[0] + loops[i][k2].x;     b1[1] = yb; b1[2] = mid[1] + loops[i][k2].z;
+                    PUV(pcx + ca * prx * 0.55, row_a, uva0);
+                    PUV(pcx + cb * prx * 0.55, row_a, uva1);
+                    PUV(pcx + ca * prx * 0.55, row_b, uvb0);
+                    PUV(pcx + cb * prx * 0.55, row_b, uvb1);
+                    rm_add(a1, a0, -1.0, e1);
+                    rm_add(b1, a0, -1.0, e2);
+                    rm_cross(e1, e2, n);
+                    {
+                        const double ox = loops[i][k].x + loops[i][k2].x, oz = loops[i][k].z + loops[i][k2].z;
+
+                        if (n[0] * ox + n[2] * oz < 0.0) {
+                            rm_tri(out, src, -1, 1, rgb, a0, b1, a1, uva0, uvb1, uva1, 0, 0);
+                            rm_tri(out, src, -1, 1, rgb, a0, b0, b1, uva0, uvb0, uvb1, 0, 0);
+                        } else {
+                            rm_tri(out, src, -1, 1, rgb, a0, a1, b1, uva0, uva1, uvb1, 0, 0);
+                            rm_tri(out, src, -1, 1, rgb, a0, b1, b0, uva0, uvb1, uvb0, 0, 0);
+                        }
+                    }
+                }
+            }
+            /* the top: a fan from the middle, the picture's disc on it (the ring's point at (x, z) takes the disc's
+             * pixel the same share of the way from its middle to its edge) */
+            {
+                const double th = half - ring_in[CH_R - 1], ytop = foot_y + high;
+                double c[3] = { mid[0], ytop + rm_optf(opt, "dome", 0.0), mid[1] }, uvc[2];   /* (dome: the middle raised, a stuffed top) */
+
+                PUV(pcx, pcy, uvc);
+                for (k = 0; k < CH_N; k++) {
+                    const int k2 = (k + 1) % CH_N;
+                    double a[3], b[3], uva[2], uvb[2];
+
+                    a[0] = mid[0] + loops[CH_R - 1][k].x;  a[1] = ytop; a[2] = mid[1] + loops[CH_R - 1][k].z;
+                    b[0] = mid[0] + loops[CH_R - 1][k2].x; b[1] = ytop; b[2] = mid[1] + loops[CH_R - 1][k2].z;
+                    PUV(pcx + loops[CH_R - 1][k].x / th * prx, pcy + loops[CH_R - 1][k].z / th * pry, uva);
+                    PUV(pcx + loops[CH_R - 1][k2].x / th * prx, pcy + loops[CH_R - 1][k2].z / th * pry, uvb);
+                    {
+                        double e1[3], e2[3], n[3];
+
+                        rm_add(a, c, -1.0, e1);
+                        rm_add(b, c, -1.0, e2);
+                        rm_cross(e1, e2, n);
+                        if (n[1] >= 0.0) {
+                            rm_tri(out, src, -1, 1, rgb, c, a, b, uvc, uva, uvb, 0, 0);
+                        } else {
+                            rm_tri(out, src, -1, 1, rgb, c, b, a, uvc, uvb, uva, 0, 0);
+                        }
+                    }
+                }
+            }
+#undef PUV
+        }
+        rm_drop(out, bt->tri[q].id);
+        rm_drop(out, bt->tri[q + 1].id);
+    }
+}
+
 /*
  * `top=1`: a seat whose picture shows its top only (the floor seats drawn into a room's mesh: a 16 pixel picture, a
  * one pixel outline round the seat, rows and columns 1..px-2 the top, lit from the north-west).  The body is the
@@ -123,13 +277,13 @@ static int clip(const P2 *poly, int n, P2 a, P2 b, P2 *out)
  */
 static void cushion_top(const RmBatch *bt, const char *opt, RmOut *out)
 {
-    static const double ring_y[RINGS] = { 0.0, 0.5, 1.6, 3.6, 4.6, 5.3, 5.75, 6.0 };
-    static const double ring_in[RINGS] = { 0.5, 0.15, 0.0, 0.0, 0.25, 0.6, 1.0, 1.5 };
+    static const double ring_y[CH_R] = { 0.0, 0.4, 4.9, 6.0 };      /* foot, straight side, one bevel */
+    static const double ring_in[CH_R] = { 0.35, 0.0, 0.0, 1.1 };
     const int px = (int)rm_optf(opt, "px", 16.0), n_in = px - 2, last = n_in;
-    const int ring_row[RINGS] = { 0, last, last, last, last - 1, last - 1, last - 2, last - 2 };
+    const int ring_row[CH_R] = { 0, last, last - 1, last - 2 };
     const double half = rm_optf(opt, "half", 6.2), rad = rm_optf(opt, "rad", 3.0), high = rm_optf(opt, "high", 5.0);
     const double up[3] = { 0.0, 1.0, 0.0 };
-    P2 loops[RINGS][LOOP_N];
+    P2 loops[CH_R][CH_N];
     double m[3][3], th, best = -1e30;
     const RmTri *pic = NULL;
     Cu c;
@@ -171,15 +325,15 @@ static void cushion_top(const RmBatch *bt, const char *opt, RmOut *out)
     rm_norm(c.ex);
     rm_norm(c.ez);
     c.y0 = best - rm_optf(opt, "floor", 3.6);
-    for (i = 0; i < RINGS; i++) {
-        loop(half, rad, ring_in[i], loops[i]);
+    for (i = 0; i < CH_R; i++) {
+        loop8(half, rad, ring_in[i], 0, loops[i]);
     }
-    for (i = 1; i < RINGS; i++) {
+    for (i = 1; i < CH_R; i++) {
         double ya = ring_y[i - 1] * high / 6.0, yb = ring_y[i] * high / 6.0;
         double shade = i == 1 ? rm_optf(opt, "foot", 0.78) : 1.0;
 
-        for (k = 0; k < LOOP_N; k++) {
-            int k2 = (k + 1) % LOOP_N;
+        for (k = 0; k < CH_N; k++) {
+            int k2 = (k + 1) % CH_N;
             double a0[3], a1[3], b0[3], b1[3], outward[3];
             double ox = loops[i][k].x + loops[i][k2].x, oz = loops[i][k].z + loops[i][k2].z;
 
@@ -195,7 +349,7 @@ static void cushion_top(const RmBatch *bt, const char *opt, RmOut *out)
         }
     }
     /* the top: the picture inside its outline, a pixel a cell, cut to the round outline */
-    th = half - ring_in[RINGS - 1];
+    th = half - ring_in[CH_R - 1];
     for (r = 0; r < n_in; r++) {
         for (col = 0; col < n_in; col++) {
             P2 pa[40], pb[40], *poly = pa, *next = pb;
@@ -207,10 +361,10 @@ static void cushion_top(const RmBatch *bt, const char *opt, RmOut *out)
             poly[1].x = x1; poly[1].z = z0;
             poly[2].x = x1; poly[2].z = z1;
             poly[3].x = x0; poly[3].z = z1;
-            for (k = 0; k < LOOP_N && n >= 3; k++) {
+            for (k = 0; k < CH_N && n >= 3; k++) {
                 P2 *t;
 
-                n = clip(poly, n, loops[RINGS - 1][k], loops[RINGS - 1][(k + 1) % LOOP_N], next);
+                n = clip(poly, n, loops[CH_R - 1][k], loops[CH_R - 1][(k + 1) % CH_N], next);
                 t = poly; poly = next; next = t;
             }
             for (i = 1; i + 1 < n; i++) {
@@ -230,6 +384,18 @@ static void cushion_top(const RmBatch *bt, const char *opt, RmOut *out)
 
 void rm_cushion(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
+    if (rm_optf(opt, "round", 0.0) != 0.0) {
+        unsigned bi;
+
+        (void)tex;
+        (void)ntex;
+        for (bi = 0; bi < nb; bi++) {
+            if (b[bi].n == 2) {
+                cushion_round(&b[bi], opt, out);
+            }
+        }
+        return;
+    }
     if (rm_optf(opt, "top", 0.0) != 0.0) {
         unsigned bi;
 

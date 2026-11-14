@@ -81,6 +81,7 @@ typedef struct RmOut {
     int ntex;
     unsigned flags;
     int fail;                   /* out of memory: the model stays as it is      */
+    unsigned seal_from;         /* rm_seal closes the new triangles from here on (0: all) */
 } RmOut;
 
 /* A builder.  `opt`: its settings for this model, "name=value,name=value".
@@ -113,6 +114,9 @@ void rm_drop_all(RmOut *o, const RmBatch *b);
  * are kept, their turned copies, the new ones without a texture of their own) gets a back in its own pixels,
  * `shade` darker.  Called last by a builder of a thing the map left open. */
 void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade);
+/* the same; skip_opposite: no back where the model's own face in that plane already looks that way (a panel drawn
+ * both ways) */
+void rm_seal_ex(const RmBatch *b, unsigned nb, RmOut *out, double shade, int skip_opposite);
 void rm_two(RmOut *o, unsigned id);
 void rm_turn(RmOut *o, unsigned id, double cx, double cz);
 /* Adds a triangle to the output; its normal is its corners' own. */

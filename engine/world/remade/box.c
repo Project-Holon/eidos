@@ -165,11 +165,305 @@ static void box_flat(const RmBatch *bt, const RmTex *tex, unsigned ntex, const c
     }
 }
 
+/* `lie=H`: a card leaning back over a bed or a seat (a pillow: the field's camera sees its top as a slanted picture)
+ * made the low body it shows.  The body lies on the card's foot height over the card's footprint, H units tall, its
+ * top edge bevelled in by `bevel` (one bevel, no rounding); the top is the card's picture laid flat (the card's foot
+ * edge at the body's front, its top edge at the back: seen from the field's camera it reads as the card did); the
+ * front band, the sides and the back carry the picture's own edge pixels (a row, a column in from each edge). */
+static void box_lie(const RmBatch *bt, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
+{
+    const double high = rm_optf(opt, "lie", 4.0), bev = rm_optf(opt, "bevel", 1.0);
+    double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, m[3][3], a00, a01, a11, det;
+    double fz, bz, y0, ytop, x0, x1, inv_;
+    int th = 16, k, j;
+    unsigned q;
+    Bx x;
+
+    if (bt->n == 0 || rm_plane(&bt->tri[0], m) != 0) {
+        return;
+    }
+    if (bt->tex >= 0 && (unsigned)bt->tex < ntex) {
+        th = tex[bt->tex].h;
+    }
+    for (q = 0; q < bt->n; q++) {
+        for (k = 0; k < 3; k++) {
+            for (j = 0; j < 3; j++) {
+                lo[j] = bt->tri[q].p[k][j] < lo[j] ? bt->tri[q].p[k][j] : lo[j];
+                hi[j] = bt->tri[q].p[k][j] > hi[j] ? bt->tri[q].p[k][j] : hi[j];
+            }
+        }
+    }
+    /* the foot edge: the card's low corners; which z end is it */
+    {
+        double zl = 0.0;
+        int nl = 0;
+
+        for (q = 0; q < bt->n; q++) {
+            for (k = 0; k < 3; k++) {
+                if (bt->tri[q].p[k][1] <= lo[1] + 0.05) {
+                    zl += bt->tri[q].p[k][2];
+                    nl++;
+                }
+            }
+        }
+        zl = nl ? zl / nl : hi[2];
+        fz = fabs(zl - hi[2]) < fabs(zl - lo[2]) ? hi[2] : lo[2];
+        bz = fz == hi[2] ? lo[2] : hi[2];
+    }
+    a00 = rm_dot(m[0], m[0]);
+    a01 = rm_dot(m[0], m[1]);
+    a11 = rm_dot(m[1], m[1]);
+    det = a00 * a11 - a01 * a01;
+    if (fabs(det) < 1e-12) {
+        return;
+    }
+    x0 = lo[0];
+    x1 = hi[0];
+    y0 = lo[1];
+    ytop = y0 + high;
+
+    inv_ = 1.0 / th;
+    x.o = out;
+    x.src = bt->tri[0].id;
+    x.rgb[0] = bt->rgb[0]; x.rgb[1] = bt->rgb[1]; x.rgb[2] = bt->rgb[2];
+    {
+        /* the picture's uv at a point of the card over (x, z): the card's point at that x on the line from its foot
+         * edge (z = fz, y lo) to its top edge (z = bz, y hi), the share of the way t from the foot */
+#define CARD_UV(xx, t, uv) do { \
+            double p_[3], d_[3]; \
+            p_[0] = (xx); p_[1] = lo[1] + (t) * (hi[1] - lo[1]); p_[2] = fz + (t) * (bz - fz); \
+            for (k = 0; k < 3; k++) d_[k] = p_[k] - m[2][k]; \
+            (uv)[0] = (rm_dot(d_, m[0]) * a11 - rm_dot(d_, m[1]) * a01) / det; \
+            (uv)[1] = (rm_dot(d_, m[1]) * a00 - rm_dot(d_, m[0]) * a01) / det; \
+        } while (0)
+        const double s = bz < fz ? -1.0 : 1.0;          /* toward the back along z */
+        const double nf[3] = { 0, 0, -s }, nbk[3] = { 0, 0, s }, nl[3] = { -1, 0, 0 }, nr[3] = { 1, 0, 0 }, nu[3] = { 0, 1, 0 };
+        const double yb = ytop - bev * 0.8;             /* the bevel's foot */
+        const double ix0 = x0 + bev, ix1 = x1 - bev, ifz = fz + s * bev, ibz = bz - s * bev;
+        double p[4][3], uv[4][2], u0[2], u1[2], w0[2], w1[2];
+
+        /* top: the picture over the inner square */
+        CARD_UV(ix0, bev / fabs(bz - fz), u0);
+        CARD_UV(ix1, bev / fabs(bz - fz), u1);
+        CARD_UV(ix1, 1.0 - bev / fabs(bz - fz), w1);
+        CARD_UV(ix0, 1.0 - bev / fabs(bz - fz), w0);
+        p[0][0] = ix0; p[0][1] = ytop; p[0][2] = ifz; uv[0][0] = u0[0]; uv[0][1] = u0[1];
+        p[1][0] = ix1; p[1][1] = ytop; p[1][2] = ifz; uv[1][0] = u1[0]; uv[1][1] = u1[1];
+        p[2][0] = ix1; p[2][1] = ytop; p[2][2] = ibz; uv[2][0] = w1[0]; uv[2][1] = w1[1];
+        p[3][0] = ix0; p[3][1] = ytop; p[3][2] = ibz; uv[3][0] = w0[0]; uv[3][1] = w0[1];
+        bx_quad(&x, (const double (*)[3])p, (const double (*)[2])uv, nu, 1.0);
+        /* bevel, front: from the outline at yb to the top's front edge, the picture's rows near the foot */
+        CARD_UV(x0, 0.0, u0);
+        CARD_UV(x1, 0.0, u1);
+        p[0][0] = x0; p[0][1] = yb; p[0][2] = fz; uv[0][0] = u0[0]; uv[0][1] = u0[1];
+        p[1][0] = x1; p[1][1] = yb; p[1][2] = fz; uv[1][0] = u1[0]; uv[1][1] = u1[1];
+        CARD_UV(ix1, bev / fabs(bz - fz), w1);
+        CARD_UV(ix0, bev / fabs(bz - fz), w0);
+        p[2][0] = ix1; p[2][1] = ytop; p[2][2] = ifz; uv[2][0] = w1[0]; uv[2][1] = w1[1];
+        p[3][0] = ix0; p[3][1] = ytop; p[3][2] = ifz; uv[3][0] = w0[0]; uv[3][1] = w0[1];
+        {
+            const double n[3] = { 0, 0.7, -s * 0.7 };
+
+            bx_quad(&x, (const double (*)[3])p, (const double (*)[2])uv, n, 1.0);
+        }
+        /* bevel, back */
+        CARD_UV(x0, 1.0, u0);
+        CARD_UV(x1, 1.0, u1);
+        p[0][0] = x0; p[0][1] = yb; p[0][2] = bz; uv[0][0] = u0[0]; uv[0][1] = u0[1];
+        p[1][0] = x1; p[1][1] = yb; p[1][2] = bz; uv[1][0] = u1[0]; uv[1][1] = u1[1];
+        CARD_UV(ix1, 1.0 - bev / fabs(bz - fz), w1);
+        CARD_UV(ix0, 1.0 - bev / fabs(bz - fz), w0);
+        p[2][0] = ix1; p[2][1] = ytop; p[2][2] = ibz; uv[2][0] = w1[0]; uv[2][1] = w1[1];
+        p[3][0] = ix0; p[3][1] = ytop; p[3][2] = ibz; uv[3][0] = w0[0]; uv[3][1] = w0[1];
+        {
+            const double n[3] = { 0, 0.7, s * 0.7 };
+
+            bx_quad(&x, (const double (*)[3])p, (const double (*)[2])uv, n, 0.9);
+        }
+        /* bevels, sides */
+        for (j = 0; j < 2; j++) {
+            const double xs = j == 0 ? x0 : x1, ixs = j == 0 ? ix0 : ix1;
+            const double n[3] = { j == 0 ? -0.7 : 0.7, 0.7, 0 };
+
+            CARD_UV(xs, 0.0, u0);
+            CARD_UV(xs, 1.0, u1);
+            CARD_UV(ixs, 1.0 - bev / fabs(bz - fz), w1);
+            CARD_UV(ixs, bev / fabs(bz - fz), w0);
+            p[0][0] = xs;  p[0][1] = yb;   p[0][2] = fz;  uv[0][0] = u0[0]; uv[0][1] = u0[1];
+            p[1][0] = xs;  p[1][1] = yb;   p[1][2] = bz;  uv[1][0] = u1[0]; uv[1][1] = u1[1];
+            p[2][0] = ixs; p[2][1] = ytop; p[2][2] = ibz; uv[2][0] = w1[0]; uv[2][1] = w1[1];
+            p[3][0] = ixs; p[3][1] = ytop; p[3][2] = ifz; uv[3][0] = w0[0]; uv[3][1] = w0[1];
+            bx_quad(&x, (const double (*)[3])p, (const double (*)[2])uv, n, 0.95);
+        }
+        /* the straight sides, foot to yb: each the picture's edge pixels along that edge, a pixel in */
+        {
+            const double ys[2] = { y0, yb };
+            const double ex[4][2] = { { x0, x1 }, { x1, x1 }, { x1, x0 }, { x0, x0 } };
+            const double ez[4][2] = { { fz, fz }, { fz, bz }, { bz, bz }, { bz, fz } };
+            const double et[4][2] = { { 0.0, 0.0 }, { 0.0, 1.0 }, { 1.0, 1.0 }, { 1.0, 0.0 } };
+            const double *nn[4] = { nf, nr, nbk, nl };
+            int e;
+
+            for (e = 0; e < 4; e++) {
+                double ua[2], ub[2];
+                const double ti = e == 0 ? inv_ * 1.5 / fabs(hi[1] - lo[1] + 1e-9) : e == 2 ? -inv_ * 1.5 : 0.0;
+
+                CARD_UV(ex[e][0] + (e == 1 ? -0.3 : e == 3 ? 0.3 : 0.0), et[e][0] + ti, ua);
+                CARD_UV(ex[e][1] + (e == 1 ? -0.3 : e == 3 ? 0.3 : 0.0), et[e][1] + ti, ub);
+                p[0][0] = ex[e][0]; p[0][1] = ys[0]; p[0][2] = ez[e][0]; uv[0][0] = ua[0]; uv[0][1] = ua[1];
+                p[1][0] = ex[e][1]; p[1][1] = ys[0]; p[1][2] = ez[e][1]; uv[1][0] = ub[0]; uv[1][1] = ub[1];
+                p[2][0] = ex[e][1]; p[2][1] = ys[1]; p[2][2] = ez[e][1]; uv[2][0] = ub[0]; uv[2][1] = ub[1];
+                p[3][0] = ex[e][0]; p[3][1] = ys[1]; p[3][2] = ez[e][0]; uv[3][0] = ua[0]; uv[3][1] = ua[1];
+                bx_quad(&x, (const double (*)[3])p, (const double (*)[2])uv, nn[e], e == 0 ? 0.9 : 0.8);
+            }
+        }
+#undef CARD_UV
+    }
+    for (q = 0; q < bt->n; q++) {
+        rm_drop(out, bt->tri[q].id);
+    }
+}
+
+/* `slab=T`: a card leaning back over a bed (a pillow against the headboard) kept as it leans and given its thickness:
+ * the card is the front, a back face T units behind it along its own normal (the pillow's back, its picture again),
+ * and the four edges closed in the picture's own edge pixels.  The card stays as the map has it. */
+static void box_slab(const RmBatch *bt, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
+{
+    const double thick = rm_optf(opt, "slab", 3.0);
+    double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, m[3][3], a00, a01, a11, det, fz = 0, bz = 0;
+    double c[4][3], uv[4][2], n[3], e1[3], e2[3], l;
+    int k, j, th = 16;
+    unsigned q;
+    Bx x;
+
+    if (bt->n == 0 || rm_plane(&bt->tri[0], m) != 0) {
+        return;
+    }
+    if (bt->tex >= 0 && (unsigned)bt->tex < ntex) {
+        th = tex[bt->tex].h;
+    }
+    for (q = 0; q < bt->n; q++) {
+        for (k = 0; k < 3; k++) {
+            for (j = 0; j < 3; j++) {
+                lo[j] = bt->tri[q].p[k][j] < lo[j] ? bt->tri[q].p[k][j] : lo[j];
+                hi[j] = bt->tri[q].p[k][j] > hi[j] ? bt->tri[q].p[k][j] : hi[j];
+            }
+        }
+    }
+    for (q = 0; q < bt->n; q++) {
+        for (k = 0; k < 3; k++) {
+            if (bt->tri[q].p[k][1] <= lo[1] + 0.05) {
+                fz = bt->tri[q].p[k][2];
+            } else if (bt->tri[q].p[k][1] >= hi[1] - 0.05) {
+                bz = bt->tri[q].p[k][2];
+            }
+        }
+    }
+    a00 = rm_dot(m[0], m[0]);
+    a01 = rm_dot(m[0], m[1]);
+    a11 = rm_dot(m[1], m[1]);
+    det = a00 * a11 - a01 * a01;
+    if (fabs(det) < 1e-12) {
+        return;
+    }
+    /* the card's corners: foot left, foot right, top right, top left */
+    c[0][0] = lo[0]; c[0][1] = lo[1]; c[0][2] = fz;
+    c[1][0] = hi[0]; c[1][1] = lo[1]; c[1][2] = fz;
+    c[2][0] = hi[0]; c[2][1] = hi[1]; c[2][2] = bz;
+    c[3][0] = lo[0]; c[3][1] = hi[1]; c[3][2] = bz;
+    for (j = 0; j < 4; j++) {
+        double d[3];
+
+        for (k = 0; k < 3; k++) {
+            d[k] = c[j][k] - m[2][k];
+        }
+        uv[j][0] = (rm_dot(d, m[0]) * a11 - rm_dot(d, m[1]) * a01) / det;
+        uv[j][1] = (rm_dot(d, m[1]) * a00 - rm_dot(d, m[0]) * a01) / det;
+    }
+    for (k = 0; k < 3; k++) {
+        e1[k] = c[1][k] - c[0][k];
+        e2[k] = c[3][k] - c[0][k];
+    }
+    rm_cross(e1, e2, n);
+    l = sqrt(rm_dot(n, n));
+    if (l < 1e-9) {
+        return;
+    }
+    for (k = 0; k < 3; k++) {
+        n[k] /= l;
+    }
+    if (n[1] < 0.0) {
+        for (k = 0; k < 3; k++) {
+            n[k] = -n[k];
+        }
+    }
+    x.o = out;
+    x.src = bt->tri[0].id;
+    x.rgb[0] = bt->rgb[0]; x.rgb[1] = bt->rgb[1]; x.rgb[2] = bt->rgb[2];
+    {
+        double b[4][3], p[4][3], u[4][2], nb[3];
+        const double dv = (uv[3][1] > uv[0][1] ? 1.0 : -1.0) * 1.5 / th;   /* (a pixel and a half in, foot to top) */
+
+        for (j = 0; j < 4; j++) {
+            for (k = 0; k < 3; k++) {
+                b[j][k] = c[j][k] - n[k] * thick;
+            }
+        }
+        /* the back: the picture again, seen from behind */
+        for (k = 0; k < 3; k++) {
+            nb[k] = -n[k];
+        }
+        bx_quad(&x, (const double (*)[3])b, (const double (*)[2])uv, nb, 0.85);
+        /* the four edges, each in the picture's pixels just inside that edge */
+        for (j = 0; j < 4; j++) {
+            const int j2 = (j + 1) % 4;
+            double en[3], mid[3], cen[3] = { 0, 0, 0 };
+            int s_;
+
+            for (s_ = 0; s_ < 4; s_++) {
+                for (k = 0; k < 3; k++) {
+                    cen[k] += c[s_][k] / 4.0;
+                }
+            }
+            for (k = 0; k < 3; k++) {
+                p[0][k] = c[j][k];
+                p[1][k] = c[j2][k];
+                p[2][k] = b[j2][k];
+                p[3][k] = b[j][k];
+                mid[k] = (c[j][k] + c[j2][k]) * 0.5;
+                en[k] = mid[k] - cen[k];
+            }
+            for (s_ = 0; s_ < 2; s_++) {
+                const int cj = s_ == 0 ? j : j2;
+                /* (toward the middle of the picture by a pixel and a half) */
+                u[s_][0] = uv[cj][0] + ((uv[0][0] + uv[2][0]) * 0.5 - uv[cj][0]) * 0.12;
+                u[s_][1] = uv[cj][1] + ((uv[0][1] + uv[2][1]) * 0.5 - uv[cj][1]) * 0.12;
+            }
+            (void)dv;
+            u[2][0] = u[1][0]; u[2][1] = u[1][1];
+            u[3][0] = u[0][0]; u[3][1] = u[0][1];
+            bx_quad(&x, (const double (*)[3])p, (const double (*)[2])u, en, 0.9);
+        }
+    }
+}
+
 void rm_box(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
     const double deep = rm_optf(opt, "deep", 6.0), drop = rm_optf(opt, "floor", 0.0), edge = rm_optf(opt, "edge", 1.5);
     unsigned bi;
 
+    if (rm_optf(opt, "slab", 0.0) > 0.0) {
+        for (bi = 0; bi < nb; bi++) {
+            box_slab(&b[bi], tex, ntex, opt, out);
+        }
+        return;
+    }
+    if (rm_optf(opt, "lie", 0.0) > 0.0) {
+        for (bi = 0; bi < nb; bi++) {
+            box_lie(&b[bi], tex, ntex, opt, out);
+        }
+        return;
+    }
     for (bi = 0; bi < nb; bi++) {
         const RmBatch *bt = &b[bi];
         double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, m[3][3];
