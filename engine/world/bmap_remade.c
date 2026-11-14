@@ -41,6 +41,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00044", rm_tower, "corner=1,wall=36:-36:36:-24:4:34,decal=18:24:24:18.5:30.7:20.5:32.8:0:24.75:-24.12+20:24:24:17.4:31.8:19.6:33.2:0:24.5:-24.25,panel=36:-20:36:-36:36:-24:34:46,mirror=23.5:30.6:48:58:-16.1:-20:-12+-30.6:-23.5:48:58:-16.1:-20:-12+23.5:30.6:48:58:12.35:9:16+-30.6:-23.5:48:58:12.35:9:16" },   /* cottage, orange roof (Striaton): a back wall in its sides' plaster up under the eave, the chimneys closed */
     { "b1_00047", rm_tower, "twofirst=1,mirror=-26:26:3:100:0,two=-18.1:18.1:61.5:85+-12.1:12.1:67:68" },   /* lighthouse: its back from the front, the lantern and beams seen from both sides */
     { "b1_00062", rm_tower, "panelz=24:-27:20:-30:32:-28:4:34+24:20:40:-30:32:-28:34:51" },   /* stone house: a back wall in the front's stone, lower wall and gable band */
+    { "b1_00063", rm_tower, "panelz=16:20:20:-32:32:-32:4:34+16:20:40:-32:32:-32:34:52" },   /* stone house: a back wall in the front's stone, lower wall and gable band */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
