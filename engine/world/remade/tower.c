@@ -30,6 +30,8 @@
  *       outer skin D behind it, in the outer faces' texture column u = U, v by height.
  *   hide=X0:X1:Y0:Y1:Z0:Z1:TEX+..  the model's faces of texture TEX in that box left out.
  *   cutx=X0:X1:Z0:Z1+..  the model's faces wholly between Z0 and Z1 cut to X0..X1.
+ *   band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1+..  a band of a wall at z = Z looking north, its foot
+ *       and top rising along x, in the picture of the upright face at z = SZ holding (SX, SY).
  *   decal=SZ:SX:SY:X0:X1:Y0:Y1:TX:TY:Z+..  a rectangle of a south face's picture laid on
  *       the back at z = Z, its middle at (TX, TY), looking north.
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
@@ -1008,6 +1010,98 @@ static void do_cutx(const Ft *f, unsigned nf, RmOut *out, const double c[4])
             ub[0] = a[j][3]; ub[1] = a[j][4];
             uc[0] = a[j + 1][3]; uc[1] = a[j + 1][4];
             rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, pa, pb, pc, ua, ub, uc, 0, 0);
+        }
+    }
+}
+
+/* `band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1+..`: a band of a wall at z = Z looking north (a room's inner side of its
+ * south wall), from x = X0 to X1, its foot rising from YB0 to YB1 and its top from YT0 to YT1 along x (a band under a
+ * sloped roof), in the picture of the model's own upright face at z = SZ that holds (SX, SY): each corner takes the
+ * picture's place of the point (x, y) on that face, so a band of wallpaper, skirting or trim carries on at the heights
+ * the room's corners set. */
+static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10])
+{
+    const Ft *src = NULL;
+    double m[2][3];
+    unsigned i;
+    int j, k;
+
+    for (i = 0; i < nf && src == NULL; i++) {
+        const RmTri *t = f[i].t;
+        double den, w0, w1;
+        int at = 1;
+
+        if (fabs(f[i].n[2]) < 0.9 || f[i].b->tex < 0) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][2] - d[2]) < 0.1;
+        }
+        den = ((double)t->p[1][1] - t->p[2][1]) * ((double)t->p[0][0] - t->p[2][0])
+              + ((double)t->p[2][0] - t->p[1][0]) * ((double)t->p[0][1] - t->p[2][1]);
+        if (!at || fabs(den) < 1e-9) {
+            continue;
+        }
+        w0 = (((double)t->p[1][1] - t->p[2][1]) * (d[0] - t->p[2][0]) + ((double)t->p[2][0] - t->p[1][0]) * (d[1] - t->p[2][1])) / den;
+        w1 = (((double)t->p[2][1] - t->p[0][1]) * (d[0] - t->p[2][0]) + ((double)t->p[0][0] - t->p[2][0]) * (d[1] - t->p[2][1])) / den;
+        if (w0 >= -1e-3 && w1 >= -1e-3 && 1.0 - w0 - w1 >= -1e-3) {
+            src = &f[i];
+        }
+    }
+    if (src == NULL) {
+        return;
+    }
+    {
+        /* the picture's place as a function of (x, y) on the source face */
+        const RmTri *t = src->t;
+        const double x0 = t->p[0][0], y0 = t->p[0][1];
+        const double x1 = t->p[1][0] - x0, y1 = t->p[1][1] - y0, x2 = t->p[2][0] - x0, y2 = t->p[2][1] - y0;
+        const double det = x1 * y2 - x2 * y1;
+
+        if (fabs(det) < 1e-9) {
+            return;
+        }
+        for (k = 0; k < 2; k++) {
+            const double d1 = (double)t->uv[1][k] - t->uv[0][k], d2 = (double)t->uv[2][k] - t->uv[0][k];
+
+            m[k][0] = (d1 * y2 - d2 * y1) / det;
+            m[k][1] = (d2 * x1 - d1 * x2) / det;
+            m[k][2] = t->uv[0][k] - m[k][0] * x0 - m[k][1] * y0;
+        }
+    }
+    {
+        const double outn[3] = { 0, 0, -1 };
+        double q[4][3], uv[4][2];
+        const double xs[4] = { d[3], d[4], d[4], d[3] };
+        const double ys[4] = { d[6], d[8], d[9], d[7] };
+
+        for (j = 0; j < 4; j++) {
+            q[j][0] = xs[j];
+            q[j][1] = ys[j];
+            q[j][2] = d[5];
+            uv[j][0] = m[0][0] * xs[j] + m[0][1] * ys[j] + m[0][2];
+            uv[j][1] = m[1][0] * xs[j] + m[1][1] * ys[j] + m[1][2];
+        }
+        {
+            /* (one-sided: a camera behind the wall, outside the room, sees through it as through the field's) */
+            double e1[3], e2[3], n[3];
+            unsigned first = out->ntri, ti;
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = q[1][k] - q[0][k];
+                e2[k] = q[2][k] - q[0][k];
+            }
+            rm_cross(e1, e2, n);
+            if (rm_dot(n, outn) >= 0.0) {
+                rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+                rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
+            } else {
+                rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+                rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
+            }
+            for (ti = first; ti < out->ntri; ti++) {
+                out->tri[ti].lit = 1;
+            }
         }
     }
 }
@@ -2181,6 +2275,17 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
                         rm_drop(out, t->id);
                     }
                 }
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "band", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double bd[10];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9]) == 10) {
+                do_band(f, nf, out, bd);
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;

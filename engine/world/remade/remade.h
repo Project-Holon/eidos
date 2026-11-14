@@ -102,6 +102,8 @@ RmBuild rm_hall;               /* hall.c: a box hall: its back wall in its sides
 RmBuild rm_sprite;              /* sprite.c: a picture card over a stand: a body that is the picture from the front */
 RmBuild rm_chandelier;          /* chandelier.c: a candle chandelier: a round frame, round candles, flames from any side */
 RmBuild rm_counter;           /* counter.c: a kitchen counter: its back and corner, the sink's wall, tap and stove standing up */
+RmBuild rm_box;                 /* box.c: a picture card made the upright box it shows (a games console) */
+RmBuild rm_mesh;                /* mesh.c: a map chunk's own mesh (a room), builders on boxes of it */
 
 /* --- helpers (common.c) --- */
 

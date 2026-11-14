@@ -2065,16 +2065,26 @@ static int done_has(const u32 *a, u32 n, u32 id)
  * kept for every copy and every later scene.  EIDOS_NO_REMADE=1 leaves
  * every model as the map has it.
  */
+static const Done *done_get_key(const void *owner, const char *key, Model *md, const char *setkey, Buf set);
+
 static const Done *done_get(const void *owner, int pack, unsigned id, Model *md, const char *setkey, Buf set)
 {
     char key[24];
+
+    snprintf(key, sizeof key, "b%d_%05u", pack, id);
+    return done_get_key(owner, key, md, setkey, set);
+}
+
+/* The same for any key: "b0_00123" a building model, "m00505" the mesh of map chunk 505 (a room's own furniture and
+ * walls, made for the field's camera). */
+static const Done *done_get_key(const void *owner, const char *key, Model *md, const char *setkey, Buf set)
+{
     unsigned i;
     Done *d = NULL;
 
     if (getenv("EIDOS_NO_REMADE") != NULL) {
         return NULL;
     }
-    snprintf(key, sizeof key, "b%d_%05u", pack, id);
     for (i = 0; i < g_ndones && d == NULL; i++) {
         if (strcmp(g_dones[i].key, key) == 0) {
             d = &g_dones[i];
@@ -2416,7 +2426,9 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                     bv[k].a = x->alpha != 0 ? (u8)(x->alpha * 255u / 31u) : 255;
                     /* (the top bit: a completion's own triangles, which the battle's search for flat
                      * cut-out cards passes over: they are a body, and there are thousands) */
-                    bv[k].obj = ground == 1 ? 0u : (c->obj | 0x80000000u);
+                    /* (a room's mesh remade: its new parts are bodies too, object 0 with the top bit: the
+                     * battle's search for floor pictures must not lay a seat's top on the floor) */
+                    bv[k].obj = ground == 1 ? 0x80000000u : (c->obj | 0x80000000u);
                     if ((x->kind == 2 || (dn->flags & 1u)) && ground != 1) {
                         bv[k].obj |= 0x40000000u;   /* a body that rests on the floor under it (rest_bodies) */
                     }
@@ -2566,7 +2578,17 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
     bmd = rd32(bb, 4);
     gm0 = c->ngt;
     if (bmd < bb.n && gs != NULL && model_parse(sub(bb, bmd), &md) == 0) {
+        char mkey[24];
+
+        /* (a chunk's mesh can be remade too: "m" and the chunk's number) */
+        snprintf(mkey, sizeof mkey, "m%05u", chunk);
+        g_done = c->cur_far ? NULL : done_get_key(c, mkey, &md, setkey, bb_of(gs));
+        if (getenv("BMAP_MODEL_LOG") != NULL && !c->cur_far) {
+            fprintf(stderr, "bmap: mesh %s at %.0f %.0f%s\n", mkey, (double)center[0], (double)center[2],
+                    g_done != NULL ? " completed" : "");
+        }
         rc = add_model(c, &md, setkey, bb_of(gs), &base, 1, NULL);
+        g_done = NULL;
         model_free(&md);
     }
     gm1 = c->ngt;
