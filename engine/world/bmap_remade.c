@@ -55,6 +55,7 @@ static const BmapRemade k_remade[] = {
     { "b0_00117", rm_tower, "two=-9999:9999:-9999:9999" },   /* platform machine (Pokemon League): seen from both sides */
     { "b0_00123", rm_tower, "two=-9999:9999:-9999:9999" },   /* sparkles (Pokemon League): seen from both sides */
     { "b0_00124", rm_tower, "two=-9999:9999:-9999:9999" },   /* stand and round machine (Pokemon League): seen from both sides */
+    { "b0_00128", rm_tower, "two=-9999:9999:-9999:9999" },   /* light beam (Pokemon League): seen from both sides */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
