@@ -5,7 +5,7 @@
  * back it is open.
  *
  * What is made, from the model's own faces and texture pixels:
- *   halfturn=CX:CZ:R0:A0:A1  a round wing's faces past R0 from (CX, CZ), between
+ *   halfturn=CX:CZ:R0:A0:A1[:Y0:Y1[:X0:X1[:TEX[:TOL]]]]+..  a round wing's faces past R0 from (CX, CZ), between
  *       the angles A0..A1, copied turned half round there (a back arc whose
  *       front is another part).
  *   mirror=X0:X1:Y0:Y1:ZC+..  the parts within that box are round about
@@ -44,6 +44,7 @@
  *       the side at x = FROM between Y0 and Y1, mirrored across.
  *   rimwalls=Y0:X0:X1:Z0:Z1  a hole in a level floor (a roof pool): walls down
  *       to Y0 under its open edges in that box, in the hole's own wall colours.
+ *   twofirst=1  the two pass before halfturn and mirror (their copies two-sided too).
  *   two=X0:X1:Y0:Y1+..  the faces in that box shown from both sides (a
  *       railing's bars, a parasol's cloth).
  *   snap=X:Y:Z:NZ+..  a corner of the model out of line moved to z = NZ first.
@@ -82,8 +83,8 @@ static void normal_of(const RmTri *t, double n[3])
     }
 }
 
-/* Is the point on one of the model's faces that looks the same way (within 0.1 of its plane)? */
-static int on_face(const Ft *f, unsigned nf, const double p[3], const double n[3])
+/* Is the point on one of the model's faces that looks the same way (within `tol` of its plane)? */
+static int on_face_tol(const Ft *f, unsigned nf, const double p[3], const double n[3], double tol)
 {
     unsigned i;
 
@@ -98,7 +99,7 @@ static int on_face(const Ft *f, unsigned nf, const double p[3], const double n[3
         for (k = 0; k < 3; k++) {
             d[k] = p[k] - t->p[0][k];
         }
-        if (fabs(rm_dot(d, f[i].n)) > 0.1) {
+        if (fabs(rm_dot(d, f[i].n)) > tol) {
             continue;
         }
         /* (inside: the point is on the inner side of all three edges) */
@@ -118,6 +119,12 @@ static int on_face(const Ft *f, unsigned nf, const double p[3], const double n[3
         }
     }
     return 0;
+}
+
+/* within 0.1 of its plane */
+static int on_face(const Ft *f, unsigned nf, const double p[3], const double n[3])
+{
+    return on_face_tol(f, nf, p, n, 0.1);
 }
 
 /* how a face's texture runs by z (a) and y (b) */
@@ -151,10 +158,41 @@ static void map_at(const Map *m, double z, double y, double uv[2])
     uv[1] = m->v0 + m->va * (z - m->a0) + m->vb * (y - m->b0);
 }
 
+/* `two=X0:X1:Y0:Y1+..`: the faces in that box are shown from both sides (a railing's picture of bars, a parasol's
+ * cloth: thin things the map draws from the front only) */
+static void do_two(const Ft *f, unsigned nf, RmOut *out, char *buf)
+{
+    char *ep;
+    unsigned i;
+
+    for (ep = buf; ep != NULL && *ep != '\0'; ) {
+        double bx[4];
+
+        if (sscanf(ep, "%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3]) == 4) {
+            for (i = 0; i < nf; i++) {
+                int j, in = 1;
+
+                for (j = 0; j < 3; j++) {
+                    in &= f[i].t->p[j][0] >= bx[0] - 0.05 && f[i].t->p[j][0] <= bx[1] + 0.05
+                          && f[i].t->p[j][1] >= bx[2] - 0.05 && f[i].t->p[j][1] <= bx[3] + 0.05;
+                }
+                if (in) {
+                    rm_two(out, f[i].t->id);
+                }
+            }
+        }
+        ep = strchr(ep, '+');
+        ep = ep != NULL ? ep + 1 : NULL;
+    }
+}
+
 /* `halfturn=CX:CZ:R0:A0:A1`: a round wing whose back arc has no front arc to mirror (the front there is another part's
  * facade): its faces further than R0 from the upright through (CX, CZ) and between the angles A0..A1 (degrees, from
- * +x towards +z) are copied turned half round that upright, where the model has no face either way. */
-static void do_halfturn(const Ft *f, unsigned nf, RmOut *out, const double h[5])
+ * +x towards +z) are copied turned half round that upright, where the model has no face either way.  `:Y0:Y1[:X0:X1[:TEX]]`
+ * after: only faces wholly within that height and x (a tower's shaft above a base with a door, without its sign), and
+ * only faces in the picture TEX (a dome among other things; -1 any).  `:TOL` after: a copy is left out when it lies within
+ * TOL of a face of the model's (default 0.1; a turned bevel can land on the model's own a little off its plane). */
+static void do_halfturn(const Ft *f, unsigned nf, RmOut *out, const double h[11])
 {
     const double pi = 3.14159265358979;
     unsigned i;
@@ -164,11 +202,16 @@ static void do_halfturn(const Ft *f, unsigned nf, RmOut *out, const double h[5])
         double p[3][3], c[3] = { 0, 0, 0 }, mn[3], back[3], uv[3][2];
         int j, k, in = 1, s, hit = 0;
 
+        if (h[9] >= 0.0 && f[i].b->tex != (int)h[9]) {
+            continue;
+        }
         for (j = 0; j < 3; j++) {
             const double dx = t->p[j][0] - h[0], dz = t->p[j][2] - h[1];
             double a = atan2(dz, dx) * 180.0 / pi;
 
             in &= sqrt(dx * dx + dz * dz) >= h[2] && a >= h[3] - 0.5 && a <= h[4] + 0.5;
+            in &= t->p[j][1] >= h[5] - 0.01 && t->p[j][1] <= h[6] + 0.01;
+            in &= t->p[j][0] >= h[7] - 0.01 && t->p[j][0] <= h[8] + 0.01;
         }
         if (!in) {
             continue;
@@ -195,7 +238,7 @@ static void do_halfturn(const Ft *f, unsigned nf, RmOut *out, const double h[5])
             for (k = 0; k < 3; k++) {
                 q[k] = s == 0 ? c[k] : c[k] + (p[s - 1][k] - c[k]) * 0.66;
             }
-            hit = on_face(f, nf, q, mn) || on_face(f, nf, q, back);
+            hit = on_face_tol(f, nf, q, mn, h[10]) || on_face_tol(f, nf, q, back, h[10]);
         }
         if (!hit) {
             rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
@@ -304,7 +347,19 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[8])
                 continue;
             }
         }
-        rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+        {
+            /* (a face shown from both sides: its copy too) */
+            int cull = f[i].b->cull;
+            unsigned w;
+
+            for (w = 0; w < out->ntwo; w++) {
+                if (out->two[w] == t->id) {
+                    cull = 0;
+                    break;
+                }
+            }
+            rm_tri(out, t->id, -1, cull, t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+        }
     }
 }
 
@@ -1891,11 +1946,20 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             ep = ep != NULL ? ep + 1 : NULL;
         }
     }
+    /* (`twofirst=1`: before halfturn and mirror, so their copies of two-sided faces are two-sided too) */
+    if (rm_opt(opt, "twofirst", buf, sizeof buf) != NULL && atoi(buf) != 0 && rm_opt(opt, "two", buf, sizeof buf) != NULL) {
+        do_two(f, nf, out, buf);
+    }
     if (rm_opt(opt, "halfturn", buf, sizeof buf) != NULL) {
-        double h[5];
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double h[11] = { 0, 0, 0, 0, 0, -1e30, 1e30, -1e30, 1e30, -1, 0.1 };
 
-        if (sscanf(buf, "%lf:%lf:%lf:%lf:%lf", &h[0], &h[1], &h[2], &h[3], &h[4]) == 5) {
-            do_halfturn(f, nf, out, h);
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &h[0], &h[1], &h[2], &h[3], &h[4], &h[5],
+                       &h[6], &h[7], &h[8], &h[9], &h[10]) >= 5) {
+                do_halfturn(f, nf, out, h);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
         }
     }
     if (rm_opt(opt, "cutx", buf, sizeof buf) != NULL) {
@@ -1945,28 +2009,8 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             do_rimwalls(f, nf, out, r);
         }
     }
-    if (rm_opt(opt, "two", buf, sizeof buf) != NULL) {
-        /* `two=X0:X1:Y0:Y1+..`: the faces in that box are shown from both sides (a railing's picture of bars, a
-         * parasol's cloth: thin things the map draws from the front only) */
-        for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double bx[4];
-
-            if (sscanf(ep, "%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3]) == 4) {
-                for (i = 0; i < nf; i++) {
-                    int j, in = 1;
-
-                    for (j = 0; j < 3; j++) {
-                        in &= f[i].t->p[j][0] >= bx[0] - 0.05 && f[i].t->p[j][0] <= bx[1] + 0.05
-                              && f[i].t->p[j][1] >= bx[2] - 0.05 && f[i].t->p[j][1] <= bx[3] + 0.05;
-                    }
-                    if (in) {
-                        rm_two(out, f[i].t->id);
-                    }
-                }
-            }
-            ep = strchr(ep, '+');
-            ep = ep != NULL ? ep + 1 : NULL;
-        }
+    if (!(rm_opt(opt, "twofirst", buf, sizeof buf) != NULL && atoi(buf) != 0) && rm_opt(opt, "two", buf, sizeof buf) != NULL) {
+        do_two(f, nf, out, buf);
     }
     if (rm_opt(opt, "props", buf, sizeof buf) != NULL) {
         double y0 = 0.0, size = 0.0, md = 7.0;

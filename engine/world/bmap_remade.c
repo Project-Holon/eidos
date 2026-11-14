@@ -39,6 +39,7 @@ static const BmapRemade k_remade[] = {
 
     { "b1_00032", rm_tower, "snap=-25.3:42.7:7.1:2+25:42.7:7.1:2+25:40.7:7.1:2+-25.3:40.7:7.1:2,clipz=-30+2.2:-24.1:-23.9+2.2:23.9:24.1,cutx=-24:24:2.1:4.5,panelz=8:40:20:24:64:2.2:5:42+8:-40:20:-64:-24:2.2:5:42,mirror=-64.1:64.1:41.9:68.1:5.1:7.9:8.1,two=-70:70:3:80" },   /* ruined house, blue roof (Dreamyard): no back by design; its walls and broken roof seen from inside too */
     { "b1_00044", rm_tower, "corner=1,wall=36:-36:36:-24:4:34,decal=18:24:24:18.5:30.7:20.5:32.8:0:24.75:-24.12+20:24:24:17.4:31.8:19.6:33.2:0:24.5:-24.25,panel=36:-20:36:-36:36:-24:34:46,mirror=23.5:30.6:48:58:-16.1:-20:-12+-30.6:-23.5:48:58:-16.1:-20:-12+23.5:30.6:48:58:12.35:9:16+-30.6:-23.5:48:58:12.35:9:16" },   /* cottage, orange roof (Striaton): a back wall in its sides' plaster up under the eave, the chimneys closed */
+    { "b1_00047", rm_tower, "twofirst=1,mirror=-26:26:3:100:0,two=-18.1:18.1:61.5:85+-12.1:12.1:67:68" },   /* lighthouse: its back from the front, the lantern and beams seen from both sides */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
