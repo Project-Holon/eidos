@@ -44,6 +44,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00063", rm_tower, "panelz=16:20:20:-32:32:-32:4:34+16:20:40:-32:32:-32:34:52" },   /* stone house: a back wall in the front's stone, lower wall and gable band */
     { "b1_00064", rm_tower, "panelz=16:0:17:-36:36:-32:6:28+16:0:34:-36:36:-32:28:40+16:0:-16:-36:36:-32:-24:-8+16:0:-29:-36:36:-32:-36:-24" },   /* stone house and its reflection in the water: a back wall in the front's stone for each */
     { "b1_00108", rm_tower, "two=-88:-72:122:143+88:104:122:143,wall=88:-72:88:-72:5:61+88:-72:88:-72:61:113+88:-72:88:-72:113.2:125,mirror=-82:-72:2:116:-54:-45:-39+88:98:2:116:-54:-45:-39" },   /* gym hall: a plain back in the sides' bands, the back corner columns closed, the roof lamps from both sides */
+    { "b1_00111", rm_tower, "two=-140:140:62:215,halfturn=0:8.8:95:-5:185:0:60:-200:-26.6+0:8.8:95:-5:185:0:60:26.6:200+4:0:0:-5:185:95:190:-60:70:6+-79:29:0:-5:185:60:140:-125:-35:4,panelz=117:24:20:-26.7:26.7:-99.4:7:44" },   /* theme park centrepiece: the round base and the two domes turned half round, the base without its gate, the figures from both sides */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
