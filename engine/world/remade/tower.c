@@ -32,6 +32,8 @@
  *   cutx=X0:X1:Z0:Z1+..  the model's faces wholly between Z0 and Z1 cut to X0..X1.
  *   lid=SX:SZ:Y:X0:X1:Z0:Z1+..  a level face at height Y looking up, in the picture of the level face
  *       at Y holding (SX, SZ) (a skirting's top carried on).
+ *   bandx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR[:XTOP]+..  a band of a wall at x = X looking along DIR, in the picture
+ *       of the upright face at x = SX holding (SZ, SY).
  *   band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1+..  a band of a wall at z = Z looking north, its foot
  *       and top rising along x, in the picture of the upright face at z = SZ holding (SX, SY).
  *   decal=SZ:SX:SY:X0:X1:Y0:Y1:TX:TY:Z+..  a rectangle of a south face's picture laid on
@@ -1105,6 +1107,90 @@ static void do_lid(const Ft *f, unsigned nf, RmOut *out, const double d[7])
                 out->tri[ti].n[2] = -out->tri[ti].n[2];
             }
             out->tri[ti].lit = 1;
+        }
+    }
+}
+
+/* `bandx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR[:XTOP]+..`: a band of a wall at x = X looking along DIR (-1 west, 1 east), from z Z0 to Z1
+ * and y Y0 to Y1, in the picture of the model's own upright face at x = SX that holds (SZ, SY) carried on by (z, y): an
+ * east or west wall the field never needed, in its opposite wall's bands.  `:XTOP` after: its top edge at x = XTOP
+ * (a molding's slanted face). */
+static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
+{
+    const Ft *src = NULL;
+    double m[2][3];
+    unsigned i;
+    int j, k;
+
+    for (i = 0; i < nf && src == NULL; i++) {
+        const RmTri *t = f[i].t;
+        double den, w0, w1;
+        int at = 1;
+
+        if (fabs(f[i].n[0]) < 0.9 || f[i].b->tex < 0) {
+            continue;
+        }
+        for (j = 0; j < 3; j++) {
+            at &= fabs(t->p[j][0] - d[0]) < 0.1;
+        }
+        den = ((double)t->p[1][1] - t->p[2][1]) * ((double)t->p[0][2] - t->p[2][2])
+              + ((double)t->p[2][2] - t->p[1][2]) * ((double)t->p[0][1] - t->p[2][1]);
+        if (!at || fabs(den) < 1e-9) {
+            continue;
+        }
+        w0 = (((double)t->p[1][1] - t->p[2][1]) * (d[1] - t->p[2][2]) + ((double)t->p[2][2] - t->p[1][2]) * (d[2] - t->p[2][1])) / den;
+        w1 = (((double)t->p[2][1] - t->p[0][1]) * (d[1] - t->p[2][2]) + ((double)t->p[0][2] - t->p[2][2]) * (d[2] - t->p[2][1])) / den;
+        if (w0 >= -1e-3 && w1 >= -1e-3 && 1.0 - w0 - w1 >= -1e-3) {
+            src = &f[i];
+        }
+    }
+    if (src == NULL) {
+        return;
+    }
+    {
+        const RmTri *t = src->t;
+        const double z0 = t->p[0][2], y0 = t->p[0][1];
+        const double z1 = t->p[1][2] - z0, y1 = t->p[1][1] - y0, z2 = t->p[2][2] - z0, y2 = t->p[2][1] - y0;
+        const double det = z1 * y2 - z2 * y1;
+
+        if (fabs(det) < 1e-9) {
+            return;
+        }
+        for (k = 0; k < 2; k++) {
+            const double d1 = (double)t->uv[1][k] - t->uv[0][k], d2 = (double)t->uv[2][k] - t->uv[0][k];
+
+            m[k][0] = (d1 * y2 - d2 * y1) / det;
+            m[k][1] = (d2 * z1 - d1 * z2) / det;
+            m[k][2] = t->uv[0][k] - m[k][0] * z0 - m[k][1] * y0;
+        }
+    }
+    {
+        const double outn[3] = { d[8] < 0.0 ? -1.0 : 1.0, 0, 0 };
+        double q[4][3], uv[4][2], e1[3], e2[3], n[3];
+        const double zs[4] = { d[4], d[5], d[5], d[4] }, ys[4] = { d[6], d[6], d[7], d[7] };
+        unsigned first = out->ntri, ti;
+
+        for (j = 0; j < 4; j++) {
+            q[j][0] = ys[j] == d[7] ? d[9] : d[3];     /* (XTOP: the top edge at another x, a leaning band) */
+            q[j][1] = ys[j];
+            q[j][2] = zs[j];
+            uv[j][0] = m[0][0] * zs[j] + m[0][1] * ys[j] + m[0][2];
+            uv[j][1] = m[1][0] * zs[j] + m[1][1] * ys[j] + m[1][2];
+        }
+        for (k = 0; k < 3; k++) {
+            e1[k] = q[1][k] - q[0][k];
+            e2[k] = q[2][k] - q[0][k];
+        }
+        rm_cross(e1, e2, n);
+        if (rm_dot(n, outn) >= 0.0) {
+            rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+            rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
+        } else {
+            rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+            rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
+        }
+        for (ti = first; ti < out->ntri; ti++) {
+            out->tri[ti].lit = 0;   /* (the source wall's own light) */
         }
     }
 }
@@ -2381,6 +2467,20 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
 
             if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &ld[0], &ld[1], &ld[2], &ld[3], &ld[4], &ld[5], &ld[6]) == 7) {
                 do_lid(f, nf, out, ld);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "bandx", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double bd[10];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9]) >= 9) {
+                if (sscanf(ep, "%*f:%*f:%*f:%*f:%*f:%*f:%*f:%*f:%*f:%lf", &bd[9]) != 1) {
+                    bd[9] = bd[3];
+                }
+                do_bandx(f, nf, out, bd);
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
