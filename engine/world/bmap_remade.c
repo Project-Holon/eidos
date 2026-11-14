@@ -42,6 +42,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00047", rm_tower, "twofirst=1,mirror=-26:26:3:100:0,two=-18.1:18.1:61.5:85+-12.1:12.1:67:68" },   /* lighthouse: its back from the front, the lantern and beams seen from both sides */
     { "b1_00062", rm_tower, "panelz=24:-27:20:-30:32:-28:4:34+24:20:40:-30:32:-28:34:51" },   /* stone house: a back wall in the front's stone, lower wall and gable band */
     { "b1_00063", rm_tower, "panelz=16:20:20:-32:32:-32:4:34+16:20:40:-32:32:-32:34:52" },   /* stone house: a back wall in the front's stone, lower wall and gable band */
+    { "b1_00064", rm_tower, "panelz=16:0:17:-36:36:-32:6:28+16:0:34:-36:36:-32:28:40+16:0:-16:-36:36:-32:-24:-8+16:0:-29:-36:36:-32:-36:-24" },   /* stone house and its reflection in the water: a back wall in the front's stone for each */
     { "b1_00294", rm_gate, "depth=2" },             /* barred gate, grey (Pokemon League plaza) */
     { "b0_00005", rm_turned, "" },                  /* table (living rooms, laboratories): its back edge and back legs */
     { "b0_00092", rm_turned, "" },                  /* cardboard box: its north side */
