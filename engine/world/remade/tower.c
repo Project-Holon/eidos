@@ -1195,7 +1195,7 @@ static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10])
                 rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
             }
             for (ti = first; ti < out->ntri; ti++) {
-                out->tri[ti].lit = 1;
+                out->tri[ti].lit = 0;   /* (the source wall's own light: a wall that looks away from the light keeps the room's brightness) */
             }
         }
     }
