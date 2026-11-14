@@ -2474,6 +2474,69 @@ static void add_walk(Ctx *c, Buf bb, unsigned planes, int cx, int cz)
     c->nwalk++;
 }
 
+/* A placed model stands on the room's own floor.  The game places furniture at the placement's height, and the map
+ * mesh often lays the room's floor 2 to 4 units lower (a plant, a stool, an office chair): the field's steep camera
+ * hides the gap, a battle's low one shows the thing hovering over its shadow.  The model added from vertex v0 and
+ * ground triangle g0 on is lowered onto the highest floor of the chunk's own mesh (ground triangles gm0..gm1) under
+ * its middle, when that floor lies at most DROP_MAX under its foot.  Only placed models move; the room stays. */
+#define DROP_MAX 6.0f
+
+static void drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
+{
+    float foot = 1e30f, lx = 1e30f, hx = -1e30f, lz = 1e30f, hz = -1e30f, x, z, floor_y = -1e30f, gap;
+    const char *e = getenv("BMAP_DROP");
+    size_t i;
+
+    if ((e != NULL && e[0] == '0') || c->nv <= v0) {
+        return;
+    }
+    for (i = v0; i < c->nv; i++) {
+        const BmapVertex *v = &c->v[i];
+
+        foot = v->y < foot ? v->y : foot;
+        lx = v->x < lx ? v->x : lx;
+        hx = v->x > hx ? v->x : hx;
+        lz = v->z < lz ? v->z : lz;
+        hz = v->z > hz ? v->z : hz;
+    }
+    x = (lx + hx) * 0.5f;
+    z = (lz + hz) * 0.5f;
+    for (i = gm0; i < gm1 && i < c->ngt; i++) {
+        const GTri *t = &c->gt[i];
+        const float *a = t->p[0], *b = t->p[1], *cc = t->p[2];
+        float area = (b[0] - a[0]) * (cc[2] - a[2]) - (b[2] - a[2]) * (cc[0] - a[0]), w0, w1, w2, h;
+
+        if (area == 0.0f || t->water || t->placed) {
+            continue;
+        }
+        w0 = ((b[0] - x) * (cc[2] - z) - (b[2] - z) * (cc[0] - x)) / area;
+        w1 = ((cc[0] - x) * (a[2] - z) - (cc[2] - z) * (a[0] - x)) / area;
+        w2 = 1.0f - w0 - w1;
+        if (w0 < -1e-4f || w1 < -1e-4f || w2 < -1e-4f) {
+            continue;
+        }
+        h = w0 * a[1] + w1 * b[1] + w2 * cc[1];
+        if (h <= foot + 0.05f && h > floor_y) {
+            floor_y = h;
+        }
+    }
+    gap = foot - floor_y;
+    if (gap <= 0.05f || gap > DROP_MAX) {
+        return;
+    }
+    for (i = v0; i < c->nv; i++) {
+        c->v[i].y -= gap;
+    }
+    for (i = g0; i < c->ngt; i++) {
+        c->gt[i].p[0][1] -= gap;
+        c->gt[i].p[1][1] -= gap;
+        c->gt[i].p[2][1] -= gap;
+    }
+    if (getenv("BMAP_MODEL_LOG") != NULL) {
+        fprintf(stderr, "bmap: dropped %.1f onto the floor at %.0f %.0f\n", (double)gap, (double)x, (double)z);
+    }
+}
+
 /* Cell chunk: ground model and its placed objects. */
 static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
 {
@@ -2486,6 +2549,7 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
     Blob *gs;
     u32 bmd, from, to, a, e;
     unsigned count, k;
+    size_t gm0, gm1, v0, g0;
     int rc = 0;
 
     if (arc_load(c, "a/0/0/8", chunk, &b) != 0) {
@@ -2500,10 +2564,12 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
     gs = ground_set(c, ar->texset);
     snprintf(setkey, sizeof setkey, "g%u", ar->texset);
     bmd = rd32(bb, 4);
+    gm0 = c->ngt;
     if (bmd < bb.n && gs != NULL && model_parse(sub(bb, bmd), &md) == 0) {
         rc = add_model(c, &md, setkey, bb_of(gs), &base, 1, NULL);
         model_free(&md);
     }
+    gm1 = c->ngt;
     if (rc != 0) {
         blob_free(&b);
         return rc;
@@ -2552,9 +2618,14 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
                 fprintf(stderr, "bmap: model b%d_%05u at %.0f %.0f y %.0f turn %u%s\n", ar->indoor, (unsigned)id, (double)t[0],
                         (double)t[2], (double)t[1], (unsigned)rd16(bb, at + 12), g_done != NULL ? " completed" : "");
             }
+            v0 = c->nv;
+            g0 = c->ngt;
             rc = add_model(c, &ar->bmodels[mi], bkey, bb_of(&ar->btex), &place, 2,
                            &ar->banims[mi]);   /* placed */
             g_done = NULL;
+            if (rc == 0) {
+                drop_to_floor(c, v0, g0, gm0, gm1);
+            }
             if (rc != 0) {
                 break;
             }
