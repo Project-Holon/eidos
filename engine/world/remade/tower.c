@@ -5,10 +5,10 @@
  * back it is open.
  *
  * What is made, from the model's own faces and texture pixels:
- *   halfturn=CX:CZ:R0:A0:A1[:Y0:Y1[:X0:X1[:TEX[:TOL]]]]+..  a round wing's faces past R0 from (CX, CZ), between
+ *   halfturn=CX:CZ:R0:A0:A1[:Y0:Y1[:X0:X1[:TEX[:TOL[:CX0:CX1]]]]]+..  a round wing's faces past R0 from (CX, CZ), between
  *       the angles A0..A1, copied turned half round there (a back arc whose
  *       front is another part).
- *   mirror=X0:X1:Y0:Y1:ZC+..  the parts within that box are round about
+ *   mirror=X0:X1:Y0:Y1:ZC[:Z0:Z1[:W[:CX0:CX1]]]+..  the parts within that box are round about
  *       z = ZC (a balcony, a glass cab, its roof, lamps): their faces that
  *       look south are turned to look north, where the model has none (a face
  *       that lands on one of the model's own is left out).
@@ -158,6 +158,62 @@ static void map_at(const Map *m, double z, double y, double uv[2])
     uv[1] = m->v0 + m->va * (z - m->a0) + m->vb * (y - m->b0);
 }
 
+/* a new triangle cut to xlo <= x <= xhi (a copy that keeps one half of the back), as a fan; wholly outside, nothing */
+static void emit_clipx(RmOut *out, unsigned id, int cull, const unsigned char rgb[3], const double p[3][3],
+                       const double uv[3][2], double xlo, double xhi)
+{
+    double a[9][5], b[9][5];
+    int n = 3, m, j, k, side;
+
+    for (j = 0; j < 3; j++) {
+        a[j][0] = p[j][0];
+        a[j][1] = p[j][1];
+        a[j][2] = p[j][2];
+        a[j][3] = uv[j][0];
+        a[j][4] = uv[j][1];
+    }
+    /* (Sutherland-Hodgman: x >= xlo, then x <= xhi) */
+    for (side = 0; side < 2; side++) {
+        const double lim = side == 0 ? xlo : xhi, sg = side == 0 ? 1.0 : -1.0;
+
+        m = 0;
+        for (j = 0; j < n; j++) {
+            const double *u = a[j], *v = a[(j + 1) % n];
+            const int uin = sg * (u[0] - lim) >= -1e-6, vin = sg * (v[0] - lim) >= -1e-6;
+
+            if (uin) {
+                memcpy(b[m++], u, sizeof b[0]);
+            }
+            if (uin != vin) {
+                const double t = (lim - u[0]) / (v[0] - u[0]);
+
+                for (k = 0; k < 5; k++) {
+                    b[m][k] = u[k] + (v[k] - u[k]) * t;
+                }
+                m++;
+            }
+        }
+        memcpy(a, b, sizeof a[0] * (size_t)m);
+        n = m;
+        if (n < 3) {
+            return;
+        }
+    }
+    for (j = 1; j + 1 < n; j++) {
+        double pa[3], pb[3], pc[3], ua[2], ub[2], uc[2];
+
+        for (k = 0; k < 3; k++) {
+            pa[k] = a[0][k];
+            pb[k] = a[j][k];
+            pc[k] = a[j + 1][k];
+        }
+        ua[0] = a[0][3]; ua[1] = a[0][4];
+        ub[0] = a[j][3]; ub[1] = a[j][4];
+        uc[0] = a[j + 1][3]; uc[1] = a[j + 1][4];
+        rm_tri(out, id, -1, cull, rgb, pa, pb, pc, ua, ub, uc, 0, 0);
+    }
+}
+
 /* `two=X0:X1:Y0:Y1+..`: the faces in that box are shown from both sides (a railing's picture of bars, a parasol's
  * cloth: thin things the map draws from the front only) */
 static void do_two(const Ft *f, unsigned nf, RmOut *out, char *buf)
@@ -192,7 +248,7 @@ static void do_two(const Ft *f, unsigned nf, RmOut *out, char *buf)
  * after: only faces wholly within that height and x (a tower's shaft above a base with a door, without its sign), and
  * only faces in the picture TEX (a dome among other things; -1 any).  `:TOL` after: a copy is left out when it lies within
  * TOL of a face of the model's (default 0.1; a turned bevel can land on the model's own a little off its plane). */
-static void do_halfturn(const Ft *f, unsigned nf, RmOut *out, const double h[11])
+static void do_halfturn(const Ft *f, unsigned nf, RmOut *out, const double h[13])
 {
     const double pi = 3.14159265358979;
     unsigned i;
@@ -241,7 +297,8 @@ static void do_halfturn(const Ft *f, unsigned nf, RmOut *out, const double h[11]
             hit = on_face_tol(f, nf, q, mn, h[10]) || on_face_tol(f, nf, q, back, h[10]);
         }
         if (!hit) {
-            rm_tri(out, t->id, -1, f[i].b->cull, t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+            /* (`:CX0:CX1` after TOL: the copy cut to that x range) */
+            emit_clipx(out, t->id, f[i].b->cull, t->rgb, (const double (*)[3])p, (const double (*)[2])uv, h[11], h[12]);
         }
     }
 }
@@ -271,7 +328,7 @@ static void quad(RmOut *o, unsigned src, const unsigned char rgb[3], const doubl
     }
 }
 
-static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[8])
+static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[10])
 {
     unsigned i;
 
@@ -358,7 +415,8 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[8])
                     break;
                 }
             }
-            rm_tri(out, t->id, -1, cull, t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+            /* (`:CX0:CX1` after W: the copy cut to that x range) */
+            emit_clipx(out, t->id, cull, t->rgb, (const double (*)[3])p, (const double (*)[2])uv, bx[8], bx[9]);
         }
     }
 }
@@ -1952,10 +2010,10 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     }
     if (rm_opt(opt, "halfturn", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double h[11] = { 0, 0, 0, 0, 0, -1e30, 1e30, -1e30, 1e30, -1, 0.1 };
+            double h[13] = { 0, 0, 0, 0, 0, -1e30, 1e30, -1e30, 1e30, -1, 0.1, -1e30, 1e30 };
 
-            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &h[0], &h[1], &h[2], &h[3], &h[4], &h[5],
-                       &h[6], &h[7], &h[8], &h[9], &h[10]) >= 5) {
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &h[0], &h[1], &h[2], &h[3], &h[4],
+                       &h[5], &h[6], &h[7], &h[8], &h[9], &h[10], &h[11], &h[12]) >= 5) {
                 do_halfturn(f, nf, out, h);
             }
             ep = strchr(ep, '+');
@@ -1975,9 +2033,10 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     }
     if (rm_opt(opt, "mirror", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double bx[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+            double bx[10] = { 0, 0, 0, 0, 0, 0, 0, 0, -1e30, 1e30 };
 
-            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3], &bx[4], &bx[5], &bx[6], &bx[7]) >= 5) {
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3], &bx[4], &bx[5],
+                       &bx[6], &bx[7], &bx[8], &bx[9]) >= 5) {
                 do_mirror(f, nf, out, bx);
             }
             ep = strchr(ep, '+');
