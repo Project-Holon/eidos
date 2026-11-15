@@ -2630,12 +2630,18 @@ static u32 us_button(const char *s, int n)
 }
 
 /* The scene's name is `want` (its spaces as underscores; "*": any). */
+extern int bw_battle_view_ready(void) __attribute__((weak));   /* sdk/battle_view.c, eidos_boot only */
+
 static int us_scene_is(const char *want)
 {
     const char *a = want, *b = g_scene;
 
     if (strcmp(want, "*") == 0) {
         return 1;
+    }
+    if (strcmp(want, "battle_map") == 0) {
+        /* the battle's real map built, placed and shown: a capture never takes the battle before its map */
+        return bw_battle_view_ready != NULL && bw_battle_view_ready();
     }
     while (*a != '\0' && *b != '\0' && (*a == *b || (*a == '_' && *b == ' '))) {
         a++;

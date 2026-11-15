@@ -189,6 +189,18 @@ int  bmap_wfbc_full(unsigned zone, BmapWfbc *out);
 /* The grid the next bmap_build of zone 0 or 424 stamps (the save's, from the
  * battle backdrop); NULL or none set: the full one.  Taken by that build. */
 void bmap_set_wfbc(const BmapWfbc *w);
+/* The maps the field draws (its mapper's grid, aletheia ov021 FieldG3dMapper, noted each field frame): after the
+ * game's map replacement (MAP_MATRIX_ApplyReplace, a/0/1/0) as the player saw it, so the battle shows the maps the
+ * field showed: the version's, a linked game's, and the ones story flags swap in (the bedroom after the first battle,
+ * the League after N's Castle rises).  zone: the player's zone then; matrix: the field's matrix file (a/0/0/9
+ * member, read for its zone grid), 0xFFFFFFFF when unknown; grid: the map index per cell, w * h of them. */
+typedef struct BmapFieldMatrix {
+    unsigned zone, matrix, w, h;
+    unsigned grid[900];
+} BmapFieldMatrix;
+/* The next bmap_build takes its maps from this when it is the build zone's matrix (the same zone, or the zone's own
+ * matrix id); NULL or none set: the zone's matrix from the files.  Taken by that build. */
+void bmap_set_field_matrix(const BmapFieldMatrix *m);
 
 #ifdef __cplusplus
 }

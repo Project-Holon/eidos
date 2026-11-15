@@ -196,6 +196,12 @@ void bmap_set_wfbc(const BmapWfbc *w)
     (void)w;
 }
 
+/* The field's matrix: none in this build. */
+void bmap_set_field_matrix(const BmapFieldMatrix *m)
+{
+    (void)m;
+}
+
 int bmap_wfbc_grid(unsigned zone, const unsigned char *npc_ids, int n, unsigned player_id, BmapWfbc *out)
 {
     (void)zone;

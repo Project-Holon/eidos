@@ -2681,6 +2681,18 @@ void bmap_set_wfbc(const BmapWfbc *w)
     }
 }
 
+/* The field's own matrix (bmap_set_field_matrix): after the game's map replacement */
+static BmapFieldMatrix g_fmat;
+static int g_fmat_set;
+
+void bmap_set_field_matrix(const BmapFieldMatrix *m)
+{
+    g_fmat_set = m != NULL;
+    if (m != NULL) {
+        g_fmat = *m;
+    }
+}
+
 /* A whole archive member, malloc'd (NULL when missing). */
 static u8 *wfbc_member(const char *path, u32 id, long *size)
 {
@@ -4361,7 +4373,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     Buf hb, mb;
     unsigned pcx, pcz, area, matrix_id, mode, w, h, cell;
     unsigned i;
-    int rc = -1, wfbc_on = 0;
+    int rc = -1, wfbc_on = 0, fmat_on = 0, fmat_given = g_fmat_set;
     Area *player_area;
     BmapWfbc wfbc;
 
@@ -4377,6 +4389,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         }
     }
     g_wfbc_set = 0;
+    g_fmat_set = 0;
     if (c == NULL) {
         return -1;
     }
@@ -4392,6 +4405,12 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     }
     area = rd16(hb, zone * 48u + 2u);
     matrix_id = rd16(hb, zone * 48u + 4u);
+    /* the field's own matrix when it is this zone's (bmap_set_field_matrix): the maps the game's map replacement put
+     * in (the version's, a story flag's: the bedroom after the first battle); it may be another member altogether */
+    fmat_on = fmat_given && (g_fmat.zone == zone || g_fmat.matrix == matrix_id) && g_fmat.w * g_fmat.h <= 900u;
+    if (fmat_on && g_fmat.matrix <= 0xFFFFu) {
+        matrix_id = g_fmat.matrix;      /* (the file of the field's own matrix, for its zone grid) */
+    }
     if (arc_load(c, "a/0/0/9", matrix_id, &matrix) != 0) {
         goto out;
     }
@@ -4402,6 +4421,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     if (w == 0u || h == 0u || 8u + (size_t)w * h * 4u > mb.n) {
         goto out;
     }
+    fmat_on = fmat_on && w == g_fmat.w && h == g_fmat.h;
     player_area = area_get(c, area);
     if (player_area == NULL) {
         goto out;
@@ -4444,7 +4464,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     pcz = (unsigned)(pz / CELL_UNITS);
     (void)pcx; (void)pcz;
     for (cell = 0; cell < w * h; cell++) {
-        unsigned chunk = rd32(mb, 8u + cell * 4u);
+        unsigned chunk = fmat_on ? g_fmat.grid[cell] : rd32(mb, 8u + cell * 4u);
         int cx = (int)(cell % w), cz = (int)(cell / w);
         float dx, dz, x0 = (float)cx * CELL_UNITS, z0 = (float)cz * CELL_UNITS;
         unsigned cz_zone = zone, carea = area;
