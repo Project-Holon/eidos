@@ -1201,6 +1201,263 @@ static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
  * picture's place of the point (x, y) on that face, so a band of wallpaper, skirting or trim carries on at the heights
  * the room's corners set.  `bandw` (axis 0): the same in the picture of the model's own upright face at x = SX that holds
  * (SZ, SY), carried on along x as along that face's z: a band only the room's east and west walls have. */
+/* `thick=TMIN:TMAX`: a thick wall the model draws from one side: an upright face whose top edge is an edge of a level
+ * band (the wall's top), the band TMIN..TMAX deep behind it; where the wall has no face looking the other way over the
+ * band's far edge, one is built there: as long as that far edge (a wall's mitred end at a corner of the honeycomb
+ * runs on to its neighbour's), from the band down to the face's foot, in the face's own picture carried on along
+ * the wall, in its light. */
+static int thick_same(const float *a, const double *b)
+{
+    return fabs(a[0] - b[0]) < 0.1 && fabs(a[1] - b[1]) < 0.1 && fabs(a[2] - b[2]) < 0.1;
+}
+
+static int thick_same_f(const float *a, const float *b)
+{
+    return fabs(a[0] - b[0]) < 0.1 && fabs(a[1] - b[1]) < 0.1 && fabs(a[2] - b[2]) < 0.1;
+}
+
+static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double tmax)
+{
+    unsigned w, i, j;
+    int k;
+
+    for (w = 0; w < nf; w++) {
+        const RmTri *t = f[w].t;
+        double n[3], back[3], e[3], hi0[3], hi1[3], ybot, len, d = 0.0, ytop;
+        unsigned set[24], ns = 0, grown = 1;
+        int order[3] = { 0, 1, 2 }, a, b;
+
+        memcpy(n, f[w].n, sizeof n);
+        if (rm_norm(n) < 1e-9 || fabs(n[1]) >= 0.2) {
+            continue;
+        }
+        /* (its top edge: its two highest corners, level) */
+        for (a = 0; a < 3; a++) {
+            for (b = a + 1; b < 3; b++) {
+                if (t->p[order[b]][1] > t->p[order[a]][1]) {
+                    const int x = order[a];
+
+                    order[a] = order[b];
+                    order[b] = x;
+                }
+            }
+        }
+        if (fabs(t->p[order[0]][1] - t->p[order[1]][1]) > 0.5) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            hi0[k] = t->p[order[0]][k];
+            hi1[k] = t->p[order[1]][k];
+        }
+        ybot = t->p[order[2]][1];
+        ytop = (hi0[1] + hi1[1]) / 2.0;
+        back[0] = -n[0];
+        back[1] = 0.0;
+        back[2] = -n[2];
+        if (rm_norm(back) < 1e-9) {
+            continue;
+        }
+        e[0] = hi1[0] - hi0[0];
+        e[1] = 0.0;
+        e[2] = hi1[2] - hi0[2];
+        len = rm_norm(e);
+        if (len < 1.0 || ytop - ybot < 1.0) {
+            continue;
+        }
+        /* the band: the level faces at the top on the edge, then those joined to them edge to edge, within the depth */
+        for (i = 0; i < nf && ns < 24u; i++) {
+            const RmTri *u = f[i].t;
+            int c0 = 0, c1 = 0;
+
+            if (f[i].n[1] < 0.95) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                c0 |= thick_same(u->p[k], hi0);
+                c1 |= thick_same(u->p[k], hi1);
+            }
+            if (c0 && c1) {
+                set[ns++] = i;
+            }
+        }
+        while (grown && ns > 0 && ns < 24u) {
+            grown = 0;
+            for (i = 0; i < nf && ns < 24u; i++) {
+                const RmTri *u = f[i].t;
+                unsigned q;
+                int in = 1, shared = 0;
+
+                if (f[i].n[1] < 0.95) {
+                    continue;
+                }
+                for (q = 0; q < ns && in; q++) {
+                    in = set[q] != i;
+                }
+                for (k = 0; k < 3 && in; k++) {
+                    const double dd = ((double)u->p[k][0] - hi0[0]) * back[0] + ((double)u->p[k][2] - hi0[2]) * back[2];
+                    const double ss = ((double)u->p[k][0] - hi0[0]) * e[0] + ((double)u->p[k][2] - hi0[2]) * e[2];
+
+                    in = fabs(u->p[k][1] - ytop) < 0.3 && dd > -0.3 && dd < tmax + 0.5 && ss > -tmax - 1.0 && ss < len + tmax + 1.0;
+                }
+                for (q = 0; q < ns && in && shared < 2; q++) {
+                    int m, c = 0;
+
+                    for (k = 0; k < 3; k++) {
+                        for (m = 0; m < 3; m++) {
+                            c += thick_same_f(u->p[k], f[set[q]].t->p[m]);
+                        }
+                    }
+                    shared = c >= 2 ? 2 : shared;
+                }
+                if (in && shared >= 2) {
+                    set[ns++] = i;
+                    grown = 1;
+                }
+            }
+        }
+        if (ns == 0) {
+            continue;
+        }
+        for (i = 0; i < ns; i++) {
+            for (k = 0; k < 3; k++) {
+                const float *pp = f[set[i]].t->p[k];
+                const double dd = ((double)pp[0] - hi0[0]) * back[0] + ((double)pp[2] - hi0[2]) * back[2];
+
+                d = dd > d ? dd : d;
+            }
+        }
+        if (d < tmin || d > tmax) {
+            continue;
+        }
+        /* the band's far edges: its outline's edges (each in one of its faces only) with both ends away from the drawn
+         * face's top edge */
+        for (i = 0; i < ns; i++) {
+            const RmTri *u = f[set[i]].t;
+            int ed;
+
+            for (ed = 0; ed < 3; ed++) {
+                const float *pa = u->p[ed], *pb = u->p[(ed + 1) % 3];
+                const double da = ((double)pa[0] - hi0[0]) * back[0] + ((double)pa[2] - hi0[2]) * back[2];
+                const double db = ((double)pb[0] - hi0[0]) * back[0] + ((double)pb[2] - hi0[2]) * back[2];
+                double q[4][3], uv[4][2], c[3], m[2][3], out_n[3], mid[3];
+                unsigned i2;
+                int inner = 0, has = 0;
+
+                if (da < 1.5 || db < 1.5) {
+                    continue;
+                }
+                for (i2 = 0; i2 < ns && !inner; i2++) {
+                    int c0 = 0, c1 = 0;
+
+                    if (i2 == i) {
+                        continue;
+                    }
+                    for (k = 0; k < 3; k++) {
+                        c0 |= thick_same_f(f[set[i2]].t->p[k], pa);
+                        c1 |= thick_same_f(f[set[i2]].t->p[k], pb);
+                    }
+                    inner = c0 && c1;
+                }
+                if (inner) {
+                    continue;
+                }
+                /* (looking out of the band: across the edge, away from the face's middle) */
+                out_n[0] = -((double)pb[2] - pa[2]);
+                out_n[1] = 0.0;
+                out_n[2] = (double)pb[0] - pa[0];
+                if (rm_norm(out_n) < 1e-9) {
+                    continue;
+                }
+                for (k = 0; k < 3; k++) {
+                    mid[k] = ((double)u->p[0][k] + u->p[1][k] + u->p[2][k]) / 3.0;
+                }
+                if (((double)pa[0] - mid[0]) * out_n[0] + ((double)pa[2] - mid[2]) * out_n[2] < 0.0) {
+                    out_n[0] = -out_n[0];
+                    out_n[2] = -out_n[2];
+                }
+                for (k = 0; k < 3; k++) {
+                    q[0][k] = pa[k];
+                    q[1][k] = pb[k];
+                    q[2][k] = pb[k];
+                    q[3][k] = pa[k];
+                }
+                q[0][1] = q[1][1] = ytop;
+                q[2][1] = q[3][1] = ybot;
+                for (k = 0; k < 3; k++) {
+                    c[k] = (q[0][k] + q[2][k]) / 2.0;
+                }
+                /* (its other side drawn already: a face looking that way through the middle) */
+                for (i2 = 0; i2 < nf && !has; i2++) {
+                    const RmTri *v = f[i2].t;
+                    double lo[3], hi[3], dv[3];
+
+                    if (rm_dot(f[i2].n, out_n) < 0.9) {
+                        continue;
+                    }
+                    for (k = 0; k < 3; k++) {
+                        lo[k] = fmin(fmin(v->p[0][k], v->p[1][k]), v->p[2][k]) - 0.3;
+                        hi[k] = fmax(fmax(v->p[0][k], v->p[1][k]), v->p[2][k]) + 0.3;
+                        dv[k] = c[k] - v->p[0][k];
+                    }
+                    has = fabs(rm_dot(dv, f[i2].n)) < 0.3 && c[0] >= lo[0] && c[0] <= hi[0] && c[1] >= lo[1] && c[1] <= hi[1] &&
+                          c[2] >= lo[2] && c[2] <= hi[2];
+                }
+                if (has) {
+                    continue;
+                }
+                /* the face's picture as a function of (along the wall, up), each corner read where it lies along it */
+                {
+                    double sa[3], ya[3], det;
+                    int r;
+
+                    for (k = 0; k < 3; k++) {
+                        sa[k] = ((double)t->p[k][0] - hi0[0]) * e[0] + ((double)t->p[k][2] - hi0[2]) * e[2];
+                        ya[k] = t->p[k][1];
+                    }
+                    det = (sa[1] - sa[0]) * (ya[2] - ya[0]) - (sa[2] - sa[0]) * (ya[1] - ya[0]);
+                    if (fabs(det) < 1e-9) {
+                        continue;
+                    }
+                    for (r = 0; r < 2; r++) {
+                        const double d1 = (double)t->uv[1][r] - t->uv[0][r], d2 = (double)t->uv[2][r] - t->uv[0][r];
+
+                        m[r][0] = (d1 * (ya[2] - ya[0]) - d2 * (ya[1] - ya[0])) / det;
+                        m[r][1] = (d2 * (sa[1] - sa[0]) - d1 * (sa[2] - sa[0])) / det;
+                        m[r][2] = t->uv[0][r] - m[r][0] * sa[0] - m[r][1] * ya[0];
+                    }
+                }
+                for (j = 0; j < 4u; j++) {
+                    const double sv = (q[j][0] - hi0[0]) * e[0] + (q[j][2] - hi0[2]) * e[2];
+
+                    uv[j][0] = m[0][0] * sv + m[0][1] * q[j][1] + m[0][2];
+                    uv[j][1] = m[1][0] * sv + m[1][1] * q[j][1] + m[1][2];
+                }
+                {
+                    double e1[3], e2[3], fn[3];
+                    unsigned first = out->ntri, ti;
+
+                    for (k = 0; k < 3; k++) {
+                        e1[k] = q[1][k] - q[0][k];
+                        e2[k] = q[2][k] - q[0][k];
+                    }
+                    rm_cross(e1, e2, fn);
+                    if (rm_dot(fn, out_n) >= 0.0) {
+                        rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+                        rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
+                    } else {
+                        rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+                        rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
+                    }
+                    for (ti = first; ti < out->ntri; ti++) {
+                        out->tri[ti].lit = 0;       /* (the wall's own light) */
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10], int axis)
 {
     const int h = axis == 2 ? 0 : 2;                        /* (the source face's own across) */
@@ -2499,6 +2756,12 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
         }
+    }
+    if (rm_opt(opt, "thick", buf, sizeof buf) != NULL) {
+        double t0 = 3.0, t1 = 24.0;
+
+        sscanf(buf, "%lf:%lf", &t0, &t1);
+        do_thick(f, nf, out, t0, t1);
     }
     if (rm_opt(opt, "bandw", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
