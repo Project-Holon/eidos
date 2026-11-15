@@ -2968,6 +2968,16 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         /* the game's banner on the top screen points at the lower one */
         view->hide_2d = 1;
     }
+    if (own && f.mode == 6 && g_text_up) {
+        /* a message while the Dowsing Machine is out (the item it found):
+         * over the card, not under it (#43).  A list is the field's own to
+         * answer, once a frame, so only a plain message is drawn again */
+        u8 *l, *w;
+
+        if (!choices_now(&f, &l, &w)) {
+            (void)field_text(c, &f);
+        }
+    }
     if (!own && lower_sheet(c, in, c->canvas->w, c->canvas->h, 16, 0) < 0) {
         view->mode = EIDOS_VIEW_FALLBACK;
     }
