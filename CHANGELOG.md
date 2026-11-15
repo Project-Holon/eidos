@@ -12,10 +12,14 @@ Each release's notes on GitHub start with its section here
 - **Real-Map Battles, Clouds**: Outdoor battles have blocky clouds in the sky, each area with its own pattern, fixed to the map and drifting with the real clock, lit by the hour.
 - **Real-Map Battles, Nimbasa Gym**: The gym's rails and tracks are solid from every side, its switch pads are raised 3D buttons, and the pads and rails show the colours the switches left them in.
 - **Dowsing Machine**: The Dowsing Machine's rods now show on a small card at the top right instead of the whole lower screen, which hid the player in 4:3 and tall windows; the top bar's `Menu` button reads `Close` while the machine is on, thanks @aqali1 (#36).
+- **Fast Forward x4**: `Tab + F` runs the game at four times its speed, between `Tab` (x2) and `Left Shift + Tab` (uncapped); in one-screen mode a badge in the style's own look shows the speed, thanks @aqali1 (#42).
 
 ### Fixes
 - **Menu Speed**: Fixed the game and its music running at twice their speed for a moment each time a pause-menu entry opened or closed in one-screen mode.
 - **Move Name Colours**: Fixed battle messages colouring the start of a Pokémon's name that reads like a move ("Charm" in "Charmander", "Dig" in "Diglett used Dig!") instead of the move itself, thanks @aqali1 (#35).
+- **Party Status**: Fixed the party list showing a paralyzed Pokémon as asleep (and other conditions as the wrong one), thanks @aqali1 (#41, #39).
+- **Style Option**: Fixed the `STYLE` row of the in-game Options menu, which keys and clicks could not reach; it is now on the `EXTRAS` page (#37).
+- **Debug Pictures**: Fixed the game writing `eidos_flash_*.png` pictures and a log into the saves folder; that check is now off unless asked for (#38).
 
 ## 0.2.5
 

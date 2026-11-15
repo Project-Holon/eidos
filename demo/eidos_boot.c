@@ -1419,7 +1419,8 @@ static void boot_gpu2d_check(BootRun *run)
  * frames on both sides of it while those two agree, the three frames' state
  * goes to <save dir>/eidos_flash.log and the first few events' pictures to
  * eidos_flash_<n>_<a|b|c>.png beside it, so a report carries the cause.
- * About 12k pixel compares a frame.  EIDOS_FLASH_WATCH=0 turns it off.
+ * About 12k pixel compares a frame.  Off unless EIDOS_FLASH_WATCH=1 (#38:
+ * it wrote its pictures into every player's saves folder).
  */
 #define FLASH_PX ((size_t)256 * 192 * 4)
 
@@ -1510,7 +1511,7 @@ static void boot_flash_watch(BootRun *run, u64 frame)
     if (g_flash.state == 0) {
         const char *e = getenv("EIDOS_FLASH_WATCH");
 
-        g_flash.state = e != NULL && e[0] == '0' ? 2 : 1;
+        g_flash.state = e != NULL && e[0] != '\0' && e[0] != '0' ? 1 : 2;   /* off unless asked for (#38) */
     }
     {
         static int told;
