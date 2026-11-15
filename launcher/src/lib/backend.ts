@@ -258,6 +258,11 @@ export const openFolder = (what: "root" | "profile" | "mods" | "saves", profile?
 export const getSettings = () => invoke<SettingsView>("get_settings");
 export const saveSettings = (s: { repo: string; token: string | null; indexUrl: string; localBuild: string | null }) =>
   invoke<SettingsView>("save_settings", s);
+/** Who is signed in to RetroAchievements (src-tauri/src/ra.rs). */
+export type RaView = { user: string | null };
+export const raStatus = () => invoke<RaView>("ra_status");
+export const raLogin = (user: string, password: string) => invoke<RaView>("ra_login", { user, password });
+export const raLogout = () => invoke<RaView>("ra_logout");
 export const romLibrary = () => invoke<RomView[]>("rom_library");
 export const setProfileLanguage = (name: string, language: string) =>
   invoke<void>("set_profile_language", { name, language });

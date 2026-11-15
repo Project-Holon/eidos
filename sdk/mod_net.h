@@ -479,6 +479,14 @@ int  bw_mod_net_gift_text16(int i, u16 *out, int max);
 void bw_mod_net_gift_choose(int i);
 int  bw_mod_net_gift_chosen(void);
 
+/* A plain TCP connection for the RetroAchievements client (sdk/ra_http.c).
+ * Blocking; for a worker thread, not the frame. */
+typedef struct BwNetConn BwNetConn;
+BwNetConn *bw_net_conn_open(const char *host, unsigned short port);
+int  bw_net_conn_send(BwNetConn *c, const void *buf, int n);
+int  bw_net_conn_recv(BwNetConn *c, void *buf, int n, int timeout_ms);
+void bw_net_conn_close(BwNetConn *c);
+
 #ifdef __cplusplus
 }
 #endif

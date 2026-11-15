@@ -113,6 +113,8 @@ enum {
     EIDOS_OPT_UI_THEME,             /* the one-screen interface's style
                                        (engine/ui/theme.h): 0 Kosmos (the
                                        default), 1 Plasma, 2 Harmonia      */
+    EIDOS_OPT_RA_SOUND,             /* 0 off, 1 on (the default): the sound
+                                       an achievement plays (sdk/ra.c)     */
     EIDOS_OPT_COUNT
 };
 

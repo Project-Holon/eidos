@@ -12,6 +12,9 @@
 #include "mod_net.h"
 #include "mod_title.h"
 #include "mp.h"
+#ifdef EIDOS_HAVE_RA
+#include "ra.h"
+#endif
 #include "ui_lang.h"            /* labels joined with a value are translated in parts */
 
 /*
@@ -127,6 +130,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "screens. Off uses the CPU." },
     [EIDOS_OPT_RENDERER]            = { "Native: Direct3D, Metal or",
                                         "Vulkan. Applies at restart." },
+    [EIDOS_OPT_RA_SOUND]            = { "The sound an achievement",
+                                        "plays when it unlocks." },
     [EIDOS_OPT_VSYNC]               = { "Every frame shown evenly.",
                                         "Off: the DS's own speed." },
     [EIDOS_OPT_UI_THEME]            = { "The look of the one-screen",
@@ -244,6 +249,7 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_RENDERER]            = "Renderer",
     [EIDOS_OPT_VSYNC]               = "VSync",
     [EIDOS_OPT_UI_THEME]            = "Interface style",
+    [EIDOS_OPT_RA_SOUND]            = "Achievement sound",
 };
 
 /* Value names that differ from the backend's lowercase choice names:
@@ -257,6 +263,8 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_RENDERER,            1, "Native" },
     { EIDOS_OPT_VSYNC,               0, "Off" },
     { EIDOS_OPT_VSYNC,               1, "On" },
+    { EIDOS_OPT_RA_SOUND,            0, "Off" },
+    { EIDOS_OPT_RA_SOUND,            1, "On" },
     { EIDOS_OPT_GPU_2D,              0, "Off" },
     { EIDOS_OPT_GPU_2D,              1, "On" },
     { EIDOS_OPT_DISPLAY_MODE,        0, "Windowed" },
@@ -373,6 +381,20 @@ static const ValueName k_choice_names[] = {
 #define STR_PANEL       "Status panel"
 #define STR_INJECT      "Max press"
 #define STR_OFF         "Off"
+
+/* The RetroAchievements rows of the Network section (sdk/ra.h). */
+#define STR_RA_STATUS   "RetroAchievements"
+#define STR_RA_SIGNOUT  "Sign out"
+#define STR_RA_NOLIB    "Not in this build"
+#define STR_RA_NONE     "No unlocks yet"
+#define STR_RA_PTS      "pts"
+#define HELP_RA_NONE1   "Earn an achievement and it"
+#define HELP_RA_NONE2   "is listed here."
+#define HELP_RA_STATUS1 "Sign in from the launcher:"
+#define HELP_RA_STATUS2 "Settings, RetroAchievements."
+#define STR_RA_SIGNEDOUT "Use launcher"
+#define HELP_RA_SIGNOUT1 "Forget this sign-in on"
+#define HELP_RA_SIGNOUT2 "this device.  A: go"
 #define STR_ON          "On"
 
 /* The step the injection's limit moves by: half a second at the DS's 60
@@ -417,6 +439,9 @@ enum {
     ROW_NET_NAME,         /* the player's name (text)                    */
     ROW_INJECT_MAX,       /* the longest press the injection allows     */
     ROW_NET_DEFAULTS,     /* the network settings back to their default  */
+    ROW_RA_STATUS,        /* RetroAchievements: signed in as, or why not */
+    ROW_RA_SIGNOUT,       /* sign out                                    */
+    ROW_RA_RECENT,        /* a recent unlock: arg is its index            */
     ROW_SESSION_CODE,     /* the code in force (read only)               */
     ROW_SESSION_JOINCODE, /* the code the player types to join with      */
     ROW_SESSION_HOST,     /* start a session                             */
@@ -520,8 +545,44 @@ static void build_mods_rows(void)
 /* The Network section: the port's own settings for the network service, and
  * the input injection's limit, which is the port's own too: a mod may ask
  * for a press, and the player says how long a press may be (0 is off). */
+/* The RetroAchievements rows: the sign-in itself is the launcher's (the
+ * game's keyboard cannot hold a password); the state the rows were last
+ * built for, so a change redraws them. */
+#ifdef EIDOS_HAVE_RA
+static int  g_ra_seen = -1;
+#define RA_RECENT_MAX 8
+static BwRaRecent g_ra_recent[RA_RECENT_MAX];
+static int        g_ra_nrecent;
+
+static int ra_state(void)
+{
+    BwRaStatus st;
+
+    bw_ra_status(&st);
+    return (int)st.state;
+}
+#endif
+
 static void build_net_rows(void)
 {
+#ifdef EIDOS_HAVE_RA
+    add_row(ROW_RA_STATUS, 0, 0);
+    add_row(ROW_OPTION, EIDOS_OPT_RA_SOUND, 0);
+    g_ra_seen = ra_state();
+    if (g_ra_seen == BW_RA_SIGNED_IN) {
+        int k;
+
+        /* the latest unlocks, read again each time the rows are built */
+        g_ra_nrecent = bw_ra_recent(g_ra_recent, RA_RECENT_MAX);
+        for (k = 0; k < g_ra_nrecent; k++) {
+            add_row(ROW_RA_RECENT, k, 0);
+        }
+        if (g_ra_nrecent == 0) {
+            add_row(ROW_RA_RECENT, -1, 0);
+        }
+        add_row(ROW_RA_SIGNOUT, 0, 0);
+    }
+#endif
     add_row(ROW_NET_RELAY, 0, 0);
     add_row(ROW_NET_RELAY_PORT, 0, 0);
     add_row(ROW_NET_CONTROL_PORT, 0, 0);
@@ -1373,6 +1434,21 @@ static int move_mod(int mod, int up)
  */
 static void begin_text_edit(int type);
 
+/* The RetroAchievements row that acts: Sign out (sdk/ra.h). */
+static int ra_action(int type)
+{
+#ifdef EIDOS_HAVE_RA
+    if (type == ROW_RA_SIGNOUT) {
+        bw_ra_logout();
+        build_rows_keep_cursor();
+        return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_SELECT;
+    }
+#else
+    (void)type;
+#endif
+    return 0;
+}
+
 /* A text row: the name and the code on the game's keyboard, the others on
  * the host keyboard. */
 static int text_row_action(int type)
@@ -1575,6 +1651,16 @@ int eidos_sui_input(unsigned pressed, unsigned held)
     if (poll_session()) {
         res |= EIDOS_SUI_REDRAW;
     }
+#ifdef EIDOS_HAVE_RA
+    /* RetroAchievements answers on its own worker: the status row and the
+     * rows under it follow the answer. */
+    if (g.level == 1 && g.tab == TAB_NETWORK) {
+        if (ra_state() != g_ra_seen) {
+            build_rows_keep_cursor();
+            res |= EIDOS_SUI_REDRAW;
+        }
+    }
+#endif
     /* The game has started: the screen closes and the title menu goes
      * straight into the game (sdk/mod_title.h). */
     if (bw_mp_started_pending()) {
@@ -1767,6 +1853,12 @@ static int sui_input(unsigned pressed, unsigned held)
         r->type == ROW_SESSION_JOINCODE) {
         if (pressed & 1u) {
             return text_row_action(r->type);
+        }
+        return 0;
+    }
+    if (r->type == ROW_RA_SIGNOUT) {
+        if (pressed & 1u) {
+            return ra_action(r->type);
         }
         return 0;
     }
@@ -2100,6 +2192,11 @@ int eidos_sui_touch(int row, int zone)
             res = text_row_action(r->type);
         }
         break;
+    case ROW_RA_SIGNOUT:
+        if (was) {
+            res = ra_action(r->type);
+        }
+        break;
     case ROW_SESSION_HOST:
     case ROW_SESSION_JOIN:
     case ROW_SESSION_LEAVE:
@@ -2383,6 +2480,45 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
             snprintf(buf, sizeof buf, "%d", eidos_settings_net_control_port());
         }
         put(value, nv, buf);
+        break;
+    case ROW_RA_STATUS:
+        put(label, nl, STR_RA_STATUS);
+#ifdef EIDOS_HAVE_RA
+        {
+            BwRaStatus st;
+
+            bw_ra_status(&st);
+            if (st.state == BW_RA_SIGNED_IN) {
+                if (st.game_loaded) {
+                    snprintf(buf, sizeof buf, "%s  %u/%u", st.user, st.unlocked,
+                             st.achievements);
+                } else {
+                    snprintf(buf, sizeof buf, "%s", st.user);
+                }
+                put(value, nv, buf);
+            } else {
+                put(value, nv, st.state == BW_RA_SIGNED_OUT || st.message[0] == '\0' ? STR_RA_SIGNEDOUT : st.message);
+            }
+        }
+#else
+        put(value, nv, STR_RA_NOLIB);
+#endif
+        break;
+    case ROW_RA_RECENT:
+#ifdef EIDOS_HAVE_RA
+        if (r->arg >= 0 && r->arg < g_ra_nrecent) {
+            put(label, nl, g_ra_recent[r->arg].title);
+            snprintf(buf, sizeof buf, "%u %s", g_ra_recent[r->arg].points, STR_RA_PTS);
+            put(value, nv, buf);
+        } else {
+            put(label, nl, STR_RA_NONE);
+        }
+#else
+        put(label, nl, STR_RA_NONE);
+#endif
+        break;
+    case ROW_RA_SIGNOUT:
+        put(label, nl, STR_RA_SIGNOUT);
         break;
     case ROW_NET_NAME:
         put(label, nl, STR_NET_NAME);
@@ -2668,6 +2804,46 @@ void eidos_sui_help_line(int i, char *out, int n)
         case ROW_NET_CONTROL_PORT:
             l[0] = HELP_NET_CPORT1;
             l[1] = HELP_NET_CPORT2;
+            break;
+        case ROW_RA_STATUS:
+            l[0] = HELP_RA_STATUS1;
+            l[1] = HELP_RA_STATUS2;
+            break;
+        case ROW_RA_RECENT: {
+            /* the achievement's own description, over two lines */
+            static char h0[48], h1[48];
+
+            h0[0] = h1[0] = '\0';
+            (void)h0;
+            (void)h1;
+#ifdef EIDOS_HAVE_RA
+            if (r->arg >= 0 && r->arg < g_ra_nrecent) {
+                const char *t = g_ra_recent[r->arg].text;
+                size_t n = strlen(t), cut = n;
+
+                if (n > 26) {
+                    cut = 26;
+                    while (cut > 0 && t[cut] != ' ') {
+                        cut--;
+                    }
+                    if (cut == 0) {
+                        cut = 26;
+                    }
+                }
+                snprintf(h0, sizeof h0, "%.*s", (int)cut, t);
+                snprintf(h1, sizeof h1, "%.26s", t + cut + (t[cut] == ' ' ? 1 : 0));
+                l[0] = h0;
+                l[1] = h1;
+                break;
+            }
+#endif
+            l[0] = HELP_RA_NONE1;
+            l[1] = HELP_RA_NONE2;
+            break;
+        }
+        case ROW_RA_SIGNOUT:
+            l[0] = HELP_RA_SIGNOUT1;
+            l[1] = HELP_RA_SIGNOUT2;
             break;
         case ROW_NET_NAME:
             l[0] = HELP_NET_NAME1;

@@ -21,6 +21,7 @@
 #include "icon_rgba.h"
 #include "input.h"
 #include "mod_panel_draw.h"
+#include "ra_banner_draw.h"
 #include "platform.h"
 #include "plat_embed.h"
 #include "plat_gpu.h"
@@ -52,6 +53,12 @@ struct EidosPlatform {
     u32 panel_gen;                 /* the model's generation last uploaded  */
     int panel_gen_ok;              /* ... and whether there was one         */
     int panel_w, panel_h;          /* the picture's size last uploaded      */
+
+    /* the achievement banner of the two-screen layouts (ra_banner_draw.h) */
+    SDL_Texture  *banner_tex;      /* the software path's texture for it    */
+    int banner_tex_w, banner_tex_h;
+    u32 banner_gen;                /* the picture's count last uploaded     */
+    int banner_gen_ok;
 
     /* the one-screen layout (EIDOS_LAYOUT_ONE): what the interface layer
      * asked the presenter to show this frame, and the mouse */
@@ -1307,6 +1314,35 @@ static void upload_panel(EidosPlatform *p, const EidosModPanelView *view)
     SDL_UpdateTexture(p->panel_tex, NULL, view->rgba, view->w * 4);
 }
 
+/*
+ * The achievement banner's picture for the software path, uploaded when it
+ * changes.  No blend mode is set (the wasm host bridges only the SDL calls
+ * the port already uses), so the two cut corners draw black there; the GPU
+ * backends blend them (eidos_gpu_banner).
+ */
+static void upload_banner_sw(EidosPlatform *p, const EidosRaBannerView *bv)
+{
+    if (p->banner_gen_ok && p->banner_gen == bv->generation && p->banner_tex != NULL) {
+        return;
+    }
+    if (p->banner_tex == NULL || p->banner_tex_w != bv->w || p->banner_tex_h != bv->h) {
+        if (p->banner_tex != NULL) {
+            SDL_DestroyTexture(p->banner_tex);
+        }
+        p->banner_tex = SDL_CreateTexture(p->renderer, SDL_PIXELFORMAT_ABGR8888,
+                                          SDL_TEXTUREACCESS_STREAMING, bv->w, bv->h);
+        p->banner_tex_w = bv->w;
+        p->banner_tex_h = bv->h;
+        if (p->banner_tex == NULL) {
+            return;
+        }
+        set_filter(p->banner_tex, 1);
+    }
+    SDL_UpdateTexture(p->banner_tex, NULL, bv->rgba, bv->w * 4);
+    p->banner_gen = bv->generation;
+    p->banner_gen_ok = 1;
+}
+
 /* Draw both screen textures into the current output.  Used by present and
  * by every runtime change, so a new mode shows at once. */
 static void render(EidosPlatform *p)
@@ -1314,7 +1350,8 @@ static void render(EidosPlatform *p)
     EidosViewport vp;
     EidosScreenPlacement pl;
     EidosModPanelView view;
-    int i, ow, oh, have_panel;
+    EidosRaBannerView bv;
+    int i, ow, oh, have_panel, have_banner = 0;
 
     place(p, &pl);
     out_size(p, &ow, &oh);
@@ -1322,6 +1359,24 @@ static void render(EidosPlatform *p)
     have_panel = p->layout != EIDOS_LAYOUT_ONE && panel_view(&vp, &pl, &view) == 0;
     if (have_panel) {
         upload_panel(p, &view);
+    }
+    /* the achievement banner, drop-down from the top of the safe area (the
+     * one-screen layout draws its own, in its interface canvas) */
+    if (p->layout != EIDOS_LAYOUT_ONE) {
+        int sx, sy, sw, sh;
+        /* the main screen: the top one, or the left one of two side by side */
+        const EidosRect *m = (vp.screen[1].y < vp.screen[0].y ||
+                              (vp.screen[1].y == vp.screen[0].y && vp.screen[1].x < vp.screen[0].x))
+                                 ? &vp.screen[1] : &vp.screen[0];
+        int top;
+
+        eidos_platform_safe_area(p, &sx, &sy, &sw, &sh);
+        top = m->y > sy ? m->y : sy;
+        have_banner = eidos_ra_banner_view(&bv, ow, oh, m->x, top, m->w) == 0 &&
+                      bv.dst.w > 0 && bv.dst.h > 0;
+    }
+    if (have_banner && p->gl == NULL) {
+        upload_banner_sw(p, &bv);
     }
     if (p->gl != NULL) {
         SDL_Rect rects[2];
@@ -1362,6 +1417,23 @@ static void render(EidosPlatform *p)
             rects[i].y = vp.screen[i].y;
             rects[i].w = vp.screen[i].w;
             rects[i].h = vp.screen[i].h;
+        }
+        if (have_banner) {
+            SDL_Rect br;
+
+            br.x = bv.dst.x;
+            br.y = bv.dst.y;
+            br.w = bv.dst.w;
+            br.h = bv.dst.h;
+            if (p->banner_gen_ok && p->banner_gen == bv.generation) {
+                eidos_gpu_banner(p->gl, NULL, bv.w, bv.h, &br);       /* the same picture, moved */
+            } else {
+                eidos_gpu_banner(p->gl, bv.rgba, bv.w, bv.h, &br);
+                p->banner_gen = bv.generation;
+                p->banner_gen_ok = 1;
+            }
+        } else {
+            eidos_gpu_banner(p->gl, NULL, 0, 0, NULL);
         }
         if (eidos_embed_on()) {
             /* shown inside another program: the picture goes to it */
@@ -1405,6 +1477,15 @@ static void render(EidosPlatform *p)
         dst.w = (float)view.dst.w;
         dst.h = (float)view.dst.h;
         SDL_RenderTexture(p->renderer, p->panel_tex, NULL, &dst);
+    }
+    if (have_banner && p->banner_tex != NULL) {
+        SDL_FRect dst;
+
+        dst.x = (float)bv.dst.x;
+        dst.y = (float)bv.dst.y;
+        dst.w = (float)bv.dst.w;
+        dst.h = (float)bv.dst.h;
+        SDL_RenderTexture(p->renderer, p->banner_tex, NULL, &dst);
     }
     SDL_RenderPresent(p->renderer);
 }
@@ -1923,6 +2004,9 @@ void eidos_platform_quit(EidosPlatform *p)
             SDL_DestroyTexture(p->pre[i]);
         }
         free(p->shadow[i]);
+    }
+    if (p->banner_tex != NULL) {
+        SDL_DestroyTexture(p->banner_tex);
     }
     if (p->panel_tex != NULL) {
         SDL_DestroyTexture(p->panel_tex);

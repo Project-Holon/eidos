@@ -10,6 +10,9 @@
     locateRom,
     message,
     openFolder,
+    raLogin,
+    raLogout,
+    raStatus,
     removeRom,
     romLibrary,
     saveSettings,
@@ -33,6 +36,13 @@
   autoUpdate().then((on) => (auto = on));
   let pre = $state(false);
   preReleases().then((on) => (pre = on));
+  // RetroAchievements: the name signed in, and the form's own fields.  The
+  // password is sent once and cleared; only the site's token is kept.
+  let raUser = $state<string | null>(null);
+  let raName = $state("");
+  let raPass = $state("");
+  let raBusy = $state(false);
+  raStatus().then((r) => (raUser = r.user)).catch(() => {});
   let roms = $state<RomView[]>([]);
   let adding = $state(false);
   let dropping = $state(false);
@@ -135,6 +145,30 @@
     }
   }
 
+  async function raSignIn() {
+    raBusy = true;
+    try {
+      const r = await raLogin(raName, raPass);
+      raUser = r.user;
+      toast(r.user ? `Signed in as ${r.user}.` : "Signed in.");
+      raName = "";
+    } catch (e) {
+      toast(message(e), true);
+    } finally {
+      raPass = "";
+      raBusy = false;
+    }
+  }
+
+  async function raSignOut() {
+    try {
+      raUser = (await raLogout()).user;
+      toast("Signed out of RetroAchievements.");
+    } catch (e) {
+      toast(message(e), true);
+    }
+  }
+
   async function checkNow() {
     await checkForUpdate(true);
     if (updates.state.kind === "current") toast("The launcher is up to date.");
@@ -201,6 +235,35 @@
         {#if !MOBILE}<button disabled={adding} onclick={addFolder}><Icon name="folder" size={15} />Add folder</button>{/if}
         <button class="primary" disabled={adding} onclick={addFiles}><Icon name="plus" size={15} />{adding ? "Checking" : "Add ROMs"}</button>
       </div>
+    </div>
+  </div>
+
+  <div class="sec-retroachievements">
+    <h2 class="section-label">RetroAchievements</h2>
+    <div class="window block">
+      {#if raUser}
+        <div class="inline">
+          <div class="grow">
+            <div class="title">Signed in as {raUser}</div>
+            <div class="muted small">Every profile's game signs in with this account. The password is not kept, only the site's token.</div>
+          </div>
+          <button onclick={raSignOut}>Sign out</button>
+        </div>
+      {:else}
+        <label class="field">
+          <span>User name</span>
+          <input bind:value={raName} autocomplete="username" onkeydown={(e) => e.key === "Enter" && raPass && !raBusy && raSignIn()} />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" bind:value={raPass} autocomplete="current-password" onkeydown={(e) => e.key === "Enter" && raName && !raBusy && raSignIn()} />
+          <span class="hint">Sent to retroachievements.org once, to sign in. Not saved.</span>
+        </label>
+        <div class="inline buttons">
+          <span class="muted small grow">Your unlocks go to your RetroAchievements profile while you play.</span>
+          <button class="primary" disabled={raBusy || !raName || !raPass} onclick={raSignIn}>{raBusy ? "Signing in" : "Sign in"}</button>
+        </div>
+      {/if}
     </div>
   </div>
 
@@ -280,7 +343,7 @@
     .settings {
       display: grid;
       grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-      grid-template-rows: auto auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto auto auto minmax(0, 1fr);
       column-gap: 1.25rem;
     }
     .settings > :global(header) {
@@ -288,12 +351,22 @@
     }
     .sec-roms {
       grid-column: 1;
-      grid-row: 2 / 5;
+      grid-row: 2 / 6;
     }
     .sec-appearance,
+    .sec-retroachievements,
     .sec-updates,
     .sec-downloads {
       grid-column: 2;
+    }
+    /* The right-hand sections keep the height of their content: the page's
+       blanket `min-height: 0` let the grid squeeze their rows when the window
+       was short, and the next section then drew over this one. The page
+       scrolls instead. */
+    .sec-appearance,
+    .sec-retroachievements,
+    .sec-updates {
+      min-height: min-content;
     }
   }
   .page {

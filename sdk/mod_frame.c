@@ -62,6 +62,9 @@
 #include "types.h"
 #include "mod_frame.h"
 #include "mod_net.h"
+#ifdef EIDOS_HAVE_RA
+#include "ra.h"
+#endif
 
 /* ------------------------------------------------------------------ */
 /* What the other layers provide                                       */
@@ -265,6 +268,12 @@ void bw_mod_frame_tick(void)
 
     /* A mod's whiteout starts on a quiet field frame (sdk/mod_state.c). */
     bw_mod_state_frame();
+
+#ifdef EIDOS_HAVE_RA
+    /* RetroAchievements: the game's memory is read after the frame's work
+     * is done (sdk/ra.c, docs/retroachievements.md). */
+    bw_ra_tick();
+#endif
 }
 
 /* ------------------------------------------------------------------ */

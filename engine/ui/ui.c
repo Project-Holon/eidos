@@ -34,6 +34,9 @@
 #include "textbox.h"
 #include "settings.h"
 #include "overlay.h"
+#ifdef EIDOS_HAVE_RA
+#include "ra.h"
+#endif
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -994,6 +997,95 @@ static void save_failing_notice(EidosUiCtx *c)
         ui_text(c, x + 12, 22 + ui_text_y(22, UI_FONT_LARGE), msg, UI_WHITE, 0x200508u, UI_FONT_LARGE, 1);
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* The achievement banner                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * An unlock grows out of the clock tab in the middle of the top bar: the
+ * tab's own size at first, then wider and taller until it holds the
+ * achievement's name, its text and its points, and back again
+ * (docs/retroachievements.md, "The banner").  The timing is the game's
+ * (sdk/ra.c, bw_ra_banner); this draws it in the style that is up:
+ * Plasma's white chip, Harmonia's grey tab, Kosmos's own panel.
+ */
+#ifdef EIDOS_HAVE_RA
+#define BANNER_LINES 2
+
+typedef struct BannerWrap {
+    char line[BANNER_LINES][160];
+    int  n;
+} BannerWrap;
+
+static void banner_line(void *user, const char *start, int len)
+{
+    BannerWrap *w = (BannerWrap *)user;
+
+    if (w->n < BANNER_LINES) {
+        if (len > 159) {
+            len = 159;
+        }
+        memcpy(w->line[w->n], start, (size_t)len);
+        w->line[w->n][len] = '\0';
+        w->n++;
+    }
+}
+
+static void ra_banner(EidosUiCtx *c)
+{
+    BwRaBannerView v;
+    BannerWrap wrap;
+    const UiThemeOps *t = ui_theme_active();
+    char pts[32];
+    u32 body, edge, ink, accent;
+    int cw = c->canvas->w, maxw, w, h, x, y0, tw, i, p, y;
+    int ox = c->ox, oy = c->oy;
+    char id = (t != NULL && t->id != NULL) ? t->id[0] : 'k';
+
+    if (!bw_ra_banner(&v)) {
+        return;
+    }
+    memset(&wrap, 0, sizeof(wrap));
+    maxw = cw / 3 < 200 ? cw / 3 : 200;
+    if (maxw < 110) {
+        maxw = 110;
+    }
+    ui_wrap(v.text, maxw, UI_FONT_SMALL, banner_line, &wrap);
+    snprintf(pts, sizeof(pts), "%u point%s", v.points, v.points == 1 ? "" : "s");
+    tw = ui_text_w(v.title, UI_FONT_SMALL);
+    for (i = 0; i < wrap.n; i++) {
+        int lw = ui_text_w(wrap.line[i], UI_FONT_SMALL);
+
+        tw = lw > tw ? lw : tw;
+    }
+    w = tw + 16;
+    h = 5 + (2 + wrap.n) * 12 + 5;
+    y0 = 18;                     /* under the top bar */
+    p = v.progress;
+    x = -w + w * p / 256;        /* slides in from the left edge */
+
+    if (id == 'p') {            /* Plasma: the light sheet */
+        body = 0xF4F5FAu; edge = 0x8A8E9Cu; ink = 0x202028u; accent = 0x2A5BD7u;
+    } else if (id == 'h') {     /* Harmonia: grey */
+        body = 0x454545u; edge = 0x141414u; ink = UI_WHITE; accent = 0x8FC0F0u;
+    } else {                    /* Kosmos */
+        body = UI_BODY; edge = UI_CYAN; ink = UI_WHITE; accent = UI_CYAN;
+    }
+    c->ox = c->oy = 0;
+    ui_panel(c, x - 4, y0, w + 4, h, UI_CUT_BR, 5, body, edge, 250);
+    y = y0 + 5;
+    ui_text(c, x + 8, y, v.title, ink, UI_NONE, UI_FONT_SMALL, 1);
+    y += 12;
+    for (i = 0; i < wrap.n; i++) {
+        ui_text(c, x + 8, y, wrap.line[i], ink, UI_NONE, UI_FONT_SMALL, 1);
+        y += 12;
+    }
+    ui_text(c, x + 8, y, pts, accent, UI_NONE, UI_FONT_SMALL, 1);
+    c->ox = ox;
+    c->oy = oy;
+}
+#endif
 
 /* ------------------------------------------------------------------ */
 /* The style chooser's preview: the real game                          */
@@ -3639,6 +3731,9 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     try_frame(&g_ctx);
     ring_apply(&g_ctx);
     fade_apply(&g_canvas);
+#ifdef EIDOS_HAVE_RA
+    ra_banner(&g_ctx);              /* after the crossfade: it is not part of a scene */
+#endif
     keep_prev(&g_canvas);
     *canvas = &g_canvas;
 }

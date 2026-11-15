@@ -260,6 +260,7 @@ static void op_destroy(EidosGpu *g)
             sg_free_pic(s->dev, &s->cap_src[i]);
         }
         sg_free_pic(s->dev, &s->canvas);
+        sg_free_pic(s->dev, &s->banner);
         sg_free_pic(s->dev, &s->panel);
         sg_free_pic(s->dev, &s->behind);
         sg_free_pic(s->dev, &s->zero);
@@ -652,6 +653,19 @@ static void draw_canvas(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
     SDL_EndGPURenderPass(pass);
 }
 
+/* The achievement banner over everything (the two-screen layouts). */
+static void draw_banner(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
+{
+    SDL_GPURenderPass *pass;
+
+    if (s->banner.tex == NULL || s->brect.w <= 0 || s->brect.h <= 0 || s->p_canvas == NULL) {
+        return;
+    }
+    pass = begin(cmd, t, 0, 0, 0, 0);
+    quad(cmd, pass, s->p_canvas, s->banner.tex, s->linear, s->brect, t.w, t.h, NULL, 0);
+    SDL_EndGPURenderPass(pass);
+}
+
 /* The frame into the scene texture: the uploads first, then the layout's
  * picture, or the two screens. */
 static Target draw_scene(SdlGpu *s, SDL_GPUCommandBuffer *cmd, int out_w, int out_h,
@@ -666,6 +680,7 @@ static Target draw_scene(SdlGpu *s, SDL_GPUCommandBuffer *cmd, int out_w, int ou
     }
     sg_pic_flush(cp, &s->canvas);
     sg_pic_flush(cp, &s->panel);
+    sg_pic_flush(cp, &s->banner);
     sg_pic_flush(cp, &s->behind);
     sg_pic_flush(cp, &s->zero);
     SDL_EndGPUCopyPass(cp);
@@ -680,6 +695,8 @@ static Target draw_scene(SdlGpu *s, SDL_GPUCommandBuffer *cmd, int out_w, int ou
     }
     if (s->on) {
         draw_canvas(s, cmd, t);
+    } else {
+        draw_banner(s, cmd, t);     /* the one-screen layout's canvas has its own */
     }
     return t;
 }
@@ -849,6 +866,20 @@ static void op_one_canvas(EidosGpu *g, const unsigned char *rgba, int w, int h,
     }
     s->crect = *rect;
     sg_pic_set(s, &s->canvas, rgba, w, h);
+}
+
+static void op_banner(EidosGpu *g, const unsigned char *rgba, int w, int h, const SDL_Rect *rect)
+{
+    SdlGpu *s = sg(g);
+
+    if (rect == NULL || w <= 0 || h <= 0) {
+        s->brect.w = s->brect.h = 0;
+        return;
+    }
+    s->brect = *rect;
+    if (rgba != NULL) {
+        sg_pic_set(s, &s->banner, rgba, w, h);
+    }
 }
 
 static void op_one_bottom(EidosGpu *g, int px) { sg(g)->bottom = px > 0 ? px : 0; }
@@ -1141,6 +1172,7 @@ static const EidosGpuOps g_sdlgpu_ops = {
     op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
     op_read3d_1x,
     op_set_vsync,
+    op_banner,
 };
 
 /*

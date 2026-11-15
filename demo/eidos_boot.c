@@ -253,6 +253,9 @@ static int parse_shots(const char *list)
 #include "wizard.h"
 #endif
 #include "mp.h"
+#ifdef EIDOS_HAVE_RA
+#include "ra.h"
+#endif
 #include "link.h"
 #include "arm7/wm.h"
 #include "save_slots.h"
@@ -1922,6 +1925,9 @@ static void boot_audio_push(BootRun *run)
 
     while (queued < AUDIO_LATENCY_FRAMES && done < AUDIO_MAX_PER_CALL) {
         bw_snd_render(buf, AUDIO_CHUNK_FRAMES);
+#ifdef EIDOS_HAVE_RA
+        bw_ra_sound_mix(buf, AUDIO_CHUNK_FRAMES);   /* the achievement sound, sdk/ra.c */
+#endif
         eidos_platform_queue_audio(run->plat, buf, AUDIO_CHUNK_FRAMES);
         queued += AUDIO_CHUNK_FRAMES;
         done += AUDIO_CHUNK_FRAMES;
@@ -1943,6 +1949,9 @@ static void boot_audio_fast(BootRun *run)
         n = 1024u;
     }
     bw_snd_render(buf, n);
+#ifdef EIDOS_HAVE_RA
+    bw_ra_sound_mix(buf, n);
+#endif
     if (eidos_ui_quiet()) {
         return;         /* the interface covers a jump in the game: not heard */
     }
