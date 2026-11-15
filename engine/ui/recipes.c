@@ -31,6 +31,8 @@ extern const EidosUiRecipe *const ui_recipes_input[];
 extern const u32 ui_recipes_input_count;
 extern const EidosUiRecipe *const ui_recipes_starter[];
 extern const u32 ui_recipes_starter_count;
+extern const EidosUiRecipe *const ui_recipes_musical[];
+extern const u32 ui_recipes_musical_count;
 extern const EidosUiRecipe *const ui_recipes_field[];
 extern const u32 ui_recipes_field_count;
 extern const EidosUiRecipe *const ui_recipes_boot[];
@@ -53,6 +55,7 @@ const EidosUiRecipeGroup eidos_ui_groups[] = {
     { ui_recipes_menus, &ui_recipes_menus_count },
     { ui_recipes_pc, &ui_recipes_pc_count },
     { ui_recipes_starter, &ui_recipes_starter_count },
+    { ui_recipes_musical, &ui_recipes_musical_count },   /* the Musical's dress-up (#44) */
     { ui_recipes_field, &ui_recipes_field_count },
     { ui_recipes_boot, &ui_recipes_boot_count },
     { ui_recipes_lower, &ui_recipes_lower_count },   /* last: anything else */

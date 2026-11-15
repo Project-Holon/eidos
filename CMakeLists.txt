@@ -1199,6 +1199,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/choice_list.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/textbox.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_starter.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_musical.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c
