@@ -34,8 +34,9 @@
  *       at Y holding (SX, SZ) (a skirting's top carried on).
  *   bandx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR[:XTOP]+..  a band of a wall at x = X looking along DIR, in the picture
  *       of the upright face at x = SX holding (SZ, SY).
- *   band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1+..  a band of a wall at z = Z looking north, its foot
- *       and top rising along x, in the picture of the upright face at z = SZ holding (SX, SY).
+ *   band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1[:DY]+..  a band of a wall at z = Z looking north, its foot
+ *       and top rising along x, in the picture of the upright face at z = SZ holding (SX, SY)
+ *       (DY: the picture read DY lower on that face: a window row stacked up a wall).
  *   decal=SZ:SX:SY:X0:X1:Y0:Y1:TX:TY:Z+..  a rectangle of a south face's picture laid on
  *       the back at z = Z, its middle at (TX, TY), looking north.
  *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
@@ -86,6 +87,23 @@ static void normal_of(const RmTri *t, double n[3])
     rm_cross(e1, e2, n);
     if (rm_norm(n) <= 0.0) {
         n[0] = n[1] = n[2] = 0.0;
+    }
+}
+
+/* The triangles from `first` on are lit as the model's face `src` is: lit, with its normal (a wall carried on in the
+ * picture of another: the zone's light gives it the source's own colour, whichever way it looks). */
+static void lit_as(RmOut *out, unsigned first, const RmTri *src)
+{
+    double n[3];
+    unsigned ti;
+    int k;
+
+    normal_of(src, n);
+    for (ti = first; ti < out->ntri; ti++) {
+        out->tri[ti].lit = 1;
+        for (k = 0; k < 3; k++) {
+            out->tri[ti].n[k] = (float)n[k];
+        }
     }
 }
 
@@ -1168,7 +1186,7 @@ static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
         const double outn[3] = { d[8] < 0.0 ? -1.0 : 1.0, 0, 0 };
         double q[4][3], uv[4][2], e1[3], e2[3], n[3];
         const double zs[4] = { d[4], d[5], d[5], d[4] }, ys[4] = { d[6], d[6], d[7], d[7] };
-        unsigned first = out->ntri, ti;
+        const unsigned first = out->ntri;
 
         for (j = 0; j < 4; j++) {
             q[j][0] = ys[j] == d[7] ? d[9] : d[3];     /* (XTOP: the top edge at another x, a leaning band) */
@@ -1189,9 +1207,7 @@ static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
             rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
             rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
         }
-        for (ti = first; ti < out->ntri; ti++) {
-            out->tri[ti].lit = 0;   /* (the source wall's own light) */
-        }
+        lit_as(out, first, src->t);     /* (the source wall's own light) */
     }
 }
 
@@ -1438,7 +1454,7 @@ static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double t
                 }
                 {
                     double e1[3], e2[3], fn[3];
-                    unsigned first = out->ntri, ti;
+                    const unsigned first = out->ntri;
 
                     for (k = 0; k < 3; k++) {
                         e1[k] = q[1][k] - q[0][k];
@@ -1452,9 +1468,7 @@ static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double t
                         rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
                         rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
                     }
-                    for (ti = first; ti < out->ntri; ti++) {
-                        out->tri[ti].lit = 0;       /* (the wall's own light) */
-                    }
+                    lit_as(out, first, t);      /* (the wall's own light) */
                 }
             }
         }
@@ -1462,13 +1476,15 @@ static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double t
 }
 
 
-/* `band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1+..`: a band of a wall at z = Z looking north (a room's inner side of its
+/* `band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1[:DY]+..`: a band of a wall at z = Z looking north (a room's inner side of its
  * south wall), from x = X0 to X1, its foot rising from YB0 to YB1 and its top from YT0 to YT1 along x (a band under a
  * sloped roof), in the picture of the model's own upright face at z = SZ that holds (SX, SY): each corner takes the
  * picture's place of the point (x, y) on that face, so a band of wallpaper, skirting or trim carries on at the heights
  * the room's corners set.  `bandw` (axis 0): the same in the picture of the model's own upright face at x = SX that holds
- * (SZ, SY), carried on along x as along that face's z: a band only the room's east and west walls have. */
-static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10], int axis)
+ * (SZ, SY), carried on along x as along that face's z: a band only the room's east and west walls have.  `:DY`: the
+ * point (x, y) takes the picture's place of (x, y - DY) on that face (a row of windows set higher than the source's:
+ * a glass wall the room's own window band repeated up it). */
+static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[11], int axis)
 {
     const int h = axis == 2 ? 0 : 2;                        /* (the source face's own across) */
     const double sp = axis == 2 ? d[2] : d[0], sa = axis == 2 ? d[0] : d[2];
@@ -1530,13 +1546,13 @@ static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10], in
             q[j][0] = xs[j];
             q[j][1] = ys[j];
             q[j][2] = d[5];
-            uv[j][0] = m[0][0] * xs[j] + m[0][1] * ys[j] + m[0][2];
-            uv[j][1] = m[1][0] * xs[j] + m[1][1] * ys[j] + m[1][2];
+            uv[j][0] = m[0][0] * xs[j] + m[0][1] * (ys[j] - d[10]) + m[0][2];
+            uv[j][1] = m[1][0] * xs[j] + m[1][1] * (ys[j] - d[10]) + m[1][2];
         }
         {
             /* (one-sided: a camera behind the wall, outside the room, sees through it as through the field's) */
             double e1[3], e2[3], n[3];
-            unsigned first = out->ntri, ti;
+            const unsigned first = out->ntri;
 
             for (k = 0; k < 3; k++) {
                 e1[k] = q[1][k] - q[0][k];
@@ -1550,9 +1566,8 @@ static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10], in
                 rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
                 rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
             }
-            for (ti = first; ti < out->ntri; ti++) {
-                out->tri[ti].lit = 0;   /* (the source wall's own light: a wall that looks away from the light keeps the room's brightness) */
-            }
+            /* (the source wall's own light: a wall that looks away from the light keeps the room's brightness) */
+            lit_as(out, first, src->t);
         }
     }
 }
@@ -2760,9 +2775,9 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     }
     if (rm_opt(opt, "band", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double bd[10];
+            double bd[11] = { 0 };
 
-            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9]) == 10) {
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9], &bd[10]) >= 10) {
                 do_band(f, nf, out, bd, 2);
             }
             ep = strchr(ep, '+');
@@ -2777,9 +2792,9 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     }
     if (rm_opt(opt, "bandw", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double bd[10];
+            double bd[11] = { 0 };
 
-            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9]) == 10) {
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9], &bd[10]) >= 10) {
                 do_band(f, nf, out, bd, 0);
             }
             ep = strchr(ep, '+');
