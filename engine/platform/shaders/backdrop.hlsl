@@ -62,9 +62,10 @@ cbuffer FragmentUniforms : register(b0, space3)
     float4 feye;
     float4 fog;
     float4 fogc;
-    int4 flags;         // textured, front pass, Pokemon count
-    float4 cut;         // alpha, cut, cut_hi
+    int4 flags;         // textured, front pass, Pokemon count, clearance places
+    float4 cut;         // alpha, cut, cut_hi, tall grass
     float4 poke[32];
+    float4 clr[16];     // the camera's clearance: places the camera passed this shot (x, y, z, radius)
 };
 
 struct FSOut
@@ -77,6 +78,27 @@ struct FSOut
 FSOut fs_main(VSOut i)
 {
     FSOut o;
+    if (flags.w > 0 && cut.w < 0.5) {    // (not tall grass, cut.w: the camera passes through it)
+        // the camera's clearance: an upright surface inside one of the places the camera passed this shot is not
+        // drawn; a floor is kept
+        float3 nf = cross(ddx(i.wpos), ddy(i.wpos));
+        float ln = length(nf);
+        float3 mid = float3(0.0, 0.0, 0.0);
+        float nm = 0.0;
+        for (int p = 0; p < flags.z; p++) {
+            if (poke[p].w > 0.0) { mid += poke[p].xyz; nm += 1.0; }
+        }
+        mid = nm > 0.0 ? mid / nm : clr[0].xyz;
+        // (between the camera and the battle: the two on either side of its plane)
+        bool between = dot(nf, feye.xyz - i.wpos) * dot(nf, mid - i.wpos) < 0.0;
+        // (or seen nearly edge-on: a post's narrow side, a sliver)
+        between = between || abs(dot(nf, normalize(feye.xyz - i.wpos))) < 0.35 * ln;
+        if (between && ln > 1e-9 && abs(nf.y) / ln < 0.7) {
+            for (int q = 0; q < flags.w; q++) {
+                if (length(i.wpos - clr[q].xyz) < clr[q].w) discard;
+            }
+        }
+    }
     if (flags.y == 1) {
         // the second pass: what of the map stands between the camera and a
         // Pokemon, over the sprite's box, is drawn again over it

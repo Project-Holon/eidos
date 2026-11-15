@@ -177,6 +177,18 @@ typedef struct G3dBackdrop {
 #define G3D_BACKDROP_SPRITES 32
     float poke[G3D_BACKDROP_SPRITES][4];
     u32 n_poke;
+    /* each one's sprite: its texture and palette as the game sets them
+     * (MCSS texImage.vramAddr[0], plttBase; 0xFFFFFFFF: none): the game's
+     * polygons that carry them write the depth of the sprite's place, so the
+     * map hides what of a sprite it stands in front of */
+    u32 key[G3D_BACKDROP_SPRITES][2];
+    /* the camera's clearance: places (x, y, z, radius, battle space) the
+     * camera passed during the current shot; an upright surface of the map
+     * inside one is not drawn (a wall or a door the camera stands in or just
+     * behind, kept gone while the camera pulls away, back at the next cut) */
+#define G3D_BACKDROP_CLEAR 16
+    float clear[G3D_BACKDROP_CLEAR][4];
+    u32 n_clear;
     /* the spot editor (tools/spot-editor): draw only what stands in front of
      * the Pokemon, over a transparent clear, to lay over its own sprites */
     u32 front_only;

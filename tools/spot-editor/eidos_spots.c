@@ -960,6 +960,23 @@ static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*po
     snap.backdrop.scene = s;
     snap.backdrop.scene_gen = gen;
     memcpy(snap.backdrop.sky, s->clear, 3);
+    /* the Pokemon's places for the first pass too: the camera's clearance (a wall the camera stands in or just
+     * behind is not drawn, plat_gl3d.c) takes the nearest one's distance, as in the game; the battle views only
+     * (`each`): the field's view has no such rule in the game */
+    if (each && poke != NULL && npoke > 0) {
+        float nearest = 1e30f;
+
+        for (i = 0; i < npoke; i++) {
+            const float dx = poke[i][0] - v->eye[0], dy = poke[i][1] - v->eye[1], dz = poke[i][2] - v->eye[2];
+            const float d = sqrtf(dx * dx + dy * dy + dz * dz);
+
+            nearest = d < nearest ? d : nearest;
+        }
+        /* (the editor's views stand still: the one place of the camera, as the game's first frame of a shot) */
+        memcpy(snap.backdrop.clear[0], v->eye, 3 * sizeof(float));
+        snap.backdrop.clear[0][3] = 0.5f * nearest;
+        snap.backdrop.n_clear = 1;
+    }
     /* each picture stays on the GPU: kept in a texture, drawn at the frame's
      * end (gpu_flush), never read back */
     if (eidos_gl_render3d(A.gl, &snap, v->rw, v->rh) == 0) {

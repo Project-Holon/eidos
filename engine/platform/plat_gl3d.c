@@ -96,6 +96,7 @@ static const char *k_fs3 =
     "uniform int u_back;\n"
     "uniform int u_wbuf;\n"
     "uniform int u_pass;\n"
+    "uniform float u_zover;\n"
     "int wrapc(int v, int size, int rep, int flip) {\n"
     "    if (size <= 0) { return 0; }\n"
     "    if (rep == 0) { return clamp(v, 0, size - 1); }\n"
@@ -148,7 +149,8 @@ static const char *k_fs3 =
     "    float a = float(a5) / 31.0;\n"
     "    o = vec4(vec3(col) / 255.0 * a, a);\n"
     "    o_id = uint(u_id);\n"
-    "    gl_FragDepth = (u_wbuf == 1) ? clamp((1.0 / gl_FragCoord.w) / 16777216.0, 0.0, 1.0)\n"
+    "    gl_FragDepth = (u_zover > 0.0) ? u_zover\n"
+    "                 : (u_wbuf == 1) ? clamp((1.0 / gl_FragCoord.w) / 16777216.0, 0.0, 1.0)\n"
     "                                 : gl_FragCoord.z;\n"
     "}\n";
 
@@ -406,7 +408,30 @@ static const char *k_fsb =
     "uniform vec4 u_poke[32];\n"
     "uniform int u_npoke;\n"
     "uniform int u_grass;\n"
+    "uniform vec4 u_clr[16];\n"
+    "uniform int u_nclr;\n"
     "void main() {\n"
+    "    if (u_nclr > 0 && u_grass == 0) {   /* (not tall grass, the camera passes through it) */\n"
+    "        /* the camera's clearance: an upright surface inside one of the\n"
+    "           places the camera passed this shot is not drawn; a floor is kept */\n"
+    "        vec3 nf = cross(dFdx(v_pos), dFdy(v_pos));\n"
+    "        float ln = length(nf);\n"
+    "        vec3 mid = vec3(0.0);\n"
+    "        float nm = 0.0;\n"
+    "        for (int i = 0; i < u_npoke; i++) {\n"
+    "            if (u_poke[i].w > 0.0) { mid += u_poke[i].xyz; nm += 1.0; }\n"
+    "        }\n"
+    "        mid = nm > 0.0 ? mid / nm : u_foc;\n"
+    "        /* (between the camera and the battle: the two on either side of its plane) */\n"
+    "        bool between = dot(nf, u_eye - v_pos) * dot(nf, mid - v_pos) < 0.0;\n"
+    "        /* (or seen nearly edge-on: a post's narrow side, a sliver) */\n"
+    "        between = between || abs(dot(nf, normalize(u_eye - v_pos))) < 0.35 * ln;\n"
+    "        if (between && ln > 1e-9 && abs(nf.y) / ln < 0.7) {\n"
+    "            for (int i = 0; i < u_nclr; i++) {\n"
+    "                if (length(v_pos - u_clr[i].xyz) < u_clr[i].w) { discard; }\n"
+    "            }\n"
+    "        }\n"
+    "    }\n"
     "    if (u_front == 1) {\n"
     "        /* the second pass: what of the map stands between the camera and\n"
     "           a Pokemon, over the sprite's box (seen at the Pokemon's\n"
@@ -483,7 +508,7 @@ typedef struct Gl3dBackdrop {
     GLuint prog, vao, vbo, ibo;
     GLint u_lift;
     GLint u_r[4], u_pivot, u_bb, u_eye, u_foc, u_fog, u_fogc, u_tex, u_texture, u_alpha, u_cut, u_cut_hi;
-    GLint u_front, u_poke, u_npoke, u_grass, u_uv0, u_uv1;
+    GLint u_front, u_poke, u_npoke, u_grass, u_uv0, u_uv1, u_clr, u_nclr;
     const void *scene;          /* the scene on the GPU                    */
     unsigned gen;
     GLuint *tex;
@@ -653,6 +678,8 @@ static int backdrop_init(EidosGl *g)
     g_bd.u_front = g->glGetUniformLocation(g_bd.prog, "u_front");
     g_bd.u_poke = g->glGetUniformLocation(g_bd.prog, "u_poke");
     g_bd.u_npoke = g->glGetUniformLocation(g_bd.prog, "u_npoke");
+    g_bd.u_clr = g->glGetUniformLocation(g_bd.prog, "u_clr");
+    g_bd.u_nclr = g->glGetUniformLocation(g_bd.prog, "u_nclr");
     g_bd.u_grass = g->glGetUniformLocation(g_bd.prog, "u_grass");
     g_bd.u_uv0 = g->glGetUniformLocation(g_bd.prog, "u_uv0");
     g_bd.u_uv1 = g->glGetUniformLocation(g_bd.prog, "u_uv1");
@@ -916,6 +943,66 @@ static void backdrop_matrix(const G3dBackdrop *b, float r[4][4])
     r[3][3] = -ef;
 }
 
+/* The battle backdrop's sprites (G3dBackdrop.key): the depth each one's
+ * polygons write, the depth of its place along the camera's line of sight
+ * (0.3 units nearer, so the ground at its feet stays behind it), the near
+ * plane for one with a negative height (the player's own trainer: nothing of
+ * the map in front of it).  `r` is the backdrop's matrix; the depth is the
+ * depth buffer's (0..1 from GL's -1..1). */
+static void sprite_depths(const G3dBackdrop *b, const float r[4][4], float out[G3D_BACKDROP_SPRITES])
+{
+    float fwd[3], l;
+    unsigned i, k;
+
+    for (k = 0; k < 3; k++) {
+        fwd[k] = b->target[k] - b->eye[k];
+    }
+    l = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
+    for (i = 0; i < G3D_BACKDROP_SPRITES; i++) {
+        float d, p[3], c[4];
+
+        out[i] = 0.0f;
+        if (i >= b->n_poke || l < 1e-6f || b->key[i][0] == 0xFFFFFFFFu) {
+            continue;
+        }
+        if (b->poke[i][3] < 0.0f) {
+            out[i] = 1e-6f;
+            continue;
+        }
+        d = ((b->poke[i][0] - b->eye[0]) * fwd[0] + (b->poke[i][1] - b->eye[1]) * fwd[1] +
+             (b->poke[i][2] - b->eye[2]) * fwd[2]) / l - 0.3f;
+        if (d < b->znear * 1.01f) {
+            out[i] = 1e-6f;
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            p[k] = b->eye[k] + fwd[k] / l * d;
+        }
+        for (k = 0; k < 4; k++) {
+            c[k] = r[k][0] * p[0] + r[k][1] * p[1] + r[k][2] * p[2] + r[k][3];
+        }
+        out[i] = c[3] > 1e-6f ? 0.5f * (c[2] / c[3]) + 0.5f : 1e-6f;
+        out[i] = out[i] < 1e-6f ? 1e-6f : out[i] > 1.0f ? 1.0f : out[i];
+    }
+}
+
+/* The sprite a game polygon is (its texture and palette, as the battle lists
+ * them: bw_battle_view's snapshot_hook), or -1. */
+static int sprite_of(const G3dBackdrop *b, const G3dPoly *p)
+{
+    unsigned i;
+
+    for (i = 0; i < b->n_poke && i < G3D_BACKDROP_SPRITES; i++) {
+        const u32 tex = b->key[i][0], pl = b->key[i][1];
+
+        if (tex != 0xFFFFFFFFu && (p->teximage & 0xFFFFu) == ((tex >> 3) & 0xFFFFu) &&
+            (p->pltt_base == (pl >> 4) || p->pltt_base == (pl >> 3))) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
 /* Draw the scene.  The frame's framebuffer is bound and cleared. */
 /* front: the second pass, after the game's polygons.  The game draws its
  * sprites without the map's depth, so the map would never hide a Pokemon;
@@ -1032,6 +1119,8 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     g->glUniform1i(g_bd.u_front, front);
     g->glUniform1i(g_bd.u_npoke, (GLint)(b->n_poke > G3D_BACKDROP_SPRITES ? G3D_BACKDROP_SPRITES : b->n_poke));
     g->glUniform4fv(g_bd.u_poke, G3D_BACKDROP_SPRITES, &b->poke[0][0]);
+    g->glUniform1i(g_bd.u_nclr, (GLint)(b->n_clear > G3D_BACKDROP_CLEAR ? G3D_BACKDROP_CLEAR : b->n_clear));
+    g->glUniform4fv(g_bd.u_clr, G3D_BACKDROP_CLEAR, &b->clear[0][0]);
     g->glUniform3fv(g_bd.u_foc, 1, b->target);
     {
         /* the zone's fog: linear in the distance from the player's tile
@@ -1052,7 +1141,16 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     g->glActiveTexture(GL_TEXTURE0);
     g->glUniform1i(g_bd.u_texture, 0);
     glDisable(GL_STENCIL_TEST);
-    if (front) {
+    if (front && !b->front_only) {
+        /* the game's sprites wrote the depth of their places (sprite_depths): the map nearer than a sprite
+         * hid it in the ordinary test; this pass lays the see-through map again where it is nearer than what
+         * the game drew, over the game's pixels only */
+        front = 3;
+        g->glUniform1i(g_bd.u_front, front);
+        glEnable(GL_STENCIL_TEST);
+        glStencilFunc(GL_EQUAL, STENCIL_GAME, STENCIL_GAME);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    } else if (front) {
         front_depth_clear(b, (const float (*)[4])r);
         if (!b->front_only) {
             /* only where the game drew (its sprites, their shadows and
@@ -1068,7 +1166,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(0.0f, 1.0f); /* no slope term: it pushed far, grazing triangles over the near map */
     g->glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    for (pass = 0; pass < 2; pass++) {
+    for (pass = front == 3 ? 1 : 0; pass < 2; pass++) {
         if (pass == 1) {
             glEnable(GL_BLEND);
             g->glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,
@@ -1235,6 +1333,7 @@ int eidos_gl3d_init(EidosGl *g)
     LOC(u_front, "u_front");
     LOC(u_back, "u_back");
     LOC(u_wbuf, "u_wbuf");
+    LOC(u_zover, "u_zover");
     LOC(u_pass, "u_pass");
     LOC(u_id, "u_id");
 #undef LOC
@@ -1645,6 +1744,7 @@ typedef struct Gl3dRun {
     int deq, mask, xlu_depth, mode, toon, a5, front, back;
     int textured, slot, wrap, id, two_pass;
     int fog;           /* POLYGON_ATTR bit 15: ID buffer bit 6           */
+    float zo;          /* a backdrop sprite's depth (sprite_depths), 0: the polygon's own */
 } Gl3dRun;
 
 /* What the runs of one pass last sent (draw_run): a value that stays is not
@@ -1652,6 +1752,7 @@ typedef struct Gl3dRun {
 typedef struct RunSent {
     GLint mode, toon, a5, front, back, tex3, tw, th, wrap, id;
     GLint stencil;      /* the stencil function: 0 always, else the reference of "not equal" */
+    float zo;           /* u_zover (-1: not sent) */
     GLint cmask;        /* colour mask of target 1 */
 } RunSent;
 
@@ -1660,6 +1761,7 @@ static void run_sent_reset(RunSent *st)
     st->mode = st->toon = st->a5 = st->front = st->back = st->tex3 = st->tw = st->th = st->wrap = st->id = -1;
     st->stencil = -1;
     st->cmask = -1;
+    st->zo = -1.0f;
 }
 
 static void run_stencil(RunSent *st, GLint ref)
@@ -1712,6 +1814,10 @@ static void draw_run(EidosGl *g, const G3dSnapshot *s, const Gl3dRun *d,
     RUN_UNIFORM(a5, g->u_alpha5, d->a5);
     RUN_UNIFORM(front, g->u_front, d->front);
     RUN_UNIFORM(back, g->u_back, d->back);
+    if (st->zo != d->zo) {
+        g->glUniform1f(g->u_zover, d->zo);
+        st->zo = d->zo;
+    }
     if (d->textured) {
         GLint tw = (GLint)s->tex[d->slot].w, th = (GLint)s->tex[d->slot].h;
 
@@ -1984,6 +2090,15 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
             unsigned run_first = 0, run_verts = 0;
             int have = 0;
             RunSent sent;
+            float sz[G3D_BACKDROP_SPRITES];
+
+            memset(sz, 0, sizeof sz);
+            if (backdrop && s->backdrop.n_poke > 0) {
+                float br[4][4];
+
+                backdrop_matrix(&s->backdrop, br);
+                sprite_depths(&s->backdrop, (const float (*)[4])br, sz);
+            }
 
             run_sent_reset(&sent);
             memset(&run, 0, sizeof(run));
@@ -2024,6 +2139,11 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                 cur.id = (int)G3D_ATTR_ID(attr);
                 cur.two_pass = a5 >= 31u && cur.textured && s->tex[slot].partial;
                 cur.fog = G3D_ATTR_FOG(attr) != 0;
+                {
+                    const int k = backdrop && s->backdrop.n_poke > 0 ? sprite_of(&s->backdrop, p) : -1;
+
+                    cur.zo = k >= 0 ? sz[k] : 0.0f;
+                }
                 if (have && run_first + run_verts == first
                     && memcmp(&run, &cur, sizeof(run)) == 0) {
                     run_verts += verts;

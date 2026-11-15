@@ -77,6 +77,7 @@ typedef struct G3dUniforms {
     int wrap[4];
     int c[4];           /* toon, highlight, front, back */
     int d[4];           /* w-buffer                     */
+    float e[4];         /* a sprite's depth (0: its own) */
     float toon[32][4];
 } G3dUniforms;
 
@@ -109,6 +110,7 @@ typedef struct BdFragmentUniforms {
     int flags[4];       /* textured, front pass, Pokemon count */
     float cut[4];       /* alpha, cut, cut_hi                  */
     float poke[32][4];
+    float clr[16][4];   /* the camera's clearance (flags[3] of them) */
 } BdFragmentUniforms;
 
 /* ------------------------------------------------------------------ */
@@ -895,6 +897,66 @@ static void bd_sort(SdlGpu *s, SgBd *b, SDL_GPUCopyPass *cp, const G3dBackdrop *
     b->idx_ok = 1;
 }
 
+/* The battle backdrop's sprites (G3dBackdrop.key): the depth each one's
+ * polygons write, the depth of its place along the camera's line of sight
+ * (0.3 units nearer, so the ground at its feet stays behind it), the near
+ * plane for one with a negative height (the player's own trainer: nothing of
+ * the map in front of it).  `r` is the backdrop's matrix; the depth is the
+ * depth buffer's (0..1 from GL's -1..1). */
+static void sprite_depths(const G3dBackdrop *b, const float r[4][4], float out[G3D_BACKDROP_SPRITES])
+{
+    float fwd[3], l;
+    unsigned i, k;
+
+    for (k = 0; k < 3; k++) {
+        fwd[k] = b->target[k] - b->eye[k];
+    }
+    l = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
+    for (i = 0; i < G3D_BACKDROP_SPRITES; i++) {
+        float d, p[3], c[4];
+
+        out[i] = 0.0f;
+        if (i >= b->n_poke || l < 1e-6f || b->key[i][0] == 0xFFFFFFFFu) {
+            continue;
+        }
+        if (b->poke[i][3] < 0.0f) {
+            out[i] = 1e-6f;
+            continue;
+        }
+        d = ((b->poke[i][0] - b->eye[0]) * fwd[0] + (b->poke[i][1] - b->eye[1]) * fwd[1] +
+             (b->poke[i][2] - b->eye[2]) * fwd[2]) / l - 0.3f;
+        if (d < b->znear * 1.01f) {
+            out[i] = 1e-6f;
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            p[k] = b->eye[k] + fwd[k] / l * d;
+        }
+        for (k = 0; k < 4; k++) {
+            c[k] = r[k][0] * p[0] + r[k][1] * p[1] + r[k][2] * p[2] + r[k][3];
+        }
+        out[i] = c[3] > 1e-6f ? 0.5f * (c[2] / c[3]) + 0.5f : 1e-6f;
+        out[i] = out[i] < 1e-6f ? 1e-6f : out[i] > 1.0f ? 1.0f : out[i];
+    }
+}
+
+/* The sprite a game polygon is (its texture and palette, as the battle lists
+ * them: bw_battle_view's snapshot_hook), or -1. */
+static int sprite_of(const G3dBackdrop *b, const G3dPoly *p)
+{
+    unsigned i;
+
+    for (i = 0; i < b->n_poke && i < G3D_BACKDROP_SPRITES; i++) {
+        const u32 tex = b->key[i][0], pl = b->key[i][1];
+
+        if (tex != 0xFFFFFFFFu && (p->teximage & 0xFFFFu) == ((tex >> 3) & 0xFFFFu) &&
+            (p->pltt_base == (pl >> 4) || p->pltt_base == (pl >> 3))) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
 /* The depth reset to the clear plane's over the Pokemon's boxes, before the
  * front pass (plat_gl3d.c front_depth_clear: a scissored clear there). */
 static void bd_front_clear(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pass,
@@ -1003,6 +1065,8 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     }
     fu.flags[1] = front;
     fu.flags[2] = (int)(bk->n_poke > G3D_BACKDROP_SPRITES ? G3D_BACKDROP_SPRITES : bk->n_poke);
+    fu.flags[3] = (int)(bk->n_clear > 16u ? 16u : bk->n_clear);
+    memcpy(fu.clr, bk->clear, sizeof fu.clr);
     memcpy(fu.poke, bk->poke, sizeof fu.poke);
     fu.fog[1] = 7.0f;
     fu.fog[3] = 1.0f;
@@ -1015,7 +1079,14 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
         fu.fogc[1] = (float)sc->fog[1] / 255.0f;
         fu.fogc[2] = (float)sc->fog[2] / 255.0f;
     }
-    if (front) {
+    if (front && !bk->front_only) {
+        /* the game's sprites wrote the depth of their places (sprite_depths): the map nearer than a sprite
+         * hid it in the ordinary test; this pass lays the see-through map again where it is nearer than what
+         * the game drew, over the game's pixels only */
+        fu.flags[1] = 3;
+        base |= PKB_STEN;
+        SDL_SetGPUStencilReference(pass, (Uint8)STENCIL_GAME);
+    } else if (front) {
         bd_front_clear(s, cmd, pass, bk, (const float (*)[4])r, w, h, cdepth);
         if (!bk->front_only) {
             base |= PKB_STEN;
@@ -1028,7 +1099,7 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     vb.buffer = b->vbuf.buf;
     vb.offset = 0;
     SDL_BindGPUVertexBuffers(pass, 0, &vb, 1);
-    for (pass_i = 0; pass_i < 2; pass_i++) {
+    for (pass_i = fu.flags[1] == 3 ? 1u : 0u; pass_i < 2; pass_i++) {
         unsigned n = pass_i == 1 && b->n_piece > 0 ? b->n_piece : sc->nd;
         int sorted = pass_i == 1 && b->n_piece > 0 && b->ibuf.buf != NULL && b->idx_ok;
 
@@ -1109,6 +1180,7 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
             /* (the fourth: a moving object's rise this frame, as its animation in the field: 30 frames a second) */
             vu.pivot[3] = d->bob && sc->bob_n > 0u ? sc->place_k * sc->bob_y[(SDL_GetTicks() * 30u / 1000u) % sc->bob_n] : 0.0f;
             fu.cut[0] = (float)d->alpha / 31.0f;
+            fu.cut[3] = d->grass ? 1.0f : 0.0f;     /* (tall grass: no camera clearance) */
             if (pass_i == 0) {
                 fu.cut[1] = d->translucent ? BD_CORE_CUT : 0.5f;
                 fu.cut[2] = 2.0f;
@@ -1281,6 +1353,7 @@ static int upload_textures(SdlGpu *s, SDL_GPUCopyPass *cp, const G3dSnapshot *sn
 typedef struct Run {
     int deq, mask, xlu_depth, mode, toon, a5, front, back;
     int textured, slot, wrap, id, two_pass, fog;
+    float zo;           /* a backdrop sprite's depth (sprite_depths), 0: the polygon's own */
 } Run;
 
 static void draw_run(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pass,
@@ -1298,6 +1371,7 @@ static void draw_run(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pa
     u->c[2] = d->front;
     u->c[3] = d->back;
     u->b[3] = uid;
+    u->e[0] = d->zo;
     if (d->textured && d->slot >= 0 && (unsigned)d->slot < s->n_gtex && s->gtex[d->slot] != NULL) {
         tb.texture = s->gtex[d->slot];
         u->a[2] = 1;
@@ -1522,6 +1596,15 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
         Run run, cur;
         unsigned run_first = 0, run_verts = 0, first = 0;
         int have = 0;
+        float sz[G3D_BACKDROP_SPRITES];
+
+        memset(sz, 0, sizeof sz);
+        if (backdrop && snap->backdrop.n_poke > 0) {
+            float br[4][4];
+
+            bd_matrix(&snap->backdrop, br);
+            sprite_depths(&snap->backdrop, (const float (*)[4])br, sz);
+        }
 
         memset(&u, 0, sizeof u);
         for (i = 0; i < 32u; i++) {
@@ -1571,6 +1654,11 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
             cur.id = (int)G3D_ATTR_ID(attr);
             cur.two_pass = a5 >= 31u && cur.textured && snap->tex[slot].partial;
             cur.fog = G3D_ATTR_FOG(attr) != 0;
+            {
+                const int k = backdrop && snap->backdrop.n_poke > 0 ? sprite_of(&snap->backdrop, p) : -1;
+
+                cur.zo = k >= 0 ? sz[k] : 0.0f;
+            }
             if (have && run_first + run_verts == first && memcmp(&run, &cur, sizeof run) == 0) {
                 run_verts += verts;
             } else {

@@ -167,10 +167,12 @@ typedef struct BvFrame {
     float fsin, fcos, aspect, znear, zfar;
     float poke[G3D_BACKDROP_SPRITES][4]; /* the Pokemon's and trainers' sprites:
                                        where, and their box's height       */
+    uint32_t key[G3D_BACKDROP_SPRITES][2];  /* their texture and palette (G3dBackdrop.key) */
     uint32_t n_poke;
 } BvFrame;
 
 static BvFrame g_frame;
+static void camera_clearance(G3dBackdrop *out);
 
 /*
  * Where each Pokemon was drawn (bw_battle_view_mon_box): the frame's
@@ -539,11 +541,92 @@ static void backdrop_hook(G3dBackdrop *out)
     out->scene = g_cur != NULL ? &g_cur->s : NULL;
     out->scene_gen = g_gen;
     memcpy(out->poke, g_frame.poke, sizeof(out->poke));
+    memcpy(out->key, g_frame.key, sizeof(out->key));
     out->n_poke = g_frame.n_poke;
+    camera_clearance(out);
     if (g_cur != NULL) {
         memcpy(out->sky, g_cur->s.clear, sizeof(out->sky));
     }
     effect_sprites();
+}
+
+/*
+ * The camera's clearance (G3dBackdrop.clear): a wall, a door or a curtain the
+ * camera stands in or just behind is not drawn.  Each frame the camera's
+ * place counts with a radius of half the nearest sprite's distance (the
+ * Pokemon and the trainers on the field; the player's own trainer at the
+ * send-out stands before the camera and is never covered anyway).  The
+ * places the camera passed are kept for CLEAR_KEEP frames (a new one each
+ * unit it moves), so a wall cleared while the camera was near it stays gone
+ * as the camera pulls away from it, and comes back once the camera has left
+ * it a while (grass the intro's camera brushed past is back for the command
+ * camera); a cut (more than CLEAR_CUT units in a frame) drops them all.
+ * EIDOS_NO_CAMCLEAR=1 leaves every wall drawn.
+ */
+#define CLEAR_CUT 3.0f
+#define CLEAR_KEEP 120u
+static float g_clr[G3D_BACKDROP_CLEAR][4], g_clr_eye[3];
+static uint32_t g_clr_when[G3D_BACKDROP_CLEAR], g_clr_now;
+static unsigned g_nclr, g_clr_at;
+static int g_clr_off = -1;
+
+static float dist3(const float *a, const float *b)
+{
+    const float x = a[0] - b[0], y = a[1] - b[1], z = a[2] - b[2];
+
+    return sqrtf(x * x + y * y + z * z);
+}
+
+static void camera_clearance(G3dBackdrop *out)
+{
+    float nearest = 1e30f, r;
+    unsigned i, n = 0;
+
+    if (g_clr_off < 0) {
+        g_clr_off = getenv("EIDOS_NO_CAMCLEAR") != NULL;
+    }
+    if (g_clr_off) {
+        return;
+    }
+    g_clr_now++;
+    for (i = 0; i < out->n_poke && i < G3D_BACKDROP_SPRITES; i++) {
+        if (out->poke[i][3] > 0.0f) {
+            const float d = dist3(out->poke[i], out->eye);
+
+            nearest = d < nearest ? d : nearest;
+        }
+    }
+    if (g_nclr > 0 && dist3(out->eye, g_clr_eye) > CLEAR_CUT) {
+        g_nclr = 0;                     /* (a cut: a new shot) */
+    }
+    memcpy(g_clr_eye, out->eye, sizeof g_clr_eye);
+    if (nearest > 1e29f) {
+        out->n_clear = 0;
+        return;
+    }
+    r = 0.5f * nearest;
+    /* the place now, always */
+    memcpy(out->clear[n], out->eye, 3 * sizeof(float));
+    out->clear[n][3] = r;
+    n++;
+    /* the places passed, while they are fresh (the newest first) */
+    for (i = 0; i < g_nclr && n < G3D_BACKDROP_CLEAR; i++) {
+        const unsigned k = (g_clr_at + G3D_BACKDROP_CLEAR - 1u - i) % G3D_BACKDROP_CLEAR;
+
+        if (g_clr_now - g_clr_when[k] <= CLEAR_KEEP) {
+            memcpy(out->clear[n], g_clr[k], 4 * sizeof(float));
+            n++;
+        }
+    }
+    out->n_clear = n;
+    /* this place, remembered once the camera has moved a unit from the last one kept */
+    if (g_nclr == 0 || dist3(out->eye, g_clr[(g_clr_at + G3D_BACKDROP_CLEAR - 1u) % G3D_BACKDROP_CLEAR]) > 1.0f) {
+        memcpy(g_clr[g_clr_at], out->eye, 3 * sizeof(float));
+        g_clr[g_clr_at][3] = r;
+        g_clr_when[g_clr_at] = g_clr_now;
+        g_clr_at = (g_clr_at + 1u) % G3D_BACKDROP_CLEAR;
+        g_nclr = g_nclr < G3D_BACKDROP_CLEAR ? g_nclr + 1u : g_nclr;
+    }
 }
 
 static void base_release(BvBase *b)
@@ -1171,6 +1254,8 @@ static void capture(uintptr_t eff, int warp)
              * only over the game's own pixels (plat_gl3d.c's stencil), so the
              * box may be loose: twice a Pokemon's size, a trainer taller */
             g_frame.poke[g_frame.n_poke][3] = pos <= 7u ? 12.0f : 18.0f;
+            g_frame.key[g_frame.n_poke][0] = rd32(mc, MCSSW_TEX);
+            g_frame.key[g_frame.n_poke][1] = rd32(mc, MCSSW_PLTT);
             if (pos <= 7u && g_n_sprites < 8u) {
                 g_sprites[g_n_sprites].pos = pos;
                 g_sprites[g_n_sprites].tex = rd32(mc, MCSSW_TEX);
@@ -1186,7 +1271,7 @@ static void capture(uintptr_t eff, int warp)
 
                 memcpy(in, g_frame.poke[g_frame.n_poke], sizeof in);
                 if (own_trainer_point((int)pos, in, at)) {
-                    continue;
+                    g_frame.poke[g_frame.n_poke][3] = -18.0f;   /* (never covered: G3dBackdrop.poke) */
                 }
             }
             g_frame.n_poke++;
