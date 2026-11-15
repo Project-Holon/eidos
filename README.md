@@ -52,6 +52,7 @@ The main story is playable, though crashes and visual glitches can still occur. 
 - **Hardware-Accelerated 3D:** High-resolution internal rendering with fog, edge marking, and anti-aliasing. Uses OpenGL by default, with native backends for Direct3D 12, Metal, and Vulkan.
 - **Display & Speed Controls:** Native refresh-rate VSync, instant text, and fast-forward (`Tab` for 2× speed, `Left Shift + Tab` for uncapped).
 - **Input & Settings:** Remappable keyboard, gamepad, and touch controls, with port settings integrated directly into the in-game Options menu.
+- **RetroAchievements:** Sign in from the launcher and the game tracks your achievements and reports them to your RetroAchievements profile, with an unlock banner and sound (`docs/retroachievements.md`). Softcore only.
 - **Mod Support:** Built-in mod loader supporting asset overrides, rule tweaks, and code mods (`docs/modding.md`), browsable from the launcher's mod index.
 - **Multiplayer & WFC (Experimental):** Co-op overworld presence, online Union Room trades and battles, and Mystery Gift distribution via a custom relay server.
 - **Spot Editor:** Tooling for authoring and previewing battle camera placements (`tools/spot-editor`).

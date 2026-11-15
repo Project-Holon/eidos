@@ -56,7 +56,7 @@ typedef struct SdlGpu {
     SDL_GPUShader *vs;          /* present.hlsl's: a quad in a rectangle */
     SDL_GPUGraphicsPipeline *p_present, *p_blur, *p_canvas, *p_comp3d, *p_world, *p_capture;
     SDL_GPUSampler *linear, *nearest;
-    SgPic screen[2], canvas, panel;
+    SgPic screen[2], canvas, panel, banner;
     SDL_GPUTexture *scene, *blur[2], *frozen;
     int scene_w, scene_h, blur_w, blur_h, blur1_w, blur1_h, frozen_w, frozen_h;
 
@@ -66,6 +66,7 @@ typedef struct SdlGpu {
     int frozen_ok;
     SDL_Rect ds;                /* the DS screen's rectangle             */
     SDL_Rect crect;             /* the canvas's rectangle, w 0: none     */
+    SDL_Rect brect;             /* the achievement banner's, w 0: none   */
     int bottom;                 /* window pixels the world leaves free   */
     float bd[3];                /* the backdrop beyond the DS screen     */
     SDL_Rect prect;             /* the panel's rectangle, w 0: none      */

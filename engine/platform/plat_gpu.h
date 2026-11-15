@@ -82,6 +82,10 @@ typedef struct EidosGpuOps {
     /* The present waits for the display's vblank (on), at most one frame
      * queued, or shows at once (off: the game's pacer alone times it). */
     void (*set_vsync)(EidosGpu *g, int on);
+
+    /* the achievement banner of the two-screen layouts: a blended picture
+     * over everything (rgba NULL keeps the picture, rect NULL hides it) */
+    void (*banner)(EidosGpu *g, const unsigned char *rgba, int w, int h, const SDL_Rect *rect);
 } EidosGpuOps;
 
 /* The head of every backend's state. */
@@ -176,5 +180,8 @@ static inline int eidos_gpu_read3d_1x(EidosGpu *g, const struct G3dSnapshot *sna
                                       unsigned char *out, int async)
 { return g->ops->read3d_1x(g, snap, out, async); }
 static inline void eidos_gpu_set_vsync(EidosGpu *g, int on) { g->ops->set_vsync(g, on); }
+static inline void eidos_gpu_banner(EidosGpu *g, const unsigned char *rgba, int w, int h,
+                                    const SDL_Rect *rect)
+{ g->ops->banner(g, rgba, w, h, rect); }
 
 #endif

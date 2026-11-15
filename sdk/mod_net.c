@@ -895,6 +895,71 @@ static int sock_connect_to(BwSock s, const char *host, u16 port)
 }
 
 /*
+ * A plain TCP connection for the RetroAchievements client (sdk/ra_http.c):
+ * the same sockets as the relay's, on every platform, so the module's own
+ * shim and the host's sockets in the wasm32 build are used the same way.
+ * Blocking calls: they run on the RA worker, never on the frame.
+ */
+struct BwNetConn {
+    BwSock s;
+};
+
+BwNetConn *bw_net_conn_open(const char *host, unsigned short port)
+{
+    BwNetConn *c = (BwNetConn *)calloc(1, sizeof(*c));
+
+    if (c == NULL) {
+        return NULL;
+    }
+    c->s = sock_new();
+    if (c->s == BW_SOCK_INVALID) {
+        free(c);
+        return NULL;
+    }
+    if (sock_connect_to(c->s, host, (u16)port) != 0) {
+        SOCK_CLOSE(c->s);
+        free(c);
+        return NULL;
+    }
+    return c;
+}
+
+/* Bytes sent, or -1. */
+int bw_net_conn_send(BwNetConn *c, const void *buf, int n)
+{
+    int rc = SOCK_SEND(c->s, (const char *)buf, n, 0);
+
+    return rc < 0 ? -1 : rc;
+}
+
+/* Bytes read, 0 when the other end closed it, -1 on an error, -2 when
+ * nothing came within `timeout_ms`. */
+int bw_net_conn_recv(BwNetConn *c, void *buf, int n, int timeout_ms)
+{
+    int rc;
+
+    if (timeout_ms > 0) {
+        rc = sock_wait(c->s, timeout_ms, 0);
+        if (rc < 0) {
+            return -1;
+        }
+        if (rc == 0) {
+            return -2;
+        }
+    }
+    rc = SOCK_RECV(c->s, (char *)buf, n, 0);
+    return rc < 0 ? -1 : rc;
+}
+
+void bw_net_conn_close(BwNetConn *c)
+{
+    if (c != NULL) {
+        SOCK_CLOSE(c->s);
+        free(c);
+    }
+}
+
+/*
  * The external control's listener: a socket bound to 127.0.0.1 and to
  * `port`, and nothing else.  The loopback address is the document's rule
  * ("The port listens on 127.0.0.1 only"), and it is this call that keeps

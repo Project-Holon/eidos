@@ -30,6 +30,10 @@ pub struct Settings {
     /// Whether test builds (GitHub pre-releases) are listed with the
     /// releases.  Off: the launcher never shows or offers them.
     pub pre_releases: bool,
+    /// The RetroAchievements account: the name and the token the site gave
+    /// at sign-in (src/ra.rs).  The password is never kept.
+    pub ra_user: String,
+    pub ra_token: String,
     /// The Black and White ROMs of launchers before the library: read once
     /// into `roms` (`take_old_roms`), then no longer written.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,6 +52,8 @@ impl Default for Settings {
             roms: Vec::new(),
             auto_update: true,
             pre_releases: false,
+            ra_user: String::new(),
+            ra_token: String::new(),
             rom_black: None,
             rom_white: None,
         }

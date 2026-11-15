@@ -18,6 +18,8 @@ static void op_present(EidosGpu *g, int out_w, int out_h, const SDL_Rect dst[2])
 { eidos_gl_present(gl(g), out_w, out_h, dst); }
 static int op_grab(EidosGpu *g, int out_w, int out_h, const SDL_Rect dst[2], unsigned char *rgb)
 { return eidos_gl_grab(gl(g), out_w, out_h, dst, rgb); }
+static void op_banner(EidosGpu *g, const unsigned char *rgba, int w, int h, const SDL_Rect *rect)
+{ eidos_gl_banner(gl(g), rgba, w, h, rect); }
 static void op_upload_panel(EidosGpu *g, const unsigned char *rgba, int w, int h)
 { eidos_gl_upload_panel(gl(g), rgba, w, h); }
 static void op_present_panel(EidosGpu *g, int out_w, int out_h, const SDL_Rect dst[2],
@@ -97,6 +99,7 @@ static const EidosGpuOps g_gl_ops = {
     op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
     op_read3d_1x,
     op_set_vsync,
+    op_banner,
 };
 
 EidosGpu *eidos_gpu_create_gl(SDL_Window *window)

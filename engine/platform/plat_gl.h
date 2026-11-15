@@ -24,6 +24,7 @@ void eidos_gl_destroy(EidosGl *gl);
 /* The presenter's third image: the run-status panel (engine/platform/
  * mod_panel_draw.h), drawn beside the game's screens. */
 void eidos_gl_upload_panel(EidosGl *gl, const unsigned char *rgba, int w, int h);
+void eidos_gl_banner(EidosGl *gl, const unsigned char *rgba, int w, int h, const SDL_Rect *rect);
 void eidos_gl_present_panel(EidosGl *gl, int out_w, int out_h, const SDL_Rect dst[2],
                             const SDL_Rect *panel);
 /* SDL_GL_SwapWindow, its vblank wait counted as the pacing's (prof.h). */
