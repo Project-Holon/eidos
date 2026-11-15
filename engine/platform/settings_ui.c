@@ -392,7 +392,7 @@ static const ValueName k_choice_names[] = {
 #define HELP_RA_NONE2   "is listed here."
 #define HELP_RA_STATUS1 "Sign in from the launcher:"
 #define HELP_RA_STATUS2 "Settings, RetroAchievements."
-#define STR_RA_SIGNEDOUT "Sign in from the launcher"
+#define STR_RA_SIGNEDOUT "Use launcher"
 #define HELP_RA_SIGNOUT1 "Forget this sign-in on"
 #define HELP_RA_SIGNOUT2 "this device.  A: go"
 #define STR_ON          "On"

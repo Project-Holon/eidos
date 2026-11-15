@@ -359,6 +359,15 @@
     .sec-downloads {
       grid-column: 2;
     }
+    /* The right-hand sections keep the height of their content: the page's
+       blanket `min-height: 0` let the grid squeeze their rows when the window
+       was short, and the next section then drew over this one. The page
+       scrolls instead. */
+    .sec-appearance,
+    .sec-retroachievements,
+    .sec-updates {
+      min-height: min-content;
+    }
   }
   .page {
     max-width: 40rem;
