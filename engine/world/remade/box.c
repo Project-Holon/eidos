@@ -18,6 +18,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "remade.h"
 
@@ -447,10 +448,813 @@ static void box_slab(const RmBatch *bt, const RmTex *tex, unsigned ntex, const c
     }
 }
 
+/* `close=1`: a box the map draws with some of its sides only (a low wooden partition by a doorway: its top and one
+ * long side): each side it lacks (west, east, north, south, top; the bottom stands on the floor) is added over the
+ * box's whole side, in the picture of a side it has, the opposite side's if it has it, else a neighbour's, carried
+ * on along the side's own across (as `bandw` carries a wall's picture round a corner), in that side's light. */
+/* close=2: the chair's plain frame (`on`: a pixel of it found), for the faces made at its back and over its open
+ * ends; `ax`, `front`: the axis the chair faces along and its front's sign (from the back rest toward the seat);
+ * `caps`: the faces box_close_side makes now are such ends. */
+static struct {
+    int on, ax, front, caps;
+    double uv[2];
+    unsigned char rgb[3];
+} g_plain;
+
+/* The box lo..hi of these faces: its side `only` (0 west, 1 east, 2 north, 3 south, 4 top; -1: every side) drawn over
+ * when its faces do not cover it. */
+static void box_close_side(const RmBatch *b, unsigned nb, const double lo[3], const double hi[3], int only, RmOut *out)
+{
+    static const int sax[5] = { 0, 0, 2, 2, 1 }, ssg[5] = { -1, 1, -1, 1, 1 };
+    double cover[5] = { 0, 0, 0, 0, 0 }, best[5] = { 0, 0, 0, 0, 0 };
+    const RmTri *src[5] = { NULL, NULL, NULL, NULL, NULL };
+    unsigned bi, i;
+    int s, k;
+
+    /* the sides it has: their faces' area, and the biggest face (its picture) */
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && b[bi].tex >= 0 && i < b[bi].n; i++) {
+            const RmTri *t = &b[bi].tri[i];
+            double e1[3], e2[3], n[3], a;
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = (double)t->p[1][k] - t->p[0][k];
+                e2[k] = (double)t->p[2][k] - t->p[0][k];
+            }
+            rm_cross(e1, e2, n);
+            a = rm_norm(n) / 2.0;
+            for (s = 0; s < 5 && a > 1e-6; s++) {
+                const double plane = ssg[s] > 0 ? hi[sax[s]] : lo[sax[s]];
+
+                if (n[sax[s]] * ssg[s] > 0.98 && fabs(t->p[0][sax[s]] - plane) < 0.2 && fabs(t->p[1][sax[s]] - plane) < 0.2 &&
+                    fabs(t->p[2][sax[s]] - plane) < 0.2) {
+                    cover[s] += a;
+                    if (a > best[s]) {
+                        best[s] = a;
+                        src[s] = t;
+                    }
+                }
+            }
+        }
+    }
+    for (s = 0; s < 5; s++) {
+        const int ax = sax[s], h = ax == 0 ? 2 : 0, o2 = ax == 1 ? 2 : 1;    /* (the side's across, and its up or depth) */
+        const double side = (hi[h] - lo[h]) * (hi[o2] - lo[o2]);
+        const RmTri *t = NULL;
+        int sh, so;
+
+        if ((only >= 0 && s != only) || side < 1.0 || cover[s] >= 0.9 * side) {
+            continue;
+        }
+        /* its picture: the opposite side's, else the biggest neighbour's (a top only from a top) */
+        if (ax != 1 && src[s ^ 1] != NULL) {
+            t = src[s ^ 1];
+        }
+        if (ax != 1 && t == NULL) {
+            double big = 0.0;
+
+            for (k = 0; k < 4; k++) {
+                if (src[k] != NULL && best[k] > big) {
+                    big = best[k];
+                    t = src[k];
+                }
+            }
+        }
+        if (t == NULL) {
+            continue;
+        }
+        {
+            /* the picture's place as a function of (across, up) on the source face: its own across (z for a west or
+             * east face, x for a north or south one), up y; a top: (x, z) */
+            double sn[3], e1[3], e2[3], m[2][3], q[4][3], uv[4][2], out_n[3] = { 0, 0, 0 };
+            double x0, y0, x1, y1, x2, y2, det;
+            int j;
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = (double)t->p[1][k] - t->p[0][k];
+                e2[k] = (double)t->p[2][k] - t->p[0][k];
+            }
+            rm_cross(e1, e2, sn);
+            rm_norm(sn);
+            sh = fabs(sn[1]) > 0.9 ? 0 : fabs(sn[0]) > 0.9 ? 2 : 0;
+            so = fabs(sn[1]) > 0.9 ? 2 : 1;
+            x0 = t->p[0][sh]; y0 = t->p[0][so];
+            x1 = t->p[1][sh] - x0; y1 = t->p[1][so] - y0;
+            x2 = t->p[2][sh] - x0; y2 = t->p[2][so] - y0;
+            det = x1 * y2 - x2 * y1;
+            if (fabs(det) < 1e-9) {
+                continue;
+            }
+            for (k = 0; k < 2; k++) {
+                const double d1 = (double)t->uv[1][k] - t->uv[0][k], d2 = (double)t->uv[2][k] - t->uv[0][k];
+
+                m[k][0] = (d1 * y2 - d2 * y1) / det;
+                m[k][1] = (d2 * x1 - d1 * x2) / det;
+                m[k][2] = t->uv[0][k] - m[k][0] * x0 - m[k][1] * y0;
+            }
+            for (j = 0; j < 4; j++) {
+                const double a = (j == 1 || j == 2) ? hi[h] : lo[h], u = j >= 2 ? hi[o2] : lo[o2];
+
+                q[j][ax] = ssg[s] > 0 ? hi[ax] : lo[ax];
+                q[j][h] = a;
+                q[j][o2] = u;
+                uv[j][0] = m[0][0] * a + m[0][1] * u + m[0][2];
+                uv[j][1] = m[1][0] * a + m[1][1] * u + m[1][2];
+            }
+            out_n[ax] = ssg[s];
+            {
+                double f1[3], f2[3], fn[3];
+
+                for (k = 0; k < 3; k++) {
+                    f1[k] = q[1][k] - q[0][k];
+                    f2[k] = q[2][k] - q[0][k];
+                }
+                rm_cross(f1, f2, fn);
+                const unsigned char *rgb = g_plain.caps && g_plain.on ? g_plain.rgb : t->rgb;
+
+                if (g_plain.caps && g_plain.on) {
+                    for (j = 0; j < 4; j++) {
+                        uv[j][0] = g_plain.uv[0];
+                        uv[j][1] = g_plain.uv[1];
+                    }
+                }
+                if (rm_dot(fn, out_n) >= 0.0) {
+                    rm_tri(out, t->id, -1, 1, rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+                    rm_tri(out, t->id, -1, 1, rgb, q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
+                } else {
+                    rm_tri(out, t->id, -1, 1, rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+                    rm_tri(out, t->id, -1, 1, rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
+                }
+            }
+        }
+    }
+}
+
+static void box_close(const RmBatch *b, unsigned nb, RmOut *out)
+{
+    double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 };
+    unsigned bi, i;
+    int k;
+
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+            for (k = 0; k < 9; k++) {
+                const double v = b[bi].tri[i].p[k / 3][k % 3];
+
+                lo[k % 3] = v < lo[k % 3] ? v : lo[k % 3];
+                hi[k % 3] = v > hi[k % 3] ? v : hi[k % 3];
+            }
+        }
+    }
+    if (lo[0] <= hi[0]) {
+        box_close_side(b, nb, lo, hi, -1, out);
+    }
+}
+
+/*
+ * `close=2`: a thing built of boxes (a chair: its back, its seat, four legs) that the map draws from the field's side
+ * only: each box has its faces toward the field camera and the light, the others are not there.  The boxes are read
+ * from the faces: a face along an axis and a face across it that meets its edge give a box (the face, and the other
+ * face's depth).  For each box, a pair of its opposite sides (west and east, north and south) of which one is drawn
+ * and the other is not: the drawn side's faces, its slanted corners with them, turned over through the box's middle
+ * (a chair is alike left and right; a leg front and back).  A side still open that is not inside another box (a
+ * seat's front edge) is drawn over in the picture of the box's side next to it.
+ */
+#define CB_MAX 64
+
+typedef struct { double lo[3], hi[3]; } CBox;
+
+static double cb_cover(const RmBatch *b, unsigned nb, const CBox *x, int ax, int sg)
+{
+    const int h = ax == 0 ? 2 : 0, o = ax == 1 ? 2 : 1;
+    const double plane = sg > 0 ? x->hi[ax] : x->lo[ax], side = (x->hi[h] - x->lo[h]) * (x->hi[o] - x->lo[o]);
+    double a = 0.0;
+    unsigned bi, i;
+    int k;
+
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+            const RmTri *t = &b[bi].tri[i];
+            double e1[3], e2[3], n[3], ar;
+            int in = 1;
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = (double)t->p[1][k] - t->p[0][k];
+                e2[k] = (double)t->p[2][k] - t->p[0][k];
+            }
+            rm_cross(e1, e2, n);
+            ar = rm_norm(n) / 2.0;
+            if (ar < 1e-6 || n[ax] * sg < 0.98) {
+                continue;
+            }
+            for (k = 0; k < 3 && in; k++) {
+                in = fabs(t->p[k][ax] - plane) < 0.2 && t->p[k][h] >= x->lo[h] - 0.2 && t->p[k][h] <= x->hi[h] + 0.2 &&
+                     t->p[k][o] >= x->lo[o] - 0.2 && t->p[k][o] <= x->hi[o] + 0.2;
+            }
+            a += in ? ar : 0.0;
+        }
+    }
+    return side > 1e-6 ? a / side : 1.0;
+}
+
+/* close=2: the faces of `b` inside box x leaning to side sg of axis ax (on that side, or slanted out from it) turned
+ * over through the box's middle along ax; `onside`: an axis face only on the box's side itself.  A face already turned
+ * along ax is not turned again (`done`: id, axis pairs). */
+/* Is there a face of the model at p looking along axis ax the way sg (its plane through p, p within its box)? */
+static int pieces_has(const RmBatch *b, unsigned nb, const double p[3], int ax, int sg)
+{
+    unsigned bi, i;
+    int k;
+
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+            const RmTri *t = &b[bi].tri[i];
+            double e1[3], e2[3], n[3];
+            int in = 1;
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = (double)t->p[1][k] - t->p[0][k];
+                e2[k] = (double)t->p[2][k] - t->p[0][k];
+            }
+            rm_cross(e1, e2, n);
+            if (rm_norm(n) < 1e-9 || n[ax] * sg < 0.98 || fabs(t->p[0][ax] - p[ax]) > 0.2) {
+                continue;
+            }
+            for (k = 0; k < 3 && in; k++) {
+                if (k != ax) {
+                    in = p[k] >= fmin(fmin(t->p[0][k], t->p[1][k]), t->p[2][k]) - 0.05 &&
+                         p[k] <= fmax(fmax(t->p[0][k], t->p[1][k]), t->p[2][k]) + 0.05;
+                }
+            }
+            if (in) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static void pieces_turn(const RmBatch *b, unsigned nb, const CBox *x, int ax, int sg, int onside, unsigned *done,
+                        unsigned *ndone, RmOut *out)
+{
+    const double mid = (x->lo[ax] + x->hi[ax]) / 2.0;
+    unsigned bi, i, j, w;
+    int k;
+
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+            const RmTri *t = &b[bi].tri[i];
+            double e1[3], e2[3], n[3], p[3][3], uv[3][2];
+            int in = 1, seen = 0;
+
+            for (k = 0; k < 9 && in; k++) {
+                in = t->p[k / 3][k % 3] >= x->lo[k % 3] - 0.2 && t->p[k / 3][k % 3] <= x->hi[k % 3] + 0.2;
+            }
+            if (!in) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                e1[k] = (double)t->p[1][k] - t->p[0][k];
+                e2[k] = (double)t->p[2][k] - t->p[0][k];
+            }
+            rm_cross(e1, e2, n);
+            if (rm_norm(n) < 1e-9 || n[ax] * sg < 0.3) {
+                continue;
+            }
+            if (onside && n[ax] * sg < 0.98 * rm_norm(n)) {
+                continue;               /* (box by box: straight faces only; a slanted corner is the thing's own) */
+            }
+            if (onside && n[ax] * sg > 0.98 && fabs(t->p[0][ax] - (sg > 0 ? x->hi[ax] : x->lo[ax])) > 0.2) {
+                continue;               /* (an axis face inside the box, not on its side) */
+            }
+            for (w = 0; w < *ndone && !seen; w++) {
+                seen = done[2u * w] == t->id && done[2u * w + 1u] == (unsigned)ax;
+            }
+            if (seen) {
+                continue;
+            }
+            {
+                /* (only where the other side is not drawn) */
+                double c[3];
+
+                for (k = 0; k < 3; k++) {
+                    c[k] = ((double)t->p[0][k] + t->p[1][k] + t->p[2][k]) / 3.0;
+                }
+                c[ax] = 2.0 * mid - c[ax];
+                if (fabs(n[ax]) > 0.98 * rm_norm(n) && pieces_has(b, nb, c, ax, -sg)) {
+                    continue;
+                }
+            }
+            done[2u * *ndone] = t->id;
+            done[2u * *ndone + 1u] = (unsigned)ax;
+            (*ndone)++;
+            {
+                /* (a face made at the chair's back: its plain frame) */
+                const int back = g_plain.on && ax == g_plain.ax && -sg == -g_plain.front;
+
+                for (j = 0; j < 3u; j++) {
+                    const unsigned s0 = j == 0 ? 0u : 3u - j;     /* (corners the other way round: it looks out) */
+
+                    for (k = 0; k < 3; k++) {
+                        p[j][k] = t->p[s0][k];
+                    }
+                    p[j][ax] = 2.0 * mid - t->p[s0][ax];
+                    uv[j][0] = back ? g_plain.uv[0] : t->uv[s0][0];
+                    uv[j][1] = back ? g_plain.uv[1] : t->uv[s0][1];
+                }
+                rm_tri(out, t->id, -1, 1, back ? g_plain.rgb : t->rgb, p[0], p[1], p[2], uv[0], uv[1], uv[2], 0, 0);
+            }
+        }
+    }
+}
+
+/* close=2: is there a face not lying level (upright, or a slanted corner; the model's in b, or one made from `from` on in out) through point q, its plane
+ * within 0.15 of q and q within its corners' box? */
+static int pieces_wall_at(const RmBatch *b, unsigned nb, const RmOut *out, unsigned from, const double q[3])
+{
+    unsigned bi, i;
+    int k;
+
+    for (bi = 0; bi <= nb; bi++) {
+        const unsigned n = bi < nb ? (b[bi].bb ? 0u : b[bi].n) : out->ntri - from;
+
+        for (i = 0; i < n; i++) {
+            const float (*pp)[3] = bi < nb ? b[bi].tri[i].p : (const float (*)[3])out->tri[from + i].p;
+            double e1[3], e2[3], nn[3], d[3], len;
+            int in = 1;
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = (double)pp[1][k] - pp[0][k];
+                e2[k] = (double)pp[2][k] - pp[0][k];
+                d[k] = q[k] - pp[0][k];
+            }
+            rm_cross(e1, e2, nn);
+            len = rm_norm(nn);
+            if (len < 1e-9 || fabs(nn[1]) > 0.9 || fabs(rm_dot(d, nn)) > 0.15) {   /* (upright or slanted: not a top) */
+                continue;
+            }
+            for (k = 0; k < 3 && in; k++) {
+                in = q[k] >= fmin(fmin(pp[0][k], pp[1][k]), pp[2][k]) - 0.1 && q[k] <= fmax(fmax(pp[0][k], pp[1][k]), pp[2][k]) + 0.1;
+            }
+            if (in) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* close=2: the top sheets' open edges closed down to their boxes' bottoms */
+static void pieces_skirt(const RmBatch *b, unsigned nb, const CBox *bx, unsigned nbx, RmOut *out, unsigned from)
+{
+    typedef struct { double a[3], c[3], mid[3]; unsigned src; unsigned char rgb[3]; int uses; } Edge;
+    Edge *ed;
+    unsigned ne = 0, cap = 0, bi, i, j, q;
+    int k;
+
+    for (bi = 0; bi < nb; bi++) {
+        cap += b[bi].bb ? 0u : b[bi].n * 3u;
+    }
+    ed = (Edge *)calloc(cap + 1u, sizeof *ed);
+    if (ed == NULL) {
+        out->fail = 1;
+        return;
+    }
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+            const RmTri *t = &b[bi].tri[i];
+            double e1[3], e2[3], n[3], cen[3];
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = (double)t->p[1][k] - t->p[0][k];
+                e2[k] = (double)t->p[2][k] - t->p[0][k];
+                cen[k] = ((double)t->p[0][k] + t->p[1][k] + t->p[2][k]) / 3.0;
+            }
+            rm_cross(e1, e2, n);
+            if (rm_norm(n) < 1e-9 || n[1] < 0.98) {
+                continue;
+            }
+            for (j = 0; j < 3u; j++) {
+                const float *pa = t->p[j], *pc = t->p[(j + 1u) % 3u];
+                unsigned w;
+                int found = 0;
+
+                for (w = 0; w < ne && !found; w++) {
+                    if ((fabs(ed[w].a[0] - pc[0]) < 0.05 && fabs(ed[w].a[1] - pc[1]) < 0.05 && fabs(ed[w].a[2] - pc[2]) < 0.05 &&
+                         fabs(ed[w].c[0] - pa[0]) < 0.05 && fabs(ed[w].c[1] - pa[1]) < 0.05 && fabs(ed[w].c[2] - pa[2]) < 0.05) ||
+                        (fabs(ed[w].a[0] - pa[0]) < 0.05 && fabs(ed[w].a[1] - pa[1]) < 0.05 && fabs(ed[w].a[2] - pa[2]) < 0.05 &&
+                         fabs(ed[w].c[0] - pc[0]) < 0.05 && fabs(ed[w].c[1] - pc[1]) < 0.05 && fabs(ed[w].c[2] - pc[2]) < 0.05)) {
+                        ed[w].uses++;
+                        found = 1;
+                    }
+                }
+                if (!found && ne < cap) {
+                    for (k = 0; k < 3; k++) {
+                        ed[ne].a[k] = pa[k];
+                        ed[ne].c[k] = pc[k];
+                        ed[ne].mid[k] = cen[k];
+                    }
+                    ed[ne].src = t->id;
+                    memcpy(ed[ne].rgb, t->rgb, 3u);
+                    ed[ne].uses = 1;
+                    ne++;
+                }
+            }
+        }
+    }
+    for (i = 0; i < ne; i++) {
+        double m[3], qd[3], out_n[3], bottom = 1e30, p4[4][3], uv[2];
+        const Edge *e = &ed[i];
+
+        if (e->uses != 1) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            m[k] = (e->a[k] + e->c[k]) / 2.0;
+        }
+        /* (looking out: across the edge, away from its triangle's middle) */
+        out_n[0] = -(e->c[2] - e->a[2]);
+        out_n[1] = 0.0;
+        out_n[2] = e->c[0] - e->a[0];
+        if (rm_norm(out_n) < 1e-6) {
+            continue;
+        }
+        if ((m[0] - e->mid[0]) * out_n[0] + (m[2] - e->mid[2]) * out_n[2] < 0.0) {
+            out_n[0] = -out_n[0];
+            out_n[2] = -out_n[2];
+        }
+        qd[0] = m[0] - out_n[0] * 0.05;
+        qd[1] = m[1] - 0.6;
+        qd[2] = m[2] - out_n[2] * 0.05;
+        if (pieces_wall_at(b, nb, out, from, qd)) {
+            continue;
+        }
+        /* (down to the bottom of the box under the top here) */
+        for (q = 0; q < nbx; q++) {
+            if (fabs(bx[q].hi[1] - m[1]) < 0.3 && m[0] >= bx[q].lo[0] - 3.0 && m[0] <= bx[q].hi[0] + 3.0 &&
+                m[2] >= bx[q].lo[2] - 3.0 && m[2] <= bx[q].hi[2] + 3.0) {
+                bottom = fmin(bottom, bx[q].lo[1]);
+            }
+        }
+        if (bottom > m[1] - 0.2 || bottom > 1e29) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            p4[0][k] = e->a[k];
+            p4[1][k] = e->c[k];
+            p4[2][k] = e->c[k];
+            p4[3][k] = e->a[k];
+        }
+        p4[2][1] = bottom;
+        p4[3][1] = bottom;
+        uv[0] = g_plain.on ? g_plain.uv[0] : 0.0;
+        uv[1] = g_plain.on ? g_plain.uv[1] : 0.0;
+        {
+            double f1[3], f2[3], fn[3];
+            const unsigned char *rgb = g_plain.on ? g_plain.rgb : e->rgb;
+
+            for (k = 0; k < 3; k++) {
+                f1[k] = p4[1][k] - p4[0][k];
+                f2[k] = p4[2][k] - p4[0][k];
+            }
+            rm_cross(f1, f2, fn);
+            if (rm_dot(fn, out_n) >= 0.0) {
+                rm_tri(out, e->src, -1, 1, rgb, p4[0], p4[1], p4[2], uv, uv, uv, 0, 0);
+                rm_tri(out, e->src, -1, 1, rgb, p4[0], p4[2], p4[3], uv, uv, uv, 0, 0);
+            } else {
+                rm_tri(out, e->src, -1, 1, rgb, p4[0], p4[2], p4[1], uv, uv, uv, 0, 0);
+                rm_tri(out, e->src, -1, 1, rgb, p4[0], p4[3], p4[2], uv, uv, uv, 0, 0);
+            }
+        }
+    }
+    free(ed);
+}
+
+static void box_pieces(const RmBatch *b, unsigned nb, int sym, RmOut *out)
+{
+    CBox bx[CB_MAX];
+    unsigned nbx = 0, bi, i, bj, j, q, *done = NULL, ndone = 0, total = 0;
+    const unsigned made0 = out->ntri;
+    int k, ax;
+    double all_lo[3] = { 1e30, 1e30, 1e30 }, all_hi[3] = { -1e30, -1e30, -1e30 };
+
+    /* 1. the boxes: an axis face, and a face across it meeting one of its edges, whose span along the first face's
+     *    axis starts at the first face's plane */
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+            const RmTri *t = &b[bi].tri[i];
+            double e1[3], e2[3], n[3], lo[3], hi[3];
+            int a = -1;
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = (double)t->p[1][k] - t->p[0][k];
+                e2[k] = (double)t->p[2][k] - t->p[0][k];
+                lo[k] = fmin(fmin(t->p[0][k], t->p[1][k]), t->p[2][k]);
+                hi[k] = fmax(fmax(t->p[0][k], t->p[1][k]), t->p[2][k]);
+            }
+            rm_cross(e1, e2, n);
+            if (rm_norm(n) < 1e-9) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                a = fabs(n[k]) > 0.98 ? k : a;
+            }
+            if (a < 0) {
+                continue;
+            }
+            for (bj = 0; bj < nb; bj++) {
+                for (j = 0; !b[bj].bb && j < b[bj].n; j++) {
+                    const RmTri *u = &b[bj].tri[j];
+                    double f1[3], f2[3], m[3], ulo[3], uhi[3], far;
+                    int c = -1, edge, other;
+
+                    for (k = 0; k < 3; k++) {
+                        f1[k] = (double)u->p[1][k] - u->p[0][k];
+                        f2[k] = (double)u->p[2][k] - u->p[0][k];
+                        ulo[k] = fmin(fmin(u->p[0][k], u->p[1][k]), u->p[2][k]);
+                        uhi[k] = fmax(fmax(u->p[0][k], u->p[1][k]), u->p[2][k]);
+                    }
+                    rm_cross(f1, f2, m);
+                    if (rm_norm(m) < 1e-9) {
+                        continue;
+                    }
+                    for (k = 0; k < 3; k++) {
+                        c = fabs(m[k]) > 0.98 ? k : c;
+                    }
+                    if (c < 0 || c == a) {
+                        continue;
+                    }
+                    /* (u's plane is an edge of t, across c; u's span along a starts at t's plane) */
+                    edge = fabs(ulo[c] - lo[c]) < 0.2 || fabs(ulo[c] - hi[c]) < 0.2;
+                    if (!edge) {
+                        continue;
+                    }
+                    other = 3 - a - c;
+                    if (uhi[other] < lo[other] + 0.2 || ulo[other] > hi[other] - 0.2) {
+                        continue;
+                    }
+                    if (fabs(ulo[a] - lo[a]) < 0.2 && uhi[a] > lo[a] + 0.5) {
+                        far = uhi[a];
+                    } else if (fabs(uhi[a] - lo[a]) < 0.2 && ulo[a] < lo[a] - 0.5) {
+                        far = ulo[a];
+                    } else {
+                        continue;
+                    }
+                    {
+                        CBox nbox;
+                        int dup = 0;
+
+                        for (k = 0; k < 3; k++) {
+                            nbox.lo[k] = k == a ? fmin(lo[a], far) : k == c ? fmin(lo[c], ulo[c]) : lo[k];
+                            nbox.hi[k] = k == a ? fmax(lo[a], far) : k == c ? fmax(hi[c], uhi[c]) : hi[k];
+                        }
+                        /* (t is one triangle of its face: the box takes the face's whole span along the third axis
+                         * from u, which runs along it) */
+                        nbox.lo[other] = fmin(nbox.lo[other], ulo[other]);
+                        nbox.hi[other] = fmax(nbox.hi[other], uhi[other]);
+                        for (q = 0; q < nbx && !dup; q++) {
+                            int same = 1;
+
+                            for (k = 0; k < 3; k++) {
+                                same &= fabs(bx[q].lo[k] - nbox.lo[k]) < 0.3 && fabs(bx[q].hi[k] - nbox.hi[k]) < 0.3;
+                            }
+                            dup = same;
+                        }
+                        if (!dup && nbx < CB_MAX) {
+                            bx[nbx++] = nbox;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /* (a box inside a bigger one is a piece of it: one triangle's pairing) */
+    for (q = 0; q < nbx; q++) {
+        for (i = 0; i < nbx; i++) {
+            int inside = i != q;
+
+            for (k = 0; k < 3 && inside; k++) {
+                inside = bx[q].lo[k] >= bx[i].lo[k] - 0.3 && bx[q].hi[k] <= bx[i].hi[k] + 0.3;
+            }
+            if (inside && !(fabs(bx[q].lo[0] - bx[i].lo[0]) < 0.3 && fabs(bx[q].hi[0] - bx[i].hi[0]) < 0.3 &&
+                            fabs(bx[q].lo[1] - bx[i].lo[1]) < 0.3 && fabs(bx[q].hi[1] - bx[i].hi[1]) < 0.3 &&
+                            fabs(bx[q].lo[2] - bx[i].lo[2]) < 0.3 && fabs(bx[q].hi[2] - bx[i].hi[2]) < 0.3)) {
+                bx[q] = bx[--nbx];
+                q--;
+                break;
+            }
+        }
+    }
+    if (getenv("RM_DEBUG") != NULL) {
+        for (q = 0; q < nbx; q++) {
+            fprintf(stderr, "box: %.1f..%.1f %.1f..%.1f %.1f..%.1f\n", bx[q].lo[0], bx[q].hi[0], bx[q].lo[1], bx[q].hi[1],
+                    bx[q].lo[2], bx[q].hi[2]);
+        }
+    }
+    for (bi = 0; bi < nb; bi++) {
+        for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+            for (k = 0; k < 9; k++) {
+                all_lo[k % 3] = fmin(all_lo[k % 3], b[bi].tri[i].p[k / 3][k % 3]);
+                all_hi[k % 3] = fmax(all_hi[k % 3], b[bi].tri[i].p[k / 3][k % 3]);
+            }
+            total++;
+        }
+    }
+    done = (unsigned *)malloc((total + 1u) * 2u * sizeof *done);
+    if (done == NULL) {
+        out->fail = 1;
+        return;
+    }
+    /* the chair's front (from its back rest, the highest box, toward the rest) and its plain frame (a pixel of the
+     * biggest face on its left or right side) */
+    memset(&g_plain, 0, sizeof g_plain);
+    if ((sym == 0 || sym == 2) && nbx > 0) {
+        const int oth = 2 - sym;
+        double best = 0.0, top = -1e30, bmid = 0.0;
+
+        for (q = 0; q < nbx; q++) {
+            if (bx[q].hi[1] > top + 0.3 || (fabs(bx[q].hi[1] - top) <= 0.3 && bx[q].hi[oth] - bx[q].lo[oth] < 0.0)) {
+                top = bx[q].hi[1];
+                bmid = (bx[q].lo[oth] + bx[q].hi[oth]) / 2.0;
+            }
+        }
+        g_plain.ax = oth;
+        g_plain.front = (all_lo[oth] + all_hi[oth]) / 2.0 >= bmid ? 1 : -1;
+        for (bi = 0; bi < nb; bi++) {
+            for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+                const RmTri *t = &b[bi].tri[i];
+                double e1[3], e2[3], n[3], a;
+
+                for (k = 0; k < 3; k++) {
+                    e1[k] = (double)t->p[1][k] - t->p[0][k];
+                    e2[k] = (double)t->p[2][k] - t->p[0][k];
+                }
+                rm_cross(e1, e2, n);
+                a = rm_norm(n);
+                if (a > best && fabs(n[sym]) > 0.98) {
+                    best = a;
+                    g_plain.on = 1;
+                    g_plain.uv[0] = ((double)t->uv[0][0] + t->uv[1][0] + t->uv[2][0]) / 3.0;
+                    g_plain.uv[1] = ((double)t->uv[0][1] + t->uv[1][1] + t->uv[2][1]) / 3.0;
+                    memcpy(g_plain.rgb, t->rgb, 3u);
+                }
+            }
+        }
+    }
+    /* 2a. across its symmetry: the whole thing is one box, its drawn side turned over through its middle */
+    if (sym == 0 || sym == 2) {
+        CBox whole;
+        double ap = 0.0, an = 0.0;
+
+        memcpy(whole.lo, all_lo, sizeof whole.lo);
+        memcpy(whole.hi, all_hi, sizeof whole.hi);
+        for (bi = 0; bi < nb; bi++) {
+            for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+                double e1[3], e2[3], n[3];
+
+                for (k = 0; k < 3; k++) {
+                    e1[k] = (double)b[bi].tri[i].p[1][k] - b[bi].tri[i].p[0][k];
+                    e2[k] = (double)b[bi].tri[i].p[2][k] - b[bi].tri[i].p[0][k];
+                }
+                rm_cross(e1, e2, n);
+                ap += n[sym] > 0.98 * rm_norm(n) ? 1.0 : 0.0;
+                an += n[sym] < -0.98 * rm_norm(n) ? 1.0 : 0.0;
+            }
+        }
+        /* (every face leaning to the side drawn the more, wherever it is: a left leg's outer and inner sides make the
+         * right leg's) */
+        pieces_turn(b, nb, &whole, sym, ap >= an ? 1 : -1, 0, done, &ndone, out);
+        pieces_turn(b, nb, &whole, sym, ap >= an ? -1 : 1, 0, done, &ndone, out);
+    }
+    /* 2b. along the other axis, box by box: a side drawn and its opposite not, the drawn side's faces (and the
+     *     slanted ones leaning that way) turned over through the box's middle */
+    for (ax = 0; ax < 3; ax += 2) {
+        CBox mg[CB_MAX];
+        unsigned nmg = nbx, r, changed = 1;
+
+        if (ax == sym) {
+            continue;
+        }
+        memcpy(mg, bx, nbx * sizeof *mg);
+        while (changed) {
+            changed = 0;
+            for (q = 0; q < nmg && !changed; q++) {
+                for (r = q + 1; r < nmg && !changed; r++) {
+                    int join = fabs(mg[q].lo[ax] - mg[r].lo[ax]) < 0.3 && fabs(mg[q].hi[ax] - mg[r].hi[ax]) < 0.3;
+
+                    for (k = 0; k < 3 && join; k++) {
+                        join = k == ax || (mg[q].lo[k] <= mg[r].hi[k] + 0.3 && mg[r].lo[k] <= mg[q].hi[k] + 0.3);
+                    }
+                    if (join) {
+                        for (k = 0; k < 3; k++) {
+                            mg[q].lo[k] = fmin(mg[q].lo[k], mg[r].lo[k]);
+                            mg[q].hi[k] = fmax(mg[q].hi[k], mg[r].hi[k]);
+                        }
+                        mg[r] = mg[--nmg];
+                        changed = 1;
+                    }
+                }
+            }
+        }
+        for (q = 0; q < nmg; q++) {
+            const double cp = cb_cover(b, nb, &mg[q], ax, 1), cn = cb_cover(b, nb, &mg[q], ax, -1);
+            const int sg = cp > 0.2 && cp > 2.0 * cn ? 1 : cn > 0.2 && cn > 2.0 * cp ? -1 : 0;
+
+            if (getenv("RM_DEBUG") != NULL) {
+                fprintf(stderr, "box: axis %d: %.1f..%.1f %.1f..%.1f %.1f..%.1f cover %.2f %.2f\n", ax, mg[q].lo[0], mg[q].hi[0],
+                        mg[q].lo[1], mg[q].hi[1], mg[q].lo[2], mg[q].hi[2], cp, cn);
+            }
+            if (sg != 0) {
+                pieces_turn(b, nb, &mg[q], ax, sg, 1, done, &ndone, out);
+            }
+        }
+    }
+    /* 3. a side still open and not against another box: drawn over in its neighbour's picture (a chair's: its plain
+     *    frame) */
+    g_plain.caps = 1;
+    for (q = 0; q < nbx; q++) {
+        RmBatch one;
+        CBox wide = bx[q];
+        const CBox *x = &wide;
+        static const int sax[4] = { 0, 0, 2, 2 }, ssg[4] = { -1, 1, -1, 1 };
+        int s;
+
+        if (sym == 0 || sym == 2) {
+            const double mid = (all_lo[sym] + all_hi[sym]) / 2.0, l = wide.lo[sym], h = wide.hi[sym];
+
+            wide.lo[sym] = fmin(l, 2.0 * mid - h);
+            wide.hi[sym] = fmax(h, 2.0 * mid - l);
+        }
+
+        for (s = 0; s < 4; s++) {
+            const int a = sax[s], h = a == 0 ? 2 : 0;
+            double c[3];
+            int covered = 0;
+            unsigned r;
+
+            if (a == sym || cb_cover(b, nb, x, a, ssg[s]) >= 0.1 || cb_cover(b, nb, x, a, -ssg[s]) >= 0.1) {
+                continue;               /* (drawn, or its opposite drawn: turned over in step 2) */
+            }
+            c[a] = ssg[s] > 0 ? x->hi[a] + 0.3 : x->lo[a] - 0.3;
+            c[h] = (x->lo[h] + x->hi[h]) / 2.0;
+            c[1] = (x->lo[1] + x->hi[1]) / 2.0;
+            for (r = 0; r < nbx && !covered; r++) {
+                covered = r != q && c[0] >= bx[r].lo[0] && c[0] <= bx[r].hi[0] && c[1] >= bx[r].lo[1] && c[1] <= bx[r].hi[1] &&
+                          c[2] >= bx[r].lo[2] && c[2] <= bx[r].hi[2];
+            }
+            if (covered) {
+                continue;
+            }
+            {
+                /* (box_close on this box alone: its own faces, bounds the box) */
+                RmTri *own = (RmTri *)malloc(4096u * sizeof *own);
+                unsigned nown = 0;
+
+                if (own == NULL) {
+                    out->fail = 1;
+                    return;
+                }
+                one = b[0];
+                for (bi = 0; bi < nb; bi++) {
+                    for (i = 0; !b[bi].bb && i < b[bi].n && nown < 4096u; i++) {
+                        const RmTri *t = &b[bi].tri[i];
+                        int in = 1;
+
+                        for (k = 0; k < 9 && in; k++) {
+                            in = t->p[k / 3][k % 3] >= x->lo[k % 3] - 0.2 && t->p[k / 3][k % 3] <= x->hi[k % 3] + 0.2;
+                        }
+                        if (in) {
+                            own[nown++] = *t;
+                            one.tex = b[bi].tex;
+                        }
+                    }
+                }
+                one.tri = own;
+                one.n = nown;
+                one.bb = 0;
+                box_close_side(&one, 1, x->lo, x->hi, s, out);
+                free(own);
+            }
+        }
+    }
+    pieces_skirt(b, nb, bx, nbx, out, made0);
+    free(done);
+    memset(&g_plain, 0, sizeof g_plain);
+}
+
 void rm_box(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
     const double deep = rm_optf(opt, "deep", 6.0), drop = rm_optf(opt, "floor", 0.0), edge = rm_optf(opt, "edge", 1.5);
     unsigned bi;
+
+    if (rm_optf(opt, "close", 0.0) == 2.0) {
+        box_pieces(b, nb, (int)rm_optf(opt, "sym", -1.0), out);
+        return;
+    }
+    if (rm_optf(opt, "close", 0.0) != 0.0) {
+        box_close(b, nb, out);
+        return;
+    }
 
     if (rm_optf(opt, "slab", 0.0) > 0.0) {
         for (bi = 0; bi < nb; bi++) {

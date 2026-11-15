@@ -2027,6 +2027,7 @@ typedef RmTurn DoneTurn;        /* a turned copy (remade/remade.h) */
 typedef RmNew DoneTri;          /* a new triangle (remade/remade.h) */
 typedef struct Done {
     char key[24];
+    u32 pose;                   /* a live object's pose (its animations' frames, hashed); 0: as the model is */
     int state;                  /* 1 made, -1 the builder made nothing */
     int ntex;
     struct { int w, h; u8 rs, rt; u8 *rgba; int scene; } tex[8];
@@ -2066,6 +2067,7 @@ static int done_has(const u32 *a, u32 n, u32 id)
  * every model as the map has it.
  */
 static const Done *done_get_key(const void *owner, const char *key, Model *md, const char *setkey, Buf set);
+static const Done *done_get_posed(const void *owner, const char *key, u32 pose, Model *md, const char *setkey, Buf set);
 
 static const Done *done_get(const void *owner, int pack, unsigned id, Model *md, const char *setkey, Buf set)
 {
@@ -2079,6 +2081,12 @@ static const Done *done_get(const void *owner, int pack, unsigned id, Model *md,
  * walls, made for the field's camera). */
 static const Done *done_get_key(const void *owner, const char *key, Model *md, const char *setkey, Buf set)
 {
+    return done_get_posed(owner, key, 0u, md, setkey, set);
+}
+
+/* The same, for a model in a pose of its own (`pose`: its animations' frames, hashed): made and kept for that pose. */
+static const Done *done_get_posed(const void *owner, const char *key, u32 pose, Model *md, const char *setkey, Buf set)
+{
     unsigned i;
     Done *d = NULL;
 
@@ -2086,7 +2094,7 @@ static const Done *done_get_key(const void *owner, const char *key, Model *md, c
         return NULL;
     }
     for (i = 0; i < g_ndones && d == NULL; i++) {
-        if (strcmp(g_dones[i].key, key) == 0) {
+        if (strcmp(g_dones[i].key, key) == 0 && g_dones[i].pose == pose) {
             d = &g_dones[i];
         }
     }
@@ -2099,6 +2107,7 @@ static const Done *done_get_key(const void *owner, const char *key, Model *md, c
         d = &g_dones[g_ndones++];
         memset(d, 0, sizeof *d);
         snprintf(d->key, sizeof d->key, "%s", key);
+        d->pose = pose;
         d->state = remade_make(d, e, md, setkey, set) ? 1 : -1;
     }
     if (d->state != 1) {
@@ -3197,6 +3206,7 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
         Aff place = aff_identity();
         int rc, fieldcam;
         unsigned a;
+        u32 pose;
         size_t v0, k;
 
         if (mb.p == NULL || model_parse(mb, &md) != 0) {
@@ -3243,11 +3253,15 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
         }
         /* the pose: each joint animation at the frame the field had it on (a model that rises and falls by
          * itself here starts from its animation's first frame) */
+        pose = 0u;
         for (a = 0; a < live[i].nanim; a++) {
             Buf ab = { live[i].anim[a].p, live[i].anim[a].n };
 
             if (ab.p != NULL && ab.n >= 4u && memcmp(ab.p, "BCA0", 4) == 0) {
-                model_pose(&md, ab, fieldcam && a == 0u ? 0 : live[i].anim[a].frame);
+                const int fr = fieldcam && a == 0u ? 0 : live[i].anim[a].frame;
+
+                model_pose(&md, ab, fr);
+                pose = (pose ^ (u32)(a + 1u) ^ ((u32)fr << 8)) * 16777619u;   /* (which animation at which frame) */
             }
         }
         memcpy(place.t, live[i].t, sizeof place.t);
@@ -3257,7 +3271,16 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
         c->obj++;
         v0 = c->nv;
         c->cur_bob = (u8)(fieldcam && c->bob_n > 1u);
+        /* remade by its own name (a gym gimmick's curtain or door: add_gimmicks does the same); the key names the
+         * model, not its pose, so its entry must hold for every pose the field may have it in */
+        {
+            char okey[24];
+
+            snprintf(okey, sizeof okey, "o%s", name);
+            g_done = c->cur_far || name[0] == '\0' ? NULL : done_get_posed(c, okey, pose, &md, setkey, tb.p != NULL ? tb : mb);
+        }
         rc = add_model(c, &md, setkey, tb.p != NULL ? tb : mb, &place, 2, NULL);
+        g_done = NULL;
         c->cur_bob = 0;
         if (rc == 0 && fieldcam && c->nv > v0) {
             float z0 = 1e30f, z1 = -1e30f, d;
@@ -3297,7 +3320,7 @@ static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
     for (i = 0; i < n; i++) {
         Blob mb, tb, ab;
         Model md;
-        char setkey[40];
+        char setkey[40], name[20], okey[24];
         float t[3];
         Aff place;
         int rc;
@@ -3324,8 +3347,17 @@ static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
         place = aff_yaw(gm[i].turns, t);
         c->cur_far = (u8)(fabsf(gm[i].x - px) > NEAR_REACH || fabsf(gm[i].z - pz) > NEAR_REACH);
         c->obj++;
+        /* (remade by its own name, as the field's live object of the same model is: live_remade) */
+        live_model_name(bb_of(&mb), name);
+        snprintf(okey, sizeof okey, "o%s", name);
+        g_done = c->cur_far ? NULL : done_get_key(c, okey, &md, setkey, bb_of(tb.p != NULL ? &tb : &mb));
+        if (getenv("BMAP_MODEL_LOG") != NULL && !c->cur_far) {
+            fprintf(stderr, "bmap: gimmick %s (%s %u) at %.0f %.0f%s\n", okey, gm[i].arc, (unsigned)gm[i].model, (double)t[0],
+                    (double)t[2], g_done != NULL ? " completed" : "");
+        }
         /* The textures are the model's own unless a separate set is named. */
         rc = add_model(c, &md, setkey, bb_of(tb.p != NULL ? &tb : &mb), &place, 2, NULL);   /* placed */
+        g_done = NULL;
         model_free(&md);
         blob_free(&tb);
         blob_free(&mb);

@@ -1199,9 +1199,12 @@ static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
  * south wall), from x = X0 to X1, its foot rising from YB0 to YB1 and its top from YT0 to YT1 along x (a band under a
  * sloped roof), in the picture of the model's own upright face at z = SZ that holds (SX, SY): each corner takes the
  * picture's place of the point (x, y) on that face, so a band of wallpaper, skirting or trim carries on at the heights
- * the room's corners set. */
-static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10])
+ * the room's corners set.  `bandw` (axis 0): the same in the picture of the model's own upright face at x = SX that holds
+ * (SZ, SY), carried on along x as along that face's z: a band only the room's east and west walls have. */
+static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10], int axis)
 {
+    const int h = axis == 2 ? 0 : 2;                        /* (the source face's own across) */
+    const double sp = axis == 2 ? d[2] : d[0], sa = axis == 2 ? d[0] : d[2];
     const Ft *src = NULL;
     double m[2][3];
     unsigned i;
@@ -1212,19 +1215,19 @@ static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10])
         double den, w0, w1;
         int at = 1;
 
-        if (fabs(f[i].n[2]) < 0.9 || f[i].b->tex < 0) {
+        if (fabs(f[i].n[axis]) < 0.9 || f[i].b->tex < 0) {
             continue;
         }
         for (j = 0; j < 3; j++) {
-            at &= fabs(t->p[j][2] - d[2]) < 0.1;
+            at &= fabs(t->p[j][axis] - sp) < 0.1;
         }
-        den = ((double)t->p[1][1] - t->p[2][1]) * ((double)t->p[0][0] - t->p[2][0])
-              + ((double)t->p[2][0] - t->p[1][0]) * ((double)t->p[0][1] - t->p[2][1]);
+        den = ((double)t->p[1][1] - t->p[2][1]) * ((double)t->p[0][h] - t->p[2][h])
+              + ((double)t->p[2][h] - t->p[1][h]) * ((double)t->p[0][1] - t->p[2][1]);
         if (!at || fabs(den) < 1e-9) {
             continue;
         }
-        w0 = (((double)t->p[1][1] - t->p[2][1]) * (d[0] - t->p[2][0]) + ((double)t->p[2][0] - t->p[1][0]) * (d[1] - t->p[2][1])) / den;
-        w1 = (((double)t->p[2][1] - t->p[0][1]) * (d[0] - t->p[2][0]) + ((double)t->p[0][0] - t->p[2][0]) * (d[1] - t->p[2][1])) / den;
+        w0 = (((double)t->p[1][1] - t->p[2][1]) * (sa - t->p[2][h]) + ((double)t->p[2][h] - t->p[1][h]) * (d[1] - t->p[2][1])) / den;
+        w1 = (((double)t->p[2][1] - t->p[0][1]) * (sa - t->p[2][h]) + ((double)t->p[0][h] - t->p[2][h]) * (d[1] - t->p[2][1])) / den;
         if (w0 >= -1e-3 && w1 >= -1e-3 && 1.0 - w0 - w1 >= -1e-3) {
             src = &f[i];
         }
@@ -1235,8 +1238,8 @@ static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10])
     {
         /* the picture's place as a function of (x, y) on the source face */
         const RmTri *t = src->t;
-        const double x0 = t->p[0][0], y0 = t->p[0][1];
-        const double x1 = t->p[1][0] - x0, y1 = t->p[1][1] - y0, x2 = t->p[2][0] - x0, y2 = t->p[2][1] - y0;
+        const double x0 = t->p[0][h], y0 = t->p[0][1];
+        const double x1 = t->p[1][h] - x0, y1 = t->p[1][1] - y0, x2 = t->p[2][h] - x0, y2 = t->p[2][1] - y0;
         const double det = x1 * y2 - x2 * y1;
 
         if (fabs(det) < 1e-9) {
@@ -2193,7 +2196,7 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     Ft *f;
     RmTri *fixed = NULL;
     unsigned nsnap = 0;
-    char buf[512];
+    char buf[2048];                     /* (a room's walls: many bands) */
     const char *ep;
 
     for (bi = 0; bi < nb; bi++) {
@@ -2441,7 +2444,7 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
         }
     }
     if (rm_opt(opt, "hide", buf, sizeof buf) != NULL) {
-        /* `hide=X0:X1:Y0:Y1:Z0:Z1:TEX+..`: the model's faces of texture TEX whose middle lies in the box are left out */
+        /* `hide=X0:X1:Y0:Y1:Z0:Z1:TEX+..`: the model's faces of texture TEX (-1: any) whose middle lies in the box are left out */
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
             double h[7];
 
@@ -2452,7 +2455,7 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
                     const double cy = ((double)t->p[0][1] + t->p[1][1] + t->p[2][1]) / 3.0;
                     const double cz = ((double)t->p[0][2] + t->p[1][2] + t->p[2][2]) / 3.0;
 
-                    if (f[i].b->tex == (int)h[6] && cx >= h[0] && cx <= h[1] && cy >= h[2] && cy <= h[3] && cz >= h[4] && cz <= h[5]) {
+                    if ((h[6] < 0.0 || f[i].b->tex == (int)h[6]) && cx >= h[0] && cx <= h[1] && cy >= h[2] && cy <= h[3] && cz >= h[4] && cz <= h[5]) {
                         rm_drop(out, t->id);
                     }
                 }
@@ -2491,7 +2494,18 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             double bd[10];
 
             if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9]) == 10) {
-                do_band(f, nf, out, bd);
+                do_band(f, nf, out, bd, 2);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "bandw", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double bd[10];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9]) == 10) {
+                do_band(f, nf, out, bd, 0);
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
@@ -2536,6 +2550,6 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     (void)nsnap;
     /* (`seal=0`: no dark backs: a missing face shows as an open side, for finding them) */
     if (rm_optf(opt, "seal", 1) != 0.0) {
-        rm_seal_ex(b, nb, out, 0.7, rm_optf(opt, "seal", 1) >= 2.0);   /* (seal=2: not over a panel drawn both ways) */
+        rm_seal_ex(b, nb, out, rm_optf(opt, "shade", 0.7), rm_optf(opt, "seal", 1) >= 2.0);   /* (seal=2: not over a panel drawn both ways) */
     }
 }

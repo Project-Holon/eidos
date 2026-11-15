@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "remade.h"
 
@@ -194,6 +195,38 @@ static void rm_settle(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
             }
         }
     }
+    {
+        /* `join=X0:X1:Y0:Y1:Z0:Z1+..`: the triangles inside each box are one piece (a chair whose legs and seat the map
+         * draws apart: it goes down whole, its legs under its seat) */
+        char jb[1024];
+        const char *jp = rm_opt(opt, "join", jb, sizeof jb);
+
+        while (jp != NULL && *jp != '\0') {
+            double bx[6];
+            unsigned first = n;
+
+            if (sscanf(jp, "%lf:%lf:%lf:%lf:%lf:%lf", &bx[0], &bx[1], &bx[2], &bx[3], &bx[4], &bx[5]) == 6) {
+                for (i = 0; i < n; i++) {
+                    int in = 1;
+
+                    for (k = 0; k < 9 && in; k++) {
+                        in = tr[i]->p[k / 3][k % 3] >= bx[2 * (k % 3)] && tr[i]->p[k / 3][k % 3] <= bx[2 * (k % 3) + 1];
+                    }
+                    if (in && first == n) {
+                        first = i;
+                    } else if (in) {
+                        const unsigned ra = st_find(par, i), rb = st_find(par, first);
+
+                        if (ra != rb) {
+                            par[ra] = rb;
+                        }
+                    }
+                }
+            }
+            jp = strchr(jp, '+');
+            jp = jp != NULL ? jp + 1 : NULL;
+        }
+    }
     for (i = 0; i < n; i++) {
         const unsigned r = st_find(par, i);
 
@@ -326,6 +359,22 @@ static void rm_settle(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
                 uv[a][1] = t->uv[a][1];
             }
             rm_tri(out, t->id, -1, cull, t->rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+            /* (its turned copy, if an earlier builder turned it: the game draws a turned copy only beside the
+             * model's own triangle, which is left out now, so the copy goes down as a triangle of its own, half
+             * round about the same upright, the corners in the same order) */
+            for (w = 0; w < out->nturn; w++) {
+                if (out->turn[w].id == t->id) {
+                    double r[3][3];
+
+                    for (a = 0; a < 3; a++) {
+                        r[a][0] = 2.0 * out->turn[w].cx - q[a][0];
+                        r[a][1] = q[a][1];
+                        r[a][2] = 2.0 * out->turn[w].cz - q[a][2];
+                    }
+                    rm_tri(out, t->id, -1, cull, t->rgb, r[0], r[1], r[2], uv[0], uv[1], uv[2], 0, 0);
+                    break;
+                }
+            }
             for (w = first; w < out->ntri; w++) {
                 out->tri[w].lit = 1;
             }
@@ -418,6 +467,15 @@ static RmBuild *mesh_builder(const char *name)
     if (strcmp(name, "turned") == 0) {
         return rm_turned;
     }
+    if (strcmp(name, "rock") == 0) {
+        return rm_rock;
+    }
+    if (strcmp(name, "cup") == 0) {
+        return rm_cup;
+    }
+    if (strcmp(name, "candle") == 0) {
+        return rm_candle;
+    }
     return NULL;
 }
 
@@ -480,7 +538,7 @@ void rm_mesh(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
     while (p != NULL && *p != '\0') {
         const char *end = strchr(p, ';');
         size_t len = end != NULL ? (size_t)(end - p) : strlen(p);
-        char part[2048], name[16], *set, *at;
+        char part[4096], name[16], *set, *at;   /* (a room's walls: a tower part of many bands) */
         double bx[6];
         int has_box = 0;
         RmBuild *fn;
@@ -503,10 +561,15 @@ void rm_mesh(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
         fn = mesh_builder(name);
         if (fn != NULL && (at == NULL || has_box)) {
             const unsigned made = out->ntri;
+            const clock_t t0 = clock();
 
             out->seal_from = made;      /* (a part seals what it made itself only) */
             mesh_part(b, nb, tex, ntex, fn, has_box ? bx : NULL, set != NULL ? set : "", out);
             out->seal_from = 0;
+            if (getenv("RM_MESH_TIME") != NULL) {         /* research: where the time goes */
+                fprintf(stderr, "mesh: %s%s %.0f ms, %u new\n", name, has_box ? "@box" : "",
+                        1000.0 * (double)(clock() - t0) / CLOCKS_PER_SEC, out->ntri - made);
+            }
             if (fn == rm_lower && has_box) {
                 /* (the parts the earlier builders made in the box go down with it: a bed's new side, its seal) */
                 const double by = rm_optf(set != NULL ? set : "", "by", 0.0);

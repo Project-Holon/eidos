@@ -105,6 +105,8 @@ RmBuild rm_chandelier;          /* chandelier.c: a candle chandelier: a round fr
 RmBuild rm_counter;           /* counter.c: a kitchen counter: its back and corner, the sink's wall, tap and stove standing up */
 RmBuild rm_box;                 /* box.c: a picture card made the upright box it shows (a games console) */
 RmBuild rm_mesh;                /* mesh.c: a map chunk's own mesh (a room), builders on boxes of it */
+RmBuild rm_cup;                 /* cup.c: a teacup card made a cup: body, rim, inside, handle */
+RmBuild rm_candle;              /* candle.c: a candle-on-its-dish card made a dish, a candle and its flame */
 
 /* --- helpers (common.c) --- */
 

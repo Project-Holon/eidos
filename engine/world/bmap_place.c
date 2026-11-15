@@ -836,6 +836,46 @@ static void fix_backs(BmapScene *s)
     free(ob);
 }
 
+/* Research (BMAP_DEBUG_IDS=1): every draw in a flat colour of its own, one a
+ * draw and placed object, untextured, and the colours listed on stderr
+ * ("bmap: id RRGGBB draw D texture T object O"), so a pixel of a picture says
+ * what the battle drew there. */
+static void debug_ids(BmapScene *s)
+{
+    unsigned i, j;
+
+    if (getenv("BMAP_DEBUG_IDS") == NULL) {
+        return;
+    }
+    for (i = 0; i < s->nd; i++) {
+        BmapDraw *d = &s->d[i];
+        unsigned last = 0xFFFFFFFFu;
+
+        if (d->first + d->count > s->nv) {
+            continue;
+        }
+        for (j = d->first; j < d->first + d->count; j++) {
+            BmapVertex *v = &s->v[j];
+            const unsigned key = (i * 2654435761u) ^ ((v->obj & 0x3FFFFFFFu) * 40503u) ^ (v->obj >> 30) * 977u;
+            const unsigned char r = (unsigned char)(40 + (key >> 3) % 216), g = (unsigned char)(40 + (key >> 11) % 216),
+                                b = (unsigned char)(40 + (key >> 19) % 216);
+
+            if (v->obj != last) {
+                fprintf(stderr, "bmap: id %02X%02X%02X draw %u texture %d object %08X\n", r, g, b, i, d->tex, v->obj);
+                last = v->obj;
+            }
+            v->r = r;
+            v->g = g;
+            v->b = b;
+            v->a = 255;
+        }
+        d->tex = -1;
+        d->alpha = 31;
+        d->translucent = 0;
+        d->uvanim = 0;
+    }
+}
+
 /* Research (BMAP_DEBUG_BACK=1): the other side of every one-sided draw (the
  * map culls its back faces: a wall seen from behind is not drawn at all) as
  * plain magenta, so a picture shows where a camera looks at a model from the
@@ -2637,6 +2677,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
         topview_dump(s, nd0, 0, th);
         scene_dump(s, th);
         debug_backs(s);
+        debug_ids(s);
         px = bx;
         pz = bz;
         a = ba;
