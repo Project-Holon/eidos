@@ -857,6 +857,8 @@ static const QuestionText k_questions[] = {
 static struct {
     int asking;     /* what is asked (QUESTION_*)                  */
     int answer;     /* 1: yes, 0: no: the answer the player chose */
+    int restart;    /* the run restart, asked for: carried out when the
+                       screen has closed (eidos_sui_leave)        */
 } g_q;
 
 static int question_up(void)
@@ -887,10 +889,12 @@ static int question_close(int yes)
 
     g_q.asking = QUESTION_NONE;
     if (yes && what == QUESTION_RESTART) {
-        /* The port's own restart: the request is recorded, and the boot's
-         * frame loop carries it out, because the reset clears the memory
-         * the game is running in. */
-        bw_mod_restart(0);
+        /* The port's own restart, once the screen has closed: the screen is
+         * a game process still fading out, and a reset under it left a dead
+         * menu (the reset clears the game's memory, not this screen's own
+         * state).  eidos_sui_leave records the request, and the boot's frame
+         * loop carries it out. */
+        g_q.restart = 1;
         return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_SELECT | EIDOS_SUI_EXIT;
     }
     return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
@@ -978,6 +982,10 @@ void eidos_sui_enter(void)
 
 void eidos_sui_leave(void)
 {
+    if (g_q.restart) {
+        g_q.restart = 0;
+        bw_mod_restart(0);
+    }
     if (g.capturing) {
         eidos_settings_capture_cancel();
         g.capturing = 0;
@@ -1505,12 +1513,12 @@ static int question_input(unsigned pressed, unsigned held)
     unsigned act = repeat_dirs(pressed, held);
     int res = 0;
 
-    if (act & 0x10u) {                   /* right: yes */
+    if (act & 0x20u) {                   /* left: yes (YES is the left choice) */
         if (!g_q.answer) {
             g_q.answer = 1;
             res = EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_MOVE;
         }
-    } else if (act & 0x20u) {            /* left: no */
+    } else if (act & 0x10u) {            /* right: no */
         if (g_q.answer) {
             g_q.answer = 0;
             res = EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_MOVE;
@@ -1984,10 +1992,11 @@ int eidos_sui_touch(int row, int zone)
     int was, res = EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_MOVE;
 
     if (question_up()) {
-        /* The menu's own question is up: the touch answers it (the grey
-         * bar says no). */
+        /* The menu's own question is up: a touch on YES or NO answers it,
+         * on the rest of its row with the answer shown (the grey bar says
+         * no). */
         if (row == 1) {
-            return question_close(g_q.answer);
+            return question_close(zone == 0 ? 1 : zone == 1 ? 0 : g_q.answer);
         }
         if (row == 2) {
             return question_close(0);
@@ -2514,6 +2523,18 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
 int eidos_sui_row_choices(int row, int *active, char names[3][20])
 {
     const Row *r;
+
+    if (question_up()) {
+        /* the question's row: YES and NO, the one the cursor is on lit (a
+         * touch screen answers by tapping one) */
+        if (row != 1) {
+            return 0;
+        }
+        put(names[0], 20, STR_Q_YES);
+        put(names[1], 20, STR_Q_NO);
+        *active = g_q.answer ? 0 : 1;
+        return 2;
+    }
     const EidosOption *o;
     int i, count;
 
