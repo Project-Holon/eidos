@@ -397,19 +397,15 @@ static void mon_ot(void *mon, char *out, int cap)
 }
 
 /* The kit's status number (0 PSN, 1 PAR, 2 BRN, 3 SLP, 4 FRZ, 5 FNT), or
- * -1.  The party's status word: bits 0..2 sleep turns, 3 poison, 4 burn,
- * 5 freeze, 6 paralysis, 7 bad poison. */
+ * -1.  The party's status is the game's condition number: 1 paralysis,
+ * 2 sleep, 3 freeze, 4 burn, 5 poison, 6 bad poison. */
 static int mon_status(void *mon, u32 hp)
 {
+    static const signed char k_kit[7] = { -1, 1, 3, 4, 2, 0, 0 };
     u32 s = pv(mon, P_STATUS);
 
     if (hp == 0) return 5;
-    if (s & 7u) return 3;
-    if (s & 0x88u) return 0;
-    if (s & 0x10u) return 2;
-    if (s & 0x20u) return 4;
-    if (s & 0x40u) return 1;
-    return -1;
+    return s < 7u ? k_kit[s] : -1;
 }
 
 static int gender_of(void *mon)

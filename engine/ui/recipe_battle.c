@@ -3933,16 +3933,15 @@ static int pl_status_badge(const u8 *s)
 {
     int anim = (s[0x17] >> 3) & 15;
 
-    /* the game's status icon animation: 6 fainted, 8 none, 1..5 a condition;
-     * the condition names are unverified: sleep, poison, burn, freeze and
-     * paralysis in the order of the game's own icon map */
+    /* the game's status icon animation: 6 fainted, 8 none, 1..5 a condition:
+     * paralysis, freeze, sleep, poison, burn (checked with all five) */
     switch (anim) {
     case 6: return 5;
-    case 1: return 3;
-    case 3: return 0;
-    case 2: return 2;
-    case 5: return 4;
-    case 4: return 1;
+    case 1: return 1;
+    case 2: return 4;
+    case 3: return 3;
+    case 4: return 0;
+    case 5: return 2;
     default: return -1;
     }
 }
@@ -4273,7 +4272,7 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
                          (int)rd16(s, 0x12), icon, sel);
             badge = pl_status_badge(s);
             if (badge >= 0) {
-                ui_status_badge(c, px + colw - 30, py + 14, badge);
+                ui_status_badge(c, px + colw - 92, py + 3, badge);   /* beside the level, clear of the HP bar and figures */
             }
         }
         /* the game's own question */
