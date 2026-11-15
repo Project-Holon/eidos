@@ -14,9 +14,9 @@
  * bw_ra_frame or bw_ra_idle hands them to rcheevos, so the frame never
  * blocks on a server.
  *
- * The player's password is passed to rcheevos once, to sign in, and never
- * kept.  What is kept is the token the server answers with, in
- * <home>/retroachievements.ini, readable by the owner only.
+ * The game never sees the player's password.  The launcher signs in and
+ * leaves the token the server answered with in <home>/retroachievements.ini
+ * (readable by the owner only); the game signs in with that token.
  */
 
 #ifndef BW_PORT_RA_H
@@ -81,8 +81,7 @@ void bw_ra_idle(void);
 /* The run restarted or a save was loaded: the set starts again. */
 void bw_ra_reset(void);
 
-/* Signs in; the answer arrives through bw_ra_status. */
-int  bw_ra_login(const char *user, const char *password);
+/* The sign-in itself is the launcher's: it writes the token this reads. */
 void bw_ra_logout(void);
 void bw_ra_status(BwRaStatus *out);
 
