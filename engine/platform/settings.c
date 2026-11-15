@@ -95,7 +95,12 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, k_offon, "", 0, NULL },
     { "Layout", "ui_theme", "Interface style", EIDOS_OPTKIND_CHOICE, 0, 2, 1,
       0, k_ui_themes, "", 0, NULL },
+    { "Extras", "ra_sound", "Achievement sound", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
+      1, k_offon, "", 0, NULL },
 };
+
+/* sdk/ra.c reads this option by number */
+_Static_assert(EIDOS_OPT_RA_SOUND == 21, "sdk/ra.c's OPT_RA_SOUND");
 
 /* sdk/field_fade.c reads this option by number */
 _Static_assert(EIDOS_OPT_TRANSITIONS == 16, "sdk/field_fade.c's OPT_TRANSITIONS");

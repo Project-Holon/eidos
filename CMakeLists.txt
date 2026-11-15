@@ -1046,6 +1046,67 @@ else()
     message(STATUS "eidos: TLS for the relay off (run tools/fetch_mbedtls.py)")
 endif()
 
+# RetroAchievements (docs/retroachievements.md): rcheevos, fetched and
+# checked by tools/fetch_rcheevos.py into the user's local data folder.
+# Needs TLS (above).  Without either, the port builds and runs with the
+# feature off.
+if(DEFINED ENV{EIDOS_RCHEEVOS_CACHE})
+    file(TO_CMAKE_PATH "$ENV{EIDOS_RCHEEVOS_CACHE}" _eidos_rc_home)
+elseif(WIN32)
+    file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}/eidos/rcheevos" _eidos_rc_home)
+elseif(APPLE)
+    set(_eidos_rc_home "$ENV{HOME}/Library/Caches/eidos/rcheevos")
+elseif(DEFINED ENV{XDG_CACHE_HOME})
+    set(_eidos_rc_home "$ENV{XDG_CACHE_HOME}/eidos/rcheevos")
+else()
+    set(_eidos_rc_home "$ENV{HOME}/.cache/eidos/rcheevos")
+endif()
+set(EIDOS_RCHEEVOS_ROOT "${_eidos_rc_home}/rcheevos-12.5.0" CACHE PATH
+    "rcheevos 12.5.0 source folder (tools/fetch_rcheevos.py)")
+option(EIDOS_RA "Build RetroAchievements when rcheevos and TLS are present" ON)
+set(EIDOS_RA_ON OFF)
+if(EIDOS_RA AND TARGET mbedtls
+   AND EXISTS "${EIDOS_RCHEEVOS_ROOT}/src/rc_client.c")
+    file(GLOB _rc_srcs
+        ${EIDOS_RCHEEVOS_ROOT}/src/rcheevos/*.c
+        ${EIDOS_RCHEEVOS_ROOT}/src/rhash/*.c
+        ${EIDOS_RCHEEVOS_ROOT}/src/rapi/*.c)
+    list(APPEND _rc_srcs
+        ${EIDOS_RCHEEVOS_ROOT}/src/rc_client.c
+        ${EIDOS_RCHEEVOS_ROOT}/src/rc_compat.c
+        ${EIDOS_RCHEEVOS_ROOT}/src/rc_util.c
+        ${EIDOS_RCHEEVOS_ROOT}/src/rc_version.c)
+    add_library(rcheevos STATIC ${_rc_srcs})
+    target_include_directories(rcheevos PUBLIC
+        ${EIDOS_RCHEEVOS_ROOT}/include PRIVATE
+        ${EIDOS_RCHEEVOS_ROOT}/src ${EIDOS_RCHEEVOS_ROOT}/src/rhash)
+    target_compile_definitions(rcheevos PUBLIC RC_CLIENT_SUPPORTS_HASH=1)
+    if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+        # the C library's headers before sdk/wasm_layout.h's pack(4), as for
+        # Mbed TLS (above); rcheevos' own structs get the module's layout,
+        # the same one sdk/ra.c sees
+        target_compile_definitions(rcheevos PRIVATE BW_WASM_PORT_SOURCE=1)
+    endif()
+    if(NOT WIN32)
+        target_link_libraries(rcheevos PUBLIC m)
+    endif()
+    target_sources(eidos PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ra.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ra_hash.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ra_http.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ra_roots.c)
+    target_include_directories(eidos PRIVATE ${EIDOS_RCHEEVOS_ROOT}/src)
+    target_link_libraries(eidos PUBLIC rcheevos)
+    add_compile_definitions(EIDOS_HAVE_RA=1)
+    target_compile_definitions(eidos PUBLIC EIDOS_HAVE_RA=1)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ra_http.c APPEND PROPERTY
+        COMPILE_DEFINITIONS EIDOS_HAVE_TLS=1)
+    set(EIDOS_RA_ON ON)
+    message(STATUS "eidos: RetroAchievements on (${EIDOS_RCHEEVOS_ROOT})")
+else()
+    message(STATUS "eidos: RetroAchievements off (run tools/fetch_rcheevos.py; needs TLS)")
+endif()
+
 # The version goes to the one file that reads it (sdk/mp.c), not to every
 # file of the game: it holds the commit, and a define every file has would
 # rebuild the whole game at each commit.
@@ -1168,6 +1229,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/settings_ui.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/mod_options_proc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/mod_panel_draw.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/ra_banner_draw.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_replace.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_gl3d.c
@@ -1916,6 +1978,13 @@ foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_m
     target_link_libraries(${t} PRIVATE eidos)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
+
+if(EIDOS_RA_ON)
+    add_executable(test_ra ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ra.c)
+    target_include_directories(test_ra PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sdk)
+    target_link_libraries(test_ra PRIVATE eidos)
+    add_test(NAME test_ra COMMAND test_ra)
+endif()
 
 # Isolate the restart test's backup-chip double from the real ARM7 chip.
 # Apple ld can pull that archive member to satisfy other weak references.

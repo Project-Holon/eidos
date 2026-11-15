@@ -263,6 +263,13 @@ static struct {
     GLint u_rect, u_tex, u_texsize, u_dstsize;
 } g_panel;
 
+/* The achievement banner's picture and rectangle (two-screen layouts). */
+static struct {
+    GLuint tex;
+    int w, h;
+    SDL_Rect rect;
+} g_ban;
+
 /*
  * The one-screen layout's pictures (engine/ui/ui.h).  Three programs, all
  * drawn with the same full-quad vertex shader as everything else here.
@@ -945,6 +952,11 @@ void eidos_gl_destroy(EidosGl *g)
         }
         if (g_panel.tex != 0) {
             glDeleteTextures(1, &g_panel.tex);
+        }
+        if (g_ban.tex != 0) {
+            glDeleteTextures(1, &g_ban.tex);
+            g_ban.tex = 0;
+            g_ban.w = g_ban.h = 0;
         }
         if (g_panel.prog != 0 && g->glDeleteProgram != NULL) {
             g->glDeleteProgram(g_panel.prog);
@@ -1786,6 +1798,66 @@ static void one_canvas(EidosGl *g, int out_w, int out_h)
     glDisable(GL_BLEND);
 }
 
+/*
+ * The achievement banner of the two-screen layouts: a picture over the
+ * whole frame, drawn like the one-screen canvas (the same blended program),
+ * in the rectangle the platform gives.
+ */
+static void draw_banner(EidosGl *g, int out_w, int out_h)
+{
+    const SDL_Rect *r = &g_ban.rect;
+
+    if (g_one.progu == 0 || g_ban.tex == 0 || g_ban.w <= 0 || g_ban.h <= 0 ||
+        r->w <= 0 || r->h <= 0) {
+        return;
+    }
+    glViewport(0, 0, out_w, out_h);
+    g->glBindVertexArray(g->vao);
+    g->glUseProgram(g_one.progu);
+    g->glUniform1i(g_one.u_ctex, 0);
+    g->glUniform4f(g_one.u_rect, ndc_x(r->x, out_w), ndc_y(r->y + r->h, out_h),
+                   ndc_x(r->x + r->w, out_w), ndc_y(r->y, out_h));
+    g->glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_ban.tex);
+    glEnable(GL_BLEND);
+    g->glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,
+                           GL_ONE_MINUS_SRC_ALPHA);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glDisable(GL_BLEND);
+}
+
+void eidos_gl_banner(EidosGl *g, const unsigned char *rgba, int w, int h, const SDL_Rect *rect)
+{
+    if (g == NULL) {
+        return;
+    }
+    if (rect == NULL || w <= 0 || h <= 0) {
+        g_ban.rect.w = g_ban.rect.h = 0;
+        return;
+    }
+    g_ban.rect = *rect;
+    if (rgba == NULL) {
+        return;
+    }
+    if (g_ban.tex == 0) {
+        glGenTextures(1, &g_ban.tex);
+        glBindTexture(GL_TEXTURE_2D, g_ban.tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    glBindTexture(GL_TEXTURE_2D, g_ban.tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    if (g_ban.w != w || g_ban.h != h) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+        g_ban.w = w;
+        g_ban.h = h;
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    }
+}
+
 /* One frame: the layout's picture, or the two screens as ever. */
 static void draw_scene(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
 {
@@ -1912,6 +1984,7 @@ void eidos_gl_present_panel(EidosGl *g, int out_w, int out_h,
     draw_scene(g, out_w, out_h, dst);
     if (!g_one.on) {
         draw_panel(g, out_w, out_h, panel);
+        draw_banner(g, out_w, out_h);       /* the one-screen layout's canvas has its own */
     }
     gl_debug_dump(out_w, out_h);
     eidos_gl_swap(g);
