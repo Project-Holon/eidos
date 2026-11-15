@@ -399,7 +399,7 @@ void rm_seal_ex(const RmBatch *b, unsigned nb, RmOut *out, double shade, int ski
         const RmNew *t = &out->tri[i];
         SealTri *q;
 
-        if (t->alpha != 0 || t->kind == 1) {
+        if (t->alpha != 0 || t->kind == 1 || t->kind == 3) {   /* (a shadow; a room wall kept one-sided) */
             continue;                   /* (a shadow) */
         }
         q = &g[n++];

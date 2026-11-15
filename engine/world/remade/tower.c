@@ -1195,12 +1195,16 @@ static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
     }
 }
 
-/* `band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1+..`: a band of a wall at z = Z looking north (a room's inner side of its
- * south wall), from x = X0 to X1, its foot rising from YB0 to YB1 and its top from YT0 to YT1 along x (a band under a
- * sloped roof), in the picture of the model's own upright face at z = SZ that holds (SX, SY): each corner takes the
- * picture's place of the point (x, y) on that face, so a band of wallpaper, skirting or trim carries on at the heights
- * the room's corners set.  `bandw` (axis 0): the same in the picture of the model's own upright face at x = SX that holds
- * (SZ, SY), carried on along x as along that face's z: a band only the room's east and west walls have. */
+/* `sealmax`: a corner's key and its triangle, sorted by key to join the triangles that share a corner */
+typedef struct { long long k; unsigned t; } SealKey;
+
+static int seal_key_cmp(const void *a, const void *b)
+{
+    const SealKey *x = (const SealKey *)a, *y = (const SealKey *)b;
+
+    return x->k < y->k ? -1 : x->k > y->k;
+}
+
 /* `thick=TMIN:TMAX`: a thick wall the model draws from one side: an upright face whose top edge is an edge of a level
  * band (the wall's top), the band TMIN..TMAX deep behind it; where the wall has no face looking the other way over the
  * band's far edge, one is built there: as long as that far edge (a wall's mitred end at a corner of the honeycomb
@@ -1458,6 +1462,12 @@ static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double t
 }
 
 
+/* `band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1+..`: a band of a wall at z = Z looking north (a room's inner side of its
+ * south wall), from x = X0 to X1, its foot rising from YB0 to YB1 and its top from YT0 to YT1 along x (a band under a
+ * sloped roof), in the picture of the model's own upright face at z = SZ that holds (SX, SY): each corner takes the
+ * picture's place of the point (x, y) on that face, so a band of wallpaper, skirting or trim carries on at the heights
+ * the room's corners set.  `bandw` (axis 0): the same in the picture of the model's own upright face at x = SX that holds
+ * (SZ, SY), carried on along x as along that face's z: a band only the room's east and west walls have. */
 static void do_band(const Ft *f, unsigned nf, RmOut *out, const double d[10], int axis)
 {
     const int h = axis == 2 ? 0 : 2;                        /* (the source face's own across) */
@@ -2732,6 +2742,8 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             ep = ep != NULL ? ep + 1 : NULL;
         }
     }
+    const unsigned walls0 = out->ntri;      /* (the room walls built from here to the decals: one-sided, see below) */
+
     if (rm_opt(opt, "bandx", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
             double bd[10];
@@ -2774,6 +2786,16 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             ep = ep != NULL ? ep + 1 : NULL;
         }
     }
+    {
+        /* the room's walls built by band, bandx, bandw and thick stay one-sided (kind 3: the seal leaves them):
+         * seen from inside the room; a battle camera that stands outside, where the field's room had no wall,
+         * sees through them as it saw through the field's */
+        unsigned wi;
+
+        for (wi = walls0; wi < out->ntri; wi++) {
+            out->tri[wi].kind = 3;
+        }
+    }
     if (rm_opt(opt, "decal", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
             double dc[10];
@@ -2812,7 +2834,125 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     free(fixed);
     (void)nsnap;
     /* (`seal=0`: no dark backs: a missing face shows as an open side, for finding them) */
-    if (rm_optf(opt, "seal", 1) != 0.0) {
+    if (rm_optf(opt, "seal", 1) != 0.0 && rm_optf(opt, "sealmax", 0) > 0.0) {
+        /* `sealmax=S`: only the pieces (triangles joined at their corners) at most S across, level, are sealed: a
+         * room's furniture, not its shell (its walls and floor, one piece, seen from outside by a battle camera that
+         * stands where the field's room had no wall: the field's own walls are one-sided, and stay so) */
+        RmBatch *fb = (RmBatch *)calloc(nb ? nb : 1u, sizeof *fb);
+        RmTri *ft;
+        unsigned total = 0, n = 0, i, j, k, *par, *piece;
+        double *box;
+
+        for (i = 0; i < nb; i++) {
+            total += b[i].bb ? 0u : b[i].n;
+        }
+        ft = (RmTri *)malloc((total + 1u) * sizeof *ft);
+        par = (unsigned *)malloc((total + 1u) * sizeof *par);
+
+        piece = (unsigned *)malloc((total + 1u) * sizeof *piece);
+        box = (double *)malloc((total + 1u) * 4u * sizeof *box);
+        if (fb == NULL || ft == NULL || par == NULL || piece == NULL || box == NULL) {
+            out->fail = 1;
+        } else {
+            const double smax = rm_optf(opt, "sealmax", 0);
+            const RmTri **all = (const RmTri **)malloc((total + 1u) * sizeof *all);
+            unsigned *bat = (unsigned *)malloc((total + 1u) * sizeof *bat);
+
+            if (all == NULL || bat == NULL) {
+                out->fail = 1;
+            } else {
+                for (i = 0; i < nb; i++) {
+                    for (j = 0; !b[i].bb && j < b[i].n; j++) {
+                        all[n] = &b[i].tri[j];
+                        bat[n] = i;
+                        par[n] = n;
+                        n++;
+                    }
+                }
+                /* (joined corners: each corner a key; sorted, equal keys joined) */
+                {
+                    SealKey *key = (SealKey *)malloc((n * 3u + 1u) * sizeof *key);
+
+                    if (key == NULL) {
+                        out->fail = 1;
+                    } else {
+                        for (i = 0; i < n * 3u; i++) {
+                            const float *p = all[i / 3u]->p[i % 3u];
+                            const long long qx = (long long)floor(p[0] * 4.0 + 0.5), qy = (long long)floor(p[1] * 4.0 + 0.5),
+                                            qz = (long long)floor(p[2] * 4.0 + 0.5);
+
+                            key[i].k = ((qx & 0x1FFFFF) << 42) | ((qy & 0x1FFFFF) << 21) | (qz & 0x1FFFFF);
+                            key[i].t = i / 3u;
+                        }
+                        qsort(key, (size_t)n * 3u, sizeof *key, seal_key_cmp);
+                        for (i = 1; i < n * 3u; i++) {
+                            if (key[i].k == key[i - 1].k) {
+                                unsigned a = key[i].t, c = key[i - 1].t;
+
+                                while (par[a] != a) a = par[a];
+                                while (par[c] != c) c = par[c];
+                                if (a != c) {
+                                    par[a] = c;
+                                }
+                            }
+                        }
+                        free(key);
+                    }
+                }
+                for (i = 0; i < n; i++) {
+                    unsigned r = i;
+
+                    while (par[r] != r) r = par[r];
+                    piece[i] = r;
+                    box[r * 4u + 0] = 1e30; box[r * 4u + 1] = -1e30; box[r * 4u + 2] = 1e30; box[r * 4u + 3] = -1e30;
+                }
+                for (i = 0; i < n; i++) {
+                    double *bx = &box[piece[i] * 4u];
+
+                    for (k = 0; k < 3u; k++) {
+                        bx[0] = fmin(bx[0], all[i]->p[k][0]);
+                        bx[1] = fmax(bx[1], all[i]->p[k][0]);
+                        bx[2] = fmin(bx[2], all[i]->p[k][2]);
+                        bx[3] = fmax(bx[3], all[i]->p[k][2]);
+                    }
+                }
+                /* (the batches again with the small pieces' triangles alone) */
+                {
+                    unsigned nfb = 0, at = 0;
+
+                    for (i = 0; i < nb; i++) {
+                        unsigned first = at;
+
+                        if (b[i].bb) {
+                            continue;
+                        }
+                        for (j = 0; j < n; j++) {
+                            const double *bx = &box[piece[j] * 4u];
+
+                            if (bat[j] == i && bx[1] - bx[0] <= smax && bx[3] - bx[2] <= smax) {
+                                ft[at++] = *all[j];
+                            }
+                        }
+                        if (at > first) {
+                            fb[nfb] = b[i];
+                            fb[nfb].tri = &ft[first];
+                            fb[nfb].n = at - first;
+                            nfb++;
+                        }
+                    }
+                    rm_seal_ex(fb, nfb, out, rm_optf(opt, "shade", 0.7), rm_optf(opt, "seal", 1) >= 2.0);
+                }
+            }
+            free(all);
+            free(bat);
+        }
+        free(fb);
+        free(ft);
+        free(par);
+
+        free(piece);
+        free(box);
+    } else if (rm_optf(opt, "seal", 1) != 0.0) {
         rm_seal_ex(b, nb, out, rm_optf(opt, "shade", 0.7), rm_optf(opt, "seal", 1) >= 2.0);   /* (seal=2: not over a panel drawn both ways) */
     }
 }

@@ -461,6 +461,10 @@ static struct {
     unsigned char rgb[3];
 } g_plain;
 
+/* close=1 `cover=C`: a side is drawn over only while its faces cover less than C of it (0.9; 0.1: only a side that is
+ * missing outright, so no new face lies on a face the model has) */
+static double g_close_cover = 0.9;
+
 /* The box lo..hi of these faces: its side `only` (0 west, 1 east, 2 north, 3 south, 4 top; -1: every side) drawn over
  * when its faces do not cover it. */
 static void box_close_side(const RmBatch *b, unsigned nb, const double lo[3], const double hi[3], int only, RmOut *out)
@@ -503,7 +507,7 @@ static void box_close_side(const RmBatch *b, unsigned nb, const double lo[3], co
         const RmTri *t = NULL;
         int sh, so;
 
-        if ((only >= 0 && s != only) || side < 1.0 || cover[s] >= 0.9 * side) {
+        if ((only >= 0 && s != only) || side < 1.0 || cover[s] >= g_close_cover * side) {
             continue;
         }
         /* its picture: the opposite side's, else the biggest neighbour's (a top only from a top) */
@@ -1251,7 +1255,57 @@ void rm_box(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, cons
         box_pieces(b, nb, (int)rm_optf(opt, "sym", -1.0), out);
         return;
     }
+    g_close_cover = rm_optf(opt, "cover", 0.9);
     if (rm_optf(opt, "close", 0.0) != 0.0) {
+        char ib[96];
+        double in[6];
+
+        /* `in=X0:X1:Y0:Y1:Z0:Z1`: only the triangles wholly inside that box are the box (a shelf model that also
+         * holds its shadow sheet and the things on its top) */
+        if (rm_opt(opt, "in", ib, sizeof ib) != NULL &&
+            sscanf(ib, "%lf:%lf:%lf:%lf:%lf:%lf", &in[0], &in[1], &in[2], &in[3], &in[4], &in[5]) == 6) {
+            RmBatch *fb = (RmBatch *)calloc(nb ? nb : 1u, sizeof *fb);
+            RmTri **ft = (RmTri **)calloc(nb ? nb : 1u, sizeof *ft);
+            unsigned i, k, nfb = 0;
+
+            for (bi = 0; fb != NULL && ft != NULL && bi < nb; bi++) {
+                unsigned n = 0;
+
+                ft[bi] = (RmTri *)malloc((b[bi].n + 1u) * sizeof **ft);
+                if (ft[bi] == NULL) {
+                    continue;
+                }
+                for (i = 0; !b[bi].bb && i < b[bi].n; i++) {
+                    int ok = 1;
+
+                    for (k = 0; k < 9u && ok; k++) {
+                        const double v = b[bi].tri[i].p[k / 3u][k % 3u];
+
+                        ok = v >= in[2 * (k % 3u)] && v <= in[2 * (k % 3u) + 1u];
+                    }
+                    if (ok) {
+                        ft[bi][n++] = b[bi].tri[i];
+                    }
+                }
+                if (n > 0) {
+                    fb[nfb] = b[bi];
+                    fb[nfb].tri = ft[bi];
+                    fb[nfb].n = n;
+                    nfb++;
+                }
+            }
+            if (fb != NULL && ft != NULL) {
+                box_close(fb, nfb, out);
+            } else {
+                out->fail = 1;
+            }
+            for (bi = 0; ft != NULL && bi < nb; bi++) {
+                free(ft[bi]);
+            }
+            free(ft);
+            free(fb);
+            return;
+        }
         box_close(b, nb, out);
         return;
     }
