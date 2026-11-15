@@ -277,6 +277,7 @@ extern int eidos_settings_commit(void);
 #define OPT_SOUND_VOLUME        9
 #define OPT_EXTRAS_INSTANT_TEXT 10
 #define OPT_TRANSITIONS         16
+#define OPT_UI_THEME            20
 
 /* ------------------------------------------------------------------ */
 /* The pages                                                           */
@@ -334,6 +335,10 @@ static const PortRow k_extras_rows[] = {
       0, 0, 0, 0, 0 },
     { "TRANSITIONS", "Doors and map changes.\nSeamless never goes black.",
       OPT_TRANSITIONS, ROW_CHOICE, 3, { "ORIGINAL", "FAST", "SEAMLESS" }, { 0, 1, 2 },
+      0, 0, 0, 0, 0 },
+    /* (here, not on DISPLAY: a page holds five rows, the game's cursor value 5 is CONFIRM, #37) */
+    { "STYLE", "The look of the menus and\nthe battles.",
+      OPT_UI_THEME, ROW_CHOICE, 3, { "KOSMOS", "PLASMA", "HARMONIA" }, { 0, 1, 2 },
       0, 0, 0, 0, 0 },
 };
 

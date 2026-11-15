@@ -742,8 +742,6 @@ static const OptRow k_display[] = {
       EIDOS_OPT_LAYOUT_ARRANGEMENT, OPT_CHOICE, 3, { "STACKED", "WIDE", "ONE" }, { 0, 1, 2 }, 0, 0, 0, 0, 0 },
     { "SWAP SCREENS", "Show the bottom screen first.",
       EIDOS_OPT_LAYOUT_SWAP, OPT_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 }, 0, 0, 0, 0, 0 },
-    { "STYLE", "The look of the menus and the battles.",
-      EIDOS_OPT_UI_THEME, OPT_CHOICE, 3, { "KOSMOS", "PLASMA", "HARMONIA" }, { 0, 1, 2 }, 0, 0, 0, 0, 0 },
 };
 
 static const OptRow k_sound[] = {
@@ -756,6 +754,9 @@ static const OptRow k_extras[] = {
       EIDOS_OPT_EXTRAS_INSTANT_TEXT, OPT_CHOICE, 2, { "ON", "OFF", 0 }, { 1, 0, 0 }, 0, 0, 0, 0, 0 },
     { "TRANSITIONS", "Doors and map changes. Seamless never goes black.",
       EIDOS_OPT_TRANSITIONS, OPT_CHOICE, 3, { "ORIGINAL", "FAST", "SEAMLESS" }, { 0, 1, 2 }, 0, 0, 0, 0, 0 },
+    /* (here, not on DISPLAY: the game's pages hold five rows, #37) */
+    { "STYLE", "The look of the menus and the battles.",
+      EIDOS_OPT_UI_THEME, OPT_CHOICE, 3, { "KOSMOS", "PLASMA", "HARMONIA" }, { 0, 1, 2 }, 0, 0, 0, 0, 0 },
 };
 
 static const char *const k_page_name[PAGE_COUNT] = { "GAME", "DISPLAY", "SOUND", "EXTRAS" };
