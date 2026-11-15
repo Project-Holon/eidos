@@ -40,6 +40,11 @@ extern int eidos_ui_options_proc_up IN_WEAK;   /* recipe_settings.c: the port's 
 /* The game's own lookup: the picker cell under a bottom-screen point (the
  * picker is the grid work's first member, at work+0xFC). */
 extern int ov194_NAMEIN_GRAPHIC_FindCellAtPoint(const char *picker, int *point, void *out) IN_WEAK;
+/* the name entry's steps after a name is taken (#45) */
+extern void ov194_NAMEIN_GRAPHIC_CallbackWaitPrint() IN_WEAK;
+extern void ov194_NAMEIN_GRAPHIC_CallbackFadeOut() IN_WEAK;
+extern void ov194_NAMEIN_GRAPHIC_CallbackFinish() IN_WEAK;
+extern void ov194_NAMEIN_GRAPHIC_CallbackPauseSave() IN_WEAK;
 
 /* ------------------------------------------------------------------ */
 /* Reading the game                                                    */
@@ -187,6 +192,7 @@ static void *find_scene_work(int overlay)
 #define NW_ANIM       0x20C
 #define NW_MEMBERS    0x22C
 #define NW_ARGS       0x2C4
+#define NW_CALLBACK   0x2A0   /* the screen's callback block: its step function first */
 
 typedef struct NameState {
     void *w;
@@ -625,6 +631,30 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     view->zoom = 1.0f;
     view->blur = 1;
     (void)in;
+
+    {
+        /* The name is in: the game has taken it and prints where the Pokemon
+         * went ("... was transferred to BOX 1 in ...'s PC!"), then fades out
+         * (NAMEIN_GRAPHIC_CallbackGridAction sets CallbackWaitPrint only
+         * then; a name it refuses stays on the keys).  The keys are done
+         * with, so the message shows alone, in a box of its own (#45: the
+         * keyboard stood over it). */
+        const void *fn = rdp(s.w, NW_CALLBACK);
+
+        if (fn != NULL && (fn == (const void *)ov194_NAMEIN_GRAPHIC_CallbackWaitPrint
+                           || fn == (const void *)ov194_NAMEIN_GRAPHIC_CallbackFadeOut
+                           || fn == (const void *)ov194_NAMEIN_GRAPHIC_CallbackFinish
+                           || fn == (const void *)ov194_NAMEIN_GRAPHIC_CallbackPauseSave)) {
+            static const char *const next_pairs[] = { "A", "Next" };
+            static const u32 next_keys[] = { 0x1 };
+            int bw = cw - 32 < 300 ? cw - 32 : 300, bx = (cw - bw) / 2, by = ch - ui_bar_h(c) - 6 - 42;
+
+            ui_panel(c, bx, by, bw, 42, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 240);
+            (void)draw_game_prompt(c, in, bx + 12, by + 5, bw - 24);
+            ui_hints(c, ch - ui_bar_h(c), cw, next_pairs, 1, next_keys);
+            return;
+        }
+    }
 
     allow = !s.busy;
 

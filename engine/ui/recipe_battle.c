@@ -4480,6 +4480,9 @@ static void choice_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     y = sh.top - 2 * 28 - 3;
     keys_live(&b);
     cur = input_cursor(&b);
+    /* the answer taken stays lit while the game puts its cursor back on the
+     * first one (#45: NO, taken, showed YES lit as the question closed) */
+    note_key_choice(&b, cur);
     if (ui_theme_active()->battle_layout != NULL) {
         /* a theme: the question in its message box, the two answers side by
          * side inside the box at its right end (above it when it is narrow) */
@@ -4506,6 +4509,7 @@ static void choice_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 hovered = i;
             }
             if (st & EIDOS_UI_CLICK) {
+                note_click(&b, i);
                 tap_request(127, tap_y[i], bt_sig(&b, 4), in->frame);
             }
         }
@@ -4539,6 +4543,7 @@ static void choice_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             hovered = i;
         }
         if (st & EIDOS_UI_CLICK) {
+            note_click(&b, i);
             tap_request(127, tap_y[i], bt_sig(&b, 4), in->frame);
         }
     }

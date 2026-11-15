@@ -4229,6 +4229,23 @@ static int catch_match(void)
     return tw != NULL && rdp(tw, 0x24) != NULL;
 }
 
+/* The question's cursor, the battle input's (BtlvInput +0x68, bits 5..8: 0 YES, 1 NO), or -1 while the game
+ * hides it (BtlvInput.cursorVisible, +0x274, ZukanNicknameWork's soundEnabled: after a touch).  #45: the
+ * answers showed no cursor at all. */
+static int catch_cursor(const u8 *nk)
+{
+    const u8 *bi = rdp(nk, 0x54), *vis;
+
+    if (bi == NULL) {
+        return -1;
+    }
+    vis = (const u8 *)rdp(bi, 0x274);
+    if (vis != NULL && *vis == 0) {
+        return -1;
+    }
+    return ((rd32(bi, 0x68) >> 5) & 15u) == 1u ? 1 : 0;
+}
+
 static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     static const char *const hints[] = { "A", "Choose", "B", "No" };
@@ -4306,9 +4323,9 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 for (i = 0; i < 2; i++) {
                     EidosUiRect r = { lx + 3, ly + 4 + i * 18, lw - 6, 18 };
 
-                    /* YES is the game's own first answer (A takes it) */
+                    /* lit: the pointer's, else the game's cursor */
                     ui_theme_active()->choice_row(c, UI_CHOICE_WHITE, r.x, r.y, r.w, r.h, ui_tr(yn2[i]),
-                                                  hov >= 0 ? hov == i : i == 0);
+                                                  hov >= 0 ? hov == i : catch_cursor(nk) == i);
                     if (eidos_ui_hit(r) & EIDOS_UI_CLICK) {
                         eidos_ui_tap(127, tap_y2[i], 3);
                     }
@@ -4357,7 +4374,8 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         static const int tap_y[2] = { 56, 104 };
 
         for (i = 0; i < 2; i++) {
-            if (sheet_tile_hit(c, bx + bw - 90, by - 4 - 2 * 26 + i * 26, 90, 23, yn[i], 0) & EIDOS_UI_CLICK) {
+            if (sheet_tile_hit(c, bx + bw - 90, by - 4 - 2 * 26 + i * 26, 90, 23, yn[i], catch_cursor(nk) == i)
+                & EIDOS_UI_CLICK) {
                 eidos_ui_tap(127, tap_y[i], 3);
             }
         }
