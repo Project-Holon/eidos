@@ -58,6 +58,7 @@ holds the move steps (their frames then count from when it opens), and
 | `EIDOS_OVERLAY_LOG=1` | Logs each overlay load and unload with its frame (`sdk/overlay.c`). |
 | `EIDOS_LIVE_LOG=1` | Logs the field's moving objects (id, object code, place) once in each zone, and each 3D object the field draws that the battle map takes over (`engine/ui/ui.c`, `sdk/battle_view.c`). |
 | `EIDOS_NO_REMADE=1` | The battle map keeps every model as the map has it: no remade models (`docs/battle-backdrop.md`). For comparing. |
+| `EIDOS_NO_CLOUDS=1` | Outdoor battles have no cloud layer (`docs/battle-backdrop.md`). For comparing. |
 | `BMAP_MODEL_LOG=1` (or `all`) | Logs each building model the battle map places near the player (`all`: the far ones too), with its place and whether it is remade. |
 | `BMAP_PLACE_LOG=1` | Logs the battle map's placement: timings of its stages, the live objects, the bodies stood on the floor. |
 | `BMAP_REMADE_DUMP=DIR` | Writes what each builder of a remade model made as `DIR/<model>.bmc`, for comparing two builds triangle by triangle. |

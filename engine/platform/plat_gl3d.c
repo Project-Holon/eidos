@@ -410,7 +410,27 @@ static const char *k_fsb =
     "uniform int u_grass;\n"
     "uniform vec4 u_clr[16];\n"
     "uniform int u_nclr;\n"
+    "uniform vec4 u_sky;\n"
+    "uniform vec3 u_skyu;\n"
+    "uniform vec3 u_skyv;\n"
     "void main() {\n"
+    "    if (u_sky.x > 0.0) {\n"
+    "        /* the cloud dome: where this pixel's line of sight meets the layer u_sky.y\n"
+    "           over the camera (its horizon u_sky.w under the level), the picture at\n"
+    "           that point's place on the map (u_skyu, u_skyv) in blocks, fading out\n"
+    "           toward that horizon */\n"
+    "        vec3 d = normalize(v_pos - u_eye);\n"
+    "        float e = d.y + u_sky.w;\n"
+    "        if (e < 0.01) { discard; }\n"
+    "        vec2 sz = vec2(textureSize(u_texture, 0));\n"
+    "        vec3 q = vec3(u_eye.xz + d.xz / e * u_sky.y, 1.0);\n"
+    "        vec2 st = fract(vec2(dot(u_skyu, q), dot(u_skyv, q)));\n"
+    "        vec4 t = textureLod(u_texture, (floor(st * sz) + 0.5) / sz, 0.0);\n"
+    "        float a = t.a * u_alpha * smoothstep(0.01, 0.12, e);\n"
+    "        if (a < 0.004) { discard; }\n"
+    "        o = vec4(v_rgb * t.rgb * a, a);\n"
+    "        return;\n"
+    "    }\n"
     "    if (u_nclr > 0 && u_grass == 0) {   /* (not tall grass, the camera passes through it) */\n"
     "        /* the camera's clearance: an upright surface inside one of the\n"
     "           places the camera passed this shot is not drawn; a floor is kept */\n"
@@ -508,7 +528,7 @@ typedef struct Gl3dBackdrop {
     GLuint prog, vao, vbo, ibo;
     GLint u_lift;
     GLint u_r[4], u_pivot, u_bb, u_eye, u_foc, u_fog, u_fogc, u_tex, u_texture, u_alpha, u_cut, u_cut_hi;
-    GLint u_front, u_poke, u_npoke, u_grass, u_uv0, u_uv1, u_clr, u_nclr;
+    GLint u_front, u_poke, u_npoke, u_grass, u_uv0, u_uv1, u_clr, u_nclr, u_sky, u_skyu, u_skyv;
     const void *scene;          /* the scene on the GPU                    */
     unsigned gen;
     GLuint *tex;
@@ -683,6 +703,9 @@ static int backdrop_init(EidosGl *g)
     g_bd.u_grass = g->glGetUniformLocation(g_bd.prog, "u_grass");
     g_bd.u_uv0 = g->glGetUniformLocation(g_bd.prog, "u_uv0");
     g_bd.u_uv1 = g->glGetUniformLocation(g_bd.prog, "u_uv1");
+    g_bd.u_sky = g->glGetUniformLocation(g_bd.prog, "u_sky");
+    g_bd.u_skyu = g->glGetUniformLocation(g_bd.prog, "u_skyu");
+    g_bd.u_skyv = g->glGetUniformLocation(g_bd.prog, "u_skyv");
     g->glGenVertexArrays(1, &g_bd.vao);
     g->glGenBuffers(1, &g_bd.vbo);
     g->glGenBuffers(1, &g_bd.ibo);
@@ -1166,6 +1189,33 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(0.0f, 1.0f); /* no slope term: it pushed far, grazing triangles over the near map */
     g->glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    if (!front && sc->sky_count > 0u && sc->sky_first + sc->sky_count <= sc->nv && sc->sky_tex >= 0
+        && (unsigned)sc->sky_tex < g_bd.n_tex) {
+        /* the sky pass: the cloud dome first, blended over the clear colour, writing no depth (all the map
+         * draws over it) */
+        const float k = sc->place_k > 0.0f ? sc->place_k : BMAP_PLACE_K;
+        static const float m[6] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f };
+        float su[3], sv[3];
+
+        bmap_sky_uv(sc, su, sv);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        g->glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        glBindTexture(GL_TEXTURE_2D, g_bd.tex[sc->sky_tex]);
+        g->glUniform1i(g_bd.u_tex, 1);
+        g->glUniform3fv(g_bd.u_uv0, 1, m);
+        g->glUniform3fv(g_bd.u_uv1, 1, m + 3);
+        g->glUniform1i(g_bd.u_bb, 0);
+        g->glUniform1i(g_bd.u_grass, 0);
+        g->glUniform1f(g_bd.u_lift, 0.0f);
+        g->glUniform1f(g_bd.u_alpha, 26.0f / 31.0f);
+        g->glUniform4f(g_bd.u_sky, 1.0f, sc->sky_h * k, 0.0f, sc->sky_tilt);
+        g->glUniform3fv(g_bd.u_skyu, 1, su);
+        g->glUniform3fv(g_bd.u_skyv, 1, sv);
+        glDrawArrays(GL_TRIANGLES, (GLint)sc->sky_first, (GLsizei)sc->sky_count);
+        g->glUniform4f(g_bd.u_sky, 0.0f, 0.0f, 0.0f, 0.0f);
+    }
     for (pass = front == 3 ? 1 : 0; pass < 2; pass++) {
         if (pass == 1) {
             glEnable(GL_BLEND);

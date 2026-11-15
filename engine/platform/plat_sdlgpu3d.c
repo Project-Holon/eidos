@@ -111,6 +111,9 @@ typedef struct BdFragmentUniforms {
     float cut[4];       /* alpha, cut, cut_hi                  */
     float poke[32][4];
     float clr[16][4];   /* the camera's clearance (flags[3] of them) */
+    float sky[4];       /* the sky pass: on, the layer's height, (unused), the horizon's bend */
+    float skyu[4];      /* ... the picture's u of a layer point (x, z, 1) (bmap_sky_uv) */
+    float skyv[4];      /* ... and its v                                              */
 } BdFragmentUniforms;
 
 /* ------------------------------------------------------------------ */
@@ -1099,6 +1102,38 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     vb.buffer = b->vbuf.buf;
     vb.offset = 0;
     SDL_BindGPUVertexBuffers(pass, 0, &vb, 1);
+    if (!front && !bk->front_only && sc->sky_count > 0u && sc->sky_first + sc->sky_count <= sc->nv
+        && sc->sky_tex >= 0 && (unsigned)sc->sky_tex < b->n_tex && b->tex[sc->sky_tex] != NULL) {
+        /* the sky pass (plat_gl3d.c's): the cloud dome first, blended over the clear colour, writing no depth */
+        SDL_GPUGraphicsPipeline *p = pipe_get(s, base | PKB_BLEND);
+        const float k = sc->place_k > 0.0f ? sc->place_k : BMAP_PLACE_K;
+
+        if (p != NULL) {
+            SDL_GPUTextureSamplerBinding tb;
+
+            SDL_BindGPUGraphicsPipeline(pass, p);
+            tb.texture = b->tex[sc->sky_tex];
+            tb.sampler = bd_sampler(s, b, b->wrap[sc->sky_tex]);
+            SDL_BindGPUFragmentSamplers(pass, 0, &tb, 1);
+            vu.uv0[0] = 1.0f; vu.uv0[1] = 0.0f; vu.uv0[2] = 0.0f;
+            vu.uv1[0] = 0.0f; vu.uv1[1] = 1.0f; vu.uv1[2] = 0.0f;
+            bmap_sky_uv(sc, fu.skyu, fu.skyv);
+            vu.bb[0] = 0;
+            fu.flags[0] = 1;
+            fu.cut[0] = 26.0f / 31.0f;
+            fu.cut[1] = 0.0f;
+            fu.cut[2] = 2.0f;
+            fu.cut[3] = 0.0f;
+            fu.sky[0] = 1.0f;
+            fu.sky[1] = sc->sky_h * k;
+            fu.sky[2] = 0.0f;
+            fu.sky[3] = sc->sky_tilt;
+            SDL_PushGPUVertexUniformData(cmd, 0, &vu, sizeof vu);
+            SDL_PushGPUFragmentUniformData(cmd, 0, &fu, sizeof fu);
+            SDL_DrawGPUPrimitives(pass, sc->sky_count, 1, sc->sky_first, 0);
+            fu.sky[0] = 0.0f;
+        }
+    }
     for (pass_i = fu.flags[1] == 3 ? 1u : 0u; pass_i < 2; pass_i++) {
         unsigned n = pass_i == 1 && b->n_piece > 0 ? b->n_piece : sc->nd;
         int sorted = pass_i == 1 && b->n_piece > 0 && b->ibuf.buf != NULL && b->idx_ok;

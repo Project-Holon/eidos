@@ -1083,8 +1083,9 @@ static void blob_free(Blob *b)
     b->n = 0;
 }
 
-/* A building's looping texture animations (BTA0 files, up to four). */
-typedef struct { Buf bta[4]; unsigned n; } BldAnim;
+/* A building's looping texture animations (BTA0 files, up to four).  fixed[i] >= 0: file i held at that frame (a
+ * live object's, at the frame the field had it on), one frame long; -1 (or a building's, fixed unset): looping. */
+typedef struct { Buf bta[4]; unsigned n; int fixed[4]; unsigned has_fixed; } BldAnim;
 
 typedef struct Area {
     unsigned id;
@@ -1682,7 +1683,7 @@ static unsigned short uv_anim(Ctx *c, const BldAnim *an, const char *name)
                 if (strcmp(nm, name) != 0) {
                     continue;
                 }
-                for (k = 0; k < c->nuva; k++) {
+                for (k = 0; k < c->nuva && !(an->has_fixed && an->fixed[bi] >= 0); k++) {
                     if (c->uva_key[k] == a.p + r) {
                         return (unsigned short)(k + 1u);
                     }
@@ -1706,11 +1707,38 @@ static unsigned short uv_anim(Ctx *c, const BldAnim *an, const char *name)
                     c->uva_key = nk;
                     c->uva_cap = cap;
                 }
-                m = (float *)malloc((size_t)frames * 6u * sizeof *m);
-                if (m == NULL) {
-                    return 0;
+                {
+                    /* (held: one frame, the field's) */
+                    const int held = an->has_fixed && an->fixed[bi] >= 0;
+                    const unsigned slots = held ? 1u : frames;
+
+                    m = (float *)malloc((size_t)slots * 6u * sizeof *m);
+                    if (m == NULL) {
+                        return 0;
+                    }
+                    if (held) {
+                        frames = 1u;
+                    }
                 }
                 for (fr = 0; fr < frames; fr++) {
+                    if (an->has_fixed && an->fixed[bi] >= 0) {
+                        const unsigned hold = (unsigned)an->fixed[bi] % rd16(a, 4);
+                        float ss = srt_scalar(a, rd32(a, r + 0), rd32(a, r + 4), hold);
+                        float st = srt_scalar(a, rd32(a, r + 8), rd32(a, r + 12), hold);
+                        float ts = srt_scalar(a, rd32(a, r + 24), rd32(a, r + 28), hold);
+                        float tt = srt_scalar(a, rd32(a, r + 32), rd32(a, r + 36), hold);
+                        float sn, cs;
+                        float *o = m + (size_t)fr * 6u;
+
+                        srt_rot(a, rd32(a, r + 16), rd32(a, r + 20), hold, &sn, &cs);
+                        o[0] = ss * cs;
+                        o[1] = ss * sn;
+                        o[2] = ss * (1.0f - sn - cs) * 0.5f - ss * ts;
+                        o[3] = -st * sn;
+                        o[4] = st * cs;
+                        o[5] = (2.0f + st * sn - st * cs - st) * 0.5f + st * tt;
+                        continue;
+                    }
                     float ss = srt_scalar(a, rd32(a, r + 0), rd32(a, r + 4), fr);
                     float st = srt_scalar(a, rd32(a, r + 8), rd32(a, r + 12), fr);
                     float ts = srt_scalar(a, rd32(a, r + 24), rd32(a, r + 28), fr);
@@ -2392,7 +2420,9 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                 }
                 xt.bb = 0;
                 xt.cull = x->cull;
-                xt.uvanim = 0;
+                /* (a held animation, one frame: the source's state as the field had it, kept) */
+                xt.uvanim = x->tex < 0 && tag.uvanim != 0 && tag.uvanim <= c->nuva && c->uva[tag.uvanim - 1].frames <= 1u
+                            ? tag.uvanim : 0;
                 if (x->kind == 1) {
                     /* a piece that keeps the battle's own directions (a shadow that falls the way the
                      * Pokemon's shadows fall, toward the foe's side): placed about the object's place with
@@ -2667,6 +2697,173 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
     }
     blob_free(&b);
     return rc;
+}
+
+/* ------------------------------------------------------------------ */
+/* The cloud layer (outdoor battles)                                   */
+/* ------------------------------------------------------------------ */
+
+#define CLOUD_TEX 64            /* cells a side of the cloud picture (one texel a cell)       */
+#define CLOUD_CELL 24.0f        /* map units a cell                                          */
+#define CLOUD_UP 220.0f         /* the layer's height over the battle camera (map units)     */
+#define CLOUD_TILT 0.17f        /* its horizon about 10 degrees under the camera's level      */
+#define CLOUD_COVER 0.50f       /* the noise over which a cell is cloud: about two fifths of the sky */
+#define CLOUD_DRIFT 120.0f      /* seconds for the clouds to drift one picture's width         */
+
+static unsigned cloud_hash(unsigned x, unsigned y)
+{
+    unsigned h = x * 374761393u + y * 668265263u;
+
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
+/* Smooth noise on a 64-cell ring (tiles), 0..1, from a lattice `step` cells apart; `seed` picks the pattern. */
+static float cloud_noise(int x, int y, int step, unsigned seed)
+{
+    const int n = CLOUD_TEX / step;
+    const int gx = x / step, gy = y / step;
+    const float fx = (float)(x % step) / (float)step, fy = (float)(y % step) / (float)step;
+    float v[4];
+    int k;
+
+    for (k = 0; k < 4; k++) {
+        const unsigned cx = (unsigned)((gx + (k & 1)) % n), cy = (unsigned)((gy + (k >> 1)) % n);
+
+        v[k] = (float)(cloud_hash(cx + 17u * (unsigned)step + 7919u * seed, cy + 104729u * seed) & 0xFFFFu) / 65535.0f;
+    }
+    {
+        const float sx = fx * fx * (3.0f - 2.0f * fx), sy = fy * fy * (3.0f - 2.0f * fy);
+        const float a = v[0] + (v[1] - v[0]) * sx, b = v[2] + (v[3] - v[2]) * sx;
+
+        return a + (b - a) * sy;
+    }
+}
+
+/* The clouds over an outdoor battle: a picture of square cells (white where there is cloud, clear elsewhere), the
+ * zone's own pattern, lit by the zone's light at the battle's hour (white at noon, warm at dusk, dim at night).  It
+ * is held by a dome round the battle that no draw holds (BmapScene.sky_*): the renderers draw the dome first, each
+ * of its pixels reading the picture where its line of sight meets a layer CLOUD_UP over the camera, at that
+ * point's place on the map (bmap_sky_uv).  Returns the picture's texture, -1 on a failure, -2 with no ground. */
+static int add_clouds(Ctx *c, float px, float pz, unsigned zone)
+{
+    BmapTexture *nt;
+    TexRef *nr;
+    float top = -1e30f, tint[3];
+    unsigned i, x, y;
+    int tex;
+    u8 *px8;
+
+    for (i = 0; i < c->nv; i++) {
+        const BmapVertex *v = &c->v[i];
+
+        if (fabsf(v->x - px) < 256.0f && fabsf(v->z - pz) < 256.0f && v->y > top) {
+            top = v->y;
+        }
+    }
+    if (top < -1e29f) {
+        return -2;
+    }
+    /* the picture */
+    {
+        size_t cap1 = c->tex_cap, cap2 = c->tex_cap;
+
+        nt = (BmapTexture *)grow(c->tex, &cap1, c->ntex, sizeof *nt);
+        if (nt == NULL) {
+            return -1;
+        }
+        c->tex = nt;
+        nr = (TexRef *)grow(c->texrefs, &cap2, c->ntex, sizeof *nr);
+        if (nr == NULL) {
+            return -1;
+        }
+        c->texrefs = nr;
+        c->tex_cap = cap1;
+    }
+    px8 = (u8 *)malloc(CLOUD_TEX * CLOUD_TEX * 4u);
+    if (px8 == NULL) {
+        return -1;
+    }
+    for (y = 0; y < CLOUD_TEX; y++) {
+        for (x = 0; x < CLOUD_TEX; x++) {
+            /* two octaves: big banks of cloud with ragged edges */
+            const float n = 0.7f * cloud_noise((int)x, (int)y, 16, zone + 1u)
+                            + 0.3f * cloud_noise((int)x, (int)y, 4, zone + 1u);
+            u8 *o = px8 + ((size_t)y * CLOUD_TEX + x) * 4u;
+
+            o[0] = o[1] = o[2] = 255;
+            o[3] = n > CLOUD_COVER ? 255 : 0;
+        }
+    }
+    tex = (int)c->ntex;
+    memset(&c->tex[tex], 0, sizeof c->tex[0]);
+    c->tex[tex].w = CLOUD_TEX;
+    c->tex[tex].h = CLOUD_TEX;
+    c->tex[tex].rgba = px8;
+    c->tex[tex].repeat_s = 1;
+    c->tex[tex].repeat_t = 1;
+    c->texrefs[tex].ent = -1;
+    c->texrefs[tex].flags = 0;
+    c->ntex++;
+    /* the light: the zone's sun and sky at the battle's hour, never darker than a quarter */
+    for (i = 0; i < 3u; i++) {
+        float l = c->lights.col[0][i] + 0.35f + 0.25f * (float)c->lights.clear[i] / 255.0f;
+
+        tint[i] = l < 0.25f ? 0.25f : l > 1.0f ? 1.0f : l;
+    }
+    {
+        /* the dome: a ball of 12 by 8 faces (its size and place: bmap_place's, round the battle) */
+        TriTag tag;
+        int a, b, k, q;
+
+        memset(&tag, 0, sizeof tag);
+        tag.tex = tex;
+        tag.alpha = 26;
+        tag.cull = 0;
+        tag.translucent = 1;
+        tag.far = 1;
+        c->obj++;
+        for (b = 0; b < 8; b++) {
+            for (a = 0; a < 12; a++) {
+                float p[4][3];
+
+                for (k = 0; k < 4; k++) {
+                    const double lat = (double)(b + (k >> 1)) * 3.14159265358979 / 8.0;
+                    const double lon = (double)(a + (k & 1)) * 3.14159265358979 / 6.0;
+
+                    p[k][0] = px + 1000.0f * (float)(sin(lat) * cos(lon));
+                    p[k][1] = top + 1000.0f * (float)cos(lat);
+                    p[k][2] = pz + 1000.0f * (float)(sin(lat) * sin(lon));
+                }
+                for (k = 0; k < 2; k++) {
+                    static const int tri[2][3] = { { 0, 1, 3 }, { 0, 3, 2 } };
+                    BmapVertex bv[3];
+                    float wp[3][3];
+
+                    for (q = 0; q < 3; q++) {
+                        const float *s = p[tri[k][q]];
+
+                        memset(&bv[q], 0, sizeof bv[q]);
+                        bv[q].x = s[0];
+                        bv[q].y = s[1];
+                        bv[q].z = s[2];
+                        bv[q].r = (u8)(255.0f * tint[0]);
+                        bv[q].g = (u8)(255.0f * tint[1]);
+                        bv[q].b = (u8)(255.0f * tint[2]);
+                        bv[q].a = (u8)(26u * 255u / 31u);
+                        bv[q].obj = c->obj;
+                        wp[q][0] = s[0];
+                        wp[q][1] = s[1];
+                        wp[q][2] = s[2];
+                    }
+                    if (add_tri_raw(c, bv, &tag, (const float (*)[3])wp, 0, 0) != 0) {
+                        return -1;
+                    }
+                }
+            }
+        }
+    }
+    return tex;
 }
 
 /* ------------------------------------------------------------------ */
@@ -3294,7 +3491,22 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
             snprintf(okey, sizeof okey, "o%s", name);
             g_done = c->cur_far || name[0] == '\0' ? NULL : done_get_posed(c, okey, pose, &md, setkey, tb.p != NULL ? tb : mb);
         }
-        rc = add_model(c, &md, setkey, tb.p != NULL ? tb : mb, &place, 2, NULL);
+        {
+            /* its texture animations at the frames the field had them on (a switch's pad, a rail's lit branch) */
+            BldAnim ba;
+
+            memset(&ba, 0, sizeof ba);
+            ba.has_fixed = 1u;
+            for (a = 0; a < live[i].nanim && ba.n < 4u; a++) {
+                if (live[i].anim[a].p != NULL && live[i].anim[a].n >= 4u && memcmp(live[i].anim[a].p, "BTA0", 4) == 0) {
+                    ba.bta[ba.n].p = live[i].anim[a].p;
+                    ba.bta[ba.n].n = live[i].anim[a].n;
+                    ba.fixed[ba.n] = live[i].anim[a].frame;
+                    ba.n++;
+                }
+            }
+            rc = add_model(c, &md, setkey, tb.p != NULL ? tb : mb, &place, 2, ba.n > 0u ? &ba : NULL);
+        }
         g_done = NULL;
         c->cur_bob = 0;
         if (rc == 0 && fieldcam && c->nv > v0) {
@@ -4376,7 +4588,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     Buf hb, mb;
     unsigned pcx, pcz, area, matrix_id, mode, w, h, cell;
     unsigned i;
-    int rc = -1, wfbc_on = 0, fmat_on = 0, fmat_given = g_fmat_set;
+    int rc = -1, wfbc_on = 0, fmat_on = 0, fmat_given = g_fmat_set, cloud_tex = -2;
     Area *player_area;
     BmapWfbc wfbc;
 
@@ -4553,11 +4765,41 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     if (extend_sea(c) != 0) {
         goto out;
     }
+    /* the clouds: where the game counts the zone outdoors (Fly or weather allowed: the zone header's word at 0x1E,
+     * bits 13 and 12); not a room, a cave, a gym */
+    cloud_tex = -2;
+    if ((rd16(hb, zone * 48u + 0x1Eu) & 0x3000u) != 0u && getenv("EIDOS_NO_CLOUDS") == NULL) {
+        cloud_tex = add_clouds(c, px, pz, zone);
+        if (cloud_tex == -1) {
+            goto out;
+        }
+    }
     s->clear[0] = c->lights.clear[0]; s->clear[1] = c->lights.clear[1]; s->clear[2] = c->lights.clear[2];
     s->fog[0] = c->lights.fog[0]; s->fog[1] = c->lights.fog[1]; s->fog[2] = c->lights.fog[2];
     load_fog(c, zone, hb, s);
     if (finish(c, s) != 0) {
         goto out;
+    }
+    {
+        /* the cloud dome: out of the draws, for the renderers' sky pass */
+        unsigned i;
+
+        for (i = 0; i < s->nd; i++) {
+            const BmapDraw *d = &s->d[i];
+
+            if (cloud_tex >= 0 && d->tex == cloud_tex) {
+                s->sky_first = d->first;
+                s->sky_count = d->count;
+                s->sky_tex = d->tex;
+                s->sky_h = CLOUD_UP;
+                s->sky_rep = (float)CLOUD_TEX * CLOUD_CELL;
+                s->sky_tilt = CLOUD_TILT;
+                s->sky_drift = CLOUD_DRIFT;
+                memmove(&s->d[i], &s->d[i + 1u], (s->nd - i - 1u) * sizeof *s->d);
+                s->nd--;
+                break;
+            }
+        }
     }
     s->t = c->tex;
     s->nt = (unsigned)c->ntex;

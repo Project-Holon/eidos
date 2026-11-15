@@ -1647,6 +1647,13 @@ static int loose(const BmapScene *s, const Card *c, const CornerGrid *g)
     return 1;
 }
 
+/* A draw whose picture does not move: no texture animation, or one held at a single frame (a live object's, as the
+ * field had it: a switch's pad). */
+static int still_pic(const BmapScene *s, const BmapDraw *d)
+{
+    return d->uvanim == 0 || (d->uvanim <= s->nuva && s->uva[d->uvanim - 1].frames <= 1u);
+}
+
 static void stand_cards(BmapScene *s)
 {
     unsigned i, j, nd0 = s->nd, ncard = 0, cap = 0, nvx = 0, nt_all;
@@ -1672,7 +1679,7 @@ static void stand_cards(BmapScene *s)
         unsigned first;
 
         if (d->billboard != 0 || d->count < 3 || d->first + d->count > s->nv || d->tex < 0 || (unsigned)d->tex >= s->nt
-            || d->uvanim != 0) {
+            || !still_pic(s, d)) {
             continue;                   /* (an animated sheet: stand_drift) */
         }
         t = &s->t[d->tex];
@@ -2024,7 +2031,7 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
     for (i = 0; i < s->nd; i++) {
         const BmapDraw *d = &s->d[i];
 
-        if (d->billboard == 0 && d->tex >= 0 && !d->translucent && d->uvanim == 0 && d->first % 3 == 0 && d->first + d->count <= s->nv
+        if (d->billboard == 0 && d->tex >= 0 && !d->translucent && still_pic(s, d) && d->first % 3 == 0 && d->first + d->count <= s->nv
             && !(grass != NULL && i < ngrass && grass[i])) {
             for (t = d->first / 3; t < (d->first + d->count) / 3; t++) {
                 textured[t] = 1;
@@ -2760,6 +2767,45 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
         v->y = GROUND_Y + k * (my - gy) - GROUND_LIFT;
     }
     free(done);
+    if (s->sky_count > 0u && s->sky_first + s->sky_count <= s->nv) {
+        /* the cloud dome: round the battle, inside the camera's far limit wherever the camera stands
+         * (a ball of 300 battle units about the own slot's ground; only its directions count) */
+        float mc[3] = { 0.0f, 0.0f, 0.0f };
+
+        for (i = s->sky_first; i < s->sky_first + s->sky_count; i++) {
+            mc[0] += s->v[i].x;
+            mc[1] += s->v[i].y;
+            mc[2] += s->v[i].z;
+        }
+        mc[0] /= (float)s->sky_count;
+        mc[1] /= (float)s->sky_count;
+        mc[2] /= (float)s->sky_count;
+        for (i = s->sky_first; i < s->sky_first + s->sky_count; i++) {
+            BmapVertex *v = &s->v[i];
+            float dx = v->x - mc[0], dy = v->y - mc[1], dz = v->z - mc[2];
+            float l = sqrtf(dx * dx + dy * dy + dz * dz);
+
+            if (l > 1e-6f) {
+                v->x = 300.0f * dx / l;
+                v->y = GROUND_Y + 300.0f * dy / l;
+                v->z = PLACE_SZ + 300.0f * dz / l;
+            }
+        }
+    }
+    if (s->sky_count > 0u) {
+        /* the cloud layer fixed to the map: battle (x, z) -> map, ux = (x - PLACE_SX) / k and uz = (z - PLACE_SZ) / k
+         * turned back by the placing's angle, plus the place; then one picture repeat a sky_rep */
+        const double kk = k, r = s->sky_rep > 0.0f ? s->sky_rep : 1.0, c0 = cos(a), s0 = sin(a);
+        const double cu = ((-c0 * PLACE_SX - s0 * PLACE_SZ) / kk + px) / r;
+        const double cv = ((s0 * PLACE_SX - c0 * PLACE_SZ) / kk + pz) / r;
+
+        s->sky_u[0] = (float)(c0 / kk / r);
+        s->sky_u[1] = (float)(s0 / kk / r);
+        s->sky_u[2] = (float)(cu - floor(cu));
+        s->sky_v[0] = (float)(-s0 / kk / r);
+        s->sky_v[1] = (float)(c0 / kk / r);
+        s->sky_v[2] = (float)(cv - floor(cv));
+    }
     if (!sp->field) {
         stand_drift(s);
     }

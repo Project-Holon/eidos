@@ -473,6 +473,9 @@ static RmBuild *mesh_builder(const char *name)
     if (strcmp(name, "cup") == 0) {
         return rm_cup;
     }
+    if (strcmp(name, "plate") == 0) {
+        return rm_plate;
+    }
     if (strcmp(name, "candle") == 0) {
         return rm_candle;
     }

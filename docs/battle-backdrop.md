@@ -333,6 +333,20 @@ Where water lies on the edge of everything loaded, the scene continues it outwar
 same texture, far past what a battle camera sees, with its bed. The scene no longer fades into the sky colour
 in the distance.
 
+## The clouds
+
+Outdoor battles have a layer of blocky clouds. A zone counts as outdoors when its header allows Fly or weather
+(word 0x1E, bits 12 and 13). Each zone has its own cloud picture, made from noise seeded by the zone. The layer
+is fixed to the map and drifts by the real clock, so two battles at the same time see the same clouds, each
+from its own place. The clouds are lit by the zone's light at the battle's hour.
+
+The battle camera looks a little down, and the sky it sees is mostly the space past the map's edge, under the
+level. So the clouds are not geometry over the map: a dome round the battle, which no draw holds
+(`BmapScene.sky_*`), is drawn first in both renderers. Each dome pixel finds where its line of sight meets a
+layer over the camera, with the layer's horizon bent about 10 degrees under the level, and reads the picture at
+that point's place on the map (`bmap_sky_uv`). The clouds fade out toward that horizon, and the map draws over
+them.
+
 ## Test switches
 
 These are for tests only and come out before release:
@@ -343,7 +357,7 @@ its own tests.
 Research switches of the map builder, all off unless set (`docs/test-switches.md`): `BMAP_DUMP`,
 `BMAP_MODELS_DUMP`, `BMAP_MODEL_LOG`, `BMAP_PLACE_LOG`, `BMAP_FOOT_LOG`, `BMAP_REMADE_DUMP`, `BMAP_CAM_YAW`,
 `BMAP_FORCE_FACING`, `BMAP_FREE_ANGLE`, `BMAP_DEBUG_BACK`, `BMAP_FIX_BACKS`, `BMAP_JOIN`, `BMAP_JOIN_MODE`,
-`EIDOS_LIVE_LOG`.
+`EIDOS_LIVE_LOG`, `EIDOS_NO_CLOUDS` (no cloud layer).
 
 ## Sprite sizes
 
