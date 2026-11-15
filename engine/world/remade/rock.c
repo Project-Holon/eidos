@@ -40,7 +40,7 @@
  *
  * Settings: key, faces, ripple, wrap, around, reach, boss, bump, fat, mouth,
  * rim, lip, rimw, sink, high, lean (a fixed leaning card, not a camera-facing
- * one), shadow (0: none).
+ * one), shadow (0: none), handle (a cup's handle columns), y (the height it stands on).
  */
 
 #include <math.h>
@@ -318,6 +318,8 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     double ua, ub, va, vb, foot[3], width, stand, s, sv, sink, look, cen[MAXPX], rbase[MAXPX], rcap = 0.0, per, reach, bump;
     double dfac[MAXPX], doff[MAXPX];
     double shc = 0.0, lift;
+    unsigned char hmask[MAXPX][MAXPX];  /* `handle`: the handle's pixels */
+    const int handle_c = (int)rm_optf(opt, "handle", 0);
     int planes[6][MAXPX * 2 + 8], nplane[6];
     unsigned first_tri = out->ntri, src = bt->tri[0].id;
 
@@ -375,6 +377,14 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
 
             memcpy(r->pic + ((size_t)j * W + (size_t)c) * 4u, p, 4u);
             r->mask[j][c] = (unsigned char)(p[3] >= 128 && !rm_has_colour(keys, nkey, p));
+        }
+    }
+    /* `handle=C`: the columns from C on are a cup's handle: no part of the round body */
+    memset(hmask, 0, sizeof hmask);
+    for (j = 0; handle_c > 0 && j < H; j++) {
+        for (c = handle_c; c < W; c++) {
+            hmask[j][c] = r->mask[j][c];
+            r->mask[j][c] = 0;
         }
     }
     /* `mouth=N`: the picture's first N rows are the thing's opening as the field's camera sees it from above
@@ -457,7 +467,6 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
         }
         lowp[0] = pt[0]; lowp[1] = pt[1];
         highp[0] = pt[np - 2]; highp[1] = pt[np - 1];
-        free(pt);
         for (q = 0; q < 3u; q++) {
             foot[q] = (double)(float)((lowp[0].p[q] + lowp[1].p[q]) / 2.0f);
             top[q] = (double)(float)((highp[0].p[q] + highp[1].p[q]) / 2.0f);
@@ -466,6 +475,21 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
         width = sqrt((double)(lowp[0].p[0] - lowp[1].p[0]) * (lowp[0].p[0] - lowp[1].p[0]) + (double)(lowp[0].p[1] - lowp[1].p[1]) * (lowp[0].p[1] - lowp[1].p[1])
                      + (double)(lowp[0].p[2] - lowp[1].p[2]) * (lowp[0].p[2] - lowp[1].p[2]));
         stand = len > 0 ? (top[1] - foot[1]) / len : 1.0;
+        if (np > 4u && width > 1e-6) {
+            /* (a card bent in two, a tree over its narrower trunk: the picture is as wide as the card's widest
+             * part, across the way its foot runs) */
+            const double ex = (lowp[1].p[0] - lowp[0].p[0]) / width, ez = (lowp[1].p[2] - lowp[0].p[2]) / width;
+            double a0 = 1e30, a1 = -1e30;
+
+            for (vi = 0; vi < np; vi++) {
+                const double a = (pt[vi].p[0] - lowp[0].p[0]) * ex + (pt[vi].p[2] - lowp[0].p[2]) * ez;
+
+                a0 = a < a0 ? a : a0;
+                a1 = a > a1 ? a : a1;
+            }
+            width = a1 - a0 > width ? a1 - a0 : width;
+        }
+        free(pt);
     }
     if (bt->bb) {
         /* a camera-facing picture stands where the map turns it: on that point, on the ground (its own lower
@@ -492,7 +516,15 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
             foot[2] += sz;
         }
     }
+    /* `y=Y`: the body stands on that height (a card over a table in a room's mesh: its foot hangs over the top) */
+    if (rm_opt(opt, "y", ob, sizeof ob) != NULL) {
+        foot[1] = rm_optf(opt, "y", foot[1]);
+    }
     s = width / W;                      /* one picture pixel, in map units: a block's edge */
+    if (getenv("RM_ROCK_LOG") != NULL) {        /* research: what the card gave */
+        fprintf(stderr, "rock: %u triangles, texture %dx%d, picture %dx%d at %d,%d, width %.2f, foot %.1f %.1f %.1f, rows %d\n",
+                bt->n, w, h, W, H, i0, j0, width, foot[0], foot[1], foot[2], n);
+    }
     /* A block is as high as a pixel of the leaning picture stands as the battle's command camera sees it: that
      * camera looks 12.5 degrees down, so a picture leaning at the angle a shows sin(a + 12.5) of its length.
      * (As high as it stands alone the rocks were pancakes; as long as the picture, eggs twice too tall.) */
@@ -678,6 +710,15 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
             }
         }
     }
+    /* the handle: two blocks deep at the body's middle, out of its side */
+    for (j = 0; handle_c > 0 && j < H; j++) {
+        for (c = handle_c; c < W; c++) {
+            if (hmask[j][c]) {
+                VOX(j, R - 1, c) = 1;
+                VOX(j, R, c) = 1;
+            }
+        }
+    }
     /* the hand-drawn faces, under the picture */
     facesn = rm_opt(opt, "faces", ob, sizeof ob);
     if (facesn != NULL) {
@@ -704,7 +745,9 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
                 ii = c + 0.5 - cen[j];
                 kk = lathe ? k + 0.5 - R : (k + 0.5 - R - doff[j]) / dfac[j];      /* (as a round slice: `depth`) */
                 side = fabs(kk) >= fabs(ii) ? (kk > 0 ? 0 : 2) : (ii > 0 ? 1 : 3);
-                if (lathe) {
+                if (hmask[j][c]) {
+                    col = c + 0.5;                  /* (the handle: its own pixel) */
+                } else if (lathe) {
                     /* a thing turned on a wheel: the same all round, its picture's middle repeated `around`
                      * times; a block at an angle takes the column the picture shows at that angle on a round
                      * body, with the angle folded into one repeat; `reach`: only the middle is repeated */
@@ -1407,6 +1450,38 @@ void rm_rock(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
             continue;
         }
         if ((!bt->bb && !lean) || bt->n < 2 || bt->tex < 0 || (unsigned)bt->tex >= ntex || tex[bt->tex].rgba == NULL) {
+            continue;
+        }
+        if (lean && !bt->bb) {
+            /* (a leaning card is never level: a level face drawn with it, a pot's rim under a tree's card in a room's
+             * mesh, is not the card) */
+            RmTri *ct = (RmTri *)malloc(bt->n * sizeof *ct);
+            RmBatch one = *bt;
+            unsigned i, nc = 0;
+
+            if (ct == NULL) {
+                out->fail = 1;
+                return;
+            }
+            for (i = 0; i < bt->n; i++) {
+                double e1[3], e2[3], nn[3];
+                int k;
+
+                for (k = 0; k < 3; k++) {
+                    e1[k] = (double)bt->tri[i].p[1][k] - bt->tri[i].p[0][k];
+                    e2[k] = (double)bt->tri[i].p[2][k] - bt->tri[i].p[0][k];
+                }
+                rm_cross(e1, e2, nn);
+                if (rm_norm(nn) > 1e-9 && fabs(nn[1]) < 0.95) {
+                    ct[nc++] = bt->tri[i];
+                }
+            }
+            one.tri = ct;
+            one.n = nc;
+            if (nc >= 2 && build(&one, &tex[bt->tex], opt, out)) {
+                rm_drop_all(out, &one);
+            }
+            free(ct);
             continue;
         }
         if (build(bt, &tex[bt->tex], opt, out)) {

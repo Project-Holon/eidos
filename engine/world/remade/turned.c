@@ -79,6 +79,24 @@ static void normal_of(const float p[3][3], double n[3])
     rm_cross(e1, e2, n);
 }
 
+static int g_even;      /* `even=1`: no shading by the way a face looks */
+
+/* `even`: does the face look outward from the upright through (cx, cz) (or up)? */
+static int outward(const Tr *q, double cx, double cz)
+{
+    double n[3], c[3];
+    int k;
+
+    normal_of(q->p, n);
+    if (rm_norm(n) <= 1e-6) {
+        return 0;
+    }
+    for (k = 0; k < 3; k++) {
+        c[k] = (q->p[0][k] + q->p[1][k] + q->p[2][k]) / 3.0;
+    }
+    return n[1] > 0.7 || n[0] * (c[0] - cx) + n[2] * (c[2] - cz) > 0.0;
+}
+
 /* A triangle in its piece's colour, shaded by the way it looks, in its own pixels. */
 static void painted(RmOut *out, const Tr *q)
 {
@@ -88,7 +106,7 @@ static void painted(RmOut *out, const Tr *q)
 
     normal_of(q->p, n);
     rm_norm(n);
-    f = n[1] > 0.7 ? 1.0 : n[1] < -0.7 ? 0.55 : n[2] > 0.5 ? 1.0 : n[2] < -0.5 ? 0.78 : 0.86;
+    f = g_even ? 1.0 : n[1] > 0.7 ? 1.0 : n[1] < -0.7 ? 0.55 : n[2] > 0.5 ? 1.0 : n[2] < -0.5 ? 0.78 : 0.86;
     for (k = 0; k < 3; k++) {
         c0[k] = q->p[0][k]; c1[k] = q->p[1][k]; c2[k] = q->p[2][k];
         rgb[k] = (unsigned char)(q->ref[k] * f);
@@ -162,6 +180,8 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
     double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, cx, cz;
     int any = 0, mirror = rm_optf(opt, "mirror", 0) != 0.0, copies = rm_optf(opt, "copies", 1) != 0.0;
     const int plainback = rm_optf(opt, "plainback", 0) != 0.0;
+
+    g_even = rm_optf(opt, "even", 0) != 0.0;
 
     (void)tex;
     (void)ntex;
@@ -375,11 +395,72 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             tr[i].black = 1;            /* (repainted below, and its turned copy and twin with it) */
         }
     }
+    if (g_even) {
+        /* (one colour a piece: its clearest outside face's) */
+        for (i = 0; i < n0; i++) {
+            int best = -1, bs = -1;
+
+            for (j = 0; j < n0; j++) {
+                const int sum = tr[j].rgb[0] + tr[j].rgb[1] + tr[j].rgb[2];
+
+                if (tr[j].piece == tr[i].piece && !tr[j].black && outward(&tr[j], cx, cz) && sum > bs) {
+                    bs = sum;
+                    best = (int)j;
+                }
+            }
+            if (best >= 0) {
+                memcpy(tr[i].ref, tr[best].rgb, 3u);
+            }
+        }
+    }
     /* 3. (first, for the model's own triangles) the faces painted black, repainted */
     for (i = 0; i < n0; i++) {
         if (!tr[i].flat && tr[i].black) {
             rm_drop(out, tr[i].id);
             painted(out, &tr[i]);
+        }
+    }
+    /* `axis=AX:AY:AZ:CX:CY:CZ`: a thing lying on its side (a pot knocked over: its far half, the one the field
+     * camera never shows, is missing): the back is the front turned half round about its own axis, the line
+     * through (CX, CY, CZ) along (AX, AY, AZ).  Each face's copy is p' = 2 (c + ((p - c) . a) a) - p, a turn, so it
+     * keeps looking outward, in the face's own picture; no twins (step 2 is for things that stand). */
+    {
+        char ab[128];
+        double ax[3] = { 0.0, 1.0, 0.0 }, ac[3];
+
+        if (rm_opt(opt, "axis", ab, sizeof ab) != NULL
+            && sscanf(ab, "%lf:%lf:%lf:%lf:%lf:%lf", &ax[0], &ax[1], &ax[2], &ac[0], &ac[1], &ac[2]) == 6
+            && rm_norm(ax) > 1e-9) {
+            for (i = 0; i < n0; i++) {
+                Tr q = tr[i];
+                double nv[3];
+
+                if (tr[i].flat) {
+                    continue;
+                }
+                normal_of(tr[i].p, nv);
+                if (rm_norm(nv) > 1e-9 && fabs(rm_dot(nv, ax)) > 0.9) {
+                    continue;                   /* (an end across the axis, a pot's rim or base: turned, it lies on
+                                                 * itself, a little off, over its own picture) */
+                }
+                for (j = 0; j < 3; j++) {
+                    double d[3], t;
+
+                    for (k = 0; k < 3; k++) {
+                        d[k] = (double)tr[i].p[j][k] - ac[k];
+                    }
+                    t = rm_dot(d, ax);
+                    for (k = 0; k < 3; k++) {
+                        q.p[j][k] = (float)(2.0 * (ac[k] + t * ax[k]) - tr[i].p[j][k]);
+                    }
+                }
+                if (!there(tr, n, q.p)) {
+                    memcpy(q.ref, tr[i].black ? tr[i].ref : tr[i].rgb, 3u);
+                    painted(out, &q);
+                    tr[n++] = q;
+                }
+            }
+            goto cards;
         }
     }
     /* 1. the turned copies */
@@ -427,6 +508,8 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
         if (!there(tr, n, q.p)) {
             if (q.black) {
                 painted(out, &q);
+            } else if (g_even && outward(&q, cx, cz)) {
+                painted(out, &q);                   /* (its piece's one colour) */
             } else {
                 rm_turn(out, tr[i].id, tr[i].own ? tr[i].pax : cx, tr[i].own ? tr[i].pz : cz);
             }
@@ -501,6 +584,15 @@ cards:
         normal_of(tr[i].p, nv);
         if (tr[i].flat && rm_norm(nv) > 1e-6 && fabs(nv[1]) < 0.9) {
             rm_two(out, tr[i].id);
+        }
+    }
+    if (g_even) {
+        /* (the model's own faces repainted in their piece's one colour) */
+        for (i = 0; i < n0; i++) {
+            if (!tr[i].flat && !tr[i].black && outward(&tr[i], cx, cz)) {
+                painted(out, &tr[i]);
+                rm_drop(out, tr[i].id);
+            }
         }
     }
     if (rm_optf(opt, "rest", 1) != 0.0) {

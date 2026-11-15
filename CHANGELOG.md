@@ -9,6 +9,8 @@ Each release's notes on GitHub start with its section here
 - **Real-Map Battles, Solid Objects**: Rocks, the living rooms' pouffes, the Dreamyard's bottles, the warp pads, the Pokémon League's plaza gate and the Relic Castle's vases are bodies in battles on the real map instead of flat pictures, each with a shadow drawn the way the game draws a Pokémon's.
 - **Real-Map Battles, The Field As It Is**: A battle on the real map now shows the field's moving objects as you left them: a gym's opened curtains and switched devices, pushed boulders, Chargestone Cave's floating stones, the League's light pillars.
 - **Real-Map Battles, Sea & Distance**: The sea continues past the edge of the map instead of ending in a straight line, and the scenery no longer fades into the sky colour in the distance.
+- **Real-Map Battles, Clouds**: Outdoor battles have blocky clouds in the sky, each area with its own pattern, fixed to the map and drifting with the real clock, lit by the hour.
+- **Real-Map Battles, Nimbasa Gym**: The gym's rails and tracks are solid from every side, its switch pads are raised 3D buttons, and the pads and rails show the colours the switches left them in.
 - **Dowsing Machine**: The Dowsing Machine's rods now show on a small card at the top right instead of the whole lower screen, which hid the player in 4:3 and tall windows; the top bar's `Menu` button reads `Close` while the machine is on, thanks @aqali1 (#36).
 
 ### Fixes

@@ -62,9 +62,13 @@ cbuffer FragmentUniforms : register(b0, space3)
     float4 feye;
     float4 fog;
     float4 fogc;
-    int4 flags;         // textured, front pass, Pokemon count
-    float4 cut;         // alpha, cut, cut_hi
+    int4 flags;         // textured, front pass, Pokemon count, clearance places
+    float4 cut;         // alpha, cut, cut_hi, tall grass
     float4 poke[32];
+    float4 clr[16];     // the camera's clearance: places the camera passed this shot (x, y, z, radius)
+    float4 sky;         // the sky pass: on, the layer's height, (unused), the horizon's bend
+    float4 skyu;        // ... the picture's u of a layer point (x, z, 1)
+    float4 skyv;        // ... and its v
 };
 
 struct FSOut
@@ -77,6 +81,47 @@ struct FSOut
 FSOut fs_main(VSOut i)
 {
     FSOut o;
+    if (sky.x > 0.0) {
+        // the cloud dome: where this pixel's line of sight meets the layer sky.y over the camera (its horizon
+        // sky.w under the level), the picture at that point's place on the map (skyu, skyv) in blocks, fading
+        // out toward that horizon
+        float3 d = normalize(i.wpos - feye.xyz);
+        float e = d.y + sky.w;
+        if (e < 0.01) discard;
+        uint tw, th, tl;
+        tex.GetDimensions(0, tw, th, tl);
+        float2 sz = float2((float)tw, (float)th);
+        float3 q = float3(feye.xz + d.xz / e * sky.y, 1.0);
+        float2 st = frac(float2(dot(skyu.xyz, q), dot(skyv.xyz, q)));
+        float4 t = tex.SampleLevel(smp, (floor(st * sz) + 0.5) / sz, 0.0);
+        float a = t.a * cut.x * smoothstep(0.01, 0.12, e);
+        if (a < 0.004) discard;
+        o.color = float4(i.rgb * t.rgb * a, a);
+        o.id = 0.0;
+        o.depth = i.pos.z;
+        return o;
+    }
+    if (flags.w > 0 && cut.w < 0.5) {    // (not tall grass, cut.w: the camera passes through it)
+        // the camera's clearance: an upright surface inside one of the places the camera passed this shot is not
+        // drawn; a floor is kept
+        float3 nf = cross(ddx(i.wpos), ddy(i.wpos));
+        float ln = length(nf);
+        float3 mid = float3(0.0, 0.0, 0.0);
+        float nm = 0.0;
+        for (int p = 0; p < flags.z; p++) {
+            if (poke[p].w > 0.0) { mid += poke[p].xyz; nm += 1.0; }
+        }
+        mid = nm > 0.0 ? mid / nm : clr[0].xyz;
+        // (between the camera and the battle: the two on either side of its plane)
+        bool between = dot(nf, feye.xyz - i.wpos) * dot(nf, mid - i.wpos) < 0.0;
+        // (or seen nearly edge-on: a post's narrow side, a sliver)
+        between = between || abs(dot(nf, normalize(feye.xyz - i.wpos))) < 0.35 * ln;
+        if (between && ln > 1e-9 && abs(nf.y) / ln < 0.7) {
+            for (int q = 0; q < flags.w; q++) {
+                if (length(i.wpos - clr[q].xyz) < clr[q].w) discard;
+            }
+        }
+    }
     if (flags.y == 1) {
         // the second pass: what of the map stands between the camera and a
         // Pokemon, over the sprite's box, is drawn again over it

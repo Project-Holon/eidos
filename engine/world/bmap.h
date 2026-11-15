@@ -11,6 +11,9 @@
 #ifndef EIDOS_ENGINE_WORLD_BMAP_H
 #define EIDOS_ENGINE_WORLD_BMAP_H
 
+#include <math.h>
+#include <time.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -123,6 +126,18 @@ typedef struct BmapScene {
                                units: right, up, back)                         */
     int view_set;           /* bmap_place: cam and the offsets are a battle's  */
     BmapUvAnim *uva; unsigned nuva; /* the texture-coordinate animations     */
+    unsigned sky_first, sky_count; /* the cloud dome (bmap_data.c add_clouds): vertices of v that
+                               no draw holds, drawn first by the renderers' sky pass; 0 none */
+    int sky_tex;            /* ... its cloud picture (the zone's own pattern)  */
+    float sky_h, sky_rep;   /* ... the layer's height over the camera and one repeat of the
+                               picture (map units)                             */
+    float sky_drift;        /* ... seconds for the clouds to drift one repeat  */
+    float sky_u[3], sky_v[3]; /* bmap_place: the picture's coordinates of a layer point (x, z)
+                               in battle space, u . (x, z, 1) and v . (x, z, 1), before the
+                               drift (the layer fixed to the map)              */
+    float sky_tilt;         /* ... how far its horizon lies under the camera's level (a sine):
+                               the battle camera looks a little down, and the sky it sees is
+                               mostly beyond the map's edge, under the level */
     int shared;             /* a copy (bmap_copy): textures, the animations and
                                the ground index belong to the original, which
                                must outlive it                                */
@@ -135,6 +150,30 @@ typedef struct BmapScene {
                                this scene, copied by bmap_copy                 */
     unsigned prep_nd0, prep_ntri;
 } BmapScene;
+
+/* The cloud layer's picture coordinates this moment: a point (x, z) of the
+ * layer in battle space reads the picture at (u . (x, z, 1), v . (x, z, 1)).
+ * The layer is fixed to the map (sky_u, sky_v: the point turned back into map
+ * units by the scene's placing) and drifts along u by the real clock, so every
+ * battle sees the clouds where they are on the map at that time. */
+static inline void bmap_sky_uv(const BmapScene *s, float u[3], float v[3])
+{
+    double t = 0.0, cu;
+    struct timespec ts;
+    int i;
+
+    if (s->sky_drift > 0.0f && timespec_get(&ts, TIME_UTC) == TIME_UTC) {
+        const double period = (double)s->sky_drift;
+
+        t = fmod((double)(ts.tv_sec % 86400) + (double)ts.tv_nsec * 1e-9, period) / period;
+    }
+    for (i = 0; i < 3; i++) {
+        u[i] = s->sky_u[i];
+        v[i] = s->sky_v[i];
+    }
+    cu = (double)u[2] + t;
+    u[2] = (float)(cu - floor(cu));
+}
 
 /* Build the map around (px, pz) (map world units, matrix-absolute, as GameData's
  * playerWork holds them) for zone `zone`, season 0..3, time hour:minute. Loads a
@@ -189,6 +228,18 @@ int  bmap_wfbc_full(unsigned zone, BmapWfbc *out);
 /* The grid the next bmap_build of zone 0 or 424 stamps (the save's, from the
  * battle backdrop); NULL or none set: the full one.  Taken by that build. */
 void bmap_set_wfbc(const BmapWfbc *w);
+/* The maps the field draws (its mapper's grid, aletheia ov021 FieldG3dMapper, noted each field frame): after the
+ * game's map replacement (MAP_MATRIX_ApplyReplace, a/0/1/0) as the player saw it, so the battle shows the maps the
+ * field showed: the version's, a linked game's, and the ones story flags swap in (the bedroom after the first battle,
+ * the League after N's Castle rises).  zone: the player's zone then; matrix: the field's matrix file (a/0/0/9
+ * member, read for its zone grid), 0xFFFFFFFF when unknown; grid: the map index per cell, w * h of them. */
+typedef struct BmapFieldMatrix {
+    unsigned zone, matrix, w, h;
+    unsigned grid[900];
+} BmapFieldMatrix;
+/* The next bmap_build takes its maps from this when it is the build zone's matrix (the same zone, or the zone's own
+ * matrix id); NULL or none set: the zone's matrix from the files.  Taken by that build. */
+void bmap_set_field_matrix(const BmapFieldMatrix *m);
 
 #ifdef __cplusplus
 }

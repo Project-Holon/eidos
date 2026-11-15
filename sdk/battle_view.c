@@ -159,6 +159,8 @@ typedef struct BvJob {
                                        spot as given, > 0 a search that far */
     BmapWfbc wfbc;                  /* Black City / White Forest: the save's blocks */
     int has_wfbc;
+    BmapFieldMatrix fmat;           /* the field's matrix, after the game's map replacement */
+    int has_fmat;
 } BvJob;
 
 typedef struct BvFrame {
@@ -167,10 +169,12 @@ typedef struct BvFrame {
     float fsin, fcos, aspect, znear, zfar;
     float poke[G3D_BACKDROP_SPRITES][4]; /* the Pokemon's and trainers' sprites:
                                        where, and their box's height       */
+    uint32_t key[G3D_BACKDROP_SPRITES][2];  /* their texture and palette (G3dBackdrop.key) */
     uint32_t n_poke;
 } BvFrame;
 
 static BvFrame g_frame;
+static void camera_clearance(G3dBackdrop *out);
 
 /*
  * Where each Pokemon was drawn (bw_battle_view_mon_box): the frame's
@@ -194,7 +198,7 @@ static BvPlaced *g_cur, *g_old;     /* placed scenes: current, the one before */
 static BvBase *g_base;              /* the newest base                     */
 static uint32_t g_gen;
 static uint32_t g_last_frame;       /* the last frame a battle draw was seen */
-static int g_in_battle;
+static int g_in_battle;            /* a battle was seen (stays set: battle_on() is now) */
 static int g_hooked;
 /* the one-screen battle on the game's own backdrop: no map, only the
  * effects' 2D sprites go into the 3D (effect_sprites) */
@@ -246,10 +250,23 @@ static int real_map(void)
            && eidos_settings_get(EIDOS_OPT_BATTLE_BACKDROP) == 0;
 }
 
+/* A battle is on now: one of its draws in the last 8 frames.  (g_in_battle alone stays set from the first battle on:
+ * the field's objects and maps were noted only until a session's first battle.) */
+static int battle_on(void)
+{
+    return g_in_battle && bw_input_frame_number() - g_last_frame <= 8u;
+}
+
 int bw_battle_view_active(void)
 {
-    return g_in_battle && bw_input_frame_number() - g_last_frame <= 8u
-           && real_map();
+    return battle_on() && real_map();
+}
+
+/* For scripted captures (EIDOS_UI_SCRIPT `wait battle_map`): 1 once this battle's map is built, placed and taken over
+ * (the worker done, its scene current), so a picture never shows the battle before its map. */
+int bw_battle_view_ready(void)
+{
+    return battle_on() && g_job == NULL && g_cur != NULL;
 }
 
 /*
@@ -330,9 +347,13 @@ static int poly_opaque(const G3dSnapshot *s, uint32_t pi, float *x0, float *y0, 
     return 1;
 }
 
+static void field_maps_frame(void);
+
 static void snapshot_hook(const G3dSnapshot *s)
 {
     uint32_t k, i, now = bw_input_frame_number();
+
+    field_maps_frame();                 /* (the field's maps, every frame it draws: note_field_maps) */
 
     for (k = 0; k < g_n_sprites; k++) {
         const BvSprite *sp = &g_sprites[k];
@@ -539,11 +560,92 @@ static void backdrop_hook(G3dBackdrop *out)
     out->scene = g_cur != NULL ? &g_cur->s : NULL;
     out->scene_gen = g_gen;
     memcpy(out->poke, g_frame.poke, sizeof(out->poke));
+    memcpy(out->key, g_frame.key, sizeof(out->key));
     out->n_poke = g_frame.n_poke;
+    camera_clearance(out);
     if (g_cur != NULL) {
         memcpy(out->sky, g_cur->s.clear, sizeof(out->sky));
     }
     effect_sprites();
+}
+
+/*
+ * The camera's clearance (G3dBackdrop.clear): a wall, a door or a curtain the
+ * camera stands in or just behind is not drawn.  Each frame the camera's
+ * place counts with a radius of half the nearest sprite's distance (the
+ * Pokemon and the trainers on the field; the player's own trainer at the
+ * send-out stands before the camera and is never covered anyway).  The
+ * places the camera passed are kept for CLEAR_KEEP frames (a new one each
+ * unit it moves), so a wall cleared while the camera was near it stays gone
+ * as the camera pulls away from it, and comes back once the camera has left
+ * it a while (grass the intro's camera brushed past is back for the command
+ * camera); a cut (more than CLEAR_CUT units in a frame) drops them all.
+ * EIDOS_NO_CAMCLEAR=1 leaves every wall drawn.
+ */
+#define CLEAR_CUT 3.0f
+#define CLEAR_KEEP 120u
+static float g_clr[G3D_BACKDROP_CLEAR][4], g_clr_eye[3];
+static uint32_t g_clr_when[G3D_BACKDROP_CLEAR], g_clr_now;
+static unsigned g_nclr, g_clr_at;
+static int g_clr_off = -1;
+
+static float dist3(const float *a, const float *b)
+{
+    const float x = a[0] - b[0], y = a[1] - b[1], z = a[2] - b[2];
+
+    return sqrtf(x * x + y * y + z * z);
+}
+
+static void camera_clearance(G3dBackdrop *out)
+{
+    float nearest = 1e30f, r;
+    unsigned i, n = 0;
+
+    if (g_clr_off < 0) {
+        g_clr_off = getenv("EIDOS_NO_CAMCLEAR") != NULL;
+    }
+    if (g_clr_off) {
+        return;
+    }
+    g_clr_now++;
+    for (i = 0; i < out->n_poke && i < G3D_BACKDROP_SPRITES; i++) {
+        if (out->poke[i][3] > 0.0f) {
+            const float d = dist3(out->poke[i], out->eye);
+
+            nearest = d < nearest ? d : nearest;
+        }
+    }
+    if (g_nclr > 0 && dist3(out->eye, g_clr_eye) > CLEAR_CUT) {
+        g_nclr = 0;                     /* (a cut: a new shot) */
+    }
+    memcpy(g_clr_eye, out->eye, sizeof g_clr_eye);
+    if (nearest > 1e29f) {
+        out->n_clear = 0;
+        return;
+    }
+    r = 0.5f * nearest;
+    /* the place now, always */
+    memcpy(out->clear[n], out->eye, 3 * sizeof(float));
+    out->clear[n][3] = r;
+    n++;
+    /* the places passed, while they are fresh (the newest first) */
+    for (i = 0; i < g_nclr && n < G3D_BACKDROP_CLEAR; i++) {
+        const unsigned k = (g_clr_at + G3D_BACKDROP_CLEAR - 1u - i) % G3D_BACKDROP_CLEAR;
+
+        if (g_clr_now - g_clr_when[k] <= CLEAR_KEEP) {
+            memcpy(out->clear[n], g_clr[k], 4 * sizeof(float));
+            n++;
+        }
+    }
+    out->n_clear = n;
+    /* this place, remembered once the camera has moved a unit from the last one kept */
+    if (g_nclr == 0 || dist3(out->eye, g_clr[(g_clr_at + G3D_BACKDROP_CLEAR - 1u) % G3D_BACKDROP_CLEAR]) > 1.0f) {
+        memcpy(g_clr[g_clr_at], out->eye, 3 * sizeof(float));
+        g_clr[g_clr_at][3] = r;
+        g_clr_when[g_clr_at] = g_clr_now;
+        g_clr_at = (g_clr_at + 1u) % G3D_BACKDROP_CLEAR;
+        g_nclr = g_nclr < G3D_BACKDROP_CLEAR ? g_nclr + 1u : g_nclr;
+    }
 }
 
 static void base_release(BvBase *b)
@@ -570,6 +672,7 @@ static void job_main(void *arg)
             return;
         }
         bmap_set_wfbc(j->has_wfbc ? &j->wfbc : NULL);     /* else a full place */
+        bmap_set_field_matrix(j->has_fmat ? &j->fmat : NULL);  /* else the zone's own from the files */
         j->rc = bmap_build(&b->s, j->zone, j->px, j->pz, j->season, j->hour, j->minute);
         if (j->rc != 0) {
             free(b);
@@ -652,6 +755,103 @@ static int read_wfbc(uintptr_t gd, unsigned zone, BmapWfbc *out)
     return bmap_wfbc_grid(zone, ids, n, rd32(data, 4), out);
 }
 
+/* The maps the field draws, noted each field frame (field_note) for the battle: its mapper's grid (FIELDMAP_GetG3dMapper:
+ * aletheia ov021 FieldG3dMapper, gridWidth +0x14, gridDepth +0x16, blockCount +0x18, blockGrid +0x1C, a map index a
+ * cell), the copy the field made of its matrix when it was set up.  The matrix (GAME_DATA_GetFieldWork: ov010
+ * MapMatrix, zoneId +0x02, matrixId +0x04, width +0x08, height +0x0A) can be ahead of it: a story script swaps the
+ * matrix in before a battle (the bedroom, MAP_REPLACE flag 9, before the first battle) and the field shows the new
+ * maps only when it is set up again after it.  The grid is what the player saw; the matrix names the file the
+ * build reads the rest from (its zone grid), when it is the grid's size. */
+extern void *GAME_DATA_GetFieldWork(const void *gd) WEAK;
+extern void *ov021_FIELDMAP_GetG3dMapper(void *fieldMap) WEAK;
+
+static BmapFieldMatrix g_fmap;          /* the last field frame's maps */
+static int g_fmap_ok;
+static uint32_t g_fmap_frame = 0xFFFFFFFFu;
+
+static void note_field_maps(uintptr_t gd, uintptr_t fm, unsigned zone)
+{
+    uintptr_t mp, grid, mx;
+    unsigned i, w, h, n;
+
+    if (g_fmap_frame == bw_input_frame_number()) {
+        return;                         /* (once a frame) */
+    }
+    g_fmap_frame = bw_input_frame_number();
+    g_fmap_ok = 0;
+    if (ov021_FIELDMAP_GetG3dMapper == NULL || GAME_DATA_GetFieldWork == NULL || !gptr_ok(gd)) {
+        return;
+    }
+    mp = (uintptr_t)ov021_FIELDMAP_GetG3dMapper((void *)fm);
+    if (!gptr_ok(mp)) {
+        return;
+    }
+    w = rd16(mp, 0x14);
+    h = rd16(mp, 0x16);
+    n = rd32(mp, 0x18);
+    grid = rd32(mp, 0x1C);
+    if (w == 0u || h == 0u || n != w * h || n > 900u || !gptr_ok(grid)) {
+        return;                         /* (no grid, or a layered one: the files) */
+    }
+    mx = (uintptr_t)GAME_DATA_GetFieldWork((const void *)gd);
+    g_fmap.zone = zone;
+    g_fmap.matrix = 0xFFFFFFFFu;
+    if (gptr_ok(mx) && rd16(mx, 0x08) == w && rd16(mx, 0x0A) == h && rd32(mx, 0x04) <= 0xFFFFu) {
+        g_fmap.matrix = rd32(mx, 0x04);
+    }
+    g_fmap.w = w;
+    g_fmap.h = h;
+    for (i = 0; i < n; i++) {
+        g_fmap.grid[i] = rd32(grid, 4u * i);
+    }
+    {
+        /* the maps the slots have loaded, over the grid: the grid is the layout the field wants, a slot keeps the
+         * map it shows until it loads another (FieldG3dMapperSlot: map +0x00, its cell's grid index +0x18;
+         * FieldG3dMap: memberIndex +0x14, dataReady +0xD0).  The bedroom's grid is the wrecked room's from the
+         * start of the first battle's flash, its slot the tidy room's until the field is set up again after it. */
+        uintptr_t slots = rd32(mp, 0x24);
+        unsigned k, ns = rd16(mp, 0x2E);
+
+        for (k = 0; gptr_ok(slots) && k < ns && k < 64u; k++) {
+            uintptr_t sl = slots + 0x28u * k, map = rd32(sl, 0x00);
+            unsigned cell = rd32(sl, 0x18);
+
+            if (cell < n && gptr_ok(map) && rd32(map, 0xD0) != 0u) {
+                g_fmap.grid[cell] = rd32(map, 0x14);
+            }
+        }
+    }
+    g_fmap_ok = 1;
+    {
+        static unsigned last_zone = 0xFFFFFFFFu, last_first = 0xFFFFFFFFu;
+
+        if (log_on() && (zone != last_zone || g_fmap.grid[0] != last_first)) {
+            fprintf(stderr, "battle_view: field maps zone %u: %ux%u, first cell %u (the grid %u), matrix %u (frame %u)\n",
+                    zone, w, h, g_fmap.grid[0], (unsigned)rd32(grid, 0), g_fmap.matrix, (unsigned)bw_input_frame_number());
+        }
+        last_zone = zone;
+        last_first = g_fmap.grid[0];
+    }
+}
+
+/* A frame of the field (not of a battle): its maps noted.  The 3D's every frame (snapshot_hook), so a place with
+ * no object the field draws (field_note) is noted too. */
+static void field_maps_frame(void)
+{
+    uintptr_t gs, fm, gd;
+
+    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL || battle_on()) {
+        return;
+    }
+    gs = (uintptr_t)*(void **)bw_dsref__GameSystemGlobal;
+    fm = gs != 0 ? (uintptr_t)*(void **)(gs + 0x20) : 0;
+    gd = gs != 0 ? (uintptr_t)*(void **)(gs + 0x1C) : 0;
+    if (fm == 0 || !gptr_ok(gd)) {
+        return;                         /* (not in the field) */
+    }
+    note_field_maps(gd, fm, rd16(gd, 4u + 4u * 0x44u));
+}
+
 /* Where the battle began, from GameData (the player's work) and the setup. */
 static int read_place(uintptr_t eff, BvJob *j)
 {
@@ -698,6 +898,10 @@ static int read_place(uintptr_t eff, BvJob *j)
         j->minute = (int)rd8(setup, SIT_MINUTE);
     }
     j->has_wfbc = read_wfbc(gd, j->zone, &j->wfbc) == 0;
+    j->has_fmat = g_fmap_ok;           /* the field's last frame's maps (note_field_maps) */
+    if (g_fmap_ok) {
+        j->fmat = g_fmap;
+    }
     {
         /* The spot editor's Preview in game (and tests): EIDOS_DEBUG_BMAP_AT="zone x z facing season hour
          * [reach [y]]" stages the backdrop at another place */
@@ -1171,6 +1375,8 @@ static void capture(uintptr_t eff, int warp)
              * only over the game's own pixels (plat_gl3d.c's stencil), so the
              * box may be loose: twice a Pokemon's size, a trainer taller */
             g_frame.poke[g_frame.n_poke][3] = pos <= 7u ? 12.0f : 18.0f;
+            g_frame.key[g_frame.n_poke][0] = rd32(mc, MCSSW_TEX);
+            g_frame.key[g_frame.n_poke][1] = rd32(mc, MCSSW_PLTT);
             if (pos <= 7u && g_n_sprites < 8u) {
                 g_sprites[g_n_sprites].pos = pos;
                 g_sprites[g_n_sprites].tex = rd32(mc, MCSSW_TEX);
@@ -1186,7 +1392,7 @@ static void capture(uintptr_t eff, int warp)
 
                 memcpy(in, g_frame.poke[g_frame.n_poke], sizeof in);
                 if (own_trainer_point((int)pos, in, at)) {
-                    continue;
+                    g_frame.poke[g_frame.n_poke][3] = -18.0f;   /* (never covered: G3dBackdrop.poke) */
                 }
             }
             g_frame.n_poke++;
@@ -1605,7 +1811,7 @@ static void field_note(void *obj_, const void *status_)
     }
     gs = (uintptr_t)*(void **)bw_dsref__GameSystemGlobal;
     fm = gs != 0 ? (uintptr_t)*(void **)(gs + 0x20) : 0;
-    if (fm == 0 || g_in_battle || o->render == NULL || o->render->mdl == NULL) {
+    if (fm == 0 || battle_on() || o->render == NULL || o->render->mdl == NULL) {
         return;                         /* (not in the field) */
     }
     {
@@ -1700,6 +1906,7 @@ static void field_hand_over(void)
 
 int __wrap_G3D_SYSTEM_DrawObjectCulling(void *obj, void *status)
 {
+    field_maps_frame();             /* (the field's maps, once a frame) */
     field_note(obj, status);
     return __real_G3D_SYSTEM_DrawObjectCulling(obj, status);
 }
@@ -1709,6 +1916,7 @@ void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
     uintptr_t eff = 0;
     int kind;
 
+    field_maps_frame();             /* (the field's maps, once a frame) */
     field_note(obj, status);
 
     spots_user_file();

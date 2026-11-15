@@ -256,7 +256,84 @@ static int seal_u32(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
-void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
+/* rm_seal_ex's `skip_opposite`, with the grid: a face to seal is left out when a face of the model in its plane, looking
+ * the other way, holds its middle. */
+static void seal_grid_scan(const SealTri *g, unsigned ng, unsigned char *add, const unsigned *start, const unsigned *list,
+                           const double lo[3], const int nc[3], double cs)
+{
+    unsigned i, li;
+    int k;
+
+    for (i = 0; i < ng; i++) {
+        double ni[3], e1[3], e2[3], c[3], l;
+        int cc[3];
+        size_t cell;
+
+        if (!add[i]) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            e1[k] = g[i].p[1][k] - g[i].p[0][k];
+            e2[k] = g[i].p[2][k] - g[i].p[0][k];
+            c[k] = (g[i].p[0][k] + g[i].p[1][k] + g[i].p[2][k]) / 3.0;
+        }
+        rm_cross(e1, e2, ni);
+        l = sqrt(rm_dot(ni, ni));
+        if (l < 1e-9) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            ni[k] /= l;
+            cc[k] = (int)((c[k] - lo[k] + 0.1) / cs);
+            cc[k] = cc[k] < 0 ? 0 : cc[k] > nc[k] - 1 ? nc[k] - 1 : cc[k];
+        }
+        cell = ((size_t)cc[0] * (size_t)nc[1] + (size_t)cc[1]) * (size_t)nc[2] + (size_t)cc[2];
+        for (li = start[cell]; li < start[cell + 1u] && add[i]; li++) {
+            const unsigned j = list[li];
+            double nj[3], a0[3], a1[3], a2[3], d[3], w0, w1, w2;
+
+            if (j == i) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                e1[k] = g[j].p[1][k] - g[j].p[0][k];
+                e2[k] = g[j].p[2][k] - g[j].p[0][k];
+                d[k] = c[k] - g[j].p[0][k];
+            }
+            rm_cross(e1, e2, nj);
+            l = sqrt(rm_dot(nj, nj));
+            if (l < 1e-9 || rm_dot(nj, ni) / l > -0.95 || fabs(rm_dot(d, nj) / l) > 0.05) {
+                continue;
+            }
+            /* (is the face's middle inside j: same side of j's three edges) */
+            for (k = 0; k < 3; k++) {
+                a0[k] = g[j].p[1][k] - g[j].p[0][k];
+                a1[k] = g[j].p[2][k] - g[j].p[1][k];
+                a2[k] = g[j].p[0][k] - g[j].p[2][k];
+            }
+            {
+                double q0[3], q1[3], q2[3], r0[3], r1[3], r2[3];
+
+                for (k = 0; k < 3; k++) {
+                    q0[k] = c[k] - g[j].p[0][k];
+                    q1[k] = c[k] - g[j].p[1][k];
+                    q2[k] = c[k] - g[j].p[2][k];
+                }
+                rm_cross(a0, q0, r0);
+                rm_cross(a1, q1, r1);
+                rm_cross(a2, q2, r2);
+                w0 = rm_dot(r0, nj);
+                w1 = rm_dot(r1, nj);
+                w2 = rm_dot(r2, nj);
+            }
+            if ((w0 >= -1e-6 && w1 >= -1e-6 && w2 >= -1e-6) || (w0 <= 1e-6 && w1 <= 1e-6 && w2 <= 1e-6)) {
+                add[i] = 0;
+            }
+        }
+    }
+}
+
+void rm_seal_ex(const RmBatch *b, unsigned nb, RmOut *out, double shade, int skip_opposite)
 {
     SealTri *g;
     unsigned bi, i, j, n = 0, cap = out->ntri, ng, *drop = NULL, *two = NULL;
@@ -318,11 +395,11 @@ void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
             }
         }
     }
-    for (i = 0; i < out->ntri && n < cap; i++) {
+    for (i = out->seal_from; i < out->ntri && n < cap; i++) {
         const RmNew *t = &out->tri[i];
         SealTri *q;
 
-        if (t->alpha != 0 || t->kind == 1) {
+        if (t->alpha != 0 || t->kind == 1 || t->kind == 3) {   /* (a shadow; a room wall kept one-sided) */
             continue;                   /* (a shadow) */
         }
         q = &g[n++];
@@ -341,6 +418,92 @@ void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
     ng = n;
     for (i = 0; i < ng; i++) {
         add[i] = (unsigned char)g[i].one;
+    }
+    /* (a face drawn both ways already: the model's other face in that plane looks the way the back would, over the
+     * face's middle; the faces that can be that one hold the middle, so each face looks only at the faces in its
+     * middle's grid cell) */
+    if (skip_opposite && ng > 0) {
+        double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, cs = 16.0;
+        int nc[3];
+        size_t ncell, total = 0;
+        unsigned *start, *list;
+
+        for (i = 0; i < ng; i++) {
+            for (j = 0; j < 3u; j++) {
+                for (k = 0; k < 3; k++) {
+                    lo[k] = g[i].p[j][k] < lo[k] ? g[i].p[j][k] : lo[k];
+                    hi[k] = g[i].p[j][k] > hi[k] ? g[i].p[j][k] : hi[k];
+                }
+            }
+        }
+        for (;;) {
+            for (k = 0; k < 3; k++) {
+                nc[k] = (int)((hi[k] - lo[k] + 0.2) / cs) + 1;
+            }
+            ncell = (size_t)nc[0] * (size_t)nc[1] * (size_t)nc[2];
+            if (ncell <= (1u << 18)) {
+                break;
+            }
+            cs *= 2.0;
+        }
+        start = (unsigned *)calloc(ncell + 1u, sizeof *start);
+        if (start == NULL) {
+            out->fail = 1;
+        }
+        /* (twice: count, then fill) */
+        for (k = 0; k < 2 && start != NULL; k++) {
+            list = NULL;
+            if (k == 1) {
+                for (i = 1; i <= ncell; i++) {
+                    start[i] += start[i - 1];
+                }
+                total = start[ncell];
+                list = (unsigned *)malloc((total + 1u) * sizeof *list);
+                if (list == NULL) {
+                    out->fail = 1;
+                    break;
+                }
+            }
+            for (i = 0; i < ng; i++) {
+                int a0[3], a1[3], x, y, z, m;
+
+                for (m = 0; m < 3; m++) {
+                    double mn = g[i].p[0][m], mx = mn;
+
+                    for (j = 1; j < 3u; j++) {
+                        mn = g[i].p[j][m] < mn ? g[i].p[j][m] : mn;
+                        mx = g[i].p[j][m] > mx ? g[i].p[j][m] : mx;
+                    }
+                    a0[m] = (int)((mn - 0.1 - lo[m] + 0.1) / cs);
+                    a1[m] = (int)((mx + 0.1 - lo[m] + 0.1) / cs);
+                    a0[m] = a0[m] < 0 ? 0 : a0[m];
+                    a1[m] = a1[m] > nc[m] - 1 ? nc[m] - 1 : a1[m];
+                }
+                for (x = a0[0]; x <= a1[0]; x++) {
+                    for (y = a0[1]; y <= a1[1]; y++) {
+                        for (z = a0[2]; z <= a1[2]; z++) {
+                            const size_t cell = ((size_t)x * (size_t)nc[1] + (size_t)y) * (size_t)nc[2] + (size_t)z;
+
+                            if (k == 0) {
+                                start[cell + 1u]++;
+                            } else {
+                                list[start[cell]++] = i;
+                            }
+                        }
+                    }
+                }
+            }
+            if (k == 1) {
+                /* (the fill moved each start to its cell's end: back by one cell) */
+                for (i = (unsigned)ncell; i > 0; i--) {
+                    start[i] = start[i - 1];
+                }
+                start[0] = 0;
+                seal_grid_scan(g, ng, add, start, list, lo, nc, cs);
+                free(list);
+            }
+        }
+        free(start);
     }
     for (i = 0; i < ng && !out->fail; i++) {
         unsigned char rgb[3];
@@ -361,4 +524,9 @@ void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
     free(add);
     free(drop);
     free(two);
+}
+
+void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade)
+{
+    rm_seal_ex(b, nb, out, shade, 0);
 }

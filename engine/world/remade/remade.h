@@ -81,6 +81,7 @@ typedef struct RmOut {
     int ntex;
     unsigned flags;
     int fail;                   /* out of memory: the model stays as it is      */
+    unsigned seal_from;         /* rm_seal closes the new triangles from here on (0: all) */
 } RmOut;
 
 /* A builder.  `opt`: its settings for this model, "name=value,name=value".
@@ -102,6 +103,11 @@ RmBuild rm_hall;               /* hall.c: a box hall: its back wall in its sides
 RmBuild rm_sprite;              /* sprite.c: a picture card over a stand: a body that is the picture from the front */
 RmBuild rm_chandelier;          /* chandelier.c: a candle chandelier: a round frame, round candles, flames from any side */
 RmBuild rm_counter;           /* counter.c: a kitchen counter: its back and corner, the sink's wall, tap and stove standing up */
+RmBuild rm_box;                 /* box.c: a picture card made the upright box it shows (a games console) */
+RmBuild rm_mesh;                /* mesh.c: a map chunk's own mesh (a room), builders on boxes of it */
+RmBuild rm_cup;                 /* cup.c: a teacup card made a cup: body, rim, inside, handle */
+RmBuild rm_plate;               /* plate.c: flat floor pieces given height and sides (a switch's pad) */
+RmBuild rm_candle;              /* candle.c: a candle-on-its-dish card made a dish, a candle and its flame */
 
 /* --- helpers (common.c) --- */
 
@@ -111,6 +117,9 @@ void rm_drop_all(RmOut *o, const RmBatch *b);
  * are kept, their turned copies, the new ones without a texture of their own) gets a back in its own pixels,
  * `shade` darker.  Called last by a builder of a thing the map left open. */
 void rm_seal(const RmBatch *b, unsigned nb, RmOut *out, double shade);
+/* the same; skip_opposite: no back where the model's own face in that plane already looks that way (a panel drawn
+ * both ways) */
+void rm_seal_ex(const RmBatch *b, unsigned nb, RmOut *out, double shade, int skip_opposite);
 void rm_two(RmOut *o, unsigned id);
 void rm_turn(RmOut *o, unsigned id, double cx, double cz);
 /* Adds a triangle to the output; its normal is its corners' own. */
