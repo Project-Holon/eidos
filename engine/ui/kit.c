@@ -1853,6 +1853,18 @@ void ui_plate_set_balls(const int *kinds, u32 t)
     g_plate_balls_t = t;
 }
 
+static int g_plate_caught;
+
+void ui_plate_set_caught(int on)
+{
+    g_plate_caught = on != 0;
+}
+
+int ui_plate_caught(void)
+{
+    return g_plate_caught;
+}
+
 /* A plate's six balls from (x, y), 5 pixels each: red over white; yellow
  * for a status problem; greys for a fainted Pokemon; a dim dot for no
  * Pokemon.  Yours run right to left (the first at the right), as the game
@@ -1894,6 +1906,12 @@ void ui_def_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gend
     ui_panel(c, x, y, w, h, UI_CUT_TR | UI_CUT_BL, 6, UI_BODY, UI_EDGE, 225);
     nx = ui_text(c, x + 8, y + 1, name, UI_WHITE, SHADOW_DARK, UI_FONT_LARGE, 1);
     ui_gender(c, nx + 3, y + 1, gender, UI_FONT_LARGE);
+    if (g_plate_caught) {
+        /* already caught: the ball the Pokedex rows mark it with */
+        u8 st = 0;
+
+        ui_party_balls(c, nx + 3 + (gender == 0 || gender == 1 ? 10 : 0) + 3, y + 2, &st, 1);
+    }
     /* "Lv." in the game's language ("N." in French), then the level */
     snprintf(lv, sizeof lv, "%s%d", ui_tr("Lv."), level);
     tw = ui_text_w(lv, UI_FONT_SMALL);

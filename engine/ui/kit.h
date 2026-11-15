@@ -200,6 +200,11 @@ const UiImage *ui_trainer_front(u16 trainer_class);
  * none.  The default plate draws them in itself; a theme's own plate may
  * leave them to its battle_balls. */
 void ui_plate_set_balls(const int *kinds, u32 t);
+/* The next plates show the "already caught" mark after the gender sign (a
+ * wild foe whose species the player has caught, as the DS's gauge does);
+ * the caller sets it back to 0. */
+void ui_plate_set_caught(int on);
+int  ui_plate_caught(void);
 
 /* The game's own interface icons: the field menu's Bag and Pokemon, the
  * touch bar's return arrow, the move kinds' badges. */

@@ -1449,6 +1449,7 @@ static const EidosUiRecipe recipe_plain = { "battle_plain", plain_match, plain_r
 typedef struct GaugeView {
     int hp, maxhp, level;
     int exp, expmax;
+    int caught;         /* the species is in the player's Pokedex as caught (BtlvGaugeSlot.caught, +0x6F) */
 } GaugeView;
 
 #define GAUGE_SLOT_FLAGS 0x70
@@ -1524,6 +1525,7 @@ static int gauge_read_ex(const Bt *b, int vp, GaugeView *g, int any)
     g->hp = clampi(hp, 0, maxhp > 0 ? maxhp : 0);
     g->maxhp = maxhp;
     g->level = slot[0x6C];
+    g->caught = slot[0x6F] != 0;
     g->exp = clampi(ex, 0, exmax > 0 ? exmax : 0);
     g->expmax = exmax;
     return shown ? 1 : 2;
@@ -1744,6 +1746,7 @@ extern int bw_ui_ballbar_of(int side, int kinds[6], u32 *since) __attribute__((w
 extern void ov093_BTLV_SCU_GetBallStates(void *scu, u32 *out, u32 clientA, u32 clientB, u32 sideFlag)
     __attribute__((weak));
 extern u32 ov093_BTL_MAIN_GetOwnClientId(void *btlMain) __attribute__((weak));
+extern int ov094_BTLV_EFFECT_GetCompetitorType(void) __attribute__((weak));
 extern u32 ov093_BTL_MAIN_GetOpponentClient(void *btlMain, u32 client, u32 idx) __attribute__((weak));
 
 /*
@@ -1869,7 +1872,12 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
         {
             int kinds[6], set = y == l.foe_y && plate_with_balls(b, 1, kinds);
 
+            /* a wild Pokemon whose species is caught: the DS's gauge marks it
+             * (BTLV_GAUGE_DrawCaughtIcon: the foe's side, a wild battle) */
+            ui_plate_set_caught(gs > 0 && gv.caught && ov094_BTLV_EFFECT_GetCompetitorType != NULL
+                                && ov094_BTLV_EFFECT_GetCompetitorType() == 0);
             ui_plate(c, l.foe_x, y, l.foe_w, m.name, m.gender, m.level, m.hp, m.maxhp, 0, 0);
+            ui_plate_set_caught(0);
             if (set) {
                 ui_plate_set_balls(NULL, 0);
             }

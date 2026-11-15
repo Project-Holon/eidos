@@ -13,6 +13,7 @@ Each release's notes on GitHub start with its section here
 - **Real-Map Battles, Nimbasa Gym**: The gym's rails and tracks are solid from every side, its switch pads are raised 3D buttons, and the pads and rails show the colours the switches left them in.
 - **Dowsing Machine**: The Dowsing Machine's rods now show on a small card at the top right instead of the whole lower screen, which hid the player in 4:3 and tall windows; the top bar's `Menu` button reads `Close` while the machine is on, thanks @aqali1 (#36).
 - **Fast Forward x4**: `Tab + F` runs the game at four times its speed, between `Tab` (x2) and `Left Shift + Tab` (uncapped); in one-screen mode a badge in the style's own look shows the speed, thanks @aqali1 (#42).
+- **Caught Mark**: In wild battles, a Pokémon whose species you have caught shows a small ball after its name, as the DS's battle screen does, in each style's own look.
 - **Touch Scrolling**: Lists with a scroll bar scroll on phones and tablets: drag the list itself, or drag its scroll bar to a place; a drag never counts as a tap on the row it started on.
 
 ### Fixes

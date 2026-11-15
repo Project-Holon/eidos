@@ -729,6 +729,8 @@ static void rx_hp_colors(int hp, int maxhp, u32 *hi, u32 *lo)
  * lean: the white strip with the HP bar, the dark band under it (yours: the
  * HP numbers; your party's balls go on it), yours also the experience line.
  */
+static void rx_ball(EidosUiCtx *c, int cx, int cy, int kind);
+
 void rx_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender, int level, int hp,
                         int maxhp, int exp_num, int exp_den)
 {
@@ -744,6 +746,10 @@ void rx_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender, 
     /* the name line */
     nx = rx_otext(c, c0 + 2, y + 1, name, RX_TEXT, RX_PLATE_OL, UI_FONT_LARGE);
     ui_gender(c, nx + 3, y + 1, gender, UI_FONT_LARGE);
+    if (ui_plate_caught()) {
+        /* already caught: the party's ball, after the gender sign */
+        rx_ball(c, nx + 3 + (gender == 0 || gender == 1 ? 10 : 0) + 7, y + 7, 1);
+    }
     snprintf(lv, sizeof(lv), "%d", level);
     lx = c1 - 2 - ui_text_w(lv, UI_FONT_LARGE);
     rx_otext(c, lx, y + 1, lv, RX_TEXT, RX_PLATE_OL, UI_FONT_LARGE);
