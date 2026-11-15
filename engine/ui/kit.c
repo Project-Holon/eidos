@@ -1272,6 +1272,45 @@ void ui_def_message(EidosUiCtx *c, int x, int y, int w, const char *utf8)
             UI_FONT_LARGE, 1);
 }
 
+int ui_ff_glyph(EidosUiCtx *c, int x, int y, int h, u32 color, int a)
+{
+    int half = h / 2, i, k;
+
+    for (k = 0; k < 2; k++) {
+        for (i = 0; i < h; i++) {
+            int len = half + 1 - (i < half ? half - i : i - half);
+
+            ui_fill(c, x + k * (half + 1), y + i, len, 1, color, a);
+        }
+    }
+    return 2 * (half + 1);
+}
+
+void ui_speed_label(char *out, int cap, int factor)
+{
+    if (factor <= 0) {
+        snprintf(out, (size_t)cap, "MAX");
+    } else {
+        snprintf(out, (size_t)cap, "x%d", factor);
+    }
+}
+
+/* Kosmos: the toast's dark panel with cut corners, its cyan edge, a cyan
+ * fast-forward sign and the factor in white. */
+void ui_def_speed_badge(EidosUiCtx *c, int x, int y, int centred, int factor)
+{
+    char label[8];
+    int h = 20, tw, w;
+
+    ui_speed_label(label, sizeof label, factor);
+    tw = ui_text_w(label, UI_FONT_LARGE);
+    w = 8 + 10 + 5 + tw + 9;
+    x -= centred ? w / 2 : w;
+    ui_panel(c, x, y, w, h, CUT_DEF, 5, UI_BODY, UI_CYAN, 235);
+    ui_ff_glyph(c, x + 8, y + (h - 9) / 2, 9, UI_CYAN, 255);
+    ui_text(c, x + 8 + 10 + 5, y + ui_text_y(h, UI_FONT_LARGE), label, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+}
+
 void ui_def_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon)
 {
     int h = 22, tx = 8, w;

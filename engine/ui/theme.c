@@ -137,6 +137,11 @@ void ui_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color)
     (g_active->cursor_corners != NULL ? g_active->cursor_corners : ui_def_cursor_corners)(c, x, y, w, h, color);
 }
 
+void ui_speed_badge(EidosUiCtx *c, int x, int y, int centred, int factor)
+{
+    (g_active->speed_badge != NULL ? g_active->speed_badge : ui_def_speed_badge)(c, x, y, centred, factor);
+}
+
 int ui_keycap(EidosUiCtx *c, int x, int y, const char *label)
 {
     return (g_active->keycap != NULL ? g_active->keycap : ui_def_keycap)(c, x, y, label);

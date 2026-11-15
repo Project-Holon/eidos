@@ -165,6 +165,7 @@ void rx_scrollbar(EidosUiCtx *c, int x, int y, int h, int first, int shown, int 
 void rx_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon);
 void rx_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
 int rx_keycap(EidosUiCtx *c, int x, int y, const char *label);
+void rx_speed_badge(EidosUiCtx *c, int x, int y, int centred, int factor);
 void rx_pocket_tab(EidosUiCtx *c, int x, int y, int w, const char *label, int selected);
 void rx_toggle(EidosUiCtx *c, int x, int y, int on, u32 accent);
 void rx_slider(EidosUiCtx *c, int x, int y, int w, int num, int den, u32 accent);

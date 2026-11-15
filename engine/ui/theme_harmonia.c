@@ -1637,6 +1637,7 @@ const UiThemeOps ui_theme_harmonia = {
     .toast = rx_toast,
     .cursor_corners = rx_cursor_corners,
     .keycap = rx_keycap,
+    .speed_badge = rx_speed_badge,
     .pocket_tab = rx_pocket_tab,
     .toggle = rx_toggle,
     .slider = rx_slider,
