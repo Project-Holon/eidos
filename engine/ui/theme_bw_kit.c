@@ -1014,6 +1014,34 @@ int rx_keycap(EidosUiCtx *c, int x, int y, const char *label)
     return w;
 }
 
+/* Fast forward's badge, in the keycaps' way: Plasma a white leaning chip
+ * with the sign and the factor in ink, Harmonia the DS's blue-grey button
+ * with them in white. */
+void rx_speed_badge(EidosUiCtx *c, int x, int y, int centred, int factor)
+{
+    char label[8];
+    int h = 17, tw, w, gx;
+
+    ui_speed_label(label, sizeof label, factor);
+    tw = ui_text_w(label, UI_FONT_LARGE);
+    w = 8 + 10 + 4 + tw + 8;
+    x -= centred ? w / 2 : w;
+    if (style()) {
+        ui_fill(c, x, y, w, h, R(RX_OUTLINE), 245);
+        ui_fill(c, x + 1, y + 1, w - 2, h - 2, R(0x7B8B9Cu), 245);
+        ui_fill(c, x + 1, y + 2, w - 2, h - 3, R(0x4A5262u), 245);
+        ui_fill(c, x + 1, y + h - 2, w - 2, 1, R(0x313139u), 245);
+        ui_ff_glyph(c, x + 8, y + (h - 9) / 2 + 1, 9, R(RX_TEXT), 255);
+        ui_text(c, x + 8 + 10 + 4, y + ui_text_y(h, UI_FONT_LARGE) + 1, label, R(RX_TEXT), (s32)R(0x202028u),
+                UI_FONT_LARGE, 1);
+    } else {
+        lean_box(c, x, y, w, h, RX_WHITE, RX_WHITE_LO, 245);
+        gx = x + 6 + LEAN(h) / 2;
+        ui_ff_glyph(c, gx, y + (h - 9) / 2, 9, R(RX_INK), 255);
+        ui_text(c, gx + 10 + 4, y + ui_text_y(h, UI_FONT_LARGE), label, R(RX_INK), -1, UI_FONT_LARGE, 1);
+    }
+}
+
 void rx_pocket_tab(EidosUiCtx *c, int x, int y, int w, const char *label, int selected)
 {
     surface_tint(c, x, y, w, 18, UI_CUT_TL | UI_CUT_BR, 4, selected, 0x3C0A1Au, 255);

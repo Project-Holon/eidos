@@ -215,6 +215,10 @@ int  eidos_ui_try_state(void);
 void eidos_ui_try_clear(void);
 int  eidos_ui_try_menu_want(void);
 int  eidos_ui_quiet(void);
+
+/* The fast forward factor of this frame (eidos_platform_fast_forward):
+ * above 1 the interface shows it in a badge at the top right. */
+void eidos_ui_set_speed(int speed);
 /* The chooser's cards are the player's own: while the preview stands on the
  * battle's command menu the game takes one picture of its window for the
  * style on show (once a preview, each style).  eidos_ui_card_shot: 1 when

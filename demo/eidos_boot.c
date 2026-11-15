@@ -2679,6 +2679,7 @@ static void boot_frame(void *user)
             boot_finish(0, "window closed");
         }
         speed = eidos_platform_fast_forward(run->plat);
+        eidos_ui_set_speed(speed);
         t_ph = eidos_prof_begin();
         /* Badly behind (two frames or more): skip showing this frame, at
          * most three in a row; the game's steps are never skipped.  Fast

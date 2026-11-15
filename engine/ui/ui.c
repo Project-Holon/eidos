@@ -995,6 +995,32 @@ static void save_failing_notice(EidosUiCtx *c)
     }
 }
 
+/* Fast forward: while it runs, a badge says how fast (x2 with Tab, x4 with
+ * Tab and F, MAX with left Shift and Tab), drawn the style's way
+ * (ui_speed_badge): at the top right under the field's bar, at the top's
+ * middle in a battle (the styles' plates take its corners).  The boot loop
+ * passes the speed in every frame. */
+static int g_speed = 1;
+
+void eidos_ui_set_speed(int speed)
+{
+    g_speed = speed;
+}
+
+static void speed_badge(EidosUiCtx *c, const char *scene)
+{
+    const int battle = scene != NULL && strncmp(scene, "battle", 6) == 0;
+
+    if (g_speed <= 1) {
+        return;
+    }
+    if (battle) {
+        ui_speed_badge(c, c->canvas->w / 2, 5, 1, g_speed >= 100 ? 0 : g_speed);
+    } else {
+        ui_speed_badge(c, c->canvas->w - 6, 20, 0, g_speed >= 100 ? 0 : g_speed);
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* The style chooser's preview: the real game                          */
 /* ------------------------------------------------------------------ */
@@ -3527,6 +3553,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
         r->run(&g_ctx, view, &f);
         try_overlay(&g_ctx);
         save_failing_notice(&g_ctx);
+        speed_badge(&g_ctx, r->name);
         if (getenv("EIDOS_UI_TRACE") != NULL) {
             fprintf(stderr, "eidos: ui trace %u done\n", (unsigned)in->frame);
             fflush(stderr);

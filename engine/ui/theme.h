@@ -254,6 +254,10 @@ typedef struct UiThemeOps {
     void (*toast)(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon);
     void (*cursor_corners)(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
     int (*keycap)(EidosUiCtx *c, int x, int y, const char *label);
+    /* Fast forward's badge: the game runs `factor` times its speed (0: as
+     * fast as the host can); x is its right edge, or its middle when
+     * `centred`. */
+    void (*speed_badge)(EidosUiCtx *c, int x, int y, int centred, int factor);
     int (*tab)(EidosUiCtx *c, int x, int y, const char *label, int selected, u32 accent, u32 accent2);
     void (*pocket_tab)(EidosUiCtx *c, int x, int y, int w, const char *label, int selected);
     void (*toggle)(EidosUiCtx *c, int x, int y, int on, u32 accent);
@@ -296,6 +300,7 @@ void ui_def_message(EidosUiCtx *c, int x, int y, int w, const char *utf8);
 void ui_def_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon);
 void ui_def_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
 int ui_def_keycap(EidosUiCtx *c, int x, int y, const char *label);
+void ui_def_speed_badge(EidosUiCtx *c, int x, int y, int centred, int factor);
 int ui_def_tab(EidosUiCtx *c, int x, int y, const char *label, int selected, u32 accent, u32 accent2);
 void ui_def_pocket_tab(EidosUiCtx *c, int x, int y, int w, const char *label, int selected);
 void ui_def_toggle(EidosUiCtx *c, int x, int y, int on, u32 accent);

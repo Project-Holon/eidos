@@ -273,6 +273,13 @@ void ui_row(EidosUiCtx *c, int x, int y, int w, int h, int selected,
             int hover, const UiTheme *t);
 void ui_message(EidosUiCtx *c, int x, int y, int w, const char *utf8);
 void ui_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon);
+/* Fast forward's badge (the style's), x its right edge or, `centred`, its
+ * middle; factor 0: as fast as the host can.  ui_ff_glyph: the fast-forward sign, two triangles
+ * pointing right, h high (odd), at x; returns its width.  ui_speed_label:
+ * "x2", "x4" or "MAX". */
+void ui_speed_badge(EidosUiCtx *c, int x, int y, int centred, int factor);
+int  ui_ff_glyph(EidosUiCtx *c, int x, int y, int h, u32 color, int a);
+void ui_speed_label(char *out, int cap, int factor);
 void ui_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
 
 /* ------------------------------------------------------------------ */
