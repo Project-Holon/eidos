@@ -13,6 +13,7 @@ Each release's notes on GitHub start with its section here
 - **Real-Map Battles, Nimbasa Gym**: The gym's rails and tracks are solid from every side, its switch pads are raised 3D buttons, and the pads and rails show the colours the switches left them in.
 - **Dowsing Machine**: The Dowsing Machine's rods now show on a small card at the top right instead of the whole lower screen, which hid the player in 4:3 and tall windows; the top bar's `Menu` button reads `Close` while the machine is on, thanks @aqali1 (#36).
 - **Fast Forward x4**: `Tab + F` runs the game at four times its speed, between `Tab` (x2) and `Left Shift + Tab` (uncapped); in one-screen mode a badge in the style's own look shows the speed, thanks @aqali1 (#42).
+- **Touch Scrolling**: Lists with a scroll bar scroll on phones and tablets: drag the list itself, or drag its scroll bar to a place; a drag never counts as a tap on the row it started on.
 
 ### Fixes
 - **Menu Speed**: Fixed the game and its music running at twice their speed for a moment each time a pause-menu entry opened or closed in one-screen mode.
@@ -20,6 +21,10 @@ Each release's notes on GitHub start with its section here
 - **Party Status**: Fixed the party list showing a paralyzed Pokémon as asleep (and other conditions as the wrong one), thanks @aqali1 (#41, #39).
 - **Style Option**: Fixed the `STYLE` row of the in-game Options menu, which keys and clicks could not reach; it is now on the `EXTRAS` page (#37).
 - **Debug Pictures**: Fixed the game writing `eidos_flash_*.png` pictures and a log into the saves folder; that check is now off unless asked for (#38).
+- **Dowsing Machine Messages**: Fixed the message of an item the Dowsing Machine found showing under the machine's card (#43).
+- **Yes/No Highlights**: Fixed the nickname question after a catch never showing which answer the cursor is on, and battle questions lighting the first answer again after you picked the second (#45).
+- **Nickname Keyboard**: Fixed the keyboard staying over the "transferred to the PC" message after naming a caught Pokémon (#45).
+- **Restart the Run**: Fixed the settings screen locking up when the run was restarted from its Mods page, and its question could not be answered Yes on a touch screen; Yes and No are now two choices to tap.
 
 ## 0.2.5
 

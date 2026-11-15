@@ -189,6 +189,112 @@ static int inside(EidosUiRect r, int x, int y)
     return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
 }
 
+/*
+ * Touch scrolling: a press held and dragged up or down over a list scrolls
+ * it as the wheel does, a step every DRAG_STEP canvas pixels (a row's
+ * height, about), the list following the finger; a press on a list's scroll
+ * bar puts the list where the finger is on the bar.  The lists all take
+ * their scrolling from eidos_ui_wheel, so each gets both.  A press that
+ * dragged, or that went down on a bar, is no click when it lifts.
+ */
+#define DRAG_STEP  16
+#define DRAG_SLOP  6
+#define SB_MAX     8
+#define SB_GRIP    7               /* canvas pixels round a bar a finger takes */
+
+typedef struct ScrollBarSeen {
+    EidosUiRect r;                  /* the track, canvas pixels             */
+    int first, shown, total;
+} ScrollBarSeen;
+
+static ScrollBarSeen g_sb_seen[2][SB_MAX];     /* [0] this frame's, [1] the last frame's */
+static int g_sb_n[2];
+static int g_sb_press = -1;        /* the bar (of the last frame's) the press went down on */
+static int g_sb_to = -1;           /* ... the place last asked for: each frame asks only for the change since,
+                                      so a list that takes its steps over several frames (the Bag) does not
+                                      overshoot */
+static int g_drag_y, g_drag_acc, g_dragged, g_drag_steps;
+static int g_hover_off, g_hover_mx = -1, g_hover_my = -1;   /* no hover while a drag runs, nor after it lifts
+                                                                until the pointer moves (a list whose rows take
+                                                                the cursor on hover would follow the finger) */
+
+void eidos_ui_note_scrollbar(int x, int y, int w, int h, int first, int shown, int total)
+{
+    ScrollBarSeen *b;
+
+    if (g_sb_n[0] >= SB_MAX || total <= shown || h <= 0) {
+        return;
+    }
+    b = &g_sb_seen[0][g_sb_n[0]++];
+    b->r.x = x + g_ctx.ox;
+    b->r.y = y + g_ctx.oy;
+    b->r.w = w;
+    b->r.h = h;
+    b->first = first;
+    b->shown = shown;
+    b->total = total;
+}
+
+static int bar_under(int x, int y)
+{
+    int i;
+
+    for (i = 0; i < g_sb_n[1]; i++) {
+        EidosUiRect r = g_sb_seen[1][i].r;
+
+        r.x -= SB_GRIP;
+        r.w += 2 * SB_GRIP;
+        if (inside(r, x, y)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Once a frame, after the pointer is read: the drag's steps, the bars. */
+static void touch_scroll_update(void)
+{
+    memcpy(g_sb_seen[1], g_sb_seen[0], sizeof g_sb_seen[0]);
+    g_sb_n[1] = g_sb_n[0];
+    g_sb_n[0] = 0;
+    g_drag_steps = 0;
+    if (g_released && (g_dragged || g_sb_press >= 0)) {
+        g_hover_off = 1;
+        g_hover_mx = g_mx;
+        g_hover_my = g_my;
+    } else if (g_hover_off && !g_down && (g_mx != g_hover_mx || g_my != g_hover_my)) {
+        g_hover_off = 0;
+    }
+    if (g_pressed && g_my >= 0) {
+        g_hover_off = 0;
+        g_drag_y = g_my;
+        g_drag_acc = 0;
+        g_dragged = 0;
+        g_sb_press = bar_under(g_mx, g_my);
+        g_sb_to = g_sb_press >= 0 ? g_sb_seen[1][g_sb_press].first : -1;
+        return;
+    }
+    if (!g_down || g_my < 0 || g_sb_press >= 0) {
+        return;
+    }
+    g_drag_acc += g_my - g_drag_y;
+    g_drag_y = g_my;
+    if (!g_dragged && (g_my - g_down_y > DRAG_SLOP || g_down_y - g_my > DRAG_SLOP)) {
+        g_dragged = 1;
+    }
+    if (g_dragged) {
+        /* the finger down: the list follows it down, the wheel's "up" */
+        while (g_drag_acc >= DRAG_STEP) {
+            g_drag_steps++;
+            g_drag_acc -= DRAG_STEP;
+        }
+        while (g_drag_acc <= -DRAG_STEP) {
+            g_drag_steps--;
+            g_drag_acc += DRAG_STEP;
+        }
+    }
+}
+
 int eidos_ui_hit(EidosUiRect r)
 {
     int s = 0;
@@ -197,10 +303,10 @@ int eidos_ui_hit(EidosUiRect r)
     r.x += g_ctx.ox;
     r.y += g_ctx.oy;
     if (inside(r, g_mx, g_my)) {
-        if (g_mouse_live) {
+        if (g_mouse_live && !g_hover_off && !(g_down && (g_dragged || g_sb_press >= 0))) {
             s |= EIDOS_UI_HOVER;
         }
-        if (g_released && inside(r, g_down_x, g_down_y)) {
+        if (g_released && inside(r, g_down_x, g_down_y) && !g_dragged && g_sb_press < 0) {
             s |= EIDOS_UI_CLICK;
         }
     }
@@ -264,9 +370,35 @@ int eidos_ui_held(void)
 
 int eidos_ui_wheel(EidosUiRect r)
 {
+    int s = 0;
+
     r.x += g_ctx.ox;
     r.y += g_ctx.oy;
-    return inside(r, g_mx, g_my) ? g_wheel : 0;
+    if (inside(r, g_mx, g_my)) {
+        s += g_wheel;
+    }
+    if (g_drag_steps != 0 && inside(r, g_down_x, g_down_y)) {
+        s += g_drag_steps;
+    }
+    if (g_sb_press >= 0 && g_down && g_my >= 0) {
+        /* the list whose bar the press took (the bar inside it or just
+         * right of it, beside its rows): to the place under the finger */
+        const ScrollBarSeen *b = &g_sb_seen[1][g_sb_press];
+
+        if (b->r.x >= r.x - 2 && b->r.x <= r.x + r.w + 16 && b->r.y < r.y + r.h && b->r.y + b->r.h > r.y) {
+            int th = b->r.h * b->shown / b->total, span = b->r.h - th, to;
+
+            th = th < 8 ? 8 : th;
+            span = b->r.h - th;
+            to = span > 0 ? (g_my - b->r.y - th / 2) * (b->total - b->shown) / span : 0;
+            to = to < 0 ? 0 : (to > b->total - b->shown ? b->total - b->shown : to);
+            if (g_sb_to >= 0) {
+                s += g_sb_to - to;
+                g_sb_to = to;
+            }
+        }
+    }
+    return s;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2838,6 +2970,13 @@ static void ui_script_step(void)
             g_us.need = 6;
             g_us.have = 0;
             g_us.waiting = 2;
+        } else if (strcmp(cmd, "cdown") == 0 || strcmp(cmd, "cmove") == 0 || strcmp(cmd, "cup") == 0) {
+            /* a held press, a move while held, its release (a drag: the touch scrolling's tests) */
+            us_mouse((g_canvas.w / 2 + atoi(a1)) * g_canvas.k, atoi(a2) * g_canvas.k,
+                     cmd[1] == 'd' ? 4 : cmd[1] == 'm' ? 1 : 5);
+            g_us.need = 2;
+            g_us.have = 0;
+            g_us.waiting = 2;
         } else if (strcmp(cmd, "mouse") == 0 || strcmp(cmd, "click") == 0) {
             us_mouse(atoi(a1), atoi(a2), cmd[0] == 'm' ? 1 : 0);
             g_us.need = 6;
@@ -3385,6 +3524,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     ui_begin(&g_ctx, &g_canvas, w, h, g_k);
     set_safe(in);
     read_mouse(in);
+    touch_scroll_update();
     g_want_text = 0;
     g_want_objs = 0;
     g_keys_now = bw_input_player_buttons();

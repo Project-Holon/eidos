@@ -270,6 +270,9 @@ int  eidos_ui_hit(EidosUiRect r);
 /* The wheel steps over a region this frame (0 when the mouse is not over
  * it). */
 int  eidos_ui_wheel(EidosUiRect r);
+/* A list's scroll bar as drawn this frame (ui_scrollbar calls it): a press on
+ * it moves the list beside it (eidos_ui_wheel). */
+void eidos_ui_note_scrollbar(int x, int y, int w, int h, int first, int shown, int total);
 
 /* The right button went down this frame (B), from the real mouse or the
  * test script; use this rather than EidosUiFrame.mouse.right_pressed. */

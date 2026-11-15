@@ -7,6 +7,9 @@
 
 #include "theme.h"
 
+/* ui.c's (touch scrolling); the tests that link the styles without the interface have none */
+#pragma weak eidos_ui_note_scrollbar
+
 #define UI_THEME_MAX 32
 
 static const UiThemeOps k_default = { .id = "kosmos", .name = "Kosmos" };   /* every piece the default */
@@ -115,6 +118,9 @@ void ui_status_badge(EidosUiCtx *c, int x, int y, int status)
 void ui_scrollbar(EidosUiCtx *c, int x, int y, int h, int first, int shown, int total, u32 accent)
 {
     (g_active->scrollbar != NULL ? g_active->scrollbar : ui_def_scrollbar)(c, x, y, h, first, shown, total, accent);
+    if (eidos_ui_note_scrollbar != NULL) {
+        eidos_ui_note_scrollbar(x, y, 5, h, first, shown, total);     /* (a finger may take it: ui.c) */
+    }
 }
 
 void ui_row(EidosUiCtx *c, int x, int y, int w, int h, int selected, int hover, const UiTheme *t)
