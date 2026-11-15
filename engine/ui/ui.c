@@ -3522,6 +3522,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     w = (in->win_w + g_k - 1) / g_k;
     h = (in->win_h + g_k - 1) / g_k;
     ui_begin(&g_ctx, &g_canvas, w, h, g_k);
+    ui_hints_frame();
     set_safe(in);
     read_mouse(in);
     touch_scroll_update();

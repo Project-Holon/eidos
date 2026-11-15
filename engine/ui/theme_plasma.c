@@ -1584,6 +1584,7 @@ static int plasma_app_frame(EidosUiCtx *c, const char *app, EidosUiRect *frame)
 const UiThemeOps ui_theme_plasma = {
     .id = "plasma",
     .name = "Plasma",
+    .message_band = 1,
     .color = rx_color,
     .frame_begin = rx_frame_begin,
     .text = rx_text,

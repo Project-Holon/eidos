@@ -269,6 +269,11 @@ void ui_header(EidosUiCtx *c, int x, int y, int w, const char *title,
  * the bar's height. Each hint is also a hit region that presses its key. */
 int  ui_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n,
               const u32 *keys);
+/* The hint bar's top in canvas pixels, this frame's once drawn, else the
+ * last frame's; -1 when neither drew one.  ui_hints_frame starts a frame
+ * (engine/ui/ui.c). */
+int  ui_hints_top(void);
+void ui_hints_frame(void);
 void ui_bar(EidosUiCtx *c, int x, int y, int w, int h, int num, int den);
 void ui_type_tag(EidosUiCtx *c, int x, int y, int w, int type);
 void ui_status_badge(EidosUiCtx *c, int x, int y, int status);

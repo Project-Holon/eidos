@@ -26,6 +26,15 @@ void ui_textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const void *b
 
 /* A box of `kind` without words (the caller prints into it). */
 void ui_textbox_frame(EidosUiCtx *c, int kind, int x, int y, int w, int h);
+/* 1 when the style draws a message's box as a band across the screen
+ * (theme.h's message_band). */
+int  ui_textbox_band(void);
+/* Where a message box of `kind`, h high, asked for at y, is drawn: y,
+ * or, a band (ui_textbox_band, not a balloon), on the bottom edge: above
+ * the hint bar, or above the safe area when the screen has none.  A
+ * caller that places something by the box (a choice list) takes its y
+ * from here; ui_textbox_draw docks the box itself. */
+int  ui_textbox_place(EidosUiCtx *c, int kind, int y, int h);
 /* The height ui_textbox_draw gives the window's box; 0 when it is blank. */
 int  ui_textbox_h(const void *bmpwin);
 /* The Bmp of a live BmpWin, or NULL. */

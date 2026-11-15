@@ -82,10 +82,11 @@ const UiTheme UI_THEME_OPTIONS = { UI_CYAN,   UI_CYAN2, UI_BODY2, UI_EDGE };
 
 void ui_begin(EidosUiCtx *c, EidosUiCanvas *canvas, int w, int h, int k)
 {
+    size_t need;
+
     if (ui_theme_active() != NULL && ui_theme_active()->frame_begin != NULL) {
         ui_theme_active()->frame_begin();
     }
-    size_t need;
 
     if (w < 1) {
         w = 1;

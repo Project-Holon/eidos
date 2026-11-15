@@ -95,8 +95,24 @@ void ui_header(EidosUiCtx *c, int x, int y, int w, const char *title, const char
     (g_active->header != NULL ? g_active->header : ui_def_header)(c, x, y, w, title, sub, right, accent);
 }
 
+/* Where the hint bar's top was, in canvas pixels: this frame's (once
+ * drawn) and the last frame's; -1 none (ui_hints_top). */
+static int g_hints_now = -1, g_hints_last = -1;
+
+void ui_hints_frame(void)
+{
+    g_hints_last = g_hints_now;
+    g_hints_now = -1;
+}
+
+int ui_hints_top(void)
+{
+    return g_hints_now >= 0 ? g_hints_now : g_hints_last;
+}
+
 int ui_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n, const u32 *keys)
 {
+    g_hints_now = c->oy + y;
     return (g_active->hints != NULL ? g_active->hints : ui_def_hints)(c, y, w, pairs, n, keys);
 }
 

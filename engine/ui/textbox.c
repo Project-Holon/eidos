@@ -446,6 +446,25 @@ void ui_textbox_frame(EidosUiCtx *c, int kind, int x, int y, int w, int h)
     }
 }
 
+int ui_textbox_band(void)
+{
+    const UiThemeOps *t = ui_theme_active();
+
+    return t != NULL && t->message_band;
+}
+
+int ui_textbox_place(EidosUiCtx *c, int kind, int y, int h)
+{
+    int top;
+
+    if (!ui_textbox_band() || kind == UI_TEXTBOX_BALLOON) {
+        return y;
+    }
+    top = ui_hints_top();
+    top = top >= 0 ? top - c->oy : c->canvas->h - c->safe_b - c->oy;
+    return top - 6 - h;
+}
+
 int ui_textbox_h(const void *bmpwin)
 {
     WinBmp b;
@@ -467,6 +486,7 @@ static void textbox_draw(EidosUiCtx *c, int kind, int x, int y, int w, const voi
         return;                         /* nothing printed in it yet        */
     }
     h = b.h + 10;
+    y = ui_textbox_place(c, kind, y, h);
     if (kind == UI_TEXTBOX_SYSTEM) {
         fill = TB_SYS; edge = TB_SEDGE; ink = UI_WHITE; shadow = TB_SYSSH;
     } else {

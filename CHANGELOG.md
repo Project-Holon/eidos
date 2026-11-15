@@ -15,6 +15,8 @@ Each release's notes on GitHub start with its section here
 - **Fast Forward x4**: `Tab + F` runs the game at four times its speed, between `Tab` (x2) and `Left Shift + Tab` (uncapped); in one-screen mode a badge in the style's own look shows the speed, thanks @aqali1 (#42).
 - **Caught Mark**: In wild battles, a Pokémon whose species you have caught shows a small ball after its name, as the DS's battle screen does, in each style's own look.
 - **Touch Scrolling**: Lists with a scroll bar scroll on phones and tablets: drag the list itself, or drag its scroll bar to a place; a drag never counts as a tap on the row it started on.
+- **Musical Dress-Up**: The Pokémon Musical's dressing room has a one-screen layout: the stage at a whole scale in the game's own pink room, the game's messages in the style's text box below it, and the mouse or a finger as the stylus. The game takes only touch here; pad and keyboard controls come later (#44).
+- **Plasma Messages**: In the Plasma style, every message box (a band across the screen) now sits on the bottom edge above the hint bar, instead of wherever the DS window was.
 
 ### Fixes
 - **Menu Speed**: Fixed the game and its music running at twice their speed for a moment each time a pause-menu entry opened or closed in one-screen mode.

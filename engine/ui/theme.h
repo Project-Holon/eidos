@@ -173,6 +173,10 @@ typedef struct UiThemeOps {
      * them), the letters and their shadow.  NULL: Kosmos's. */
     void (*textbox)(EidosUiCtx *c, int kind, int x, int y, int w, int h, u32 *fill, u32 *edge, u32 *ink,
                     u32 *shadow);
+    /* 1: a message's box (kind + 16, not a balloon) is a band across the
+     * whole screen, so a screen puts it on the bottom edge, above the hint
+     * bar, and not under its content (ui_textbox_band). */
+    int message_band;
     /* One answer of a choice list (style: choice_list.h's UI_CHOICE_*), its
      * box being the text box's of that style.  NULL: Kosmos's. */
     void (*choice_row)(EidosUiCtx *c, int style, int x, int y, int w, int h, const char *label, int lit);
