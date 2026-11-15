@@ -384,25 +384,15 @@ static const ValueName k_choice_names[] = {
 
 /* The RetroAchievements rows of the Network section (sdk/ra.h). */
 #define STR_RA_STATUS   "RetroAchievements"
-#define STR_RA_USER     "RA user name"
-#define STR_RA_PASS     "RA password"
-#define STR_RA_SIGNIN   "Sign in"
 #define STR_RA_SIGNOUT  "Sign out"
 #define STR_RA_NOLIB    "Not in this build"
 #define STR_RA_NONE     "No unlocks yet"
 #define STR_RA_PTS      "pts"
 #define HELP_RA_NONE1   "Earn an achievement and it"
 #define HELP_RA_NONE2   "is listed here."
-#define STR_KB_RA_USER  "RetroAchievements user?"
-#define STR_KB_RA_PASS  "RetroAchievements password?"
-#define HELP_RA_STATUS1 "RetroAchievements: your"
-#define HELP_RA_STATUS2 "unlocks go to your profile."
-#define HELP_RA_USER1   "Your RetroAchievements"
-#define HELP_RA_USER2   "user name.  A: change"
-#define HELP_RA_PASS1   "Used once to sign in, and"
-#define HELP_RA_PASS2   "never saved.  A: change"
-#define HELP_RA_SIGNIN1 "Sign in with the user name"
-#define HELP_RA_SIGNIN2 "and password.  A: go"
+#define HELP_RA_STATUS1 "Sign in from the launcher:"
+#define HELP_RA_STATUS2 "Settings, RetroAchievements."
+#define STR_RA_SIGNEDOUT "Sign in from the launcher"
 #define HELP_RA_SIGNOUT1 "Forget this sign-in on"
 #define HELP_RA_SIGNOUT2 "this device.  A: go"
 #define STR_ON          "On"
@@ -450,9 +440,6 @@ enum {
     ROW_INJECT_MAX,       /* the longest press the injection allows     */
     ROW_NET_DEFAULTS,     /* the network settings back to their default  */
     ROW_RA_STATUS,        /* RetroAchievements: signed in as, or why not */
-    ROW_RA_USER,          /* the user name to sign in with (text)        */
-    ROW_RA_PASS,          /* the password to sign in with (text, masked) */
-    ROW_RA_SIGNIN,        /* sign in                                     */
     ROW_RA_SIGNOUT,       /* sign out                                    */
     ROW_RA_RECENT,        /* a recent unlock: arg is its index            */
     ROW_SESSION_CODE,     /* the code in force (read only)               */
@@ -558,11 +545,9 @@ static void build_mods_rows(void)
 /* The Network section: the port's own settings for the network service, and
  * the input injection's limit, which is the port's own too: a mod may ask
  * for a press, and the player says how long a press may be (0 is off). */
-/* The RetroAchievements sign-in's own state: the name typed, the password
- * typed (kept only until it has been sent), and the state the rows were
- * last built for, so a change redraws them. */
-static char g_ra_user[32];
-static char g_ra_pass[32];
+/* The RetroAchievements rows: the sign-in itself is the launcher's (the
+ * game's keyboard cannot hold a password); the state the rows were last
+ * built for, so a change redraws them. */
 #ifdef EIDOS_HAVE_RA
 static int  g_ra_seen = -1;
 #define RA_RECENT_MAX 8
@@ -596,10 +581,6 @@ static void build_net_rows(void)
             add_row(ROW_RA_RECENT, -1, 0);
         }
         add_row(ROW_RA_SIGNOUT, 0, 0);
-    } else if (g_ra_seen != BW_RA_OFF) {
-        add_row(ROW_RA_USER, 0, 0);
-        add_row(ROW_RA_PASS, 0, 0);
-        add_row(ROW_RA_SIGNIN, 0, 0);
     }
 #endif
     add_row(ROW_NET_RELAY, 0, 0);
@@ -628,8 +609,6 @@ static int  g_ngames;
 #define KB_NAME     1
 #define KB_CODE     2
 #define KB_NEW_GAME 3
-#define KB_RA_USER  4
-#define KB_RA_PASS  5
 
 static struct {
     int  target;
@@ -737,13 +716,6 @@ static int keyboard_open(int target)
         g_kb.max = 6;               /* the relay's codes */
         start = eidos_settings_session_join_code();
         break;
-    case KB_RA_USER:
-        g_kb.max = 31;
-        start = g_ra_user;
-        break;
-    case KB_RA_PASS:
-        g_kb.max = 31;             /* never shown again: starts empty */
-        break;
     default:
         g_kb.max = 10;
         break;
@@ -770,8 +742,6 @@ const char *eidos_sui_keyboard_prompt(void)
     case KB_NAME:     return STR_KB_NAME;
     case KB_CODE:     return STR_KB_CODE;
     case KB_NEW_GAME: return STR_KB_NEW_GAME;
-    case KB_RA_USER:  return STR_KB_RA_USER;
-    case KB_RA_PASS:  return STR_KB_RA_PASS;
     default:          return NULL;
     }
 }
@@ -807,12 +777,6 @@ void eidos_sui_keyboard_done(const char *text, int ok)
         if (buf[0] != '\0') {
             (void)session_action(ROW_MP_JOIN_GO);   /* joins at once */
         }
-        break;
-    case KB_RA_USER:
-        put(g_ra_user, (int)sizeof g_ra_user, buf);
-        break;
-    case KB_RA_PASS:
-        put(g_ra_pass, (int)sizeof g_ra_pass, buf);
         break;
     case KB_NEW_GAME:
         if (bw_mp_game_create(buf, NULL, 0) == 0) {
@@ -1470,38 +1434,19 @@ static int move_mod(int mod, int up)
  */
 static void begin_text_edit(int type);
 
-/* The RetroAchievements rows: the two texts on the game's keyboard, and
- * the sign-in and sign-out (sdk/ra.h).  The password is sent once and
- * wiped here whether or not the sign-in succeeds. */
+/* The RetroAchievements row that acts: Sign out (sdk/ra.h). */
 static int ra_action(int type)
 {
-    if (type == ROW_RA_USER) {
-        return EIDOS_SUI_REDRAW | keyboard_open(KB_RA_USER);
-    }
-    if (type == ROW_RA_PASS) {
-        return EIDOS_SUI_REDRAW | keyboard_open(KB_RA_PASS);
-    }
 #ifdef EIDOS_HAVE_RA
-    if (type == ROW_RA_SIGNIN) {
-        int rc = bw_ra_login(g_ra_user, g_ra_pass);
-
-        memset(g_ra_pass, 0, sizeof g_ra_pass);
-        build_rows_keep_cursor();
-        return EIDOS_SUI_REDRAW | (rc == 0 ? EIDOS_SUI_SFX_SELECT : EIDOS_SUI_SFX_BACK);
-    }
     if (type == ROW_RA_SIGNOUT) {
         bw_ra_logout();
         build_rows_keep_cursor();
         return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_SELECT;
     }
+#else
+    (void)type;
 #endif
     return 0;
-}
-
-static int is_ra_row(int type)
-{
-    return type == ROW_RA_USER || type == ROW_RA_PASS ||
-           type == ROW_RA_SIGNIN || type == ROW_RA_SIGNOUT;
 }
 
 /* A text row: the name and the code on the game's keyboard, the others on
@@ -1911,7 +1856,7 @@ static int sui_input(unsigned pressed, unsigned held)
         }
         return 0;
     }
-    if (is_ra_row(r->type)) {
+    if (r->type == ROW_RA_SIGNOUT) {
         if (pressed & 1u) {
             return ra_action(r->type);
         }
@@ -2247,9 +2192,6 @@ int eidos_sui_touch(int row, int zone)
             res = text_row_action(r->type);
         }
         break;
-    case ROW_RA_USER:
-    case ROW_RA_PASS:
-    case ROW_RA_SIGNIN:
     case ROW_RA_SIGNOUT:
         if (was) {
             res = ra_action(r->type);
@@ -2555,7 +2497,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
                 }
                 put(value, nv, buf);
             } else {
-                put(value, nv, st.message[0] != '\0' ? st.message : "Not signed in");
+                put(value, nv, st.state == BW_RA_SIGNED_OUT || st.message[0] == '\0' ? STR_RA_SIGNEDOUT : st.message);
             }
         }
 #else
@@ -2574,25 +2516,6 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
 #else
         put(label, nl, STR_RA_NONE);
 #endif
-        break;
-    case ROW_RA_USER:
-        put(label, nl, STR_RA_USER);
-        put(value, nv, net_text(g_ra_user));
-        break;
-    case ROW_RA_PASS: {
-        size_t n = strlen(g_ra_pass);
-
-        if (n > sizeof buf - 1) {
-            n = sizeof buf - 1;
-        }
-        memset(buf, '*', n);
-        buf[n] = '\0';
-        put(label, nl, STR_RA_PASS);
-        put(value, nv, net_text(buf));
-        break;
-    }
-    case ROW_RA_SIGNIN:
-        put(label, nl, STR_RA_SIGNIN);
         break;
     case ROW_RA_SIGNOUT:
         put(label, nl, STR_RA_SIGNOUT);
@@ -2918,18 +2841,6 @@ void eidos_sui_help_line(int i, char *out, int n)
             l[1] = HELP_RA_NONE2;
             break;
         }
-        case ROW_RA_USER:
-            l[0] = HELP_RA_USER1;
-            l[1] = HELP_RA_USER2;
-            break;
-        case ROW_RA_PASS:
-            l[0] = HELP_RA_PASS1;
-            l[1] = HELP_RA_PASS2;
-            break;
-        case ROW_RA_SIGNIN:
-            l[0] = HELP_RA_SIGNIN1;
-            l[1] = HELP_RA_SIGNIN2;
-            break;
         case ROW_RA_SIGNOUT:
             l[0] = HELP_RA_SIGNOUT1;
             l[1] = HELP_RA_SIGNOUT2;

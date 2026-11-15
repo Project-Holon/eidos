@@ -450,7 +450,7 @@ static void on_login(int result, const char *error_message,
     snprintf(g.st.user, sizeof(g.st.user), "%s",
              u->display_name != NULL ? u->display_name : u->username);
     bw_mutex_unlock(g.lock);
-    /* Keep the token, never the password. */
+    /* Keep the token (the file is the launcher's too). */
     if (u->username != NULL && u->token != NULL) {
         snprintf(g.saved_user, sizeof(g.saved_user), "%s", u->username);
         snprintf(g.saved_token, sizeof(g.saved_token), "%s", u->token);
@@ -626,17 +626,6 @@ void bw_ra_reset(void)
     if (g.up && g.st.game_loaded) {
         rc_client_reset(g.client);
     }
-}
-
-int bw_ra_login(const char *user, const char *password)
-{
-    if (!g.up || user == NULL || password == NULL || user[0] == '\0' ||
-        password[0] == '\0') {
-        return -1;
-    }
-    set_status(BW_RA_SIGNING_IN, "Signing in...");
-    rc_client_begin_login_with_password(g.client, user, password, on_login, NULL);
-    return 0;
 }
 
 void bw_ra_logout(void)

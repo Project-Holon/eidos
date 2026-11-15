@@ -42,18 +42,20 @@ may differ from a real DS. **Not yet validated against a real set.**
 
 ## Sign-in and storage
 
-`bw_ra_login(user, password)`; the password goes to rcheevos once. The token
-the server returns is stored in `<data root>/retroachievements.ini`, mode
-0600. On start the saved token signs in again. `bw_ra_logout` clears it.
+The sign-in is the launcher's (`launcher/src-tauri/src/ra.rs`): the password
+goes to retroachievements.org once and is never stored; the token the site
+returns is kept in the launcher's settings and written, on Play, to
+`<profile>/retroachievements.ini` (mode 0600), which the game reads. The
+game never sees the password. On start the game signs in with that token;
+Sign out in the game (or in the launcher) clears it. The game's keyboard
+cannot hold a password, which is why the game has no sign-in rows.
 
 ## Settings and the banner
 
-The Network section of the settings screen has the rows: status, the latest
-unlocks (title and points, the description in the help line; earlier
-sessions included), user name, password (masked), Sign in, and Sign out once
-signed in. Text is typed on the game's own keyboard, so only the characters
-that keyboard offers can be typed. The password is wiped after the sign-in
-is sent.
+The Network section of the settings screen shows the status (the name and
+`unlocked/total`, or "Sign in from the launcher"), an **Achievement sound**
+on/off option, the latest unlocks (title and points, the description in the
+help line; earlier sessions included) and Sign out.
 
 An unlock plays the achievement sound and slides a **banner** in from the left,
 holds it about five seconds and takes it back up (`sdk/ra.c`: the timing,
