@@ -2178,7 +2178,7 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
         TriList tl;
         size_t ti;
         int ent = -1, tex = -1;
-        int translucent, lit;
+        int translucent, lit, draw_shaded = 0;      /* (draw_shaded: a vertex of this draw was lit by its normal) */
         TriTag tag;
         Buf dl;
 
@@ -2331,6 +2331,7 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                     vnorm(n);
                     shade(&c->lights, mt, n, col);
                     shaded = 1;
+                    draw_shaded = 1;
                 }
                 if (!shaded) {
                     shaded_all = 0;
@@ -2416,7 +2417,9 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                 }
                 vnorm(n);
                 col[0] = x->rgb[0] / 255.0f; col[1] = x->rgb[1] / 255.0f; col[2] = x->rgb[2] / 255.0f;
-                if (x->lit && mt->light_mask != 0u) {
+                if (x->lit && mt->light_mask != 0u && draw_shaded) {
+                    /* (lit as its source is: by the light when the draw's own faces are, else its source's
+                     * vertex colour, as the builder gave it) */
                     shade(&c->lights, mt, n, col);
                 }
                 for (k = 0; k < 3; k++) {

@@ -420,6 +420,49 @@ void rm_turned(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, c
             painted(out, &tr[i]);
         }
     }
+    /* `axis=AX:AY:AZ:CX:CY:CZ`: a thing lying on its side (a pot knocked over: its far half, the one the field
+     * camera never shows, is missing): the back is the front turned half round about its own axis, the line
+     * through (CX, CY, CZ) along (AX, AY, AZ).  Each face's copy is p' = 2 (c + ((p - c) . a) a) - p, a turn, so it
+     * keeps looking outward, in the face's own picture; no twins (step 2 is for things that stand). */
+    {
+        char ab[128];
+        double ax[3] = { 0.0, 1.0, 0.0 }, ac[3];
+
+        if (rm_opt(opt, "axis", ab, sizeof ab) != NULL
+            && sscanf(ab, "%lf:%lf:%lf:%lf:%lf:%lf", &ax[0], &ax[1], &ax[2], &ac[0], &ac[1], &ac[2]) == 6
+            && rm_norm(ax) > 1e-9) {
+            for (i = 0; i < n0; i++) {
+                Tr q = tr[i];
+                double nv[3];
+
+                if (tr[i].flat) {
+                    continue;
+                }
+                normal_of(tr[i].p, nv);
+                if (rm_norm(nv) > 1e-9 && fabs(rm_dot(nv, ax)) > 0.9) {
+                    continue;                   /* (an end across the axis, a pot's rim or base: turned, it lies on
+                                                 * itself, a little off, over its own picture) */
+                }
+                for (j = 0; j < 3; j++) {
+                    double d[3], t;
+
+                    for (k = 0; k < 3; k++) {
+                        d[k] = (double)tr[i].p[j][k] - ac[k];
+                    }
+                    t = rm_dot(d, ax);
+                    for (k = 0; k < 3; k++) {
+                        q.p[j][k] = (float)(2.0 * (ac[k] + t * ax[k]) - tr[i].p[j][k]);
+                    }
+                }
+                if (!there(tr, n, q.p)) {
+                    memcpy(q.ref, tr[i].black ? tr[i].ref : tr[i].rgb, 3u);
+                    painted(out, &q);
+                    tr[n++] = q;
+                }
+            }
+            goto cards;
+        }
+    }
     /* 1. the turned copies */
     for (i = 0; i < n0; i++) {
         Tr q = tr[i];

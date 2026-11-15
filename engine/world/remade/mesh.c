@@ -479,14 +479,45 @@ static RmBuild *mesh_builder(const char *name)
     return NULL;
 }
 
-/* One builder on the triangles of the box `bx` (NULL: all of them). */
+/* v turned `deg` degrees about the unit axis a through c (Rodrigues); `dir`: a direction (no c). */
+static void tip_point(const double a[3], double deg, const double c[3], const float in[3], float o[3], int dir)
+{
+    const double r = deg * 3.14159265358979 / 180.0, cs = cos(r), sn = sin(r);
+    double v[3], kv[3], d;
+    int k;
+
+    for (k = 0; k < 3; k++) {
+        v[k] = (double)in[k] - (dir ? 0.0 : c[k]);
+    }
+    rm_cross(a, v, kv);
+    d = rm_dot(a, v);
+    for (k = 0; k < 3; k++) {
+        o[k] = (float)(v[k] * cs + kv[k] * sn + a[k] * d * (1.0 - cs) + (dir ? 0.0 : c[k]));
+    }
+}
+
+/* One builder on the triangles of the box `bx` (NULL: all of them).  `tip=AX:AY:AZ:DEG:CX:CY:CZ` (a thing knocked
+ * over, a builder made for it standing: the potted plant lying on its side): the triangles are turned -DEG about the
+ * axis through (CX, CY, CZ) first, so the thing stands as the builder knows it, and what it makes is turned +DEG
+ * back, so it lies where the thing lies. */
 static void mesh_part(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, RmBuild *fn, const double *bx,
                       const char *opt, RmOut *out)
 {
     RmBatch *sb;
     RmTri *st;
     unsigned i, j, k, total = 0, nsb = 0, at = 0;
+    double tip[7];
+    int tipped = 0;
 
+    {
+        char tb[160];
+
+        if (rm_opt(opt, "tip", tb, sizeof tb) != NULL
+            && sscanf(tb, "%lf:%lf:%lf:%lf:%lf:%lf:%lf", &tip[0], &tip[1], &tip[2], &tip[3], &tip[4], &tip[5], &tip[6]) == 7
+            && rm_norm(tip) > 1e-9 && bx != NULL) {
+            tipped = 1;
+        }
+    }
     if (bx == NULL) {
         fn(b, nb, tex, ntex, opt, out);
         return;
@@ -514,7 +545,13 @@ static void mesh_part(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
                      t->p[k][1] <= bx[3] + 0.05 && t->p[k][2] >= bx[4] - 0.05 && t->p[k][2] <= bx[5] + 0.05;
             }
             if (in) {
-                st[at++] = *t;
+                st[at] = *t;
+                if (tipped) {
+                    for (k = 0; k < 3u; k++) {
+                        tip_point(tip, -tip[3], &tip[4], t->p[k], st[at].p[k], 0);
+                    }
+                }
+                at++;
             }
         }
         if (at > first) {
@@ -525,7 +562,22 @@ static void mesh_part(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
         }
     }
     if (nsb > 0) {
+        const unsigned made = out->ntri;
+
         fn(sb, nsb, tex, ntex, opt, out);
+        if (tipped) {
+            for (i = made; i < out->ntri; i++) {
+                RmNew *t = &out->tri[i];
+                float q[3];
+
+                for (k = 0; k < 3u; k++) {
+                    tip_point(tip, tip[3], &tip[4], t->p[k], q, 0);
+                    t->p[k][0] = q[0]; t->p[k][1] = q[1]; t->p[k][2] = q[2];
+                }
+                tip_point(tip, tip[3], &tip[4], t->n, q, 1);
+                t->n[0] = q[0]; t->n[1] = q[1]; t->n[2] = q[2];
+            }
+        }
     }
     free(sb);
     free(st);

@@ -49,6 +49,9 @@
  *       missing faces with pink.py).
  *   reside=FROM:TO:Y0:Y1  the side at x = TO (painted plain) takes the faces of
  *       the side at x = FROM between Y0 and Y1, mirrored across.
+ *   edgewalls=Y:H[+Y:H..]  each outer edge of the floor at height Y with nothing standing over it (a room's south
+ *       end the map never built) a wall H high looking into the room, in the room's biggest wall's picture;
+ *       edgekeep=X0:X1:Z0:Z1+..  edges in those boxes left open (doors).
  *   rimwalls=Y0:X0:X1:Z0:Z1  a hole in a level floor (a roof pool): walls down
  *       to Y0 under its open edges in that box, in the hole's own wall colours.
  *   twofirst=1  the two pass before halfturn and mirror (their copies two-sided too).
@@ -1221,6 +1224,31 @@ static int seal_key_cmp(const void *a, const void *b)
     return x->k < y->k ? -1 : x->k > y->k;
 }
 
+
+/* The face whose picture a copy of face t wears: t, unless t is painted black or is an upright face of a floor's draw
+ * (more of its draw level than upright: the floor's edge; Relic Castle draws its maze walls' outer sides so, and its
+ * light paints them black): then the room's wall nearest t (near_wall), else t. */
+static int draw_is_floor(const Ft *f, unsigned nf, const RmBatch *b);
+static const Ft *near_wall(const Ft *f, unsigned nf, const double mid[3], double ym);
+static const unsigned char *wall_rgb(const Ft *f, unsigned nf, const Ft *pic);
+
+static const Ft *copy_src(const Ft *f, unsigned nf, const Ft *t, const double out_n[3])
+{
+    const Ft *w;
+    double mid[3];
+    int k;
+
+    (void)out_n;
+    if (t->t->rgb[0] + t->t->rgb[1] + t->t->rgb[2] >= 24 && !draw_is_floor(f, nf, t->b)) {
+        return t;
+    }
+    for (k = 0; k < 3; k++) {
+        mid[k] = ((double)t->t->p[0][k] + t->t->p[1][k] + t->t->p[2][k]) / 3.0;
+    }
+    w = near_wall(f, nf, mid, mid[1]);
+    return w != NULL ? w : t;
+}
+
 /* `thick=TMIN:TMAX`: a thick wall the model draws from one side: an upright face whose top edge is an edge of a level
  * band (the wall's top), the band TMIN..TMAX deep behind it; where the wall has no face looking the other way over the
  * band's far edge, one is built there: as long as that far edge (a wall's mitred end at a corner of the honeycomb
@@ -1243,6 +1271,7 @@ static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double t
 
     for (w = 0; w < nf; w++) {
         const RmTri *t = f[w].t;
+        const Ft *pic;
         double n[3], back[3], e[3], hi0[3], hi1[3], ybot, len, d = 0.0, ytop;
         unsigned set[24], ns = 0, grown = 1;
         int order[3] = { 0, 1, 2 }, a, b;
@@ -1366,6 +1395,14 @@ static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double t
                 if (da < 1.5 || db < 1.5) {
                     continue;
                 }
+                {
+                    /* (parallel to the drawn face's top edge, within about 8 degrees: the wall's other side is) */
+                    double ev[3] = { (double)pb[0] - pa[0], 0.0, (double)pb[2] - pa[2] };
+
+                    if (rm_norm(ev) < 1e-9 || fabs(ev[0] * e[0] + ev[2] * e[2]) < 0.99) {
+                        continue;
+                    }
+                }
                 for (i2 = 0; i2 < ns && !inner; i2++) {
                     int c0 = 0, c1 = 0;
 
@@ -1425,25 +1462,34 @@ static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double t
                 if (has) {
                     continue;
                 }
-                /* the face's picture as a function of (along the wall, up), each corner read where it lies along it */
+                /* the face's picture as a function of (along the wall, up), each corner read where it lies along it
+                 * (a black face: the room's own wall's picture, along that wall: copy_src) */
+                pic = copy_src(f, nf, &f[w], out_n);
                 {
-                    double sa[3], ya[3], det;
+                    const RmTri *pt = pic->t;
+                    double sa[3], ya[3], det, pe[3] = { e[0], 0.0, e[2] }, po[3] = { hi0[0], 0.0, hi0[2] };
                     int r;
 
+                    if (pic != &f[w]) {
+                        pe[0] = -pic->n[2];
+                        pe[2] = pic->n[0];
+                        rm_norm(pe);
+                        po[0] = po[2] = 0.0;
+                    }
                     for (k = 0; k < 3; k++) {
-                        sa[k] = ((double)t->p[k][0] - hi0[0]) * e[0] + ((double)t->p[k][2] - hi0[2]) * e[2];
-                        ya[k] = t->p[k][1];
+                        sa[k] = ((double)pt->p[k][0] - po[0]) * pe[0] + ((double)pt->p[k][2] - po[2]) * pe[2];
+                        ya[k] = pt->p[k][1];
                     }
                     det = (sa[1] - sa[0]) * (ya[2] - ya[0]) - (sa[2] - sa[0]) * (ya[1] - ya[0]);
                     if (fabs(det) < 1e-9) {
                         continue;
                     }
                     for (r = 0; r < 2; r++) {
-                        const double d1 = (double)t->uv[1][r] - t->uv[0][r], d2 = (double)t->uv[2][r] - t->uv[0][r];
+                        const double d1 = (double)pt->uv[1][r] - pt->uv[0][r], d2 = (double)pt->uv[2][r] - pt->uv[0][r];
 
                         m[r][0] = (d1 * (ya[2] - ya[0]) - d2 * (ya[1] - ya[0])) / det;
                         m[r][1] = (d2 * (sa[1] - sa[0]) - d1 * (sa[2] - sa[0])) / det;
-                        m[r][2] = t->uv[0][r] - m[r][0] * sa[0] - m[r][1] * ya[0];
+                        m[r][2] = pt->uv[0][r] - m[r][0] * sa[0] - m[r][1] * ya[0];
                     }
                 }
                 for (j = 0; j < 4u; j++) {
@@ -1460,15 +1506,18 @@ static void do_thick(const Ft *f, unsigned nf, RmOut *out, double tmin, double t
                         e1[k] = q[1][k] - q[0][k];
                         e2[k] = q[2][k] - q[0][k];
                     }
+                    const unsigned char *rgb = pic != &f[w] ? wall_rgb(f, nf, pic) : pic->t->rgb;
+                    const unsigned sid = pic->t->id;     /* (its material: the picture's) */
+
                     rm_cross(e1, e2, fn);
                     if (rm_dot(fn, out_n) >= 0.0) {
-                        rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
-                        rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
+                        rm_tri(out, sid, -1, 1, rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+                        rm_tri(out, sid, -1, 1, rgb, q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
                     } else {
-                        rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
-                        rm_tri(out, t->id, -1, 1, t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
+                        rm_tri(out, sid, -1, 1, rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+                        rm_tri(out, sid, -1, 1, rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
                     }
-                    lit_as(out, first, t);      /* (the wall's own light) */
+                    lit_as(out, first, pic->t);     /* (the picture's wall's own light) */
                 }
             }
         }
@@ -1735,6 +1784,569 @@ static void do_under(const Ft *f, unsigned nf, RmOut *out, double y)
         }
     }
 }
+
+/* The mostly-level test of a draw: more of its area in faces that look up or down than upright (a floor's draw). */
+static int draw_is_floor(const Ft *f, unsigned nf, const RmBatch *b)
+{
+    double lv = 0.0, up = 0.0;
+    unsigned i;
+
+    for (i = 0; i < nf; i++) {
+        double e1[3], e2[3], cr[3], area;
+        int k;
+
+        if (f[i].b != b) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            e1[k] = (double)f[i].t->p[1][k] - f[i].t->p[0][k];
+            e2[k] = (double)f[i].t->p[2][k] - f[i].t->p[0][k];
+        }
+        rm_cross(e1, e2, cr);
+        area = rm_norm(cr);
+        if (fabs(f[i].n[1]) > 0.7) {
+            lv += area;
+        } else {
+            up += area;
+        }
+    }
+    return lv > up;
+}
+
+/* Is there a face that is not upright (a floor, a step, a slope) over the point (x, z), from y0 + 0.5 down to y0 - 12?
+ * (deeper: a drop out of the room, a trench the field shows dark, walled at its rim) */
+static int floor_under(const Ft *f, unsigned nf, double x, double z, double y0)
+{
+    unsigned j;
+
+    for (j = 0; j < nf; j++) {
+        const RmTri *v = f[j].t;
+        double e1x, e1z, e2x, e2z, den, u, w, my;
+
+        if (fabs(f[j].n[1]) < 0.2) {
+            continue;
+        }
+        my = ((double)v->p[0][1] + v->p[1][1] + v->p[2][1]) / 3.0;
+        if (my > y0 + 0.5 || my < y0 - 12.0) {
+            continue;
+        }
+        e1x = (double)v->p[1][0] - v->p[0][0]; e1z = (double)v->p[1][2] - v->p[0][2];
+        e2x = (double)v->p[2][0] - v->p[0][0]; e2z = (double)v->p[2][2] - v->p[0][2];
+        den = e1x * e2z - e2x * e1z;
+        if (fabs(den) < 1e-9) {
+            continue;
+        }
+        u = ((x - v->p[0][0]) * e2z - e2x * (z - v->p[0][2])) / den;
+        w = (e1x * (z - v->p[0][2]) - (x - v->p[0][0]) * e1z) / den;
+        if (u >= -0.001 && w >= -0.001 && u + w <= 1.001) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* The floor again at its own height (a face that looks up within a unit of y0) 16 to 64 units out from mid against
+ * `in`: the edge is a hole's rim (a stairwell), not the room's end. */
+static int floor_far(const Ft *f, unsigned nf, const double mid[3], const double in[3], double y0)
+{
+    unsigned j;
+    int step;
+
+    for (step = 2; step <= 8; step++) {
+        const double x = mid[0] - in[0] * 8.0 * step, z = mid[2] - in[2] * 8.0 * step;
+
+        for (j = 0; j < nf; j++) {
+            const RmTri *v = f[j].t;
+            double e1x, e1z, e2x, e2z, den, u, w, my;
+
+            if (f[j].n[1] < 0.9) {
+                continue;
+            }
+            my = ((double)v->p[0][1] + v->p[1][1] + v->p[2][1]) / 3.0;
+            if (fabs(my - y0) > 1.0) {
+                continue;
+            }
+            e1x = (double)v->p[1][0] - v->p[0][0]; e1z = (double)v->p[1][2] - v->p[0][2];
+            e2x = (double)v->p[2][0] - v->p[0][0]; e2z = (double)v->p[2][2] - v->p[0][2];
+            den = e1x * e2z - e2x * e1z;
+            if (fabs(den) < 1e-9) {
+                continue;
+            }
+            u = ((x - v->p[0][0]) * e2z - e2x * (z - v->p[0][2])) / den;
+            w = (e1x * (z - v->p[0][2]) - (x - v->p[0][0]) * e1z) / den;
+            if (u >= -0.001 && w >= -0.001 && u + w <= 1.001) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* The upright area of draw b (faces within 0.2 of level excluded). */
+static double draw_upright(const Ft *f, unsigned nf, const RmBatch *b)
+{
+    double tot = 0.0;
+    unsigned j;
+
+    for (j = 0; j < nf; j++) {
+        double e1[3], e2[3], cr[3];
+        int k;
+
+        if (f[j].b != b || fabs(f[j].n[1]) > 0.2) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            e1[k] = (double)f[j].t->p[1][k] - f[j].t->p[0][k];
+            e2[k] = (double)f[j].t->p[2][k] - f[j].t->p[0][k];
+        }
+        rm_cross(e1, e2, cr);
+        tot += rm_norm(cr);
+    }
+    return tot;
+}
+
+/* The room's wall nearest the point mid: a lit, textured upright face of a draw that is not a floor's, covering the
+ * height ym with a picture that changes with height (the wall's band, not its skirting), whose middle is nearest;
+ * NULL: none. */
+static const Ft *near_wall(const Ft *f, unsigned nf, const double mid[3], double ym)
+{
+    const Ft *best = NULL;
+    double bd = 1e30, most = 0.0;
+    unsigned i;
+
+    /* (the largest upright draw that is not a floor's: the room's walls) */
+    for (i = 0; i < nf; i++) {
+        if (f[i].b->tex >= 0 && !draw_is_floor(f, nf, f[i].b)) {
+            const double u = draw_upright(f, nf, f[i].b);
+
+            most = u > most ? u : most;
+        }
+    }
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        const unsigned char *c = t->rgb;
+        const double ylo = fmin(fmin(t->p[0][1], t->p[1][1]), t->p[2][1]), yhi = fmax(fmax(t->p[0][1], t->p[1][1]), t->p[2][1]);
+        const double vlo = fmin(fmin(t->uv[0][1], t->uv[1][1]), t->uv[2][1]), vhi = fmax(fmax(t->uv[0][1], t->uv[1][1]), t->uv[2][1]);
+        double d = 0.0;
+        int k;
+
+        if (c[0] + c[1] + c[2] < 24 || f[i].b->tex < 0 || fabs(f[i].n[1]) > 0.2) {
+            continue;
+        }
+        if (ylo > ym || yhi < ym || vhi - vlo < 0.05) {
+            continue;                   /* (not the wall's band at the new wall's middle height: a skirting strip) */
+        }
+        for (k = 0; k < 3; k++) {
+            const double m = ((double)f[i].t->p[0][k] + f[i].t->p[1][k] + f[i].t->p[2][k]) / 3.0 - mid[k];
+
+            d += k == 1 ? 0.25 * m * m : m * m;    /* (height counts less: the wall's band over it) */
+        }
+        if (d < bd && !draw_is_floor(f, nf, f[i].b) && draw_upright(f, nf, f[i].b) >= 0.25 * most) {
+            bd = d;
+            best = &f[i];
+        }
+    }
+    return best;
+}
+
+/* Is (x, z) in one of the kept boxes (X0:X1:Z0:Z1+..), each widened by `pad`? */
+static int in_keep(const char *keep, double x, double z, double pad)
+{
+    const char *kp = keep;
+
+    while (kp != NULL && *kp != '\0') {
+        double kb[4];
+
+        if (sscanf(kp, "%lf:%lf:%lf:%lf", &kb[0], &kb[1], &kb[2], &kb[3]) == 4 && x >= kb[0] - pad && x <= kb[1] + pad
+            && z >= kb[2] - pad && z <= kb[3] + pad) {
+            return 1;
+        }
+        kp = strchr(kp, '+');
+        kp = kp != NULL ? kp + 1 : NULL;
+    }
+    return 0;
+}
+
+/* The brightest colour of an upright face of pic's draw (the room's walls lit their best way). */
+static const unsigned char *wall_rgb(const Ft *f, unsigned nf, const Ft *pic)
+{
+    const unsigned char *best = pic->t->rgb;
+    int bs = best[0] + best[1] + best[2];
+    unsigned i;
+
+    for (i = 0; i < nf; i++) {
+        const unsigned char *c = f[i].t->rgb;
+
+        if (f[i].b == pic->b && fabs(f[i].n[1]) < 0.2 && c[0] + c[1] + c[2] > bs) {
+            bs = c[0] + c[1] + c[2];
+            best = c;
+        }
+    }
+    return best;
+}
+
+/* A wall q0..q1 (level, at the floor y0) up to ytop looking along `out`, in the picture of the room wall nearest it. */
+static void wall_quad(const Ft *f, unsigned nf, RmOut *out, const double p0[3], const double p1[3], double y0, double ytop,
+                      const double outn[3])
+{
+    double mid[3], q[4][3], uv[4][2], m[2][3], pe[3], sa[3], ya[3], det, e1[3], e2[3], fn[3], ne[3];
+    const Ft *pic;
+    unsigned first, ti;
+    int k, r;
+
+    for (k = 0; k < 3; k++) {
+        mid[k] = (p0[k] + p1[k]) / 2.0;
+    }
+    pic = near_wall(f, nf, mid, (y0 + ytop) / 2.0);
+    if (pic == NULL) {
+        return;
+    }
+    pe[0] = -pic->n[2]; pe[1] = 0.0; pe[2] = pic->n[0];
+    rm_norm(pe);
+    for (k = 0; k < 3; k++) {
+        sa[k] = (double)pic->t->p[k][0] * pe[0] + (double)pic->t->p[k][2] * pe[2];
+        ya[k] = pic->t->p[k][1];
+    }
+    det = (sa[1] - sa[0]) * (ya[2] - ya[0]) - (sa[2] - sa[0]) * (ya[1] - ya[0]);
+    if (fabs(det) < 1e-9) {
+        return;
+    }
+    for (r = 0; r < 2; r++) {
+        const double d1 = (double)pic->t->uv[1][r] - pic->t->uv[0][r], d2 = (double)pic->t->uv[2][r] - pic->t->uv[0][r];
+
+        m[r][0] = (d1 * (ya[2] - ya[0]) - d2 * (ya[1] - ya[0])) / det;
+        m[r][1] = (d2 * (sa[1] - sa[0]) - d1 * (sa[2] - sa[0])) / det;
+        m[r][2] = pic->t->uv[0][r] - m[r][0] * sa[0] - m[r][1] * ya[0];
+    }
+    for (k = 0; k < 3; k++) {
+        q[0][k] = p0[k];
+        q[1][k] = p1[k];
+        q[2][k] = p1[k];
+        q[3][k] = p0[k];
+    }
+    q[0][1] = q[1][1] = y0;
+    q[2][1] = q[3][1] = ytop;
+    ne[0] = -outn[2]; ne[1] = 0.0; ne[2] = outn[0];
+    for (k = 0; k < 4; k++) {
+        const double sv = q[k][0] * ne[0] + q[k][2] * ne[2];
+
+        uv[k][0] = m[0][0] * sv + m[0][1] * q[k][1] + m[0][2];
+        uv[k][1] = m[1][0] * sv + m[1][1] * q[k][1] + m[1][2];
+    }
+    for (k = 0; k < 3; k++) {
+        e1[k] = q[1][k] - q[0][k];
+        e2[k] = q[2][k] - q[0][k];
+    }
+    rm_cross(e1, e2, fn);
+    first = out->ntri;
+    if (rm_dot(fn, outn) >= 0.0) {
+        rm_tri(out, pic->t->id, -1, 1, wall_rgb(f, nf, pic), q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+        rm_tri(out, pic->t->id, -1, 1, wall_rgb(f, nf, pic), q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
+    } else {
+        rm_tri(out, pic->t->id, -1, 1, wall_rgb(f, nf, pic), q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+        rm_tri(out, pic->t->id, -1, 1, wall_rgb(f, nf, pic), q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
+    }
+    lit_as(out, first, pic->t);
+    for (ti = first; ti < out->ntri; ti++) {
+        out->tri[ti].kind = 3;
+    }
+}
+
+/* The raised blocks' open sides over the floor y0 (see `edgewalls`). */
+static void do_blockwalls(const Ft *f, unsigned nf, RmOut *out, double y0, const char *keep)
+{
+    unsigned i, j;
+    int a, k;
+
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double ty;
+
+        if (f[i].n[1] < 0.9) {
+            continue;
+        }
+        ty = ((double)t->p[0][1] + t->p[1][1] + t->p[2][1]) / 3.0;
+        if (ty < y0 + 4.0) {
+            continue;
+        }
+        for (a = 0; a < 3; a++) {
+            const float *p0 = t->p[a], *p1 = t->p[(a + 1) % 3];
+            double mid[3], ed[3], outn[3], c[3], pa[3], pb[3], len;
+            int shared = 0, stands = 0;
+
+            for (j = 0; j < nf && !shared; j++) {
+                int m, s0 = 0, s1 = 0;
+
+                if (j == i || f[j].n[1] < 0.9) {
+                    continue;
+                }
+                for (m = 0; m < 3; m++) {
+                    s0 |= fabs(f[j].t->p[m][0] - p0[0]) < 0.05 && fabs(f[j].t->p[m][1] - p0[1]) < 0.05 && fabs(f[j].t->p[m][2] - p0[2]) < 0.05;
+                    s1 |= fabs(f[j].t->p[m][0] - p1[0]) < 0.05 && fabs(f[j].t->p[m][1] - p1[1]) < 0.05 && fabs(f[j].t->p[m][2] - p1[2]) < 0.05;
+                }
+                shared = s0 && s1;
+            }
+            if (shared) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                mid[k] = ((double)p0[k] + p1[k]) / 2.0;
+                ed[k] = (double)p1[k] - p0[k];
+                c[k] = ((double)t->p[0][k] + t->p[1][k] + t->p[2][k]) / 3.0;
+                pa[k] = p0[k];
+                pb[k] = p1[k];
+            }
+            ed[1] = 0.0;
+            len = rm_norm(ed);
+            if (len < 0.5 || fabs(p0[1] - p1[1]) > 0.5) {
+                continue;
+            }
+            outn[0] = -ed[2];
+            outn[1] = 0.0;
+            outn[2] = ed[0];
+            if ((c[0] - mid[0]) * outn[0] + (c[2] - mid[2]) * outn[2] > 0.0) {
+                outn[0] = -outn[0];
+                outn[2] = -outn[2];
+            }
+            /* the floor under the outer side, near (the room) */
+            if (!floor_under(f, nf, mid[0] + outn[0] * 4.0, mid[2] + outn[2] * 4.0, y0)
+                || in_keep(keep, mid[0], mid[2], 0.0)) {
+                continue;
+            }
+            /* an upright face of the model in the edge's line, between the floor and the top: the side is there */
+            for (j = 0; j < nf && !stands; j++) {
+                const RmTri *v = f[j].t;
+                double d0, lo[3], hi[3];
+
+                if (fabs(f[j].n[1]) > 0.3 || fabs(rm_dot(f[j].n, outn)) < 0.9) {
+                    continue;
+                }
+                d0 = ((double)v->p[0][0] - mid[0]) * f[j].n[0] + ((double)v->p[0][2] - mid[2]) * f[j].n[2];
+                if (fabs(d0) > 0.6) {
+                    continue;
+                }
+                for (k = 0; k < 3; k++) {
+                    lo[k] = fmin(fmin(v->p[0][k], v->p[1][k]), v->p[2][k]) - 0.6;
+                    hi[k] = fmax(fmax(v->p[0][k], v->p[1][k]), v->p[2][k]) + 0.6;
+                }
+                stands = mid[0] >= lo[0] && mid[0] <= hi[0] && mid[2] >= lo[2] && mid[2] <= hi[2] && lo[1] <= y0 + 2.0
+                         && hi[1] >= ty - 2.0;
+            }
+            if (stands) {
+                continue;
+            }
+            {
+                /* a thin wall's top band: its far side 3 to 24 units behind the edge, looking away: `thick`'s */
+                int thin = 0;
+
+                for (j = 0; j < nf && !thin; j++) {
+                    const RmTri *v = f[j].t;
+                    double d0, lo[3], hi[3], back[3] = { -outn[0], 0.0, -outn[2] };
+
+                    if (fabs(f[j].n[1]) > 0.3 || rm_dot(f[j].n, back) < 0.9) {
+                        continue;
+                    }
+                    d0 = ((double)v->p[0][0] - mid[0]) * back[0] + ((double)v->p[0][2] - mid[2]) * back[2];
+                    if (d0 < 2.5 || d0 > 24.5) {
+                        continue;
+                    }
+                    for (k = 0; k < 3; k++) {
+                        lo[k] = fmin(fmin(v->p[0][k], v->p[1][k]), v->p[2][k]);
+                        hi[k] = fmax(fmax(v->p[0][k], v->p[1][k]), v->p[2][k]);
+                    }
+                    /* (up to the top, and beside the edge's middle along the wall) */
+                    thin = hi[1] >= ty - 1.0 && lo[1] < ty - 1.0
+                           && (fabs(back[0]) > 0.5 ? mid[2] >= lo[2] - 1.0 && mid[2] <= hi[2] + 1.0
+                                                   : mid[0] >= lo[0] - 1.0 && mid[0] <= hi[0] + 1.0);
+                }
+                if (thin) {
+                    continue;
+                }
+            }
+            wall_quad(f, nf, out, pa, pb, y0, ty, outn);
+        }
+    }
+}
+
+/* `edgewalls=Y:H`, `edgekeep=X0:X1:Z0:Z1+..`: see the settings above. */
+static void do_edgewalls(const Ft *f, unsigned nf, RmOut *out, double y0, double h, const char *keep)
+{
+    unsigned i, j;
+    int a, k;
+
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+
+        if (f[i].n[1] < 0.5) {
+            continue;                   /* (the faces that look up: the floor and its mounds) */
+        }
+        for (a = 0; a < 3; a++) {
+            const float *p0 = t->p[a], *p1 = t->p[(a + 1) % 3];
+            double mid[3], ed[3], in[3], len, c[3] = { 0, 0, 0 };
+            int shared = 0, stands = 0, kept = 0;
+
+            if (fabs(p0[1] - y0) > 0.6 || fabs(p1[1] - y0) > 0.6) {
+                continue;               /* (an edge of the floor at Y) */
+            }
+            /* used by another face that looks up: inside the floor */
+            for (j = 0; j < nf && !shared; j++) {
+                int m, s0 = 0, s1 = 0;
+
+                if (j == i || f[j].n[1] < 0.5) {
+                    continue;
+                }
+                for (m = 0; m < 3; m++) {
+                    s0 |= fabs(f[j].t->p[m][0] - p0[0]) < 0.05 && fabs(f[j].t->p[m][1] - p0[1]) < 0.05 && fabs(f[j].t->p[m][2] - p0[2]) < 0.05;
+                    s1 |= fabs(f[j].t->p[m][0] - p1[0]) < 0.05 && fabs(f[j].t->p[m][1] - p1[1]) < 0.05 && fabs(f[j].t->p[m][2] - p1[2]) < 0.05;
+                }
+                shared = s0 && s1;
+            }
+            if (shared) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                mid[k] = ((double)p0[k] + p1[k]) / 2.0;
+                ed[k] = (double)p1[k] - p0[k];
+                c[k] = ((double)t->p[0][k] + t->p[1][k] + t->p[2][k]) / 3.0;
+            }
+            ed[1] = 0.0;
+            len = rm_norm(ed);
+            if (len < 0.5) {
+                continue;
+            }
+            /* into the room: the side with floor; floor on both sides (an inner seam) or neither: no edge */
+            in[0] = -ed[2];
+            in[1] = 0.0;
+            in[2] = ed[0];
+            {
+                int sa = 0, sb = 0, step;
+
+                for (step = 1; step <= 4; step++) {
+                    sa |= floor_under(f, nf, mid[0] + in[0] * 3.0 * step, mid[2] + in[2] * 3.0 * step, y0);
+                    sb |= floor_under(f, nf, mid[0] - in[0] * 3.0 * step, mid[2] - in[2] * 3.0 * step, y0);
+                }
+                if (sa == sb) {
+                    continue;
+                }
+                if (sb) {
+                    in[0] = -in[0];
+                    in[2] = -in[2];
+                }
+            }
+            if (floor_far(f, nf, mid, in, y0) && in_keep(keep, mid[0], mid[2], 32.0)) {
+                continue;                       /* (a stairwell's rim: a hole with its door by it) */
+            }
+            (void)c;
+            /* a face of the model standing in the edge's line over the floor (a wall, a step up), either way; a
+             * face under it only (the floor slab's edge over a drop the field shows dark) stands for nothing */
+            for (j = 0; j < nf && !stands; j++) {
+                const RmTri *v = f[j].t;
+                double d0, lo[3], hi[3];
+
+                if (fabs(f[j].n[1]) > 0.3 || fabs(rm_dot(f[j].n, in)) < 0.9) {
+                    continue;
+                }
+                d0 = ((double)v->p[0][0] - mid[0]) * f[j].n[0] + ((double)v->p[0][2] - mid[2]) * f[j].n[2];
+                if (fabs(d0) > 0.6) {
+                    continue;
+                }
+                for (k = 0; k < 3; k++) {
+                    lo[k] = fmin(fmin(v->p[0][k], v->p[1][k]), v->p[2][k]) - 0.6;
+                    hi[k] = fmax(fmax(v->p[0][k], v->p[1][k]), v->p[2][k]) + 0.6;
+                }
+                stands = mid[0] >= lo[0] && mid[0] <= hi[0] && mid[2] >= lo[2] && mid[2] <= hi[2]
+                         && lo[1] <= y0 + h && hi[1] >= y0 + 2.0;
+            }
+            if (stands) {
+                continue;
+            }
+            {
+                const char *kp = keep;
+
+                while (kp != NULL && *kp != '\0' && !kept) {
+                    double kb[4];
+
+                    if (sscanf(kp, "%lf:%lf:%lf:%lf", &kb[0], &kb[1], &kb[2], &kb[3]) == 4) {
+                        kept = mid[0] >= kb[0] && mid[0] <= kb[1] && mid[2] >= kb[2] && mid[2] <= kb[3];
+                    }
+                    kp = strchr(kp, '+');
+                    kp = kp != NULL ? kp + 1 : NULL;
+                }
+            }
+            if (kept) {
+                continue;
+            }
+            {
+                const Ft *pic = near_wall(f, nf, mid, y0 + h * 0.5);
+                double q[4][3], uv[4][2], m[2][3], pe[3], sa[3], ya[3], det, e1[3], e2[3], fn[3];
+                unsigned first;
+                int r;
+
+                if (pic == NULL) {
+                    continue;
+                }
+                pe[0] = -pic->n[2]; pe[1] = 0.0; pe[2] = pic->n[0];
+                rm_norm(pe);
+                for (k = 0; k < 3; k++) {
+                    sa[k] = (double)pic->t->p[k][0] * pe[0] + (double)pic->t->p[k][2] * pe[2];
+                    ya[k] = pic->t->p[k][1];
+                }
+                det = (sa[1] - sa[0]) * (ya[2] - ya[0]) - (sa[2] - sa[0]) * (ya[1] - ya[0]);
+                if (fabs(det) < 1e-9) {
+                    continue;
+                }
+                for (r = 0; r < 2; r++) {
+                    const double d1 = (double)pic->t->uv[1][r] - pic->t->uv[0][r], d2 = (double)pic->t->uv[2][r] - pic->t->uv[0][r];
+
+                    m[r][0] = (d1 * (ya[2] - ya[0]) - d2 * (ya[1] - ya[0])) / det;
+                    m[r][1] = (d2 * (sa[1] - sa[0]) - d1 * (sa[2] - sa[0])) / det;
+                    m[r][2] = pic->t->uv[0][r] - m[r][0] * sa[0] - m[r][1] * ya[0];
+                }
+                for (k = 0; k < 3; k++) {
+                    q[0][k] = p0[k];
+                    q[1][k] = p1[k];
+                    q[2][k] = p1[k];
+                    q[3][k] = p0[k];
+                }
+                q[0][1] = q[1][1] = y0;
+                q[2][1] = q[3][1] = y0 + h;
+                {
+                    /* (the new wall's own across, as the picture's: its normal turned as the picture's is) */
+                    double ne[3] = { -in[2], 0.0, in[0] };
+
+                    for (k = 0; k < 4; k++) {
+                        const double sv = q[k][0] * ne[0] + q[k][2] * ne[2];
+
+                        uv[k][0] = m[0][0] * sv + m[0][1] * q[k][1] + m[0][2];
+                        uv[k][1] = m[1][0] * sv + m[1][1] * q[k][1] + m[1][2];
+                    }
+                }
+                for (k = 0; k < 3; k++) {
+                    e1[k] = q[1][k] - q[0][k];
+                    e2[k] = q[2][k] - q[0][k];
+                }
+                rm_cross(e1, e2, fn);
+                first = out->ntri;
+                if (rm_dot(fn, in) >= 0.0) {
+                    rm_tri(out, pic->t->id, -1, 1, wall_rgb(f, nf, pic), q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+                    rm_tri(out, pic->t->id, -1, 1, wall_rgb(f, nf, pic), q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
+                } else {
+                    rm_tri(out, pic->t->id, -1, 1, wall_rgb(f, nf, pic), q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+                    rm_tri(out, pic->t->id, -1, 1, wall_rgb(f, nf, pic), q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
+                }
+                lit_as(out, first, pic->t);
+                {
+                    unsigned ti;
+
+                    for (ti = first; ti < out->ntri; ti++) {
+                        out->tri[ti].kind = 3;      /* (one-sided, as the band walls: the seal leaves it) */
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 /* `rimwalls=Y0:X0:X1:Z0:Z1`: a hole in a level floor (a pool in a roof) whose walls the map has only where the field's
  * camera looks into it: under each open edge of a level face in that box, a wall down to Y0, looking into the hole,
@@ -2619,6 +3231,22 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
 
         if (sscanf(buf, "%lf:%lf:%lf:%lf", &r[0], &r[1], &r[2], &r[3]) == 4) {
             do_reside(f, nf, out, r);
+        }
+    }
+    if (rm_opt(opt, "edgewalls", buf, sizeof buf) != NULL) {
+        /* (a level a part: Y:H+Y:H.., each floor level of the room, a trench's floor too) */
+        char kb[1024] = "";
+
+        (void)rm_opt(opt, "edgekeep", kb, sizeof kb);
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double ew[2] = { 0.0, 46.0 };
+
+            if (sscanf(ep, "%lf:%lf", &ew[0], &ew[1]) >= 1) {
+                do_edgewalls(f, nf, out, ew[0], ew[1], kb);
+                do_blockwalls(f, nf, out, ew[0], kb);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
         }
     }
     if (rm_opt(opt, "rimwalls", buf, sizeof buf) != NULL) {
