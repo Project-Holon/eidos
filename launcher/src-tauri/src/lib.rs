@@ -16,6 +16,7 @@ mod mods;
 #[cfg(desktop)]
 mod pad;
 mod profile;
+mod ra;
 mod remote;
 mod rom;
 mod saves;
@@ -81,6 +82,13 @@ struct SettingsView {
     token_set: bool,
     index_url: String,
     local_build: Option<String>,
+}
+
+/// Who is signed in to RetroAchievements, if anyone.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RaView {
+    user: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -386,6 +394,8 @@ fn play(
         }
     }
     let dir = app.layout.profile(&name);
+    // the RetroAchievements sign-in goes to the profile for the game to read
+    let _ = ra::write_profile(&dir, &s.ra_user, &s.ra_token);
     let args = launch::eidos_args(&dir, &data_root, join.as_deref(), layout);
     let mut child = launch::spawn(&v.exe, &args).map_err(|e| format!("Could not start eidos: {e}"))?;
     app.running.lock().unwrap().insert(name.clone(), child.id());
@@ -885,6 +895,50 @@ fn save_settings(
     Ok(view(&s))
 }
 
+fn ra_view(s: &Settings) -> RaView {
+    RaView {
+        user: Some(s.ra_user.clone()).filter(|u| !u.is_empty() && !s.ra_token.is_empty()),
+    }
+}
+
+#[tauri::command]
+fn ra_status(app: State<App>) -> RaView {
+    ra_view(&app.settings())
+}
+
+/// Signs in to RetroAchievements.  The password goes to the site and no
+/// further; the token it returns is kept.  The request waits on the
+/// network, so it runs off the page's thread.
+#[tauri::command]
+async fn ra_login(app: State<'_, App>, user: String, password: String) -> R<RaView> {
+    let version = env!("CARGO_PKG_VERSION");
+    let account = tauri::async_runtime::spawn_blocking(move || ra::login(&user, &password, version))
+        .await
+        .map_err(|e| e.to_string())??;
+    let mut s = app.settings.lock().unwrap();
+    s.ra_user = account.user;
+    s.ra_token = account.token;
+    s.save(&app.layout.settings_file())
+        .map_err(|e| format!("Could not save the settings: {e}"))?;
+    Ok(ra_view(&s))
+}
+
+/// Signs out: the token is forgotten, here and in every profile's folder.
+#[tauri::command]
+fn ra_logout(app: State<App>) -> R<RaView> {
+    let mut s = app.settings.lock().unwrap();
+    s.ra_user.clear();
+    s.ra_token.clear();
+    s.save(&app.layout.settings_file())
+        .map_err(|e| format!("Could not save the settings: {e}"))?;
+    if let Ok(list) = profile::list(&app.layout) {
+        for p in list {
+            let _ = ra::write_profile(&app.layout.profile(&p.name), "", "");
+        }
+    }
+    Ok(ra_view(&s))
+}
+
 /// Whether the launcher updates itself when it starts.
 #[tauri::command]
 fn get_auto_update(app: State<App>) -> bool {
@@ -1026,6 +1080,9 @@ pub fn run() {
             open_folder,
             get_settings,
             save_settings,
+            ra_status,
+            ra_login,
+            ra_logout,
             take_pending_join,
         ])
         .run(tauri::generate_context!())
