@@ -103,7 +103,9 @@ FSOut fs_main(VSOut i)
     }
     if (flags.w > 0 && cut.w < 0.5) {    // (not tall grass, cut.w: the camera passes through it)
         // the camera's clearance: an upright surface inside one of the places the camera passed this shot is not
-        // drawn; a floor is kept
+        // drawn; a floor is kept.  The level top of a body the camera stands in or beside goes with its sides (a
+        // pedestal's top was left floating as a sheet): a level face seen nearly edge-on, well over the battle's
+        // ground (1.5 units over the Pokemon's middle: no floor a battle stands on)
         float3 nf = cross(ddx(i.wpos), ddy(i.wpos));
         float ln = length(nf);
         float3 mid = float3(0.0, 0.0, 0.0);
@@ -116,7 +118,9 @@ FSOut fs_main(VSOut i)
         bool between = dot(nf, feye.xyz - i.wpos) * dot(nf, mid - i.wpos) < 0.0;
         // (or seen nearly edge-on: a post's narrow side, a sliver)
         between = between || abs(dot(nf, normalize(feye.xyz - i.wpos))) < 0.35 * ln;
-        if (between && ln > 1e-9 && abs(nf.y) / ln < 0.7) {
+        bool top = ln > 1e-9 && abs(nf.y) / ln >= 0.7 && i.wpos.y > mid.y + 1.5
+                   && abs(dot(nf, normalize(feye.xyz - i.wpos))) < 0.35 * ln;
+        if ((between && ln > 1e-9 && abs(nf.y) / ln < 0.7) || top) {
             for (int q = 0; q < flags.w; q++) {
                 if (length(i.wpos - clr[q].xyz) < clr[q].w) discard;
             }
