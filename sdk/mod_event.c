@@ -250,6 +250,19 @@ static u32 payload_size(u32 kind)
     case BW_EVENT_BADGE_GET:    return (u32)sizeof(BwBadgeGet);
     case BW_EVENT_FLAG_SET:     return (u32)sizeof(BwFlagSet);
     case BW_EVENT_DEX_REGISTER: return (u32)sizeof(BwDexRegister);
+    case BW_EVENT_SCRIPT_DONE:  return (u32)sizeof(BwScriptDone);
+    case BW_EVENT_MOVE_FORGET:  return (u32)sizeof(BwMoveForget);
+    case BW_EVENT_MON_SHINY:    return (u32)sizeof(BwMonShiny);
+    case BW_EVENT_ITEM_USABLE:  return (u32)sizeof(BwItemUsable);
+    case BW_EVENT_SEASON_CHANGE: return (u32)sizeof(BwSeasonChange);
+    case BW_EVENT_ENCOUNTER_SLOT: return (u32)sizeof(BwEncounterSlot);
+    case BW_EVENT_BATTLE_TYPE_EFFECT: return (u32)sizeof(BwBattleTypeEffect);
+    case BW_EVENT_STARTER_CHOICES: return (u32)sizeof(BwStarterChoices);
+    case BW_EVENT_EGG_SPECIES:  return (u32)sizeof(BwEggSpecies);
+    case BW_EVENT_TEXT_INPUT_DONE: return (u32)sizeof(BwTextInputDone);
+    case BW_EVENT_WORLD:        return (u32)sizeof(BwWorld);
+    case BW_EVENT_AP:           return (u32)sizeof(BwAp);
+    case BW_EVENT_MOVE_KNOWN:   return (u32)sizeof(BwMoveKnown);
 
     default:                     return (u32)sizeof(BwEvent);
     }
@@ -494,8 +507,11 @@ static int run_handlers(u32 kind, BwEventPayload *payload)
         }
     }
     /* the event as this game's handlers left it goes to the other
-     * players (multiplayer); a refused one did not happen */
-    if (g_forward != NULL && !refused) {
+     * players (multiplayer); a refused one did not happen.  The version 6
+     * events are this game's own: a lookup (the type chart, the shiny
+     * check, the slot roll) or the answer to this game's own call, so
+     * they stay here. */
+    if (g_forward != NULL && !refused && kind < BW_EVENT_SCRIPT_DONE) {
         g_forward(payload, payload->h.size);
     }
     return refused;
@@ -661,6 +677,7 @@ extern const BwEventBinding *bw_event_bindings_items(u32 *count);
 extern const BwEventBinding *bw_event_bindings_mon(u32 *count);
 extern const BwEventBinding *bw_event_bindings_field(u32 *count);
 extern const BwEventBinding *bw_event_bindings_battle(u32 *count);
+extern const BwEventBinding *bw_event_bindings_v6(u32 *count);
 
 void bw_mod_event_bind_all(void)
 {
@@ -688,6 +705,11 @@ void bw_mod_event_bind_all(void)
     }
     n = 0;
     rows = bw_event_bindings_battle(&n);
+    if (rows != NULL && n > 0) {
+        bw_mod_event_bind_area(rows, n);
+    }
+    n = 0;
+    rows = bw_event_bindings_v6(&n);
     if (rows != NULL && n > 0) {
         bw_mod_event_bind_area(rows, n);
     }

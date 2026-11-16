@@ -32,6 +32,8 @@ int  bw_slots_used(int n);
 
 /* The slot in force (1 to BW_SLOTS_MAX). */
 int  bw_slots_current(void);
+/* 1 when the save in force is one of Your games (sdk/save_games.h). */
+int  bw_slots_current_hidden(void);
 
 /* Make the slot in force the backup chip's file (at start-up, and when a
  * multiplayer game gives the player's own save back). */
@@ -43,6 +45,12 @@ void bw_slots_apply(void);
  * it.  1 when the slot changed.
  */
 int  bw_slots_flip(int d);
+
+/* Slot n becomes the slot in force and the game reads its save (the
+ * Multiplayer screen's Your games, before the title goes on with it): 1
+ * when it loads.  The Continue card does not offer the saves the
+ * Multiplayer screen made (sdk/save_games.h). */
+int  bw_slots_continue(int n);
 
 /* The title menu is about to list its rows: when the slot in force holds a
  * file the game could not load (a new game left before its first save),

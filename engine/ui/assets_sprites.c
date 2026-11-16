@@ -68,6 +68,7 @@
 
 #include "assets.h"
 #include "kit.h"
+#include "avatar.h"            /* the player's figures in the player's look */
 
 #define SPRITE_COUNT 34
 #define SPRITE_HEROINE 33   /* a/0/3/1 members 2, 3, 6, 7: the title menu's figure for a girl */
@@ -101,6 +102,8 @@ static u32 g_pal_f_size;
 static u32 rd16(const u8 *p) { return (u32)p[0] | ((u32)p[1] << 8); }
 static u32 rd32(const u8 *p) { return rd16(p) | (rd16(p + 2) << 16); }
 
+static void looks_reset(void);
+
 void ui_sprites_reset(void)
 {
     int a, b, c;
@@ -123,6 +126,7 @@ void ui_sprites_reset(void)
     g_pal_f = NULL;
     g_pal_tried = 0;
     g_walk1_done = g_walk2_done = g_heroine_done = 0;
+    looks_reset();
 }
 
 /* ------------------------------------------------------------------ */
@@ -356,6 +360,8 @@ typedef struct Bank {
     const u16 *pal;             /* colours (BGR555), count in npal         */
     int npal, subpal;
     int mapping;                /* the cell bank's mapping type            */
+    int avatar;                 /* the player's figure: drawn in the look  */
+    const AvatarLook *look;     /* that look (NULL: the local player's)    */
 } Bank;
 
 static void bank_bounds(Bank *b)
@@ -393,12 +399,14 @@ static void bank_bounds(Bank *b)
 static UiImage *draw_cell(const Bank *b, int cell)
 {
     u8 *rgba = (u8 *)calloc((size_t)b->w * (size_t)b->h, 4);
+    u8 *idx = b->avatar ? (u8 *)calloc((size_t)b->w * (size_t)b->h, 1) : NULL;
     UiImage *im;
     int order[64], n, i, j, k;
     const Cell *c;
 
     if (rgba == NULL || cell < 0 || cell >= b->ncells) {
         free(rgba);
+        free(idx);
         return NULL;
     }
     c = &b->cells[cell];
@@ -459,10 +467,21 @@ static UiImage *draw_cell(const Bank *b, int cell)
                         d[1] = (u8)((((b->pal[col] >> 5) & 31) * 255) / 31);
                         d[2] = (u8)((((b->pal[col] >> 10) & 31) * 255) / 31);
                         d[3] = 255;
+                        if (idx != NULL) {
+                            idx[(size_t)dy * (size_t)b->w + (size_t)dx] = (u8)v;
+                        }
                     }
                 }
             }
         }
+    }
+    /* the player's figure: the same pixels as the field's textures, so
+     * the same look (engine/avatar/avatar.h) */
+    if (idx != NULL) {
+        if (b->subpal * 16 + 16 <= b->npal) {
+            (void)avatar_recolor(idx, b->w, b->h, b->pal + b->subpal * 16, 1, b->look, rgba);
+        }
+        free(idx);
     }
     im = (UiImage *)malloc(sizeof *im);
     if (im == NULL) {
@@ -495,8 +514,21 @@ static const u16 *nclr_colors(const u8 *d, u32 size, int *count)
 
 /* Build the images of one figure: every direction, the standing pose and
  * the walk (when it has one). */
+static void build_figure_into(UiImage *dst[DIRS][FRAMES], int avatar, const AvatarLook *look, int ncer_m,
+                              int nanr_m, int ncgr_m, int arc, const u8 *pal_data, u32 pal_size,
+                              int subpal_from_cell);
+
 static void build_figure(int sprite, int ncer_m, int nanr_m, int ncgr_m, int arc,
                          const u8 *pal_data, u32 pal_size, int subpal_from_cell)
+{
+    /* the player's own figures (the hero, the heroine) in the local look */
+    build_figure_into(g_img[sprite], sprite == 0 || sprite == SPRITE_HEROINE, NULL, ncer_m, nanr_m, ncgr_m, arc,
+                      pal_data, pal_size, subpal_from_cell);
+}
+
+static void build_figure_into(UiImage *dst[DIRS][FRAMES], int avatar, const AvatarLook *look, int ncer_m,
+                              int nanr_m, int ncgr_m, int arc, const u8 *pal_data, u32 pal_size,
+                              int subpal_from_cell)
 {
     u32 s1 = 0, s2 = 0, s3 = 0;
     u8 *ncer = ui_arc_member(arc, (u32)ncer_m, &s1);
@@ -528,16 +560,18 @@ static void build_figure(int sprite, int ncer_m, int nanr_m, int ncgr_m, int arc
     bank.sheet = &sheet;
     bank.pal = pal_copy;
     bank.npal = npal;
+    bank.avatar = avatar;
+    bank.look = look;
     bank.subpal = (subpal_from_cell && bank.ncells > 0 && bank.cells[0].n > 0) ?
                   bank.cells[0].oam[0].pal : 0;
     bank_bounds(&bank);
     for (d = 0; d < DIRS; d++) {
         int n = nanr_sequence(nanr, s2, stand[d], seq, 8);
 
-        g_img[sprite][d][0] = n > 0 ? draw_cell(&bank, seq[0]) : NULL;
+        dst[d][0] = n > 0 ? draw_cell(&bank, seq[0]) : NULL;
         n = nanr_sequence(nanr, s2, walk[d], seq, 8);
         for (f = 0; f < 4 && f < n; f++) {
-            g_img[sprite][d][1 + f] = draw_cell(&bank, seq[f]);
+            dst[d][1 + f] = draw_cell(&bank, seq[f]);
         }
     }
 done:
@@ -627,6 +661,34 @@ static void sprites_ensure(int sprite)
     }
 }
 
+/* The player's figures again when the look changed (avatar.h). */
+static void avatar_refresh(void)
+{
+    static u32 seen;
+    int s, d, f;
+
+    if (avatar_version() == seen) {
+        return;
+    }
+    seen = avatar_version();
+    for (s = 0; s < SPRITE_COUNT; s++) {
+        if (s != 0 && s != SPRITE_HEROINE) {
+            continue;
+        }
+        for (d = 0; d < DIRS; d++) {
+            for (f = 0; f < FRAMES; f++) {
+                if (g_img[s][d][f] != NULL) {
+                    free((void *)g_img[s][d][f]->rgba);
+                    free(g_img[s][d][f]);
+                    g_img[s][d][f] = NULL;
+                }
+            }
+        }
+    }
+    g_walk1_done = 0;
+    g_heroine_done = 0;
+}
+
 const UiImage *ui_overworld(u16 sprite, int dir, int frame)
 {
     const UiImage *im;
@@ -634,10 +696,95 @@ const UiImage *ui_overworld(u16 sprite, int dir, int frame)
     if (sprite >= SPRITE_COUNT || dir < 0 || dir >= DIRS) {
         return NULL;
     }
+    if (sprite == 0 || sprite == SPRITE_HEROINE) {
+        avatar_refresh();
+    }
     sprites_ensure(sprite);
     if (frame < 0) {
         return g_img[sprite][dir][0];
     }
     im = g_img[sprite][dir][1 + (frame & 3)];
     return im != NULL ? im : g_img[sprite][dir][0];
+}
+
+/* ------------------------------------------------------------------ */
+/* Another player's figure in that player's look                       */
+/* ------------------------------------------------------------------ */
+
+#define LOOKS_KEPT 8
+
+static struct {
+    int used;
+    u32 age;
+    AvatarLook look;
+    UiImage *img[DIRS][FRAMES];
+} g_looks[LOOKS_KEPT];
+static u32 g_look_age;
+
+static void look_free(int k)
+{
+    int d, f;
+
+    for (d = 0; d < DIRS; d++) {
+        for (f = 0; f < FRAMES; f++) {
+            if (g_looks[k].img[d][f] != NULL) {
+                free((void *)g_looks[k].img[d][f]->rgba);
+                free(g_looks[k].img[d][f]);
+                g_looks[k].img[d][f] = NULL;
+            }
+        }
+    }
+    g_looks[k].used = 0;
+}
+
+const UiImage *ui_overworld_look(const AvatarLook *look, int dir, int frame)
+{
+    int k, best = 0;
+    UiImage *im;
+
+    if (look == NULL || dir < 0 || dir >= DIRS) {
+        return NULL;
+    }
+    sprites_ensure(look->body ? SPRITE_HEROINE : 0);   /* the palettes are read */
+    for (k = 0; k < LOOKS_KEPT; k++) {
+        if (g_looks[k].used && memcmp(&g_looks[k].look, look, sizeof *look) == 0) {
+            break;
+        }
+    }
+    if (k == LOOKS_KEPT) {
+        /* a new look: in the slot asked for longest ago */
+        for (k = 0; k < LOOKS_KEPT; k++) {
+            if (!g_looks[k].used) {
+                best = k;
+                break;
+            }
+            if (g_looks[k].age < g_looks[best].age) {
+                best = k;
+            }
+        }
+        k = best;
+        look_free(k);
+        g_looks[k].used = 1;
+        g_looks[k].look = *look;
+        if (look->body && g_pal_f != NULL) {
+            build_figure_into(g_looks[k].img, 1, &g_looks[k].look, 2, 3, 7, UI_ARC_WALK1, g_pal_f, g_pal_f_size, 0);
+        } else if (!look->body && g_pal0 != NULL) {
+            build_figure_into(g_looks[k].img, 1, &g_looks[k].look, 0, 1, 5, UI_ARC_WALK1, g_pal0, g_pal0_size, 0);
+        }
+    }
+    g_looks[k].age = ++g_look_age;
+    if (frame < 0) {
+        return g_looks[k].img[dir][0];
+    }
+    im = g_looks[k].img[dir][1 + (frame & 3)];
+    return im != NULL ? im : g_looks[k].img[dir][0];
+}
+
+static void looks_reset(void)
+{
+    int k;
+
+    for (k = 0; k < LOOKS_KEPT; k++) {
+        look_free(k);
+    }
 }

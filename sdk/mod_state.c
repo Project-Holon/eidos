@@ -85,6 +85,7 @@
 #include "types.h"
 #include "mod_api.h"
 #include "mod_state.h"
+#include "mod_v6.h"
 #include "bw_limits.h"
 #include "mod_context.h"
 #include "overlay.h"
@@ -2050,6 +2051,26 @@ void bw_mod_state_frame(void)
 }
 
 /*
+ * The game system when the field runs with no event and no battle, else
+ * NULL: the moment a mod's queued scene may start (sdk/mod_v6.c).
+ */
+void *bw_mod_state_quiet_field(void)
+{
+    struct GameSystem *gs;
+
+    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL ||
+        GAMESYSTEM_GetEvent == NULL) {
+        return NULL;
+    }
+    gs = *(struct GameSystem **)bw_dsref__GameSystemGlobal;
+    if (gs == NULL || *(void **)((u8 *)gs + 0x20) == NULL || g_battle_main != NULL ||
+        GAMESYSTEM_GetEvent(gs) != NULL) {
+        return NULL;
+    }
+    return gs;
+}
+
+/*
  * The table the host hands to a mod (sdk/mod_api.h, BwModHost).  The
  * entries are in the order of the struct (sdk/mod_state.h); that struct
  * is frozen within an interface version, so the order does not move.
@@ -2113,7 +2134,13 @@ const BwModState bw_mod_state = {
     state_type_effect,
     state_battle_weather,
     state_species_learns,
-    state_whiteout
+    state_whiteout,
+
+    /* version 6 (sdk/mod_v6.c) */
+    bw_mod_v6_work_get,
+    bw_mod_v6_work_set,
+    bw_mod_v6_badge_set,
+    bw_mod_v6_game_code
 };
 
 int bw_mod_state_party_slot(const void *mon)

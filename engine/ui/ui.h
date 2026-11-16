@@ -253,6 +253,9 @@ void eidos_ui_drag(int x0, int y0, int x1, int y1);
 /* A button press (BW_KEY_* mask), held `frames` frames from the next game
  * frame; the player's own buttons are not disturbed. */
 void eidos_ui_press(u32 keys, u32 frames);
+/* The input frame of the last B (the player's, a hint's or a right
+ * click's). */
+u32  eidos_ui_b_frame(void);
 
 typedef struct EidosUiRect { int x, y, w, h; } EidosUiRect;
 

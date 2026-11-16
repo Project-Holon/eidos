@@ -188,6 +188,8 @@ typedef struct Model {
     SessionModel session;            /* the session's code                */
     int style_chosen;                /* the player has chosen an interface style:
                                         ui_theme is in the file only then  */
+    int avatar[5];                   /* [avatar]: body (0 Hilbert, 1 Hilda), hair,
+                                        accent, pants, skin (0: the game's own) */
 } Model;
 
 static Model g_cur, g_saved;
@@ -723,6 +725,19 @@ void eidos_settings_panel_revert(void)
     }
     g_cur.panel_visible = g_saved.panel_visible;
     apply_panel();
+}
+
+/* The player's look: 5 numbers (body, hair, accent, pants, skin). */
+void eidos_settings_avatar(int out[5])
+{
+    ensure_init();
+    memcpy(out, g_cur.avatar, sizeof g_cur.avatar);
+}
+
+void eidos_settings_avatar_set(const int v[5])
+{
+    ensure_init();
+    memcpy(g_cur.avatar, v, sizeof g_cur.avatar);
 }
 
 const char *eidos_settings_net_name(void)
@@ -2150,6 +2165,23 @@ static void parse_file(FILE *fp, Model *m)
             }
             continue;
         }
+        if (strcmp(section, "avatar") == 0) {
+            /* The player's look (engine/avatar): body and the four parts'
+             * choices, as numbers; a value out of range keeps the game's. */
+            static const char *const k[5] = { "body", "hair", "accent", "pants", "skin" };
+            int i;
+
+            for (i = 0; i < 5 && strcmp(key, k[i]) != 0; i++) {
+            }
+            if (i == 5) {
+                fprintf(stderr, "eidos: settings.ini:%d: unknown key '%s' in [avatar], ignored\n", lineno, key);
+            } else {
+                long n = strtol(val, NULL, 10);
+
+                m->avatar[i] = n >= 0 && n < 64 ? (int)n : 0;
+            }
+            continue;
+        }
         if (strcmp(section, "session") == 0) {
             /* The port's own session: the code in force, and the code the
              * player types to join a session. */
@@ -2321,6 +2353,10 @@ static int write_file(FILE *fp, const Model *m)
     /* The run-status panel: the player hides it from the port's settings. */
     fprintf(fp, "\n[panel]\n");
     fprintf(fp, "visible = %s\n", m->panel_visible ? "on" : "off");
+    /* The player's look (engine/avatar). */
+    fprintf(fp, "\n[avatar]\n");
+    fprintf(fp, "body = %d\nhair = %d\naccent = %d\npants = %d\nskin = %d\n", m->avatar[0], m->avatar[1],
+            m->avatar[2], m->avatar[3], m->avatar[4]);
     return ferror(fp) ? -1 : 0;
 }
 

@@ -82,6 +82,10 @@ void eidos_sui_request_tab(int tab);
 /* The mouse is over a row (numbered as for eidos_sui_touch): the cursor goes
  * there, with no sound and no action.  Returns 1 when it moved. */
 int  eidos_sui_hover(int row);
+/* The mouse wheel over the rows: scroll them `steps` (up when positive)
+ * with no sound, the cursor kept on a shown row.  0 when the screen takes
+ * no wheel now (a question, a capture, an edit). */
+int  eidos_sui_wheel(int steps);
 /*
  * The game's own keyboard (the name entry screen) for a text of the screen.
  * After EIDOS_SUI_KEYBOARD, eidos_sui_keyboard says what it is for: the
@@ -101,6 +105,90 @@ int  eidos_sui_capturing(void);
  * highlighted row (a line may be ""). */
 int  eidos_sui_help_count(void);
 void eidos_sui_help_line(int i, char *out, int n);
+
+/*
+ * The Multiplayer screen opened alone from the title menu, for a one-screen
+ * view of its own (engine/ui/recipe_multiplayer.c).  eidos_sui_mp_up: that
+ * screen is showing.  eidos_sui_mp_view: what it shows before a game
+ * (EIDOS_SUI_MP_*), -1 when it is not up.  eidos_sui_mp_act: do what the
+ * row of that action does (EIDOS_SUI_MP_ACT_*; arg: the kept game's index
+ * for GAME and HOST_KEPT), at the screen's next step, as a touch on that
+ * row; 0 when the screen has no such row now.  eidos_sui_mp_status: the
+ * screen's status line (connecting, code not found, the session ended).
+ */
+#define EIDOS_SUI_MP_CHOOSE 0
+#define EIDOS_SUI_MP_JOIN   1
+#define EIDOS_SUI_MP_HOST   2
+#define EIDOS_SUI_MP_BUSY   3
+#define EIDOS_SUI_MP_MODE   4   /* a mod's way to play: its options, Start */
+#define EIDOS_SUI_MP_WORLD  5   /* a world a typed code names: its rules, Join */
+#define EIDOS_SUI_MP_ROOM   6   /* an Archipelago room (a typed port): slot, password, Join */
+
+#define EIDOS_SUI_MP_ACT_NAME      0    /* the player's name: the keyboard   */
+#define EIDOS_SUI_MP_ACT_HOST      1    /* Host: the kept games' view        */
+#define EIDOS_SUI_MP_ACT_JOIN      2    /* Join: the code's keyboard, then join */
+#define EIDOS_SUI_MP_ACT_GAME      3    /* (Host view) host kept game arg    */
+#define EIDOS_SUI_MP_ACT_NEW_GAME  4    /* (Host view) name a new game, host */
+#define EIDOS_SUI_MP_ACT_START     5    /* (lobby, host) start the game      */
+#define EIDOS_SUI_MP_ACT_LEAVE     6    /* (lobby) leave the session         */
+#define EIDOS_SUI_MP_ACT_COPY      7    /* (lobby) copy the code             */
+#define EIDOS_SUI_MP_ACT_HOST_KEPT 8    /* host kept game arg from the start */
+#define EIDOS_SUI_MP_ACT_MODE      9    /* open mod mode arg (eidos_sui_mp_modes order) */
+#define EIDOS_SUI_MP_ACT_MODE_START 10  /* (Mode view) the mode's new game    */
+#define EIDOS_SUI_MP_ACT_CONTINUE  11   /* (hub) go on with Your games arg    */
+#define EIDOS_SUI_MP_ACT_COOP_NEW  12   /* (hub) a new co-op game: name, host */
+
+/* Your games: the co-op games this player hosts and the saves the cards
+ * made (sdk/save_games.h), the latter first, newest first.  ok: it can go
+ * on (a save of a mod that is off cannot). */
+#define EIDOS_SUI_GAME_COOP  0
+#define EIDOS_SUI_GAME_SOLO  1
+#define EIDOS_SUI_GAME_WORLD 2
+#define EIDOS_SUI_GAME_ROOM  3   /* an Archipelago room */
+typedef struct EidosSuiGame {
+    int  kind;                  /* EIDOS_SUI_GAME_*                          */
+    int  host;                  /* made or hosted here (else joined)         */
+    int  ok;
+    int  slot;                  /* a card's save: its slot                   */
+    int  kept;                  /* a co-op game: its index in the kept list  */
+    char title[48];             /* the game's name, or the mode's title      */
+    char owner[40];             /* the mod                                   */
+    char code[17];              /* a world's code, "" when none              */
+} EidosSuiGame;
+int  eidos_sui_mp_games(void);
+int  eidos_sui_mp_game(int i, EidosSuiGame *out);
+
+/* The mods' ways to play (`mode` lines of the mods that are on): how many,
+ * and the k-th one's id, title and line (k -1: the one the Mode view
+ * shows); the answer is 1 when it is `off` (shown, not chosen), 0 when it
+ * can be chosen, -1 when there is no such mode. */
+int  eidos_sui_mp_modes(void);
+int  eidos_sui_mp_mode_info(int k, const char **id, const char **title, const char **line);
+/* The name of the mod whose mode the Mode view shows. */
+const char *eidos_sui_mp_mode_owner(void);
+
+/* Every row of the Multiplayer screen's list, for a view that lays them
+ * out itself (the Mode view's options): how many; the i-th row's label,
+ * value and kind (EIDOS_SUI_MP_ROW_*, -1 none); a touch on it at the next
+ * step (zone as for eidos_sui_touch), scrolling the list to it. */
+#define EIDOS_SUI_MP_ROW_ACTION 0      /* A does it                       */
+#define EIDOS_SUI_MP_ROW_VALUE  1      /* left and right change it        */
+#define EIDOS_SUI_MP_ROW_TEXT   2      /* A types it                      */
+#define EIDOS_SUI_MP_ROW_START  3      /* the Mode view's Start, Join the world */
+#define EIDOS_SUI_MP_ROW_INFO   4      /* a line to read (the World view)   */
+int  eidos_sui_mp_rows(void);
+int  eidos_sui_mp_row(int i, char *label, int nl, char *value, int nv);
+void eidos_sui_mp_row_act(int i, int zone);
+/* A row's heading above it (an option's `heading`), what it does (its
+ * `help`, the Type row's mode line, Start's own words), and whether it can
+ * be chosen now (a type not built yet, a world that cannot be joined). */
+int  eidos_sui_mp_row_extra(int i, const char **heading, const char **help, int *ok);
+
+int  eidos_sui_mp_up(void);
+int  eidos_sui_mp_view(void);
+int  eidos_sui_mp_can(int action, int arg);
+int  eidos_sui_mp_act(int action, int arg);
+int  eidos_sui_mp_status(char *out, int n);
 
 /* Test hooks.  eidos_sui_tab is the section index, -1 at level 0. */
 int  eidos_sui_level(void);

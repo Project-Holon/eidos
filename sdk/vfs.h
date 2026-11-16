@@ -146,6 +146,52 @@ void bw_vfs_release(u32 handle);
  */
 void bw_vfs_flush(void);
 
+/* The same for one archive path only. */
+void bw_vfs_flush_path(const char *rel);
+
+/*
+ * Members in memory (mod API v6, docs/mods.md, "Members in memory").  A
+ * mod root's memory layer sits where that mod's folder sits in the load
+ * order and wins over the folder's member files.  The bytes are copied.
+ * A root not in the mod list is kept but applies to nothing.
+ *
+ *   bw_vfs_mem_set    0, or -1 (bad arguments, no memory)
+ *   bw_vfs_mem_clear  how many members it removed; NULL root or rel, or
+ *                     BW_VFS_MEM_ALL as the index, match every one
+ *   bw_vfs_mem_bytes  the bytes a root holds (NULL: all roots)
+ *   bw_vfs_mem_size   one member's size, or -1 when the layer has none
+ *   bw_vfs_mem_list   the n-th member of any root: 1, or 0 past the end
+ *
+ * None of these flushes the cache: the caller drops the path it changed.
+ */
+#define BW_VFS_MEM_ALL 0xFFFFFFFFu
+int bw_vfs_mem_set(const char *root, const char *rel, u32 index,
+                   const void *data, u32 size);
+u32 bw_vfs_mem_clear(const char *root, const char *rel, u32 index);
+u32 bw_vfs_mem_bytes(const char *root);
+int bw_vfs_mem_size(const char *root, const char *rel, u32 index);
+u32 bw_vfs_mem_list(u32 n, const char **rel, u32 *index);
+
+/*
+ * An archive that is open (sdk/fs.c): the cache takes over an image held
+ * by `refs` open files, freed at the last close (0 when it cannot).
+ */
+u32 bw_vfs_adopt(const char *rel, u8 *img, u32 size, u32 refs);
+
+/*
+ * NARC helpers.  bw_narc_count: the member count, or 0xFFFFFFFF for an
+ * image that is not a NARC.  bw_narc_member: one member's bytes inside the
+ * image, 0 or -1.  bw_narc_restamp: the layout-stable image of `old` with
+ * the members of `fresh`: the same header, name table, member count and
+ * image base, and each member that differs written after the end, with
+ * only its FAT entry changed.  A member past fresh's count becomes empty.
+ * 1 with a malloc'd *out, 0 when nothing differs, -1 on an error.
+ */
+u32 bw_narc_count(const u8 *img, u32 size);
+int bw_narc_member(const u8 *img, u32 size, u32 index, const u8 **data, u32 *len);
+int bw_narc_restamp(const u8 *old, u32 old_size, const u8 *fresh, u32 fresh_size,
+                    u8 **out, u32 *out_size);
+
 #ifdef __cplusplus
 }
 #endif

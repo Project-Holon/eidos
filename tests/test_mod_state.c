@@ -276,8 +276,11 @@ int main(void)
     BW_CHECK_EQ("the whiteout follows",
                 (long)offsetof(BwModState, whiteout)
                 - (long)offsetof(BwModState, party_count), 41 * (long)sizeof(void *));
+    BW_CHECK_EQ("version 6's works, badge and game code follow",
+                (long)offsetof(BwModState, game_code)
+                - (long)offsetof(BwModState, whiteout), 4 * (long)sizeof(void *));
     BW_CHECK_EQ("and nothing follows it",
-                (long)sizeof(BwModState) - (long)offsetof(BwModState, whiteout),
+                (long)sizeof(BwModState) - (long)offsetof(BwModState, game_code),
                 (long)sizeof(void *));
 
     printf("the services table\n");
@@ -316,8 +319,12 @@ int main(void)
                 (long)offsetof(BwModServices, shared_cas)
                 - (long)offsetof(BwModServices, event_player),
                 4 * (long)sizeof(void *));
+    BW_CHECK_EQ("version 6's calls follow them",
+                (long)offsetof(BwModServices, tracker_set)
+                - (long)offsetof(BwModServices, shared_cas), 31 * (long)sizeof(void *));
     BW_CHECK_EQ("and nothing follows them",
-                (long)sizeof(BwModServices) - (long)offsetof(BwModServices, shared_cas),
+                (long)sizeof(BwModServices)
+                - (long)offsetof(BwModServices, tracker_set),
                 (long)sizeof(void *));
 
     printf("the in-step call\n");

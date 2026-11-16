@@ -177,6 +177,15 @@ typedef struct UiThemeOps {
      * whole screen, so a screen puts it on the bottom edge, above the hint
      * bar, and not under its content (ui_textbox_band). */
     int message_band;
+    /* The Multiplayer screen's parts (engine/ui/recipe_multiplayer.c):
+     * kind 0 a card that can be chosen (a way to play, a kept game, the
+     * player's own card), kind 2 the Start button; lit: the keys' focus,
+     * hover: the pointer, on: it can be chosen now.  NULL: Kosmos's
+     * cut-corner panels. */
+    void (*mp_part)(EidosUiCtx *c, int kind, int x, int y, int w, int h, int lit, int hover, int on);
+    /* Where text starts inside such a card, from its left edge (past a cap
+     * the style draws there); 0: Kosmos's 8. */
+    int mp_pad;
     /* One answer of a choice list (style: choice_list.h's UI_CHOICE_*), its
      * box being the text box's of that style.  NULL: Kosmos's. */
     void (*choice_row)(EidosUiCtx *c, int style, int x, int y, int w, int h, const char *label, int lit);

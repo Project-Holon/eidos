@@ -14,6 +14,7 @@
  * expands for the 2D palettes, with the same c * 255 / 31.
  */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -163,6 +164,42 @@ static int decode_comp(u8 *out, u32 width, u32 height,
     return 0;
 }
 
+/* engine/avatar/avatar.h: the player's look.  Weak: the 3D module's own
+ * tests link without it, and a picture is then the game's own. */
+struct AvatarLook;
+extern int avatar_recolor(const u8 *idx, int w, int h, const u16 *pal, int c0_clear,
+                          const struct AvatarLook *look, u8 *rgba) __attribute__((weak));
+
+/* A 16-colour texture in one of the player's palettes is a picture of the
+ * player (a field form): drawn in the player's look.  Every path that
+ * draws the game's textures decodes here: the 3D hardware's textures and
+ * the one-screen world's own models and billboards. */
+static void avatar_hook(u8 *rgba, u32 w, u32 h, const u8 *texel, const u8 *pal, u32 pal_bytes, int c0_clear)
+{
+    u8 *idx;
+    u16 p16[16];
+    u32 i;
+
+    if (avatar_recolor == NULL || pal == NULL || pal_bytes < 32) {
+        return;
+    }
+    for (i = 0; i < 16; i++) {
+        p16[i] = (u16)(pal[i * 2] | (pal[i * 2 + 1] << 8));
+    }
+    if (w > 256 || h > 2048) {
+        return;                 /* no picture of the player is wider */
+    }
+    idx = (u8 *)malloc(w * h);
+    if (idx == NULL) {
+        return;
+    }
+    for (i = 0; i < w * h; i++) {
+        idx[i] = (u8)((texel[i / 2] >> ((i % 2) * 4)) & 15u);
+    }
+    (void)avatar_recolor(idx, (int)w, (int)h, p16, c0_clear, NULL, rgba);
+    free(idx);
+}
+
 int g3d_texture_decode(G3dTexture *out, u32 format, u32 width, u32 height,
                        const u8 *texel, u32 texel_bytes,
                        const u8 *palette, u32 pal_bytes,
@@ -229,6 +266,9 @@ int g3d_texture_decode(G3dTexture *out, u32 format, u32 width, u32 height,
             u32 idx = (byte >> ((i % per_byte) * bits)) & mask;
             pal_color(palette, pal_bytes, idx, &rgba[i * 4]);
             rgba[i * 4 + 3] = (color0_transparent && idx == 0) ? 0 : 255;
+        }
+        if (format == G3D_TEXFMT_PAL16) {
+            avatar_hook(rgba, width, height, texel, palette, pal_bytes, color0_transparent);
         }
         break;
     }

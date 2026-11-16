@@ -1030,6 +1030,7 @@ typedef struct BwModNetSession {
     char name[BW_MOD_NET_NAME_MAX + 1];
     char token[33];                              /* the relay's name for us */
     BwModNetPeer peers[BW_MOD_NET_PEERS_MAX];
+    int  world;     /* a world session (mod API v6, sdk/mod_world.c) */
 } BwModNetSession;
 
 /* One mod's handlers, keyed on the mod's namespace (its own name). */
@@ -2218,12 +2219,19 @@ static u32 relay_peer(const u8 *payload, u32 size, u32 *name_at)
     return peer;
 }
 
+/* A world session's frames go to sdk/mod_world.c too (mod API v6). */
+static void (*g_world_in)(char type, const u8 *payload, u32 size);
+
 /* Handle a frame the relay sent. */
 static void relay_frame(char type, const u8 *payload, u32 size)
 {
     char text[BW_MOD_NET_NAME_MAX + 1];
     u32 peer;
     u32 at;
+
+    if (g_session.world && g_world_in != NULL) {
+        g_world_in(type, payload, size);
+    }
 
     switch (type) {
     case BW_MOD_NET_MSG_WELCOME:
@@ -2716,6 +2724,95 @@ static int session_enter(char kind, const char *code)
     g_net_thread = bw_thread_start(net_reader, NULL);
     bw_mutex_unlock(g_lock);
     return BW_MOD_NET_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* World sessions (mod API v6, sdk/mod_world.c)                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A world session is a connection to the relay that speaks the world
+ * frames (metaxy's SPEC, Part C) instead of H and J.  It uses the same
+ * transport, reader and keep-alive as a relay session, so a game is in one
+ * of the two at a time: a world call while a relay session (co-op, a mod's
+ * peer session) runs answers busy.  The world layer sees every frame the
+ * reader reads (bw_mod_net_set_world_hook) and sends its own.
+ */
+void bw_mod_net_set_world_hook(void (*fn)(char type, const u8 *payload, u32 size))
+{
+    g_world_in = fn;
+}
+
+int bw_mod_net_world_open(void)
+{
+    const BwModNetTransport *t;
+
+    net_init();
+    bw_mutex_lock(g_lock);
+    if (g_session.running) {
+        int world = g_session.world;
+
+        bw_mutex_unlock(g_lock);
+        return world ? BW_MOD_NET_OK : BW_MOD_NET_E_BUSY;
+    }
+    bw_mutex_unlock(g_lock);
+    session_stop();
+    bw_mutex_lock(g_lock);
+    if (!g_have_transport || g_relay[0] == '\0' || g_relay_port == 0) {
+        bw_mutex_unlock(g_lock);
+        return BW_MOD_NET_E_NO_RELAY;
+    }
+    t = the_transport();
+    if (t->connect == NULL || t->connect(t->user, g_relay, g_relay_port) != 0) {
+        bw_mutex_unlock(g_lock);
+        return BW_MOD_NET_E_IO;
+    }
+    g_session.running = 1;
+    g_session.world = 1;
+    g_net_stop = 0;
+    g_last_tx_ns = bw_clock_ns();
+    g_net_thread = bw_thread_start(net_reader, NULL);
+    bw_mutex_unlock(g_lock);
+    return BW_MOD_NET_OK;
+}
+
+int bw_mod_net_world_send(char type, const void *payload, u32 size)
+{
+    int rc = -1;
+
+    net_init();
+    bw_mutex_lock(g_lock);
+    if (g_session.running && g_session.world) {
+        rc = relay_send(type, payload, size);
+    }
+    bw_mutex_unlock(g_lock);
+    return rc;
+}
+
+int bw_mod_net_world_running(void)
+{
+    int on;
+
+    net_init();
+    bw_mutex_lock(g_lock);
+    on = g_session.running && g_session.world;
+    bw_mutex_unlock(g_lock);
+    return on;
+}
+
+void bw_mod_net_world_close(void)
+{
+    net_init();
+    bw_mutex_lock(g_lock);
+    if (!g_session.world) {
+        bw_mutex_unlock(g_lock);
+        return;
+    }
+    if (g_session.running) {
+        (void)relay_send('B', NULL, 0);
+    }
+    bw_mutex_unlock(g_lock);
+    session_stop();
 }
 
 /*
@@ -3710,4 +3807,132 @@ void bw_mod_net_gift_choose(int i)
 int bw_mod_net_gift_chosen(void)
 {
     return g_gift.chosen;
+}
+
+/* ------------------------------------------------------------------ */
+/* What a code names (C <version> <code>, one answer, then the close)  */
+/* ------------------------------------------------------------------ */
+
+#define LOOKUP_RX 8192u
+
+static struct {
+    BwSock s;
+    int    open;
+    int    state;                   /* 0 idle, 1 reading, 2 done, -1 failed */
+    int    kind;
+    u8     rx[LOOKUP_RX];
+    u32    rx_n;
+    char   json[LOOKUP_RX];
+} g_look;
+
+static void lookup_close(void)
+{
+    if (g_look.open) {
+        sock_shutdown(g_look.s);
+        g_look.s = BW_SOCK_INVALID;
+        g_look.open = 0;
+    }
+}
+
+int bw_mod_net_lookup_start(const char *code)
+{
+    char req[64], frame[96];
+    int n, h;
+
+    lookup_close();
+    g_look.state = -1;
+    g_look.kind = BW_LOOKUP_NONE;
+    g_look.rx_n = 0;
+    g_look.json[0] = '\0';
+    if (g_relay[0] == '\0' || code == NULL) {
+        return -1;
+    }
+    g_look.s = sock_new();
+    if (g_look.s == BW_SOCK_INVALID) {
+        return -1;
+    }
+    g_look.open = 1;
+    if (sock_connect_to(g_look.s, g_relay, g_relay_port) != 0) {
+        lookup_close();
+        return -1;
+    }
+    n = snprintf(req, sizeof req, "eidos-net/2 %s", code);
+    h = snprintf(frame, sizeof frame, "C %d\n%s", n, req);
+    if (n <= 0 || h <= 0 || h >= (int)sizeof frame || sock_send_all(g_look.s, frame, (u32)h) != 0) {
+        lookup_close();
+        return -1;
+    }
+    g_look.state = 1;
+    return 0;
+}
+
+int bw_mod_net_lookup_poll(void)
+{
+    u32 got = 0;
+    int rc;
+
+    if (g_look.state != 1) {
+        return g_look.state == 2 ? 1 : g_look.state == 0 ? 0 : -1;
+    }
+    for (;;) {
+        u32 i, l = 0;
+
+        rc = g_look.rx_n < LOOKUP_RX
+             ? sock_recv_some(g_look.s, g_look.rx + g_look.rx_n, LOOKUP_RX - g_look.rx_n, &got) : -1;
+        if (rc > 0) {
+            g_look.rx_n += got;
+        }
+        /* one whole frame: "<type> <length>\n<payload>" */
+        for (i = 2; i < g_look.rx_n && i < 16 && g_look.rx[i] != '\n'; i++) {
+            l = l * 10u + (u32)(g_look.rx[i] - '0');
+        }
+        if (g_look.rx_n >= 3 && i < g_look.rx_n && g_look.rx[i] == '\n' && g_look.rx_n >= i + 1 + l
+            && l < sizeof g_look.json) {
+            const char *p = (const char *)g_look.rx + i + 1;
+
+            if (g_look.rx[0] == 'C') {
+                if (l >= 7 && memcmp(p, "session", 7) == 0) {
+                    g_look.kind = BW_LOOKUP_SESSION;
+                } else if (l >= 6 && memcmp(p, "world\n", 6) == 0) {
+                    g_look.kind = BW_LOOKUP_WORLD;
+                    memcpy(g_look.json, p + 6, l - 6);
+                    g_look.json[l - 6] = '\0';
+                } else {
+                    g_look.kind = BW_LOOKUP_NONE;
+                }
+            } else {
+                /* E: a relay without the question takes no C: the code is a
+                 * session's, as before the question was asked */
+                g_look.kind = BW_LOOKUP_SESSION;
+            }
+            g_look.state = 2;
+            break;
+        }
+        if (rc <= 0) {
+            if (rc < 0 || g_look.rx_n >= LOOKUP_RX) {
+                g_look.state = -1;
+            }
+            break;
+        }
+    }
+    if (g_look.state != 1) {
+        lookup_close();
+    }
+    return g_look.state == 1 ? 0 : g_look.state == 2 ? 1 : -1;
+}
+
+void bw_mod_net_lookup_stop(void)
+{
+    lookup_close();
+    g_look.state = 0;
+}
+
+int bw_mod_net_lookup_kind(void)
+{
+    return g_look.kind;
+}
+
+const char *bw_mod_net_lookup_json(void)
+{
+    return g_look.json;
 }

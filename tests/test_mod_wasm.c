@@ -80,6 +80,7 @@
 #define T_NOGROW T_ROOT "/nogrow"
 #define T_NESTED T_ROOT "/nested"
 #define T_SESSION T_ROOT "/session"
+#define T_REF T_ROOT "/reftypes"
 #define T_FLAG 0x123u
 
 static const unsigned char k_module[] = {
@@ -98,6 +99,42 @@ static const unsigned char k_module[] = {
     0x00, 0x0b, 0x02, 0x00, 0x0b, 0x14, 0x00, 0x20, 0x00, 0x2f, 0x00, 0x08,
     0x41, 0xa3, 0x02, 0x46, 0x20, 0x00, 0x41, 0x10, 0x76, 0x41, 0x01, 0x46,
     0x71, 0x0b, 0x03, 0x00, 0x00, 0x0b
+};
+
+/*
+ * A module that uses reference types (ref.null, ref.is_null, table.get)
+ * and bulk memory (memory.fill), the features current Rust and clang turn
+ * on for wasm32 by default.  WAMR is built with both
+ * (cmake/wamr/CMakeLists.txt); without reference types such a module is
+ * refused at load ("zero byte expected" for Rust's call_indirect).  Made
+ * with wat2wasm from:
+ *
+ *   (module
+ *     (import "eidos" "on" (func $on (param i32 i32) (result i32)))
+ *     (type $v (func))
+ *     (table $t 2 funcref)
+ *     (memory (export "memory") 1)
+ *     (func $stop (export "eidos_mod_stop"))
+ *     (func $start (export "eidos_mod_start") (result i32)
+ *       ref.null func  ref.is_null  drop
+ *       i32.const 0  table.get $t  drop
+ *       i32.const 16  i32.const 0  i32.const 4  memory.fill
+ *       i32.const 0)
+ *     (elem (i32.const 0) $stop))
+ */
+static const unsigned char k_reftypes[] = {
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0e, 0x03, 0x60,
+    0x00, 0x00, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f, 0x60, 0x00, 0x01, 0x7f,
+    0x02, 0x0c, 0x01, 0x05, 0x65, 0x69, 0x64, 0x6f, 0x73, 0x02, 0x6f, 0x6e,
+    0x00, 0x01, 0x03, 0x03, 0x02, 0x00, 0x02, 0x04, 0x04, 0x01, 0x70, 0x00,
+    0x02, 0x05, 0x03, 0x01, 0x00, 0x01, 0x07, 0x2d, 0x03, 0x06, 0x6d, 0x65,
+    0x6d, 0x6f, 0x72, 0x79, 0x02, 0x00, 0x0e, 0x65, 0x69, 0x64, 0x6f, 0x73,
+    0x5f, 0x6d, 0x6f, 0x64, 0x5f, 0x73, 0x74, 0x6f, 0x70, 0x00, 0x01, 0x0f,
+    0x65, 0x69, 0x64, 0x6f, 0x73, 0x5f, 0x6d, 0x6f, 0x64, 0x5f, 0x73, 0x74,
+    0x61, 0x72, 0x74, 0x00, 0x02, 0x09, 0x07, 0x01, 0x00, 0x41, 0x00, 0x0b,
+    0x01, 0x01, 0x0a, 0x1b, 0x02, 0x02, 0x00, 0x0b, 0x16, 0x00, 0xd0, 0x70,
+    0xd1, 0x1a, 0x41, 0x00, 0x25, 0x00, 0x1a, 0x41, 0x10, 0x41, 0x00, 0x41,
+    0x04, 0xfc, 0x0b, 0x00, 0x41, 0x00, 0x0b
 };
 
 static const unsigned char k_bad_import[] = {
@@ -420,7 +457,7 @@ static int write_mod(const char *dir, const char *title, const char *ns,
 
 static void clean_tree(void)
 {
-    static const char *const dirs[] = { T_GOOD, T_BAD, T_IMPORT, T_NOGROW, T_NESTED, T_SESSION };
+    static const char *const dirs[] = { T_GOOD, T_BAD, T_IMPORT, T_NOGROW, T_NESTED, T_SESSION, T_REF };
     char path[512];
     size_t i;
 
@@ -437,6 +474,7 @@ static void clean_tree(void)
     BW_RMDIR(T_ROOT "/save/mods/wasmnogrow");
     BW_RMDIR(T_ROOT "/save/mods/wasmnested");
     BW_RMDIR(T_ROOT "/save/mods/wasmsession");
+    BW_RMDIR(T_ROOT "/save/mods/wasmref");
     BW_RMDIR(T_ROOT "/save/mods");
     BW_RMDIR(T_ROOT "/save");
     BW_RMDIR(T_ROOT);
@@ -622,6 +660,18 @@ int main(void)
         bw_mod_net_reset();
     }
 #endif
+
+    printf("reference types and bulk memory\n");
+    bw_mod_loader_stop_all();
+    BW_MKDIR(T_REF);
+    BW_REQUIRE("the module is written",
+               write_mod(T_REF, "Ref Types", "wasmref", k_reftypes, sizeof k_reftypes) == 0);
+    bw_clear_mods();
+    BW_REQUIRE("the module is added", bw_add_mod_root(T_REF) == 0);
+    BW_CHECK_EQ("a module with reference types and bulk memory loads and starts",
+                (long)bw_mod_loader_load_all(), 1);
+    bw_mod_loader_stop_all();
+    bw_clear_mods();
 
     clean_tree();
     BW_REPORT("test_mod_wasm");

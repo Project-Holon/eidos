@@ -3,6 +3,8 @@
  */
 #include "mod_title.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "mod_hooks.h"
@@ -96,11 +98,19 @@ void bw_mod_title_request_autostart(void)
     g_autostart = 1;
 }
 
+int bw_mod_title_autostart_pending(void)
+{
+    return g_autostart;
+}
+
 int bw_mod_title_take_autostart(void)
 {
     int r = g_autostart;
 
     g_autostart = 0;
+    if (r && getenv("EIDOS_MP_UI_LOG") != NULL) {
+        fprintf(stderr, "eidos: title: autostart taken\n");
+    }
     return r;
 }
 

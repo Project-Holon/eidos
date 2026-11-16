@@ -622,6 +622,11 @@ static void store_clear(void)
     g_n_store = 0;
 }
 
+/* engine/avatar/avatar.h: the look's version, part of what a decoded
+ * texture depends on (the shared decoder draws the player in the look).
+ * Weak: the 3D module's own tests link without it. */
+extern u32 avatar_version(void) __attribute__((weak));
+
 static int decode_vram_texture(G3dTexture *out, u32 tp, u32 pltt, u32 key_tex,
                                u32 key_pal, u64 *hash_out)
 {
@@ -664,10 +669,14 @@ static int decode_vram_texture(G3dTexture *out, u32 tp, u32 pltt, u32 key_tex,
         }
         copy_slot(BW_VSLOT_TEXPAL, PAL_SPACE, poff, pal, pbytes);
     }
-    /* what the decode depends on: the bytes and the format bits */
+    /* what the decode depends on: the bytes and the format bits, and the
+     * player's look (a picture of the player is recoloured when decoded) */
     hash = hash_bytes(texel, bytes, 0xCBF29CE484222325ull ^ tp);
     if (pal != NULL) {
         hash = hash_bytes(pal, pbytes, hash);
+    }
+    if (avatar_version != NULL) {
+        hash ^= (u64)avatar_version() * 0x9E3779B97F4A7C15ull;
     }
     *hash_out = hash;
     for (i = 0; i < g_n_store; i++) {

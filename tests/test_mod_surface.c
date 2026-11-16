@@ -58,8 +58,8 @@
  * The hash of the frozen surface on each layout the port is built at.
  *
  *   pointers  hash
- *   4         0xF31D7215u  the number in sdk/mod_api.h
- *   8         0xC25CE7CFu
+ *   4         0xF8F177B7u  the number in sdk/mod_api.h
+ *   8         0x16ACAD54u
  *
  * The 32-bit one is the number the header carries.  The other is the same
  * surface on the other layout: the three tables hold host pointers, so
@@ -68,11 +68,11 @@
  */
 static unsigned int expected_hash(void)
 {
-    return (sizeof(void *) == 4) ? 0xF31D7215u : 0xC25CE7CFu;
+    return (sizeof(void *) == 4) ? 0xF8F177B7u : 0x16ACAD54u;
 }
 
 /* The number in sdk/mod_api.h: the frozen one, the 32-bit hash. */
-#define BW_SURFACE_HASH_FROZEN 0xF31D7215u
+#define BW_SURFACE_HASH_FROZEN 0xF8F177B7u
 
 /* The running hash. */
 static unsigned int h;
@@ -168,6 +168,10 @@ int main(void)
     EV(BW_EVENT_MONEY_CHANGE); EV(BW_EVENT_HEAL); EV(BW_EVENT_HEAL_HP); EV(BW_EVENT_MON_REVIVE);
     EV(BW_EVENT_MON_CURE); EV(BW_EVENT_MON_PP); EV(BW_EVENT_MON_FORM);
     EV(BW_EVENT_BADGE_GET); EV(BW_EVENT_FLAG_SET); EV(BW_EVENT_DEX_REGISTER);
+    EV(BW_EVENT_SCRIPT_DONE); EV(BW_EVENT_MOVE_FORGET); EV(BW_EVENT_MON_SHINY);
+    EV(BW_EVENT_ITEM_USABLE); EV(BW_EVENT_SEASON_CHANGE); EV(BW_EVENT_ENCOUNTER_SLOT);
+    EV(BW_EVENT_BATTLE_TYPE_EFFECT); EV(BW_EVENT_STARTER_CHOICES); EV(BW_EVENT_EGG_SPECIES);
+    EV(BW_EVENT_TEXT_INPUT_DONE); EV(BW_EVENT_WORLD); EV(BW_EVENT_AP); EV(BW_EVENT_MOVE_KNOWN);
 #undef EV
 
     /* The small enums. */
@@ -226,6 +230,21 @@ int main(void)
     EN(BW_MOVE_FIELD_RANK_COUNT); EN(BW_MOVE_FIELD_RANK_TYPE1); EN(BW_MOVE_FIELD_RANK_TYPE2);
     EN(BW_MOVE_FIELD_RANK_TYPE3); EN(BW_MOVE_FIELD_RANK_VALUE1); EN(BW_MOVE_FIELD_RANK_VALUE2);
     EN(BW_MOVE_FIELD_RANK_VALUE3);
+    EN(BW_ENCOUNTER_SLOT_GROUND); EN(BW_ENCOUNTER_SLOT_WATER); EN(BW_ENCOUNTER_SLOT_FISHING);
+    EN(BW_TYPE_EFFECT_NONE); EN(BW_TYPE_EFFECT_QUARTER); EN(BW_TYPE_EFFECT_HALF);
+    EN(BW_TYPE_EFFECT_NORMAL); EN(BW_TYPE_EFFECT_DOUBLE); EN(BW_TYPE_EFFECT_QUADRUPLE);
+    EN(BW_EGG_RULE_NIDORAN); EN(BW_EGG_RULE_VOLBEAT); EN(BW_EGG_RULE_MANAPHY);
+    EN(BW_EGG_RULE_INCENSE); EN(BW_EGG_RULE_SHELLOS); EN(BW_EGG_RULE_BURMY);
+    EN(BW_EGG_RULE_BASCULIN);
+    EN(BW_TEXT_INPUT_NAME); EN(BW_TEXT_INPUT_CODE); EN(BW_TEXT_INPUT_LINK);
+    EN(BW_TEXT_INPUT_MAX);
+    EN(BW_WORLD_OWNER_START); EN(BW_WORLD_OWNER_CLOSE); EN(BW_WORLD_OWNER_DELETE);
+    EN(BW_WORLD_GENERATED); EN(BW_WORLD_WAIT); EN(BW_WORLD_JOINED); EN(BW_WORLD_ITEMS);
+    EN(BW_WORLD_POSITION); EN(BW_WORLD_PLAYER_IN); EN(BW_WORLD_PLAYER_OUT);
+    EN(BW_WORLD_ERROR); EN(BW_WORLD_CLOSED); EN(BW_WORLD_OWNER_DONE);
+    EN(BW_AP_LINKED); EN(BW_AP_MESSAGE); EN(BW_AP_ERROR); EN(BW_AP_CLOSED);
+    EN(BW_MOVE_SITE_FRONT_TILE); EN(BW_MOVE_SITE_SCRIPT); EN(BW_MOVE_SITE_PARTY_MENU);
+    EN(BW_TYPE_CHART_TYPES);
 #undef EN
 
     /* The payload structs: the header plus every field. */
@@ -350,6 +369,27 @@ int main(void)
     PL(BwBadgeGet, F(BwBadgeGet, badge), F(BwBadgeGet, count));
     PL(BwFlagSet, F(BwFlagSet, flag), F(BwFlagSet, value));
     PL(BwDexRegister, F(BwDexRegister, species), F(BwDexRegister, caught));
+    PL(BwScriptDone, F(BwScriptDone, ticket), F(BwScriptDone, script_id), F(BwScriptDone, pad));
+    PL(BwMoveForget, F(BwMoveForget, species), F(BwMoveForget, move), F(BwMoveForget, allowed),
+       F(BwMoveForget, pad));
+    PL(BwMonShiny, F(BwMonShiny, ot_id), F(BwMonShiny, personality), F(BwMonShiny, value),
+       F(BwMonShiny, threshold));
+    PL(BwItemUsable, F(BwItemUsable, item), F(BwItemUsable, slot), F(BwItemUsable, usable));
+    PL(BwSeasonChange, F(BwSeasonChange, clock_season), F(BwSeasonChange, season),
+       F(BwSeasonChange, pad));
+    PL(BwEncounterSlot, F(BwEncounterSlot, method), F(BwEncounterSlot, roll),
+       F(BwEncounterSlot, slot), F(BwEncounterSlot, slot_count));
+    PL(BwBattleTypeEffect, F(BwBattleTypeEffect, atk_type), F(BwBattleTypeEffect, def_type),
+       F(BwBattleTypeEffect, effect), F(BwBattleTypeEffect, pad));
+    PL(BwStarterChoices, F(BwStarterChoices, species), F(BwStarterChoices, pad));
+    PL(BwEggSpecies, F(BwEggSpecies, mother), F(BwEggSpecies, father), F(BwEggSpecies, species),
+       F(BwEggSpecies, pad), F(BwEggSpecies, rules));
+    PL(BwTextInputDone, F(BwTextInputDone, ticket), F(BwTextInputDone, count),
+       F(BwTextInputDone, cancelled), F(BwTextInputDone, pad), F(BwTextInputDone, units));
+    PL(BwWorld, F(BwWorld, kind), F(BwWorld, size), F(BwWorld, ticket), F(BwWorld, player));
+    PL(BwAp, F(BwAp, kind), F(BwAp, size), F(BwAp, ticket), F(BwAp, pad));
+    PL(BwMoveKnown, F(BwMoveKnown, slot), F(BwMoveKnown, site), F(BwMoveKnown, species), F(BwMoveKnown, move),
+       F(BwMoveKnown, known), F(BwMoveKnown, pad));
 #undef PL
 #undef PL0
 #undef F
@@ -393,6 +433,7 @@ int main(void)
     S(area_of); S(battle_wild); S(play_seconds); S(item_value); S(move_value);
     S(mon_to_box_n); S(mon_from_box); S(mon_recalc); S(species_base); S(battle_trainer);
     S(type_effect); S(battle_weather); S(species_learns); S(whiteout);
+    S(work_get); S(work_set); S(badge_set); S(game_code);
 #undef S
 
     /* The services table. */
@@ -415,7 +456,20 @@ int main(void)
     V(state_in_step);
     V(table_get);
     V(event_player); V(shared_get); V(shared_set); V(shared_add); V(shared_cas);
+    V(vfs_member_set); V(vfs_member_clear); V(vfs_member_get);
+    V(text_get); V(text_set); V(text_language);
+    V(script_run); V(type_chart_set); V(type_chart_get); V(text_input);
+    V(mod_file_write); V(mod_file_read); V(mod_file_list); V(mod_file_delete);
+    V(world_create); V(world_owner); V(world_join); V(world_checks); V(world_leave);
+    V(world_read);
+    V(ap_link); V(ap_send); V(ap_read);
+    V(peer_position); V(townmap_marker_set); V(townmap_marker_clear);
+    V(mode_get); V(setting_text); V(player_name); V(mode_code); V(tracker_set);
 #undef V
+
+    /* Version 6: the type chart the type_chart calls take. */
+    str("BwTypeChart");
+    field("cell", offsetof(BwTypeChart, cell), sizeof(((BwTypeChart *)0)->cell));
 
     /* The state file header. */
     str("BwModStateHeader");

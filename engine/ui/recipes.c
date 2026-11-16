@@ -40,7 +40,13 @@ extern const u32 ui_recipes_boot_count;
 extern const EidosUiRecipe *const ui_recipes_lower[];
 extern const u32 ui_recipes_lower_count;
 
+extern const EidosUiRecipe *const ui_recipes_multiplayer[];
+extern const u32 ui_recipes_multiplayer_count;
+
 const EidosUiRecipeGroup eidos_ui_groups[] = {
+    /* the Multiplayer screen alone: its own hub and lobby, before the
+     * settings recipe that draws the same model as rows */
+    { ui_recipes_multiplayer, &ui_recipes_multiplayer_count },
     { ui_recipes_settings, &ui_recipes_settings_count },
     /* the name entry runs over the app that opened it (the end of a
      * battle, the boxes, an Egg hatching, ...): before those apps */

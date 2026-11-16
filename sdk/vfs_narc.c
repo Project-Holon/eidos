@@ -254,14 +254,114 @@ static u8 *read_whole(const char *path, u32 *size_out)
     return buf;
 }
 
+u32 bw_narc_count(const u8 *img, u32 size)
+{
+    Narc n;
+
+    return parse_narc(img, size, &n) == 0 ? n.count : 0xFFFFFFFFu;
+}
+
+int bw_narc_member(const u8 *img, u32 size, u32 index, const u8 **data, u32 *len)
+{
+    Narc n;
+    u32 start, end;
+
+    if (parse_narc(img, size, &n) != 0 || index >= n.count) {
+        return -1;
+    }
+    start = bw_rd32(img + n.fat + 12 + index * 8);
+    end = bw_rd32(img + n.fat + 16 + index * 8);
+    *data = img + n.gmif + 8 + start;
+    *len = end - start;
+    return 0;
+}
+
+int bw_narc_restamp(const u8 *old, u32 old_size, const u8 *fresh, u32 fresh_size,
+                    u8 **out, u32 *out_size)
+{
+    Narc o, f;
+    u32 i, changed = 0;
+    u64 grow = 0;
+    u8 *img;
+    u32 at, gmif_end;
+
+    *out = NULL;
+    *out_size = 0;
+    if (parse_narc(old, old_size, &o) != 0 || parse_narc(fresh, fresh_size, &f) != 0) {
+        return -1;
+    }
+    for (i = 0; i < o.count; i++) {
+        const u8 *a = old + o.gmif + 8 + bw_rd32(old + o.fat + 12 + i * 8);
+        u32 alen = bw_rd32(old + o.fat + 16 + i * 8) - bw_rd32(old + o.fat + 12 + i * 8);
+        const u8 *b = NULL;
+        u32 blen = 0;
+
+        if (i < f.count) {
+            b = fresh + f.gmif + 8 + bw_rd32(fresh + f.fat + 12 + i * 8);
+            blen = bw_rd32(fresh + f.fat + 16 + i * 8) - bw_rd32(fresh + f.fat + 12 + i * 8);
+        }
+        if (alen == blen && (blen == 0 || memcmp(a, b, blen) == 0)) {
+            continue;
+        }
+        changed++;
+        grow += ((u64)blen + NARC_ALIGN - 1) & ~(u64)(NARC_ALIGN - 1);
+    }
+    if (changed == 0) {
+        return 0;
+    }
+    /* The GMIF must be the last block, so its end is the image's end and
+     * new member bytes go after it.  Every real archive is laid out so. */
+    gmif_end = o.gmif + o.gmif_size;
+    if (gmif_end != old_size || (u64)gmif_end + grow > 0xFFFFFFF0ull) {
+        return -1;
+    }
+    img = (u8 *)malloc((size_t)(gmif_end + grow));
+    if (img == NULL) {
+        return -1;
+    }
+    memcpy(img, old, gmif_end);
+    memset(img + gmif_end, NARC_PAD, (size_t)grow);
+    at = gmif_end;
+    for (i = 0; i < o.count; i++) {
+        const u8 *a = old + o.gmif + 8 + bw_rd32(old + o.fat + 12 + i * 8);
+        u32 alen = bw_rd32(old + o.fat + 16 + i * 8) - bw_rd32(old + o.fat + 12 + i * 8);
+        const u8 *b = NULL;
+        u32 blen = 0;
+        u32 start;
+
+        if (i < f.count) {
+            b = fresh + f.gmif + 8 + bw_rd32(fresh + f.fat + 12 + i * 8);
+            blen = bw_rd32(fresh + f.fat + 16 + i * 8) - bw_rd32(fresh + f.fat + 12 + i * 8);
+        }
+        if (alen == blen && (blen == 0 || memcmp(a, b, blen) == 0)) {
+            continue;
+        }
+        start = at - (o.gmif + 8);
+        if (blen != 0) {
+            memcpy(img + at, b, blen);
+        }
+        put32(img + o.fat + 12 + i * 8, start);
+        put32(img + o.fat + 16 + i * 8, start + blen);
+        at += (blen + NARC_ALIGN - 1) & ~(NARC_ALIGN - 1);
+    }
+    put32(img + o.gmif + 4, at - o.gmif);
+    put32(img + 8, at);
+    *out = img;
+    *out_size = at;
+    return 1;
+}
+
 /* ------------------------------------------------------------------ */
 /* Collecting the mods' members                                        */
 /* ------------------------------------------------------------------ */
 
 typedef struct Override {
     u32   index;
-    u32   mod;      /* position in the load order */
-    char *path;
+    u32   mod;      /* position in the load order, times two; +1 for the
+                     * mod's memory layer, which wins over its own folder */
+    char *path;     /* the member file, or NULL for a memory member */
+    const u8 *mem;  /* a memory member's bytes (the layer owns them) */
+    u32   mem_size;
 } Override;
 
 typedef struct Collect {
@@ -335,6 +435,173 @@ static int msg_index(const char *name, u32 *index)
     return 1;
 }
 
+/* ------------------------------------------------------------------ */
+/* The memory layers                                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A mod's members held in memory (mod API v6, vfs_member_set;
+ * docs/mods.md, "Members in memory").  One layer per mod root: it sits
+ * where that mod's folder sits in the load order and wins over the
+ * folder's own member files for the same index.
+ */
+typedef struct MemMember {
+    char *root;     /* the mod's root, as bw_mod_root_at gives it */
+    char *rel;      /* the archive's NitroFS path */
+    u32   index;
+    u8   *data;
+    u32   size;
+} MemMember;
+
+static MemMember *g_mem;
+static u32        g_mem_count;
+static u32        g_mem_cap;
+
+static int mem_find(const char *root, const char *rel, u32 index)
+{
+    u32 i;
+
+    for (i = 0; i < g_mem_count; i++) {
+        if (g_mem[i].index == index && strcmp(g_mem[i].rel, rel) == 0 &&
+            strcmp(g_mem[i].root, root) == 0) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+static char *dup_str(const char *s)
+{
+    char *d = (char *)malloc(strlen(s) + 1);
+
+    if (d != NULL) {
+        strcpy(d, s);
+    }
+    return d;
+}
+
+/* The port's own layer (root "") holds a member of this path: it applies
+ * with no mod loaded too (the port's sprites for the other players' looks,
+ * engine/avatar/avatar_field.c). */
+static int port_layer_has(const char *rel)
+{
+    u32 k;
+
+    for (k = 0; rel != NULL && k < g_mem_count; k++) {
+        if (g_mem[k].root[0] == '\0' && strcmp(g_mem[k].rel, rel) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int bw_vfs_mem_set(const char *root, const char *rel, u32 index,
+                   const void *data, u32 size)
+{
+    int at;
+    u8 *copy;
+
+    if (root == NULL || rel == NULL || index >= BW_NARC_MAX_MEMBERS ||
+        (data == NULL && size != 0)) {
+        return -1;
+    }
+    copy = (u8 *)malloc(size == 0 ? 1 : size);
+    if (copy == NULL) {
+        return -1;
+    }
+    if (size != 0) {
+        memcpy(copy, data, size);
+    }
+    at = mem_find(root, rel, index);
+    if (at >= 0) {
+        free(g_mem[at].data);
+        g_mem[at].data = copy;
+        g_mem[at].size = size;
+        return 0;
+    }
+    if (g_mem_count == g_mem_cap) {
+        u32 cap = g_mem_cap == 0 ? 64 : g_mem_cap * 2;
+        MemMember *grown = (MemMember *)realloc(g_mem, cap * sizeof(*grown));
+
+        if (grown == NULL) {
+            free(copy);
+            return -1;
+        }
+        g_mem = grown;
+        g_mem_cap = cap;
+    }
+    g_mem[g_mem_count].root = dup_str(root);
+    g_mem[g_mem_count].rel = dup_str(rel);
+    if (g_mem[g_mem_count].root == NULL || g_mem[g_mem_count].rel == NULL) {
+        free(g_mem[g_mem_count].root);
+        free(g_mem[g_mem_count].rel);
+        free(copy);
+        return -1;
+    }
+    g_mem[g_mem_count].index = index;
+    g_mem[g_mem_count].data = copy;
+    g_mem[g_mem_count].size = size;
+    g_mem_count++;
+    return 0;
+}
+
+u32 bw_vfs_mem_clear(const char *root, const char *rel, u32 index)
+{
+    u32 i = 0, removed = 0;
+
+    while (i < g_mem_count) {
+        MemMember *m = &g_mem[i];
+
+        if ((root == NULL || strcmp(m->root, root) == 0) &&
+            (rel == NULL || strcmp(m->rel, rel) == 0) &&
+            (index == BW_VFS_MEM_ALL || m->index == index)) {
+            free(m->root);
+            free(m->rel);
+            free(m->data);
+            g_mem[i] = g_mem[g_mem_count - 1];
+            g_mem_count--;
+            removed++;
+            continue;
+        }
+        i++;
+    }
+    return removed;
+}
+
+u32 bw_vfs_mem_bytes(const char *root)
+{
+    u32 i;
+    u64 total = 0;
+
+    for (i = 0; i < g_mem_count; i++) {
+        if (root == NULL || strcmp(g_mem[i].root, root) == 0) {
+            total += g_mem[i].size;
+        }
+    }
+    return total > 0xFFFFFFFFull ? 0xFFFFFFFFu : (u32)total;
+}
+
+int bw_vfs_mem_size(const char *root, const char *rel, u32 index)
+{
+    int at = mem_find(root, rel, index);
+
+    return at < 0 ? -1 : (int)g_mem[at].size;
+}
+
+u32 bw_vfs_mem_list(u32 n, const char **rel, u32 *index)
+{
+    if (n >= g_mem_count) {
+        return 0;
+    }
+    if (rel != NULL) {
+        *rel = g_mem[n].rel;
+    }
+    if (index != NULL) {
+        *index = g_mem[n].index;
+    }
+    return 1;
+}
+
 static int add_entry(Override **list, u32 *count, u32 *cap, u32 index,
                      u32 mod, char *path)
 {
@@ -351,6 +618,8 @@ static int add_entry(Override **list, u32 *count, u32 *cap, u32 index,
     (*list)[*count].index = index;
     (*list)[*count].mod = mod;
     (*list)[*count].path = path;
+    (*list)[*count].mem = NULL;
+    (*list)[*count].mem_size = 0;
     (*count)++;
     return 0;
 }
@@ -443,24 +712,53 @@ static int collect(const char *rel, int layer, Collect *c)
     u32 kept;
 
     memset(c, 0, sizeof(*c));
-    for (i = (u32)(layer + 1); i < n; i++) {
+    /* The winner's own memory layer applies on top of its whole file, so
+     * the walk starts at the winner itself (the data root is -1). */
+    for (i = layer < 0 ? 0u : (u32)layer; i < n; i++) {
         const char *root = bw_mod_root_at(i);
+        u32 k;
 
-        if (strlen(root) + 1 + strlen(rel) + 1 > sizeof(dir)) {
-            continue;
+        if ((int)i > layer && strlen(root) + 1 + strlen(rel) + 1 <= sizeof(dir) &&
+            snprintf(dir, sizeof(dir), "%s/%s", root, rel) < (int)sizeof(dir) &&
+            bw_plat_path_kind(dir) == BW_PATH_DIR) {
+            c->mod = i * 2u;
+            c->dir = dir;
+            (void)bw_plat_list_dir(dir, collect_one, c);
+            if (c->error) {
+                free_collect(c);
+                return -1;
+            }
         }
-        if (snprintf(dir, sizeof(dir), "%s/%s", root, rel) >= (int)sizeof(dir)) {
-            continue;
+        /* the mod's memory layer, over its folder */
+        for (k = 0; k < g_mem_count; k++) {
+            if (strcmp(g_mem[k].rel, rel) != 0 || strcmp(g_mem[k].root, root) != 0) {
+                continue;
+            }
+            if (add_entry(&c->list, &c->count, &c->cap, g_mem[k].index,
+                          i * 2u + 1u, NULL) != 0) {
+                free_collect(c);
+                return -1;
+            }
+            c->list[c->count - 1].mem = g_mem[k].data;
+            c->list[c->count - 1].mem_size = g_mem[k].size;
         }
-        if (bw_plat_path_kind(dir) != BW_PATH_DIR) {
-            continue;
-        }
-        c->mod = i;
-        c->dir = dir;
-        (void)bw_plat_list_dir(dir, collect_one, c);
-        if (c->error) {
-            free_collect(c);
-            return -1;
+    }
+    /* The port's own layer (root ""), over every mod: what the port puts
+     * in for a moment, the title of a mod's text input (sdk/mod_v6.c). */
+    {
+        u32 k;
+
+        for (k = 0; k < g_mem_count; k++) {
+            if (g_mem[k].root[0] != '\0' || strcmp(g_mem[k].rel, rel) != 0) {
+                continue;
+            }
+            if (add_entry(&c->list, &c->count, &c->cap, g_mem[k].index,
+                          n * 2u + 1u, NULL) != 0) {
+                free_collect(c);
+                return -1;
+            }
+            c->list[c->count - 1].mem = g_mem[k].data;
+            c->list[c->count - 1].mem_size = g_mem[k].size;
         }
     }
     if (c->count == 0) {
@@ -492,7 +790,7 @@ int bw_vfs_member_overrides(const char *rel)
     int layer = bw_vfs_file_layer(rel);
     int n;
 
-    if (layer == BW_LAYER_NONE || bw_mod_count() == 0) {
+    if (layer == BW_LAYER_NONE || (bw_mod_count() == 0 && !port_layer_has(rel))) {
         return 0;
     }
     if (collect(rel, layer, &c) != 0) {
@@ -715,7 +1013,7 @@ int bw_vfs_build_merged(const char *rel, u8 **out, u32 *out_size)
 
     *out = NULL;
     *out_size = 0;
-    if (bw_mod_count() == 0) {
+    if (bw_mod_count() == 0 && !port_layer_has(rel)) {
         return 0;
     }
     /*
@@ -780,6 +1078,12 @@ int bw_vfs_build_merged(const char *rel, u8 **out, u32 *out_size)
     for (i = 0; i < c.count; i++) {
         u32 sz;
 
+        if (c.list[i].path == NULL) {
+            /* a memory member: the layer owns the bytes */
+            data[c.list[i].index] = c.list[i].mem;
+            sizes[c.list[i].index] = c.list[i].mem_size;
+            continue;
+        }
         owned[i] = read_whole(c.list[i].path, &sz);
         if (owned[i] == NULL) {
             fprintf(stderr, "vfs: %s: cannot read member file\n", c.list[i].path);
@@ -858,6 +1162,47 @@ void bw_vfs_flush(void)
     }
 }
 
+void bw_vfs_flush_path(const char *rel)
+{
+    u32 i;
+
+    for (i = 0; i < g_merged_cap; i++) {
+        if (g_merged[i].rel == NULL || strcmp(g_merged[i].rel, rel) != 0) {
+            continue;
+        }
+        if (g_merged[i].refs == 0) {
+            free_entry(&g_merged[i]);
+        } else {
+            g_merged[i].stale = 1;
+        }
+    }
+}
+
+static int new_entry(u32 *index);
+
+/*
+ * Take over an image built outside the cache (the layout-stable image of
+ * an archive that is open, sdk/fs.c): it is held by `refs` open files and
+ * freed at the last close.  It is stale from the start, so a new open
+ * builds the archive again rather than share it.  Returns the handle, or 0.
+ */
+u32 bw_vfs_adopt(const char *rel, u8 *img, u32 size, u32 refs)
+{
+    u32 i;
+    char *key = dup_str(rel);
+
+    if (key == NULL || refs == 0 || new_entry(&i) != 0) {
+        free(key);
+        return 0;
+    }
+    g_merged[i].rel = key;
+    g_merged[i].data = img;
+    g_merged[i].size = size;
+    g_merged[i].refs = refs;
+    g_merged[i].stale = 1;
+    return i + 1;
+}
+
 static int new_entry(u32 *index)
 {
     u32 i;
@@ -893,7 +1238,7 @@ int bw_vfs_acquire(const char *rel, const u8 **data, u32 *size, u32 *handle)
     *data = NULL;
     *size = 0;
     *handle = 0;
-    if (rel == NULL || bw_mod_count() == 0) {
+    if (rel == NULL || (bw_mod_count() == 0 && !port_layer_has(rel))) {
         return 0;
     }
     for (i = 0; i < g_merged_cap; i++) {

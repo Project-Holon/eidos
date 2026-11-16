@@ -1210,6 +1210,7 @@ static const EidosUiRecipe recipe_menu = {
 /* ------------------------------------------------------------------ */
 
 static int g_show_cgear;            /* the game's own C-Gear is shown      */
+static int g_show_tracker;          /* the Tracker panel is up (engine/ui/tracker.c) */
 /* pixels the bar is slid up; it starts out of sight, so a field that opens
  * with an event (the season card after loading a save) never shows it */
 #define BAR_HIDDEN 17
@@ -2536,7 +2537,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int have_time = 0, comm = 0, last_cmd = 0;
     EidosUiRect bar;
     int st_bar, x, open_menu = 0, use_item = 0, st, choosing;
-    int wide = cw >= 400, tab_w, tab_l, tab_r;
+    int wide = cw >= 400, tab_w, tab_l, tab_r, tracker_w = 0;
     EidosUiRect saved_clip;
 
     if (getenv("EIDOS_UI_FIELD_DEBUG") != NULL) {
@@ -2586,6 +2587,20 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     if (g_show_cgear && f.mode != 0 && f.mode != 8) {
         g_show_cgear = 0;                   /* no C-Gear panel here         */
+    }
+
+    {
+        /* EIDOS_UI_FIELD_TRACKER=<frame>: the Tracker button is clicked at
+         * that frame (scripted runs have no pointer) */
+        const char *e = getenv("EIDOS_UI_FIELD_TRACKER");
+
+        if (e != NULL && in->frame == (u32)atoi(e) && ui_tracker_available()) {
+            g_show_tracker = 1;
+            ui_tracker_open();
+        }
+    }
+    if (g_show_tracker && !ui_tracker_available()) {
+        g_show_tracker = 0;                 /* the mod's data went away     */
     }
 
     if (g_show_cgear == 2) {
@@ -2741,6 +2756,29 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (st & EIDOS_UI_HOVER) {
         st_bar = 0;
     }
+    /* the Tracker, right of Menu, while a mod tracks this game */
+    tracker_w = 0;
+    if (ui_tracker_available()) {
+        int tst;
+
+        tracker_w = small_button_w("Tracker", NULL) + 4;
+        x = tab_r + 6 + small_button_w("Menu", "X") + tracker_w;
+        tst = small_button(c, &x, 0, "Tracker", bh, NULL);
+        if (tst & EIDOS_UI_CLICK) {
+            /* the button unfolds the sheet, and folds it again */
+            g_show_tracker = !g_show_tracker;
+            if (g_show_tracker) {
+                g_show_cgear = 0;
+                ui_tracker_open();
+                eidos_ui_sound(0x54C);
+            } else {
+                eidos_ui_sound(0x551);
+            }
+        }
+        if (tst & EIDOS_UI_HOVER) {
+            st_bar = 0;
+        }
+    }
 
     /* the right group, from the right edge: the battery and the three
      * link lights, their names only while they clear Menu */
@@ -2755,7 +2793,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         for (i = 0; i < 3; i++) {
             need += ui_text_w(names[i], UI_FONT_SMALL) + 13;
         }
-        if (x - need < tab_r + 6 + small_button_w("Menu", "X") + 8) {
+        if (x - need < tab_r + 6 + small_button_w("Menu", "X") + tracker_w + 8) {
             named = 0;
         }
         lit[0] = comm;
@@ -2800,6 +2838,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         g_cgear_btn_x = x + 4;
         if (st & EIDOS_UI_CLICK) {
             g_show_cgear = g_show_cgear ? 0 : 1;
+            g_show_tracker = 0;             /* one sheet at a time */
             st_bar = 0;
         } else if (st & EIDOS_UI_HOVER) {
             st_bar = 0;
@@ -2865,6 +2904,14 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (g_bar_slide > 0) {
         return;                             /* no clicks while it moves     */
     }
+    if (g_show_tracker) {
+        /* the Tracker: a sheet unfolding from the bar, the keys its own
+         * until B */
+        if (ui_tracker_run(c, in, cw, ch, bh) || right_click(in)) {
+            g_show_tracker = 0;
+        }
+        return;                             /* the bar's clicks wait        */
+    }
     if (g_show_cgear == 1) {
         static u32 prev_b;
         int b = (in->buttons & BW_KEY_B) != 0;
@@ -2889,6 +2936,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 static void field_reset(void)
 {
     g_show_cgear = 0;
+    g_show_tracker = 0;
     g_bar_slide = BAR_HIDDEN;
     g_stick.on = 0;
 }

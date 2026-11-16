@@ -17,6 +17,7 @@
  * pad and keyboard controls are still to come.
  */
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ui.h"
@@ -97,9 +98,12 @@ static void *dressup_work(void)
  * One clean repeat (each pixel the median of all its repeats on the
  * screen, so the sparkles and the props drop out), laid out over a whole
  * screen-sized buffer for ui_blit_screen.  A pixel with no clean sample
- * keeps last frame's colour. */
-static u8 g_pat[256 * 192 * 4];
-static u8 g_flat[256 * 192 * 4];
+ * keeps last frame's colour.  Both buffers are taken from the heap on
+ * first use: the 32-bit build's program image must stay small (the DS's
+ * memory is mapped at its own address right above it). */
+#define MU_SCREEN_BYTES ((size_t)256 * 192 * 4)
+static u8 *g_pat;
+static u8 *g_flat;
 static int g_pat_ok;
 
 /* The fade the world view gets (engine/ui/ui.c): the main engine's master
@@ -128,7 +132,7 @@ static void pattern_fade(int fade)
     if (fade == 0) {
         return;
     }
-    for (i = 0; i < sizeof g_pat; i += 4) {
+    for (i = 0; i < MU_SCREEN_BYTES; i += 4) {
         int c;
 
         for (c = 0; c < 3; c++) {
@@ -227,8 +231,13 @@ static void musical_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     view->ds_only = 1;
     view->lower_only = 1;
     view->bottom = (ch - 192) * c->canvas->k;
+    if (g_pat == NULL) {
+        g_pat = (u8 *)calloc(1, MU_SCREEN_BYTES);
+        g_flat = (u8 *)calloc(1, MU_SCREEN_BYTES);
+    }
     /* made again each frame, so the room fades in and out with the stage */
-    if (g2d_hw_main_graphics_dsmem != NULL && g2d_hw_main_graphics_dsmem(NULL, g_flat) == 0) {
+    if (g_pat != NULL && g_flat != NULL && g2d_hw_main_graphics_dsmem != NULL
+        && g2d_hw_main_graphics_dsmem(NULL, g_flat) == 0) {
         pattern_make(g_flat);
         pattern_fade(main_fade());
     }

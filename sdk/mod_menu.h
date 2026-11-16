@@ -302,6 +302,7 @@ const char *bw_mod_menu_orphan_at(u32 index);
 #define BW_MOD_SETTING_BOOL   0   /* on or off            */
 #define BW_MOD_SETTING_CHOICE 1   /* one of a list of names */
 #define BW_MOD_SETTING_INT    2   /* a number between a low and a high bound */
+#define BW_MOD_SETTING_TEXT   3   /* a short text (a world's code, a room) */
 
 /* How many options the mod at `index` declares. */
 u32 bw_mod_menu_option_count(u32 index);
@@ -343,6 +344,107 @@ const char *bw_mod_menu_option_choice(u32 index, u32 option, int choice);
  * for a choice.  Always NUL-terminated in `buf`. */
 const char *bw_mod_menu_option_text(u32 index, u32 option, char *buf,
                                      size_t size);
+
+/* A text option's new value (its longest is the option's max): 0, or -1
+ * when it is not a text option, too long, or holds '"' or a line end. */
+int bw_mod_menu_option_set_text(u32 index, u32 option, const char *text);
+
+/* Whether the option is shown in the mod's mode `mode` (its `@id` word). */
+int bw_mod_menu_option_in_mode(u32 index, u32 option, u32 mode);
+
+/*
+ * The co-op lobby's rules: options tagged `@lobby` (bool, choice or int).
+ * The host sets them in the lobby; while a session is open every player's
+ * mod reads the host's value (setting_get), sent through the session's
+ * shared table, and nobody's own choice is changed by it.
+ *
+ * in_lobby: the option is a rule.  rule_value: the value in force (the
+ * host's in a session).  rules_locked: this game is a joiner in a session
+ * (the rules are the host's to change).  rules_push: the host sends its
+ * rules when one changed (called each frame of the lobby screen).
+ */
+int  bw_mod_menu_option_in_lobby(u32 index, u32 option);
+int  bw_mod_menu_rule_value(u32 index, u32 option);
+int  bw_mod_menu_rules_locked(void);
+void bw_mod_menu_rules_push(void);
+
+/* ------------------------------------------------------------------ */
+/* The ways to play a mod offers (`mode` lines)                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A mod's settings file may declare modes:
+ *
+ *     mode solo "Solo randomizer" "A shuffled game for you alone."
+ *     option arkh.goal choice "Goal" champion|elite4 @solo,multiworld
+ *
+ * The Multiplayer screen shows each mode as a card; its screen shows the
+ * options tagged with it, and its Start begins a new game in a free save
+ * slot.  During that new game's game.new the mod asks mode_get which mode
+ * it was.  A mode marked `off` is shown and cannot be chosen.
+ */
+u32 bw_mod_menu_mode_count(u32 index);
+const char *bw_mod_menu_mode_id(u32 index, u32 mode);
+const char *bw_mod_menu_mode_title(u32 index, u32 mode);
+const char *bw_mod_menu_mode_line(u32 index, u32 mode);
+int bw_mod_menu_mode_off(u32 index, u32 mode);
+/* The mod and mode an id names, among every mod's modes: 1, or 0. */
+int bw_mod_menu_find_mode(const char *id, u32 *index, u32 *mode);
+
+/* The next new game is in this mode (the screen's Start): 0, or -1. */
+int bw_mod_menu_mode_begin(u32 index, u32 mode);
+/* Test switch EIDOS_MOD_MODE=<id>: the first new game is in that mode.
+ * The port calls it once the mod list is final (either start-up path). */
+void bw_mod_menu_mode_from_env(void);
+/* Drop the chosen mode (a Continue). */
+void bw_mod_menu_mode_end(void);
+/* game.new is about to run its handlers: the chosen mode is this new
+ * game's; the next new game has none. */
+void bw_mod_menu_mode_new_game(void);
+/* The services table's mode_get: the chosen mode's id when it is the
+ * calling mod's, else "".  The id's length, or -1. */
+int bw_mod_menu_mode_get(char *out, u32 size);
+/* 1 while a mode is chosen (from its card until the next new game or a
+ * Continue), whichever mod's it is. */
+int bw_mod_menu_mode_running(void);
+/* The services table's setting_text: the text option's value.  Its length,
+ * or -1 when the key names no text option of the calling mod. */
+int bw_mod_menu_setting_text(const char *key, char *out, u32 size);
+
+/*
+ * A mode line's words after its line (docs/mod-services.md):
+ * - `joins`: its games are worlds others join by code.  The Multiplayer
+ *   screen's Join box starts such a mode with the code typed
+ *   (mode_begin_join); the mod reads it with mode_code during game.new.
+ * - `in=<mode>`: a type on that mode's card, not a card of its own
+ *   (mode_in: the card mode's index, -1 for a card).
+ * - `export "<game>"`: Start writes an Archipelago options file
+ *   (mode_write_yaml) instead of a new game.
+ */
+int bw_mod_menu_mode_begin_join(u32 index, u32 mode, const char *code);
+int bw_mod_menu_mode_joins(u32 index, u32 mode);
+int bw_mod_menu_mode_in(u32 index, u32 mode);
+const char *bw_mod_menu_mode_export(u32 index, u32 mode);
+/* The first mode of an enabled mod that joins relay worlds (`joins`, no
+ * `export`): 1, or 0 for none.  find_room: the one that joins Archipelago
+ * rooms (`joins` and `export`); its mode_code is
+ * "ap <host:port> <slot> <password>" ("-" for no password). */
+int bw_mod_menu_find_joining(u32 *index, u32 *mode);
+int bw_mod_menu_find_room(u32 *index, u32 *mode);
+/* The services table's mode_code: the world code of this new game when the
+ * mode is the calling mod's ("" for a new world).  Its length, or -1. */
+int bw_mod_menu_mode_code(char *out, u32 size);
+/* The options file of an `export` mode, from the options shown in it and
+ * their `yaml` lines: <save folder>/archipelago/<name>.yaml.  version 'B'
+ * or 'W' fills {version}.  0 and the file's path, or -1. */
+int bw_mod_menu_mode_write_yaml(u32 index, u32 mode, const char *name, char version, char *path, u32 size);
+
+/* An option's `heading` (a title above its row) and `help` (what it does):
+ * "" for none. */
+const char *bw_mod_menu_option_heading(u32 index, u32 option);
+const char *bw_mod_menu_option_help(u32 index, u32 option);
+/* An option's `yaml` line ("<name> <values>"), or NULL. */
+const char *bw_mod_menu_option_yaml(u32 index, u32 option);
 
 /* ------------------------------------------------------------------ */
 /* The mod that is calling                                             */

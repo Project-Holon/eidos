@@ -172,6 +172,13 @@ void eidos_ui_drag(int x0, int y0, int x1, int y1)
 
 static u32 g_b_frame = 0x80000000u;     /* the input frame of the last B (the player's or a recipe's) */
 
+/* The input frame of the last B, the player's or one a recipe pressed (a
+ * hint, a right click). */
+u32 eidos_ui_b_frame(void)
+{
+    return g_b_frame;
+}
+
 void eidos_ui_press(u32 keys, u32 frames)
 {
     if (keys & BW_KEY_B) {

@@ -37,6 +37,12 @@ extern void *g_ProcSys IN_WEAK;     /* the variable itself, once aletheia define
 extern int ui_species_name(int species, char *out, int cap) IN_WEAK;   /* recipe_dex.c */
 extern const void *bw_ui_namein_now(void) IN_WEAK;                    /* sdk/ui_text.c */
 extern int eidos_ui_options_proc_up IN_WEAK;   /* recipe_settings.c: the port's own screen is up */
+/* engine/platform/mod_options_proc.c: the port's own keyboard (a name, a
+ * room's code) and its way back */
+extern const void *eidos_opt_keyboard_args(void) IN_WEAK;
+extern void eidos_opt_keyboard_back(void) IN_WEAK;
+
+static int g_back_focus;    /* the port keyboard's BACK has the keys' focus */
 /* The game's own lookup: the picker cell under a bottom-screen point (the
  * picker is the grid work's first member, at work+0xFC). */
 extern int ov194_NAMEIN_GRAPHIC_FindCellAtPoint(const char *picker, int *point, void *out) IN_WEAK;
@@ -196,6 +202,7 @@ static void *find_scene_work(int overlay)
 
 typedef struct NameState {
     void *w;
+    void *args;             /* NameInArgs: the port's keyboard has its own */
     int kind, species, form, maxlen, len;
     int page, shift, gx, gy, busy;
     u16 text[12];
@@ -218,6 +225,7 @@ static int name_read(NameState *s)
     if (args == NULL || members == NULL) {
         return 0;
     }
+    s->args = args;
     s->kind = (int)rd32(args, 0x00);
     s->species = rd16(args, 0x04);      /* NameInArgs (ov010/namein_args.h) */
     s->form = rd16(args, 0x06) & 0xFF;
@@ -621,7 +629,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     int bar_h, keys_y, keys_h, kx, kw, kh, cols, rows, gap = 3;
     const UiImage *img;
     struct { const char *lab; int w; int tx, ty; int cx, cy; } bt[4];
-    int bn, b, on_bar;
+    int bn, b, on_bar, ours;
 
     if (!name_read(&s)) {
         return;
@@ -810,6 +818,68 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
+    /* Opened for a text of the port's own (a name, a room's code), the
+     * keyboard has a way back the game's lacks: B on an empty field, as
+     * the hint then says.  The port is told the close is a cancel and the
+     * game's own OK closes it (a field left empty keeps the old text).  A
+     * B counts only when the field was already empty before it, so the B
+     * that deletes the last letter does not leave too. */
+    {
+        static void *at_w;
+        static u32 b_seen, empty_from;
+        u32 now = bw_input_frame_number(), bf = eidos_ui_b_frame();
+
+        ours = eidos_opt_keyboard_args != NULL && eidos_opt_keyboard_args() == s.args;
+        if (s.w != at_w) {
+            at_w = s.w;
+            b_seen = bf;
+            empty_from = 0xFFFFFFFFu;
+        }
+        if (s.len != 0) {
+            empty_from = 0xFFFFFFFFu;
+        } else if (empty_from == 0xFFFFFFFFu) {
+            empty_from = now;
+        }
+        if (bf != b_seen) {
+            b_seen = bf;
+            if (ours && allow && empty_from != 0xFFFFFFFFu && (s32)(bf - empty_from) > 1) {
+                eidos_opt_keyboard_back();
+                eidos_ui_tap(bt[bn - 1].tx, bt[bn - 1].ty, 3);
+            }
+        }
+    }
+
+    /* BACK from keys and the pad: left of the bottom bar's first cell the
+     * game has (DELETE; Shift on the qwerty page, the first in its row).
+     * The game's cursor stays on that cell while BACK has the focus, and
+     * the keys that would move it are taken: right returns, A leaves, any
+     * other move (or the pointer) gives the focus back to the game. */
+    {
+        u32 k = eidos_ui_keys_pressed();
+        int left_cell = s.page == 3 ? 1 : 0;
+
+        if (!ours || on_bar != left_cell) {
+            g_back_focus = 0;
+        } else {
+            eidos_ui_take_keys(g_back_focus ? (BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_A) : BW_KEY_LEFT);
+            if (!g_back_focus) {
+                if ((k & BW_KEY_LEFT) && allow) {
+                    g_back_focus = 1;
+                    eidos_ui_sound(0x548);
+                }
+            } else if (k & BW_KEY_RIGHT) {
+                g_back_focus = 0;
+                eidos_ui_sound(0x548);
+            } else if ((k & BW_KEY_A) && allow) {
+                g_back_focus = 0;
+                eidos_opt_keyboard_back();
+                eidos_ui_tap(bt[bn - 1].tx, bt[bn - 1].ty, 3);
+            } else if (k & (BW_KEY_UP | BW_KEY_DOWN | BW_KEY_START | BW_KEY_SELECT)) {
+                g_back_focus = 0;
+            }
+        }
+    }
+
     if (s.page < 3) {
         int aw = x1 - x0;
 
@@ -941,20 +1011,32 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
-    /* DELETE, SPACE, (Shift,) OK: the game's cursor shows on the one it
-     * stands on */
+    /* (BACK,) DELETE, SPACE, (Shift,) OK: the game's cursor shows on the
+     * one it stands on.  BACK is the port's own keyboard's (a name, a
+     * room's code): it leaves without the text, from the pointer or a
+     * finger, the field as it is (B on an empty field does it from keys). */
     {
         int by = py + ph - pad - bar_h;
         int aw = x1 - x0;
-        int wsum = s.page == 3 ? 2 + 4 + 2 + 2 : 3 + 4 + 3, wgt;
-        int bx = x0;
+        int wsum = (s.page == 3 ? 2 + 4 + 2 + 2 : 3 + 4 + 3) + (ours ? 2 : 0), wgt;
+        int bx = x0, cells = bn + (ours ? 1 : 0);
 
+        if (ours) {
+            int hh, bw2 = (aw - (cells - 1) * gap) * 2 / wsum;
+
+            if (hit_box(c, bx, by, bw2, bar_h, &hh) && allow) {
+                eidos_opt_keyboard_back();
+                eidos_ui_tap(bt[bn - 1].tx, bt[bn - 1].ty, 3);
+            }
+            draw_key(c, bx, by, bw2, bar_h, "BACK", g_back_focus, hh, 0, acc);
+            bx += bw2 + gap;
+        }
         for (b = 0; b < bn; b++) {
-            int bw2 = (aw - (bn - 1) * gap) * bt[b].w / wsum, hh, clicked;
+            int bw2 = (aw - (cells - 1) * gap) * bt[b].w / wsum, hh, clicked;
 
             wgt = b == bn - 1 ? x1 - bx : bw2;
             clicked = hit_box(c, bx, by, wgt, bar_h, &hh);
-            draw_key(c, bx, by, wgt, bar_h, bt[b].lab, b == on_bar, hh, 0, acc);
+            draw_key(c, bx, by, wgt, bar_h, bt[b].lab, b == on_bar && !g_back_focus, hh, 0, acc);
             if (clicked && allow) {
                 eidos_ui_tap(bt[b].tx, bt[b].ty, 3);
             }
@@ -962,8 +1044,25 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
     }
 
-    /* hints: each one presses its key */
-    ui_hints(c, ch - ui_bar_h(c), cw, hint_pairs, 4, hint_keys);
+    /* hints: each one presses its key (B leaves an empty field of the
+     * port's own keyboard, above) */
+    {
+        const char *pairs[8];
+        u32 keys4[4];
+
+        memcpy(pairs, hint_pairs, sizeof pairs);
+        memcpy(keys4, hint_keys, sizeof keys4);
+        if (ours && s.len == 0) {
+            pairs[3] = "Back";
+        }
+        if (g_back_focus) {
+            /* A on BACK; the hint's own press would reach the game's cursor
+             * on DELETE, so it only shows the key (BACK takes the click) */
+            pairs[1] = "Back";
+            keys4[0] = 0;
+        }
+        ui_hints(c, ch - ui_bar_h(c), cw, pairs, 4, keys4);
+    }
 
     /* a right click is B (delete); a click outside the panel does nothing here */
     if (eidos_ui_right_click() && allow) {

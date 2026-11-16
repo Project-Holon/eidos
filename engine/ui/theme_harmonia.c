@@ -914,6 +914,27 @@ static int card_stage(const char *app)
  * dark grid; the Pokedex on its red; the shop on blue diamonds, as the Bag's
  * crimson; the save and the Trainer Card as a pane on the grid.
  */
+/*
+ * The Multiplayer screen's cards and its Start button, as the DS's Union
+ * Room draws what can be chosen: a white slot in a dark frame with a light
+ * shade along its foot; the chosen one cyan, as the Union Room lights it;
+ * one the port cannot run yet a grey slot.
+ */
+static void harmonia_mp_part(EidosUiCtx *c, int kind, int x, int y, int w, int h, int lit, int hover, int on)
+{
+    u32 face = !on ? 0xB4B4BCu : lit ? 0x70D0F8u : hover ? 0xE8F4FCu : 0xF8F8F8u;
+    u32 foot = !on ? 0xA0A0A8u : lit ? 0x48B0E0u : 0xD8D8E0u;
+
+    (void)kind;
+    ui_fill(c, x + 2, y + h, w - 2, 2, R(0x000000u), 70);
+    ui_fill(c, x, y, w, h, R(0x30303Au), 255);
+    ui_fill(c, x + 1, y + 1, w - 2, h - 2, R(face), 255);
+    ui_fill(c, x + 1, y + h - 4, w - 2, 3, R(foot), 255);
+    if (lit) {
+        ui_fill(c, x + 2, y + 2, w - 4, 1, R(0xFFFFFFu), 255);   /* the white line of a lit slot */
+    }
+}
+
 static int harmonia_app_frame(EidosUiCtx *c, const char *app, EidosUiRect *frame)
 {
     int w = c->canvas->w, h = c->canvas->h - ui_bar_h(c);
@@ -1211,9 +1232,11 @@ static int harmonia_app_frame(EidosUiCtx *c, const char *app, EidosUiRect *frame
         ui_fill(c, frame->x + frame->w / 2 - 14, frame->y + 3, 28, frame->h - 6, R(0x0A4C84u), 255);
         return 1;
     }
-    if (strcmp(app, "union-trade") == 0 || strcmp(app, "union-lobby") == 0 || strcmp(app, "union-draw") == 0) {
+    if (strcmp(app, "union-trade") == 0 || strcmp(app, "union-lobby") == 0 || strcmp(app, "union-draw") == 0
+        || strcmp(app, "multiplayer") == 0) {
         /* the DS's Union Room screens: grey paper with a fine dot in a dark
-         * frame, white slots */
+         * frame, white slots; the port's Multiplayer screen is the same
+         * family (players gathering to play together) */
         int x, y;
 
         ui_fill(c, frame->x + 3, frame->y + frame->h, frame->w - 3, 3, R(0x000000u), 90);
@@ -1620,6 +1643,7 @@ const UiThemeOps ui_theme_harmonia = {
     .party_row = harmonia_party_row,
     .title_menu_backdrop = harmonia_title_menu_backdrop,
     .app_frame = harmonia_app_frame,
+    .mp_part = harmonia_mp_part,
     .bag_detail_frame = harmonia_bag_detail_frame,
     .bag_row = harmonia_bag_row,
     .bag_pocket = harmonia_bag_pocket,

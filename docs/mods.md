@@ -197,6 +197,29 @@ files reading it. An open file keeps its image across a change to the mod
 list; an image nobody holds is rebuilt after a change (`sdk/vfs_narc.c`, the
 cache; confirmed in `tests/test_vfs_members.c`).
 
+## Members in memory
+
+A mod with code can also change a member without a file
+(`vfs_member_set`, mod API version 6; `docs/mod-services.md`). The bytes
+go to the mod's **memory layer**, which joins the merge above where the
+mod's folder sits in the load order, and wins over the folder's own member
+files for the same index (`sdk/vfs_narc.c`, `collect`). The merged archive
+of that path is dropped (`bw_vfs_flush_path`), so the next open sees it.
+The port keeps one more layer of its own over every mod (the root `""`),
+for what it puts in for a moment (the title of a mod's text input).
+
+An archive the game already holds open is reached too. The game's handle
+keeps the member count, the FAT offset and the image base from the open
+and reads the FAT entry again on each load, so between frames the port
+gives every file that has the archive open a layout-stable image
+(`bw_narc_restamp`, `sdk/fs.c` `bw_fs_archive_swap`): the same header, name
+table, count and image base, each changed member written after the end
+with only its FAT entry changed. The old image is freed when its last
+reader closes. A member past the end of an open archive cannot be added.
+
+`tests/test_mod_v6.c` checks both: a closed archive, and two files that
+hold an archive open while its members change.
+
 ## A worked example
 
 The eidos home folder holds the extraction and is the place the installer

@@ -220,6 +220,7 @@ names:
 | `party_alive` | how many party Pokemon have HP left, eggs left out (version 4) | read |
 | `party_has_type[t]` | whether a party Pokemon (not an egg) has type `t` (version 4) | read |
 | `item_count[i]` | how many of item `i` the bag holds | read |
+| `work[w]` | script work variable `w`: the saved ones (0x4000 to 0x40FF), and the script's own (0x8000 to 0x80FF) while a field script runs a command (version 6) | read, write |
 | `item_pocket[i]` | the bag pocket of item `i` (version 4) | read |
 | `move_type[v]` | a move's type (version 4) | read |
 | `move_power[v]` | a move's power, 0 for a move that does no direct damage (version 4) | read |

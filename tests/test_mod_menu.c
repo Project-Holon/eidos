@@ -242,7 +242,17 @@ static int build_tree(void)
                    "option nuzlocke.picks bool \"No #1 picks\" off\n"
                    "option nuzlocke.typo bool \"Typo\" ture\n"
                    "option nuzlocke.dupes bool \"Twice\" off\n"
-                   "option bad=key bool \"Bad key\" on\n")
+                   "option bad=key bool \"Bad key\" on\n"
+                   "mode solo \"Solo\" \"On your own.\"\n"
+                   "mode world \"World\" \"With friends.\" joins\n"
+                   "mode room \"Room\" \"A room's file.\" in=world export \"Game {version} (x)\"\n"
+                   "heading \"Rules\"\n"
+                   "option t.world choice \"World\" Make|Join @world\n"
+                   "option t.code text \"Code\" 6 \"\" ?t.world=Join @world\n"
+                   "option t.rule bool \"Rule\" on @solo,world,room ?t.world=make\n"
+                   "help t.rule \"What the rule does.\"\n"
+                   "yaml t.rule the_rule false|true\n"
+                   "help t.nothing \"A help line for no option.\"\n")
         != 0) {
         return -1;
     }
@@ -275,6 +285,7 @@ static void clean_tree(void)
         T_MODS "/alpha",
         T_MODS "/left-over",
         T_MODS,
+        T_SAVE "/archipelago",
         T_SAVE,
         T_MOD_A,
         T_MOD_B,
@@ -624,8 +635,8 @@ int main(void)
     printf("the setting\n");
     index = (u32)index_of_ns(T_NS);
     BW_REQUIRE("the mod is in the list", index < bw_mod_menu_count());
-    BW_CHECK_EQ("the mod declares four good options",
-                (long)bw_mod_menu_option_count(index), 4);
+    BW_CHECK_EQ("the mod declares seven good options",
+                (long)bw_mod_menu_option_count(index), 7);
     BW_CHECK_EQ("the third is an int",
                 (long)bw_mod_menu_option_kind(index, 2), BW_MOD_SETTING_INT);
     BW_CHECK_EQ("its default", (long)bw_mod_menu_option_default(index, 2), 3);
@@ -676,6 +687,68 @@ int main(void)
                 bw_mod_menu_option_set(index, 1, 3), -1);
     BW_CHECK_EQ("an option that is not there is refused",
                 bw_mod_menu_option_set(index, 9, 0), -1);
+
+    printf("the mode words, headings, help and yaml lines\n");
+    BW_CHECK_EQ("three modes", (long)bw_mod_menu_mode_count(index), 3);
+    BW_CHECK_EQ("the world mode joins worlds", bw_mod_menu_mode_joins(index, 1), 1);
+    BW_CHECK_EQ("the solo one does not", bw_mod_menu_mode_joins(index, 0), 0);
+    BW_CHECK_EQ("the room is a type on the world's card", bw_mod_menu_mode_in(index, 2), 1);
+    BW_CHECK_EQ("the world is a card of its own", bw_mod_menu_mode_in(index, 1), -1);
+    BW_CHECK_EQ("the room saves a file for its game",
+                strcmp(bw_mod_menu_mode_export(index, 2), "Game {version} (x)"), 0);
+    BW_CHECK_EQ("a mode without export saves none", bw_mod_menu_mode_export(index, 1) == NULL, 1);
+    BW_CHECK_EQ("a heading goes to the options under it",
+                strcmp(bw_mod_menu_option_heading(index, 6), "Rules"), 0);
+    BW_CHECK_EQ("an option above it has none", strcmp(bw_mod_menu_option_heading(index, 3), ""), 0);
+    BW_CHECK_EQ("a help line goes to its option",
+                strcmp(bw_mod_menu_option_help(index, 6), "What the rule does."), 0);
+    BW_CHECK_EQ("a yaml line too", strcmp(bw_mod_menu_option_yaml(index, 6), "the_rule false|true"), 0);
+    BW_CHECK_EQ("the room's screen shows the rule", bw_mod_menu_option_in_mode(index, 6, 2), 1);
+    {
+        u32 jm = 9, jk = 9;
+        int found = bw_mod_menu_find_joining(&jm, &jk);
+
+        /* only a mod that is on joins worlds (the switch is the earlier
+         * checks' to set) */
+        BW_CHECK_EQ("the world mode is the one that joins, while its mod is on",
+                    bw_mod_menu_enabled_at(index) ? (found == 1 && jm == index && jk == 1) : found == 0, 1);
+    }
+    {
+        char ypath[512], ytext[1024];
+
+        BW_REQUIRE("the room's options file is written",
+                   bw_mod_menu_mode_write_yaml(index, 2, "Ash K", 'W', ypath, sizeof ypath) == 0);
+        BW_REQUIRE("and reads back", read_file(ypath, ytext, sizeof ytext) != NULL);
+        BW_CHECK_EQ("it names the player", strstr(ytext, "name: Ash K\n") != NULL, 1);
+        BW_CHECK_EQ("and the game, with the cartridge's version",
+                    strstr(ytext, "game: \"Game White (x)\"\n") != NULL, 1);
+        BW_CHECK_EQ("and the rule as the file names it",
+                    strstr(ytext, "\"Game White (x)\":\n  the_rule: true\n") != NULL, 1);
+        BW_CHECK_EQ("the file is named after the player", strstr(ypath, "Ash_K.yaml") != NULL, 1);
+        remove(ypath);
+    }
+
+    printf("the rows a mode's screen shows\n");
+    BW_CHECK_EQ("the condition is cut off the value",
+                (long)bw_mod_menu_option_choice_count(index, 4), 2);
+    BW_CHECK_EQ("the World row is on the world screen",
+                bw_mod_menu_option_in_mode(index, 4, 1), 1);
+    BW_CHECK_EQ("and not on the solo one",
+                bw_mod_menu_option_in_mode(index, 4, 0), 0);
+    BW_CHECK_EQ("the code is not asked while World is Make",
+                bw_mod_menu_option_in_mode(index, 5, 1), 0);
+    BW_CHECK_EQ("the rule is (the condition after the @ word, any case)",
+                bw_mod_menu_option_in_mode(index, 6, 1), 1);
+    BW_REQUIRE("the player chooses Join",
+               bw_mod_menu_option_set(index, 4, 1) == 0);
+    BW_CHECK_EQ("now the code is asked",
+                bw_mod_menu_option_in_mode(index, 5, 1), 1);
+    BW_CHECK_EQ("and the rule is not",
+                bw_mod_menu_option_in_mode(index, 6, 1), 0);
+    BW_CHECK_EQ("the solo screen has no World row, so its rule shows",
+                bw_mod_menu_option_in_mode(index, 6, 0), 1);
+    BW_REQUIRE("the player goes back to Make",
+               bw_mod_menu_option_set(index, 4, 0) == 0);
     BW_REQUIRE("the choices file's path is known",
                choices_path(path, sizeof path, T_NS) == 0);
     BW_CHECK_EQ("the choices are stored beside the mod's saved data",

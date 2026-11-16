@@ -792,6 +792,93 @@ static const BwRuleField g_f_dex_register[] = {
     BW_RULE_FIELD(BwDexRegister, caught, BW_RULE_FK_INT, 0)
 };
 
+/* Version 6. */
+static const BwRuleField g_f_script_done[] = {
+    BW_RULE_FIELD(BwScriptDone, ticket, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwScriptDone, script_id, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_move_forget[] = {
+    BW_RULE_FIELD(BwMoveForget, species, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMoveForget, move, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMoveForget, allowed, BW_RULE_FK_INT, BW_RULE_FF_MOD)
+};
+
+static const BwRuleField g_f_mon_shiny[] = {
+    BW_RULE_FIELD(BwMonShiny, ot_id, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMonShiny, personality, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMonShiny, value, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMonShiny, threshold, BW_RULE_FK_INT, BW_RULE_FF_MOD)
+};
+
+static const BwRuleField g_f_item_usable[] = {
+    BW_RULE_FIELD(BwItemUsable, item, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwItemUsable, slot, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwItemUsable, usable, BW_RULE_FK_INT, BW_RULE_FF_MOD)
+};
+
+static const BwRuleField g_f_season_change[] = {
+    BW_RULE_FIELD(BwSeasonChange, clock_season, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwSeasonChange, season, BW_RULE_FK_INT, BW_RULE_FF_MOD)
+};
+
+static const BwRuleField g_f_encounter_slot[] = {
+    BW_RULE_FIELD(BwEncounterSlot, method, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwEncounterSlot, roll, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwEncounterSlot, slot, BW_RULE_FK_INT, BW_RULE_FF_MOD),
+    BW_RULE_FIELD(BwEncounterSlot, slot_count, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_battle_type_effect[] = {
+    BW_RULE_FIELD(BwBattleTypeEffect, atk_type, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleTypeEffect, def_type, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwBattleTypeEffect, effect, BW_RULE_FK_INT, BW_RULE_FF_MOD)
+};
+
+/* The three species by name: species0, species1 and species2. */
+static const BwRuleField g_f_starter_choices[] = {
+    { .name = "species0", .offset = (u16)offsetof(BwStarterChoices, species),
+      .size = 2, .kind = BW_RULE_FK_INT, .flags = BW_RULE_FF_MOD },
+    { .name = "species1", .offset = (u16)(offsetof(BwStarterChoices, species) + 2u),
+      .size = 2, .kind = BW_RULE_FK_INT, .flags = BW_RULE_FF_MOD },
+    { .name = "species2", .offset = (u16)(offsetof(BwStarterChoices, species) + 4u),
+      .size = 2, .kind = BW_RULE_FK_INT, .flags = BW_RULE_FF_MOD }
+};
+
+static const BwRuleField g_f_egg_species[] = {
+    BW_RULE_FIELD(BwEggSpecies, mother, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwEggSpecies, father, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwEggSpecies, species, BW_RULE_FK_INT, BW_RULE_FF_MOD),
+    BW_RULE_FIELD(BwEggSpecies, rules, BW_RULE_FK_INT, BW_RULE_FF_MOD)
+};
+
+static const BwRuleField g_f_text_input_done[] = {
+    BW_RULE_FIELD(BwTextInputDone, ticket, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwTextInputDone, count, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwTextInputDone, cancelled, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_world[] = {
+    BW_RULE_FIELD(BwWorld, kind, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwWorld, size, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwWorld, ticket, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwWorld, player, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_ap[] = {
+    BW_RULE_FIELD(BwAp, kind, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwAp, size, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwAp, ticket, BW_RULE_FK_INT, 0)
+};
+
+static const BwRuleField g_f_move_known[] = {
+    BW_RULE_FIELD(BwMoveKnown, slot, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMoveKnown, site, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMoveKnown, species, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMoveKnown, move, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwMoveKnown, known, BW_RULE_FK_INT, BW_RULE_FF_MOD)
+};
+
 /*
  * One event: its name, whether it can be refused (the "Refuse" column of
  * docs/mod-events.md, section 1) and its payload fields.
@@ -940,7 +1027,35 @@ static const BwRuleEvent g_events[] = {
     { .kind = BW_EVENT_FLAG_SET, .name = "flag.set", .refusable = 0,
       .fields = g_f_flag_set, .field_count = 2 },
     { .kind = BW_EVENT_DEX_REGISTER, .name = "dex.register", .refusable = 0,
-      .fields = g_f_dex_register, .field_count = 2 }
+      .fields = g_f_dex_register, .field_count = 2 },
+
+    /* version 6 */
+    { .kind = BW_EVENT_SCRIPT_DONE, .name = "script.done", .refusable = 0,
+      .fields = g_f_script_done, .field_count = 2 },
+    { .kind = BW_EVENT_MOVE_FORGET, .name = "move.forget", .refusable = 0,
+      .fields = g_f_move_forget, .field_count = 3 },
+    { .kind = BW_EVENT_MON_SHINY, .name = "mon.shiny", .refusable = 0,
+      .fields = g_f_mon_shiny, .field_count = 4 },
+    { .kind = BW_EVENT_ITEM_USABLE, .name = "item.usable", .refusable = 0,
+      .fields = g_f_item_usable, .field_count = 3 },
+    { .kind = BW_EVENT_SEASON_CHANGE, .name = "season.change", .refusable = 0,
+      .fields = g_f_season_change, .field_count = 2 },
+    { .kind = BW_EVENT_ENCOUNTER_SLOT, .name = "encounter.slot", .refusable = 0,
+      .fields = g_f_encounter_slot, .field_count = 4 },
+    { .kind = BW_EVENT_BATTLE_TYPE_EFFECT, .name = "battle.type_effect",
+      .refusable = 0, .fields = g_f_battle_type_effect, .field_count = 3 },
+    { .kind = BW_EVENT_STARTER_CHOICES, .name = "starter.choices", .refusable = 0,
+      .fields = g_f_starter_choices, .field_count = 3 },
+    { .kind = BW_EVENT_EGG_SPECIES, .name = "egg.species", .refusable = 0,
+      .fields = g_f_egg_species, .field_count = 4 },
+    { .kind = BW_EVENT_TEXT_INPUT_DONE, .name = "text_input.done", .refusable = 0,
+      .fields = g_f_text_input_done, .field_count = 3 },
+    { .kind = BW_EVENT_WORLD, .name = "world", .refusable = 0,
+      .fields = g_f_world, .field_count = 4 },
+    { .kind = BW_EVENT_AP, .name = "ap", .refusable = 0,
+      .fields = g_f_ap, .field_count = 3 },
+    { .kind = BW_EVENT_MOVE_KNOWN, .name = "move.known", .refusable = 0,
+      .fields = g_f_move_known, .field_count = 5 }
 };
 
 #define BW_RULE_EVENT_COUNT \
@@ -1025,6 +1140,9 @@ static const BwRuleStateField g_state_fields[] = {
       .readable = 1, .writable_ok = 0, .mon_field = 0 },
     { .name = "item_count", .kind = BW_RULE_SK_INT, .writable = 0,
       .readable = 1, .writable_ok = 0, .mon_field = 0 },
+    /* Version 6: a script work variable by its id (work_get, work_set). */
+    { .name = "work", .kind = BW_RULE_SK_INT, .writable = 1,
+      .readable = 1, .writable_ok = 1, .mon_field = 0 },
 
     /* Interface version 4: more of a Pokemon's own fields. */
     { .name = "personality", .kind = BW_RULE_SK_MON, .writable = 0,
@@ -3921,6 +4039,16 @@ static int state_read(const BwRuleStateField *f, const BwRuleValue *sub,
         *out = (s32)value;
         return 0;
     }
+    if (strcmp(f->name, "work") == 0) {
+        u16 w;
+
+        if (st->work_get == NULL || sub == NULL || sub->i < 0 || sub->i > 0xFFFF ||
+            st->work_get((u16)sub->i, &w) != 0) {
+            return -1;
+        }
+        *out = (s32)w;
+        return 0;
+    }
     if (strcmp(f->name, "item_count") == 0) {
         s32 count;
 
@@ -3985,6 +4113,12 @@ static int state_write(const BwRuleStateField *f, const BwRuleValue *sub,
             return -1;
         }
         return st->money_set((u32)value);
+    }
+    if (strcmp(f->name, "work") == 0) {
+        if (st->work_set == NULL || sub == NULL || sub->i < 0 || sub->i > 0xFFFF) {
+            return -1;
+        }
+        return st->work_set((u16)sub->i, (u16)value);
     }
     if (strcmp(f->name, "hp") == 0) {
         if (sub == NULL) {

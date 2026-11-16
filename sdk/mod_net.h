@@ -479,6 +479,37 @@ int  bw_mod_net_gift_text16(int i, u16 *out, int max);
 void bw_mod_net_gift_choose(int i);
 int  bw_mod_net_gift_chosen(void);
 
+/*
+ * What a code names (metaxy docs/SPEC.md, "The code lookup"): the
+ * Multiplayer screen's one Join box asks before it joins.  start connects
+ * and asks (0, or -1 when the relay cannot be reached); poll reads, one
+ * step per frame: 0 still reading, 1 done, -1 failed.  Then kind:
+ * BW_LOOKUP_SESSION (also a relay too old to know the question: the code
+ * is taken for a session, as before), BW_LOOKUP_WORLD (json: the world's
+ * state, players and options) or BW_LOOKUP_NONE.
+ */
+enum { BW_LOOKUP_NONE, BW_LOOKUP_SESSION, BW_LOOKUP_WORLD };
+int  bw_mod_net_lookup_start(const char *code);
+int  bw_mod_net_lookup_poll(void);
+void bw_mod_net_lookup_stop(void);
+int  bw_mod_net_lookup_kind(void);
+const char *bw_mod_net_lookup_json(void);
+
+/*
+ * World sessions (mod API v6; sdk/mod_world.c, metaxy's SPEC Part C).  A
+ * world session is a relay connection that speaks the world frames; it
+ * shares the transport and the reader with the relay sessions, so a game
+ * is in one of the two at a time.  The hook sees every frame the reader
+ * reads, on the reader's thread with the network lock held: it only
+ * queues.  open: BW_MOD_NET_OK, or busy (a relay session runs), no relay,
+ * io.  send: 0 or -1.  close sends B and ends the connection.
+ */
+void bw_mod_net_set_world_hook(void (*fn)(char type, const u8 *payload, u32 size));
+int  bw_mod_net_world_open(void);
+int  bw_mod_net_world_send(char type, const void *payload, u32 size);
+int  bw_mod_net_world_running(void);
+void bw_mod_net_world_close(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -173,6 +173,11 @@ int         eidos_settings_net_control_port(void);
 void        eidos_settings_net_set_control_port(int port);
 const char *eidos_settings_net_name(void);
 void        eidos_settings_net_set_name(const char *name);
+/* The player's look ([avatar], engine/avatar/avatar.h): body (0 Hilbert,
+ * 1 Hilda), then the hair, accent, trousers and skin choices (0: the
+ * game's own). */
+void        eidos_settings_avatar(int out[5]);
+void        eidos_settings_avatar_set(const int v[5]);
 /* The relay sessions use: the player's own, else the build's public relay
  * (EIDOS_DEFAULT_RELAY); "" when there is neither. */
 const char *eidos_settings_net_relay_in_use(void);

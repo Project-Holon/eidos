@@ -40,10 +40,10 @@ binding's scope, `docs/mod-implementation.md`, section 1).
 
 | Event | Game function | Region | Refuse | Modify |
 |---|---|---|---|---|
-| `game.new` | `EVENT_MAPCHANGE_NewGameStartEvent` 0x02183C9C | ov020 | - | - |
+| `game.new` | `EVENT_MAPCHANGE_CreateByMode` 0x02183B6C when its mode is 0 (a first start); `EVENT_MAPCHANGE_NewGameStartEvent` 0x02183C9C | ov020 | - | - |
 | `save.begin` | `SAVE_CONTROL_StartSave` 0x02007150 | arm9 | - | - |
 | `save.done` | the return of `SAVE_CONTROL_MainSave` 0x02007168 | arm9 | - | - |
-| `save.load` | `GAME_DATA_LoadFromSave` 0x02012C18 | arm9 | - | - |
+| `save.load` | `EVENT_MAPCHANGE_CreateByMode` 0x02183B6C when its mode is 1 (a continued game); `GAME_DATA_LoadFromSave` 0x02012C18 | ov020, arm9 | - | - |
 | `game.cleared` | `EVENT_GAMECLEAR_Create` 0x0215F8A8, the ending: Hall of Fame (ov180), credits (ov181), save screen (ov205) | ov010 | - | - |
 
 `save.begin` is not refusable: a save is a start step followed by
@@ -221,6 +221,99 @@ Notes from the callers:
 | `badge.get` | the return of `BEACON_SetFlag` 0x0200C248 | arm9 | - | - |
 | `flag.set` | `ZONEDATA_SetEventFlag` 0x02014314 | arm9 | - | - |
 | `dex.register` | `ZUKAN_SAVE_RegisterSeen` 0x0200CFA0; `ZUKAN_SAVE_RegisterCaught` 0x0200CDE0 | arm9 | - | - |
+
+### Version 6
+
+Events for content mods and online mods. The rows are in
+`sdk/mod_event_v6.c`; `script.done`, `text_input.done`, `world` and `ap` are
+fired by the port's own services (`sdk/mod_v6.c`, `sdk/mod_world.c`), not by
+a game function. None of them goes to the other players of a multiplayer
+game: each is a lookup or the answer to this game's own call.
+
+| Event | Game function | Region | Refuse | Modify |
+|---|---|---|---|---|
+| `script.done` | the end of a field script a mod started with `script_run` | port | - | - |
+| `move.forget` | the return of `FILE_UTIL_IsHmMove` 0x020212E4 | arm9 | - | `allowed` |
+| `mon.shiny` | the return of `POKE_TOOL_IsShinyOtIdPersonality` 0x02017ED8 | arm9 | - | `threshold` |
+| `item.usable` | the return of `PLIST_DEMO_CanUseGracidea` 0x021BDCC0 | ov091 | - | `usable` |
+| `season.change` | `COMM_PLAYER_SUPPORT_SetSeason` 0x0202E8CC | arm9 | - | `season` |
+| `encounter.slot` | the return of `FIELD_ENCOUNT_PickGroundSlot` 0x021A9DE0, `FIELD_ENCOUNT_PickWaterSlot` 0x021A9E64, `FIELD_ENCOUNT_PickFishingSlot` 0x021A9E98 | ov021 | - | `slot` |
+| `battle.type_effect` | the return of `BTL_CALC_GetTypeAffinity` 0x021D794C | ov093 | - | `effect` |
+| `starter.choices` | the load of the starter screen's overlay, its species data (`sPselIds`) in place | ov223 | - | `species` |
+| `egg.species` | not bound yet (see below) | ov021 | - | `species`, `rules` |
+| `text_input.done` | the end of the name entry a mod opened with `text_input` | port | - | - |
+| `world` | a message of the metaxy world session | port | - | - |
+| `ap` | a message of the Archipelago link | port | - | - |
+| `move.known` | the port's copies of `SCRCMD_PROC_CheckMonKnowsMove` (ov010, the scripts' check) and `FIELD_EVENT_CHECK_FindPartyMemberWithMove` (ov021, A on the field), asking per member | ov010, ov021 | - | `known` |
+
+- `move.forget` fires for every caller of the HM check: the forget-move
+  screens (ov131, through `WAZA_TOOL_IsHmMove`) and the party's "has no HM"
+  check of the release and deposit screens. `species` reads 0: the check is
+  given the move only.
+- `mon.shiny`: shiny when `value` < `threshold`. With the threshold left at
+  8 the game's own answer stands. The same Pokemon gives the same answer each
+  time, so a mod keeps the threshold a function of the two numbers (a random
+  roll per call would make the summary, the egg and the battle disagree).
+- `item.usable` is the Gracidea check only (the party screen's other "can
+  this item be used here" checks are still to be bound). `slot` is the
+  party slot of the Pokemon the item is used on.
+- `season.change` fires where the game sets the season from the clock on a
+  new day (the map change that crosses a season, `event_mapchange.c`), before
+  the map loads, so the field it loads is the changed season's.
+- `encounter.slot`: `roll` is the percent roll the pick drew (a port row on
+  `FIELD_ENCOUNT_RandPercent` keeps it); `slot_count` is 12 for the ground
+  tables and 5 for water and fishing. A `slot` past the count is not applied.
+- `battle.type_effect` runs once per lookup (per damage roll, and more in
+  the AI's scoring); `effect` is the battle's class (`BW_TYPE_EFFECT_*`). It
+  sees the chart `type_chart_set` wrote.
+- `starter.choices`: the screen's three species are the overlay's own data
+  (`sPselIds`), copied in again at each load, so a change lasts for this
+  screen only. The event fires when the overlay has loaded that data
+  (`sdk/overlay_image.c` calls `bw_mod_v6_overlay_loaded`), before the
+  screen sets up: `PSEL_Init` is reached through the screen's process table
+  (a stored pointer reaches a mod's hook, not the slot's events) and
+  `PSEL_CreateUnits`, which reads the species, is called only inside its
+  own unit. The species the game gives is the script's, which a mod changes
+  with its own script member.
+- `game.new` (an event of version 1) gained a second row with version 6:
+  its first row, `EVENT_MAPCHANGE_NewGameStartEvent`, is a game event's
+  step that only its own unit creates, so it never passed its slot and the
+  event never fired in the game. The game starts every run through
+  `EVENT_MAPCHANGE_CreateByMode` (called from ov010, through the slot), and
+  a new game is its mode 0; the event fires there now, before the new
+  game's own events are made.
+- `save.load` had the same trouble (`GAME_DATA_LoadFromSave` is called
+  only inside its own unit, while the game data is made) and fires at
+  `EVENT_MAPCHANGE_CreateByMode` too, when its mode is 1 (a continued
+  game): the save is loaded then and the field not made yet.
+- `encounter.slot`'s pick functions, `POKE_TOOL_IsShiny`'s call of the shiny
+  check and `BTL_CALC_GetTypeAffinityVsPair`'s calls of the type lookup are
+  inside the units that define them, so those calls do not pass the slots
+  until the build moves the definitions out (`tools/ovlink.py
+  --mod-moves`, off for now): `encounter.slot` does not fire in the game
+  yet, and `mon.shiny` and `battle.type_effect` fire for the calls from
+  other units only.
+- `move.known` asks whether a party member knows a field move, where the
+  game checks it: `site` `BW_MOVE_SITE_FRONT_TILE` for A on the field
+  (Surf's water, Waterfall: the port's copy of
+  `FIELD_EVENT_CHECK_FindPartyMemberWithMove` in
+  `stubs/ov/patch_ov021_field_event_check.c` asks for each member in turn,
+  and the first one answered known is the one that uses the move), and
+  `BW_MOVE_SITE_SCRIPT` for a script's check (Cut's tree, Strength's
+  boulder, people who ask about a move, the move tutors: the port's copy of
+  `SCRCMD_PROC_CheckMonKnowsMove` in `stubs/ov/patch_ov010_scrcmd_proc.c`;
+  the script commands that call it are in its own unit, where a slot sees
+  no call). `known` comes in as the game's own
+  answer; a mod that sets it makes the prompt show as if the move were
+  learned, and the member in `slot` is the one in the cut-in. It never
+  fires for an egg, and nothing is cached: the game asks again each time.
+  `BW_MOVE_SITE_PARTY_MENU` (the party screen's field-move buttons) is
+  reserved and not fired yet. The test switch `EIDOS_DEBUG_MOVE_KNOWN=<slot>`
+  answers known for that slot without a mod.
+- `egg.species` is in the surface and is not fired yet: `SODATEYA_BuildEgg`
+  runs every step of the egg (the base species, then the Nidoran, Volbeat,
+  Phione, incense and form rules) as calls inside its own unit, which a slot
+  cannot reach. Binding it needs those steps split out of the unit.
 
 ### What the builders fill, and what they cannot
 

@@ -39,6 +39,7 @@
 #include "g2d.h"
 #include "port.h"
 #include "settings.h"
+#include "avatar.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define TT_WEAK __attribute__((weak))
@@ -938,8 +939,15 @@ static int card_draw(EidosUiCtx *c, int x, int y, int w, int h, const SaveInfo *
 
     /* the player's figure stands on the party row, right of the facts, and may
      * rise above the card's top edge */
-    fig = ui_overworld(info->sex == 1 ? SPRITE_HEROINE : SPRITE_HERO, 0,
-                       hov ? ((int)(in->frame / 7) & 3) : -1);
+    {
+        /* a plain save's trainer: the game's own colours (the Multiplayer
+         * screen's look is its games' only) */
+        AvatarLook plain;
+
+        memset(&plain, 0, sizeof plain);
+        plain.body = (u8)(info->sex == 1);
+        fig = ui_overworld_look(&plain, 0, hov ? ((int)(in->frame / 7) & 3) : -1);
+    }
     if (fig != NULL) {
         int room = py - 3 - (y - 10);
         int fk = wide && fig->h * 3 <= room ? 3 : fig->h * 2 <= room ? 2 : 1;

@@ -40,6 +40,9 @@ int  bw_mod_title_take_rebuild(void);
  * input: Continue when there is a save, else New Game.  Multiplayer's start
  * asks for it (sdk/mp.h); take returns the request and clears it. */
 void bw_mod_title_request_autostart(void);
+/* The request is waiting (the title menu goes straight on with the save in
+ * force: the slot module leaves that slot as it is). */
+int  bw_mod_title_autostart_pending(void);
 
 /* The title menu's MULTIPLAYER row opens the settings process on the
  * Multiplayer screen alone; take returns the request and clears it. */

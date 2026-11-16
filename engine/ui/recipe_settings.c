@@ -356,7 +356,11 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
         if (eidos_ui_wheel(panel) != 0) {
             int w = eidos_ui_wheel(panel);
 
-            q_push(w > 0 ? BW_KEY_UP : BW_KEY_DOWN, w > 0 ? w : -w);
+            /* the rows scroll as a page does, quietly; only a question or
+             * an edit, which take no scrolling, still get the keys */
+            if (!eidos_sui_wheel(w)) {
+                q_push(w > 0 ? BW_KEY_UP : BW_KEY_DOWN, w > 0 ? w : -w);
+            }
         }
     }
     q_step(in->frame);

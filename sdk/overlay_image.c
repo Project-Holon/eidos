@@ -528,6 +528,10 @@ static void withdraw_passed(u32 id)
     }
 }
 
+/* sdk/mod_v6.c: an overlay's data is in place (weak: a link without the
+ * mod layer). */
+extern void bw_mod_v6_overlay_loaded(u32 id) __attribute__((weak));
+
 static void provider_load(const BwOverlayDesc *d)
 {
     const BwOvlImage *img = bw_ovl_image(d->id);
@@ -563,6 +567,11 @@ static void provider_load(const BwOverlayDesc *d)
      * relocation wrote the build's own functions into them, and a mod's
      * hook for one of them takes its place. */
     (void)ovl_apply_code_pointers(img);
+    /* The mods' data that lives in overlay data is written again (mod API
+     * v6: the type chart in the battle overlay, sdk/mod_v6.c). */
+    if (bw_mod_v6_overlay_loaded != NULL) {
+        bw_mod_v6_overlay_loaded(d->id);
+    }
 }
 
 static void provider_start(const BwOverlayDesc *d)

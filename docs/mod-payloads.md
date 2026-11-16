@@ -907,6 +907,118 @@ clears a flag with another function, which is not a declared row. `dex.register`
 carries the species read out of the Pokemon the call hands over, and whether
 it was caught or only seen.
 
+## Version 6
+
+The payloads of the version 6 events (`docs/mod-events.md`, section 1,
+"Version 6"). Fields marked *mod* may be written.
+
+**`script.done`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ticket` | u32 | the number `script_run` gave |
+| `script_id` | u16 | the script that ended |
+
+**`move.forget`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `species` | u16 | 0: the check is given the move only |
+| `move` | u16 | the move the game asks about |
+| `allowed` | u8 | *mod*: 1 the move may be forgotten; the game's answer is "not an HM" |
+
+**`mon.shiny`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ot_id` | u32 | the trainer id (public and secret halves) |
+| `personality` | u32 | the personality value |
+| `value` | u32 | the xor of the four halves, 0 to 65535 |
+| `threshold` | u32 | *mod*: shiny when value < threshold; the game's is 8 |
+
+**`item.usable`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `item` | u16 | the item (466, Gracidea) |
+| `slot` | u8 | the party slot of the Pokemon, 0xFF when not known |
+| `usable` | u8 | *mod*: 1 the item can be used |
+
+**`season.change`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `clock_season` | u8 | the season the clock gives: 0 spring, 1 summer, 2 autumn, 3 winter |
+| `season` | u8 | *mod*: the season the game sets (0 to 3) |
+
+**`encounter.slot`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `method` | u8 | `BW_ENCOUNTER_SLOT_*`: ground, water or fishing |
+| `roll` | u8 | the roll the pick drew, 0 to 99 |
+| `slot` | u8 | *mod*: the slot picked; one past `slot_count` is not applied |
+| `slot_count` | u8 | 12 for ground, 5 for water and fishing |
+
+**`battle.type_effect`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `atk_type` | u8 | the attacking type |
+| `def_type` | u8 | the defending type |
+| `effect` | u8 | *mod*: the affinity class, `BW_TYPE_EFFECT_*` |
+
+**`starter.choices`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `species` | u16 x 3 | *mod*: the three species the starter screen shows (rules: `species0` to `species2`) |
+
+**`egg.species`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `mother` | u16 | the mother's species |
+| `father` | u16 | the father's species |
+| `species` | u16 | *mod*: what hatches |
+| `rules` | u32 | *mod*: `BW_EGG_RULE_*` bits the game applies after the base species |
+
+**`text_input.done`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ticket` | u32 | the number `text_input` gave |
+| `count` | u16 | the code units in `units` |
+| `cancelled` | u8 | 1 when the player left with B or entered nothing |
+| `units` | u16 x 48 | the answer in the game's code units, no end code |
+
+**`world`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `kind` | u32 | `BW_WORLD_*` |
+| `size` | u32 | the bytes `world_read` gives while the handler runs |
+| `ticket` | u32 | the call it answers (`world_create`, `world_join`), else 0 |
+| `player` | u32 | the player it is about (joined, position, came, left), else 0 |
+
+**`ap`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `kind` | u32 | `BW_AP_*` |
+| `size` | u32 | the bytes `ap_read` gives while the handler runs |
+| `ticket` | u32 | the `ap_link` it answers |
+
+**`move.known`**
+
+| Field | Type | Meaning |
+|---|---|---|
+| `slot` | u8 | the party slot asked about |
+| `site` | u8 | `BW_MOVE_SITE_*`: where the game checks |
+| `species` | u16 | the member's species |
+| `move` | u16 | the move the game looks for |
+| `known` | u8 | the game's answer; a mod sets 1 to make it known (written back) |
+
 ## Still to build
 
 1. **The applier the nickname's row still needs.** `mon.nickname`'s `force`

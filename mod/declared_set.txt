@@ -39,6 +39,7 @@
 0x02014314	ZONEDATA_SetEventFlag	arm9	flag.set
 0x02017430	POKE_TOOL_CreateEx	arm9	mon.create
 0x02017988	POKE_TOOL_ChangeForm	arm9	mon.form
+0x02017ED8	POKE_TOOL_IsShinyOtIdPersonality	arm9	mon.shiny
 0x020180F4	POKE_TOOL_PushMove	arm9	
 0x02018198	POKE_TOOL_RecoverAllPP	arm9	
 0x020181F4	POKE_TOOL_SetMoveSlot	arm9	
@@ -49,9 +50,11 @@
 0x0201B2B0	SHINKA_CHECK_CheckEvolution	arm9	mon.evolve
 0x0201B970	POKE_TOOL_RestorePP	arm9	mon.pp
 0x0201BA34	POKE_TOOL_HealParty	arm9	
+0x020212E4	FILE_UTIL_IsHmMove	arm9	move.forget
 0x0202627C	GAME_COMM_Update	arm9	
 0x02026388	GAME_COMM_CallHandler	arm9	
 0x020263B0	GAME_COMM_CallKindNotify	arm9	
+0x0202E8CC	COMM_PLAYER_SUPPORT_SetSeason	arm9	season.change
 0x02059F6C	DWC_InitForProduction	arm9	
 0x02059FA8	DWCi_Init	arm9	
 0x02078EB0	FS_LoadOverlayImage	arm9	
@@ -147,6 +150,7 @@
 0x0218261C	EVENT_COMM_COMMON_ItemPurchaseEventMain	ov018	
 
 # ov020
+0x02183B6C	EVENT_MAPCHANGE_CreateByMode	ov020	game.new,save.load
 0x02183C9C	EVENT_MAPCHANGE_NewGameStartEvent	ov020	game.new
 0x021841C0	EVENT_MAPCHANGE_ChangeFieldEvent	ov020	map.warp
 0x02184C78	EVENT_MAPCHANGE_RunFixedZoneEvent	ov020	
@@ -175,6 +179,10 @@
 0x021A836C	FIELD_MENU_Create	ov021	menu.build
 0x021A954C	FIELD_ENCOUNT_CreateZoneWildMons	ov021	encounter.wild
 0x021A957C	FIELD_ENCOUNT_PickRoamer	ov021	encounter.wild
+0x021A9DC8	FIELD_ENCOUNT_RandPercent	ov021	encounter.slot
+0x021A9DE0	FIELD_ENCOUNT_PickGroundSlot	ov021	encounter.slot
+0x021A9E64	FIELD_ENCOUNT_PickWaterSlot	ov021	encounter.slot
+0x021A9E98	FIELD_ENCOUNT_PickFishingSlot	ov021	encounter.slot
 0x021A9F40	FIELD_ENCOUNT_CheckWildEncount	ov021	
 0x021AA548	FIELD_ENCOUNT_SetupRoamerBattle	ov021	
 0x021AA5CC	FIELD_ENCOUNT_SetupTrainerBattle	ov021	encounter.trainer
@@ -237,6 +245,7 @@
 0x021BC2C8	PLIST_MENU_ShowItemUsedThenClose	ov091	
 0x021BC30C	PLIST_MENU_ShowItemUsedThenContinue	ov091	
 0x021BC350	PLIST_MENU_StartItemUse	ov091	
+0x021BDCC0	PLIST_DEMO_CanUseGracidea	ov091	item.usable
 0x021BDD78	PLIST_DEMO_CheckItemUsable	ov091	item.use,mon.revive,mon.cure
 0x021BE2B4	PLIST_DEMO_UseItemOnMon	ov091	mon.levelup
 0x021BE914	PLIST_DEMO_RestoreHp	ov091	heal.hp,mon.revive
@@ -300,6 +309,7 @@
 0x021D5B68	BTL_POKEPARAM_IsFainted	ov093	
 0x021D69B8	BTL_POKEPARAM_AddExp	ov093	mon.levelup
 0x021D7930	BTL_CALC_RollCriticalHit	ov093	
+0x021D794C	BTL_CALC_GetTypeAffinity	ov093	battle.type_effect
 0x021D7A44	BTL_CALC_CalcBaseDamage	ov093	
 0x021EA01C	BTLV_CORE_GetSelectedItem	ov093	battle.item
 
@@ -337,3 +347,6 @@
 
 # ov207
 0x0220B55C	ZUKAN_NICKNAME_Create	ov207	mon.nickname
+
+# ov223
+0x021B9608	PSEL_Init	ov223	

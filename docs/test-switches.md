@@ -18,6 +18,12 @@ game. The code is in `engine/ui/ui.c` unless noted.
 | `EIDOS_DEBUG_OPEN="KIND ..."` | Opens a screen once the field is quiet: `relearn P` (the move relearner for party member P), `namein` (the game's free-text name entry, the beacon message's), `demo K` (3D demo K, 1 to 18: 1 the Royal Unova, 3 the Nimbasa Ferris wheel), `trade N M`, `clear N`, `box N`, `tvt N`, `union`, `ltrade`, `makeegg P`, `egg P`, `dowsing` (the Dowsing Machine on the lower screen, as using the item does). |
 | `EIDOS_DEBUG_BATTLE="wild SPECIES LEVEL"` | Starts a scripted wild battle. A loss has no script to end it and the game goes back to the title: use a trainer battle to test a whiteout. |
 | `EIDOS_DEBUG_WARP="zone x y z dir"` | Warps the player when the field runs. |
+| `EIDOS_DEBUG_AVATAR="<look> <dx> <dz>[;...]"` | Other players' figures beside the player once the field has run 90 quiet frames, each in a look (10 hex digits, as a session sends them: body, hair, accent, trousers, skin; `0006090408` is Hilbert, blonde, blue, white, dark brown) and `dx`, `dz` cells away. Code: `sdk/mp.c`. |
+| `EIDOS_MOD_MODE=<id>` | The first new game of the run is in a mod's mode (a `mode` line of its settings file, docs/mod-services.md), as if the Multiplayer screen's Start had chosen it: `mode_get` answers the id in game.new. The mod's options are the player's saved choices. Code: `sdk/mod_menu.c`. |
+| `EIDOS_MOD_CODE=<text>` | With `EIDOS_MOD_MODE`: what the Join box hands a mode marked `joins`, answered by `mode_code` in game.new: a world's code, or `ap <host:port> <slot> <password>` (`-` for none) for an Archipelago room. Code: `sdk/mod_menu.c`. |
+| `EIDOS_DEBUG_TRACKER=<file>` | The field's Tracker shows that file's text, as if a mod had set it with `tracker_set` (docs/mod-services.md, "The Tracker"): its look without a mod. Code: `engine/ui/tracker.c`. |
+| `EIDOS_DEBUG_MOVE_KNOWN=<slot>` | That party slot knows every field move the game asks about (`move.known`, docs/mod-events.md): Cut, Strength, Surf and Waterfall work with no member that learned them, without a mod. An egg in that slot still does not. Code: `sdk/mod_event_v6.c`. |
+| `EIDOS_UI_FIELD_TRACKER=<frame>` | The top bar's Tracker button is clicked at that frame, when a mod (or `EIDOS_DEBUG_TRACKER`) gives the field a tracker. Code: `engine/ui/recipe_field.c`. |
 | `EIDOS_DEBUG_CUTIN="item N"`, `"seq N"` or `"mon P"` | Starts a field cut-in as the scripts do, after 90 quiet field frames (a third number sets the frames): a key item's (its item id), a sequence by its id (2 and 4 to 10 are the badges), or party member P's field-move cut-in. |
 
 ## Driving the game
@@ -51,6 +57,7 @@ holds the move steps (their frames then count from when it opens), and
 | Variable | What it does |
 |---|---|
 | `EIDOS_MOD_MESSAGE_LOG=1` | Each mod message goes to the log too (`sdk/mod_message.c`). |
+| `EIDOS_VFS_MEM_DUMP=DIR` | Each archive member a mod sets in memory (`vfs_member_set`) is also written to `DIR/<archive>/<index>`, a mod folder's member layout, so the same bytes can be run as plain member files without the mod's code (`sdk/mod_vfs.c`). |
 | `EIDOS_SAVE_TEST_AT=FRAME` | The game saves at its first quiet moment after that frame (`demo/eidos_boot.c`). |
 | `EIDOS_GL_DUMP=FILE.bmp:N` (or `:N-M`) | Writes the OpenGL presenter's window at the Nth present (or every present from N to M as FILE.N.bmp) (`engine/platform/plat_gl.c`). |
 | `EIDOS_GL_STATE=N` | At the Nth present, logs the presenter's GL state (viewport, scissor, framebuffer, the screens' rectangles), how far a full-window clear reaches and which columns the frame lights (`engine/platform/plat_gl.c`). |

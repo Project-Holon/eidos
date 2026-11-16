@@ -1028,6 +1028,10 @@ static int touch_input(OptWork *w)
 
 /* ---- the game's keyboard ---- */
 
+/* The player asked to leave the keyboard without its text (the one-screen
+ * keyboard's Back, eidos_opt_keyboard_back): its close is a cancel. */
+static int g_kb_back;
+
 /* The keyboard opens on the text the screen asked for; the screen's own
  * graphics are gone by now, and the keyboard is a process run before this
  * one goes on (PROCSYS_PushGlobal). */
@@ -1038,6 +1042,7 @@ static int kb_open(OptWork *w)
     u16 buf[33];
     int kind = 4, max = 10, i;
 
+    g_kb_back = 0;
     if (eidos_sui_keyboard(&kind, &max, text, (int)sizeof text) == 0) {
         return 0;
     }
@@ -1087,7 +1092,8 @@ static void kb_close(OptWork *w)
         }
     }
     text[n] = '\0';
-    eidos_sui_keyboard_done(text, !a->canceled);
+    eidos_sui_keyboard_done(text, !a->canceled && !g_kb_back);
+    g_kb_back = 0;
     func_02045808(a->name);
     func_020307B0(a);
     w->kb = NULL;
@@ -1305,3 +1311,22 @@ void __wrap_MSGDATA_ReadString(void *bank, u32 id, void *dest)
     __real_MSGDATA_ReadString(bank, id, dest);
 }
 #endif
+
+/*
+ * The game's keyboard has no way back: it closes on OK only, and a text
+ * left as it was or emptied counts as cancelled.  Opened for a text of the
+ * port's own (a name, a code), the one-screen keyboard offers Back
+ * (engine/ui/recipe_input.c): it asks here for the next close to be a
+ * cancel, then presses the game's own OK.
+ */
+const void *eidos_opt_keyboard_args(void)
+{
+    return g_w != NULL ? (const void *)g_w->kb : NULL;
+}
+
+void eidos_opt_keyboard_back(void)
+{
+    if (g_w != NULL && g_w->kb != NULL) {
+        g_kb_back = 1;
+    }
+}

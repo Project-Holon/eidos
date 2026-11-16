@@ -261,7 +261,31 @@ typedef struct BwModState {
      * party is not touched first: a mod that wants it fainted sets the HP.
      * 0 when queued; a non-zero number with no field. */
     int (*whiteout)(void);
+    /* Version 6. */
+    /* The script work variables: the saved ones (0x4000 to 0x40FF) at any
+     * time with a game loaded, the script's own ones (0x8000 to 0x80FF)
+     * only while a field script runs a command (a flag.set handler, a
+     * script command handler).  0, or -1 for a work the port cannot reach
+     * now. */
+    int (*work_get)(u16 id, u16 *out);
+    int (*work_set)(u16 id, u16 value);
+    /* Give a badge (0 to 7) through the game's own call, so badge.get
+     * fires as for a badge won in a gym.  0, or -1. */
+    int (*badge_set)(u32 bit);
+    /* The cartridge's 4-letter game code ("IRBO" English Black, "IRAO"
+     * English White; the last letter is the language), copied to `out`
+     * (up to `size` bytes, ended with a NUL when there is room).  0. */
+    int (*game_code)(char *out, u32 size);
 } BwModState;
+
+/* Version 6: the type chart, as the battle keeps it: 17 rows of 17, the
+ * cell of an attacking type against a defending type at
+ * cell[attacking * 17 + defending], in the game's codes 0 (no effect),
+ * 2 (half), 4 (normal) and 8 (double). */
+#define BW_TYPE_CHART_TYPES 17
+typedef struct BwTypeChart {
+    u8 cell[289];
+} BwTypeChart;
 
 /* ------------------------------------------------------------------ */
 /* The services                                                        */
@@ -435,6 +459,98 @@ typedef struct BwModServices {
     int  (*shared_set)(const char *key, s32 value);
     int  (*shared_add)(const char *key, s32 delta);
     int  (*shared_cas)(const char *key, s32 expected, s32 value);
+    /* Version 6 (docs/mod-services.md). */
+    /* Members in memory: a NARC member changed without a file, in the
+     * mod's own layer.  `archive` is the NitroFS path ("a/0/5/7").  set:
+     * 0, or -1 with a message (16 MiB per mod, 32 MiB for all; a member
+     * past the end of an archive the game holds open).  clear: how many it
+     * removed; index 0xFFFFFFFF all of the archive's, an empty archive
+     * name all of the mod's.  get: the member as the next read sees it,
+     * copied up to `size`; its whole size, or -1. */
+    int  (*vfs_member_set)(const char *archive, u32 index, const void *data, u32 size);
+    int  (*vfs_member_clear)(const char *archive, u32 index);
+    int  (*vfs_member_get)(const char *archive, u32 index, void *out, u32 size);
+    /* Text entries: archive 2 (system text, a/0/0/2) or 3 (story text,
+     * a/0/0/3), the bank, the entry, the block (Japanese banks have two:
+     * kana and kanji).  The units are the game's code units, control codes
+     * included, with no end code.  get: the entry's length (copied up to
+     * max_units), or -1.  set: 0 or -1; an entry past the end grows the
+     * bank.  text_language: the game's language id (1 Japanese, 2
+     * English, 3 French, 4 Italian, 5 German, 7 Spanish, 8 Korean). */
+    int  (*text_get)(u32 archive, u32 file, u32 entry, u32 block, u16 *out, u32 max_units);
+    int  (*text_set)(u32 archive, u32 file, u32 entry, u32 block, const u16 *units, u32 count);
+    u32  (*text_language)(void);
+    /* Start a field script by number when the field is idle (no script,
+     * menu, battle or fade).  0 with *ticket set (script.done carries
+     * it), or -1. */
+    int  (*script_run)(u16 script_id, u32 *ticket);
+    /* The type chart: written over the battle's table each time the
+     * battle overlay loads (the last mod in the load order wins).  get:
+     * the chart in force (a mod's, or the game's own). */
+    int  (*type_chart_set)(const BwTypeChart *chart);
+    int  (*type_chart_get)(BwTypeChart *out);
+    /* Ask the player for a text in the game's own name entry screen:
+     * `title` (UTF-8, as for message), up to max_units code units (at most
+     * BW_TEXT_INPUT_MAX), what it accepts (BW_TEXT_INPUT_*).  0 with
+     * *ticket set (text_input.done carries it), or -1. */
+    int  (*text_input)(const char *title, u32 max_units, u32 kind, u32 *ticket);
+    /* The mod's own files, shared across saves: plain names, 16 MiB for
+     * all of them.  write: 0, or -1 (and the old file stays whole).  read:
+     * the file's size (copied up to `size`, *got the bytes copied), or -1.
+     * list: "used <bytes> quota <bytes>\n" then "<name> <size>\n" per
+     * file, cut at `size`; the length the whole list needs.  delete: 0 or
+     * -1. */
+    int  (*mod_file_write)(const char *name, const void *data, u32 size);
+    int  (*mod_file_read)(const char *name, void *out, u32 size, u32 *got);
+    int  (*mod_file_list)(char *out, u32 size);
+    int  (*mod_file_delete)(const char *name);
+    /* metaxy world sessions (docs/mod-services.md, "World sessions").  The
+     * answers come as world events; world_read gives the bytes of the one
+     * being handled.  create: generate a world from a configuration (JSON).
+     * owner: BW_WORLD_OWNER_* with the owner key.  join: by player name,
+     * or by the player key of an earlier join.  checks: the locations
+     * checked (sent again on every connect); location 0 alone says the
+     * goal is reached.  0 or -1. */
+    int  (*world_create)(const char *config_json, u32 *ticket);
+    int  (*world_owner)(const char *code, const char *owner_key, u32 action);
+    int  (*world_join)(const char *code, const char *name_or_key, u32 *ticket);
+    int  (*world_checks)(const u32 *location_ids, u32 count);
+    void (*world_leave)(void);
+    int  (*world_read)(void *out, u32 size);
+    /* The Archipelago link through metaxy: `room` is an archipelago.gg room
+     * link or host:port (a bare port uses the Archipelago server setting).
+     * ap_send sends one Archipelago JSON message; the answers come as ap
+     * events and ap_read gives their bytes.  0 or -1. */
+    int  (*ap_link)(const char *room, const char *slot, const char *password, u32 *ticket);
+    int  (*ap_send)(const char *json, u32 size);
+    int  (*ap_read)(void *out, u32 size);
+    /* Other players of the world session: on 1 sends this game's zone and
+     * tile and draws the other players in the same zone as field avatars.
+     * The Town Map markers: one per id, at a zone's place on the map. */
+    int  (*peer_position)(int on);
+    int  (*townmap_marker_set)(u32 id, u16 zone, u32 icon, const char *name);
+    int  (*townmap_marker_clear)(u32 id);
+    /* The way to play the player chose for this new game (a `mode` line of
+     * the mod's settings file, chosen on the Multiplayer screen): its id,
+     * or "" for a plain new game.  Answers during game.new.  The id's
+     * length, or -1. */
+    int  (*mode_get)(char *out, u32 size);
+    /* A `text` option's value (docs/mod-services.md, "Mod settings"): its
+     * length, or -1 when the key names no text option of the mod. */
+    int  (*setting_text)(const char *key, char *out, u32 size);
+    /* The player's multiplayer name (the Multiplayer screen's name card,
+     * the name the other players see): its length, 0 when the player has
+     * not chosen one, or -1. */
+    int  (*player_name)(char *out, u32 size);
+    /* The world this new game joins: the code the player typed in the
+     * Multiplayer screen's Join box, for a mode marked `joins`; "" for a
+     * new world.  Answers during game.new.  Its length, or -1. */
+    int  (*mode_code)(char *out, u32 size);
+    /* The mod's whole Tracker as text (sdk/mod_tracker.h): areas, their
+     * checks (found, open, locked), items and the count; the field's top
+     * bar shows a Tracker button while a mod has one.  0, or -1 when it is
+     * longer than 128 KB. */
+    int  (*tracker_set)(const char *text, u32 size);
 } BwModServices;
 
 /* ------------------------------------------------------------------ */

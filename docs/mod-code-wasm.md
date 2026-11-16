@@ -144,6 +144,27 @@ binds nothing (a save does not fit the port's page); each says so once in
 the log. The memory cap and the step budget of "Seams" item 5 are not
 enforced.
 
+**The wasm features the port accepts.** The runtime is built with the
+WebAssembly 1.0 core plus these proposals (`cmake/wamr/CMakeLists.txt`):
+
+| Feature | On | Why |
+|---|---|---|
+| mutable globals, sign extension, non-trapping float to int, multi-value | yes | WAMR's interpreter always has them |
+| bulk memory (`memory.copy`, `memory.fill`, passive data) | yes | WAMR's default; compilers use it for `memcpy` |
+| reference types (`ref.null`, tables of references, the long table index of `call_indirect`) | yes | Rust 1.82 and later and current clang turn it on for wasm32 by default; without it such a module is refused with "zero byte expected" |
+| SIMD, threads, shared memory, exceptions, tail calls, GC, memory64 | no | not built |
+
+A module built by an older toolchain needs nothing: these features are
+additions. A toolchain that turns on a feature the table says no to must
+turn it off (Rust: `-C target-feature=-simd128`, or `-C target-cpu=mvp` for
+the 1.0 core only). The wasm32 build of the port compiles the same runtime
+with the same features (checked with wasi-sdk 25). The Switch and Vita
+builds were not checked with reference types on (their toolchains were not
+at hand when it was turned on).
+
+`tests/test_mod_wasm.c` loads a module that uses reference types and bulk
+memory, so the features cannot be turned off without a test failing.
+
 `tests/test_mod_wasm.c` loads a hand-assembled module through the loader:
 its handlers refuse or let an event go on by the payload's contents, a trap
 lets the event go on, a broken module is refused, and the module loads

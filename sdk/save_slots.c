@@ -42,6 +42,13 @@ extern int bw_inflate(const unsigned char *src, size_t src_len, unsigned char *d
 extern u32 bw_crc32(u32 crc, const unsigned char *data, size_t len) BW_SLOTS_WEAK;
 extern u32  bw_arm7_backup_writes(void) BW_SLOTS_WEAK;
 extern int  bw_arm7_backup_dirty(void) BW_SLOTS_WEAK;
+/* sdk/save_games.c: the saves the Multiplayer screen made (weak: a test
+ * links without it) */
+extern int  bw_games_hidden(int n) BW_SLOTS_WEAK;
+extern void bw_games_saved(int n) BW_SLOTS_WEAK;
+extern void bw_games_pending_clear(void) BW_SLOTS_WEAK;
+/* sdk/mod_title.c: the title goes straight on with the save in force */
+extern int  bw_mod_title_autostart_pending(void) BW_SLOTS_WEAK;
 
 /* The game's SaveControl (src/game/arm9/save_control.c): isNewGame at 0,
  * hasFlashSave at 1. */
@@ -224,6 +231,24 @@ static int offered(int n)
     return bw_slots_used(n) && !g_bad[n];
 }
 
+/* A save a Multiplayer screen card made: the Continue card leaves it to
+ * the Multiplayer screen's Your games (sdk/save_games.h). */
+static int hidden(int n)
+{
+    return bw_games_hidden != NULL && bw_games_hidden(n);
+}
+
+int bw_slots_current_hidden(void)
+{
+    return g_current != 0 && hidden(g_current);
+}
+
+/* What the Continue card offers: a save that loads and is the player's own. */
+static int shown(int n)
+{
+    return offered(n) && !hidden(n);
+}
+
 static int g_pending;       /* a new game not saved yet (below) */
 
 /* Every slot's file not judged yet is read by the game's loader, so the
@@ -390,6 +415,36 @@ void bw_slots_settle(void)
 
     bw_slots_try_end();             /* back at the title menu: the player's own save */
     judge_all();
+    if (hidden(cur) && bw_slots_used(cur) && g_pending == 0 &&
+        !(bw_mod_title_autostart_pending != NULL && bw_mod_title_autostart_pending())) {
+        /* (a Your games entry the title is about to go on with stays) */
+        /* the slot in force is a Multiplayer screen game (played last): the
+         * Continue card shows the player's own newest save, or none */
+        int n, best = 0;
+        long best_t = -1;
+
+        for (n = 1; n <= BW_SLOTS_MAX; n++) {
+            if (n != cur && shown(n) && slot_time(n) > best_t) {
+                best = n;
+                best_t = slot_time(n);
+            }
+        }
+        for (n = 1; best == 0 && n <= BW_SLOTS_MAX; n++) {
+            if (!bw_slots_used(n)) {
+                best = n;           /* no save of its own: a free slot, New Game alone */
+            }
+        }
+        if (best != 0) {
+            set_current(best);
+            apply(1);
+            if (!reload(bw_slots_used(best))) {
+                mark_bad(best);
+            }
+            fprintf(stderr, "eidos: save: slot %d is a Multiplayer screen game; the title shows slot %d\n",
+                    cur, best);
+            return;
+        }
+    }
     if (SAVE_CONTROL_Get == NULL || (sc = (unsigned char *)SAVE_CONTROL_Get()) == NULL
         || sc[SAVE_CONTROL_HAS_SAVE]) {
         return;
@@ -408,7 +463,7 @@ void bw_slots_settle(void)
         for (n = 1; n <= BW_SLOTS_MAX; n++) {
             long t;
 
-            if (n == cur || !offered(n)) {
+            if (n == cur || !shown(n)) {
                 continue;
             }
             t = slot_time(n);
@@ -457,7 +512,7 @@ int bw_slots_flip(int d)
     for (i = 1; i < BW_SLOTS_MAX; i++) {
         int n = ((cur - 1 + d * i) % BW_SLOTS_MAX + BW_SLOTS_MAX) % BW_SLOTS_MAX + 1;
 
-        if (offered(n)) {
+        if (shown(n)) {
             if (n == cur) {
                 return 0;
             }
@@ -538,7 +593,26 @@ void bw_slots_frame(void)
         g_pending = 0;
         g_released = 0;
         fprintf(stderr, "eidos: save: the new game is saved in slot %d\n", g_current);
+        if (bw_games_saved != NULL) {
+            bw_games_saved(g_current);  /* a Multiplayer screen game, or none any more */
+        }
     }
+}
+
+int bw_slots_continue(int n)
+{
+    if (n < 1 || n > BW_SLOTS_MAX || !offered(n) || g_pending != 0) {
+        return 0;
+    }
+    if (n != bw_slots_current()) {
+        set_current(n);
+        apply(1);
+    }
+    if (!reload(1)) {
+        mark_bad(n);
+        return 0;
+    }
+    return 1;
 }
 
 void bw_slots_dropped(void)
@@ -548,9 +622,15 @@ void bw_slots_dropped(void)
         set_current(g_pending);     /* its file reached the disk after all */
         g_pending = 0;
         g_released = 0;
+        if (bw_games_saved != NULL) {
+            bw_games_saved(g_current);
+        }
         return;
     }
     if (g_pending != 0) {
+        if (bw_games_pending_clear != NULL) {
+            bw_games_pending_clear();   /* that game was never saved */
+        }
         g_current = g_prev;         /* the save in force before New Game */
         g_pending = 0;
         g_released = 0;
@@ -567,7 +647,7 @@ void bw_slots_label(char *out, u32 size)
     int used = 0, at = 0, n;
 
     for (n = 1; n <= BW_SLOTS_MAX; n++) {
-        if (offered(n)) {
+        if (shown(n)) {
             used++;
             if (n == bw_slots_current()) {
                 at = used;

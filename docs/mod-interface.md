@@ -59,7 +59,15 @@ one line:
     #define SAVE_CONTROL_StartSave bw_slot_arm9_02007150
 
 The call then compiles to a call to the slot. The defining unit gets no line,
-so its own body still defines the original name. For an overlay row the
+so its own body still defines the original name.
+
+An overlay's unit that calls a declared `arm9` function gets the same line
+through the overlay's header (`tools/ovlink.py`): `#define
+ZONEDATA_SetEventFlag bw_slot_arm9_02014314`. Before mod API version 6 the
+overlays called those functions by name, so an event bound to an `arm9`
+row never fired for an overlay's call: `flag.set` for a script's
+SetEventFlag, `badge.get` for SetBadge. The overlay link's report lists the
+names it routes this way. For an overlay row the
 spelling becomes `bw_slot_<region>_<address>`, for example
 `bw_slot_ov093_021C5200`. A caller outside the overlay's window reaches it
 through the cross-overlay trampoline, which consults the same registry.

@@ -5,13 +5,16 @@
  * The host's game decides; the joiners' games follow what the host says.
  * The messages are lines of text under the port's key:
  *
- *   joiner -> host   hello <mp version> <game> <mods>
+ *   joiner -> host   hello <mp version> <game> <mods> <fp> <in game> <eidos version> <look>
+ *   joiner -> host   look <look>               (the look changed)
  *   host -> all      roster <state>            followed by one line per
- *                    <peer>\t<connected>\t<on roster>\t<game>\t<mods ok>\t<name>
+ *                    <peer>\t<connected>\t<on roster>\t<game>\t<mods ok>\t<look>\t<name>
  *   host -> all      start
  *   host -> all      pause
  *
  * <game> is B or W (- before the player said), <mods> is "ns=n;ns=n" or "-".
+ * <look> is the trainer's look (engine/avatar): body, hair, accent,
+ * trousers and skin as five two-digit hex numbers ("0006090408").
  *
  * A joiner's drop during the game gives the others BW_MP_GRACE_MS; the host
  * then pauses every game until it starts again.  The host's drop holds every
@@ -55,6 +58,45 @@ extern const char *ui_trf(const char *fmt) __attribute__((weak, format_arg(1)));
 #define TRF(s) (ui_trf != NULL ? ui_trf(s) : (s))
 
 #include <sys/stat.h>
+
+/* engine/avatar/avatar.h: this game's look as 5 bytes (weak: the tests link
+ * without the engine; the game's own Hilbert then). */
+extern void avatar_look_bytes(u8 out[5]) __attribute__((weak));
+
+static void local_look(u8 out[5])
+{
+    memset(out, 0, 5);
+    if (avatar_look_bytes != NULL) {
+        avatar_look_bytes(out);
+    }
+}
+
+static void look_text(const u8 l[5], char out[11])
+{
+    snprintf(out, 11, "%02x%02x%02x%02x%02x", l[0], l[1], l[2], l[3], l[4]);
+}
+
+/* 10 hex digits into 5 bytes: 1, or 0 (left as it was) */
+static int look_parse(const char *t, u8 out[5])
+{
+    unsigned v[5];
+    int k;
+
+    for (k = 0; k < 10; k++) {
+        char ch = t[k];
+
+        if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F'))) {
+            return 0;
+        }
+    }
+    if (sscanf(t, "%2x%2x%2x%2x%2x", &v[0], &v[1], &v[2], &v[3], &v[4]) != 5) {
+        return 0;
+    }
+    for (k = 0; k < 5; k++) {
+        out[k] = (u8)v[k];
+    }
+    return 1;
+}
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -1311,9 +1353,14 @@ static void host_broadcast_roster(void)
         if (p->peer == 0) {
             continue;
         }
-        w = snprintf(msg + at, sizeof(msg) - at, "%u\t%d\t%d\t%c\t%d\t%s\n",
-                     (unsigned)p->peer, p->connected, p->on_roster,
-                     p->game != 0 ? p->game : '-', p->mods_ok, p->name);
+        {
+            char lt[11];
+
+            look_text(p->look, lt);
+            w = snprintf(msg + at, sizeof(msg) - at, "%u\t%d\t%d\t%c\t%d\t%s\t%s\n",
+                         (unsigned)p->peer, p->connected, p->on_roster,
+                         p->game != 0 ? p->game : '-', p->mods_ok, lt, p->name);
+        }
         if (w < 0 || (size_t)w >= sizeof(msg) - at) {
             break;
         }
@@ -1539,6 +1586,12 @@ static void host_on_message(u32 peer, const char *msg, u32 size)
         host_broadcast_roster();
         return;
     }
+    if (strncmp(text, "look ", 5) == 0) {
+        if (look_parse(text + 5, p->look)) {
+            host_broadcast_roster();
+        }
+        return;
+    }
     if (strncmp(text, "hello ", 6) == 0 &&
         sscanf(text + 6, "%d %7s %512s", &version, game, mods) == 3) {
         char fp[40];
@@ -1556,6 +1609,13 @@ static void host_on_message(u32 peer, const char *msg, u32 size)
             copy_n(p->version, sizeof(p->version), ver, strlen(ver));
         } else {
             copy_n(p->version, sizeof(p->version), "?", 1);
+        }
+        {
+            char lt[16];
+
+            if (sscanf(text + 6, "%*d %*7s %*512s %*39s %*d %*31s %15s", lt) == 1) {
+                (void)look_parse(lt, p->look);
+            }
         }
         p->game = (game[0] == 'W') ? 'W' : 'B';
         if (strcmp(mods, "-") == 0) {
@@ -1604,7 +1664,7 @@ static void host_on_message(u32 peer, const char *msg, u32 size)
 
 static void joiner_hello(void)
 {
-    char msg[BW_MP_MODS_MAX + 32];
+    char msg[BW_MP_MODS_MAX + 128];   /* the mods, the fingerprint, the version and the look */
     const char *mods = local_mods();
     int n;
 
@@ -1615,9 +1675,16 @@ static void joiner_hello(void)
         (void)g_net->send(1, "who", 3);
         return;
     }
-    n = snprintf(msg, sizeof(msg), "hello %d %c %s %s %d %s", BW_MP_PROTO,
-                 local_game(), mods[0] != '\0' ? mods : "-", g_mp.fp,
-                 g_mp.in_game, EIDOS_VERSION);
+    {
+        u8 look[5];
+        char lt[11];
+
+        local_look(look);
+        look_text(look, lt);
+        n = snprintf(msg, sizeof(msg), "hello %d %c %s %s %d %s %s", BW_MP_PROTO,
+                     local_game(), mods[0] != '\0' ? mods : "-", g_mp.fp,
+                     g_mp.in_game, EIDOS_VERSION, lt);
+    }
     if (n > 0) {
         (void)g_net->send(1, msg, (u32)n);
     }
@@ -1658,6 +1725,12 @@ static void joiner_on_roster(const char *msg, u32 size)
             pl->on_roster = on_roster;
             pl->game = game == '-' ? 0 : game;
             pl->mods_ok = ok;
+            /* the look, before the name (a host that sends none: the
+             * game's own Hilbert) */
+            if (strlen(line + name_at) > 11 && line[name_at + 10] == '\t' &&
+                look_parse(line + name_at, pl->look)) {
+                name_at += 11;
+            }
             copy_n(pl->name, sizeof(pl->name), line + name_at,
                    strlen(line + name_at));
         }
@@ -2124,7 +2197,26 @@ typedef struct BwMpPos {
     u8   dir, mode;
     u16  sprite;
     u32  avatar;                /* 0: not shown here */
+    u32  code;                  /* the object code the avatar was made with */
 } BwMpPos;
+
+/* engine/avatar/avatar.h: the object code that shows a look (weak: the
+ * tests link without the engine; the player's sprite then). */
+extern u32 avatar_field_code(const u8 look_bytes[5]) __attribute__((weak));
+
+/* The code a player's figure is made with: its look's own, for the
+ * walking sprites (1 Hilbert, 4 Hilda) the avatars show. */
+static u32 pos_code(u32 i, u16 sprite)
+{
+    if (avatar_field_code != NULL && (sprite == 1u || sprite == 4u)) {
+        u8 look[5];
+
+        memcpy(look, g_mp.players[i].look, 5);
+        look[0] = (u8)(sprite == 4u);   /* the body the game says it has */
+        return avatar_field_code(look);
+    }
+    return sprite;
+}
 
 static BwMpPos g_pos[BW_MP_PLAYERS_MAX];        /* by peer - 1 */
 
@@ -2349,8 +2441,14 @@ static void pos_show_others(int quiet)
             p->avatar = 0;
             continue;
         }
+        /* a look changed: the figure is made again with its code */
+        if (p->avatar != 0 && p->code != pos_code(i, p->sprite) && bw_mod_avatar_delete != NULL) {
+            bw_mod_avatar_delete(p->avatar);
+            p->avatar = 0;
+        }
         if (p->avatar == 0 && quiet && bw_mod_avatar_create != NULL) {
-            p->avatar = bw_mod_avatar_create(p->sprite, p->x, p->z, p->dir);
+            p->code = pos_code(i, p->sprite);
+            p->avatar = bw_mod_avatar_create(p->code, p->x, p->z, p->dir);
             fprintf(stderr, "eidos: multiplayer: player %u shown here (avatar %u)\n", (unsigned)(i + 1), (unsigned)p->avatar);
         }
         if (p->avatar != 0 && bw_mod_avatar_move != NULL) {
@@ -2538,6 +2636,7 @@ void bw_mp_attach(int host, const char *code)
         g_mp.players[0].connected = 1;
         g_mp.players[0].game = local_game();
         g_mp.players[0].mods_ok = 1;
+        local_look(g_mp.players[0].look);
         copy_n(g_mp.players[0].name, sizeof(g_mp.players[0].name), me,
                strlen(me));
     } else {
@@ -2560,6 +2659,7 @@ int bw_mp_host(char *code, u32 size)
     g_mp.players[0].connected = 1;
     g_mp.players[0].game = local_game();
     g_mp.players[0].mods_ok = 1;
+    local_look(g_mp.players[0].look);
     {
         const char *me = g_net->own_name != NULL ? g_net->own_name() : "host";
 
@@ -2642,6 +2742,32 @@ void bw_mp_rename(const char *name)
         return;
     }
     n = snprintf(msg, sizeof(msg), "name %s", name);
+    if (n > 0) {
+        (void)g_net->send(1, msg, (u32)n);
+    }
+}
+
+void bw_mp_look_changed(void)
+{
+    u8 look[5];
+    char msg[24];
+    int n;
+
+    if (g_mp.state == BW_MP_OFF) {
+        return;
+    }
+    local_look(look);
+    if (g_mp.host) {
+        memcpy(g_mp.players[0].look, look, 5);
+        host_broadcast_roster();
+        return;
+    }
+    {
+        char lt[11];
+
+        look_text(look, lt);
+        n = snprintf(msg, sizeof(msg), "look %s", lt);
+    }
     if (n > 0) {
         (void)g_net->send(1, msg, (u32)n);
     }
@@ -2970,9 +3096,68 @@ void bw_mp_host_saved(void)
     host_send_word("savenow");
 }
 
+/*
+ * Test switch EIDOS_DEBUG_AVATAR="<look> <dx> <dz>[;...]": other players'
+ * figures beside this player, once the field has run 90 quiet frames, each
+ * in a look (10 hex digits as a session sends them: body, hair, accent,
+ * trousers, skin), dx and dz cells away.  For the captures of the looks in
+ * the field without a second game (docs/test-switches.md).
+ */
+static void debug_avatar(void)
+{
+    static int done, quiet;
+    const char *s = getenv("EIDOS_DEBUG_AVATAR");
+    void *fm;
+
+    if (done || s == NULL || s[0] == '\0' || bw_mod_avatar_create == NULL) {
+        return;
+    }
+    fm = field_running();
+    if (fm == NULL) {
+        quiet = 0;
+        return;
+    }
+    if (++quiet < 90 || !read_me(fm)) {
+        return;
+    }
+    done = 1;
+    while (*s != '\0') {
+        char lt[16];
+        int dx = 0, dz = 0, used = 0;
+        u8 look[5];
+
+        memset(look, 0, sizeof look);
+        if (sscanf(s, " %15s %d %d%n", lt, &dx, &dz, &used) < 3 || !look_parse(lt, look)) {
+            fprintf(stderr, "eidos: EIDOS_DEBUG_AVATAR: '%s' is not '<look> <dx> <dz>'\n", s);
+            return;
+        }
+        {
+            u32 code = avatar_field_code != NULL ? avatar_field_code(look) : (look[0] ? 4u : 1u);
+
+            if (getenv("EIDOS_DEBUG_AVATAR_CODE") != NULL) {
+                code = (u32)strtoul(getenv("EIDOS_DEBUG_AVATAR_CODE"), NULL, 0);   /* a code of the test's own */
+            }
+            u32 a = bw_mod_avatar_create(code, (s16)(g_me.x + dx), (s16)(g_me.z + dz), g_me.dir);
+
+            /* on the player's own floor, as a session's place does */
+            if (a != 0 && bw_mod_avatar_move != NULL) {
+                bw_mod_avatar_move(a, (s16)(g_me.x + dx), g_me.y, (s16)(g_me.z + dz), g_me.dir, 0);
+            }
+
+            fprintf(stderr, "eidos: EIDOS_DEBUG_AVATAR: look %s at %+d %+d: code 0x%X, avatar %u\n", lt, dx, dz,
+                    (unsigned)code, (unsigned)a);
+        }
+        s += used;
+        while (*s == ';' || *s == ' ') {
+            s++;
+        }
+    }
+}
+
 void bw_mp_frame_at(u64 t)
 {
     g_mp.now_ms = t;
+    debug_avatar();
     sends_pump();
     if (g_mp.in_game && !g_mp.saving && bw_arm7_backup_writes != NULL &&
         bw_arm7_backup_writes() != g_mp.last_writes &&
@@ -3090,9 +3275,17 @@ void bw_mp_hold_wait(void)
 
 void bw_mp_frame(void)
 {
+    if (g_mp.state == BW_MP_OFF) {
+        debug_avatar();             /* a test's figures, also outside a session */
+    }
     if (g_mp.state != BW_MP_OFF || g_mp.save_test) {
         bw_mp_frame_at(now_ms());
     }
+}
+
+char bw_mp_local_game(void)
+{
+    return local_game();
 }
 
 void bw_mp_set_local(char game, const char *mods)

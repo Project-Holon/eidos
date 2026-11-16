@@ -47,7 +47,11 @@ set(WAMR_BUILD_FAST_JIT 0)
 set(WAMR_BUILD_LIBC_BUILTIN 0)
 set(WAMR_BUILD_LIBC_WASI 0)
 set(WAMR_BUILD_MULTI_MODULE 0)
-set(WAMR_BUILD_REF_TYPES 0)
+# Reference types on: Rust (1.82 and later) and current clang build wasm32
+# with reference-types and an overlong call_indirect table index by
+# default, and WAMR refuses such a module without them ("zero byte
+# expected").  Bulk memory is WAMR's default (on).
+set(WAMR_BUILD_REF_TYPES 1)
 set(WAMR_BUILD_SIMD 0)
 set(WAMR_BUILD_INVOKE_NATIVE_GENERAL 1)
 # Bounds are checked in software on every target.  The hardware check (64-bit

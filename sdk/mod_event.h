@@ -135,6 +135,19 @@ typedef union BwEventPayload {
     BwBadgeGet    badge_get;
     BwFlagSet     flag_set;
     BwDexRegister dex_register;
+    BwScriptDone  script_done;          /* version 6 */
+    BwMoveForget  move_forget;
+    BwMonShiny    mon_shiny;
+    BwItemUsable  item_usable;
+    BwSeasonChange season_change;
+    BwEncounterSlot encounter_slot;
+    BwBattleTypeEffect battle_type_effect;
+    BwStarterChoices starter_choices;
+    BwEggSpecies  egg_species;
+    BwTextInputDone text_input_done;
+    BwWorld       world;
+    BwAp          ap;
+    BwMoveKnown   move_known;
 
     u8 bytes[BW_EVENT_PAYLOAD_MAX];
 } BwEventPayload;

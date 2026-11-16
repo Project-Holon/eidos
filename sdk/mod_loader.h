@@ -50,6 +50,9 @@ const char *bw_mod_loader_name_at(u32 index);
 /* A loaded mod's state namespace, in load order, or NULL. */
 const char *bw_mod_loader_namespace_at(u32 index);
 
+/* The folder of the loaded mod with namespace `ns`, or NULL. */
+const char *bw_mod_loader_root_of(const char *ns);
+
 /* The multiplayer compatibility number of the loaded mod at `index`
  * (manifest `multiplayer = <n>`), or 0 when it states none. */
 int bw_mod_loader_multiplayer_at(u32 index);

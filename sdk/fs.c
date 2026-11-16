@@ -87,6 +87,11 @@ typedef struct BwFsSlot {
     const u8 *mem;   /* a host buffer, or NULL for a host file  */
     u32       vfs;   /* bw_vfs_acquire handle, 0 when not merged */
     int       used;
+    /* A whole archive opened by its NitroFS path: the path and the game's
+     * record, so a mod's member change reaches the open file (mod API v6,
+     * bw_fs_archive_swap).  NULL for a window or a memory file. */
+    char       *rel;
+    BwFsRecord *rec;
 } BwFsSlot;
 
 /* The open files.  The DS has no limit (an FSFile is the caller's memory),
@@ -577,6 +582,8 @@ static int claim_slot(BwFsRecord *r, FILE *fp, const u8 *mem, u32 base, u32 size
             g_slots[i].mem = mem;
             g_slots[i].vfs = 0;
             g_slots[i].used = 1;
+            g_slots[i].rel = NULL;
+            g_slots[i].rec = NULL;
             memset(r, 0, sizeof(*r));
             r->magic = BW_FS_MAGIC;
             r->slot = i + 1;
@@ -636,6 +643,20 @@ int bw_fs_open(void *file, const char *host_path)
  * member the window is over the merged image; otherwise over the file
  * bw_data_path names (mod overlay first).
  */
+/* A whole archive by path: keep the path and the record for a swap. */
+static void remember_archive(BwFsRecord *r, const char *rel)
+{
+    BwFsSlot *s = &g_slots[r->slot - 1];
+    char *copy = (char *)malloc(strlen(rel) + 1);
+
+    if (copy == NULL) {
+        return;     /* the file still reads; it only misses a later swap */
+    }
+    strcpy(copy, rel);
+    s->rel = copy;
+    s->rec = r;
+}
+
 static int open_rel_window(void *file, const char *rel, u32 base, u32 size,
                            u32 file_id)
 {
@@ -645,6 +666,7 @@ static int open_rel_window(void *file, const char *rel, u32 base, u32 size,
     u32 total;
     u32 handle;
     int merged;
+    int whole = base == 0 && size == BW_FS_NO_ID;
 
     memset(r, 0, sizeof(*r));
     merged = bw_vfs_acquire(rel, &data, &total, &handle);
@@ -662,12 +684,168 @@ static int open_rel_window(void *file, const char *rel, u32 base, u32 size,
             return -1;
         }
         g_slots[r->slot - 1].vfs = handle;
+        if (whole) {
+            remember_archive(r, rel);
+        }
         return 0;
     }
     if (bw_data_path(host, sizeof(host), rel) != 0) {
         return -1;
     }
-    return open_window(file, host, base, size, file_id);
+    if (open_window(file, host, base, size, file_id) != 0) {
+        return -1;
+    }
+    if (whole) {
+        remember_archive(r, rel);
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Archives that are open (mod API v6)                                 */
+/* ------------------------------------------------------------------ */
+
+int bw_fs_archive_open(const char *rel, u32 *count)
+{
+    u32 i;
+    int n = 0;
+
+    if (count != NULL) {
+        *count = 0;
+    }
+    for (i = 0; i < g_nslots; i++) {
+        BwFsSlot *s = &g_slots[i];
+
+        if (!s->used || s->rel == NULL || strcmp(s->rel, rel) != 0) {
+            continue;
+        }
+        if (n == 0 && count != NULL) {
+            u8 head[0x20];
+
+            if (s->fp == NULL) {
+                *count = bw_narc_count(s->mem, s->rec != NULL ? s->rec->size : 0);
+            } else if (fseek(s->fp, 0, SEEK_SET) == 0 &&
+                       fread(head, 1, sizeof(head), s->fp) == sizeof(head)) {
+                /* the count sits in the BTAF block right after the header */
+                *count = bw_rd16(head + 0x10 + 8);
+            }
+        }
+        n++;
+    }
+    return n;
+}
+
+/* The whole bytes a slot reads, malloc'd for a host file. */
+static const u8 *slot_image(BwFsSlot *s, u32 size, u8 **owned)
+{
+    u8 *buf;
+
+    *owned = NULL;
+    if (s->fp == NULL) {
+        return s->mem;
+    }
+    buf = (u8 *)malloc(size == 0 ? 1 : size);
+    if (buf == NULL || fseek(s->fp, 0, SEEK_SET) != 0 ||
+        fread(buf, 1, size, s->fp) != size) {
+        free(buf);
+        return NULL;
+    }
+    *owned = buf;
+    return buf;
+}
+
+int bw_fs_archive_swap(const char *rel)
+{
+    u8 *fresh = NULL;
+    u32 fresh_size = 0;
+    int rc;
+    u32 i, j;
+    int swapped = 0;
+    char host[1200];
+
+    if (bw_fs_archive_open(rel, NULL) == 0) {
+        return 0;
+    }
+    rc = bw_vfs_build_merged(rel, &fresh, &fresh_size);
+    if (rc < 0) {
+        return -1;
+    }
+    if (rc == 0) {
+        if (bw_data_path(host, sizeof(host), rel) != 0 ||
+            (fresh = read_whole(host, &fresh_size)) == NULL) {
+            return -1;
+        }
+    }
+    /* Each distinct image the open files read gets its own stable image:
+     * the files that read one buffer share the new one, and the files that
+     * read the host file share one too. */
+    for (i = 0; i < g_nslots; i++) {
+        BwFsSlot *s = &g_slots[i];
+        const u8 *old;
+        u8 *owned, *img;
+        u32 old_size, img_size, refs, handle;
+        const u8 *old_mem;
+
+        if (!s->used || s->rel == NULL || strcmp(s->rel, rel) != 0 ||
+            s->rec == NULL || s->rec->magic != BW_FS_MAGIC || s->rec->slot != i + 1) {
+            continue;
+        }
+        old_size = s->rec->size;
+        old_mem = s->mem;
+        old = slot_image(s, old_size, &owned);
+        if (old == NULL) {
+            continue;
+        }
+        rc = bw_narc_restamp(old, old_size, fresh, fresh_size, &img, &img_size);
+        free(owned);
+        if (rc <= 0) {
+            /* nothing differs, or the open image is not one the port can
+             * restamp: the file reads on as it was */
+            if (rc < 0) {
+                fprintf(stderr, "fs: %s: the open archive cannot take the change\n", rel);
+            }
+            continue;
+        }
+        refs = 0;
+        for (j = i; j < g_nslots; j++) {
+            BwFsSlot *t = &g_slots[j];
+
+            if (t->used && t->rel != NULL && strcmp(t->rel, rel) == 0 &&
+                t->rec != NULL && t->rec->size == old_size &&
+                ((old_mem != NULL && t->mem == old_mem) ||
+                 (old_mem == NULL && t->fp != NULL))) {
+                refs++;
+            }
+        }
+        handle = bw_vfs_adopt(rel, img, img_size, refs);
+        if (handle == 0) {
+            free(img);
+            continue;
+        }
+        for (j = i; j < g_nslots; j++) {
+            BwFsSlot *t = &g_slots[j];
+
+            if (!(t->used && t->rel != NULL && strcmp(t->rel, rel) == 0 &&
+                  t->rec != NULL && t->rec->size == old_size &&
+                  ((old_mem != NULL && t->mem == old_mem) ||
+                   (old_mem == NULL && t->fp != NULL)))) {
+                continue;
+            }
+            if (t->fp != NULL) {
+                fclose(t->fp);
+                t->fp = NULL;
+            }
+            if (t->vfs != 0) {
+                bw_vfs_release(t->vfs);
+            }
+            t->mem = img;
+            t->vfs = handle;
+            t->rec->size = img_size;
+            swapped++;
+        }
+    }
+    free(fresh);
+    return swapped;
 }
 
 int bw_fs_open_rel(void *file, const char *rel)
@@ -1087,6 +1265,9 @@ BOOL FS_CloseFile(void *file)
     s->vfs = 0;
     s->fp = NULL;
     s->mem = NULL;
+    free(s->rel);
+    s->rel = NULL;
+    s->rec = NULL;
     s->used = 0;
     r->magic = 0;
     r->slot = 0;

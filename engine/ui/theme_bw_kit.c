@@ -198,6 +198,11 @@ static u32 accent_of(u32 c)
     return !style() && kosmos_cyan(c) ? to_gold(c) : c;
 }
 
+u32 rx_accent_of(u32 c)
+{
+    return accent_of(c);
+}
+
 /* ---------------------------------------------------------------- */
 /* The colour map and the text                                       */
 /* ---------------------------------------------------------------- */

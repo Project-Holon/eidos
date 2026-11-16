@@ -89,6 +89,7 @@ extern void        bw_slots_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_timer_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_avatar_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_handoff_frame(void) BW_PORT_WEAK;
+extern void        bw_mod_v6_frame(void) BW_PORT_WEAK;
 
 /* ------------------------------------------------------------------ */
 /* The limits                                                          */
@@ -265,6 +266,13 @@ void bw_mod_frame_tick(void)
 
     /* A mod's whiteout starts on a quiet field frame (sdk/mod_state.c). */
     bw_mod_state_frame();
+
+    /* Version 6: the member swaps of open archives, after the handlers so
+     * a change a handler made lands in the same frame, and the field
+     * scripts the mods queued (sdk/mod_v6.c). */
+    if (bw_mod_v6_frame != NULL) {
+        bw_mod_v6_frame();
+    }
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,0 +1,706 @@
+{
+  "status": "open",
+  "api": 6,
+  "language": 1,
+  "actions": [
+    "refuse",
+    "set <target> <expr>",
+    "add <target> <expr>",
+    "sub <target> <expr>",
+    "message <expr>",
+    "send <expr>",
+    "release <mon or party position>",
+    "give <item> <count>",
+    "box <mon or party position> <box>",
+    "withdraw <box> <slot>"
+  ],
+  "state_fields": [
+    {
+      "name": "money",
+      "subscript": null,
+      "readable": true,
+      "writable": true,
+      "writable_declared": true,
+      "since": 3,
+      "doc": "the player's money"
+    },
+    {
+      "name": "badges",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "the number of badges"
+    },
+    {
+      "name": "badge",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "whether badge `n` (0 to 7) is held"
+    },
+    {
+      "name": "zone",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "the current zone"
+    },
+    {
+      "name": "player_x",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "the cell the player stands on (version 5)"
+    },
+    {
+      "name": "player_z",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "the cell the player stands on (version 5)"
+    },
+    {
+      "name": "party_count",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "how many Pokemon the party holds"
+    },
+    {
+      "name": "species",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a Pokemon's species"
+    },
+    {
+      "name": "level",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a Pokemon's level"
+    },
+    {
+      "name": "hp",
+      "subscript": "mon",
+      "readable": true,
+      "writable": true,
+      "writable_declared": true,
+      "since": 3,
+      "doc": "a Pokemon's current HP"
+    },
+    {
+      "name": "max_hp",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a Pokemon's maximum HP"
+    },
+    {
+      "name": "type1",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a Pokemon's first type"
+    },
+    {
+      "name": "type2",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a Pokemon's second type (the first again for a single type)"
+    },
+    {
+      "name": "shiny",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "whether a Pokemon is shiny"
+    },
+    {
+      "name": "held_item",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a Pokemon's held item, 0 for none"
+    },
+    {
+      "name": "species_type1",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a species' first type"
+    },
+    {
+      "name": "species_type2",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a species' second type"
+    },
+    {
+      "name": "species_bst",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "a species' base stat total"
+    },
+    {
+      "name": "caught",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "whether a species is registered caught in the Pokedex"
+    },
+    {
+      "name": "item_count",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "how many of item `i` the bag holds"
+    },
+    {
+      "name": "work",
+      "subscript": "int",
+      "readable": true,
+      "writable": true,
+      "writable_declared": true,
+      "since": 3,
+      "doc": "script work variable `w`: the saved ones (0x4000 to 0x40FF), and the script's own (0x8000 to 0x80FF) while a field script runs a command (version 6)"
+    },
+    {
+      "name": "personality",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's personality value (the number its nature, gender and shininess come from)"
+    },
+    {
+      "name": "ot_id",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the id of a Pokemon's original trainer"
+    },
+    {
+      "name": "exp",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's experience points"
+    },
+    {
+      "name": "friendship",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's friendship, 0 to 255"
+    },
+    {
+      "name": "ability",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's ability"
+    },
+    {
+      "name": "move1",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's first move, 0 for none"
+    },
+    {
+      "name": "move2",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's second move, 0 for none"
+    },
+    {
+      "name": "move3",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's third move, 0 for none"
+    },
+    {
+      "name": "move4",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's fourth move, 0 for none"
+    },
+    {
+      "name": "is_egg",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "whether a Pokemon is an egg"
+    },
+    {
+      "name": "gender",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's gender: 0 male, 1 female, 2 none"
+    },
+    {
+      "name": "form",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's form, 0 for the first"
+    },
+    {
+      "name": "nature",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a Pokemon's nature, 0 to 24"
+    },
+    {
+      "name": "has_nickname",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "whether a Pokemon has a nickname"
+    },
+    {
+      "name": "fateful",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "whether a Pokemon came from a fateful encounter (an event gift)"
+    },
+    {
+      "name": "origin_game",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the game a Pokemon comes from"
+    },
+    {
+      "name": "met_location",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "where a Pokemon was met (the place name)"
+    },
+    {
+      "name": "ball",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the ball a Pokemon was caught in"
+    },
+    {
+      "name": "met_level",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the level a Pokemon was met at"
+    },
+    {
+      "name": "place",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "where a reference points: `EIDOS_MON_PARTY`, `EIDOS_MON_BOX`, `EIDOS_MON_BATTLE` or `EIDOS_MON_WILD`"
+    },
+    {
+      "name": "side",
+      "subscript": "mon",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "in a battle, the side of a Pokemon: 0 the player's, 1 the opponent's"
+    },
+    {
+      "name": "species_stage",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a species' stage in its evolution line, as the species data stores it"
+    },
+    {
+      "name": "gender_ratio",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a species' gender ratio: 0 always male, 254 always female, 255 no gender, the share of females out of 254 otherwise"
+    },
+    {
+      "name": "egg_group1",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a species' first egg group"
+    },
+    {
+      "name": "egg_group2",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a species' second egg group"
+    },
+    {
+      "name": "growth",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a species' experience growth group"
+    },
+    {
+      "name": "catch_rate",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a species' catch rate, 0 to 255"
+    },
+    {
+      "name": "species_base",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the first stage of a species' evolution line; two species are in one line when their bases are equal"
+    },
+    {
+      "name": "area",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the current area: the place name the game shows on entry; every floor of a cave and every building of a town share it"
+    },
+    {
+      "name": "area_of",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the area of zone `z`"
+    },
+    {
+      "name": "wild_battle",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "whether the battle in progress is a wild one"
+    },
+    {
+      "name": "battle_trainer",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the first opposing trainer of the battle in progress, 0 for none"
+    },
+    {
+      "name": "battle_trainer2",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the second opposing trainer (a multi battle), 0 for none"
+    },
+    {
+      "name": "play_seconds",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the play time in seconds"
+    },
+    {
+      "name": "owned",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "whether the party or a box holds a Pokemon of the species that is not an egg"
+    },
+    {
+      "name": "party_max_level",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the highest level in the party, eggs left out"
+    },
+    {
+      "name": "party_alive",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "how many party Pokemon have HP left, eggs left out"
+    },
+    {
+      "name": "party_has_type",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "whether a party Pokemon (not an egg) has type `t`"
+    },
+    {
+      "name": "item_pocket",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "the bag pocket of item `i`"
+    },
+    {
+      "name": "move_type",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a move's type"
+    },
+    {
+      "name": "move_power",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a move's power, 0 for a move that does no direct damage"
+    },
+    {
+      "name": "move_class",
+      "subscript": "int",
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 4,
+      "doc": "a move's damage class (physical, special or status), as the move data stores it"
+    },
+    {
+      "name": "battle_style",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": true,
+      "since": 3,
+      "doc": "the battle style option: shift or set"
+    },
+    {
+      "name": "in_battle",
+      "subscript": null,
+      "readable": true,
+      "writable": false,
+      "writable_declared": false,
+      "since": 3,
+      "doc": "whether a battle is in progress"
+    }
+  ],
+  "names": [
+    "event.<field>",
+    "state.<cell>[key]",
+    "setting.<key>",
+    "table.<name>[key]"
+  ],
+  "operators": [
+    "||",
+    "&&",
+    "!",
+    "==",
+    "!=",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "+",
+    "-",
+    "*",
+    "/",
+    "%"
+  ],
+  "events": [
+    "game.new",
+    "save.begin",
+    "save.done",
+    "save.load",
+    "game.cleared",
+    "route.change",
+    "map.warp",
+    "player.step",
+    "trainer.spotted",
+    "npc.talk",
+    "menu.open",
+    "menu.build",
+    "field.move",
+    "pc.open",
+    "encounter.wild",
+    "encounter.static",
+    "encounter.trainer",
+    "mon.create",
+    "mon.receive",
+    "mon.nickname",
+    "mon.evolve",
+    "mon.exp",
+    "mon.levelup",
+    "move.learn",
+    "mon.release",
+    "box.deposit",
+    "box.withdraw",
+    "party.swap",
+    "mon.helditem",
+    "egg.hatch",
+    "trade.ingame",
+    "mon.cure",
+    "mon.pp",
+    "mon.form",
+    "battle.start",
+    "battle.action",
+    "battle.item",
+    "battle.switch",
+    "battle.escape",
+    "battle.move",
+    "battle.damage",
+    "battle.faint",
+    "catch.attempt",
+    "catch.result",
+    "battle.end",
+    "whiteout",
+    "battle.trainer_mon",
+    "battle.exp",
+    "battle.ai",
+    "battle.ai_replace",
+    "battle.ability",
+    "battle.stat",
+    "battle.held_item",
+    "battle.status",
+    "item.add",
+    "item.use",
+    "shop.buy",
+    "money.change",
+    "heal",
+    "heal.hp",
+    "mon.revive",
+    "badge.get",
+    "flag.set",
+    "dex.register",
+    "battle.turn",
+    "script.done",
+    "move.forget",
+    "mon.shiny",
+    "item.usable",
+    "season.change",
+    "encounter.slot",
+    "battle.type_effect",
+    "starter.choices",
+    "egg.species",
+    "text_input.done",
+    "world",
+    "ap",
+    "move.known"
+  ]
+}

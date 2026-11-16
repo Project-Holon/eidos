@@ -575,14 +575,21 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_event_mon.c      # the pokemon area's event rows
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_event_field.c    # the world and the encounters' event rows
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_event_battle.c   # the battle area's event rows
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_event_v6.c       # v6: the option events' rows
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_message.c        # the message service (docs/mod-services.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_timer.c         # the timer, the splits and the mod's own random source
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_vfs.c           # v6: members in memory, text entries
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_file.c          # v6: a mod's own files
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_v6.c            # v6: work, badges, scripts, type chart, text input
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_world.c          # v6: metaxy world sessions, the Archipelago link
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_tracker.c        # v6: what a mod shows on the field's Tracker
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_export.c        # a Pokemon's export and import
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_net.c          # the peer sessions and the external control
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mp.c               # multiplayer: the lobby, the start and the pause
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/link.c             # Link sessions: the radio over the relay
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tls_roots.c        # the roots a TLS relay is checked against
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_slots.c       # several single-player saves
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_games.c       # the saves the Multiplayer screen made
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/preview_save.c     # the style chooser's preview save, packed (tools/preview_save.py)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_frame.c        # the mod layer's frame tick
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_avatar.c       # the field avatars
@@ -710,6 +717,7 @@ set(BW_STUB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_02045A98.c  # end-of-string code unit
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_0204960C.c  # archive stream seek
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_vm_control.c  # the script VMs' dispatch, with the port's hook
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_fldmmdl_objcode.c  # object code rows, with the port's private codes
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/stub_02017E1C.c
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/stub_02017E40.c
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/stub_02018598.c
@@ -1184,6 +1192,8 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/ui.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipes.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_settings.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_multiplayer.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/tracker.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_title.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_mystery.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_battle.c
@@ -1213,11 +1223,17 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_sprites.c
+        # the player's look: Hilbert or Hilda in their own colours
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar/avatar.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar/avatar_color.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar/avatar_mask.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar/avatar_field.c
     )
     target_include_directories(eidos_platform PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar
     )
     target_link_libraries(eidos_platform PUBLIC eidos eidos_setup eidos_sdl3)
     # The GPU presenter (plat_gl.c) calls the GL 1.1 core entry points directly.
@@ -1913,7 +1929,7 @@ add_test(NAME test_native_port_tools COMMAND ${Python3_EXECUTABLE}
 foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_mod_messages
           test_mod_text test_mod_script test_mod_rule test_mod_timer test_mod_export
           test_mod_menu test_mod_input test_mod_handoff test_mod_restart
-          test_mod_avatar test_mod_net)
+          test_mod_avatar test_mod_net test_save_games)
     add_executable(${t} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${t}.c)
     target_include_directories(${t} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests)
@@ -2085,6 +2101,18 @@ add_executable(test_mod_table ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mod_table.c
 target_include_directories(test_mod_table PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(test_mod_table PRIVATE eidos)
 add_test(NAME test_mod_table COMMAND test_mod_table WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+# Mod API version 6 without the game: members in memory (open archives
+# too), text entries and a mod's own files.
+add_executable(test_mod_v6 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mod_v6.c)
+target_include_directories(test_mod_v6 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(test_mod_v6 PRIVATE eidos)
+add_test(NAME test_mod_v6 COMMAND test_mod_v6 ${BW_DATA_ROOT_ABS} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+# The world session client: frames to events always; a live run against a
+# metaxy with EIDOS_WORLD_RELAY=host:port.
+add_executable(test_mod_world ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mod_world.c)
+target_include_directories(test_mod_world PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(test_mod_world PRIVATE eidos)
+add_test(NAME test_mod_world COMMAND test_mod_world WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 # The language-neutral API description (sdk/api/v5, tools/apigen.py): its
 # payload offsets compile against the headers, and the committed files are
 # the generator's current output.
@@ -2999,6 +3027,15 @@ if(VITA)
     vita_create_vpk(eidos.vpk EIDS00001 eidos_boot.self VERSION 01.00 NAME "eidos")
 endif()
 target_link_libraries(eidos_boot PRIVATE eidos)
+# The 32-bit Windows program must end, with its stack, below the DS memory
+# mapped at 0x02000000: the build stops before a program that would not
+# (cmake/check_image.cmake).
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4 AND CMAKE_OBJDUMP)
+    add_custom_command(TARGET eidos_boot POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -DOBJDUMP=${CMAKE_OBJDUMP} -DEXE=$<TARGET_FILE:eidos_boot>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_image.cmake
+        COMMENT "Checking eidos_boot ends below the DS memory")
+endif()
 # SDL3.dll has to sit next to the program on Windows (as for eidos_view)
 if(EIDOS_SDL_RUNTIME)
     add_custom_command(TARGET eidos_boot POST_BUILD
@@ -3383,10 +3420,11 @@ add_executable(test_ui_kit ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_kit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_sprites.c)
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_sprites.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/ui_test_avatar.c)
 target_include_directories(test_ui_kit PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui)
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar)
 target_link_libraries(test_ui_kit PRIVATE eidos)
 add_test(NAME test_ui_kit COMMAND test_ui_kit ${BW_DATA_ROOT_ABS})
 
@@ -3407,10 +3445,11 @@ add_executable(test_ui_input ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_sprites.c)
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_sprites.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/ui_test_avatar.c)
 target_include_directories(test_ui_input PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui)
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar)
 target_link_libraries(test_ui_input PRIVATE eidos)
 add_test(NAME test_ui_input COMMAND test_ui_input ${BW_DATA_ROOT_ABS})
 
@@ -3432,9 +3471,10 @@ add_executable(test_ui_pc ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ui_pc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/padglyph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_icons.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_sprites.c)
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/assets_sprites.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/ui_test_avatar.c)
 target_include_directories(test_ui_pc PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui)
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar)
 target_link_libraries(test_ui_pc PRIVATE eidos)
 add_test(NAME test_ui_pc COMMAND test_ui_pc ${BW_DATA_ROOT_ABS})

@@ -84,6 +84,7 @@
 #include "mod_loader.h"
 #include "bw_limits.h"
 #include "mod_menu.h"
+#include "avatar.h"              /* the other players' figures, each in its look */
 #include "mod_net.h"
 #include "save.h"
 #include "mod_title.h"
@@ -3079,6 +3080,11 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     } else {
         bw_mod_menu_start();
     }
+    bw_mod_menu_mode_from_env();        /* test switch EIDOS_MOD_MODE */
+    /* the other players' figures each in their own look: the private
+     * object codes go in before a field opens the archives
+     * (engine/avatar/avatar_field.c) */
+    (void)avatar_field_register();
     /* The content limits the mods raise, and the game's per-id tables
      * extended to match (sdk/limits.h): the mod list is final and the
      * game's data is bound, and nothing of the game has run yet. */

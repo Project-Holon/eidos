@@ -93,6 +93,72 @@ static void chip(EidosUiCtx *c, int x, int y, int w, int h, u32 tip, int sel, in
          RX_OUTLINE, RX_OUTLINE, a * (sel ? 255 : 170) / 255);
 }
 
+/*
+ * The Multiplayer screen's cards and its Start button: the band's chips,
+ * leaning, a cap on the left end (gold when the part can be chosen, grey
+ * when the port cannot run it yet), the white surface when chosen.  A tall
+ * card leans no more than a chip of the band does (10 px across), so the
+ * column of cards still stands.
+ */
+static void plasma_mp_part(EidosUiCtx *c, int kind, int x, int y, int w, int h, int lit, int hover, int on)
+{
+    int lean = LEAN(h) < 10 ? LEAN(h) : 10, sel = on && (lit || hover), a = on ? 255 : 140;
+    int cap = kind == 2 ? 9 : 7, bx = x - lean / 2;
+    int xl0 = (bx + lean) * FP, xl1 = bx * FP, xr0 = (bx + w + lean) * FP, xr1 = (bx + w) * FP;
+    u32 tip = !on ? 0x5A5A5Au : kind == 2 ? 0xF8BC28u : RX_ACCENT;
+
+    if (sel) {
+        rx_slab(c, y + 3, h, xl0, xl1, xr0, xr1, 0, h, 0, 0, 0x000000u, 0x000000u, 90);
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 0, h, 0, 0, RX_OUTLINE, RX_OUTLINE, 255);
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 1, h - 1, INSET, INSET, RX_WHITE, RX_WHITE_LO, 255);
+    } else {
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 0, h, 0, 0, 0x000000u, 0x000000u, a * 150 / 255);
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 1, h - 1, INSET, INSET, 0x383838u, 0x1A1A1Au, a * 235 / 255);
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 1, 2, INSET, INSET, 0xFFFFFFu, 0xFFFFFFu, a * 90 / 255);
+    }
+    rx_slab(c, y, h, xl0, xl1, xl0 + cap * FP, xl1 + cap * FP, 1, h - 1, INSET, 0, rx_mix(tip, 0xFFFFFFu, 40, 100), tip,
+            a);
+    rx_slab(c, y, h, xl0 + cap * FP, xl1 + cap * FP, xl0 + (cap + 1) * FP, xl1 + (cap + 1) * FP, 1, h - 1, 0, 0,
+            RX_OUTLINE, RX_OUTLINE, a * (sel ? 255 : 170) / 255);
+}
+
+/*
+ * A command button outside the battle's own (the party's and the Bag's in
+ * battle: BACK, the faint's next-Pokemon and run): the band's chip, leaning
+ * inside its box (the lean taken from its width, so neither end leaves the
+ * box), its colour on the cap at the left end, the white surface when
+ * chosen.  The word is centred over the part right of the cap.
+ */
+static void plasma_cmd_button(EidosUiCtx *c, int x, int y, int w, int h, const char *label, u32 color, int selected)
+{
+    int lean = LEAN(h) < 10 ? LEAN(h) : 10, cap = selected ? 9 : 7;
+    int xl0 = (x + lean) * FP, xl1 = x * FP, xr0 = (x + w) * FP, xr1 = (x + w - lean) * FP;
+    int room = w - lean - cap - 8, font = UI_FONT_LARGE, tx;
+    u32 tip = rx_accent_of(color);
+
+    if (selected) {
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 0, h, 0, 0, RX_OUTLINE, RX_OUTLINE, 255);
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 1, h - 1, INSET, INSET, RX_WHITE, RX_WHITE_LO, 255);
+    } else {
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 0, h, 0, 0, 0x000000u, 0x000000u, 150);
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 1, h - 1, INSET, INSET, 0x383838u, 0x1A1A1Au, 235);
+        rx_slab(c, y, h, xl0, xl1, xr0, xr1, 1, 2, INSET, INSET, 0xFFFFFFu, 0xFFFFFFu, 90);
+    }
+    rx_slab(c, y, h, xl0, xl1, xl0 + cap * FP, xl1 + cap * FP, 1, h - 1, INSET, 0, rx_mix(tip, 0xFFFFFFu, 40, 100), tip,
+            255);
+    rx_slab(c, y, h, xl0 + cap * FP, xl1 + cap * FP, xl0 + (cap + 1) * FP, xl1 + (cap + 1) * FP, 1, h - 1, 0, 0,
+            RX_OUTLINE, RX_OUTLINE, selected ? 255 : 170);
+    /* a smaller type when the word is wider than the button (a longer word in another language) */
+    if (ui_text_w(label, font) > room) {
+        font = UI_FONT_MEDIUM;
+    }
+    if (ui_text_w(label, font) > room) {
+        font = UI_FONT_SMALL;
+    }
+    tx = x + cap + 1 + (w - cap - 1 - ui_text_w(label, font)) / 2;
+    rx_label(c, tx, y + ui_text_y(h, font), label, selected, selected ? RX_TEXT : rx_mix(tip, 0xFFFFFFu, 30, 100), font);
+}
+
 /* ---------------------------------------------------------------- */
 /* Battle: places                                                    */
 /* ---------------------------------------------------------------- */
@@ -1585,6 +1651,8 @@ const UiThemeOps ui_theme_plasma = {
     .id = "plasma",
     .name = "Plasma",
     .message_band = 1,
+    .mp_part = plasma_mp_part,
+    .mp_pad = 14,                       /* past the chip's gold cap */
     .color = rx_color,
     .frame_begin = rx_frame_begin,
     .text = rx_text,
@@ -1595,7 +1663,7 @@ const UiThemeOps ui_theme_plasma = {
     .message = rx_message,
     .tab = rx_tab,
     .move_row = rx_move_row,
-    .cmd_button = rx_cmd_button,
+    .cmd_button = plasma_cmd_button,
     .bar = rx_bar,
     .hints = rx_hints,
     .party_row = plasma_party_row,

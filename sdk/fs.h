@@ -69,6 +69,18 @@ int bw_fs_open_rel(void *file, const char *rel);   /* see sdk/port.h */
 int bw_fs_open_memory(void *file, const void *data, u32 size);
 u32 bw_fs_size(void *file);
 
+/*
+ * Archives that are open (mod API v6; docs/mods.md, "Members in memory").
+ * bw_fs_archive_open: how many files have the whole archive `rel` open, and
+ * the member count of the image the first one reads.  bw_fs_archive_swap:
+ * give every such file the layout-stable image of the archive as the
+ * layers make it now (sdk/vfs.h, bw_narc_restamp); the game's handle keeps
+ * every offset it read at the open.  Call it between frames, on the game's
+ * thread.  Returns how many files it moved to a new image, or -1.
+ */
+int bw_fs_archive_open(const char *rel, u32 *count);
+int bw_fs_archive_swap(const char *rel);
+
 /* The DMA channel FS_Init / FS_SetDefaultDMA last set (the shim copies with
  * the CPU whatever it is; the value is kept because the game reads it back). */
 u32 bw_fs_default_dma(void);

@@ -61,7 +61,14 @@ typedef struct BwMpPlayer {
     char fp[33];                     /* who the player is to this host        */
     int  in_game;                    /* its game runs its multiplayer save    */
     char version[32];                /* its eidos version, "" until it said   */
+    u8   look[5];                    /* its trainer's look (engine/avatar):
+                                        body, hair, accent, trousers, skin;
+                                        all 0 the game's own Hilbert      */
 } BwMpPlayer;
+
+/* This game's look changed (engine/avatar calls it): the other players are
+ * told, as a rename tells them the name. */
+void bw_mp_look_changed(void);
 
 /* This build's eidos version (CMake's EIDOS_VERSION): every player of a
  * game runs the same one (docs/distribution.md). */
@@ -164,6 +171,8 @@ void bw_mp_hold_wait(void);
  * ("ns=n;ns=n").  The port sets both before a session; the mods default to
  * the loaded mods that state a `multiplayer` number. */
 void bw_mp_set_local(char game, const char *mods);
+/* This game's own game: 'B' or 'W' ('B' until the port said). */
+char bw_mp_local_game(void);
 
 /* The network's port handler (sdk/mod_net.h); bw_mp_host and bw_mp_join
  * install it.  Exposed for the tests. */

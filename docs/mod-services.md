@@ -581,6 +581,118 @@ the mod's saved data. The screen that lists them is the port's own Mods
 section: a mod's options are rows under the mod's own row, and the choice the
 player makes there is written beside the mod's saved data.
 
+### Text options, ways to play and lobby rules (version 6)
+
+```
+mode solo        "Solo randomizer" "A shuffled game for you alone."
+mode multiworld  "Multiworld"      "Items you find go to your friends." joins
+mode archipelago "Archipelago"     "A file for a room's host." in=multiworld export "Pokemon {version} (x)"
+
+heading "World"
+option arkh.players int    "Players" 2 8 2                         @multiworld
+option arkh.goal    choice "Goal"    Ghetsis|Champion              @solo,multiworld,archipelago
+help arkh.goal "What ends the game."
+yaml arkh.goal goal ghetsis|champion
+option arkh.dex     choice "Catches" Off|25|50                     @solo,multiworld,archipelago
+yaml arkh.dex dexsanity 0|25|50
+option nuz.lives    int    "Lives"   0 10 3                        @lobby
+```
+
+- `text`: a short text, `<longest> "<default>"` (the game's keyboard takes
+  at most 10 characters). It holds no `"`. The mod reads it with
+  `setting_text(key, out, size)` (its length, or -1).
+- `mode <id> "<title>" "<line>" [off] [joins] [in=<mode>] [export "<game>"]`:
+  a way to play the mod offers. The Multiplayer screen shows it as a card
+  under Co-op; `off` shows the card greyed ("Not in this version"). The card
+  opens the mode's screen: the options tagged with the mode and the start
+  button. Start takes a free save slot (never one with a save: with every
+  slot used it says so) and starts the new game from the title menu. During
+  that new game's `game.new` the mod asks `mode_get(out, size)` which mode
+  it is; a plain New Game answers "" and a Continue drops the mode. The save
+  is listed under the screen's Your games and not on the title menu's
+  Continue card. Modes come before the options that name them; a mod offers
+  up to 8. A title holds at most 63 characters and a line at most 127; the
+  loader reports a longer one. The words after the line, in any order:
+  - `joins`: the mode's games are worlds others join. Its button says
+    **Make the world**. A world's code typed in the screen's Join box (or
+    given with `--join`) is asked about on the relay first; when it names an
+    open world with a free place, **Join the world** starts a new game in
+    this mode, and `mode_code(out, size)` answers the code during
+    `game.new` ("" for a world made here).
+  - `in=<mode>`: no card of its own: a type on that mode's card. The card's
+    screen gets a **Type** row first, and the rows below change with it.
+  - `export "<game>"`: the button saves an Archipelago options file instead
+    of a new game: `<save folder>/archipelago/<player name>.yaml`, with the
+    player's multiplayer name, the game (`{version}` becomes Black or White)
+    and every option the mode shows that has a `yaml` line. Its path goes on
+    the clipboard.
+- `heading "<text>"`: the options under it are a group; the screen draws the
+  heading above the first of them a mode shows.
+- `help <key> "<text>"`: what the option does. The screen's side panel shows
+  it while the option's row is chosen. It names an option above it.
+- `yaml <key> <name> [<value>|<value>|...]`: the option in an Archipelago
+  options file: its name there and the value of each choice in order (a
+  bool's are off then on; an int is written as its number). The World view
+  reads a world's rules back through the same lines, in the mod's own
+  words.
+- `?key=value`: the row shows only while the option `key` has that value
+  (a choice's name, `on`/`off`, a number or a text; case does not count),
+  so a screen asks only what the earlier answers leave open. The rows
+  change at once when the player changes the answer. The condition holds
+  on a mode's screen that does not ask `key` and when no option is called
+  `key`. It goes before or after the `@` word.
+- `@lobby`: a rule of the co-op lobby (bool, choice or int). The lobby's
+  Rules panel lists the rules of the mods that are on; the host changes
+  them there. While the session is open the host's values go through the
+  session's shared table, and `setting_get` answers the host's value on
+  every player's game. A joiner's own choices are never changed by it and
+  cannot be changed from the lobby.
+- `player_name(out, size)`: the multiplayer name the player chose on the
+  Multiplayer screen (0 while none is chosen), so a mod never asks for a
+  name of its own.
+- `mode_code(out, size)`: the world code of this new game, for a mode
+  marked `joins` (above).
+
+### The Tracker (version 6)
+
+`tracker_set(text, size)` hands eidos the mod's whole tracker; the field's
+top bar then shows a **Tracker** button, right of Menu. Set it again each
+time something on it changes (a check found, an item got); the last one
+set is shown. A new game and a loaded save clear it, so set it in
+`game.new` and `save.load`. At most 128 KB; 0, or -1.
+
+The text is lines of tab-separated words:
+
+```
+area<TAB>Route 1<TAB>397
+check<TAB>found<TAB>Item ball near the ledge
+check<TAB>open<TAB>Hidden item in the grass
+check<TAB>locked<TAB>Fisherman behind the water
+item<TAB>Badges<TAB>1<TAB>Trio Badge
+count<TAB>3<TAB>17
+```
+
+- `area <name> <zone>[,<zone>...]`: a place and the zones it covers. The
+  You tab shows each area as a square on the Town Map, at its first zone's
+  place (the zone, or its parent zone: a building counts as its town);
+  areas at the same place share one square and one list. The square is
+  green when every check left is `open`, orange when some are, red when
+  none are, grey when all are found. The tab opens on the area the player
+  is in and follows them while it is open.
+- `check found|open|locked <name>`: a check of the area above it. `open`:
+  it can be reached with what the player has; `locked`: not yet.
+- `item <group> <count> <name>`: an item the game turns on, shown by group
+  under the map; count 0 is not held yet.
+- `count <found> <total>`: the totals in the header (the areas' sums when
+  there is no such line).
+
+The Map tab is the game's own Town Map picture with the player's figure at
+their place and the mod's Town Map markers (`townmap_marker_set`, such as
+the other players of a world) at theirs.
+
+The test switch `EIDOS_MOD_MODE=<id>` starts the run's first new game in a
+mode (docs/test-switches.md).
+
 ## The mod menu
 
 **The installed mods folder.** The player installs a mod by putting it in
@@ -682,6 +794,224 @@ screen is drawn on the frame thread, so the call is made on the port's own
 worker. The worker publishes its answer under a lock, the screen takes it
 on the frame it polls, and the code goes into the model, so the model is
 only ever written by the thread that draws it.
+
+## Version 6: content and online mods
+
+Interface version 6 adds the calls below, for mods that make their content
+at run time (randomizers, translations, difficulty mods) and for online
+mods. Each works for the mod that calls it. The code is in `sdk/mod_vfs.c`
+(members, text), `sdk/mod_file.c` (files), `sdk/mod_v6.c` (works, badges,
+scripts, the type chart, text input) and `sdk/mod_world.c` (world
+sessions, the Archipelago link, other players).
+
+### Members in memory
+
+```c
+int (*vfs_member_set)(const char *archive, u32 index, const void *data, u32 size);
+int (*vfs_member_clear)(const char *archive, u32 index);
+int (*vfs_member_get)(const char *archive, u32 index, void *out, u32 size);
+```
+
+- A NARC member changed without a file. `archive` is the NitroFS path
+  (`a/0/5/7`). The bytes are copied into the mod's memory layer, which sits
+  where the mod's folder sits in the load order and wins over the folder's
+  own member files (`docs/mods.md`, "Members in memory").
+- `vfs_member_get` answers the member as the next read sees it (the
+  layers included) and copies up to `size` bytes; its answer is the
+  member's whole size, or -1.
+- `vfs_member_clear` answers how many members it took out. Index
+  0xFFFFFFFF takes all of the mod's members of that archive; an empty
+  archive name takes every member the mod holds.
+- **Archives that are open.** The game reads an open archive through its
+  handle, which keeps the member count, the FAT offset and the image base
+  from the open and reads a member's FAT entry again on every load. A
+  change to an open archive is queued, and between frames, on the game's
+  thread, every file that has the archive open gets a layout-stable image:
+  the same header, name table, member count and image base, the changed
+  members written after the end, and only their FAT entries changed. A
+  member past the end of an open archive cannot be added (-1 and a message).
+  What the game already copied into its own memory (a script the VM
+  loaded, a text bank it decoded) changes when the game loads it again.
+- **Limits.** 16 MiB for one mod's members, 32 MiB for all mods together;
+  per member, the NARC format's own limit. A set that would pass a limit
+  answers -1 with a message and changes nothing.
+
+### Text entries
+
+```c
+int (*text_get)(u32 archive, u32 file, u32 entry, u32 block, u16 *out, u32 max_units);
+int (*text_set)(u32 archive, u32 file, u32 entry, u32 block, const u16 *units, u32 count);
+u32 (*text_language)(void);
+```
+
+- `archive` is 2 (system text, a/0/0/2) or 3 (story text, a/0/0/3). The
+  units are the game's 16-bit code units, control codes included, without
+  the end code. A Japanese bank has two blocks (kana and kanji), the
+  others one.
+- `text_get` answers the entry's length and copies up to `max_units`.
+  `text_set` writes the whole bank to the mod's memory layer with the one
+  entry changed; an entry past the end grows every block of the bank with
+  empty lines, and a bank past the archive's end is made new.
+- `text_language` is the game's language id: 1 Japanese, 2 English,
+  3 French, 4 Italian, 5 German, 7 Spanish, 8 Korean.
+
+### Work variables, badges and the cartridge (state table)
+
+```c
+int (*work_get)(u16 id, u16 *out);
+int (*work_set)(u16 id, u16 value);
+int (*badge_set)(u32 bit);
+int (*game_code)(char *out, u32 size);
+```
+
+- The saved works (0x4000 to 0x40FF) are reached whenever a game is
+  loaded. The script's own works (0x8000 to 0x80FF) only while a field
+  script runs a command, so from a `flag.set` handler (the flag is set by a
+  command of the script) or a script command handler; else -1. Rules read
+  and write them as `state.work[id]`.
+- `badge_set` gives a badge (0 to 7) through the game's own call, so
+  `badge.get` fires as for a badge won in a gym.
+- `game_code` copies the cartridge's 4-letter game code (`IRBO` English
+  Black, `IRAO` English White; the last letter is the language).
+
+### Field scripts
+
+```c
+int (*script_run)(u16 script_id, u32 *ticket);
+```
+
+The script is queued and starts on a field frame with no event, no battle
+and no menu, held for 10 frames so a fade has ended. The port starts a game
+event of its own that calls the script as its child, the way the game
+starts one (`SCRIPT_SYS_CallScriptEvent`), and fires `script.done` with the
+ticket when the script ends. Scripts start one at a time, in the order they
+were asked for.
+
+### The type chart
+
+```c
+int (*type_chart_set)(const BwTypeChart *chart);
+int (*type_chart_get)(BwTypeChart *out);
+```
+
+- The chart is the battle overlay's table (`gBtlCalcTypeAffinityTable`,
+  17 by 17), in the game's codes: 0 no effect, 2 half, 4 normal, 8 double.
+  `cell[attacking * 17 + defending]`. Any other code is refused.
+- The port keeps the mod's chart and writes it over the table each time
+  the battle overlay loads, and at once during a battle, so a damage roll
+  costs nothing more. Code that reads the table directly (the AI's
+  `BTL_CALC_ListResistingTypes`) sees it too. With several mods, the last
+  in the load order wins. NULL takes the mod's chart away.
+- `type_chart_get` gives the chart in force: a mod's, or the game's own as
+  the last battle loaded it; -1 before any battle has loaded it.
+- For a change in one battle or against one trainer, a rule mod uses the
+  event `battle.type_effect` instead.
+
+### Text input
+
+```c
+int (*text_input)(const char *title, u32 max_units, u32 kind, u32 *ticket);
+```
+
+Opens the game's own name entry screen on a quiet field, with `title`
+(UTF-8, as for `message`) as its title; it works with the pad, the touch
+screen and the keyboard as any name entry does. The answer comes in
+`text_input.done`. `kind` is `BW_TEXT_INPUT_NAME`, `_CODE` (the answer
+keeps only letters and digits) or `_LINK`. The screen's own limit is 10
+code units, so `max_units` is cut to 10. The screen is the box name's: B
+leaves it (`cancelled`), and it writes nothing to the save.
+
+### Mod files
+
+```c
+int (*mod_file_write)(const char *name, const void *data, u32 size);
+int (*mod_file_read)(const char *name, void *out, u32 size, u32 *got);
+int (*mod_file_list)(char *out, u32 size);
+int (*mod_file_delete)(const char *name);
+```
+
+- A folder per mod, `<save dir>/modfiles/<namespace>/`, shared by the mod
+  across the player's saves (its saved data, `state_store`, stays per save).
+- A name is plain: 1 to 64 of the letters, the digits and `. _ -`, not
+  starting with a dot, with no `..`, and not a Windows device name.
+- The quota is 16 MiB for all of a mod's files. A write that would pass it
+  answers -1 and changes nothing: the old file stays whole. A file is
+  written to a temporary name, pushed to the disk and put in place in one
+  step, so a crash never leaves half a file.
+- `mod_file_read` answers the file's size and copies up to `size`
+  (`*got` the bytes copied). `mod_file_list` writes `used <bytes> quota
+  <bytes>` and then `<name> <size>` per file, a line each, cut at `size`;
+  it answers the length the whole list needs.
+
+### World sessions
+
+```c
+int  (*world_create)(const char *config_json, u32 *ticket);
+int  (*world_owner)(const char *code, const char *owner_key, u32 action);
+int  (*world_join)(const char *code, const char *name_or_key, u32 *ticket);
+int  (*world_checks)(const u32 *location_ids, u32 count);
+void (*world_leave)(void);
+int  (*world_read)(void *out, u32 size);
+```
+
+metaxy's world sessions (metaxy's `docs/SPEC.md`, Part C): eidos-only
+worlds, made and kept by metaxy. The port speaks the frames over the relay
+connection of the settings (Settings, Network, Relay address); a world
+session and a relay session (co-op, a mod's peer session) do not run at the
+same time, and a world call during a relay session answers -1.
+
+- `world_create` sends the configuration (`N`, in `F` pieces when it is
+  big); `world_owner` sends `start`, `close` or `delete` (`O`);
+  `world_join` joins by player name or by the player key of an earlier
+  join (`I`); `world_checks` sends checks (`V`), and the single location 0
+  says the goal is reached; `world_leave` ends the session (`B`).
+- The answers come as the event `world`, with `kind` `BW_WORLD_*` and the
+  bytes read by `world_read` inside the handler (a player's data is up to
+  1 MB, more than a handler's copy holds): `GENERATED` (`<code> <owner
+  key>`), `WAIT` (the place in the queue), `OWNER_DONE` (`<code>
+  <state>`), `JOINED` (`<player> <player key>\n<player data JSON>`),
+  `ITEMS` (`<index> <item> <from> ...`), `POSITION`, `PLAYER_IN`,
+  `PLAYER_OUT`, `ERROR` (`<reason> <text>`), and `CLOSED` when the link
+  ends.
+- After each join, once the mod's `JOINED` handler has run (and kept the
+  player key), the port sends the session's checks again at once, an empty
+  `V` when there are none: metaxy ignores a check it has, so a check made
+  while the link was down is not lost, and this `V` confirms a first join's
+  claim of its name.
+
+### The Archipelago link
+
+```c
+int (*ap_link)(const char *room, const char *slot, const char *password, u32 *ticket);
+int (*ap_send)(const char *json, u32 size);
+int (*ap_read)(void *out, u32 size);
+```
+
+metaxy's bridge to an Archipelago server (arkhipelagos
+`docs/metaxy-proposal.md`, Part D): `ap_link` sends `L` with the room link
+or `host:port`; the answers are the event `ap` (`LINKED`, `MESSAGE` with
+one Archipelago JSON message read by `ap_read`, `ERROR`, `CLOSED`).
+`ap_send` sends one message (`T`, in `F` pieces when big). The slot and the
+password go in Archipelago's own `Connect` message, which the mod sends
+with `ap_send` once the link is up. metaxy does not serve the bridge yet,
+so this half is built to the proposal and not tested against a server.
+
+### Other players in the field and on the Town Map
+
+```c
+int (*peer_position)(int on);
+int (*townmap_marker_set)(u32 id, u16 zone, u32 icon, const char *name);
+int (*townmap_marker_clear)(u32 id);
+```
+
+- With `peer_position(1)` in a world session the port sends this game's
+  zone on every change, and its tile while another player shares the zone
+  (at most every eighth frame), and draws the other players in the same zone
+  as field avatars (the hero's sprite). The positions also come to the mod
+  as `world` events of kind `POSITION`.
+- The Town Map markers are kept by the port (32, by id) for the drawing
+  sides to read (`bw_mod_townmap_marker_at`). Drawing them on the game's
+  Town Map (ov072) and on the one-screen Town Map is still to be built.
 
 ## Related documents
 

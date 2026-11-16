@@ -193,6 +193,10 @@ const char *ui_game_text(int arc, int member, u32 idx);
 const UiImage *ui_item_icon(u16 item);
 const UiImage *ui_mon_icon(u16 species, u8 form, int frame);
 const UiImage *ui_overworld(u16 sprite, int dir, int frame);  /* walk frames */
+/* Another player's walking figure in that player's look (engine/avatar):
+ * Hilbert or Hilda in its colours; the last looks asked for are kept. */
+struct AvatarLook;
+const UiImage *ui_overworld_look(const struct AvatarLook *look, int dir, int frame);
 const UiImage *ui_trainer_front(u16 trainer_class);
 /* The party's six balls for the next plate drawn (the battle: the plate
  * shows its side's team; kinds as the game's: 0 no Pokemon, 1 ready, 2
@@ -269,6 +273,14 @@ void ui_header(EidosUiCtx *c, int x, int y, int w, const char *title,
  * the bar's height. Each hint is also a hit region that presses its key. */
 int  ui_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n,
               const u32 *keys);
+
+/* engine/ui/tracker.c: the field's Tracker.  available: a mod tracks this
+ * game (the top bar shows the button); open: the panel opens (the area the
+ * player is in chosen); run: the panel over the field, 1 when it closes. */
+struct EidosUiFrame;
+int  ui_tracker_available(void);
+void ui_tracker_open(void);
+int  ui_tracker_run(EidosUiCtx *c, const struct EidosUiFrame *in, int cw, int ch, int top);
 /* The hint bar's top in canvas pixels, this frame's once drawn, else the
  * last frame's; -1 when neither drew one.  ui_hints_frame starts a frame
  * (engine/ui/ui.c). */

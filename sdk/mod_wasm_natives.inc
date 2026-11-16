@@ -456,6 +456,47 @@ static int32_t wn_whiteout(wasm_exec_env_t env)
     return (int32_t)w->host->state->whiteout();
 }
 
+static int32_t wn_work_get(wasm_exec_env_t env, int32_t id, void *out)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->work_get == NULL ||
+        !wasm_object_ok(env, out, sizeof(u16))) {
+        return -1;
+    }
+    return (int32_t)w->host->state->work_get((u16)id, (u16 *)out);
+}
+
+static int32_t wn_work_set(wasm_exec_env_t env, int32_t id, int32_t value)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->work_set == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->work_set((u16)id, (u16)value);
+}
+
+static int32_t wn_badge_set(wasm_exec_env_t env, int32_t bit)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->badge_set == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->badge_set((u32)bit);
+}
+
+static int32_t wn_game_code(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->game_code == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->game_code((char *)out, (u32)size);
+}
+
 static void wn_message(wasm_exec_env_t env, const char *text)
 {
     BwWasmMod *w = wasm_mod_of(env);
@@ -846,6 +887,327 @@ static int32_t wn_shared_cas(wasm_exec_env_t env, const char *key, int32_t expec
     return (int32_t)w->host->services->shared_cas(key, (s32)expected, (s32)value);
 }
 
+static int32_t wn_vfs_member_set(wasm_exec_env_t env, const char *archive, int32_t index, void *data, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->vfs_member_set == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->vfs_member_set(archive, (u32)index, (const void *)data, (u32)size);
+}
+
+static int32_t wn_vfs_member_clear(wasm_exec_env_t env, const char *archive, int32_t index)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->vfs_member_clear == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->vfs_member_clear(archive, (u32)index);
+}
+
+static int32_t wn_vfs_member_get(wasm_exec_env_t env, const char *archive, int32_t index, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->vfs_member_get == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->vfs_member_get(archive, (u32)index, (void *)out, (u32)size);
+}
+
+static int32_t wn_text_get(wasm_exec_env_t env, int32_t archive, int32_t file, int32_t entry, int32_t block, void *out, int32_t max_units)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->text_get == NULL ||
+        !((u32)max_units < 0x10000000u && wasm_object_ok(env, out, (u32)max_units * (u32)sizeof(u16)))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->text_get((u32)archive, (u32)file, (u32)entry, (u32)block, (u16 *)out, (u32)max_units);
+}
+
+static int32_t wn_text_set(wasm_exec_env_t env, int32_t archive, int32_t file, int32_t entry, int32_t block, void *units, int32_t count)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->text_set == NULL ||
+        !((u32)count < 0x10000000u && wasm_object_ok(env, units, (u32)count * (u32)sizeof(u16)))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->text_set((u32)archive, (u32)file, (u32)entry, (u32)block, (const u16 *)units, (u32)count);
+}
+
+static int32_t wn_text_language(wasm_exec_env_t env)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->text_language == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->text_language();
+}
+
+static int32_t wn_script_run(wasm_exec_env_t env, int32_t script_id, void *ticket)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->script_run == NULL ||
+        !wasm_object_ok(env, ticket, sizeof(u32))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->script_run((u16)script_id, (u32 *)ticket);
+}
+
+static int32_t wn_type_chart_set(wasm_exec_env_t env, void *chart)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->type_chart_set == NULL ||
+        !wasm_object_ok(env, chart, sizeof(BwTypeChart))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->type_chart_set((const BwTypeChart *)chart);
+}
+
+static int32_t wn_type_chart_get(wasm_exec_env_t env, void *out)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->type_chart_get == NULL ||
+        !wasm_object_ok(env, out, sizeof(BwTypeChart))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->type_chart_get((BwTypeChart *)out);
+}
+
+static int32_t wn_text_input(wasm_exec_env_t env, const char *title, int32_t max_units, int32_t kind, void *ticket)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->text_input == NULL ||
+        !wasm_object_ok(env, ticket, sizeof(u32))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->text_input(title, (u32)max_units, (u32)kind, (u32 *)ticket);
+}
+
+static int32_t wn_mod_file_write(wasm_exec_env_t env, const char *name, void *data, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->mod_file_write == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->mod_file_write(name, (const void *)data, (u32)size);
+}
+
+static int32_t wn_mod_file_read(wasm_exec_env_t env, const char *name, void *out, int32_t size, void *got)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->mod_file_read == NULL ||
+        !wasm_object_ok(env, got, sizeof(u32))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->mod_file_read(name, (void *)out, (u32)size, (u32 *)got);
+}
+
+static int32_t wn_mod_file_list(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->mod_file_list == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->mod_file_list((char *)out, (u32)size);
+}
+
+static int32_t wn_mod_file_delete(wasm_exec_env_t env, const char *name)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->mod_file_delete == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->mod_file_delete(name);
+}
+
+static int32_t wn_world_create(wasm_exec_env_t env, const char *config_json, void *ticket)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->world_create == NULL ||
+        !wasm_object_ok(env, ticket, sizeof(u32))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->world_create(config_json, (u32 *)ticket);
+}
+
+static int32_t wn_world_owner(wasm_exec_env_t env, const char *code, const char *owner_key, int32_t action)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->world_owner == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->world_owner(code, owner_key, (u32)action);
+}
+
+static int32_t wn_world_join(wasm_exec_env_t env, const char *code, const char *name_or_key, void *ticket)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->world_join == NULL ||
+        !wasm_object_ok(env, ticket, sizeof(u32))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->world_join(code, name_or_key, (u32 *)ticket);
+}
+
+static int32_t wn_world_checks(wasm_exec_env_t env, void *location_ids, int32_t count)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->world_checks == NULL ||
+        !((u32)count < 0x10000000u && wasm_object_ok(env, location_ids, (u32)count * (u32)sizeof(u32)))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->world_checks((const u32 *)location_ids, (u32)count);
+}
+
+static void wn_world_leave(wasm_exec_env_t env)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->world_leave == NULL) {
+        return;
+    }
+    w->host->services->world_leave();
+}
+
+static int32_t wn_world_read(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->world_read == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->world_read((void *)out, (u32)size);
+}
+
+static int32_t wn_ap_link(wasm_exec_env_t env, const char *room, const char *slot, const char *password, void *ticket)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->ap_link == NULL ||
+        !wasm_object_ok(env, ticket, sizeof(u32))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->ap_link(room, slot, password, (u32 *)ticket);
+}
+
+static int32_t wn_ap_send(wasm_exec_env_t env, const char *json, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->ap_send == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->ap_send(json, (u32)size);
+}
+
+static int32_t wn_ap_read(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->ap_read == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->ap_read((void *)out, (u32)size);
+}
+
+static int32_t wn_peer_position(wasm_exec_env_t env, int32_t on)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->peer_position == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->peer_position((int)on);
+}
+
+static int32_t wn_townmap_marker_set(wasm_exec_env_t env, int32_t id, int32_t zone, int32_t icon, const char *name)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->townmap_marker_set == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->townmap_marker_set((u32)id, (u16)zone, (u32)icon, name);
+}
+
+static int32_t wn_townmap_marker_clear(wasm_exec_env_t env, int32_t id)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->townmap_marker_clear == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->townmap_marker_clear((u32)id);
+}
+
+static int32_t wn_mode_get(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->mode_get == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->mode_get((char *)out, (u32)size);
+}
+
+static int32_t wn_setting_text(wasm_exec_env_t env, const char *key, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->setting_text == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->setting_text(key, (char *)out, (u32)size);
+}
+
+static int32_t wn_player_name(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->player_name == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->player_name((char *)out, (u32)size);
+}
+
+static int32_t wn_mode_code(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->mode_code == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->mode_code((char *)out, (u32)size);
+}
+
+static int32_t wn_tracker_set(wasm_exec_env_t env, const char *text, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->tracker_set == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->tracker_set(text, (u32)size);
+}
+
 /* The state calls and the services, as imports of module "eidos". */
 static NativeSymbol k_wasm_api_natives[] = {
     { "party_count", (void *)wn_party_count, "()i", NULL },
@@ -890,6 +1252,10 @@ static NativeSymbol k_wasm_api_natives[] = {
     { "battle_weather", (void *)wn_battle_weather, "()i", NULL },
     { "species_learns", (void *)wn_species_learns, "(iiii)i", NULL },
     { "whiteout", (void *)wn_whiteout, "()i", NULL },
+    { "work_get", (void *)wn_work_get, "(i*)i", NULL },
+    { "work_set", (void *)wn_work_set, "(ii)i", NULL },
+    { "badge_set", (void *)wn_badge_set, "(i)i", NULL },
+    { "game_code", (void *)wn_game_code, "(*~)i", NULL },
     { "message", (void *)wn_message, "($)", NULL },
     { "confirm", (void *)wn_confirm, "($)i", NULL },
     { "session_host", (void *)wn_session_host, "(*~)i", NULL },
@@ -930,4 +1296,35 @@ static NativeSymbol k_wasm_api_natives[] = {
     { "shared_set", (void *)wn_shared_set, "($i)i", NULL },
     { "shared_add", (void *)wn_shared_add, "($i)i", NULL },
     { "shared_cas", (void *)wn_shared_cas, "($ii)i", NULL },
+    { "vfs_member_set", (void *)wn_vfs_member_set, "($i*~)i", NULL },
+    { "vfs_member_clear", (void *)wn_vfs_member_clear, "($i)i", NULL },
+    { "vfs_member_get", (void *)wn_vfs_member_get, "($i*~)i", NULL },
+    { "text_get", (void *)wn_text_get, "(iiii*i)i", NULL },
+    { "text_set", (void *)wn_text_set, "(iiii*i)i", NULL },
+    { "text_language", (void *)wn_text_language, "()i", NULL },
+    { "script_run", (void *)wn_script_run, "(i*)i", NULL },
+    { "type_chart_set", (void *)wn_type_chart_set, "(*)i", NULL },
+    { "type_chart_get", (void *)wn_type_chart_get, "(*)i", NULL },
+    { "text_input", (void *)wn_text_input, "($ii*)i", NULL },
+    { "mod_file_write", (void *)wn_mod_file_write, "($*~)i", NULL },
+    { "mod_file_read", (void *)wn_mod_file_read, "($*~*)i", NULL },
+    { "mod_file_list", (void *)wn_mod_file_list, "(*~)i", NULL },
+    { "mod_file_delete", (void *)wn_mod_file_delete, "($)i", NULL },
+    { "world_create", (void *)wn_world_create, "($*)i", NULL },
+    { "world_owner", (void *)wn_world_owner, "($$i)i", NULL },
+    { "world_join", (void *)wn_world_join, "($$*)i", NULL },
+    { "world_checks", (void *)wn_world_checks, "(*i)i", NULL },
+    { "world_leave", (void *)wn_world_leave, "()", NULL },
+    { "world_read", (void *)wn_world_read, "(*~)i", NULL },
+    { "ap_link", (void *)wn_ap_link, "($$$*)i", NULL },
+    { "ap_send", (void *)wn_ap_send, "($i)i", NULL },
+    { "ap_read", (void *)wn_ap_read, "(*~)i", NULL },
+    { "peer_position", (void *)wn_peer_position, "(i)i", NULL },
+    { "townmap_marker_set", (void *)wn_townmap_marker_set, "(iii$)i", NULL },
+    { "townmap_marker_clear", (void *)wn_townmap_marker_clear, "(i)i", NULL },
+    { "mode_get", (void *)wn_mode_get, "(*~)i", NULL },
+    { "setting_text", (void *)wn_setting_text, "($*~)i", NULL },
+    { "player_name", (void *)wn_player_name, "(*~)i", NULL },
+    { "mode_code", (void *)wn_mode_code, "(*~)i", NULL },
+    { "tracker_set", (void *)wn_tracker_set, "($i)i", NULL },
 };

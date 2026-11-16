@@ -403,6 +403,10 @@ BW_PORT_STATIC_ASSERT(header_pos_y,
 /* The sprites of the player, and the player's object id. */
 #define BW_MOD_AVATAR_OBJ_CODE_HERO    1u
 #define BW_MOD_AVATAR_OBJ_CODE_HEROINE 4u
+
+/* engine/avatar/avatar.h: the private codes of the other players' looks
+ * (weak: the tests link without the engine) */
+extern int avatar_field_is_code(u32 code) __attribute__((weak));
 #define BW_MOD_AVATAR_OBJ_ID_PLAYER    0xFFu
 
 /* The directions (the game's own: 0 up, 1 down, 2 left, 3 right). */
@@ -1004,7 +1008,8 @@ u32 bw_mod_avatar_sweep(void)
         u32 id = FLDMMDL_GetObjId(mmdl);
 
         if ((code == BW_MOD_AVATAR_OBJ_CODE_HERO ||
-             code == BW_MOD_AVATAR_OBJ_CODE_HEROINE) &&
+             code == BW_MOD_AVATAR_OBJ_CODE_HEROINE ||
+             (avatar_field_is_code != NULL && avatar_field_is_code(code))) &&
             id != BW_MOD_AVATAR_OBJ_ID_PLAYER &&
             id < BW_MOD_AVATAR_OBJ_ID_BASE &&
             (FLDMMDL_GetEventId(mmdl) & 0xFFFFu) == BW_MOD_AVATAR_EVENT_ID_NONE &&

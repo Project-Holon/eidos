@@ -1,0 +1,966 @@
+{
+  "status": "open",
+  "api": 6,
+  "table": "BwModServices",
+  "calls": [
+    {
+      "name": "message",
+      "ret": "void",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "text"
+        }
+      ]
+    },
+    {
+      "name": "confirm",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "text"
+        }
+      ]
+    },
+    {
+      "name": "session_host",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "code_out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "session_join",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "code"
+        }
+      ]
+    },
+    {
+      "name": "session_leave",
+      "ret": "void",
+      "params": []
+    },
+    {
+      "name": "session_send",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "peer"
+        },
+        {
+          "type": "const void *",
+          "name": "buf"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "on_session",
+      "ret": "void",
+      "params": [
+        {
+          "type": "BwSessionHandler",
+          "name": "fn"
+        }
+      ]
+    },
+    {
+      "name": "avatar_create",
+      "ret": "u32",
+      "params": [
+        {
+          "type": "u32",
+          "name": "sprite"
+        },
+        {
+          "type": "s16",
+          "name": "x"
+        },
+        {
+          "type": "s16",
+          "name": "z"
+        },
+        {
+          "type": "u8",
+          "name": "dir"
+        }
+      ]
+    },
+    {
+      "name": "avatar_move",
+      "ret": "void",
+      "params": [
+        {
+          "type": "u32",
+          "name": "avatar"
+        },
+        {
+          "type": "s16",
+          "name": "x"
+        },
+        {
+          "type": "s16",
+          "name": "y"
+        },
+        {
+          "type": "s16",
+          "name": "z"
+        },
+        {
+          "type": "u8",
+          "name": "dir"
+        },
+        {
+          "type": "u8",
+          "name": "mode"
+        }
+      ]
+    },
+    {
+      "name": "avatar_delete",
+      "ret": "void",
+      "params": [
+        {
+          "type": "u32",
+          "name": "avatar"
+        }
+      ]
+    },
+    {
+      "name": "mon_export",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        },
+        {
+          "type": "void *",
+          "name": "buf"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "mon_import",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const void *",
+          "name": "buf"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        },
+        {
+          "type": "BwMonRef *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "panel_set",
+      "ret": "void",
+      "params": [
+        {
+          "type": "u32",
+          "name": "line"
+        },
+        {
+          "type": "const char *",
+          "name": "text"
+        }
+      ]
+    },
+    {
+      "name": "panel_clear",
+      "ret": "void",
+      "params": []
+    },
+    {
+      "name": "timer_start",
+      "ret": "void",
+      "params": []
+    },
+    {
+      "name": "timer_stop",
+      "ret": "void",
+      "params": []
+    },
+    {
+      "name": "timer_ms",
+      "ret": "u64",
+      "params": []
+    },
+    {
+      "name": "split",
+      "ret": "void",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "name"
+        }
+      ]
+    },
+    {
+      "name": "run_restart",
+      "ret": "void",
+      "params": [
+        {
+          "type": "u32",
+          "name": "flags"
+        }
+      ]
+    },
+    {
+      "name": "rand_seed",
+      "ret": "void",
+      "params": [
+        {
+          "type": "u64",
+          "name": "seed"
+        }
+      ]
+    },
+    {
+      "name": "rand_next",
+      "ret": "u32",
+      "params": []
+    },
+    {
+      "name": "on_command",
+      "ret": "void",
+      "params": [
+        {
+          "type": "BwCommandHandler",
+          "name": "fn"
+        }
+      ]
+    },
+    {
+      "name": "publish",
+      "ret": "void",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "topic"
+        },
+        {
+          "type": "const char *",
+          "name": "json"
+        }
+      ]
+    },
+    {
+      "name": "input_press",
+      "ret": "void",
+      "params": [
+        {
+          "type": "u32",
+          "name": "buttons"
+        },
+        {
+          "type": "u32",
+          "name": "frames"
+        }
+      ]
+    },
+    {
+      "name": "on_frame",
+      "ret": "void",
+      "params": [
+        {
+          "type": "BwFrameHandler",
+          "name": "fn"
+        }
+      ]
+    },
+    {
+      "name": "save_send",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "peer"
+        }
+      ]
+    },
+    {
+      "name": "on_save_received",
+      "ret": "void",
+      "params": [
+        {
+          "type": "BwSaveHandler",
+          "name": "fn"
+        }
+      ]
+    },
+    {
+      "name": "setting_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        }
+      ]
+    },
+    {
+      "name": "state_load",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "void *",
+          "name": "buf"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "state_store",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const void *",
+          "name": "buf"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "state_clear",
+      "ret": "int",
+      "params": []
+    },
+    {
+      "name": "state_info",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwModStateHeader *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "state_dir",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "out_size"
+        }
+      ]
+    },
+    {
+      "name": "state_in_step",
+      "ret": "int",
+      "params": []
+    },
+    {
+      "name": "table_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "name"
+        },
+        {
+          "type": "s32",
+          "name": "key"
+        },
+        {
+          "type": "s32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "event_player",
+      "ret": "u32",
+      "params": []
+    },
+    {
+      "name": "shared_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        },
+        {
+          "type": "s32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "shared_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        },
+        {
+          "type": "s32",
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "name": "shared_add",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        },
+        {
+          "type": "s32",
+          "name": "delta"
+        }
+      ]
+    },
+    {
+      "name": "shared_cas",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        },
+        {
+          "type": "s32",
+          "name": "expected"
+        },
+        {
+          "type": "s32",
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "name": "vfs_member_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "archive"
+        },
+        {
+          "type": "u32",
+          "name": "index"
+        },
+        {
+          "type": "const void *",
+          "name": "data"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "vfs_member_clear",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "archive"
+        },
+        {
+          "type": "u32",
+          "name": "index"
+        }
+      ]
+    },
+    {
+      "name": "vfs_member_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "archive"
+        },
+        {
+          "type": "u32",
+          "name": "index"
+        },
+        {
+          "type": "void *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "text_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "archive"
+        },
+        {
+          "type": "u32",
+          "name": "file"
+        },
+        {
+          "type": "u32",
+          "name": "entry"
+        },
+        {
+          "type": "u32",
+          "name": "block"
+        },
+        {
+          "type": "u16 *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "max_units"
+        }
+      ]
+    },
+    {
+      "name": "text_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "archive"
+        },
+        {
+          "type": "u32",
+          "name": "file"
+        },
+        {
+          "type": "u32",
+          "name": "entry"
+        },
+        {
+          "type": "u32",
+          "name": "block"
+        },
+        {
+          "type": "const u16 *",
+          "name": "units"
+        },
+        {
+          "type": "u32",
+          "name": "count"
+        }
+      ]
+    },
+    {
+      "name": "text_language",
+      "ret": "u32",
+      "params": []
+    },
+    {
+      "name": "script_run",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u16",
+          "name": "script_id"
+        },
+        {
+          "type": "u32 *",
+          "name": "ticket"
+        }
+      ]
+    },
+    {
+      "name": "type_chart_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const BwTypeChart *",
+          "name": "chart"
+        }
+      ]
+    },
+    {
+      "name": "type_chart_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwTypeChart *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "text_input",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "title"
+        },
+        {
+          "type": "u32",
+          "name": "max_units"
+        },
+        {
+          "type": "u32",
+          "name": "kind"
+        },
+        {
+          "type": "u32 *",
+          "name": "ticket"
+        }
+      ]
+    },
+    {
+      "name": "mod_file_write",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "name"
+        },
+        {
+          "type": "const void *",
+          "name": "data"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "mod_file_read",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "name"
+        },
+        {
+          "type": "void *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        },
+        {
+          "type": "u32 *",
+          "name": "got"
+        }
+      ]
+    },
+    {
+      "name": "mod_file_list",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "mod_file_delete",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "name"
+        }
+      ]
+    },
+    {
+      "name": "world_create",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "config_json"
+        },
+        {
+          "type": "u32 *",
+          "name": "ticket"
+        }
+      ]
+    },
+    {
+      "name": "world_owner",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "code"
+        },
+        {
+          "type": "const char *",
+          "name": "owner_key"
+        },
+        {
+          "type": "u32",
+          "name": "action"
+        }
+      ]
+    },
+    {
+      "name": "world_join",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "code"
+        },
+        {
+          "type": "const char *",
+          "name": "name_or_key"
+        },
+        {
+          "type": "u32 *",
+          "name": "ticket"
+        }
+      ]
+    },
+    {
+      "name": "world_checks",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const u32 *",
+          "name": "location_ids"
+        },
+        {
+          "type": "u32",
+          "name": "count"
+        }
+      ]
+    },
+    {
+      "name": "world_leave",
+      "ret": "void",
+      "params": []
+    },
+    {
+      "name": "world_read",
+      "ret": "int",
+      "params": [
+        {
+          "type": "void *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "ap_link",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "room"
+        },
+        {
+          "type": "const char *",
+          "name": "slot"
+        },
+        {
+          "type": "const char *",
+          "name": "password"
+        },
+        {
+          "type": "u32 *",
+          "name": "ticket"
+        }
+      ]
+    },
+    {
+      "name": "ap_send",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "json"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "ap_read",
+      "ret": "int",
+      "params": [
+        {
+          "type": "void *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "peer_position",
+      "ret": "int",
+      "params": [
+        {
+          "type": "int",
+          "name": "on"
+        }
+      ]
+    },
+    {
+      "name": "townmap_marker_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "id"
+        },
+        {
+          "type": "u16",
+          "name": "zone"
+        },
+        {
+          "type": "u32",
+          "name": "icon"
+        },
+        {
+          "type": "const char *",
+          "name": "name"
+        }
+      ]
+    },
+    {
+      "name": "townmap_marker_clear",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "id"
+        }
+      ]
+    },
+    {
+      "name": "mode_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "setting_text",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        },
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "player_name",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "mode_code",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "tracker_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "text"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    }
+  ]
+}

@@ -1554,8 +1554,15 @@ class Link:
         self.declared = {}          # overlay tag -> {addr: declared name}
         self.declared_events = {}   # (overlay tag, addr) -> [event names]
         self.declared_by_addr = {}  # addr -> (overlay id, declared name, events)
+        self.arm9_slot_calls = set()  # (overlay tag, name) routed to an ARM9 slot
+        # The declared ARM9 rows: an overlay unit that calls one reaches it
+        # through the boot link's slot (bw_slot_arm9_<address>), the way an
+        # ARM9 unit does, so the row's event fires for overlay callers too
+        # (flag.set from a script's SetEventFlag, badge.get from SetBadge).
+        self.arm9_declared = {}     # addr -> declared name
         for addr, dname, region, events in read_declared_set():
             if region == "arm9":
+                self.arm9_declared[addr & ~1] = dname
                 continue
             self.declared.setdefault(region, {})[addr] = dname
             self.declared_events[(region, addr)] = events
@@ -2239,6 +2246,12 @@ class Link:
                 # ARM9, the runtime, a port object, or a linker constant.
                 if n in self.link_defs:
                     self.arm9_needs.setdefault(n, (addr, True))
+                    if code and addr is not None and (addr & ~1) in self.arm9_declared:
+                        # A declared ARM9 function: the call goes through its
+                        # slot (docs/mod-interface.md, section 2); the boot
+                        # link emits a slot for every declared row it defines.
+                        st.renames[n] = "bw_slot_arm9_%08X" % (addr & ~1)
+                        self.arm9_slot_calls.add((st.ov.tag, n))
                     if n in implicit:
                         h = self.link_heads.get(n)
                         u.protos[n] = implicit_return(h[0] if h else None, n)
@@ -3545,6 +3558,13 @@ def write_report(link, path):
           sum(1 for oid in link.ids
               for a in link.declared.get(link.state[oid].ov.tag, {})
               if a not in [s["addr"] for s in link.state[oid].mod_slots])))
+    # The overlays' calls of declared ARM9 functions, routed to the boot
+    # link's slots (bw_slot_arm9_<address>), by name.
+    arm9_slot_names = sorted({n for _t, n in link.arm9_slot_calls})
+    p("ovlink: %d overlay names of declared ARM9 functions call their slots "
+      "(%d overlay-name pairs): %s" % (
+          len(arm9_slot_names), len(link.arm9_slot_calls),
+          ", ".join(arm9_slot_names) or "none"))
     for oid in link.ids:
         st = link.state[oid]
         kinds = {}

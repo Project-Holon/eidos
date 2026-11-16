@@ -42,6 +42,7 @@
 #include "mod_event.h"
 #include "mod_context.h"
 #include "mod_slot.h"
+#include "mod_state.h"
 
 #include <string.h>
 
@@ -337,6 +338,27 @@ static void build_save_load(const BwEventCall *call, BwEventPayload *out)
      * again.
      */
     memset(&bw_mod_field_context, 0, sizeof(bw_mod_field_context));
+}
+
+/*
+ * save.load, where a continued game starts (mod API v6, sdk/mod_event_v6.c):
+ * EVENT_MAPCHANGE_CreateByMode (game system, start request) with the mode
+ * "continue".  The game data is the game system's, loaded from the save.
+ */
+void bw_event_build_save_load_start(const BwEventCall *call, BwEventPayload *out)
+{
+    BwEventCall c = *call;
+
+    c.a[0] = (uintptr_t)GAMESYSTEM_GetGameData((const struct GameSystem *)call->a[0]);
+    if (c.a[0] == 0) {
+        memset(&out->save_load, 0, sizeof(out->save_load));
+        return;
+    }
+    /* The state calls a handler makes now (work_set, flag_set, item_add)
+     * reach the loaded game: the game data is bound here, before the field
+     * that would bind it otherwise. */
+    bw_mod_state_set_game_data((void *)c.a[0]);
+    build_save_load(&c, out);
 }
 
 /*

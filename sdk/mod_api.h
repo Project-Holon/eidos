@@ -46,8 +46,14 @@ extern "C" {
  * Version 5 appended the services table's event_player, shared_get,
  * shared_set, shared_add and shared_cas (multiplayer).  Nothing moved, so version 3 and 4 mods still
  * load.
+ *
+ * Version 6 appended, for content and online mods: members in memory, text
+ * entries, work variables, badges, field scripts, the type chart, text
+ * input, a mod's own files, the metaxy world sessions and the Archipelago
+ * link, and other players in the field; and the events script.done to
+ * ap.  Nothing moved, so version 3 to 5 mods still load.
  */
-#define BW_MOD_API_VERSION 5
+#define BW_MOD_API_VERSION 6
 /* The oldest interface a mod may state: version 3 mods see the same table
  * without the entries version 4 appended. */
 #define BW_MOD_API_MIN 3
@@ -64,7 +70,7 @@ extern "C" {
  * and the hash follows it; the test carries the other width's number, so a
  * change fails on every width the port is built at.
  */
-#define BW_MOD_API_HASH 0xF31D7215u
+#define BW_MOD_API_HASH 0xF8F177B7u
 
 /* ------------------------------------------------------------------ */
 /* The event header                                                    */
@@ -212,12 +218,101 @@ enum {
     /* progress */
     BW_EVENT_BADGE_GET    = 110,
     BW_EVENT_FLAG_SET     = 111,
-    BW_EVENT_DEX_REGISTER = 112
+    BW_EVENT_DEX_REGISTER = 112,
+
+    /* version 6 */
+    BW_EVENT_SCRIPT_DONE        = 114,
+    BW_EVENT_MOVE_FORGET        = 115,
+    BW_EVENT_MON_SHINY          = 116,
+    BW_EVENT_ITEM_USABLE        = 117,
+    BW_EVENT_SEASON_CHANGE      = 118,
+    BW_EVENT_ENCOUNTER_SLOT     = 119,
+    BW_EVENT_BATTLE_TYPE_EFFECT = 120,
+    BW_EVENT_STARTER_CHOICES    = 121,
+    BW_EVENT_EGG_SPECIES        = 122,
+    BW_EVENT_TEXT_INPUT_DONE    = 123,
+    BW_EVENT_WORLD              = 124,
+    BW_EVENT_AP                 = 125,
+    BW_EVENT_MOVE_KNOWN         = 126
+};
+
+/* Version 6: where the game asks whether a Pokemon knows a move
+ * (move.known). */
+enum {
+    BW_MOVE_SITE_FRONT_TILE = 0,     /* A on the field (Surf's water, Waterfall) */
+    BW_MOVE_SITE_SCRIPT     = 1,     /* a script (Cut's tree, Strength's boulder,
+                                      * the people who ask about a move) */
+    BW_MOVE_SITE_PARTY_MENU = 2      /* the party screen's field moves (later) */
 };
 
 /* ------------------------------------------------------------------ */
 /* The small enums                                                     */
 /* ------------------------------------------------------------------ */
+
+/* Version 6: the wild slot table an encounter.slot pick is from. */
+enum {
+    BW_ENCOUNTER_SLOT_GROUND  = 0,   /* grass, dark grass, caves: 12 slots */
+    BW_ENCOUNTER_SLOT_WATER   = 1,   /* surfing and rippling water: 5 */
+    BW_ENCOUNTER_SLOT_FISHING = 2    /* fishing: 5 */
+};
+
+/* Version 6: the battle's affinity classes (battle.type_effect). */
+enum {
+    BW_TYPE_EFFECT_NONE      = 0,
+    BW_TYPE_EFFECT_QUARTER   = 1,
+    BW_TYPE_EFFECT_HALF      = 2,
+    BW_TYPE_EFFECT_NORMAL    = 3,
+    BW_TYPE_EFFECT_DOUBLE    = 4,
+    BW_TYPE_EFFECT_QUADRUPLE = 5
+};
+
+/* Version 6: the egg rules the game applies after the base species
+ * (egg.species; all set by default). */
+enum {
+    BW_EGG_RULE_NIDORAN  = 0x01u,   /* Nidoran female: either Nidoran */
+    BW_EGG_RULE_VOLBEAT  = 0x02u,   /* Illumise: Volbeat or Illumise */
+    BW_EGG_RULE_MANAPHY  = 0x04u,   /* Manaphy: Phione */
+    BW_EGG_RULE_INCENSE  = 0x08u,   /* the baby needs its incense */
+    BW_EGG_RULE_SHELLOS  = 0x10u,   /* Shellos and Gastrodon: the mother's form */
+    BW_EGG_RULE_BURMY    = 0x20u,   /* Burmy: the mother's form */
+    BW_EGG_RULE_BASCULIN = 0x40u    /* Basculin: the mother's form */
+};
+
+/* Version 6: what text_input accepts. */
+enum {
+    BW_TEXT_INPUT_NAME = 0,   /* the game's letters */
+    BW_TEXT_INPUT_CODE = 1,   /* letters and digits */
+    BW_TEXT_INPUT_LINK = 2    /* every printable character: room links */
+};
+
+/* Version 6: the owner actions of world_owner. */
+enum {
+    BW_WORLD_OWNER_START  = 0,
+    BW_WORLD_OWNER_CLOSE  = 1,
+    BW_WORLD_OWNER_DELETE = 2
+};
+
+/* Version 6: what a world event is (BwWorld.kind). */
+enum {
+    BW_WORLD_GENERATED = 0,   /* bytes: "<code> <owner key>" */
+    BW_WORLD_WAIT      = 1,   /* bytes: the place in the queue */
+    BW_WORLD_JOINED    = 2,   /* bytes: "<player> <player key>\n<player data JSON>" */
+    BW_WORLD_ITEMS     = 3,   /* bytes: "<index> <item id> <from player> ..." */
+    BW_WORLD_POSITION  = 4,   /* bytes: "<player> <zone> <x> <y> <z> <dir>" */
+    BW_WORLD_PLAYER_IN = 5,   /* another player came */
+    BW_WORLD_PLAYER_OUT = 6,  /* another player left */
+    BW_WORLD_ERROR     = 7,   /* bytes: the reason (docs/mod-services.md) */
+    BW_WORLD_CLOSED    = 8,   /* the link to metaxy ended */
+    BW_WORLD_OWNER_DONE = 9   /* an owner action was done */
+};
+
+/* Version 6: what an ap event is (BwAp.kind). */
+enum {
+    BW_AP_LINKED  = 0,   /* the room answered */
+    BW_AP_MESSAGE = 1,   /* bytes: one Archipelago JSON message */
+    BW_AP_ERROR   = 2,   /* bytes: the reason */
+    BW_AP_CLOSED  = 3
+};
 
 /* How an encounter was rolled (encounter.wild). */
 enum {
@@ -1208,6 +1303,184 @@ typedef struct BwDexRegister {
     u16 species;
     u8  caught;     /* 1 caught, 0 seen */
 } BwDexRegister;
+
+/* ------------------------------------------------------------------ */
+/* Version 6                                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * script.done (version 6): a field script a mod started with script_run
+ * has ended.  `ticket` is the number script_run gave.
+ */
+typedef struct BwScriptDone {
+    BwEvent h;
+    u32 ticket;
+    u16 script_id;
+    u16 pad;
+} BwScriptDone;
+
+/*
+ * move.forget (version 6): the game asks whether a move may be forgotten
+ * (FILE_UTIL_IsHmMove; the forget-move screens, the release and deposit
+ * checks).  `allowed` is writable: the game's answer is "not an HM".
+ * `species` reads 0: the check is given the move only.
+ */
+typedef struct BwMoveForget {
+    BwEvent h;
+    u16 species;
+    u16 move;
+    u8  allowed;    /* *mod */
+    u8  pad[3];
+} BwMoveForget;
+
+/*
+ * mon.shiny (version 6): the game decides whether a Pokemon is shiny
+ * (POKE_TOOL_IsShinyOtIdPersonality).  Shiny when value < threshold; the
+ * game's threshold is 8.  The same Pokemon gives the same answer each
+ * time, so a mod keeps it a function of the two numbers.
+ */
+typedef struct BwMonShiny {
+    BwEvent h;
+    u32 ot_id;
+    u32 personality;
+    u32 value;      /* the xor the game computes, 0 to 65535 */
+    u32 threshold;  /* *mod */
+} BwMonShiny;
+
+/*
+ * item.usable (version 6): the party screen asks whether a field item can
+ * be used here (PLIST_DEMO_CanUseGracidea first).  `usable` is writable.
+ */
+typedef struct BwItemUsable {
+    BwEvent h;
+    u16 item;
+    u8  slot;       /* the party slot, 0xFF when not known */
+    u8  usable;     /* *mod */
+} BwItemUsable;
+
+/*
+ * season.change (version 6): the game sets the season from the clock
+ * (COMM_PLAYER_SUPPORT_SetSeason).  `season` is writable: 0 spring,
+ * 1 summer, 2 autumn, 3 winter.
+ */
+typedef struct BwSeasonChange {
+    BwEvent h;
+    u8  clock_season;   /* the season the clock gives */
+    u8  season;         /* *mod */
+    u16 pad;
+} BwSeasonChange;
+
+/*
+ * encounter.slot (version 6): the wild slot the game picks
+ * (FIELD_ENCOUNT_Pick*Slot).  `slot` is writable; a slot past the table
+ * is refused and the game's own pick stands.
+ */
+typedef struct BwEncounterSlot {
+    BwEvent h;
+    u8  method;     /* BW_ENCOUNTER_SLOT_* */
+    u8  roll;       /* the game's roll, 0 to 99 */
+    u8  slot;       /* *mod */
+    u8  slot_count; /* the slots the table has for the method */
+} BwEncounterSlot;
+
+/*
+ * battle.type_effect (version 6): one lookup of the type chart
+ * (BTL_CALC_GetTypeAffinity), after type_chart_set.  `effect` is the
+ * battle's affinity class (BW_TYPE_EFFECT_*), writable.
+ */
+typedef struct BwBattleTypeEffect {
+    BwEvent h;
+    u8  atk_type;
+    u8  def_type;
+    u8  effect;     /* *mod */
+    u8  pad;
+} BwBattleTypeEffect;
+
+/*
+ * starter.choices (version 6): the starter screen is set up (PSEL_Init).
+ * The three species shown are writable; the species given is the
+ * script's, which the mod changes too.
+ */
+typedef struct BwStarterChoices {
+    BwEvent h;
+    u16 species[3]; /* *mod */
+    u16 pad;
+} BwStarterChoices;
+
+/*
+ * egg.species (version 6): the Day Care builds an egg
+ * (SODATEYA_BuildEgg).  `species` and `rules` are writable.
+ */
+typedef struct BwEggSpecies {
+    BwEvent h;
+    u16 mother;
+    u16 father;
+    u16 species;    /* *mod: what hatches */
+    u16 pad;
+    u32 rules;      /* *mod: BW_EGG_RULE_* bits the game applies */
+} BwEggSpecies;
+
+/* The longest answer text_input gives, in code units. */
+#define BW_TEXT_INPUT_MAX 48
+
+/*
+ * text_input.done (version 6): the player closed the text entry a mod
+ * opened with text_input.  `units` are the game's code units, with no end
+ * code.
+ */
+typedef struct BwTextInputDone {
+    BwEvent h;
+    u32 ticket;
+    u16 count;
+    u8  cancelled;  /* 1 when the player left with nothing */
+    u8  pad;
+    u16 units[BW_TEXT_INPUT_MAX];
+} BwTextInputDone;
+
+/*
+ * world (version 6): a message of the metaxy world session.  The bytes are
+ * read with world_read inside the handler; `kind` is BW_WORLD_*.
+ */
+typedef struct BwWorld {
+    BwEvent h;
+    u32 kind;
+    u32 size;       /* the bytes world_read gives */
+    u32 ticket;     /* the call it answers, 0 for none */
+    u32 player;     /* the player it is about, when there is one */
+} BwWorld;
+
+/*
+ * ap (version 6): a message of the Archipelago link.  The bytes (one
+ * Archipelago JSON message, or an error reason) are read with ap_read
+ * inside the handler; `kind` is BW_AP_*.
+ */
+typedef struct BwAp {
+    BwEvent h;
+    u32 kind;
+    u32 size;
+    u32 ticket;
+    u32 pad;
+} BwAp;
+
+/*
+ * move.known (version 6): the game asks whether a party Pokemon knows a
+ * move, once for each Pokemon it asks about, in party order (the field's
+ * A check for Surf and Waterfall stops at the first that does; a script
+ * asks one slot, or each slot until one does).  `known` is the game's own
+ * answer and writable: 1 lets that Pokemon use the move from there (the
+ * prompt, the cut-in and "X used Cut!" name it), 0 does not.  It never
+ * fires for an egg, so "the first Pokemon" in a mod is the first that can
+ * act.  Nothing is kept between asks: one rule gives one answer everywhere.
+ */
+typedef struct BwMoveKnown {
+    BwEvent h;
+    u8  slot;       /* the party slot, 0 to 5 */
+    u8  site;       /* BW_MOVE_SITE_* */
+    u16 species;
+    u16 move;
+    u8  known;      /* *mod */
+    u8  pad;
+} BwMoveKnown;
 
 /* ------------------------------------------------------------------ */
 /* The script commands                                                 */

@@ -316,6 +316,8 @@ static const char *const k_arc_path[UI_ARC_COUNT] = {
     "a/0/4/0",              /* UI_ARC_CARD     */
     "a/0/7/1",              /* UI_ARC_FMENU    */
     "a/0/8/3",              /* UI_ARC_APP      */
+    "a/0/8/5",              /* UI_ARC_TOWNMAP  */
+    "a/0/8/6",              /* UI_ARC_TOWNINFO */
 };
 
 static BwArcFile g_arc[UI_ARC_COUNT];

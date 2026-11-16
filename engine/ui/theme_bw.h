@@ -88,6 +88,8 @@ const u32 *rx_tone_now(void);
 extern const u32 rx_tone_blue[6], rx_tone_red[6], rx_tone_green[6], rx_tone_crimson[6];
 int  rx_otext(EidosUiCtx *c, int x, int y, const char *s, u32 col, u32 ol, int font);
 int  rx_label(EidosUiCtx *c, int x, int y, const char *s, int white, u32 col, int font);
+/* A screen colour as the style's accent (a cap's colour). */
+u32  rx_accent_of(u32 c);
 int  rx_type_word(EidosUiCtx *c, int x, int y, int type, int white);
 void rx_slab(EidosUiCtx *c, int y, int H, int xl0, int xl1, int xr0, int xr1, int r0, int r1, int inl,
              int inr, u32 top, u32 bot, int a);

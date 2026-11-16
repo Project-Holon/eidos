@@ -96,6 +96,7 @@
  * else with a library.
  */
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,6 +111,7 @@
 #include "mod_table.h"
 #include "mod_bw.h"
 #include "plat_dir.h"
+#include "plat_save.h"
 #include "save.h"
 #include "vfs.h"
 
@@ -162,6 +164,12 @@ extern u32  bw_mod_savedata_save_check(void);
 #define BW_MOD_MENU_KEY_MAX 64
 #define BW_MOD_MENU_LABEL_MAX 64
 #define BW_MOD_MENU_CHOICE_LEN 32
+#define BW_MOD_MENU_TEXT_MAX 128        /* a text option's longest value + 1 */
+#define BW_MOD_MENU_MODE_ID 32
+#define BW_MOD_MENU_MODE_LINE 128
+#define BW_MOD_MENU_CODE_MAX  160  /* a world code, or "ap <host:port> <slot> <password>" */
+#define BW_MOD_MENU_MODES_MAX 8         /* the modes one mod may offer      */
+#define BW_MOD_MENU_LOBBY_BIT (1u << 31) /* an option's `@lobby` (modes are bits 0-7) */
 
 /* A mod declares as many options, and an option as many choices, as it
  * wants: the lists grow.  The bounds only stop a broken file from taking
@@ -194,15 +202,44 @@ extern u32  bw_mod_savedata_save_check(void);
 typedef struct BwModMenuOption {
     char key[BW_MOD_MENU_KEY_MAX];
     char label[BW_MOD_MENU_LABEL_MAX];
-    int  kind;                     /* BW_MOD_SETTING_BOOL, _CHOICE, _INT */
+    int  kind;                     /* BW_MOD_SETTING_BOOL, _CHOICE, _INT, _TEXT */
     int  def;                      /* the default: 0/1, a choice index, a number */
     int  min;                      /* _INT: the lowest value  */
-    int  max;                      /* _INT: the highest value */
+    int  max;                      /* _INT: the highest value; _TEXT: the longest text */
     int  value;                    /* the player's choice             */
     int  choice_count;
     int  choice_cap;
     char (*choices)[BW_MOD_MENU_CHOICE_LEN];   /* grows; freed with the model */
+    char text[BW_MOD_MENU_TEXT_MAX];           /* _TEXT: the player's text   */
+    char text_def[BW_MOD_MENU_TEXT_MAX];       /* _TEXT: the default         */
+    u32  modes;                    /* the modes it is shown in (bit k: the mod's
+                                    * mode k); 0: the Mods section alone */
+    char when_key[BW_MOD_MENU_KEY_MAX];        /* `?key=value`: shown only while */
+    char when_val[BW_MOD_MENU_CHOICE_LEN];     /* that option has that value     */
+    char heading[BW_MOD_MENU_LABEL_MAX];       /* a `heading` line above it      */
+    char *help;                                /* its `help` line (freed with it) */
+    char *yaml;                                /* its `yaml` line: "<key> <values>" */
 } BwModMenuOption;
+
+/*
+ * A way to play a mod offers (a `mode` line): the Multiplayer screen shows
+ * it as a card, and a new game started from its screen tells the mod which
+ * mode the player chose (mode_get, during game.new).
+ *
+ *     mode solo "Solo randomizer" "A shuffled game for you alone."
+ */
+typedef struct BwModMenuMode {
+    char id[BW_MOD_MENU_MODE_ID];
+    char title[BW_MOD_MENU_LABEL_MAX];
+    char line[BW_MOD_MENU_MODE_LINE];
+    int  off;                      /* `off`: shown, not chosen yet (not built) */
+    int  joins;                    /* `joins`: its games are worlds others join
+                                    * by code (the Multiplayer screen's Join box) */
+    int  in;                       /* `in=<mode>`: a type on that mode's card
+                                    * (its index), -1 for a card of its own */
+    char game[BW_MOD_MENU_LABEL_MAX];  /* `export="<AP game>"`: Start saves an
+                                    * Archipelago options file instead */
+} BwModMenuMode;
 
 /* One mod the menu shows. */
 typedef struct BwModMenuMod {
@@ -220,6 +257,10 @@ typedef struct BwModMenuMod {
     u32  option_count;
     u32  option_cap;
     BwModMenuOption *options;
+    u32  mode_count;
+    BwModMenuMode *modes;               /* BW_MOD_MENU_MODES_MAX, on the heap
+                                         * (the 32-bit image has little room) */
+    char heading_next[BW_MOD_MENU_LABEL_MAX];  /* a `heading` waiting for its option */
 } BwModMenuMod;
 
 /* One row of the port's own record: a mod's root, its switch and the
@@ -751,18 +792,295 @@ static void cut_comment(char *line)
  * The documents give the example and leave the grammar's details open
  * (docs/mod-services.md, "Mod settings"), so the reading is the port's own.
  */
+/*
+ * A mode line:
+ *
+ *     mode <id> "<title>" "<line>" [off] [joins] [in=<mode>] [export "<game>"]
+ *
+ * The modes come before the options that name them.  `off` shows the card
+ * without letting the player choose it (a mode the mod has not built yet).
+ * `joins`: the mode's games are worlds others join with a code, typed in the
+ * Multiplayer screen's Join box.  `in=<mode>`: no card of its own, a type on
+ * that mode's card.  `export "<game>"`: Start saves an Archipelago options
+ * file for that game ({version} is Black or White) instead of a new game.
+ */
+static int parse_mode(BwModMenuMod *m, char *p)
+{
+    char *id = next_token(&p);
+    char *title = next_token(&p);
+    char *line = next_token(&p);
+    char *flag = next_token(&p);
+    BwModMenuMode *md;
+    int rc = -1;
+
+    if (id == NULL || title == NULL || line == NULL || !key_valid(id) ||
+        strlen(id) >= BW_MOD_MENU_MODE_ID || strchr(id, ',') != NULL) {
+        report(m->name, "a mode line needs <id> \"<title>\" \"<line>\"; it is ignored");
+    } else if (m->mode_count >= BW_MOD_MENU_MODES_MAX) {
+        report(m->name, "more than %d modes; '%s' is ignored", BW_MOD_MENU_MODES_MAX, id);
+    } else if (m->modes == NULL &&
+               (m->modes = (BwModMenuMode *)calloc(BW_MOD_MENU_MODES_MAX,
+                                                   sizeof(BwModMenuMode))) == NULL) {
+        report(m->name, "no memory for the modes");
+    } else {
+        u32 i;
+
+        for (i = 0; i < m->mode_count; i++) {
+            if (strcmp(m->modes[i].id, id) == 0) {
+                break;
+            }
+        }
+        if (i < m->mode_count) {
+            report(m->name, "the mode '%s' is declared twice; the second is ignored", id);
+        } else {
+            if (strlen(title) >= sizeof md->title || strlen(line) >= sizeof md->line) {
+                report(m->name, "the mode '%s' has a title longer than %d or a line "
+                       "longer than %d characters; the rest is cut", id,
+                       (int)sizeof md->title - 1, (int)sizeof md->line - 1);
+            }
+            md = &m->modes[m->mode_count++];
+            memset(md, 0, sizeof *md);
+            copy_str(md->id, sizeof md->id, id);
+            copy_str(md->title, sizeof md->title, title);
+            copy_str(md->line, sizeof md->line, line);
+            md->in = -1;
+            /* the words after the line, in any order */
+            while (flag != NULL) {
+                if (strcmp(flag, "off") == 0) {
+                    md->off = 1;
+                } else if (strcmp(flag, "joins") == 0) {
+                    md->joins = 1;
+                } else if (strncmp(flag, "in=", 3) == 0) {
+                    u32 k;
+
+                    for (k = 0; k + 1 < m->mode_count; k++) {
+                        if (strcmp(m->modes[k].id, flag + 3) == 0 && m->modes[k].in < 0) {
+                            md->in = (int)k;
+                        }
+                    }
+                    if (md->in < 0) {
+                        report(m->name, "the mode '%s' is in '%s', which no mode line above "
+                               "declares as a card", id, flag + 3);
+                    }
+                } else if (strcmp(flag, "export") == 0) {
+                    char *game = next_token(&p);
+
+                    if (game != NULL) {
+                        copy_str(md->game, sizeof md->game, game);
+                        free(game);
+                    }
+                } else {
+                    report(m->name, "the mode '%s' has the word '%s', which is not off, joins, "
+                           "in=<mode> or export \"<game>\"; it is ignored", id, flag);
+                }
+                free(flag);
+                flag = next_token(&p);
+            }
+            rc = 0;
+        }
+    }
+    free(id);
+    free(title);
+    free(line);
+    free(flag);
+    return rc;
+}
+
+/*
+ * The modes an option is shown in: a last word `@id,id` on its line, cut
+ * off the value.  Each id names a mode declared above.  0 (no word): the
+ * option is in the Mods section alone.
+ */
+static u32 cut_mode_tags(BwModMenuMod *m, const char *key, char *value)
+{
+    char *at = NULL;
+    char *s;
+    int quoted = 0;
+    u32 bits = 0;
+
+    for (s = value; *s != '\0'; s++) {
+        if (*s == '"') {
+            quoted = !quoted;
+        } else if (*s == '@' && !quoted && (s == value || is_space(s[-1]))) {
+            at = s;
+        }
+    }
+    if (at == NULL) {
+        return 0;
+    }
+    for (s = at + 1; *s != '\0'; s++) {
+        if (is_space(*s)) {
+            return 0;               /* not the last word: part of the value */
+        }
+    }
+    {
+        char *t = at + 1;
+
+        while (*t != '\0') {
+            char *e = strchr(t, ',');
+            size_t n = e != NULL ? (size_t)(e - t) : strlen(t);
+            u32 i;
+
+            if (n == 5 && memcmp(t, "lobby", 5) == 0) {
+                /* the co-op lobby's rules: the host's value is everyone's */
+                bits |= BW_MOD_MENU_LOBBY_BIT;
+                t += n + (e != NULL ? 1 : 0);
+                continue;
+            }
+            for (i = 0; i < m->mode_count; i++) {
+                if (strlen(m->modes[i].id) == n && memcmp(m->modes[i].id, t, n) == 0) {
+                    bits |= 1u << i;
+                    break;
+                }
+            }
+            if (i == m->mode_count && n > 0) {
+                report(m->name, "the option '%s' names the mode '%.*s', which no "
+                       "mode line above declares", key, (int)n, t);
+            }
+            t += n + (e != NULL ? 1 : 0);
+        }
+    }
+    /* the value ends before the word */
+    while (at > value && is_space(at[-1])) {
+        at--;
+    }
+    *at = '\0';
+    return bits;
+}
+
+/*
+ * The condition an option is shown under: a last word `?key=value` on its
+ * line, cut off the value into `out` ("key=value"; "" for none).  It names
+ * another option of the same mod and one of its values (a choice's name,
+ * on/off, a number, a text), so a screen asks only what the answers so far
+ * leave open: a world's code only to join it, its rules only to make it.
+ */
+static void cut_when(char *value, char *out, size_t n)
+{
+    char *s, *q = NULL;
+    int quoted = 0;
+
+    out[0] = '\0';
+    for (s = value; *s != '\0'; s++) {
+        if (*s == '"') {
+            quoted = !quoted;
+        } else if (*s == '?' && !quoted && s > value && is_space(s[-1])) {
+            q = s;
+        }
+    }
+    if (q == NULL || strchr(q, '=') == NULL) {
+        return;
+    }
+    for (s = q + 1; *s != '\0'; s++) {
+        if (is_space(*s)) {
+            return;                 /* not the last word: part of the value */
+        }
+    }
+    copy_str(out, n, q + 1);
+    while (q > value && is_space(q[-1])) {
+        q--;
+    }
+    *q = '\0';
+}
+
+/*
+ * The lines that dress the options:
+ *
+ *     heading "<text>"                  a title above the next option
+ *     help <key> "<text>"               what the option does (the screen's
+ *                                       side panel, while its row is chosen)
+ *     yaml <key> <name> [<v>|<v>|...]   the option in an Archipelago options
+ *                                       file: its name there, and the value
+ *                                       of each choice (bool: off|on; an int
+ *                                       is written as the number)
+ *
+ * help and yaml name an option declared above them.
+ */
+static int parse_extra(BwModMenuMod *m, const char *what, char *p)
+{
+    char *a = next_token(&p);
+    BwModMenuOption *o = NULL;
+    u32 i;
+    int rc = 0;
+
+    if (a == NULL) {
+        report(m->name, "a %s line with nothing after it; it is ignored", what);
+        return -1;
+    }
+    if (strcmp(what, "heading") == 0) {
+        copy_str(m->heading_next, sizeof m->heading_next, a);
+        free(a);
+        return 0;
+    }
+    for (i = 0; i < m->option_count; i++) {
+        if (strcmp(m->options[i].key, a) == 0) {
+            o = &m->options[i];
+        }
+    }
+    if (o == NULL) {
+        report(m->name, "the %s line names '%s', which no option line above declares", what, a);
+        free(a);
+        return -1;
+    }
+    if (strcmp(what, "help") == 0) {
+        char *text = next_token(&p);
+
+        if (text != NULL) {
+            free(o->help);
+            o->help = text;
+        } else {
+            rc = -1;
+        }
+    } else {
+        const char *s = p;
+        size_t n;
+
+        while (*s != '\0' && is_space(*s)) {
+            s++;
+        }
+        n = strlen(s);
+        while (n > 0 && is_space(s[n - 1])) {
+            n--;
+        }
+        free(o->yaml);
+        o->yaml = (char *)malloc(n + 1);
+        if (o->yaml != NULL) {
+            memcpy(o->yaml, s, n);
+            o->yaml[n] = '\0';
+        }
+        rc = n > 0 ? 0 : -1;
+    }
+    if (rc != 0) {
+        report(m->name, "the %s line for '%s' is not complete; it is ignored", what, a);
+    }
+    free(a);
+    return rc;
+}
+
 static int parse_option(BwModMenuMod *m, char *line)
 {
+    char when[BW_MOD_MENU_KEY_MAX + BW_MOD_MENU_CHOICE_LEN + 2];
     char *p = line;
     char *key;
     char *kind;
     char *label;
     char *value;
     BwModMenuOption *o;
+    u32 modes;
 
     key = next_token(&p);
     if (key == NULL) {
         return 0;
+    }
+    if (strcmp(key, "mode") == 0) {
+        free(key);
+        return parse_mode(m, p);
+    }
+    if (strcmp(key, "heading") == 0 || strcmp(key, "help") == 0 || strcmp(key, "yaml") == 0) {
+        int rc = parse_extra(m, key, p);
+
+        free(key);
+        return rc;
     }
     if (strcmp(key, "option") != 0) {
         free(key);
@@ -798,6 +1116,12 @@ static int parse_option(BwModMenuMod *m, char *line)
         }
         memcpy(value, s, (size_t)(e - s));
         value[e - s] = '\0';
+    }
+    /* the two last words come in either order */
+    cut_when(value, when, sizeof when);
+    modes = cut_mode_tags(m, key, value);
+    if (when[0] == '\0') {
+        cut_when(value, when, sizeof when);
     }
     if (!key_valid(key)) {
         report(m->name, "the option key '%s' holds a space, '=', '#' or '\"', "
@@ -844,6 +1168,16 @@ static int parse_option(BwModMenuMod *m, char *line)
     memset(o, 0, sizeof *o);
     copy_str(o->key, sizeof o->key, key);
     copy_str(o->label, sizeof o->label, label);
+    /* the group it is in: the last heading above it (the screen draws the
+     * heading where the group changes, whichever of its options a mode shows) */
+    copy_str(o->heading, sizeof o->heading, m->heading_next);
+    if (when[0] != '\0') {
+        char *eq = strchr(when, '=');
+
+        *eq = '\0';
+        copy_str(o->when_key, sizeof o->when_key, when);
+        copy_str(o->when_val, sizeof o->when_val, eq + 1);
+    }
     if (strcmp(kind, "bool") == 0) {
         o->kind = BW_MOD_SETTING_BOOL;
         o->def = bool_value(value);
@@ -918,6 +1252,33 @@ static int parse_option(BwModMenuMod *m, char *line)
         o->max = (int)hi;
         o->def = (int)def;
         o->value = o->def;
+    } else if (strcmp(kind, "text") == 0) {
+        /* `<longest> "<default>"`: the default may be left out (empty).
+         * A text holds no '"' (the choices file quotes it). */
+        char *end;
+        long len = strtol(value, &end, 10);
+        char *q = end;
+        char *def = next_token(&q);
+
+        while (*q != '\0' && is_space(*q)) {
+            q++;
+        }
+        if (end == value || len < 1 || len >= BW_MOD_MENU_TEXT_MAX || *q != '\0' ||
+            (def != NULL && (long)strlen(def) > len)) {
+            report(m->name, "the text option '%s' needs '<longest> \"<default>\"' with "
+                   "1 <= longest <= %d; it is ignored", key, BW_MOD_MENU_TEXT_MAX - 1);
+            free(def);
+            free(key);
+            free(kind);
+            free(label);
+            free(value);
+            return -1;
+        }
+        o->kind = BW_MOD_SETTING_TEXT;
+        o->max = (int)len;
+        copy_str(o->text_def, sizeof o->text_def, def != NULL ? def : "");
+        copy_str(o->text, sizeof o->text, o->text_def);
+        free(def);
     } else {
         report(m->name, "the option '%s' has the unknown kind '%s'; it is "
                "ignored", key, kind);
@@ -927,6 +1288,7 @@ static int parse_option(BwModMenuMod *m, char *line)
         free(value);
         return -1;
     }
+    o->modes = modes;
     m->option_count++;
     free(key);
     free(kind);
@@ -1043,10 +1405,9 @@ static void read_choices(BwModMenuMod *m)
         line[n] = '\0';
         p = (*e == '\0') ? e : e + 1;
 
-        hash = strchr(line, '#');
-        if (hash != NULL) {
-            *hash = '\0';
-        }
+        /* a text's value is quoted and may hold '#' */
+        (void)hash;
+        cut_comment(line);
         {
             const char *s = line;
             const char *en = line + strlen(line);
@@ -1075,6 +1436,15 @@ static void read_choices(BwModMenuMod *m)
                     if ((size_t)(ke - ks) != strlen(o->key) ||
                         memcmp(o->key, ks, (size_t)(ke - ks)) != 0) {
                         continue;
+                    }
+                    if (o->kind == BW_MOD_SETTING_TEXT) {
+                        /* key = "text" */
+                        if (ve - vs >= 2 && vs[0] == '"' && ve[-1] == '"' &&
+                            (size_t)(ve - vs - 2) <= (size_t)o->max) {
+                            memcpy(o->text, vs + 1, (size_t)(ve - vs - 2));
+                            o->text[ve - vs - 2] = '\0';
+                        }
+                        break;
                     }
                     value = strtol(vs, NULL, 10);
                     if (o->kind == BW_MOD_SETTING_BOOL) {
@@ -1130,7 +1500,9 @@ static int write_choices(BwModMenuMod *m)
     for (i = 0; i < m->option_count; i++) {
         BwModMenuOption *o = &m->options[i];
         char line[256];
-        int n = snprintf(line, sizeof line, "%s = %d\n", o->key, o->value);
+        int n = o->kind == BW_MOD_SETTING_TEXT
+                ? snprintf(line, sizeof line, "%s = \"%s\"\n", o->key, o->text)
+                : snprintf(line, sizeof line, "%s = %d\n", o->key, o->value);
 
         if (n < 0 || (size_t)n >= sizeof line) {
             free(text);
@@ -1160,11 +1532,16 @@ static void model_free(void)
 
         for (o = 0; o < g_mods[i].option_count; o++) {
             free(g_mods[i].options[o].choices);
+            free(g_mods[i].options[o].help);
+            free(g_mods[i].options[o].yaml);
         }
         free(g_mods[i].options);
         g_mods[i].options = NULL;
         g_mods[i].option_count = 0;
         g_mods[i].option_cap = 0;
+        free(g_mods[i].modes);
+        g_mods[i].modes = NULL;
+        g_mods[i].mode_count = 0;
     }
     g_count = 0;
     g_built = 0;
@@ -1187,13 +1564,41 @@ static BwModMenuMod *model_add(void)
     return m;
 }
 
+/* Two spellings of one folder: '\' and '/' alike, a trailing one left out,
+ * and on Windows the case too (a mod given with --mod is also found in the
+ * mods folder, spelled the other way). */
+static int same_root(const char *a, const char *b)
+{
+    size_t la = strlen(a), lb = strlen(b), i;
+
+    while (la > 1 && (a[la - 1] == '/' || a[la - 1] == '\\')) la--;
+    while (lb > 1 && (b[lb - 1] == '/' || b[lb - 1] == '\\')) lb--;
+    if (la != lb) {
+        return 0;
+    }
+    for (i = 0; i < la; i++) {
+        int ca = (unsigned char)a[i], cb = (unsigned char)b[i];
+
+        if (ca == '\\') ca = '/';
+        if (cb == '\\') cb = '/';
+#ifdef _WIN32
+        ca = tolower(ca);
+        cb = tolower(cb);
+#endif
+        if (ca != cb) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /* The row of the mod whose root is `root`, or NULL. */
 static BwModMenuMod *model_find_root(const char *root)
 {
     u32 i;
 
     for (i = 0; i < g_count; i++) {
-        if (strcmp(g_mods[i].root, root) == 0) {
+        if (same_root(g_mods[i].root, root)) {
             return &g_mods[i];
         }
     }
@@ -1403,7 +1808,7 @@ static void model_build(void)
         const char *root = bw_mod_root_at(i);
         BwModMenuMod *m;
 
-        if (root == NULL || root[0] == '\0') {
+        if (root == NULL || root[0] == '\0' || model_find_root(root) != NULL) {
             continue;
         }
         m = model_add();
@@ -1595,6 +2000,28 @@ int bw_mod_menu_reload(void)
     model_build();
     g_force_apply = 1;
     return bw_mod_menu_apply();
+}
+
+/* Test switch EIDOS_MOD_MODE=<id>: the first new game of the run is in
+ * that mode, as if the Multiplayer screen's Start had chosen it
+ * (docs/test-switches.md). */
+void bw_mod_menu_mode_from_env(void)
+{
+    const char *want = getenv("EIDOS_MOD_MODE");
+    u32 i, k;
+
+    if (want != NULL && want[0] != '\0') {
+        /* EIDOS_MOD_CODE: what the Join box would hand a mode that joins (a
+         * world's code, or "ap <host:port> <slot> <password>") */
+        const char *code = getenv("EIDOS_MOD_CODE");
+
+        if (bw_mod_menu_find_mode(want, &i, &k) && bw_mod_menu_mode_begin_join(i, k, code) == 0) {
+            fprintf(stderr, "eidos: EIDOS_MOD_MODE: the first new game is in mode '%s' (%s)\n", want,
+                    g_mods[i].name);
+        } else {
+            fprintf(stderr, "eidos: EIDOS_MOD_MODE: no mod offers the mode '%s'\n", want);
+        }
+    }
 }
 
 void bw_mod_menu_start(void)
@@ -2108,12 +2535,14 @@ const char *bw_mod_menu_option_text(u32 index, u32 option, char *buf,
         return buf;
     }
     o = &g_mods[index].options[option];
-    if (o->kind == BW_MOD_SETTING_BOOL) {
-        snprintf(buf, size, "%s", o->value ? "on" : "off");
+    if (o->kind == BW_MOD_SETTING_TEXT) {
+        snprintf(buf, size, "%s", o->text);
+    } else if (o->kind == BW_MOD_SETTING_BOOL) {
+        snprintf(buf, size, "%s", bw_mod_menu_rule_value(index, option) ? "on" : "off");
     } else if (o->kind == BW_MOD_SETTING_INT) {
-        snprintf(buf, size, "%d", o->value);
+        snprintf(buf, size, "%d", bw_mod_menu_rule_value(index, option));
     } else if (o->choice_count > 0) {
-        int choice = o->value;
+        int choice = bw_mod_menu_rule_value(index, option);
 
         if (choice < 0 || choice >= o->choice_count) {
             choice = 0;
@@ -2121,6 +2550,622 @@ const char *bw_mod_menu_option_text(u32 index, u32 option, char *buf,
         snprintf(buf, size, "%s", o->choices[choice]);
     }
     return buf;
+}
+
+int bw_mod_menu_option_set_text(u32 index, u32 option, const char *text)
+{
+    BwModMenuOption *o;
+    const char *s;
+
+    model_ready();
+    if (index >= g_count || option >= g_mods[index].option_count || text == NULL) {
+        return -1;
+    }
+    o = &g_mods[index].options[option];
+    if (o->kind != BW_MOD_SETTING_TEXT || (int)strlen(text) > o->max) {
+        return -1;
+    }
+    for (s = text; *s != '\0'; s++) {
+        if (*s == '"' || *s == '\n' || *s == '\r') {
+            return -1;
+        }
+    }
+    copy_str(o->text, sizeof o->text, text);
+    (void)write_choices(&g_mods[index]);
+    return 0;
+}
+
+static int same_word(const char *a, const char *b)
+{
+    for (; *a != '\0' && *b != '\0'; a++, b++) {
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) {
+            return 0;
+        }
+    }
+    return *a == *b;
+}
+
+/* 0 when the option's `?key=value` does not hold now on mode `mode`'s
+ * screen: the screen leaves the row out.  The condition holds when the
+ * option it names is not asked on that screen (the rules a solo game and a
+ * world's maker share, with no World question in solo), and when the mod
+ * declares no such option (the mod's own mistake hides nothing). */
+static int option_shown(const BwModMenuMod *m, const BwModMenuOption *o, u32 mode)
+{
+    const BwModMenuOption *c = NULL;
+    char now[BW_MOD_MENU_TEXT_MAX];
+    u32 i;
+
+    if (o->when_key[0] == '\0') {
+        return 1;
+    }
+    for (i = 0; i < m->option_count; i++) {
+        if (strcmp(m->options[i].key, o->when_key) == 0) {
+            c = &m->options[i];
+            break;
+        }
+    }
+    if (c == NULL || ((c->modes >> mode) & 1u) == 0) {
+        return 1;
+    }
+    switch (c->kind) {
+    case BW_MOD_SETTING_BOOL:
+        copy_str(now, sizeof now, c->value ? "on" : "off");
+        break;
+    case BW_MOD_SETTING_CHOICE:
+        copy_str(now, sizeof now, c->value >= 0 && c->value < c->choice_count
+                                  ? c->choices[c->value] : "");
+        break;
+    case BW_MOD_SETTING_TEXT:
+        copy_str(now, sizeof now, c->text);
+        break;
+    default:
+        snprintf(now, sizeof now, "%d", c->value);
+        break;
+    }
+    return same_word(now, o->when_val);
+}
+
+int bw_mod_menu_option_in_mode(u32 index, u32 option, u32 mode)
+{
+    model_ready();
+    if (index >= g_count || option >= g_mods[index].option_count || mode >= 32u) {
+        return 0;
+    }
+    return ((g_mods[index].options[option].modes >> mode) & 1u) &&
+           option_shown(&g_mods[index], &g_mods[index].options[option], mode);
+}
+
+/* ------------------------------------------------------------------ */
+/* The modes a mod offers                                              */
+/* ------------------------------------------------------------------ */
+
+u32 bw_mod_menu_mode_count(u32 index)
+{
+    model_ready();
+    return index < g_count ? g_mods[index].mode_count : 0u;
+}
+
+static const BwModMenuMode *mode_at(u32 index, u32 mode)
+{
+    model_ready();
+    if (index >= g_count || mode >= g_mods[index].mode_count) {
+        return NULL;
+    }
+    return &g_mods[index].modes[mode];
+}
+
+const char *bw_mod_menu_mode_id(u32 index, u32 mode)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+
+    return md != NULL ? md->id : "";
+}
+
+const char *bw_mod_menu_mode_title(u32 index, u32 mode)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+
+    return md != NULL ? md->title : "";
+}
+
+const char *bw_mod_menu_mode_line(u32 index, u32 mode)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+
+    return md != NULL ? md->line : "";
+}
+
+int bw_mod_menu_mode_off(u32 index, u32 mode)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+
+    return md == NULL || md->off;
+}
+
+int bw_mod_menu_find_mode(const char *id, u32 *index, u32 *mode)
+{
+    u32 i, k;
+
+    model_ready();
+    for (i = 0; id != NULL && i < g_count; i++) {
+        for (k = 0; k < g_mods[i].mode_count; k++) {
+            if (strcmp(g_mods[i].modes[k].id, id) == 0) {
+                if (index != NULL) *index = i;
+                if (mode != NULL) *mode = k;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* The mode the next new game is started in: the mod's namespace and the
+ * mode's id.  Set by the screen's Start, read by the mod during game.new
+ * (mode_get), and dropped when game.new is done. */
+static char g_mode_ns[BW_MOD_MENU_NS_MAX];
+static char g_mode_id[BW_MOD_MENU_MODE_ID];
+static char g_mode_code[BW_MOD_MENU_CODE_MAX];  /* the world the game joins, "" for none */
+static int  g_mode_used;           /* a game.new has had it */
+
+/* sdk/save_games.h (weak: the model's tests link without it) */
+extern void bw_games_pending(int kind, int role, const char *ns, const char *mode,
+                             const char *code) __attribute__((weak));
+extern void bw_games_pending_clear(void) __attribute__((weak));
+
+int bw_mod_menu_mode_begin(u32 index, u32 mode)
+{
+    return bw_mod_menu_mode_begin_join(index, mode, NULL);
+}
+
+int bw_mod_menu_mode_begin_join(u32 index, u32 mode, const char *code)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+
+    if (md == NULL || md->off || g_mods[index].ns[0] == '\0' ||
+        (code != NULL && code[0] != '\0' && !md->joins)) {
+        return -1;
+    }
+    copy_str(g_mode_ns, sizeof g_mode_ns, g_mods[index].ns);
+    copy_str(g_mode_id, sizeof g_mode_id, md->id);
+    copy_str(g_mode_code, sizeof g_mode_code, code != NULL ? code : "");
+    g_mode_used = 0;
+    if (bw_games_pending != NULL) {
+        /* the save goes under Your games: a world made or joined, or a game of
+         * one's own */
+        char rec[24];
+
+        /* an Archipelago room's line ("ap <host:port> <slot> <password>")
+         * is kept as AP and the port */
+        if (strncmp(g_mode_code, "ap ", 3) == 0) {
+            const char *colon = strchr(g_mode_code + 3, ':'), *sp;
+
+            sp = colon != NULL ? strchr(colon, ' ') : NULL;
+            snprintf(rec, sizeof rec, "AP%.*s", colon != NULL && sp != NULL ? (int)(sp - colon - 1) : 0,
+                     colon != NULL ? colon + 1 : "");
+        } else {
+            copy_str(rec, sizeof rec, g_mode_code);
+        }
+        bw_games_pending(md->game[0] != '\0' ? 2 : md->joins ? 1 : 0, g_mode_code[0] != '\0' ? 1 : 0,
+                         g_mods[index].ns, md->id, rec);
+    }
+    return 0;
+}
+
+int bw_mod_menu_mode_joins(u32 index, u32 mode)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+
+    return md != NULL && md->joins && !md->off;
+}
+
+void bw_mod_menu_mode_end(void)
+{
+    g_mode_ns[0] = '\0';
+    g_mode_id[0] = '\0';
+    g_mode_code[0] = '\0';
+    g_mode_used = 0;
+    if (bw_games_pending_clear != NULL) {
+        bw_games_pending_clear();   /* its record was written at its first save, or never */
+    }
+}
+
+void bw_mod_menu_mode_new_game(void)
+{
+    if (g_mode_used) {
+        bw_mod_menu_mode_end();     /* the mode was the game before this one's */
+    } else if (g_mode_id[0] != '\0') {
+        g_mode_used = 1;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* The co-op lobby's rules (`@lobby` options)                          */
+/* ------------------------------------------------------------------ */
+
+/* sdk/mp.h: the session's shared table (the host's copy is the real one).
+ * Weak: the model's own tests link without the multiplayer layer. */
+extern int bw_mp_shared_get(const char *ns, const char *key, s32 *out) __attribute__((weak));
+extern int bw_mp_shared_set(const char *ns, const char *key, s32 value) __attribute__((weak));
+extern int bw_mp_is_host(void) __attribute__((weak));
+
+static int rule_key(char *out, size_t size, const char *key)
+{
+    int n = snprintf(out, size, "rule.%s", key);
+
+    return n > 0 && (size_t)n < size ? 0 : -1;
+}
+
+static int value_ok(const BwModMenuOption *o, int v)
+{
+    if (o->kind == BW_MOD_SETTING_BOOL) return v == 0 || v == 1;
+    if (o->kind == BW_MOD_SETTING_INT) return v >= o->min && v <= o->max;
+    if (o->kind == BW_MOD_SETTING_CHOICE) return v >= 0 && v < o->choice_count;
+    return 0;
+}
+
+/* The host's value of a lobby rule while a session is open: 1 and *out,
+ * or 0 (no session, not a rule, or the host has not sent it). */
+static int lobby_value(const BwModMenuMod *m, const BwModMenuOption *o, int *out)
+{
+    char k[BW_MOD_MENU_KEY_MAX + 8];
+    s32 v;
+
+    if (!(o->modes & BW_MOD_MENU_LOBBY_BIT) || o->kind == BW_MOD_SETTING_TEXT ||
+        bw_mp_shared_get == NULL || m->ns[0] == '\0' || rule_key(k, sizeof k, o->key) != 0) {
+        return 0;
+    }
+    if (bw_mp_shared_get(m->ns, k, &v) != 0 || !value_ok(o, (int)v)) {
+        return 0;
+    }
+    *out = (int)v;
+    return 1;
+}
+
+int bw_mod_menu_option_in_lobby(u32 index, u32 option)
+{
+    model_ready();
+    if (index >= g_count || option >= g_mods[index].option_count) {
+        return 0;
+    }
+    return (g_mods[index].options[option].modes & BW_MOD_MENU_LOBBY_BIT) != 0 &&
+           g_mods[index].options[option].kind != BW_MOD_SETTING_TEXT;
+}
+
+int bw_mod_menu_rule_value(u32 index, u32 option)
+{
+    int v;
+
+    model_ready();
+    if (index >= g_count || option >= g_mods[index].option_count) {
+        return 0;
+    }
+    if (lobby_value(&g_mods[index], &g_mods[index].options[option], &v)) {
+        return v;
+    }
+    return g_mods[index].options[option].value;
+}
+
+int bw_mod_menu_rules_locked(void)
+{
+    s32 v;
+
+    /* in a session, a joiner plays by the host's rules: its own stay as
+     * they are and cannot be changed from the lobby */
+    return bw_mp_shared_get != NULL && bw_mp_is_host != NULL &&
+           bw_mp_shared_get("", "", &v) >= 0 && !bw_mp_is_host();
+}
+
+void bw_mod_menu_rules_push(void)
+{
+    static u32 sent_sum = 0xFFFFFFFFu;
+    u32 i, o, sum = 2166136261u;
+    char k[BW_MOD_MENU_KEY_MAX + 8];
+
+    if (bw_mp_shared_set == NULL || bw_mp_is_host == NULL || !bw_mp_is_host()) {
+        return;
+    }
+    model_ready();
+    /* only when a value changed (a frame's call is cheap) */
+    for (i = 0; i < g_count; i++) {
+        for (o = 0; o < g_mods[i].option_count; o++) {
+            if (g_mods[i].enabled && bw_mod_menu_option_in_lobby(i, o)) {
+                sum = (sum ^ (u32)g_mods[i].options[o].value ^ (i << 8) ^ (o << 16)) * 16777619u;
+            }
+        }
+    }
+    if (sum == sent_sum) {
+        return;
+    }
+    for (i = 0; i < g_count; i++) {
+        for (o = 0; o < g_mods[i].option_count; o++) {
+            if (g_mods[i].enabled && bw_mod_menu_option_in_lobby(i, o) &&
+                rule_key(k, sizeof k, g_mods[i].options[o].key) == 0) {
+                if (bw_mp_shared_set(g_mods[i].ns, k, (s32)g_mods[i].options[o].value) != 0) {
+                    return;         /* no session yet: sent at the next call */
+                }
+            }
+        }
+    }
+    sent_sum = sum;
+}
+
+/* The calling mod's namespace (see bw_mod_menu_setting_get). */
+static const char *calling_ns(void)
+{
+    const char *ns = g_namespace;
+
+    if (ns[0] == '\0') {
+        ns = bw_mod_savedata_namespace();
+    }
+    return ns != NULL ? ns : "";
+}
+
+/* The services table's mode_get: the mode the player chose for this new
+ * game, if it is the calling mod's; "" otherwise. */
+int bw_mod_menu_mode_get(char *out, u32 size)
+{
+    const char *ns = calling_ns();
+    const char *id = (ns[0] != '\0' && strcmp(ns, g_mode_ns) == 0) ? g_mode_id : "";
+
+    if (out == NULL || size == 0) {
+        return -1;
+    }
+    copy_str(out, size, id);
+    return (int)strlen(out);
+}
+
+int bw_mod_menu_mode_running(void)
+{
+    return g_mode_id[0] != '\0';
+}
+
+/* The services table's mode_code: the world code the player typed in the
+ * Multiplayer screen's Join box for this new game, if the mode is the
+ * calling mod's; "" for a new world. */
+int bw_mod_menu_mode_code(char *out, u32 size)
+{
+    const char *ns = calling_ns();
+    const char *code = (ns[0] != '\0' && strcmp(ns, g_mode_ns) == 0) ? g_mode_code : "";
+
+    if (out == NULL || size == 0) {
+        return -1;
+    }
+    copy_str(out, size, code);
+    return (int)strlen(out);
+}
+
+int bw_mod_menu_mode_in(u32 index, u32 mode)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+
+    return md != NULL ? md->in : -1;
+}
+
+const char *bw_mod_menu_mode_export(u32 index, u32 mode)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+
+    return md != NULL && md->game[0] != '\0' ? md->game : NULL;
+}
+
+/* The first mode of an enabled mod that joins: a relay world's (no
+ * `export`) or an Archipelago room's (`export`). */
+static int find_joining_kind(int room, u32 *index, u32 *mode)
+{
+    u32 i, k;
+
+    model_ready();
+    for (i = 0; i < g_count; i++) {
+        if (!g_mods[i].enabled) {
+            continue;
+        }
+        for (k = 0; k < g_mods[i].mode_count; k++) {
+            const BwModMenuMode *md = &g_mods[i].modes[k];
+
+            if (md->joins && !md->off && (md->game[0] != '\0') == (room != 0)) {
+                if (index != NULL) *index = i;
+                if (mode != NULL) *mode = k;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+int bw_mod_menu_find_joining(u32 *index, u32 *mode)
+{
+    return find_joining_kind(0, index, mode);
+}
+
+int bw_mod_menu_find_room(u32 *index, u32 *mode)
+{
+    return find_joining_kind(1, index, mode);
+}
+
+const char *bw_mod_menu_option_heading(u32 index, u32 option)
+{
+    model_ready();
+    return index < g_count && option < g_mods[index].option_count ? g_mods[index].options[option].heading : "";
+}
+
+const char *bw_mod_menu_option_help(u32 index, u32 option)
+{
+    model_ready();
+    return index < g_count && option < g_mods[index].option_count && g_mods[index].options[option].help != NULL
+           ? g_mods[index].options[option].help : "";
+}
+
+const char *bw_mod_menu_option_yaml(u32 index, u32 option)
+{
+    model_ready();
+    return index < g_count && option < g_mods[index].option_count ? g_mods[index].options[option].yaml : NULL;
+}
+
+/* The n-th '|' word of `s` into out ("" past the last). */
+static void nth_word(const char *s, int n, char *out, size_t size)
+{
+    while (n > 0 && s != NULL && *s != '\0') {
+        if (*s++ == '|') {
+            n--;
+        }
+    }
+    {
+        size_t k = 0;
+
+        while (s != NULL && s[k] != '\0' && s[k] != '|' && k + 1 < size) {
+            out[k] = s[k];
+            k++;
+        }
+        out[k] = '\0';
+    }
+}
+
+/* A YAML scalar for a name: quoted when it holds anything but letters,
+ * digits, spaces, '_' and '-'. */
+static void yaml_quote(char *out, size_t size, const char *s)
+{
+    size_t k = 0, i;
+    int plain = s[0] != '\0';
+
+    for (i = 0; s[i] != '\0'; i++) {
+        unsigned char ch = (unsigned char)s[i];
+
+        if (!(isalnum(ch) || ch == ' ' || ch == '_' || ch == '-' || ch >= 0x80)) {
+            plain = 0;
+        }
+    }
+    if (plain) {
+        copy_str(out, size, s);
+        return;
+    }
+    if (k + 1 < size) out[k++] = '"';
+    for (i = 0; s[i] != '\0' && k + 3 < size; i++) {
+        if (s[i] == '"' || s[i] == '\\') {
+            out[k++] = '\\';
+        }
+        out[k++] = s[i];
+    }
+    if (k + 1 < size) out[k++] = '"';
+    out[k] = '\0';
+}
+
+int bw_mod_menu_mode_write_yaml(u32 index, u32 mode, const char *name, char version, char *path, u32 size)
+{
+    const BwModMenuMode *md = mode_at(index, mode);
+    const BwModMenuMod *m;
+    const char *dir = bw_save_dir();
+    char game[BW_MOD_MENU_LABEL_MAX], qname[96], qgame[160], fname[64], dpath[512];
+    char *text;
+    size_t cap = 16384, n = 0;
+    u32 o;
+    int rc;
+
+    if (md == NULL || md->game[0] == '\0' || dir == NULL || path == NULL || size == 0) {
+        return -1;
+    }
+    m = &g_mods[index];
+    /* {version}: the cartridge's own */
+    {
+        const char *v = strstr(md->game, "{version}");
+
+        if (v != NULL) {
+            snprintf(game, sizeof game, "%.*s%s%s", (int)(v - md->game), md->game,
+                     version == 'W' ? "White" : "Black", v + 9);
+        } else {
+            copy_str(game, sizeof game, md->game);
+        }
+    }
+    yaml_quote(qname, sizeof qname, name != NULL && name[0] != '\0' ? name : "Player");
+    yaml_quote(qgame, sizeof qgame, game);
+    text = (char *)malloc(cap);
+    if (text == NULL) {
+        return -1;
+    }
+    n += (size_t)snprintf(text + n, cap - n,
+                          "# Archipelago options for %s, from the eidos Multiplayer screen (%s).\n"
+                          "# Send this file to the room's host.\n"
+                          "name: %s\ngame: %s\n%s:\n", game, m->name, qname, qgame, qgame);
+    for (o = 0; o < m->option_count && n < cap; o++) {
+        const BwModMenuOption *op = &m->options[o];
+        char key[64], val[128];
+        const char *vals;
+
+        if (op->yaml == NULL || !bw_mod_menu_option_in_mode(index, o, mode)) {
+            continue;
+        }
+        vals = op->yaml;
+        nth_word(vals, 0, key, sizeof key);
+        {
+            char *sp = strchr(key, ' ');
+
+            if (sp != NULL) *sp = '\0';
+        }
+        vals = strchr(op->yaml, ' ');
+        while (vals != NULL && *vals == ' ') vals++;
+        if (op->kind == BW_MOD_SETTING_INT) {
+            snprintf(val, sizeof val, "%d", op->value);
+        } else if (op->kind == BW_MOD_SETTING_TEXT) {
+            yaml_quote(val, sizeof val, op->text);
+        } else {
+            nth_word(vals, op->value, val, sizeof val);
+            if (val[0] == '\0') {
+                copy_str(val, sizeof val, op->kind == BW_MOD_SETTING_BOOL ? (op->value ? "true" : "false")
+                                                                           : op->choices[op->value]);
+            }
+        }
+        n += (size_t)snprintf(text + n, cap - n, "  %s: %s\n", key, val);
+    }
+    if (n >= cap) {
+        free(text);
+        return -1;
+    }
+    snprintf(dpath, sizeof dpath, "%s/archipelago", dir);
+    (void)bw_plat_mkdirs(dpath);
+    /* the file is named after the player: letters and digits only */
+    {
+        size_t k = 0, i;
+        const char *src = name != NULL && name[0] != '\0' ? name : "Player";
+
+        for (i = 0; src[i] != '\0' && k + 1 < sizeof fname - 5; i++) {
+            unsigned char ch = (unsigned char)src[i];
+
+            fname[k++] = (char)(isalnum(ch) ? ch : '_');
+        }
+        fname[k] = '\0';
+    }
+    rc = snprintf(path, size, "%s/%s.yaml", dpath, fname);
+    if (rc < 0 || (u32)rc >= size) {
+        free(text);
+        return -1;
+    }
+    rc = bw_save_write_atomic(path, text, (u32)n);
+    free(text);
+    return rc == 0 ? 0 : -1;
+}
+
+/* The services table's setting_text: a text option's value. */
+int bw_mod_menu_setting_text(const char *key, char *out, u32 size)
+{
+    BwModMenuMod *m;
+    const char *ns = calling_ns();
+    u32 i;
+
+    if (key == NULL || out == NULL || size == 0 || ns[0] == '\0') {
+        return -1;
+    }
+    model_ready();
+    m = model_find_ns(ns);
+    if (m == NULL) {
+        return -1;
+    }
+    for (i = 0; i < m->option_count; i++) {
+        if (m->options[i].kind == BW_MOD_SETTING_TEXT && strcmp(m->options[i].key, key) == 0) {
+            copy_str(out, size, m->options[i].text);
+            return (int)strlen(m->options[i].text);
+        }
+    }
+    return -1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -2168,6 +3213,12 @@ int bw_mod_menu_setting_get(const char *key)
     }
     for (i = 0; i < m->option_count; i++) {
         if (strcmp(m->options[i].key, key) == 0) {
+            int v;
+
+            /* a lobby rule in a session: the host's value, for everyone */
+            if (lobby_value(m, &m->options[i], &v)) {
+                return v;
+            }
             return m->options[i].value;
         }
     }

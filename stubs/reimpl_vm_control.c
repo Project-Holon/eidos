@@ -78,6 +78,9 @@
 #include "../sdk/types.h"
 #include "../sdk/mod_script.h"
 
+/* sdk/mod_v6.c: the field command running, for a mod's work_get. */
+extern void *bw_mod_v6_set_field_cmd_work(void *cmd_work) __attribute__((weak));
+
 /* ------------------------------------------------------------------ */
 /* The game's own VM                                                   */
 /* ------------------------------------------------------------------ */
@@ -261,6 +264,7 @@ static int bw_vm_dispatch(BwPortScriptVm *vm, u32 op)
     BwModScriptCommand view;
     BwPortVmCall call;
     int replaced;
+    void *saved_work;
 
     kind = bw_mod_script_vm_of(vm->params.cmd_count);
     if (kind < 0) {
@@ -300,8 +304,15 @@ static int bw_vm_dispatch(BwPortScriptVm *vm, u32 op)
     call.nargs = nargs;
     call.answered = 0;
 
+    /* A field command's own work, for the script works a mod reads while
+     * the command runs (sdk/mod_v6.c, work_get). */
+    saved_work = kind == BW_MOD_SCRIPT_FIELD && bw_mod_v6_set_field_cmd_work != NULL
+        ? bw_mod_v6_set_field_cmd_work(vm->user) : NULL;
     replaced = bw_mod_script_dispatch((u32)kind, &view,
                                       bw_vm_game_handler, &call);
+    if (kind == BW_MOD_SCRIPT_FIELD && bw_mod_v6_set_field_cmd_work != NULL) {
+        (void)bw_mod_v6_set_field_cmd_work(saved_work);
+    }
     if (replaced) {
         /*
          * The game's own handler never ran, so it never consumed the

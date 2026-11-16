@@ -127,6 +127,7 @@
 #include "mod_input.h"
 #include "mod_loader.h"
 #include "mod_menu.h"
+#include "mod_tracker.h"
 #include "mod_manifest.h"
 #include "mod_message.h"
 #include "mod_net.h"
@@ -139,6 +140,7 @@
 #include "mod_text.h"
 #include "mp.h"
 #include "mod_timer.h"
+#include "mod_v6.h"
 #include "mod_wasm.h"
 #include "overlay_image.h"
 #include "vfs.h"
@@ -310,7 +312,8 @@ typedef struct BwModLoaderMod {
     char          name[BW_MOD_LOADER_NAME_MAX];
     char          ns[BW_MOD_LOADER_NS_MAX];
     char          path[BW_MOD_LOADER_PATH_MAX];
-    void         *manifest;    /* the manifest record (the loader keeps it) */
+    char          root[BW_MOD_LOADER_PATH_MAX];   /* the mod's folder (v6: its memory layer) */
+    void         *manifest;   /* the manifest record (the loader keeps it) */
     void         *library;     /* the handle: HMODULE or a dlopen handle */
     void         *wasm;        /* or the wasm module's handle (sdk/mod_wasm.h) */
     BwModStartFn  start;
@@ -965,6 +968,7 @@ static int loader_load(u32 index)
     code = bw_mod_manifest_code(manifest);
     copy_str(m->name, sizeof(m->name), mod_label(name, label));
     copy_str(m->ns, sizeof(m->ns), ns != NULL ? ns : label);
+    copy_str(m->root, sizeof(m->root), root);
 
     /* The tables, before the rules: a rule that reads a table is checked
      * against the tables the mod has (sdk/mod_table.h).  The path is
@@ -1191,6 +1195,39 @@ static int loader_load(u32 index)
     m->services.run_restart   = bw_mod_restart;
     m->services.save_send     = bw_mod_handoff_send;
     m->services.on_save_received = bw_mod_handoff_on_save;
+    /* Version 6: content and online mods (sdk/mod_v6.h).  A call the
+     * port has not built stays NULL. */
+    m->services.vfs_member_set   = bw_mod_vfs_member_set;
+    m->services.vfs_member_clear = bw_mod_vfs_member_clear;
+    m->services.vfs_member_get   = bw_mod_vfs_member_get;
+    m->services.text_get         = bw_mod_text_get;
+    m->services.text_set         = bw_mod_text_set;
+    m->services.text_language    = bw_mod_text_language;
+    m->services.script_run       = bw_mod_v6_script_run;
+    m->services.type_chart_set   = bw_mod_v6_type_chart_set;
+    m->services.type_chart_get   = bw_mod_v6_type_chart_get;
+    m->services.text_input       = bw_mod_v6_text_input;
+    m->services.world_create     = bw_mod_world_create;
+    m->services.world_owner      = bw_mod_world_owner;
+    m->services.world_join       = bw_mod_world_join;
+    m->services.world_checks     = bw_mod_world_checks;
+    m->services.world_leave      = bw_mod_world_leave;
+    m->services.world_read       = bw_mod_world_read;
+    m->services.ap_link          = bw_mod_ap_link;
+    m->services.ap_send          = bw_mod_ap_send;
+    m->services.ap_read          = bw_mod_ap_read;
+    m->services.peer_position    = bw_mod_world_peer_position;
+    m->services.townmap_marker_set   = bw_mod_townmap_marker_set;
+    m->services.townmap_marker_clear = bw_mod_townmap_marker_clear;
+    m->services.mode_get         = bw_mod_menu_mode_get;
+    m->services.setting_text     = bw_mod_menu_setting_text;
+    m->services.player_name      = bw_mod_v6_player_name;
+    m->services.mode_code        = bw_mod_menu_mode_code;
+    m->services.tracker_set      = bw_mod_tracker_set;
+    m->services.mod_file_write   = bw_mod_file_write;
+    m->services.mod_file_read    = bw_mod_file_read;
+    m->services.mod_file_list    = bw_mod_file_list;
+    m->services.mod_file_delete  = bw_mod_file_delete;
     /* The rules' cells: the mod's own file under its namespace. */
     bw_mod_rule_set_cells_io(loader_cells_load, loader_cells_store);
 
@@ -1296,6 +1333,9 @@ static void loader_stop(BwModLoaderMod *m)
     }
     bw_mod_frame_remove_for(m->ns);
     bw_mod_net_remove_for(m->ns);
+    /* The version 6 services the mod holds: its members in memory, its
+     * queued scripts and text inputs, its markers (sdk/mod_v6.h). */
+    bw_mod_v6_remove_for(m->ns, m->root);
 
     /* 2. the mod's stop entry point.  The namespace is in force, so a
      *    state call the mod makes here reaches the mod's own file: this
@@ -1453,6 +1493,21 @@ int bw_mod_loader_multiplayer_at(u32 index)
         seen++;
     }
     return 0;
+}
+
+const char *bw_mod_loader_root_of(const char *ns)
+{
+    u32 i;
+
+    if (ns == NULL || ns[0] == '\0') {
+        return NULL;
+    }
+    for (i = 0; i < BW_MOD_LOADER_MAX; i++) {
+        if (g_mods[i].loaded && strcmp(g_mods[i].ns, ns) == 0) {
+            return g_mods[i].root;
+        }
+    }
+    return NULL;
 }
 
 const char *bw_mod_loader_namespace_at(u32 index)

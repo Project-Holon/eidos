@@ -208,13 +208,13 @@ frozen within a version.
 
 ## 3. The version
 
-`api` is one integer, the major version of the surface. It is 5. A mod states
+`api` is one integer, the major version of the surface. It is 6. A mod states
 the version it was built against in its manifest, and the port checks that
 number against its own before it loads the mod. A mod may also compare the
 `api` in the host table with the number it was built against and refuse to
 start by returning a non-zero value from its start entry. The port loads the
 mod when its number is between `BW_MOD_API_MIN` and `BW_MOD_API_VERSION`
-(3 and 5) and refuses it otherwise, with a message naming both. An older
+(3 and 6) and refuses it otherwise, with a message naming both. An older
 number is accepted only when the newer version appended to the surface and
 moved nothing, so the old mod reads every struct at the layout it was built
 for. Any other mismatch means the mod reads a struct at a layout the port
@@ -260,8 +260,24 @@ The version moves when the surface moves.
   nothing moved): the state table's `whiteout` (the game's own whiteout, to the last
   Pokemon Centre); `battle_get` reads the battle's own moves and their PP
   (`MOVE1` to `MOVE4`, `PP1` to `PP4`); `move_value` reads all three stat
-  changes of a move (ids 0x100 to 0x113). Version 5 is open: `sdk/api/v5`
-  is the current description.
+  changes of a move (ids 0x100 to 0x113). Version 5 is frozen: the surface in `sdk/api/v5`
+  does not change any more.
+- **Version 6** appends and moves nothing, so version 3 to 5 mods still
+  load. For content and online mods (`docs/mod-services.md`, "Version 6:
+  content and online mods"): the state table gains `work_get`,
+  `work_set`, `badge_set` and `game_code`; the services table gains
+  `vfs_member_set`, `vfs_member_clear`, `vfs_member_get`, `text_get`,
+  `text_set`, `text_language`, `script_run`, `type_chart_set`,
+  `type_chart_get`, `text_input`, `mod_file_write`, `mod_file_read`,
+  `mod_file_list`, `mod_file_delete`, `world_create`, `world_owner`,
+  `world_join`, `world_checks`, `world_leave`, `world_read`, `ap_link`,
+  `ap_send`, `ap_read`, `peer_position`, `townmap_marker_set` and
+  `townmap_marker_clear`; the header gains `BwTypeChart`; the events
+  `script.done`, `move.forget`, `mon.shiny`, `item.usable`,
+  `season.change`, `encounter.slot`, `battle.type_effect`,
+  `starter.choices`, `egg.species`, `text_input.done`, `world` and `ap`
+  (ids 114 to 125). Version 6 is open: `sdk/api/v6` is the current
+  description.
 
 The number cannot be forgotten. A test recomputes the hash of the surface out
 of the headers themselves and compares it with the number the header carries,
@@ -294,8 +310,8 @@ width and the hash follows it: the number beside the version number is the
 
 | Pointers | Hash |
 |---|---|
-| 32-bit | 0xF31D7215 (the number in `sdk/mod_api.h`) |
-| 64-bit | 0xC25CE7CF |
+| 32-bit | 0xF8F177B7 (the number in `sdk/mod_api.h`) |
+| 64-bit | 0x16ACAD54 |
 
 The payload structs, the ids and the enums hold no pointer and hash the
 same everywhere.
