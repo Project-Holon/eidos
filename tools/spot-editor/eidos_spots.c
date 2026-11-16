@@ -754,6 +754,27 @@ static int row_height(const BmapSpot *r, float *y)
     return 0;
 }
 
+/* The height of the row's floor under (x, z) in the overworld's map: the
+ * ground nearest the row's own height (bmap_set_ref), or that height itself
+ * where the map has nothing within a few steps of it there.  A gym's lift
+ * is an object drawn at the height of its first state, on another storey
+ * than the one the player rides it on, and the floors of other storeys are
+ * no ground for this row: without this the view stood on the storey above
+ * (Driftveil Gym's three floors). */
+static float floor_y(float x, float z)
+{
+    const BmapSpot *r = cur();
+    float g = bmap_ground_y(&A.obase, x, z), y;
+
+    /* (only a height the map itself has a floor at, under the trainer: a
+     * leader's header can name a height its room does not lie at, Clay's) */
+    if (r != NULL && r->kind == 'T' && row_height(r, &y) && fabsf(g - y) > 40.0f
+        && fabsf(bmap_ground_y(&A.obase, (float)r->tx * 16.0f + 8.0f, (float)r->tz * 16.0f + 8.0f) - y) <= 40.0f) {
+        return y;
+    }
+    return g;
+}
+
 /* A point of the map in the placed scene's battle space (bmap_place.c). */
 static void map_to_battle(const BmapScene *s, float mx, float my, float mz, float out[3])
 {
@@ -2693,7 +2714,7 @@ static void draw_field_view(void)
     yw = A.ow_yaw * 3.14159265f / 180.0f;
     at[0] = A.ow_tx;
     at[2] = A.ow_tz;
-    at[1] = bmap_ground_y(&A.obase, A.ow_tx, A.ow_tz) + A.ow_lift;
+    at[1] = floor_y(A.ow_tx, A.ow_tz) + A.ow_lift;
     eye[0] = at[0] + A.ow_dist * cosf(p) * sinf(yw);
     eye[1] = at[1] + A.ow_dist * sinf(p);
     eye[2] = at[2] + A.ow_dist * cosf(p) * cosf(yw);
@@ -2713,7 +2734,7 @@ static void draw_field_view(void)
             float q[4], d0, d1, d2;
 
             if (a2 < 0) {
-                map_to_battle(&A.field, A.tx, bmap_ground_y(&A.obase, A.tx, A.tz), A.tz, q);
+                map_to_battle(&A.field, A.tx, floor_y(A.tx, A.tz), A.tz, q);
                 q[3] = A.hero_h * A.field.place_k;
             } else {
                 if (A.npc_zone != r->zone || A.npcs[a2].rgba == NULL) {
@@ -2784,7 +2805,7 @@ static void draw_field_view(void)
         }
     }
     /* the player, the trainer, the battle's two places */
-    map_to_battle(&A.field, A.tx, bmap_ground_y(&A.obase, A.tx, A.tz), A.tz, pt);
+    map_to_battle(&A.field, A.tx, floor_y(A.tx, A.tz), A.tz, pt);
     {
         /* the player, facing the way the test player faces */
         int f = ((A.tf % 360 + 360) % 360 + 45) / 90 % 4;      /* 0 north, 1 west, 2 south, 3 east */
@@ -2802,7 +2823,7 @@ static void draw_field_view(void)
     }
     if (r->kind == 'T') {
         map_to_battle(&A.field, (float)r->tx * 16.0f + 8.0f,
-                      bmap_ground_y(&A.obase, (float)r->tx * 16.0f + 8.0f, (float)r->tz * 16.0f + 8.0f),
+                      floor_y((float)r->tx * 16.0f + 8.0f, (float)r->tz * 16.0f + 8.0f),
                       (float)r->tz * 16.0f + 8.0f, pt);
         if (project(v, pt, &sx, &sy, &unit)) {
             ring(sx, sy, 8.0f, C_FOE);

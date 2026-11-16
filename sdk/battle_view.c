@@ -1272,6 +1272,13 @@ static void battle_begin(uintptr_t eff)
         row = v >= 0 ? v : bmap_spots_pick_view(row, j->px, j->pz, j->facing);
     }
     bmap_spots_spec(bmap_spots_get(row), j->px, j->pz, j->facing, &j->spec);
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        const BmapSpot *r = bmap_spots_get(row);
+
+        fprintf(stderr, "bmap: row %s mode %d view %d: start %.0f %.0f facing %04x reach %d\n", r != NULL ? r->id : "none",
+                r != NULL ? r->mode : -1, r != NULL ? r->view : -1, (double)j->spec.px, (double)j->spec.pz,
+                j->spec.facing, j->spec.reach);
+    }
     if (j->reach != 0) {                /* EIDOS_DEBUG_BMAP_AT's own reach (tests) */
         j->spec.reach = j->reach;
         j->spec.turn = j->reach < 0 ? 0 : 1;

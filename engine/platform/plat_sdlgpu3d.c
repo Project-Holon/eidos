@@ -1071,16 +1071,15 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     fu.flags[3] = (int)(bk->n_clear > 16u ? 16u : bk->n_clear);
     memcpy(fu.clr, bk->clear, sizeof fu.clr);
     memcpy(fu.poke, bk->poke, sizeof fu.poke);
-    fu.fog[1] = 7.0f;
-    fu.fog[3] = 1.0f;
-    if (sc->fog_on && sc->fog_end > sc->fog_start) {
-        float k = sc->place_k > 0.0f ? sc->place_k : BMAP_PLACE_K;
-
-        fu.fog[2] = sc->fog_start * k + 1e-3f;
-        fu.fog[3] = (sc->fog_end - sc->fog_start) * k;
+    /* the zone's fog: by the depth along the field camera's line of sight past the battle's place
+     * (BmapScene.fog_k, bmap_place); the colour's fourth: on */
+    if (sc->fog_on && sc->fog_end > sc->fog_start
+        && (sc->fog_k[0] != 0.0f || sc->fog_k[1] != 0.0f || sc->fog_k[2] != 0.0f)) {
+        memcpy(fu.fog, sc->fog_k, sizeof fu.fog);
         fu.fogc[0] = (float)sc->fog[0] / 255.0f;
         fu.fogc[1] = (float)sc->fog[1] / 255.0f;
         fu.fogc[2] = (float)sc->fog[2] / 255.0f;
+        fu.fogc[3] = 1.0f;
     }
     if (front && !bk->front_only) {
         /* the game's sprites wrote the depth of their places (sprite_depths): the map nearer than a sprite

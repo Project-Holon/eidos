@@ -111,6 +111,15 @@ typedef struct BmapScene {
     BmapTexture *t; unsigned nt;
     unsigned char clear[3]; /* the light keyframe's clear (sky) colour           */
     unsigned char fog[3]; int fog_on;
+    float fog_pitch, fog_yaw; /* fog_on: the zone's field camera (radians): the game fogs by depth
+                                 along that camera's line of sight, so the fog is measured along it */
+    float fog_k[4];           /* bmap_place: the fog of a point p of the placed scene (battle units) is
+                                 clamp(dot(p, fog_k.xyz) - fog_k.w, 0, 1): its depth past the player along the
+                                 field camera's line of sight, between fog_start and fog_end.  A wall on the
+                                 player's own floor is fogged by how far it is behind the player as that
+                                 camera sees it (little), the floors below by how deep they lie (much): as
+                                 the field shows the place.  (A flat distance from the player turned every
+                                 far wall of a wide room into the fog's colour.) */
     float fog_start, fog_end; /* fog_on: distance from the player (map units) where the
                                  fog begins and where it is full; the zone's own
                                  fog only, not the weather's                       */

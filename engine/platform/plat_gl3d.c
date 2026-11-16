@@ -398,7 +398,7 @@ static const char *k_fsb =
     "uniform vec3 u_eye;\n"
     "uniform vec3 u_foc;\n"
     "uniform vec4 u_fog;\n"
-    "uniform vec3 u_fogc;\n"
+    "uniform vec4 u_fogc;\n"
     "uniform int u_tex;\n"
     "uniform sampler2D u_texture;\n"
     "uniform float u_alpha;\n"
@@ -489,9 +489,9 @@ static const char *k_fsb =
     "    float a = c.a * u_alpha;\n"
     "    if (a < u_cut || a >= u_cut_hi) { discard; }\n"
     "    if (u_cut > 0.4) { a = 1.0; }\n"
-    "    if (u_fog.z > 0.0) {\n"
-    "        float f = clamp((length(v_pos.xz - u_fog.xy) - u_fog.z) / u_fog.w, 0.0, 1.0);\n"
-    "        c.rgb = mix(c.rgb, u_fogc, f);\n"
+    "    if (u_fogc.a > 0.0) {\n"
+    "        float f = clamp(dot(v_pos, u_fog.xyz) - u_fog.w, 0.0, 1.0);\n"
+    "        c.rgb = mix(c.rgb, u_fogc.rgb, f);\n"
     "    }\n"
     "    o = vec4(c.rgb * a, a);\n"
     "}\n";
@@ -1146,20 +1146,20 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     g->glUniform4fv(g_bd.u_clr, G3D_BACKDROP_CLEAR, &b->clear[0][0]);
     g->glUniform3fv(g_bd.u_foc, 1, b->target);
     {
-        /* the zone's fog: linear in the distance from the player's tile
-         * (battle x 0, z 7), scaled from map units; .z = start, .w = span */
-        float fg[4] = { 0.0f, 7.0f, 0.0f, 1.0f };
-        float fc[3] = { 0.0f, 0.0f, 0.0f };
+        /* the zone's fog: by the depth along the field camera's line of
+         * sight past the battle's place (BmapScene.fog_k, bmap_place);
+         * the colour's fourth: on */
+        float fc[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-        if (sc->fog_on && sc->fog_end > sc->fog_start) {
-            fg[2] = sc->fog_start * (sc->place_k > 0.0f ? sc->place_k : BMAP_PLACE_K) + 1e-3f;
-            fg[3] = (sc->fog_end - sc->fog_start) * (sc->place_k > 0.0f ? sc->place_k : BMAP_PLACE_K);
+        if (sc->fog_on && sc->fog_end > sc->fog_start
+            && (sc->fog_k[0] != 0.0f || sc->fog_k[1] != 0.0f || sc->fog_k[2] != 0.0f)) {
             fc[0] = (float)sc->fog[0] / 255.0f;
             fc[1] = (float)sc->fog[1] / 255.0f;
             fc[2] = (float)sc->fog[2] / 255.0f;
+            fc[3] = 1.0f;
         }
-        g->glUniform4f(g_bd.u_fog, fg[0], fg[1], fg[2], fg[3]);
-        g->glUniform3fv(g_bd.u_fogc, 1, fc);
+        g->glUniform4fv(g_bd.u_fog, 1, sc->fog_k);
+        g->glUniform4fv(g_bd.u_fogc, 1, fc);
     }
     g->glActiveTexture(GL_TEXTURE0);
     g->glUniform1i(g_bd.u_texture, 0);

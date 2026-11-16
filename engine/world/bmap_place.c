@@ -2726,6 +2726,27 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
          * on uneven ground, the foe in it or above it.) */
         s->foe_dy = k * (s->place_g[1] - gy);
 
+        /* The zone's fog, along the field camera's line of sight from the
+         * battle's own place (bmap.h, fog_k).  That camera looks at the
+         * player from behind and above: its line of sight in the map is
+         * v = (-cos p sin y, -sin p, -cos p cos y).  A point m of the map
+         * lies dot(m - at, v) deeper than the player; the placed scene is
+         * the map turned by the place's angle and scaled by k about the
+         * own Pokemon's place, so in battle units the depth is
+         * dot(b - o, R v) / k. */
+        memset(s->fog_k, 0, sizeof s->fog_k);
+        if (s->fog_on && s->fog_end > s->fog_start) {
+            const float cp = cosf(s->fog_pitch), sp2 = sinf(s->fog_pitch);
+            const float vx = -cp * sinf(s->fog_yaw), vy = -sp2, vz = -cp * cosf(s->fog_yaw);
+            const float span = (s->fog_end - s->fog_start) * k;
+            const float o[3] = { PLACE_SX, GROUND_Y - GROUND_LIFT, PLACE_SZ };
+
+            s->fog_k[0] = (ca * vx - sa * vz) / span;
+            s->fog_k[1] = vy / span;
+            s->fog_k[2] = (sa * vx + ca * vz) / span;
+            s->fog_k[3] = o[0] * s->fog_k[0] + o[1] * s->fog_k[1] + o[2] * s->fog_k[2] + s->fog_start * k / span;
+        }
+
         /* The surf mount stood under the player in the field, wherever the
          * battle's slots now fall: it moves under the own Pokemon's place,
          * turned to face the foe as that Pokemon does, at the same height

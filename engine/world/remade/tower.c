@@ -8,6 +8,7 @@
  *   halfturn=CX:CZ:R0:A0:A1[:Y0:Y1[:X0:X1[:TEX[:TOL[:CX0:CX1]]]]]+..  a round wing's faces past R0 from (CX, CZ), between
  *       the angles A0..A1, copied turned half round there (a back arc whose
  *       front is another part).
+ *   mirrorlit=1  mirror's copies lit as their source faces (not by the way the copy looks).
  *   mirror=X0:X1:Y0:Y1:ZC[:Z0:Z1[:W[:CX0:CX1]]]+..  the parts within that box are round about
  *       z = ZC (a balcony, a glass cab, its roof, lamps): their faces that
  *       look south are turned to look north, where the model has none (a face
@@ -39,9 +40,12 @@
  *       (DY: the picture read DY lower on that face: a window row stacked up a wall).
  *   decal=SZ:SX:SY:X0:X1:Y0:Y1:TX:TY:Z+..  a rectangle of a south face's picture laid on
  *       the back at z = Z, its middle at (TX, TY), looking north.
- *   under=Y+..  the underside at the height Y (an overhang, a balcony): the
+ *   under=Y[:X0:X1:Z0:Z1]+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
- *       colour of the face over it.
+ *       colour of the face over it.  With a box, the underside is the box
+ *       itself, where a face ends inside it (one walkway of several at a
+ *       height, of which the model has one side only: each its own underside,
+ *       not one sheet across the gap between them).
  *   props=Y0:SIZE  the small things standing above Y0 (roof furniture), each
  *       closed about its own middle; a single flat card (a leaf) both sides.
  *   twoback=Z  back walls the map has only from inside (upright, behind Z,
@@ -355,6 +359,11 @@ static void quad(RmOut *o, unsigned src, const unsigned char rgb[3], const doubl
     }
 }
 
+/* `mirrorlit=1`: mirror's copies are lit as their source faces are (a pit's far wall copied from the near one: the
+ * zone's light comes from one side, so a copy that looks the other way would be black where the field shows the
+ * same lit rock all round). */
+static int g_mirror_lit;
+
 static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[10])
 {
     unsigned i;
@@ -443,7 +452,14 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[10])
                 }
             }
             /* (`:CX0:CX1` after W: the copy cut to that x range) */
-            emit_clipx(out, t->id, cull, t->rgb, (const double (*)[3])p, (const double (*)[2])uv, bx[8], bx[9]);
+            {
+                const unsigned first = out->ntri;
+
+                emit_clipx(out, t->id, cull, t->rgb, (const double (*)[3])p, (const double (*)[2])uv, bx[8], bx[9]);
+                if (g_mirror_lit) {
+                    lit_as(out, first, t);
+                }
+            }
         }
     }
 }
@@ -1691,7 +1707,7 @@ static void do_decal(const Ft *f, unsigned nf, RmOut *out, const double d[10])
     }
 }
 
-static void do_under(const Ft *f, unsigned nf, RmOut *out, double y)
+static void do_under(const Ft *f, unsigned nf, RmOut *out, double y, const double *box)
 {
     double pt[256][2], hull[257][2], uv[2] = { 0, 0 };
     unsigned np = 0, nh = 0, i, src = 0;
@@ -1711,7 +1727,9 @@ static void do_under(const Ft *f, unsigned nf, RmOut *out, double y)
             for (k = 0; k < 3; k++) {
                 low &= t->p[k][1] >= t->p[j][1] - 0.05;
             }
-            if (low && fabs(t->p[j][1] - y) < 0.05) {
+            if (low && fabs(t->p[j][1] - y) < 0.05
+                && (box == NULL || (t->p[j][0] >= box[0] - 0.05 && t->p[j][0] <= box[1] + 0.05
+                                    && t->p[j][2] >= box[2] - 0.05 && t->p[j][2] <= box[3] + 0.05))) {
                 pt[np][0] = t->p[j][0];
                 pt[np][1] = t->p[j][2];
                 np++;
@@ -1723,6 +1741,15 @@ static void do_under(const Ft *f, unsigned nf, RmOut *out, double y)
                 }
             }
         }
+    }
+    if (box != NULL && np > 0u) {
+        /* a box: the underside is the box itself (a walkway's: the model has one side of it only, so the
+         * feet lie on one line), in the colour of a face that ends there */
+        pt[0][0] = box[0]; pt[0][1] = box[2];
+        pt[1][0] = box[1]; pt[1][1] = box[2];
+        pt[2][0] = box[1]; pt[2][1] = box[3];
+        pt[3][0] = box[0]; pt[3][1] = box[3];
+        np = 4u;
     }
     if (np < 3u || sb == NULL) {
         return;
@@ -3203,6 +3230,7 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
             ep = ep != NULL ? ep + 1 : NULL;
         }
     }
+    g_mirror_lit = rm_optf(opt, "mirrorlit", 0.0) > 0.0;
     if (rm_opt(opt, "mirror", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
             double bx[10] = { 0, 0, 0, 0, 0, 0, 0, 0, -1e30, 1e30 };
@@ -3452,7 +3480,12 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
     }
     if (rm_opt(opt, "under", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            do_under(f, nf, out, atof(ep));
+            double u[5];
+            int nu = sscanf(ep, "%lf:%lf:%lf:%lf:%lf", &u[0], &u[1], &u[2], &u[3], &u[4]);
+
+            if (nu >= 1) {
+                do_under(f, nf, out, u[0], nu == 5 ? u + 1 : NULL);
+            }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;
         }

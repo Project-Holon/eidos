@@ -152,8 +152,8 @@ FSOut fs_main(VSOut i)
     float a = c.a * cut.x;
     if (a < cut.y || a >= cut.z) discard;
     if (cut.y > 0.4) a = 1.0;
-    if (fog.z > 0.0) {
-        float ff = clamp((length(i.wpos.xz - fog.xy) - fog.z) / fog.w, 0.0, 1.0);
+    if (fogc.a > 0.0) {
+        float ff = clamp(dot(i.wpos, fog.xyz) - fog.w, 0.0, 1.0);
         c.rgb = lerp(c.rgb, fogc.rgb, ff);
     }
     o.color = float4(c.rgb * a, a);

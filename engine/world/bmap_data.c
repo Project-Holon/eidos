@@ -1306,6 +1306,39 @@ static void load_lights(Ctx *c, unsigned light_type, int hour, int minute)
     blob_free(&t);
 }
 
+/* A scene whose walls the map's model paints dark (their vertex colours, no light on them), seen from a battle's
+ * low camera.  The field's steep camera, under the zone's fog, never shows them so; a battle beside them does: a
+ * wall running from the lit rock's colour to black across one face.  For such a scene the painted colour of the
+ * ground mesh's vertices in a box is never under `floor` (each channel), so the wall is the same rock all round.
+ *   97  Driftveil Gym's pit, above its lowest walkway: the north wall is painted (222, 173, 115); the west and
+ *       east walls fade from a third of that to black.  The floor is six tenths of the north wall's colour.  The
+ *       box is the pit's rim (outside the walkways' and lifts' own place), so the grey metal is not touched. */
+static void scene_wall_colours(unsigned zone, BmapScene *s)
+{
+    static const struct { unsigned zone; float in[4], y0; unsigned char floor[3]; } k[] = {
+        { 97u, { 130.0f, 366.0f, 302.0f, 522.0f }, 400.0f, { 133, 104, 69 } },
+    };
+    unsigned i, j;
+
+    for (i = 0; i < sizeof k / sizeof k[0]; i++) {
+        if (k[i].zone != zone) {
+            continue;
+        }
+        for (j = 0; j < s->nv; j++) {
+            BmapVertex *v = &s->v[j];
+
+            /* the ground mesh and what was built onto it (the top bit), outside the inner box */
+            if ((v->obj & 0x7FFFFFFFu) != 0u || v->y < k[i].y0
+                || (v->x > k[i].in[0] && v->x < k[i].in[1] && v->z > k[i].in[2] && v->z < k[i].in[3])) {
+                continue;
+            }
+            v->r = v->r < k[i].floor[0] ? k[i].floor[0] : v->r;
+            v->g = v->g < k[i].floor[1] ? k[i].floor[1] : v->g;
+            v->b = v->b < k[i].floor[2] ? k[i].floor[2] : v->b;
+        }
+    }
+}
+
 /* The zone's own fog (a/0/8/1: member 13 maps zone -> record of offset and
  * slope in depth-buffer units).  The game fogs by depth relative to the field
  * camera, so the depths turn into distances from the camera, then into
@@ -1357,6 +1390,9 @@ static void load_fog(Ctx *c, unsigned zone, Buf headers, BmapScene *s)
                     }
                     s->fog_start = zs - dist;
                     s->fog_end = ze - dist;
+                    /* (the camera's own pitch and yaw: the fog lies along its line of sight, bmap_place) */
+                    s->fog_pitch = (float)(rd32(rec, 4) & 0xFFFFu) * 6.2831853f / 65536.0f;
+                    s->fog_yaw = (float)(rd32(rec, 8) & 0xFFFFu) * 6.2831853f / 65536.0f;
                     if (s->fog_start < 0.0f) {
                         s->fog_start = 0.0f;
                     }
@@ -4852,6 +4888,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     s->tex_gen = bmap_tex_gen();
     c->tex = NULL;
     memcpy(s->bob_y, c->bob_y, sizeof s->bob_y);
+    scene_wall_colours(zone, s);        /* (the scene's vertices are made: finish) */
     s->bob_n = c->bob_n;
     s->has_mount = c->has_mount;
     memcpy(s->mount_t, c->mount_t, sizeof s->mount_t);
