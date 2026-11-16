@@ -1280,6 +1280,11 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                 first = d->first;
                 count = d->count;
             }
+            /* the surf mount while the Pokemon surfed on is out itself */
+            if (d->mount && bmap_mount_hidden()) {
+                i += run - 1;
+                continue;
+            }
             /* a draw wholly behind the camera is not sent */
             if (g_bd.bound != NULL && di < sc->nd) {
                 const BdBound *bb = &g_bd.bound[di];

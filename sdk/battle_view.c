@@ -41,6 +41,7 @@
 #include "dsmem.h"
 #include "hw3d.h"
 #include "input.h"
+#include "mod_state.h"
 #include "overlay.h"
 #include "plat_thread.h"
 #include "settings.h"
@@ -1890,6 +1891,74 @@ static void field_note(void *obj_, const void *status_)
     }
 }
 
+/* The surf mount (bmap.h, bmap_set_mount_hidden): the Pokemon the player surfs on is the one the field's check
+ * picked, the first that knows Surf (FIELD_EVENT_CHECK_FindPartyMemberWithMove, the port's copy, which asks the
+ * mods: move.known).  Its personality is kept when a battle begins on the water; while the player's own Pokemon
+ * in battle is that one, the mount is left out, as it stands there itself. */
+extern void *GAME_DATA_GetMyParty(void *gameData) WEAK;
+extern uint32_t POKEPARTY_GetCount(void *party) WEAK;
+extern void *POKEPARTY_GetMember(void *party, uint32_t pos) WEAK;
+extern uint32_t POKE_TOOL_GetPartyValue(void *pp, uint32_t paramId, uint32_t arg) WEAK;
+extern int ov021_FIELD_EVENT_CHECK_FindPartyMemberWithMove(void *gameData, uint32_t move) WEAK;
+extern const BwModState *bw_mod_state_table(void) WEAK;
+
+#define MOVE_SURF 57u
+
+static int g_surf_known;            /* a battle on the water: g_surf_pid is the Pokemon surfed on */
+static uint32_t g_surf_pid;
+
+static void mount_note(const BmapLive *list, unsigned n)
+{
+    unsigned k;
+    int surfing = 0;
+    void *gd, *party;
+    int slot;
+
+    g_surf_known = 0;
+    bmap_set_mount_hidden(0);
+    for (k = 0; k < n && !surfing; k++) {
+        const unsigned char *p = list[k].mdl;
+        unsigned i;
+
+        for (i = 0; p != NULL && i + 8u <= list[k].mdl_n && i < 0x80u; i++) {
+            if (memcmp(p + i, "sea_ride", 8) == 0) {
+                surfing = 1;            /* (the model's name sits in its MDL0 dictionary, near the start) */
+                break;
+            }
+        }
+    }
+    if (!surfing || &bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL ||
+        GAME_DATA_GetMyParty == NULL || POKEPARTY_GetMember == NULL || POKE_TOOL_GetPartyValue == NULL ||
+        ov021_FIELD_EVENT_CHECK_FindPartyMemberWithMove == NULL) {
+        return;
+    }
+    gd = *(void **)((uintptr_t)*(void **)bw_dsref__GameSystemGlobal + 0x1C);
+    if (gd == NULL || (party = GAME_DATA_GetMyParty(gd)) == NULL) {
+        return;
+    }
+    slot = ov021_FIELD_EVENT_CHECK_FindPartyMemberWithMove(gd, MOVE_SURF);
+    if (slot >= 0 && slot < 6 && (POKEPARTY_GetCount == NULL || (uint32_t)slot < POKEPARTY_GetCount(party))) {
+        g_surf_pid = POKE_TOOL_GetPartyValue(POKEPARTY_GetMember(party, (uint32_t)slot), BW_MON_FIELD_PERSONALITY, 0);
+        g_surf_known = 1;
+    }
+}
+
+/* Each battle frame: is the player's own Pokemon (the first of its side's order: the battle keeps the Pokemon
+ * on the field at the front) the one surfed on? */
+static void mount_frame(void)
+{
+    const BwModState *st = bw_mod_state_table != NULL ? bw_mod_state_table() : NULL;
+    BwMonRef ref;
+    uint32_t pid = 0;
+
+    if (!g_surf_known || st == NULL || st->battle_ref == NULL || st->battle_get == NULL) {
+        bmap_set_mount_hidden(0);
+        return;
+    }
+    bmap_set_mount_hidden(st->battle_ref(0u, 0u, &ref) == 0 && st->battle_get(ref, BW_MON_FIELD_PERSONALITY, &pid) == 0 &&
+                          pid == g_surf_pid);
+}
+
 /* A battle begins: the objects the field drew in its last frames go to the map's builder. */
 static void field_hand_over(void)
 {
@@ -1902,6 +1971,7 @@ static void field_hand_over(void)
         }
     }
     bmap_live_set(g_fo_zone, list, n);
+    mount_note(list, n);
 }
 
 int __wrap_G3D_SYSTEM_DrawObjectCulling(void *obj, void *status)
@@ -1936,6 +2006,7 @@ void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
         }
         g_in_battle = 1;
         g_last_frame = now;
+        mount_frame();
         if (g_job != NULL && g_job->done) {
             job_finish();
         }

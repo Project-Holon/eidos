@@ -1179,7 +1179,8 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
             }
             if (((d->translucent != 0) != (pass_i == 1) &&
                  !(pass_i == 0 && d->translucent && BD_SOFT_ONLY(d)))
-                || count == 0 || d->alpha == 0 || first + count > sc->nv) {
+                || count == 0 || d->alpha == 0 || first + count > sc->nv
+                || (d->mount && bmap_mount_hidden())) {     /* (the surf mount while its Pokemon is out) */
                 i += run - 1;
                 continue;
             }

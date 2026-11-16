@@ -1097,6 +1097,8 @@ typedef struct Area {
     unsigned *bids;
     BldAnim *banims;
     unsigned nb;
+    Blob ita_file;              /* the area's ground animation (a/0/6/9, the record's itaAnime) */
+    BldAnim ita;                /* ... as the ground chunks' looping texture animation: the water */
 } Area;
 
 typedef struct { int w, h; u8 *rgba; int partial, cutout; char key[96]; } TexEnt;
@@ -1110,7 +1112,7 @@ typedef struct { float p[3][3]; u8 water, placed; } GTri;
 /* One chunk's walk grid (bmap_tile): a class per tile, BMAP_TILE_*. */
 typedef struct { int cx, cz; u8 cls[32 * 32]; } WalkChunk;
 
-typedef struct { int tex; u8 alpha, cull, translucent; int bb; float pivot[3]; u8 far; unsigned short uvanim; u8 bob; } TriTag;
+typedef struct { int tex; u8 alpha, cull, translucent; int bb; float pivot[3]; u8 far; unsigned short uvanim; u8 bob; u8 mount; } TriTag;
 
 typedef struct {
     ArcSlot arcs[16];
@@ -1138,6 +1140,9 @@ typedef struct {
     size_t nwalk, walk_cap;
     unsigned obj;           /* the object add_model is adding (0: ground)  */
     u8 cur_bob;             /* the triangles being added rise and fall (a live object) */
+    u8 cur_mount;           /* the triangles being added are the surf mount (a live object) */
+    int has_mount;          /* the surf mount was among the live objects: its place and heading */
+    float mount_t[3], mount_fwd[2];
     float bob_y[BMAP_BOB_MAX];
     unsigned bob_n;
     BmapUvAnim *uva;        /* the texture animations, and what each is of */
@@ -1417,6 +1422,20 @@ static Area *area_get(Ctx *c, unsigned area)
     if (area_record(c, area, &a->texset, &a->indoor, &a->light_type) != 0) {
         return a;
     }
+    {
+        /* the ground's own animation, as the field plays it (FIELD_GROUND_ANIME_AnmSetInit: the record's
+         * itaAnime names a member of a/0/6/9, whose BTA0 the field binds to every ground chunk): the water's,
+         * the river's and the shore's moving textures */
+        unsigned index = (area >= 2u && area < 0xD2u) ? area + (unsigned)(c->season & 3) : area;
+        Buf f = bb_of(&c->area_file);
+
+        if (index < AREA_RECORDS && (size_t)(index + 1u) * 10u <= f.n && f.p[index * 10u + 4u] != 0xFFu &&
+            arc_load(c, "a/0/6/9", f.p[index * 10u + 4u], &a->ita_file) == 0 && a->ita_file.n >= 4u &&
+            memcmp(a->ita_file.p, "BTA0", 4) == 0) {
+            a->ita.bta[0] = bb_of(&a->ita_file);
+            a->ita.n = 1u;
+        }
+    }
     arc = a->indoor ? "a/2/2/9" : "a/2/3/0";
     tarc = a->indoor ? "a/1/7/6" : "a/1/7/7";
     s = arc_get(c, arc);
@@ -1475,6 +1494,7 @@ static void area_free(Area *a)
     free(a->banims);
     blob_free(&a->btex);
     blob_free(&a->bfile);
+    blob_free(&a->ita_file);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2023,6 +2043,7 @@ static int add_tri_raw(Ctx *c, const BmapVertex t[3], const TriTag *tag, const f
     memcpy(&c->v[c->nv], t, 3u * sizeof *t);
     c->nv += 3u;
     c->tag[c->ntag] = *tag;
+    c->tag[c->ntag].mount = c->cur_mount;
     c->tag[c->ntag++].bob = c->cur_bob;
     if (ground && level_ok && !tag->far) {
         GTri *g = (GTri *)grow(c->gt, &c->gcap, c->ngt, sizeof *g);
@@ -2629,7 +2650,7 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
             fprintf(stderr, "bmap: mesh %s at %.0f %.0f%s\n", mkey, (double)center[0], (double)center[2],
                     g_done != NULL ? " completed" : "");
         }
-        rc = add_model(c, &md, setkey, bb_of(gs), &base, 1, NULL);
+        rc = add_model(c, &md, setkey, bb_of(gs), &base, 1, ar->ita.n > 0u ? &ar->ita : NULL);
         g_done = NULL;
         model_free(&md);
     }
@@ -3374,6 +3395,18 @@ void bmap_live_set(unsigned zone, const BmapLive *list, unsigned n)
     g_live_n = n;
 }
 
+static volatile int g_mount_hidden;
+
+void bmap_set_mount_hidden(int hidden)
+{
+    g_mount_hidden = hidden != 0;
+}
+
+int bmap_mount_hidden(void)
+{
+    return g_mount_hidden;
+}
+
 static int live_has(unsigned zone)
 {
     return g_live_zone == zone && g_live_n > 0u;
@@ -3483,6 +3516,16 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
         c->obj++;
         v0 = c->nv;
         c->cur_bob = (u8)(fieldcam && c->bob_n > 1u);
+        /* the Pokemon the player surfs on (fldeff_namipoke.c: a/0/7/5 member 0x31 "sea_ride", its wake
+         * 0x36 "shibuki01"): drawn where the field had it, under the player; bmap_place moves it under the
+         * player's own Pokemon, and the renderers leave it out while that Pokemon is the one surfed on */
+        c->cur_mount = (u8)(strcmp(name, "sea_ride") == 0 || strcmp(name, "shibuki01") == 0);
+        if (strcmp(name, "sea_ride") == 0) {
+            c->has_mount = 1;
+            memcpy(c->mount_t, live[i].t, sizeof c->mount_t);
+            c->mount_fwd[0] = live[i].r[2][0];    /* where the model's +z (its front) goes */
+            c->mount_fwd[1] = live[i].r[2][2];
+        }
         /* remade by its own name (a gym gimmick's curtain or door: add_gimmicks does the same); the key names the
          * model, not its pose, so its entry must hold for every pose the field may have it in */
         {
@@ -3509,6 +3552,7 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
         }
         g_done = NULL;
         c->cur_bob = 0;
+        c->cur_mount = 0;
         if (rc == 0 && fieldcam && c->nv > v0) {
             float z0 = 1e30f, z1 = -1e30f, d;
 
@@ -3950,6 +3994,7 @@ static int key_cmp(const TriTag *x, const TriTag *y)
     if (x->bb != y->bb) return x->bb - y->bb;
     if (x->uvanim != y->uvanim) return (int)x->uvanim - (int)y->uvanim;
     if (x->bob != y->bob) return (int)x->bob - (int)y->bob;
+    if (x->mount != y->mount) return (int)x->mount - (int)y->mount;
     if (x->bb) {
         int k;
 
@@ -4008,6 +4053,7 @@ static int finish(Ctx *c, BmapScene *s)
             d->far = t->far;
             d->uvanim = t->uvanim;
             d->bob = t->bob;
+            d->mount = t->mount;
             memcpy(d->pivot, t->pivot, sizeof d->pivot);
         }
         d->count += 3u;
@@ -4807,6 +4853,9 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     c->tex = NULL;
     memcpy(s->bob_y, c->bob_y, sizeof s->bob_y);
     s->bob_n = c->bob_n;
+    s->has_mount = c->has_mount;
+    memcpy(s->mount_t, c->mount_t, sizeof s->mount_t);
+    memcpy(s->mount_fwd, c->mount_fwd, sizeof s->mount_fwd);
     s->uva = c->uva;
     s->nuva = (unsigned)c->nuva;
     c->uva = NULL;

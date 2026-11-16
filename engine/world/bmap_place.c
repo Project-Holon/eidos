@@ -1880,6 +1880,9 @@ static void stand_drift(BmapScene *s)
         if (d->uvanim == 0 || d->uvanim > s->nuva || d->billboard || d->first % 3 || d->first + d->count > s->nv) {
             continue;
         }
+        if (d->count > 0 && s->v[d->first].obj == 0u) {
+            continue;                   /* the ground's own animation (its water, its shore): it lies where it is */
+        }
         ua = &s->uva[d->uvanim - 1];
         if (ua->frames < 2) {
             continue;
@@ -2722,6 +2725,38 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
          * bmap_battle_warp).  (A levelled ground left both half a step off
          * on uneven ground, the foe in it or above it.) */
         s->foe_dy = k * (s->place_g[1] - gy);
+
+        /* The surf mount stood under the player in the field, wherever the
+         * battle's slots now fall: it moves under the own Pokemon's place,
+         * turned to face the foe as that Pokemon does, at the same height
+         * over its ground as it had over the field's. */
+        if (s->has_mount) {
+            float fdx = fx - px, fdz = fz - pz;
+            float th = atan2f(fdz, fdx) - atan2f(s->mount_fwd[1], s->mount_fwd[0]);
+            float ct = cosf(th), st = sinf(th);
+            float dy = gy - bmap_ground_y(s, s->mount_t[0], s->mount_t[2]);
+            unsigned di, j;
+
+            for (di = 0; di < s->nd; di++) {
+                const BmapDraw *d = &s->d[di];
+
+                if (!d->mount || d->first + d->count > s->nv) {
+                    continue;
+                }
+                for (j = d->first; j < d->first + d->count; j++) {
+                    BmapVertex *v = &s->v[j];
+                    float ux = v->x - s->mount_t[0], uz = v->z - s->mount_t[2];
+
+                    v->x = px + ct * ux - st * uz;
+                    v->z = pz + st * ux + ct * uz;
+                    v->y += dy;
+                }
+            }
+            if (getenv("BMAP_PLACE_LOG") != NULL) {
+                fprintf(stderr, "bmap: surf mount moved from %.0f %.0f to %.0f %.0f, turned %.0f degrees\n",
+                        (double)s->mount_t[0], (double)s->mount_t[2], (double)px, (double)pz, (double)(th * 57.29578f));
+            }
+        }
     }
     /* Billboard draws keep their +z-facing shape: the pivot is placed, the
      * offsets from it are only scaled, and the GL pass turns them toward the

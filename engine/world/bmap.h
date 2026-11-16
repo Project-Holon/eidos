@@ -44,6 +44,11 @@ typedef struct BmapLive {
 } BmapLive;
 void bmap_live_set(unsigned zone, const BmapLive *list, unsigned n);
 
+/* The surf mount (the `mount` draws) is left out while set: the player's own Pokemon in battle is the one the
+ * player surfs on, so it stands there itself (sdk/battle_view.c sets it each frame). */
+void bmap_set_mount_hidden(int hidden);
+int bmap_mount_hidden(void);
+
 typedef struct BmapTexture {
     int w, h;
     unsigned char *rgba;    /* w*h*4, straight alpha                            */
@@ -73,6 +78,8 @@ typedef struct BmapDraw {
     unsigned char grass;       /* a tall-grass tuft (bmap_place): drawn again over the
                                   Pokemon it stands in front of                     */
     unsigned short uvanim;     /* 1 + its index in BmapScene.uva; 0 none            */
+    unsigned char mount;       /* 1: the surf mount (a live object): under the own Pokemon,
+                                  left out while bmap_mount_hidden()                    */
     unsigned char bob;         /* 1: rises and falls by BmapScene.bob_y (a moving object
                                   of the game with its own animation)               */
 } BmapDraw;
@@ -96,6 +103,9 @@ typedef struct BmapIntro {
 typedef struct BmapScene {
     float bob_y[BMAP_BOB_MAX]; unsigned bob_n;  /* the rise of the `bob` draws at each frame of their animation
                                                    (map units; 30 frames a second, as the field plays it) */
+    int has_mount;          /* the player surfed: the `mount` draws, the field's place of the mount and where its
+                               front pointed (map units; bmap_place moves them under the own Pokemon) */
+    float mount_t[3], mount_fwd[2];
     BmapVertex *v; unsigned nv;
     BmapDraw *d; unsigned nd;
     BmapTexture *t; unsigned nt;
