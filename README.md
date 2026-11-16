@@ -1,5 +1,7 @@
 <h1><img src="docs/banner.png" alt="eidos"></h1>
 
+<a href="https://recomplauncher.com/game/eidos"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 A native port of Pokémon Black and White built on the [aletheia](https://github.com/Project-Holon/aletheia) decompilation. Rather than emulating the Nintendo DS, eidos compiles the decompiled C source directly to native code and loads assets from a user-supplied ROM.
 
 Supports Windows, macOS, Linux, Android, and iOS, with experimental builds for Nintendo Switch and PlayStation Vita.
