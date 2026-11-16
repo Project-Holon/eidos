@@ -15,6 +15,8 @@ Supports Windows, macOS, Linux, Android, and iOS, with experimental builds for N
 [![Linux](https://img.shields.io/badge/Linux-Download-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/Project-Holon/eidos/releases/latest/download/eidos-launcher-linux-x86_64.AppImage)
 [![Android](https://img.shields.io/badge/Android-Download-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Project-Holon/eidos/releases/latest/download/eidos-android.apk)
 [![iOS](https://img.shields.io/badge/iOS-Download-147EFB?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Project-Holon/eidos/releases/latest/download/eidos-ios.ipa)
+[![Switch](https://img.shields.io/badge/Switch-Download-E60012?style=for-the-badge)](https://github.com/Project-Holon/eidos/releases/latest)
+[![PS Vita](https://img.shields.io/badge/PS%20Vita-Download-003791?style=for-the-badge&logo=playstation&logoColor=white)](https://github.com/Project-Holon/eidos/releases/latest)
 
 ### Desktop (Windows, macOS, Linux)
 
