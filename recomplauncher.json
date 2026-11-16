@@ -1,0 +1,113 @@
+{
+    "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+    "format": 1,
+    "game": {
+        "kind": "iso",
+        "label": "Your own Pokémon Black or Pokémon White ROM, the .nds file itself (not the archive it came in)."
+    },
+    "prepare": {
+        "program": [
+            "eidos.exe",
+            "eidos",
+            "eidos.AppImage"
+        ],
+        "args": [
+            "--no-window",
+            "--rom",
+            "{game}"
+        ],
+        "label": "Getting the game data from your ROM"
+    },
+    "start": {
+        "program": [
+            "eidos.exe",
+            "eidos",
+            "eidos.AppImage"
+        ]
+    },
+    "saves": [
+        "{config}/eidos/saves",
+        "{local}/eidos/saves"
+    ],
+    "folders": {
+        "saves": [
+            {
+                "path": "{config}/eidos/saves"
+            },
+            {
+                "path": "{local}/eidos/saves"
+            }
+        ],
+        "logs": [
+            {
+                "path": "{config}/eidos/saves"
+            },
+            {
+                "path": "{local}/eidos/saves"
+            }
+        ]
+    },
+    "settings": [
+        {
+            "id": "window",
+            "label": "Window",
+            "in": "args",
+            "help": "Windowed opens eidos in a window. Fullscreen and Borderless start it covering the screen. Game's option leaves the choice to eidos.",
+            "choices": [
+                {
+                    "label": "Game's option",
+                    "args": []
+                },
+                {
+                    "label": "Windowed",
+                    "args": [
+                        "--windowed"
+                    ]
+                },
+                {
+                    "label": "Fullscreen",
+                    "args": [
+                        "--fullscreen"
+                    ]
+                },
+                {
+                    "label": "Borderless",
+                    "args": [
+                        "--borderless"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "layout",
+            "label": "Layout",
+            "in": "args",
+            "help": "Remaster puts the game on one widescreen window. Classic keeps the DS's two screens.",
+            "choices": [
+                {
+                    "label": "Game's option",
+                    "args": []
+                },
+                {
+                    "label": "Remaster (one screen)",
+                    "args": [
+                        "--layout",
+                        "one"
+                    ]
+                },
+                {
+                    "label": "Classic (two screens)",
+                    "args": [
+                        "--two-screens"
+                    ]
+                }
+            ]
+        }
+    ],
+    "requires": [
+        "start",
+        "setup",
+        "settings.args",
+        "settings.choices"
+    ]
+}
