@@ -45,7 +45,7 @@ cbuffer FragmentUniforms : register(b0, space3)
     int4 wrap;      // repeat s, repeat t, flip s, flip t
     int4 c;         // toon, highlight, front, back
     int4 d;         // wbuf
-    float4 e;       // a backdrop sprite's depth (0: the polygon's own)
+    float4 e;       // x: a backdrop sprite's depth (0: the polygon's own); y: the own depth of its first cell
     float4 toontab[32];
 };
 
@@ -117,7 +117,10 @@ FSOut fs_main(VSOut i, bool front : SV_IsFrontFace)
     float al = float(a5) / 31.0;
     o.color = float4(float3(colr) / 255.0 * al, al);
     o.id = float(b.w) / 255.0;
-    o.z = e.x > 0.0 ? e.x : d.x == 1 ? clamp(i.cw / 16777216.0, 0.0, 1.0) : i.pos.z;
+    // (a sprite at the depth of its place: its cells keep their own order, each cell's depth against the sprite's
+    // first cell's carried on at a twentieth)
+    o.z = e.x > 0.0 ? clamp(e.x + (i.pos.z - e.y) * 0.05, 0.0, 1.0)
+        : d.x == 1 ? clamp(i.cw / 16777216.0, 0.0, 1.0) : i.pos.z;
     o.depth = o.z;
     return o;
 }

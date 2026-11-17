@@ -110,7 +110,7 @@ typedef struct BdFragmentUniforms {
     int flags[4];       /* textured, front pass, Pokemon count */
     float cut[4];       /* alpha, cut, cut_hi                  */
     float poke[32][4];
-    float clr[16][4];   /* the camera's clearance (flags[3] of them) */
+    float clr[32][4];   /* the camera's clearance (flags[3] of them) */
     float sky[4];       /* the sky pass: on, the layer's height, (unused), the horizon's bend */
     float skyu[4];      /* ... the picture's u of a layer point (x, z, 1) (bmap_sky_uv) */
     float skyv[4];      /* ... and its v                                              */
@@ -1068,7 +1068,7 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     }
     fu.flags[1] = front;
     fu.flags[2] = (int)(bk->n_poke > G3D_BACKDROP_SPRITES ? G3D_BACKDROP_SPRITES : bk->n_poke);
-    fu.flags[3] = (int)(bk->n_clear > 16u ? 16u : bk->n_clear);
+    fu.flags[3] = (int)(bk->n_clear > 32u ? 32u : bk->n_clear);
     memcpy(fu.clr, bk->clear, sizeof fu.clr);
     memcpy(fu.poke, bk->poke, sizeof fu.poke);
     /* the zone's fog: by the depth along the field camera's line of sight past the battle's place
@@ -1389,6 +1389,7 @@ typedef struct Run {
     int deq, mask, xlu_depth, mode, toon, a5, front, back;
     int textured, slot, wrap, id, two_pass, fog;
     float zo;           /* a backdrop sprite's depth (sprite_depths), 0: the polygon's own */
+    float zref;         /* ... and the own depth of that sprite's first cell */
 } Run;
 
 static void draw_run(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pass,
@@ -1407,6 +1408,7 @@ static void draw_run(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pa
     u->c[3] = d->back;
     u->b[3] = uid;
     u->e[0] = d->zo;
+    u->e[1] = d->zref;
     if (d->textured && d->slot >= 0 && (unsigned)d->slot < s->n_gtex && s->gtex[d->slot] != NULL) {
         tb.texture = s->gtex[d->slot];
         u->a[2] = 1;
@@ -1631,9 +1633,12 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
         Run run, cur;
         unsigned run_first = 0, run_verts = 0, first = 0;
         int have = 0;
-        float sz[G3D_BACKDROP_SPRITES];
+        float sz[G3D_BACKDROP_SPRITES], zr[G3D_BACKDROP_SPRITES];
+        unsigned char zr_set[G3D_BACKDROP_SPRITES];
 
         memset(sz, 0, sizeof sz);
+        memset(zr, 0, sizeof zr);
+        memset(zr_set, 0, sizeof zr_set);
         if (backdrop && snap->backdrop.n_poke > 0) {
             float br[4][4];
 
@@ -1693,6 +1698,16 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
                 const int k = backdrop && snap->backdrop.n_poke > 0 ? sprite_of(&snap->backdrop, p) : -1;
 
                 cur.zo = k >= 0 ? sz[k] : 0.0f;
+                cur.zref = 0.0f;
+                if (k >= 0) {
+                    if (!zr_set[k]) {       /* (the sprite's first cell this frame: its own depth) */
+                        const G3dVertex *v0 = &snap->verts[snap->idx[p->first]];
+
+                        zr[k] = v0->w != 0 ? 0.5f * ((float)v0->z / (float)v0->w) + 0.5f : 0.0f;
+                        zr_set[k] = 1;
+                    }
+                    cur.zref = zr[k];
+                }
             }
             if (have && run_first + run_verts == first && memcmp(&run, &cur, sizeof run) == 0) {
                 run_verts += verts;

@@ -37,6 +37,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <time.h>
 
 #include "bcam_sim.h"
 #include "bmap.h"
@@ -574,6 +576,21 @@ static void remember(void)
     A.nundo++;
 }
 
+/* Changes from outside while the editor is open (someone else working on the
+ * same places): the spot file written by another program is read again, and
+ * a newer build of the editor put in its place is announced (its new walls
+ * and objects are in the program, so they show after a restart). */
+static time_t g_spots_mtime, g_exe_mtime;
+static Uint64 g_watch_at, g_exe_said_at;
+static void watch_outside(void);
+
+static time_t file_mtime(const char *path)
+{
+    struct stat st;
+
+    return path != NULL && path[0] != '\0' && stat(path, &st) == 0 ? st.st_mtime : 0;
+}
+
 static void save_now(void)
 {
     if (bmap_spots_save() == 0) {
@@ -581,6 +598,7 @@ static void save_now(void)
     } else {
         say("Could not save to %s", bmap_spots_user_path());
     }
+    g_spots_mtime = file_mtime(bmap_spots_user_path());     /* (our own write is not a change from outside) */
     A.need_place = 1;
 }
 
@@ -996,7 +1014,19 @@ static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*po
         /* (the editor's views stand still: the one place of the camera, as the game's first frame of a shot) */
         memcpy(snap.backdrop.clear[0], v->eye, 3 * sizeof(float));
         snap.backdrop.clear[0][3] = 0.5f * nearest;
-        snap.backdrop.n_clear = 1;
+        /* (and the trees that place reaches go whole, as in the game) */
+        {
+            float mid[3] = { 0.0f, 0.0f, 0.0f };
+
+            for (i = 0; i < npoke; i++) {
+                mid[0] += poke[i][0] / (float)npoke; mid[1] += poke[i][1] / (float)npoke; mid[2] += poke[i][2] / (float)npoke;
+            }
+            (void)mid;
+            /* (the battle's own set, the same in both views, as the fight shows it; and a tree this view's camera
+             * stands inside) */
+            snap.backdrop.n_clear = 1u + bmap_place_trees(s, &snap.backdrop.clear[1], G3D_BACKDROP_CLEAR - 5u);
+            snap.backdrop.n_clear += bmap_trees_inside(s, v->eye, &snap.backdrop.clear[snap.backdrop.n_clear], 4u);
+        }
     }
     /* each picture stays on the GPU: kept in a texture, drawn at the frame's
      * end (gpu_flush), never read back */
@@ -4345,6 +4375,7 @@ static void run_script(const char *path)
             step();
         } else if (sscanf(line, "wait %d", &x1) == 1) {
             SDL_Delay((Uint32)x1);
+            watch_outside();                        /* (as the window's own loop does while it waits) */
             step();
         } else if (sscanf(line, "shot %199s", arg) == 1) {
             step();
@@ -4904,6 +4935,51 @@ static void usage(void)
     printf("usage: eidos_spots [--data-root PATH] [--place ID] [--shot PATH]\n");
 }
 
+/* Once a second: the spot file changed by another program is read again (the
+ * place on show kept; the undo list is of the old rows and is dropped), and a
+ * newer editor at this program's own path is announced every few seconds
+ * until the restart. */
+static void watch_outside(void)
+{
+    const Uint64 now = SDL_GetTicks();
+    time_t m;
+
+    if (now < g_watch_at) {
+        return;
+    }
+    g_watch_at = now + 1000u;
+    m = file_mtime(bmap_spots_user_path());
+    if (m != 0 && g_spots_mtime != 0 && m != g_spots_mtime) {
+        char path[1024], id[64];
+        const int view = cur()->view;
+        int i;
+
+        snprintf(id, sizeof id, "%s", cur()->id);
+        snprintf(path, sizeof path, "%s", bmap_spots_user_path());
+        bmap_spots_set_user_path(path);         /* (the table is read again: the built-in rows, the file's over them) */
+        A.nundo = 0;
+        refilter();
+        select_row(0);
+        for (i = 0; i < bmap_spots_count(); i++) {
+            if (strcmp(bmap_spots_get(i)->id, id) == 0 && bmap_spots_get(i)->view == view) {
+                select_row(i);
+            }
+        }
+        A.need_place = 1;
+        say("Spots read again: the file changed outside the editor");
+    }
+    if (m != 0) {
+        g_spots_mtime = m;
+    }
+    m = file_mtime(_pgmptr);
+    if (g_exe_mtime == 0) {
+        g_exe_mtime = m;
+    } else if (m != 0 && m != g_exe_mtime && now >= g_exe_said_at) {
+        g_exe_said_at = now + 6000u;
+        say("A newer editor is here: restart to see its new walls and objects");
+    }
+}
+
 int main(int argc, char **argv)
 {
     BwSetupRequest setup;
@@ -4960,6 +5036,9 @@ int main(int argc, char **argv)
         if (slash != NULL) {
             snprintf(path, sizeof path, "%.*s/battle_spots.tsv", (int)(slash - set), set);
             bmap_spots_set_user_path(path);
+            /* the remade models' store (a folder of the editor's own: its program is another than the game's) */
+            snprintf(path, sizeof path, "%.*s/remade-editor", (int)(slash - set), set);
+            bmap_set_remade_store(path, "spots");
         }
     }
     SDL_SetMainReady();
@@ -5033,6 +5112,8 @@ int main(int argc, char **argv)
     A.play_at = -1;
     A.scene = 3;                        /* move 1 */
     say("Saving to %s", bmap_spots_user_path());
+    g_spots_mtime = file_mtime(bmap_spots_user_path());
+    g_exe_mtime = file_mtime(_pgmptr);
     if (shot != NULL) {
         frame();
         frame();
@@ -5042,9 +5123,11 @@ int main(int argc, char **argv)
         frame_shot(shot);
         return 0;
     }
+    g_spots_mtime = file_mtime(bmap_spots_user_path());
     while (!A.quit) {
         SDL_Event ev;
 
+        watch_outside();
         if (SDL_WaitEventTimeout(&ev, A.play || A.emb != NULL ? 1 : 50)) {
             SDL_PushEvent(&ev);
         } else if (!A.play && A.emb == NULL && ++A.idle_ticks < 10) {

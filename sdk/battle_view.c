@@ -194,6 +194,12 @@ static uint32_t g_n_sprites;
 static float g_box[8][4];
 static uint32_t g_box_frame[8];
 static int g_cam_on;                /* the battle camera is known (G3D_CAMERA_Reset) */
+static float g_cam_game[2][3], g_cam_drawn[2][3];
+/* The map is shown from the battle's intro on: g_show 0 until the game's camera first leaves its place of rest (the
+ * intro's first view), or SHOW_AFTER frames have passed since the battle began (a battle whose intro starts at rest). */
+#define SHOW_AFTER 40u
+static int g_show;
+static uint32_t g_begin_frame;
 static BvJob *g_job;                /* running or just finished            */
 static BvPlaced *g_cur, *g_old;     /* placed scenes: current, the one before */
 static BvBase *g_base;              /* the newest base                     */
@@ -244,6 +250,8 @@ static int log_on(void)
     }
     return g_log;
 }
+
+extern uint8_t GAME_DATA_GetSeason(const void *gameData) __attribute__((weak));
 
 static int real_map(void)
 {
@@ -560,11 +568,22 @@ static void backdrop_hook(G3dBackdrop *out)
     out->zfar = g_frame.zfar;
     out->scene = g_cur != NULL ? &g_cur->s : NULL;
     out->scene_gen = g_gen;
+    if (!g_show && out->scene != NULL) {
+        /* (the game's camera at rest: BTLV_CAMERA_GetDefaultEyeAndTarget, eye 6.7 6.7 17.3) */
+        const int moved = g_cam_on && (fabsf(g_cam_game[0][0] - 6.7f) > 0.05f || fabsf(g_cam_game[0][1] - 6.7f) > 0.05f
+                                       || fabsf(g_cam_game[0][2] - 17.3f) > 0.05f);
+
+        if (moved || bw_input_frame_number() - g_begin_frame > SHOW_AFTER) {
+            g_show = 1;
+        } else {
+            out->scene = NULL;          /* (the game's own dark comes next: nothing of the map before it) */
+        }
+    }
     memcpy(out->poke, g_frame.poke, sizeof(out->poke));
     memcpy(out->key, g_frame.key, sizeof(out->key));
     out->n_poke = g_frame.n_poke;
     camera_clearance(out);
-    if (g_cur != NULL) {
+    if (g_cur != NULL && out->scene != NULL) {
         memcpy(out->sky, g_cur->s.clear, sizeof(out->sky));
     }
     effect_sprites();
@@ -582,11 +601,25 @@ static void backdrop_hook(G3dBackdrop *out)
  * it a while (grass the intro's camera brushed past is back for the command
  * camera); a cut (more than CLEAR_CUT units in a frame) drops them all.
  * EIDOS_NO_CAMCLEAR=1 leaves every wall drawn.
+ *
+ * A tree goes whole: a tree of the scene (BmapScene.trees) that one of those
+ * places lies in or right beside is left out entirely (bmap_clear_trees: the
+ * two nearest at most), as an entry of its own with a negative radius: its
+ * place on the ground, its foot's height and its width.  A ball cut out of a
+ * tree's crown left the rest of the tree hanging round the hole.
  */
 #define CLEAR_CUT 3.0f
 #define CLEAR_KEEP 120u
 static float g_clr[G3D_BACKDROP_CLEAR][4], g_clr_eye[3];
 static uint32_t g_clr_when[G3D_BACKDROP_CLEAR], g_clr_now;
+/* The trees taken out so far this battle (bmap_clear_trees' entries: x, tag, z, -width): each stays out until the
+ * battle ends, whichever camera first reached it. */
+#define TREES_KEPT 26u
+static float g_tree_out[TREES_KEPT][4];
+static unsigned g_ntree_out;
+
+static int g_tree_seeded;           /* the battle's trees are chosen (once a battle) */
+static float dist3(const float *a, const float *b);
 static unsigned g_nclr, g_clr_at;
 static int g_clr_off = -1;
 
@@ -636,6 +669,32 @@ static void camera_clearance(G3dBackdrop *out)
         if (g_clr_now - g_clr_when[k] <= CLEAR_KEEP) {
             memcpy(out->clear[n], g_clr[k], 4 * sizeof(float));
             n++;
+        }
+    }
+    {
+        /* The trees.  The battle's own set, chosen once from the place's two still cameras (bmap_place_trees: what
+         * the spot editor shows), stays out the whole battle; nothing joins it.  A tree the camera stands inside
+         * this frame is left out for the frame. */
+        const BmapScene *sc = (const BmapScene *)out->scene;
+        float in[4][4];
+        unsigned k, m;
+
+        if (sc != NULL && !g_tree_seeded) {
+            g_tree_seeded = 1;
+            g_ntree_out = bmap_place_trees(sc, g_tree_out, TREES_KEPT);
+            if (getenv("BMAP_TREE_LOG") != NULL) {
+                fprintf(stderr, "trees: %u out for this battle (frame %u)\n", g_ntree_out, (unsigned)bw_input_frame_number());
+            }
+        }
+        m = bmap_trees_inside(sc, out->eye, in, 4u);
+        if (n + g_ntree_out + m > G3D_BACKDROP_CLEAR) {
+            n = G3D_BACKDROP_CLEAR - g_ntree_out - m;   /* (the oldest places make room) */
+        }
+        for (k = 0; k < g_ntree_out; k++) {
+            memcpy(out->clear[n++], g_tree_out[k], 4 * sizeof(float));
+        }
+        for (k = 0; k < m; k++) {
+            memcpy(out->clear[n++], in[k], 4 * sizeof(float));
         }
     }
     out->n_clear = n;
@@ -1216,6 +1275,77 @@ static void job_finish(void)
     free(j);
 }
 
+/*
+ * The area's models made ahead.  When the player comes into a zone (the field's first frame there), its battle map
+ * is built once on a thread of its own and thrown away: what stays is its remade models, made (about 0.3 s each)
+ * and written to the store (bmap_set_remade_store), so the first battle there finds them ready.  The map builder
+ * works on one map at a time: a battle that starts while this runs waits for it first (warm_wait).
+ * EIDOS_BMAP_NO_WARM=1 turns it off.
+ */
+typedef struct BvWarm {
+    unsigned zone;
+    float px, pz;
+    int season;
+    volatile int done;
+    BwThread *thread;
+} BvWarm;
+static BvWarm *g_warm;
+static unsigned g_warm_zone = 0xFFFFFFFFu;
+
+static void warm_main(void *arg)
+{
+    BvWarm *w = (BvWarm *)arg;
+    BmapScene sc;
+    clock_t t0 = clock();
+
+    memset(&sc, 0, sizeof sc);
+    bmap_set_wfbc(NULL);
+    bmap_set_field_matrix(NULL);
+    if (bmap_build(&sc, w->zone, w->px, w->pz, w->season, 12, 0) == 0) {
+        bmap_free(&sc);
+    }
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        fprintf(stderr, "bmap: zone %u made ahead in %.0f ms\n", w->zone, 1000.0 * (double)(clock() - t0) / CLOCKS_PER_SEC);
+    }
+    w->done = 1;
+}
+
+/* The build ahead, when one runs: waited for and put away. */
+static void warm_wait(void)
+{
+    if (g_warm != NULL) {
+        bw_thread_join(g_warm->thread);
+        free(g_warm);
+        g_warm = NULL;
+    }
+}
+
+/* Each field frame: a finished build ahead is put away; a new zone starts one. */
+static void warm_field(uintptr_t gd, unsigned zone)
+{
+    static int off = -1;
+
+    if (off < 0) {
+        off = getenv("EIDOS_BMAP_NO_WARM") != NULL;
+    }
+    if (g_warm != NULL && g_warm->done) {
+        warm_wait();
+    }
+    if (off || zone == g_warm_zone || g_warm != NULL || g_job != NULL || !real_map() || !gptr_ok(gd)) {
+        return;
+    }
+    g_warm_zone = zone;
+    g_warm = (BvWarm *)calloc(1, sizeof *g_warm);
+    if (g_warm == NULL) {
+        return;
+    }
+    g_warm->zone = zone;
+    g_warm->px = rdfx(gd + GD_PLAYER, PW_X);
+    g_warm->pz = rdfx(gd + GD_PLAYER, PW_Z);
+    g_warm->season = GAME_DATA_GetSeason != NULL ? (int)(GAME_DATA_GetSeason((const void *)gd) & 3u) : 0;
+    g_warm->thread = bw_thread_start(warm_main, g_warm);
+}
+
 /* A job that is running: wait for it and take what it made. */
 static void job_drop(void)
 {
@@ -1237,6 +1367,11 @@ static void battle_begin(uintptr_t eff)
     int row;
 
     job_drop();
+    warm_wait();                        /* (the area's build ahead, if it still runs: one map at a time) */
+    g_ntree_out = 0;                    /* (no tree is out yet) */
+    g_tree_seeded = 0;
+    g_show = 0;                         /* (the map waits for the intro's first view) */
+    g_begin_frame = bw_input_frame_number();
     sprite_size_reset();
     field_hand_over();
     /* a scene from an earlier battle must not show under this one's start */
@@ -1479,6 +1614,9 @@ static void spots_user_file(void)
     if (slash != NULL) {
         snprintf(path, sizeof path, "%.*s/battle_spots.tsv", (int)(slash - set), set);
         bmap_spots_set_user_path(path);
+        /* the remade models' store, beside the settings too */
+        snprintf(path, sizeof path, "%.*s/remade", (int)(slash - set), set);
+        bmap_set_remade_store(path, "eidos");
     }
 }
 
@@ -1827,6 +1965,7 @@ static void field_note(void *obj_, const void *status_)
 
         zone = (unsigned)(pw[0] | (pw[1] << 8));
     }
+    warm_field(gs != 0 ? (uintptr_t)*(void **)(gs + 0x1C) : 0, zone);
     if (zone != g_fo_zone) {            /* another place: its objects are other objects */
         g_fo_zone = zone;
         g_nfo = 0;
@@ -2010,6 +2149,13 @@ void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
         if (!g_in_battle || now - g_last_frame > 8u) {
             eidos_bv_fixed_move_set(NULL);  /* the last battle's move is not this one's */
             battle_begin(eff);
+            /* The battle's first frame waits for its map (job_finish joins the worker).  A big zone takes over a
+             * second to build, and the battle ran on meanwhile: the foes faded in on black, the camera jumped when
+             * the map came.  The screen is dark at this moment (the encounter's wipe has closed), so the wait
+             * shows as a slightly longer dark.  EIDOS_BMAP_NO_WAIT=1: as before. */
+            if (g_job != NULL && getenv("EIDOS_BMAP_NO_WAIT") == NULL) {
+                job_finish();
+            }
         }
         g_in_battle = 1;
         g_last_frame = now;

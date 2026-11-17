@@ -48,6 +48,25 @@ void bmap_live_set(unsigned zone, const BmapLive *list, unsigned n);
  * player surfs on, so it stands there itself (sdk/battle_view.c sets it each frame). */
 void bmap_set_mount_hidden(int hidden);
 int bmap_mount_hidden(void);
+/* The camera's clearance takes a tree whole.  `clear` holds n places the camera stands in or passed (x, y, z,
+ * radius: balls, battle units); a tree of the placed scene (BmapScene.trees) whose box on the ground lies within
+ * 1.5 units of one of those places (the camera in it or right beside it, not the ball's whole reach), or that
+ * stands in the line of sight from the eye to one of the `naim` places of `aim` (the battle's middle: x, y, z and a
+ * height, a place with a height of 0 or less left out) within 6 units of the eye, is added as an entry of its own with a negative radius (x, its tag, z, -its width), the nearest first, 3 at
+ * most; the last balls
+ * make room when the list (max entries) is full.  The renderers leave out the triangles that carry that tag within
+ * that width.  Returns the new count. */
+struct BmapScene;
+/* The trees a battle at this placed scene leaves out, the whole battle long: those the rule below takes at the
+ * place's two still cameras, the command menu's and the intro's (as the place draws them: bmap_battle_camera), toward
+ * the middle between the two sides' places.  Entries as bmap_clear_trees makes them; returns their count (max at
+ * most).  The game and the spot editor both use it, so a battle shows the trees the editor shows. */
+unsigned bmap_place_trees(const struct BmapScene *s, float out[][4], unsigned max);
+/* The trees the eye stands inside right now (its place within 0.3 of the tree's box, at a height the tree has): not
+ * drawn while it does (a camera move passing through one).  Entries as above; returns their count. */
+unsigned bmap_trees_inside(const struct BmapScene *s, const float eye[3], float out[][4], unsigned max);
+unsigned bmap_clear_trees(const struct BmapScene *s, const float eye[3], const float (*aim)[4], unsigned naim,
+                          float clear[][4], unsigned n, unsigned max);
 
 typedef struct BmapTexture {
     int w, h;
@@ -157,6 +176,12 @@ typedef struct BmapScene {
     float sky_tilt;         /* ... how far its horizon lies under the camera's level (a sine):
                                the battle camera looks a little down, and the sky it sees is
                                mostly beyond the map's edge, under the level */
+    float (*trees)[8];      /* bmap_place: the trees (groups of foliage pieces) in battle
+                               units: x, z, radius, foot, top, the tag its vertices carry
+                               (BmapVertex.a, 1..254; 0: no tree), and half its box's sides
+                               along x and z; the camera's clearance leaves out whole the
+                               one or two the camera stands in or right beside           */
+    unsigned n_trees;
     int shared;             /* a copy (bmap_copy): textures, the animations and
                                the ground index belong to the original, which
                                must outlive it                                */
@@ -259,6 +284,11 @@ typedef struct BmapFieldMatrix {
 /* The next bmap_build takes its maps from this when it is the build zone's matrix (the same zone, or the zone's own
  * matrix id); NULL or none set: the zone's matrix from the files.  Taken by that build. */
 void bmap_set_field_matrix(const BmapFieldMatrix *m);
+/* The remade models' store: a folder where each remade model (bmap_remade.h) is written once made and read back in
+ * later sessions (making one takes about 0.3 s; a place's first battle waited for all of its own).  `stamp` names the
+ * program that made them (its version and build): a file made by another is made again.  NULL or "": no store.
+ * EIDOS_NO_REMADE_STORE=1 turns it off. */
+void bmap_set_remade_store(const char *dir, const char *stamp);
 
 #ifdef __cplusplus
 }

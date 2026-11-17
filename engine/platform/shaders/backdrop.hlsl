@@ -17,6 +17,7 @@ struct VSOut
     float2 st : TEXCOORD0;
     float3 rgb : TEXCOORD1;
     float3 wpos : TEXCOORD2;
+    float tag : TEXCOORD3;      // a tree's tag (bmap_place.c find_trees; 0: none)
 };
 
 cbuffer VertexUniforms : register(b0, space1)
@@ -49,6 +50,7 @@ VSOut vs_main(VSIn i)
     // the draw's texture animation this frame (identity: none)
     o.st = float2(dot(uv0.xyz, float3(i.st, 1.0)), dot(uv1.xyz, float3(i.st, 1.0)));
     o.rgb = i.rgb.rgb;
+    o.tag = i.rgb.a * 255.0;
     float4 c = float4(dot(r[0], p), dot(r[1], p), dot(r[2], p), dot(r[3], p));
     o.pos = float4(c.x, c.y, 0.5 * (c.z + c.w), c.w);
     return o;
@@ -65,7 +67,7 @@ cbuffer FragmentUniforms : register(b0, space3)
     int4 flags;         // textured, front pass, Pokemon count, clearance places
     float4 cut;         // alpha, cut, cut_hi, tall grass
     float4 poke[32];
-    float4 clr[16];     // the camera's clearance: places the camera passed this shot (x, y, z, radius)
+    float4 clr[32];     // the camera's clearance: places the camera passed this shot (x, y, z, radius)
     float4 sky;         // the sky pass: on, the layer's height, (unused), the horizon's bend
     float4 skyu;        // ... the picture's u of a layer point (x, z, 1)
     float4 skyv;        // ... and its v
@@ -101,7 +103,47 @@ FSOut fs_main(VSOut i)
         o.depth = i.pos.z;
         return o;
     }
-    if (flags.w > 0 && cut.w < 0.5) {    // (not tall grass, cut.w: the camera passes through it)
+    if (flags.w > 0 && i.tag > 0.5) {
+        // a tree the camera's clearance reaches goes whole: an entry with a negative radius names the tree's tag
+        // (its y) at its place within its width; the triangles that carry that tag are not drawn.  Its level faces
+        // (the flat leaf layers) go whole whatever the width (a wide tree loses only a stretch of its upright cards:
+        // the layers cut at that stretch's edge were left floating as bands)
+        float3 px = ddx(i.wpos), py = ddy(i.wpos);
+        float3 tn = cross(px, py);
+        bool level = abs(tn.y) > 0.7 * length(tn);
+        // an upright card is cut by whole pictures: what is tested is the whole span of the fragment's own repeat
+        // of the picture along the card (its middle cp, half its length sh along sd), so each painted tree goes or
+        // stays whole (a forest's wall has a tree a repeat)
+        float2 sx = ddx(i.st), sy = ddy(i.st);
+        float det = sx.x * sy.y - sy.x * sx.y;
+        float3 cp = i.wpos;
+        float2 sd = float2(0.0, 0.0);
+        float sh = 0.0;
+        if (!level && abs(det) > 1e-12) {
+            float3 dpdu = (px * sy.y - py * sx.y) / det;
+            if (length(dpdu) < 200.0) {
+                cp = i.wpos + dpdu * (floor(i.st.x) + 0.5 - i.st.x);
+                sh = 0.5 * length(dpdu.xz);
+                if (sh > 1e-6) sd = dpdu.xz / (2.0 * sh);
+            }
+        }
+        // (the canopy, tag 255: a wide level sheet of leaves over a forest; it goes round each tree that is out,
+        // a little wider than the tree)
+        for (int c = 0; c < flags.w; c++) {
+            if (i.tag > 254.5 && clr[c].w < 0.0 && length(i.wpos.xz - clr[c].xz) < -clr[c].w + 1.5) discard;
+        }
+        for (int t = 0; t < flags.w; t++) {
+            if (clr[t].w < 0.0 && abs(i.tag - clr[t].y) < 0.5) {
+                float2 rel = cp.xz - clr[t].xz;
+                float al = dot(rel, sd);
+                float d = length(float2(max(abs(al) - sh, 0.0), length(rel - al * sd)));
+                if (d < (level ? 40.0 : -clr[t].w)) discard;
+            }
+        }
+    }
+    // (not tall grass, cut.w: the camera passes through it; not a tree, which goes whole above or is drawn whole: a
+    // ball cut out of it left a hole)
+    if (flags.w > 0 && cut.w < 0.5 && i.tag < 0.5) {
         // the camera's clearance: an upright surface inside one of the places the camera passed this shot is not
         // drawn; a floor is kept.  The level top of a body the camera stands in or beside goes with its sides (a
         // pedestal's top was left floating as a sheet): a level face seen nearly edge-on, well over the battle's
@@ -122,7 +164,7 @@ FSOut fs_main(VSOut i)
                    && abs(dot(nf, normalize(feye.xyz - i.wpos))) < 0.35 * ln;
         if ((between && ln > 1e-9 && abs(nf.y) / ln < 0.7) || top) {
             for (int q = 0; q < flags.w; q++) {
-                if (length(i.wpos - clr[q].xyz) < clr[q].w) discard;
+                if (clr[q].w > 0.0 && length(i.wpos - clr[q].xyz) < clr[q].w) discard;
             }
         }
     }

@@ -42,6 +42,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 
 #include "bmap.h"
 #include "bmap_gimmick.h"
@@ -2130,6 +2134,72 @@ static const Done *g_done;      /* the completion of the model add_model is addi
 static int g_research_ids;      /* the models dump: a vertex's object number is its triangle's name */
 
 static int remade_make(struct Done *d, const BmapRemade *e, Model *md, const char *setkey, Buf set);
+static int store_load(struct Done *d, const BmapRemade *e, const Model *md);
+static void store_save(const struct Done *d, const BmapRemade *e, const Model *md);
+/* research (BMAP_BUILD_TIME=1): where a build's time goes, in clock ticks: 0 remade models made, 1 near chunks,
+ * 2 far chunks, 3 joined zones, 4 the sea, 5 finish, 6 files read */
+static clock_t g_bt[8];
+static unsigned g_bt_n[8];
+
+/* ---- the remade models' store (bmap.h, bmap_set_remade_store) ---- */
+static char g_store_dir[600];
+static unsigned long long g_store_stamp;
+
+static unsigned long long store_fnv(unsigned long long h, const void *p, size_t n)
+{
+    const unsigned char *b = (const unsigned char *)p;
+    size_t i;
+
+    for (i = 0; i < n; i++) {
+        h = (h ^ b[i]) * 1099511628211ull;
+    }
+    return h;
+}
+
+void bmap_set_remade_store(const char *dir, const char *stamp)
+{
+    struct stat st;
+    const char *self = NULL;
+
+    if (getenv("EIDOS_REMADE_STORE") != NULL) {
+        dir = getenv("EIDOS_REMADE_STORE");     /* (tests: one folder for runs with a profile each) */
+    }
+    snprintf(g_store_dir, sizeof g_store_dir, "%s", dir != NULL && getenv("EIDOS_NO_REMADE_STORE") == NULL ? dir : "");
+    g_store_stamp = store_fnv(1469598103934665603ull, stamp != NULL ? stamp : "", stamp != NULL ? strlen(stamp) : 0u);
+    /* (the program's own file is part of the stamp: a new build, a builder changed, makes the models again) */
+#ifdef _WIN32
+    self = _pgmptr;
+#else
+    self = "/proc/self/exe";
+#endif
+    if (self != NULL && stat(self, &st) == 0) {
+        /* (its size and four pieces of it, not its time: a copy of the same program is the same program) */
+        const long long size = (long long)st.st_size;
+        FILE *pf = fopen(self, "rb");
+        unsigned char *buf = (unsigned char *)malloc(65536u);
+        int q;
+
+        g_store_stamp = store_fnv(g_store_stamp, &size, sizeof size);
+        for (q = 0; pf != NULL && buf != NULL && q < 4; q++) {
+            size_t got;
+
+            fseek(pf, (long)(size / 4 * q), SEEK_SET);
+            got = fread(buf, 1, 65536u, pf);
+            g_store_stamp = store_fnv(g_store_stamp, buf, got);
+        }
+        if (pf != NULL) {
+            fclose(pf);
+        }
+        free(buf);
+    }
+    if (g_store_dir[0] != '\0') {
+#ifdef _WIN32
+        (void)_mkdir(g_store_dir);
+#else
+        (void)mkdir(g_store_dir, 0755);
+#endif
+    }
+}
 
 static int done_has(const u32 *a, u32 n, u32 id)
 {
@@ -2193,7 +2263,14 @@ static const Done *done_get_posed(const void *owner, const char *key, u32 pose, 
         memset(d, 0, sizeof *d);
         snprintf(d->key, sizeof d->key, "%s", key);
         d->pose = pose;
-        d->state = remade_make(d, e, md, setkey, set) ? 1 : -1;
+        if (!store_load(d, e, md)) {
+            const clock_t t0 = clock();
+
+            d->state = remade_make(d, e, md, setkey, set) ? 1 : -1;
+            g_bt[0] += clock() - t0;
+            g_bt_n[0]++;
+            store_save(d, e, md);
+        }
     }
     if (d->state != 1) {
         return NULL;
@@ -2207,6 +2284,157 @@ static const Done *done_get_posed(const void *owner, const char *key, u32 pose, 
         }
     }
     return d;
+}
+
+/* What a stored model must match to be used: the program that made it, the model's settings and the model itself
+ * (the game's own model record: another version of the game, a mod's model). */
+static unsigned long long store_sum(const BmapRemade *e, const Model *md)
+{
+    unsigned long long h = g_store_stamp;
+
+    h = store_fnv(h, e->opt != NULL ? e->opt : "", e->opt != NULL ? strlen(e->opt) : 0u);
+    h = store_fnv(h, md->m.p, md->m.n);
+    return h;
+}
+
+static void store_path(const Done *d, char *path, size_t n)
+{
+    snprintf(path, n, "%s/%s_%08x.rmc", g_store_dir, d->key, (unsigned)d->pose);
+}
+
+/* The stored form of the model into d (its state set: made, or "the builder made nothing"); 0 when there is none
+ * that matches. */
+static int store_load(Done *d, const BmapRemade *e, const Model *md)
+{
+    char path[720];
+    unsigned long long sum = 0;
+    u32 head[8];
+    FILE *f;
+    int t, ok = 0;
+
+    if (g_store_dir[0] == '\0') {
+        return 0;
+    }
+    store_path(d, path, sizeof path);
+    f = fopen(path, "rb");
+    if (f == NULL) {
+        return 0;
+    }
+    if (getenv("BMAP_STORE_LOG") != NULL) {
+        unsigned long long s2 = 0;
+        u32 h2[8];
+        long at = ftell(f);
+
+        if (fread(h2, 4, 8, f) == 8 && fread(&s2, 8, 1, f) == 1) {
+            fprintf(stderr, "store: %s file sum %llx want %llx (stamp %llx, model %u bytes) counts %u %u %u %u %u\n", d->key, s2,
+                    store_sum(e, md), g_store_stamp, (unsigned)md->m.n, h2[2], h2[3], h2[4], h2[5], h2[6]);
+        }
+        fseek(f, at, SEEK_SET);
+    }
+    if (fread(head, 4, 8, f) != 8 || memcmp(head, "RMC1", 4) != 0 || fread(&sum, 8, 1, f) != 1
+        || sum != store_sum(e, md) || head[2] > 8u || head[3] > 4000000u || head[4] > 4000000u || head[5] > 4000000u
+        || head[6] > 4000000u) {
+        fclose(f);
+        return 0;
+    }
+    if (head[1] != 1u) {                /* (the builder made nothing: kept, so it is not run again) */
+        fclose(f);
+        d->state = -1;
+        return 1;
+    }
+    d->ntex = (int)head[2];
+    d->ntwo = head[3];
+    d->ndrop = head[4];
+    d->nturn = head[5];
+    d->ntri = head[6];
+    d->flags = head[7];
+    d->two = (u32 *)calloc(d->ntwo + 1u, sizeof(u32));
+    d->drop = (u32 *)calloc(d->ndrop + 1u, sizeof(u32));
+    d->turn = (DoneTurn *)calloc(d->nturn + 1u, sizeof(DoneTurn));
+    d->tri = (DoneTri *)calloc(d->ntri + 1u, sizeof(DoneTri));
+    ok = d->two != NULL && d->drop != NULL && d->turn != NULL && d->tri != NULL;
+    for (t = 0; ok && t < d->ntex; t++) {
+        int wh[2];
+
+        ok = fread(wh, 4, 2, f) == 2 && wh[0] > 0 && wh[1] > 0 && wh[0] <= 4096 && wh[1] <= 4096;
+        if (ok) {
+            d->tex[t].w = wh[0];
+            d->tex[t].h = wh[1];
+            d->tex[t].scene = -1;
+            d->tex[t].rgba = (u8 *)malloc((size_t)wh[0] * (size_t)wh[1] * 4u);
+            ok = d->tex[t].rgba != NULL
+                 && fread(d->tex[t].rgba, 4, (size_t)wh[0] * (size_t)wh[1], f) == (size_t)wh[0] * (size_t)wh[1];
+        }
+    }
+    ok = ok && fread(d->two, 4, d->ntwo, f) == d->ntwo && fread(d->drop, 4, d->ndrop, f) == d->ndrop
+         && fread(d->turn, sizeof(DoneTurn), d->nturn, f) == d->nturn
+         && fread(d->tri, sizeof(DoneTri), d->ntri, f) == d->ntri;
+    fclose(f);
+    if (!ok) {
+        /* (a cut-off file: nothing of it is kept, the model is made) */
+        for (t = 0; t < 8; t++) {
+            free(d->tex[t].rgba);
+            d->tex[t].rgba = NULL;
+        }
+        free(d->two); free(d->drop); free(d->turn); free(d->tri);
+        d->two = d->drop = NULL;
+        d->turn = NULL;
+        d->tri = NULL;
+        d->ntex = 0;
+        d->ntwo = d->ndrop = d->nturn = d->ntri = d->flags = 0;
+        return 0;
+    }
+    d->state = 1;
+    return 1;
+}
+
+/* The model just made, written for the next session (to a file of another name first: a write cut off leaves no
+ * half file under the real name). */
+static void store_save(const Done *d, const BmapRemade *e, const Model *md)
+{
+    char path[720], tmp[736];
+    const unsigned long long sum = store_sum(e, md);
+    u32 head[8];
+    FILE *f;
+    int t, ok;
+
+    if (g_store_dir[0] == '\0') {
+        return;
+    }
+    store_path(d, path, sizeof path);
+    snprintf(tmp, sizeof tmp, "%s.part", path);
+    f = fopen(tmp, "wb");
+    if (f == NULL) {
+        return;
+    }
+    memcpy(head, "RMC1", 4);
+    head[1] = d->state == 1 ? 1u : 0u;
+    head[2] = d->state == 1 ? (u32)d->ntex : 0u;
+    head[3] = d->state == 1 ? d->ntwo : 0u;
+    head[4] = d->state == 1 ? d->ndrop : 0u;
+    head[5] = d->state == 1 ? d->nturn : 0u;
+    head[6] = d->state == 1 ? d->ntri : 0u;
+    head[7] = d->flags;
+    ok = fwrite(head, 4, 8, f) == 8 && fwrite(&sum, 8, 1, f) == 1;
+    for (t = 0; ok && d->state == 1 && t < d->ntex; t++) {
+        const int wh[2] = { d->tex[t].w, d->tex[t].h };
+
+        ok = fwrite(wh, 4, 2, f) == 2
+             && fwrite(d->tex[t].rgba, 4, (size_t)wh[0] * (size_t)wh[1], f) == (size_t)wh[0] * (size_t)wh[1];
+    }
+    if (ok && d->state == 1) {
+        ok = fwrite(d->two, 4, d->ntwo, f) == d->ntwo && fwrite(d->drop, 4, d->ndrop, f) == d->ndrop
+             && fwrite(d->turn, sizeof(DoneTurn), d->nturn, f) == d->nturn
+             && fwrite(d->tri, sizeof(DoneTri), d->ntri, f) == d->ntri;
+    }
+    ok = fclose(f) == 0 && ok;
+    if (ok) {
+        remove(path);
+        ok = rename(tmp, path) == 0;
+    }
+    if (!ok) {
+        remove(tmp);
+    }
 }
 
 /* A remade model's own texture as a scene texture. */
@@ -4690,6 +4918,17 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     if (c == NULL) {
         return -1;
     }
+    {
+        /* A new build: no kept remade model has its textures in this scene yet.  (They told a new build by the
+         * build's own address, and a build often gets the address the last one had: the model kept the texture
+         * numbers of the scene before and was drawn in whatever stood at those numbers in this one, a cave's
+         * rock in a wall's picture.) */
+        unsigned di;
+
+        for (di = 0; di < g_ndones; di++) {
+            g_dones[di].owner = NULL;
+        }
+    }
     c->season = season & 3;
     memset(&headers, 0, sizeof headers);
     memset(&matrix, 0, sizeof matrix);
@@ -4790,7 +5029,17 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
             continue;
         }
         c->cur_far = (u8)(dx > NEAR_REACH || dz > NEAR_REACH);
-        if (add_chunk(c, ar, chunk, cx, cz) != 0) {
+        {
+            const clock_t t0 = clock();
+            const int rcc = add_chunk(c, ar, chunk, cx, cz);
+
+            g_bt[c->cur_far ? 2 : 1] += clock() - t0;
+            g_bt_n[c->cur_far ? 2 : 1]++;
+            if (rcc != 0) {
+                goto out;
+            }
+        }
+        if (0) {
             goto out;
         }
         if (wfbc_on && cx < 2 && cz < 2 && add_wfbc(c, ar, &wfbc, cx, cz) != 0) {
@@ -4830,7 +5079,12 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
                         continue;
                     }
                     c->cur_far = 1;
-                    if (add_chunk(c, jar, ch, (int)(jc % jw), (int)(jc / jw)) != 0) {
+                    const clock_t t0 = clock();
+                    const int rcj = add_chunk(c, jar, ch, (int)(jc % jw), (int)(jc / jw));
+
+                    g_bt[3] += clock() - t0;
+                    g_bt_n[3]++;
+                    if (rcj != 0) {
                         blob_free(&jm);
                         goto out;
                     }
@@ -4844,13 +5098,26 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         }
     }
     c->join_cur = -2;
-    if (extend_sea(c) != 0) {
+    {
+        const clock_t t0 = clock();
+        const int rcs = extend_sea(c);
+
+        g_bt[4] += clock() - t0;
+        if (rcs != 0) {
+            goto out;
+        }
+    }
+    if (0) {
         goto out;
     }
-    /* the clouds: where the game counts the zone outdoors (Fly or weather allowed: the zone header's word at 0x1E,
-     * bits 13 and 12); not a room, a cave, a gym */
+    /* the clouds: where the game counts the zone in the open air: Fly allowed (the zone header's word at 0x1E, bit
+     * 13, flyEnabled) and the area an outer one (the area record's innerOuter byte, 1: the field named `indoor` here
+     * holds it).  Not bit 12 (weatherEnabled): the caves have it (Wellspring Cave, Chargestone Cave, Relic Castle:
+     * 71 inner zones), and had clouds under their roofs. */
     cloud_tex = -2;
-    if ((rd16(hb, zone * 48u + 0x1Eu) & 0x3000u) != 0u && getenv("EIDOS_NO_CLOUDS") == NULL) {
+    if ((((rd16(hb, zone * 48u + 0x1Eu) & 0x2000u) != 0u && player_area != NULL && player_area->indoor)
+         || getenv("EIDOS_FORCE_CLOUDS") != NULL)       /* (research: clouds anywhere, to test what they change) */
+        && getenv("EIDOS_NO_CLOUDS") == NULL) {
         cloud_tex = add_clouds(c, px, pz, zone);
         if (cloud_tex == -1) {
             goto out;
@@ -4859,7 +5126,25 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     s->clear[0] = c->lights.clear[0]; s->clear[1] = c->lights.clear[1]; s->clear[2] = c->lights.clear[2];
     s->fog[0] = c->lights.fog[0]; s->fog[1] = c->lights.fog[1]; s->fog[2] = c->lights.fog[2];
     load_fog(c, zone, hb, s);
-    if (finish(c, s) != 0) {
+    {
+        const clock_t t0 = clock();
+        const int rcf = finish(c, s);
+
+        g_bt[5] += clock() - t0;
+        if (getenv("BMAP_BUILD_TIME") != NULL) {
+            fprintf(stderr, "bmap build: remade %u models %ld ms; near chunks %u %ld ms; far chunks %u %ld ms; joined %u %ld ms; "
+                    "sea %ld ms; finish %ld ms (the chunk times hold the remade time)\n", g_bt_n[0],
+                    (long)(g_bt[0] * 1000 / CLOCKS_PER_SEC), g_bt_n[1], (long)(g_bt[1] * 1000 / CLOCKS_PER_SEC), g_bt_n[2],
+                    (long)(g_bt[2] * 1000 / CLOCKS_PER_SEC), g_bt_n[3], (long)(g_bt[3] * 1000 / CLOCKS_PER_SEC),
+                    (long)(g_bt[4] * 1000 / CLOCKS_PER_SEC), (long)(g_bt[5] * 1000 / CLOCKS_PER_SEC));
+        }
+        memset(g_bt, 0, sizeof g_bt);
+        memset(g_bt_n, 0, sizeof g_bt_n);
+        if (rcf != 0) {
+            goto out;
+        }
+    }
+    if (0) {
         goto out;
     }
     {
@@ -5010,6 +5295,7 @@ void bmap_free(BmapScene *s)
     free(s->v);
     free(s->d);
     free(s->prep);
+    free(s->trees);
     if (s->shared) {                    /* a copy (bmap_copy): the rest is the original's */
         memset(s, 0, sizeof *s);
         return;

@@ -101,10 +101,12 @@ static int leafy(const BmapScene *s, const BmapDraw *g)
     return cnt > 0 && sg >= sr + cnt * 16 && sg >= sb + cnt * 16;   /* green, not a blue rug */
 }
 
-/* The tufts, in battle space (the camera looks down -z), one set per tile
- * cell of `tile` units: the same three tufts, the same height, on every
- * cell, the whole grass picture on each; the grass triangles are dropped
- * after. */
+/* The tufts, one set on each tile of the MAP that a grass triangle covers
+ * (the map's own 16-unit tiles, found by undoing the placement: the tufts
+ * of a patch stand at the same places of the map whatever the battle's
+ * spot and angle): the same three tufts, the same height (`tile` is a
+ * tile in battle units), on every tile, the whole grass picture on each;
+ * the grass triangles are dropped after. */
 static const unsigned char *g_tmask;      /* the grass triangles (bmap_place_spec), by index */
 
 static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned nd0, float tile)
@@ -116,6 +118,10 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
     BmapVertex *v;
     BmapDraw *d;
     unsigned char *used;
+    /* (the placement: the map turned by place_a and scaled by place_k about the own Pokemon's place) */
+    const float ca = cosf(s->place_a), sa = sinf(s->place_a), pk = s->place_k > 0.0f ? s->place_k : tile / 16.0f;
+    const int tx0 = (int)floorf(s->place_x / 16.0f), tz0 = (int)floorf(s->place_z / 16.0f);
+    unsigned tufts_all = 0, tufts_ok = 0;
 
     for (i = 0; i < nd0; i++) {
         if (grass[i]) {
@@ -143,33 +149,60 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
         }
         for (j = g->first; j + 2 < g->first + g->count; j += 3) {
             const BmapVertex *a = &s->v[j], *b = &s->v[j + 1], *c = &s->v[j + 2];
-            float x0, x1;
+            float m[3][2], x0, x1, z0, z1;
+            int cx, cz, q;
 
             if (mask != NULL && !mask[j / 3]) {
                 continue;               /* not grass (a rug, a path in the same draw) */
             }
-            x0 = fminf(a->x, fminf(b->x, c->x));
-            x1 = fmaxf(a->x, fmaxf(b->x, c->x));
-            {
-            float z0 = fminf(a->z, fminf(b->z, c->z)), z1 = fmaxf(a->z, fmaxf(b->z, c->z));
-            int cx, cz;
+            /* (the triangle in map units: the placement undone) */
+            for (q = 0; q < 3; q++) {
+                const BmapVertex *vq = &s->v[j + (unsigned)q];
+                const float bx = (vq->x - PLACE_SX) / pk, bz = (vq->z - PLACE_SZ) / pk;
 
-            for (cx = (int)floorf(x0 / tile); (float)cx * tile <= x1; cx++) {
-                for (cz = (int)floorf(z0 / tile); (float)cz * tile <= z1; cz++) {
-                    float mx = ((float)cx + 0.5f) * tile, mz = ((float)cz + 0.5f) * tile;
-                    float d1 = (b->x - a->x) * (mz - a->z) - (b->z - a->z) * (mx - a->x);
-                    float d2 = (c->x - b->x) * (mz - b->z) - (c->z - b->z) * (mx - b->x);
-                    float d3 = (a->x - c->x) * (mz - c->z) - (a->z - c->z) * (mx - c->x);
-                    int ux = cx + TUFT_SPAN / 2, uz = cz + TUFT_SPAN / 2 + 8, t;
-                    float y = a->y;
+                m[q][0] = s->place_x + ca * bx + sa * bz;
+                m[q][1] = s->place_z - sa * bx + ca * bz;
+            }
+            x0 = fminf(m[0][0], fminf(m[1][0], m[2][0]));
+            x1 = fmaxf(m[0][0], fmaxf(m[1][0], m[2][0]));
+            z0 = fminf(m[0][1], fminf(m[1][1], m[2][1]));
+            z1 = fmaxf(m[0][1], fmaxf(m[1][1], m[2][1]));
+            for (cx = (int)floorf(x0 / 16.0f); (float)cx * 16.0f <= x1; cx++) {
+                for (cz = (int)floorf(z0 / 16.0f); (float)cz * 16.0f <= z1; cz++) {
+                    /* (the map's own tile: its middle) */
+                    const float mx = ((float)cx + 0.5f) * 16.0f, mz = ((float)cz + 0.5f) * 16.0f;
+                    const float d1 = (m[1][0] - m[0][0]) * (mz - m[0][1]) - (m[1][1] - m[0][1]) * (mx - m[0][0]);
+                    const float d2 = (m[2][0] - m[1][0]) * (mz - m[1][1]) - (m[2][1] - m[1][1]) * (mx - m[1][0]);
+                    const float d3 = (m[0][0] - m[2][0]) * (mz - m[2][1]) - (m[0][1] - m[2][1]) * (mx - m[2][0]);
+                    const int ux = cx - tx0 + TUFT_SPAN / 2, uz = cz - tz0 + TUFT_SPAN / 2;
+                    const float y = a->y;
+                    int t;
 
                     if (!((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0))) continue;
                     if (ux < 0 || uz < 0 || ux >= TUFT_SPAN || uz >= TUFT_SPAN || used[uz * TUFT_SPAN + ux]) continue;
                     used[uz * TUFT_SPAN + ux] = 1;
+                    {
+                        /* research (BMAP_TUFT_LOG): the tile's middle put into the battle must lie in the triangle
+                         * as the battle has it (the way there and the way back agree) */
+                        const float rx = mx - s->place_x, rz = mz - s->place_z;
+                        const float tx = PLACE_SX + pk * (ca * rx - sa * rz), tz = PLACE_SZ + pk * (sa * rx + ca * rz);
+                        const float e1 = (b->x - a->x) * (tz - a->z) - (b->z - a->z) * (tx - a->x);
+                        const float e2 = (c->x - b->x) * (tz - b->z) - (c->z - b->z) * (tx - b->x);
+                        const float e3 = (a->x - c->x) * (tz - c->z) - (a->z - c->z) * (tx - c->x);
+                        const float tol = 1e-3f;
+
+                        tufts_ok += (e1 >= -tol && e2 >= -tol && e3 >= -tol) || (e1 <= tol && e2 <= tol && e3 <= tol);
+                        tufts_all++;
+                    }
                     for (t = 0; t < 3 && nv + 12 <= s->nv + need; t++) {
-                        float ox = mx + spot[t][0] * tile, oz = mz + spot[t][1] * tile;
-                        float q1[4][3] = { { ox - w, y, oz - w }, { ox + w, y, oz + w }, { ox + w, y + hh, oz + w }, { ox - w, y + hh, oz - w } };
-                        float q2[4][3] = { { ox - w, y, oz + w }, { ox + w, y, oz - w }, { ox + w, y + hh, oz - w }, { ox - w, y + hh, oz + w } };
+                        /* (the tuft's place on the map, then in the battle; its two crossed cards along the map's
+                         * diagonals, turned with the map) */
+                        const float tmx = mx + spot[t][0] * 16.0f - s->place_x, tmz = mz + spot[t][1] * 16.0f - s->place_z;
+                        const float ox = PLACE_SX + pk * (ca * tmx - sa * tmz), oz = PLACE_SZ + pk * (sa * tmx + ca * tmz);
+                        const float ax = w * (ca - sa), az = w * (sa + ca);     /* the map's (1, 1) way */
+                        const float cxw = w * (ca + sa), czw = w * (sa - ca);   /* the map's (1, -1) way */
+                        float q1[4][3] = { { ox - ax, y, oz - az }, { ox + ax, y, oz + az }, { ox + ax, y + hh, oz + az }, { ox - ax, y + hh, oz - az } };
+                        float q2[4][3] = { { ox - cxw, y, oz - czw }, { ox + cxw, y, oz + czw }, { ox + cxw, y + hh, oz + czw }, { ox - cxw, y + hh, oz - czw } };
 
                         quad(&s->v[nv], (const float (*)[3])q1, a);
                         nv += 6;
@@ -177,7 +210,6 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
                         nv += 6;
                     }
                 }
-            }
             }
         }
         if (nv > start) {
@@ -191,6 +223,10 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
         }
     }
     free(used);
+    if (getenv("BMAP_TUFT_LOG") != NULL) {
+        fprintf(stderr, "tufts: %u tiles, %u of them in their triangle in battle space; place %.0f %.0f angle %.0f\n", tufts_all,
+                tufts_ok, (double)s->place_x, (double)s->place_z, (double)(s->place_a * 57.29578f));
+    }
     for (i = 0; i < nd0; i++) {
         unsigned j;
 
@@ -1014,6 +1050,8 @@ int bmap_copy(BmapScene *dst, const BmapScene *src)
 {
     *dst = *src;
     dst->shared = 1;
+    dst->trees = NULL;                  /* (found again when the copy is placed) */
+    dst->n_trees = 0;
     dst->v = (BmapVertex *)malloc((src->nv > 0 ? src->nv : 1) * sizeof *dst->v);
     dst->d = (BmapDraw *)malloc((src->nd > 0 ? src->nd : 1) * sizeof *dst->d);
     dst->prep = NULL;
@@ -2306,22 +2344,40 @@ int bmap_wild_height(const BmapScene *s, float x0, float z0, float x1, float z1,
 {
     float best = 1e30f;
     unsigned i, j;
+    int sheets;
 
-    for (i = 0; i < s->nd; i++) {
-        const BmapDraw *d = &s->d[i];
-        const BmapVertex *v = &s->v[d->first];
+    /* First the grass itself: the level faces of leafy cut-out sheets (a picture with see-through pixels, not a
+     * see-through draw: the shadow sheet) over the area's wild tiles.  An area with none (its grass painted into the
+     * ground's own picture): every leafy level face there, as before.  (The lowest green face alone took a second
+     * ground layer under the visible one, Pinwheel Forest's inner map: 8 units too low.) */
+    for (sheets = 1; sheets >= 0 && best > 1e29f; sheets--) {
+        for (i = 0; i < s->nd; i++) {
+            const BmapDraw *d = &s->d[i];
+            const BmapVertex *v = &s->v[d->first];
 
-        if (d->count < 3 || d->billboard || d->first + d->count > s->nv || !leafy(s, d)) {
-            continue;
-        }
-        for (j = 0; j + 2 < d->count; j += 3) {
-            float cx = (v[j].x + v[j + 1].x + v[j + 2].x) / 3.0f, cz = (v[j].z + v[j + 1].z + v[j + 2].z) / 3.0f;
-
-            if (cx < x0 || cx > x1 || cz < z0 || cz > z1 || fabsf(v[j].y - v[j + 1].y) > 0.01f
-                || fabsf(v[j].y - v[j + 2].y) > 0.01f || !bmap_tile_encounter(s, cx, cz)) {
+            if (d->count < 3 || d->billboard || d->first + d->count > s->nv || !leafy(s, d)) {
                 continue;
             }
-            best = fminf(best, v[j].y);
+            if (sheets) {
+                const BmapTexture *t = d->tex >= 0 && (unsigned)d->tex < s->nt ? &s->t[d->tex] : NULL;
+                int cut = 0, q;
+
+                for (q = 0; t != NULL && !cut && q < t->w * t->h; q++) {
+                    cut = t->rgba[q * 4 + 3] == 0;
+                }
+                if (!cut || d->translucent) {
+                    continue;
+                }
+            }
+            for (j = 0; j + 2 < d->count; j += 3) {
+                float cx = (v[j].x + v[j + 1].x + v[j + 2].x) / 3.0f, cz = (v[j].z + v[j + 1].z + v[j + 2].z) / 3.0f;
+
+                if (cx < x0 || cx > x1 || cz < z0 || cz > z1 || fabsf(v[j].y - v[j + 1].y) > 0.01f
+                    || fabsf(v[j].y - v[j + 2].y) > 0.01f || !bmap_tile_encounter(s, cx, cz)) {
+                    continue;
+                }
+                best = fminf(best, v[j].y);
+            }
         }
     }
     if (best > 1e29f) {
@@ -2486,6 +2542,566 @@ static BmapPlaceSpec research_spec(const BmapPlaceSpec *sp0)
         sp.intro.yaw += i;
     }
     return sp;
+}
+
+/* The trees of the placed scene, for the camera's clearance (battle_view.c).
+ *
+ * The scene's triangles are joined into pieces: a placed object (BmapVertex.obj) is one piece; the map's own mesh
+ * falls into the pieces its triangles make by shared corners within one draw.  Most outdoor maps build their trees
+ * into the ground chunk, and a forest's tree is not one body: upright picture cards (32 or 64 map units wide), flat
+ * leaf layers over them at two or three heights, a shadow on the ground under them, each a piece of its own.
+ *
+ * The foliage pieces: a piece with a green picture, no wider than 24 battle units, that is cut out of a card
+ * (see-through pixels), a placed object, or a body at least 2 high (not a lawn patch).  Foliage pieces that stand in
+ * one another's place (their boxes on the ground overlap by a quarter of the smaller one) are one tree: a card with
+ * the layers over it, a crown with its trunk.  A tree at least 2 high and no wider than 44 gets a tag (1..254, its
+ * number round again past that), written into the alpha byte of the vertex colour of every one of its triangles
+ * (the renderers never read that byte as a colour), and an entry of BmapScene.trees.  The clearance then leaves out
+ * the triangles with the tags of the trees it reaches: nothing else is cut, whatever stands in the same place.
+ * A forest's long wall of joined cards (one piece over a thousand units wide) and its wide canopy sheets are split
+ * into their panels first, each a foliage piece of its own (up to 40 wide), so the panel the camera stands in goes
+ * without the rest of the wall; a tree may then be up to 44 wide. */
+static unsigned tree_root(unsigned *par, unsigned a)
+{
+    while (par[a] != a) {
+        par[a] = par[par[a]];
+        a = par[a];
+    }
+    return a;
+}
+
+static void find_trees(BmapScene *s)
+{
+    typedef struct { float lo[3], hi[3]; unsigned char leaf, cut, isobj, cand, tag, shade, wide, canopy; } Pc;
+    unsigned *par, *slot, *objv, *gpar, *cidx, cap = 1u, i, j, top = 0, npc = 0, npc0, pcap, nc = 0, n = 0;
+    int *pcof, *vpc;
+    Pc *pc;
+    signed char *green, *cutout, *dark;
+
+    free(s->trees);
+    s->trees = NULL;
+    s->n_trees = 0;
+    for (i = 0; i < s->nv; i++) {
+        s->v[i].a = 0;                  /* (no tree) */
+    }
+    if (s->nv < 3u) {
+        return;
+    }
+    while (cap < 2u * s->nv) {
+        cap <<= 1;
+    }
+    for (i = 0; i < s->nv; i++) {
+        const unsigned o = s->v[i].obj & 0x3FFFFFFFu;
+
+        top = o > top && o < 0x100000u ? o : top;
+    }
+    par = (unsigned *)malloc((size_t)s->nv * sizeof *par);
+    slot = (unsigned *)malloc((size_t)cap * sizeof *slot);
+    objv = (unsigned *)malloc(((size_t)top + 1u) * sizeof *objv);
+    pcof = (int *)malloc((size_t)s->nv * sizeof *pcof);
+    green = (signed char *)calloc(s->nt > 0 ? s->nt : 1u, 1);
+    cutout = (signed char *)calloc(s->nt > 0 ? s->nt : 1u, 1);
+    dark = (signed char *)calloc(s->nt > 0 ? s->nt : 1u, 1);
+    if (par == NULL || slot == NULL || objv == NULL || pcof == NULL || green == NULL || cutout == NULL || dark == NULL) {
+        free(par); free(slot); free(objv); free(pcof); free(green); free(cutout); free(dark);
+        return;
+    }
+    memset(slot, 0xFF, (size_t)cap * sizeof *slot);
+    memset(objv, 0xFF, ((size_t)top + 1u) * sizeof *objv);
+    for (i = 0; i < s->nv; i++) {
+        par[i] = i;
+        pcof[i] = -1;
+    }
+    /* each corner joined to the first corner at its place in its draw (the map's mesh) or to its object's first */
+    for (i = 0; i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+
+        if (d->billboard || d->grass || d->count < 3u || d->first + d->count > s->nv) {
+            continue;
+        }
+        for (j = d->first; j < d->first + d->count; j++) {
+            const BmapVertex *v = &s->v[j];
+            const unsigned o = v->obj & 0x3FFFFFFFu;
+
+            if (o != 0u && o <= top) {
+                if (objv[o] == 0xFFFFFFFFu) {
+                    objv[o] = j;
+                }
+                par[tree_root(par, j)] = tree_root(par, objv[o]);
+            } else {
+                const int qx = (int)lroundf(v->x * 32.0f), qy = (int)lroundf(v->y * 32.0f), qz = (int)lroundf(v->z * 32.0f);
+                unsigned h = ((unsigned)qx * 73856093u ^ (unsigned)qy * 19349663u ^ (unsigned)qz * 83492791u ^ i * 2654435761u) & (cap - 1u);
+
+                for (;;) {
+                    const unsigned k = slot[h];
+
+                    if (k == 0xFFFFFFFFu) {
+                        slot[h] = j;
+                        break;
+                    }
+                    if (k >= d->first && k < d->first + d->count && (s->v[k].obj & 0x3FFFFFFFu) == 0u
+                        && (int)lroundf(s->v[k].x * 32.0f) == qx && (int)lroundf(s->v[k].y * 32.0f) == qy
+                        && (int)lroundf(s->v[k].z * 32.0f) == qz) {
+                        par[tree_root(par, j)] = tree_root(par, k);
+                        break;
+                    }
+                    h = (h + 1u) & (cap - 1u);
+                }
+            }
+            if ((j - d->first) % 3u != 0u) {
+                par[tree_root(par, j)] = tree_root(par, j - (j - d->first) % 3u);   /* (its triangle's first corner) */
+            }
+        }
+    }
+    for (i = 0; i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+
+        if (d->billboard || d->grass || d->count < 3u || d->first + d->count > s->nv) {
+            continue;
+        }
+        for (j = d->first; j < d->first + d->count; j++) {
+            const unsigned r = tree_root(par, j);
+
+            if (pcof[r] < 0) {
+                pcof[r] = (int)npc++;
+            }
+        }
+    }
+    npc0 = npc;
+    pcap = npc + s->nv / 3u + 1u;       /* (room for the panels the wide pieces are split into) */
+    pc = (Pc *)calloc(pcap, sizeof *pc);
+    gpar = (unsigned *)malloc((size_t)pcap * sizeof *gpar);
+    cidx = (unsigned *)malloc((size_t)pcap * sizeof *cidx);
+    vpc = (int *)malloc((size_t)s->nv * sizeof *vpc);
+    if (pc == NULL || gpar == NULL || cidx == NULL || vpc == NULL) {
+        free(par); free(slot); free(objv); free(pcof); free(green); free(cutout); free(pc); free(gpar); free(cidx);
+        free(vpc); free(dark);
+        return;
+    }
+    for (i = 0; i < pcap; i++) {
+        pc[i].lo[0] = pc[i].lo[1] = pc[i].lo[2] = 1e30f;
+        pc[i].hi[0] = pc[i].hi[1] = pc[i].hi[2] = -1e30f;
+        gpar[i] = i;
+    }
+    for (i = 0; i < s->nv; i++) {
+        vpc[i] = -1;
+    }
+    /* the pieces: their boxes, their foliage */
+    for (i = 0; i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+        int leaf = 0, cut = 0, shade = 0;
+
+        if (d->billboard || d->grass || d->count < 3u || d->first + d->count > s->nv) {
+            continue;
+        }
+        if (d->tex >= 0 && (unsigned)d->tex < s->nt) {
+            if (green[d->tex] == 0) {
+                const BmapTexture *t = &s->t[d->tex];
+                unsigned long clear = 0, sum = 0, cnt = 0;
+                int q;
+
+                green[d->tex] = leafy(s, d) ? 1 : -1;
+                for (q = 0; q < t->w * t->h; q++) {
+                    if (t->rgba[q * 4 + 3] < 128) {
+                        clear++;
+                    } else {
+                        sum += (unsigned long)t->rgba[q * 4] + t->rgba[q * 4 + 1] + t->rgba[q * 4 + 2];
+                        cnt++;
+                    }
+                }
+                cutout[d->tex] = clear * 50ul > (unsigned long)(t->w * t->h) ? 1 : -1;   /* (over 2 in 100 see-through) */
+                dark[d->tex] = cnt > 0ul && sum < cnt * 3ul * 90ul ? 1 : -1;            /* (a shadow's grey) */
+            }
+            leaf = green[d->tex] > 0;
+            cut = cutout[d->tex] > 0;
+            shade = !leaf && cut && dark[d->tex] > 0;
+        }
+        for (j = d->first; j < d->first + d->count; j++) {
+            const BmapVertex *v = &s->v[j];
+            Pc *b = &pc[pcof[tree_root(par, j)]];
+
+            vpc[j] = pcof[tree_root(par, j)];
+            if (v->y <= -900.0f) {
+                continue;
+            }
+            b->lo[0] = fminf(b->lo[0], v->x); b->hi[0] = fmaxf(b->hi[0], v->x);
+            b->lo[1] = fminf(b->lo[1], v->y); b->hi[1] = fmaxf(b->hi[1], v->y);
+            b->lo[2] = fminf(b->lo[2], v->z); b->hi[2] = fmaxf(b->hi[2], v->z);
+            b->leaf |= (unsigned char)leaf;
+            b->cut |= (unsigned char)(leaf && cut);
+            b->isobj |= (unsigned char)((v->obj & 0x3FFFFFFFu) != 0u);
+            b->shade |= (unsigned char)shade;
+        }
+    }
+    /* A wide piece of foliage cut out of cards (a forest's wall of joined pictures, its canopy sheets: wider than 24)
+     * is split into its panels: a triangle and the next one of its draw when they share two corners (a card's two
+     * halves), else the triangle alone.  Each panel a piece of its own from here on. */
+    for (i = 0; i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+
+        if (d->billboard || d->grass || d->count < 3u || d->first + d->count > s->nv) {
+            continue;
+        }
+        for (j = d->first; j + 2u < d->first + d->count; j += 3u) {
+            const int pi = vpc[j];
+            const Pc *b;
+            unsigned np, q;
+
+            if (pi < 0 || (unsigned)pi >= npc0) {
+                continue;               /* (a panel already) */
+            }
+            b = &pc[pi];
+            if (!b->cut || b->isobj || fmaxf(b->hi[0] - b->lo[0], b->hi[2] - b->lo[2]) <= 24.0f || npc >= pcap) {
+                continue;
+            }
+            np = npc++;
+            pc[np].leaf = 1;
+            pc[np].cut = 1;
+            for (q = 0; q < 3u; q++) {
+                vpc[j + q] = (int)np;
+            }
+            if (j + 5u < d->first + d->count && vpc[j + 3u] == pi) {
+                unsigned shared = 0, a, c;
+
+                for (a = 0; a < 3u; a++) {
+                    for (c = 0; c < 3u; c++) {
+                        shared += fabsf(s->v[j + a].x - s->v[j + 3u + c].x) < 0.03f
+                                  && fabsf(s->v[j + a].y - s->v[j + 3u + c].y) < 0.03f
+                                  && fabsf(s->v[j + a].z - s->v[j + 3u + c].z) < 0.03f;
+                    }
+                }
+                if (shared >= 2u) {
+                    for (q = 3u; q < 6u; q++) {
+                        vpc[j + q] = (int)np;
+                    }
+                }
+            }
+        }
+    }
+    for (i = 0; i < s->nv; i++) {
+        if (vpc[i] >= (int)npc0 && s->v[i].y > -900.0f) {
+            Pc *b = &pc[vpc[i]];
+            const BmapVertex *v = &s->v[i];
+
+            b->lo[0] = fminf(b->lo[0], v->x); b->hi[0] = fmaxf(b->hi[0], v->x);
+            b->lo[1] = fminf(b->lo[1], v->y); b->hi[1] = fmaxf(b->hi[1], v->y);
+            b->lo[2] = fminf(b->lo[2], v->z); b->hi[2] = fmaxf(b->hi[2], v->z);
+        }
+    }
+    /* the foliage pieces, and those that stand in one another's place joined into trees */
+    for (i = 0; i < npc; i++) {
+        Pc *b = &pc[i];
+
+        const float wd = fmaxf(b->hi[0] - b->lo[0], b->hi[2] - b->lo[2]);
+
+        /* (a panel of a split wall may be of any length: a wide one, over 40, is a tree of its own when it stands
+         * upright, and the canopy when it lies level) */
+        b->cand = b->leaf && b->hi[0] >= b->lo[0] && wd <= (i >= npc0 ? 1e9f : 24.0f)
+                  && (b->cut || b->isobj || b->hi[1] - b->lo[1] >= 2.0f);
+        b->wide = (unsigned char)(b->cand && i >= npc0 && wd > 40.0f);
+        if (b->wide && b->hi[1] - b->lo[1] < 2.0f) {
+            b->cand = 0;
+            b->wide = 0;
+            b->canopy = 1;
+        }
+        /* (a tree's shadow: a flat dark sheet cut out of a card, no green in it; it joins the tree over it and
+         * makes no tree alone) */
+        if (!b->cand && b->shade && !b->leaf && b->hi[0] >= b->lo[0] && b->hi[1] - b->lo[1] < 0.5f
+            && fmaxf(b->hi[0] - b->lo[0], b->hi[2] - b->lo[2]) <= 24.0f) {
+            b->cand = 1;
+        }
+        if (b->cand) {
+            cidx[nc++] = i;
+        }
+    }
+    for (i = 0; i < nc; i++) {
+        const Pc *a = &pc[cidx[i]];
+        const float ax0 = a->lo[0] - 0.25f, ax1 = a->hi[0] + 0.25f, az0 = a->lo[2] - 0.25f, az1 = a->hi[2] + 0.25f;
+
+        for (j = i + 1u; j < nc; j++) {
+            const Pc *b = &pc[cidx[j]];
+            const float bx0 = b->lo[0] - 0.25f, bx1 = b->hi[0] + 0.25f, bz0 = b->lo[2] - 0.25f, bz1 = b->hi[2] + 0.25f;
+            const float ox = fminf(ax1, bx1) - fmaxf(ax0, bx0), oz = fminf(az1, bz1) - fmaxf(az0, bz0);
+
+            if (!a->wide && !b->wide && ox > 0.0f && oz > 0.0f
+                && ox * oz >= 0.25f * fminf((ax1 - ax0) * (az1 - az0), (bx1 - bx0) * (bz1 - bz0))) {
+                /* (joined while the tree they make stays no wider than 44: a wall's panel, the sheets over it, the
+                 * next panel and so on would chain a whole forest's edge into one; each tree's box is kept on its
+                 * first piece) */
+                const unsigned ra = tree_root(gpar, cidx[i]), rb = tree_root(gpar, cidx[j]);
+                Pc *ga = &pc[ra];
+                const Pc *gb = &pc[rb];
+
+                if (ra != rb && fmaxf(ga->hi[0], gb->hi[0]) - fminf(ga->lo[0], gb->lo[0]) <= 44.0f
+                    && fmaxf(ga->hi[2], gb->hi[2]) - fminf(ga->lo[2], gb->lo[2]) <= 44.0f) {
+                    int k;
+
+                    for (k = 0; k < 3; k++) {
+                        ga->lo[k] = fminf(ga->lo[k], gb->lo[k]);
+                        ga->hi[k] = fmaxf(ga->hi[k], gb->hi[k]);
+                    }
+                    ga->leaf |= gb->leaf;       /* (the tree has foliage when one of its pieces has) */
+                    gpar[rb] = ra;
+                }
+            }
+        }
+    }
+    for (i = 0; i < nc; i++) {
+        n += tree_root(gpar, cidx[i]) == cidx[i];
+    }
+    s->trees = n > 0u ? (float (*)[8])malloc((size_t)n * sizeof *s->trees) : NULL;
+    for (i = 0; i < nc && s->trees != NULL; i++) {
+        Pc *g = &pc[cidx[i]];
+        const float r = 0.5f * fmaxf(g->hi[0] - g->lo[0], g->hi[2] - g->lo[2]);
+
+        if (tree_root(gpar, cidx[i]) != cidx[i] || !g->leaf || g->hi[1] - g->lo[1] < 2.0f || (r > 40.0f && !g->wide)) {
+            continue;
+        }
+        g->tag = (unsigned char)(s->n_trees % 254u + 1u);
+        s->trees[s->n_trees][0] = 0.5f * (g->lo[0] + g->hi[0]);
+        s->trees[s->n_trees][1] = 0.5f * (g->lo[2] + g->hi[2]);
+        s->trees[s->n_trees][2] = r;
+        s->trees[s->n_trees][3] = g->lo[1];
+        s->trees[s->n_trees][4] = g->hi[1];
+        s->trees[s->n_trees][5] = (float)g->tag;
+        s->trees[s->n_trees][6] = 0.5f * (g->hi[0] - g->lo[0]);
+        s->trees[s->n_trees][7] = 0.5f * (g->hi[2] - g->lo[2]);
+        s->n_trees++;
+    }
+    /* the tag on every triangle of a tree */
+    for (i = 0; i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+
+        if (d->billboard || d->grass || d->count < 3u || d->first + d->count > s->nv) {
+            continue;
+        }
+        for (j = d->first; j < d->first + d->count; j++) {
+            const unsigned pi = (unsigned)vpc[j];
+
+            if (vpc[j] >= 0 && pc[pi].cand) {
+                s->v[j].a = pc[tree_root(gpar, pi)].tag;
+            } else if (vpc[j] >= 0 && pc[pi].canopy) {
+                s->v[j].a = 255;        /* (the canopy: out round each tree that is out) */
+            }
+        }
+    }
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        fprintf(stderr, "bmap: %u trees for the camera's clearance (%u foliage pieces of %u pieces)\n", s->n_trees, nc, npc);
+    }
+    if (getenv("BMAP_DEBUG_TREES") != NULL) {
+        /* research: each tree in a colour of its own (by its tag), foliage with no tag red, the rest dark grey,
+         * all without their pictures */
+        for (i = 0; i < s->nd; i++) {
+            BmapDraw *d = &s->d[i];
+
+            if (d->billboard || d->grass || d->count < 3u || d->first + d->count > s->nv) {
+                continue;
+            }
+            d->tex = -1;
+            for (j = d->first; j < d->first + d->count; j++) {
+                BmapVertex *v = &s->v[j];
+                const unsigned t = v->a, lf = vpc[j] >= 0 && pc[vpc[j]].leaf;
+
+                v->r = (unsigned char)(t ? 60u + (t * 97u) % 196u : lf ? 255u : 50u);
+                v->g = (unsigned char)(t ? 60u + (t * 57u) % 196u : lf ? 0u : 50u);
+                v->b = (unsigned char)(t ? 60u + (t * 151u) % 196u : lf ? 0u : 50u);
+            }
+        }
+    }
+    free(pc); free(gpar); free(cidx); free(par); free(slot); free(objv); free(pcof); free(green); free(cutout);
+    free(vpc); free(dark);
+}
+
+#define CLEAR_TREES 3u
+#define TREE_SIGHT 6.0f                 /* how far along the line of sight a tree in the way goes */
+#define TREE_WIDE 7.0f                  /* a tree wider than twice this loses only this much round the camera */
+#define TREE_NEAR 1.5f                  /* how near the camera stands to a tree's box for the tree to go */
+unsigned bmap_clear_trees(const struct BmapScene *sc, const float eye[3], const float (*aim)[4], unsigned naim,
+                          float clear[][4], unsigned n, unsigned max)
+{
+    float tr[CLEAR_TREES][5];
+    unsigned nt = 0, ti, i, k, ai;
+
+    for (ti = 0; sc != NULL && sc->trees != NULL && ti < sc->n_trees; ti++) {
+        const float *t = sc->trees[ti];
+        float de = 1e30f;               /* (the nearest of the camera's places to the tree's box: 0 inside it) */
+        float cutx = eye[0], cutz = eye[2];     /* (a wide tree: the middle of the stretch that goes) */
+        int hit = 0;
+
+        for (ai = 0; aim != NULL && ai < naim; ai++) {
+            /* in the line of sight: the eye's way to an aim (the battle's middle), on the ground, through the
+             * tree's box (a little widened) within TREE_SIGHT of the eye, at a height the tree has */
+            const float *mid = aim[ai];
+            const float sx = mid[0] - eye[0], sz = mid[2] - eye[2], len = sqrtf(sx * sx + sz * sz);
+
+            if (mid[3] > 0.0f && len > 1e-3f) {
+                const float ux = sx / len, uz = sz / len, x0 = t[0] - t[6] - 0.3f, x1 = t[0] + t[6] + 0.3f;
+                const float z0 = t[1] - t[7] - 0.3f, z1 = t[1] + t[7] + 0.3f;
+                float ta = 0.0f, tb = fminf(len, TREE_SIGHT);
+                int ok = 1;
+
+                if (fabsf(ux) < 1e-6f) {
+                    ok = eye[0] >= x0 && eye[0] <= x1;
+                } else {
+                    const float a = (x0 - eye[0]) / ux, b = (x1 - eye[0]) / ux;
+
+                    ta = fmaxf(ta, fminf(a, b));
+                    tb = fminf(tb, fmaxf(a, b));
+                }
+                if (ok && fabsf(uz) < 1e-6f) {
+                    ok = eye[2] >= z0 && eye[2] <= z1;
+                } else if (ok) {
+                    const float a = (z0 - eye[2]) / uz, b = (z1 - eye[2]) / uz;
+
+                    ta = fmaxf(ta, fminf(a, b));
+                    tb = fminf(tb, fmaxf(a, b));
+                }
+                if (ok && ta <= tb) {
+                    const float ya = eye[1] + (mid[1] - eye[1]) * (ta / len);
+
+                    if (ya > t[3] - 1.0f && ya < t[4] + 1.0f && (!hit || ta < de)) {
+                        hit = 1;
+                        de = ta;
+                        cutx = eye[0] + ux * (ta + 0.5f * TREE_WIDE);   /* (where the view passes through it) */
+                        cutz = eye[2] + uz * (ta + 0.5f * TREE_WIDE);
+                    }
+                }
+            }
+        }
+        for (i = 0; i < n; i++) {
+            const float dx = fmaxf(0.0f, fabsf(t[0] - clear[i][0]) - t[6]), dz = fmaxf(0.0f, fabsf(t[1] - clear[i][2]) - t[7]);
+            const float dd = sqrtf(dx * dx + dz * dz);
+
+            if (clear[i][3] > 0.0f && clear[i][1] > t[3] - 1.0f && clear[i][1] < t[4] + 1.0f && dd < TREE_NEAR) {
+                /* (a wide tree: the stretch round the place that reached it, not round where the eye is now) */
+                if (!hit || dd < de) {
+                    cutx = clear[i][0];
+                    cutz = clear[i][2];
+                }
+                hit = 1;
+                de = fminf(de, dd);
+            }
+        }
+        if (!hit) {
+            continue;
+        }
+        for (k = nt < CLEAR_TREES ? nt : CLEAR_TREES - 1u; k > 0u && tr[k - 1u][4] > de; k--) {
+            memcpy(tr[k], tr[k - 1u], sizeof tr[k]);
+        }
+        if (nt < CLEAR_TREES || k < CLEAR_TREES - 1u || tr[k][4] > de) {    /* (a full list: only a nearer one) */
+            tr[k][0] = t[0]; tr[k][1] = t[5]; tr[k][2] = t[1]; tr[k][3] = -(t[2] + 0.5f); tr[k][4] = de;
+            if (t[2] > TREE_WIDE) {
+                /* (a wide piece, a forest wall's panel with several trees painted on it, a wide leaf sheet: only
+                 * its stretch round the camera goes, TREE_WIDE to either side of the point of it nearest the eye) */
+                tr[k][0] = fminf(fmaxf(cutx, t[0] - t[6]), t[0] + t[6]);
+                tr[k][2] = fminf(fmaxf(cutz, t[1] - t[7]), t[1] + t[7]);
+                tr[k][3] = -TREE_WIDE;
+            }
+            nt = nt < CLEAR_TREES ? nt + 1u : nt;
+        }
+    }
+    if (getenv("BMAP_TREE_LOG") != NULL && sc != NULL) {    /* research: what the rule sees */
+        float best[3] = { 1e30f, 1e30f, 1e30f };
+        unsigned bi[3] = { 0, 0, 0 };
+
+        for (ti = 0; sc->trees != NULL && ti < sc->n_trees; ti++) {
+            const float ex = sc->trees[ti][0] - eye[0], ez = sc->trees[ti][1] - eye[2], de = sqrtf(ex * ex + ez * ez);
+
+            for (k = 0; k < 3u; k++) {
+                if (de < best[k]) {
+                    for (i = 2u; i > k; i--) { best[i] = best[i - 1u]; bi[i] = bi[i - 1u]; }
+                    best[k] = de; bi[k] = ti;
+                    break;
+                }
+            }
+        }
+        fprintf(stderr, "trees: %u known, %u taken; eye %.1f %.1f %.1f; first ball r %.1f\n", sc->n_trees, nt,
+                (double)eye[0], (double)eye[1], (double)eye[2], n > 0u ? (double)clear[0][3] : 0.0);
+        for (k = 0; k < 3u && sc->n_trees > k; k++) {
+            const float *t = sc->trees[bi[k]];
+
+            fprintf(stderr, "  tree at %.1f away: r %.1f, foot %.1f, top %.1f\n", (double)best[k], (double)t[2], (double)t[3], (double)t[4]);
+        }
+        for (ai = 0; aim != NULL && ai < naim; ai++) {
+            fprintf(stderr, "  aim %u: %.1f %.1f %.1f height %.1f\n", ai, (double)aim[ai][0], (double)aim[ai][1],
+                    (double)aim[ai][2], (double)aim[ai][3]);
+        }
+        for (k = 0; k < nt; k++) {
+            fprintf(stderr, "  taken: at %.1f %.1f tag %.0f width %.1f, %.1f along\n", (double)tr[k][0], (double)tr[k][2],
+                    (double)tr[k][1], (double)-tr[k][3], (double)tr[k][4]);
+        }
+    }
+    if (nt > max) {
+        nt = max;
+    }
+    if (n + nt > max) {
+        n = max - nt;                   /* (the oldest places make room) */
+    }
+    for (ti = 0; ti < nt; ti++) {
+        memcpy(clear[n], tr[ti], 4 * sizeof(float));
+        n++;
+    }
+    return n;
+}
+
+unsigned bmap_place_trees(const BmapScene *s, float out[][4], unsigned max)
+{
+    /* (the middle between the two sides' places: the own Pokemon's and the foe's) */
+    const float aim[1][4] = { { 0.5f * (PLACE_SX + FOE_SX), GROUND_Y, 0.5f * (PLACE_SZ + FOE_SZ_GAME), 1.0f } };
+    unsigned n = 0, e, k, q, m;
+
+    if (s == NULL) {
+        return 0;
+    }
+    for (e = 0; e < 2u; e++) {
+        float eye[3], at[3], c[8][4];
+
+        memcpy(eye, e ? k_intro_eye : k_cmd_eye, sizeof eye);
+        memcpy(at, e ? k_intro_target : k_cmd_target, sizeof at);
+        bmap_battle_camera(eye, at, s);
+        memcpy(c[0], eye, sizeof eye);
+        c[0][3] = 1.0f;
+        m = bmap_clear_trees(s, eye, aim, 1u, c, 1u, 8u);
+        for (k = 0; k < m; k++) {
+            int have = 0;
+
+            if (c[k][3] >= 0.0f) {
+                continue;
+            }
+            for (q = 0; q < n && !have; q++) {
+                have = out[q][1] == c[k][1] && fabsf(out[q][0] - c[k][0]) < 0.5f && fabsf(out[q][2] - c[k][2]) < 0.5f;
+            }
+            if (!have && n < max) {
+                memcpy(out[n++], c[k], 4 * sizeof(float));
+            }
+        }
+    }
+    return n;
+}
+
+unsigned bmap_trees_inside(const BmapScene *s, const float eye[3], float out[][4], unsigned max)
+{
+    unsigned n = 0, ti;
+
+    for (ti = 0; s != NULL && s->trees != NULL && ti < s->n_trees && n < max; ti++) {
+        const float *t = s->trees[ti];
+
+        if (fabsf(eye[0] - t[0]) > t[6] + 0.3f || fabsf(eye[2] - t[1]) > t[7] + 0.3f || eye[1] < t[3] - 0.3f
+            || eye[1] > t[4] + 0.3f) {
+            continue;
+        }
+        out[n][0] = t[0];
+        out[n][1] = t[5];
+        out[n][2] = t[1];
+        out[n][3] = -(t[2] + 0.5f);
+        if (t[2] > TREE_WIDE) {         /* (a wide one: its stretch round the eye) */
+            out[n][0] = fminf(fmaxf(eye[0], t[0] - t[6]), t[0] + t[6]);
+            out[n][2] = fminf(fmaxf(eye[2], t[1] - t[7]), t[1] + t[7]);
+            out[n][3] = -TREE_WIDE;
+        }
+        n++;
+    }
+    return n;
 }
 
 void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
@@ -2879,6 +3495,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
         grass_grow_fixed(s, grass, nd0, 16.0f * k);
     }
     g_tmask = NULL;                     /* the scene's own (prep) */
+    find_trees(s);
     if (getenv("BMAP_PLACE_LOG") != NULL) {
         /* research: how far the placed map's four edges lie from the own slot */
         float x0 = 0.0f, x1 = 0.0f, z0 = PLACE_SZ, z1 = PLACE_SZ;

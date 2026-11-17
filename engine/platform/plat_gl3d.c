@@ -97,6 +97,7 @@ static const char *k_fs3 =
     "uniform int u_wbuf;\n"
     "uniform int u_pass;\n"
     "uniform float u_zover;\n"
+    "uniform float u_zref;\n"
     "int wrapc(int v, int size, int rep, int flip) {\n"
     "    if (size <= 0) { return 0; }\n"
     "    if (rep == 0) { return clamp(v, 0, size - 1); }\n"
@@ -149,7 +150,9 @@ static const char *k_fs3 =
     "    float a = float(a5) / 31.0;\n"
     "    o = vec4(vec3(col) / 255.0 * a, a);\n"
     "    o_id = uint(u_id);\n"
-    "    gl_FragDepth = (u_zover > 0.0) ? u_zover\n"
+    "    /* (a sprite at the depth of its place: its cells keep their own order, each\n"
+    "       cell's depth against the sprite's first cell's carried on at a twentieth) */\n"
+    "    gl_FragDepth = (u_zover > 0.0) ? clamp(u_zover + (gl_FragCoord.z - u_zref) * 0.05, 0.0, 1.0)\n"
     "                 : (u_wbuf == 1) ? clamp((1.0 / gl_FragCoord.w) / 16777216.0, 0.0, 1.0)\n"
     "                                 : gl_FragCoord.z;\n"
     "}\n";
@@ -364,6 +367,7 @@ static const char *k_vsb =
     "uniform vec3 u_uv1;\n"
     "out vec2 v_st;\n"
     "out vec3 v_rgb;\n"
+    "out float v_tag;\n"
     "out vec3 v_pos;\n"
     "out float v_bbc;\n"
     "void main() {\n"
@@ -385,6 +389,7 @@ static const char *k_vsb =
     "    /* the draw's texture animation this frame (identity: none) */\n"
     "    v_st = vec2(dot(u_uv0, vec3(a_st, 1.0)), dot(u_uv1, vec3(a_st, 1.0)));\n"
     "    v_rgb = a_rgb.rgb;\n"
+    "    v_tag = a_rgb.a * 255.0;    /* (a tree's tag, bmap_place.c find_trees; 0: none) */\n"
     "    gl_Position = vec4(dot(u_r0, p), dot(u_r1, p), dot(u_r2, p), dot(u_r3, p));\n"
     "}\n";
 
@@ -392,6 +397,7 @@ static const char *k_fsb =
     "#version 330 core\n"
     "in vec2 v_st;\n"
     "in vec3 v_rgb;\n"
+    "in float v_tag;\n"
     "in vec3 v_pos;\n"
     "in float v_bbc;\n"
     "layout(location = 0) out vec4 o;\n"
@@ -408,7 +414,7 @@ static const char *k_fsb =
     "uniform vec4 u_poke[32];\n"
     "uniform int u_npoke;\n"
     "uniform int u_grass;\n"
-    "uniform vec4 u_clr[16];\n"
+    "uniform vec4 u_clr[32];\n"
     "uniform int u_nclr;\n"
     "uniform vec4 u_sky;\n"
     "uniform vec3 u_skyu;\n"
@@ -431,7 +437,51 @@ static const char *k_fsb =
     "        o = vec4(v_rgb * t.rgb * a, a);\n"
     "        return;\n"
     "    }\n"
-    "    if (u_nclr > 0 && u_grass == 0) {   /* (not tall grass, the camera passes through it) */\n"
+    "    if (u_nclr > 0 && v_tag > 0.5) {\n"
+    "        /* a tree the camera's clearance reaches goes whole: an entry with a\n"
+    "           negative radius names the tree's tag (its y) at its place within\n"
+    "           its width; the triangles that carry that tag are not drawn.  Its\n"
+    "           level faces (the flat leaf layers) go whole whatever the width (a\n"
+    "           wide tree loses only a stretch of its upright cards: the layers cut\n"
+    "           at that stretch's edge were left floating as bands) */\n"
+    "        vec3 px = dFdx(v_pos), py = dFdy(v_pos);\n"
+    "        vec3 tn = cross(px, py);\n"
+    "        bool level = abs(tn.y) > 0.7 * length(tn);\n"
+    "        /* an upright card is cut by whole pictures: what is tested is the\n"
+    "           whole span of the fragment's own repeat of the picture along the\n"
+    "           card (its middle cp, half its length sh along sd), so each painted\n"
+    "           tree goes or stays whole (a forest's wall has a tree a repeat) */\n"
+    "        vec2 sx = dFdx(v_st), sy = dFdy(v_st);\n"
+    "        float det = sx.x * sy.y - sy.x * sx.y;\n"
+    "        vec3 cp = v_pos;\n"
+    "        vec2 sd = vec2(0.0);\n"
+    "        float sh = 0.0;\n"
+    "        if (!level && abs(det) > 1e-12) {\n"
+    "            vec3 dpdu = (px * sy.y - py * sx.y) / det;\n"
+    "            if (length(dpdu) < 200.0) {\n"
+    "                cp = v_pos + dpdu * (floor(v_st.x) + 0.5 - v_st.x);\n"
+    "                sh = 0.5 * length(dpdu.xz);\n"
+    "                if (sh > 1e-6) { sd = dpdu.xz / (2.0 * sh); }\n"
+    "            }\n"
+    "        }\n"
+    "        /* (the canopy, tag 255: a wide level sheet of leaves over a forest;\n"
+    "           it goes round each tree that is out, a little wider than the tree) */\n"
+    "        for (int i = 0; i < u_nclr; i++) {\n"
+    "            if (v_tag > 254.5 && u_clr[i].w < 0.0\n"
+    "                && length(v_pos.xz - u_clr[i].xz) < -u_clr[i].w + 1.5) { discard; }\n"
+    "        }\n"
+    "        for (int i = 0; i < u_nclr; i++) {\n"
+    "            if (u_clr[i].w < 0.0 && abs(v_tag - u_clr[i].y) < 0.5) {\n"
+    "                vec2 rel = cp.xz - u_clr[i].xz;\n"
+    "                float al = dot(rel, sd);\n"
+    "                float d = length(vec2(max(abs(al) - sh, 0.0), length(rel - al * sd)));\n"
+    "                if (d < (level ? 40.0 : -u_clr[i].w)) { discard; }\n"
+    "            }\n"
+    "        }\n"
+    "    }\n"
+    "    /* (not tall grass, the camera passes through it; not a tree, which goes\n"
+    "       whole above or is drawn whole: a ball cut out of it left a hole) */\n"
+    "    if (u_nclr > 0 && u_grass == 0 && v_tag < 0.5) {\n"
     "        /* the camera's clearance: an upright surface inside one of the\n"
     "           places the camera passed this shot is not drawn; a floor is kept.\n"
     "           The level top of a body the camera stands in or beside goes with\n"
@@ -454,7 +504,7 @@ static const char *k_fsb =
     "                   && abs(dot(nf, normalize(u_eye - v_pos))) < 0.35 * ln;\n"
     "        if ((between && ln > 1e-9 && abs(nf.y) / ln < 0.7) || top) {\n"
     "            for (int i = 0; i < u_nclr; i++) {\n"
-    "                if (length(v_pos - u_clr[i].xyz) < u_clr[i].w) { discard; }\n"
+    "                if (u_clr[i].w > 0.0 && length(v_pos - u_clr[i].xyz) < u_clr[i].w) { discard; }\n"
     "            }\n"
     "        }\n"
     "    }\n"
@@ -1395,6 +1445,7 @@ int eidos_gl3d_init(EidosGl *g)
     LOC(u_back, "u_back");
     LOC(u_wbuf, "u_wbuf");
     LOC(u_zover, "u_zover");
+    LOC(u_zref, "u_zref");
     LOC(u_pass, "u_pass");
     LOC(u_id, "u_id");
 #undef LOC
@@ -1806,6 +1857,7 @@ typedef struct Gl3dRun {
     int textured, slot, wrap, id, two_pass;
     int fog;           /* POLYGON_ATTR bit 15: ID buffer bit 6           */
     float zo;          /* a backdrop sprite's depth (sprite_depths), 0: the polygon's own */
+    float zref;        /* ... and the own depth of that sprite's first cell */
 } Gl3dRun;
 
 /* What the runs of one pass last sent (draw_run): a value that stays is not
@@ -1814,6 +1866,7 @@ typedef struct RunSent {
     GLint mode, toon, a5, front, back, tex3, tw, th, wrap, id;
     GLint stencil;      /* the stencil function: 0 always, else the reference of "not equal" */
     float zo;           /* u_zover (-1: not sent) */
+    float zref;
     GLint cmask;        /* colour mask of target 1 */
 } RunSent;
 
@@ -1823,6 +1876,7 @@ static void run_sent_reset(RunSent *st)
     st->stencil = -1;
     st->cmask = -1;
     st->zo = -1.0f;
+    st->zref = -2.0f;
 }
 
 static void run_stencil(RunSent *st, GLint ref)
@@ -1878,6 +1932,10 @@ static void draw_run(EidosGl *g, const G3dSnapshot *s, const Gl3dRun *d,
     if (st->zo != d->zo) {
         g->glUniform1f(g->u_zover, d->zo);
         st->zo = d->zo;
+    }
+    if (st->zref != d->zref) {
+        g->glUniform1f(g->u_zref, d->zref);
+        st->zref = d->zref;
     }
     if (d->textured) {
         GLint tw = (GLint)s->tex[d->slot].w, th = (GLint)s->tex[d->slot].h;
@@ -2151,9 +2209,12 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
             unsigned run_first = 0, run_verts = 0;
             int have = 0;
             RunSent sent;
-            float sz[G3D_BACKDROP_SPRITES];
+            float sz[G3D_BACKDROP_SPRITES], zr[G3D_BACKDROP_SPRITES];
+            unsigned char zr_set[G3D_BACKDROP_SPRITES];
 
             memset(sz, 0, sizeof sz);
+            memset(zr, 0, sizeof zr);
+            memset(zr_set, 0, sizeof zr_set);
             if (backdrop && s->backdrop.n_poke > 0) {
                 float br[4][4];
 
@@ -2204,6 +2265,16 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                     const int k = backdrop && s->backdrop.n_poke > 0 ? sprite_of(&s->backdrop, p) : -1;
 
                     cur.zo = k >= 0 ? sz[k] : 0.0f;
+                    cur.zref = 0.0f;
+                    if (k >= 0) {
+                        if (!zr_set[k]) {       /* (the sprite's first cell this frame: its own depth) */
+                            const G3dVertex *v0 = &s->verts[s->idx[p->first]];
+
+                            zr[k] = v0->w != 0 ? 0.5f * ((float)v0->z / (float)v0->w) + 0.5f : 0.0f;
+                            zr_set[k] = 1;
+                        }
+                        cur.zref = zr[k];
+                    }
                 }
                 if (have && run_first + run_verts == first
                     && memcmp(&run, &cur, sizeof(run)) == 0) {

@@ -186,7 +186,7 @@ typedef struct G3dBackdrop {
      * camera passed during the current shot; an upright surface of the map
      * inside one is not drawn (a wall or a door the camera stands in or just
      * behind, kept gone while the camera pulls away, back at the next cut) */
-#define G3D_BACKDROP_CLEAR 16
+#define G3D_BACKDROP_CLEAR 32
     float clear[G3D_BACKDROP_CLEAR][4];
     u32 n_clear;
     /* the spot editor (tools/spot-editor): draw only what stands in front of

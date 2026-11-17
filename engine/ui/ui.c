@@ -2692,12 +2692,28 @@ static void battle_only(void)
         if (sp != 0) {
             (void)POKEPARTY_Add(party, POKE_TOOL_Create(sp, lv, 0, 4));
         }
+        /* (to the next member: a ":level" the other switch's form has is passed over, not read; the loop stood
+         * still on it for ever) */
+        while (*list != '\0' && *list != ',') {
+            list++;
+        }
         while (*list == ',' || *list == ' ') {
             list++;
         }
     }
     if (POKEPARTY_GetCount != NULL && POKEPARTY_GetCount(party) == 0) {
         (void)POKEPARTY_Add(party, POKE_TOOL_Create(500, lv, 0, 4));
+    }
+    /* EIDOS_DEBUG_UNLOCK (the spot editor's Preview sets it): the eight badges, so a Pokemon of any level obeys
+     * and the trainer card's rules are a finished game's (debug_party gives them when the field runs, and a
+     * battle-only start has no field) */
+    if (getenv("EIDOS_DEBUG_UNLOCK") != NULL && MISC_SetBadge != NULL && GAME_DATA_GetMiscSave != NULL) {
+        unsigned bi;
+
+        for (bi = 0; bi < 8u; bi++) {
+            MISC_SetBadge(GAME_DATA_GetMiscSave(gd), bi);
+        }
+        fprintf(stderr, "eidos: battle only: the eight badges\n");
     }
     memset(&sit, 0, sizeof sit);
     BTL_SETUP_InitFieldSituation(&sit);
