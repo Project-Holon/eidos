@@ -40,6 +40,8 @@
  *       (DY: the picture read DY lower on that face: a window row stacked up a wall).
  *   decal=SZ:SX:SY:X0:X1:Y0:Y1:TX:TY:Z+..  a rectangle of a south face's picture laid on
  *       the back at z = Z, its middle at (TX, TY), looking north.
+ *   backz=X0:X1:Y0:Y1:Z+..  a flat undrawn back at z = Z: the outline of the corners there in the box, closed,
+ *       looking north (a tapered pedestal).
  *   under=Y[:X0:X1:Z0:Z1]+..  the underside at the height Y (an overhang, a balcony): the
  *       outline of the faces that end there, closed, looking down, in the
  *       colour of the face over it.  With a box, the underside is the box
@@ -1704,6 +1706,94 @@ static void do_decal(const Ft *f, unsigned nf, RmOut *out, const double d[10])
             uv[j][1] = m[1][0] * sx[j] + m[1][1] * sy[j] + m[1][2];
         }
         quad(out, src->t->id, src->t->rgb, q, uv, outn);
+    }
+}
+
+/* `backz=X0:X1:Y0:Y1:Z+..`: a body whose back is flat at z = Z and not drawn (a tapered pedestal: its sides and
+ * its leaning front end there): the outline of the corners in the box that lie at z = Z, closed, looking north, in
+ * the colour of a face that ends there. */
+static void do_backz(const Ft *f, unsigned nf, RmOut *out, const double b[5])
+{
+    double pt[128][2], hull[130][2], uv[2] = { 0, 0 };
+    unsigned np = 0, nh = 0, i, src = 0;
+    const RmBatch *sb = NULL;
+    int j, k;
+
+    for (i = 0; i < nf && np < 120u; i++) {
+        const RmTri *t = f[i].t;
+
+        for (j = 0; j < 3 && np < 120u; j++) {
+            if (fabs(t->p[j][2] - b[4]) < 0.05 && t->p[j][0] >= b[0] - 0.05 && t->p[j][0] <= b[1] + 0.05
+                && t->p[j][1] >= b[2] - 0.05 && t->p[j][1] <= b[3] + 0.05) {
+                pt[np][0] = t->p[j][0];
+                pt[np][1] = t->p[j][1];
+                np++;
+                if (sb == NULL && fabs(f[i].n[1]) < 0.9) {
+                    sb = f[i].b;
+                    src = t->id;
+                    uv[0] = t->uv[j][0];
+                    uv[1] = t->uv[j][1];
+                }
+            }
+        }
+    }
+    if (np < 3u || sb == NULL) {
+        return;
+    }
+    for (i = 1; i < np; i++) {
+        double a0 = pt[i][0], a1 = pt[i][1];
+
+        for (j = (int)i - 1; j >= 0 && (pt[j][0] > a0 || (pt[j][0] == a0 && pt[j][1] > a1)); j--) {
+            pt[j + 1][0] = pt[j][0];
+            pt[j + 1][1] = pt[j][1];
+        }
+        pt[j + 1][0] = a0;
+        pt[j + 1][1] = a1;
+    }
+    for (k = 0; k < 2; k++) {
+        const unsigned base = nh;
+
+        for (i = 0; i < np; i++) {
+            const unsigned q = k == 0 ? i : np - 1 - i;
+
+            while (nh >= base + 2u) {
+                const double cr = (hull[nh - 1][0] - hull[nh - 2][0]) * (pt[q][1] - hull[nh - 2][1])
+                                  - (hull[nh - 1][1] - hull[nh - 2][1]) * (pt[q][0] - hull[nh - 2][0]);
+
+                if (cr > 1e-6) {
+                    break;
+                }
+                nh--;
+            }
+            hull[nh][0] = pt[q][0];
+            hull[nh][1] = pt[q][1];
+            nh++;
+        }
+        nh--;
+    }
+    {
+        const double outn[3] = { 0, 0, -1 };
+        unsigned first = out->ntri;
+
+        for (i = 1; i + 1 < nh; i++) {
+            const double a[3] = { hull[0][0], hull[0][1], b[4] }, bb[3] = { hull[i][0], hull[i][1], b[4] };
+            const double c[3] = { hull[i + 1][0], hull[i + 1][1], b[4] };
+            double e1[3], e2[3], n[3];
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = bb[k] - a[k];
+                e2[k] = c[k] - a[k];
+            }
+            rm_cross(e1, e2, n);
+            if (rm_dot(n, outn) >= 0.0) {
+                rm_tri(out, src, -1, 1, sb->rgb, a, bb, c, uv, uv, uv, 0, 0);
+            } else {
+                rm_tri(out, src, -1, 1, sb->rgb, a, c, bb, uv, uv, uv, 0, 0);
+            }
+        }
+        for (i = first; i < out->ntri; i++) {
+            out->tri[i].lit = 1;
+        }
     }
 }
 
@@ -3473,6 +3563,17 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
 
             if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &dc[0], &dc[1], &dc[2], &dc[3], &dc[4], &dc[5], &dc[6], &dc[7], &dc[8], &dc[9]) == 10) {
                 do_decal(f, nf, out, dc);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "backz", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != ' '; ) {
+            double bz[5];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf", &bz[0], &bz[1], &bz[2], &bz[3], &bz[4]) == 5) {
+                do_backz(f, nf, out, bz);
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;

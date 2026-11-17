@@ -40,7 +40,9 @@
  *
  * Settings: key, faces, ripple, wrap, around, reach, boss, bump, fat, mouth,
  * rim, lip, rimw, sink, high, lean (a fixed leaning card, not a camera-facing
- * one), shadow (0: none), handle (a cup's handle columns), y (the height it stands on).
+ * one), split (with lean: a room's rock cards, each repeat of a cut-out picture a body), trim (no undersides,
+ * nothing in the ground), coarse (the shape in blocks N pixels across), shadow (0: none),
+ * handle (a cup's handle columns), y (the height it stands on).
  */
 
 #include <math.h>
@@ -312,7 +314,7 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
     int nlay = 0, shadow_layer = -1, ring_layer = -1, made = 0;
     int w = tx->w, h = tx->h, W, H, i0, i1, j0, j1, flip_x, flip_y, j, k, c, n, R, D, rmax = 0, jwide, AH;
     int mouth_n, mouth_j0 = 0, lip_n, lip_px[MAXPX][2], nlip = 0, rim_n, lathe, has_reach, fat, has_bump;
-    const int front = rm_optf(opt, "front", 0) != 0.0;
+    const int front = rm_optf(opt, "front", 0) != 0.0, trim = rm_optf(opt, "trim", 0) != 0.0;
     int top_j0 = -1, top_j1 = -2;
     int face_row[4] = { 0, 0, 0, 0 };
     double ua, ub, va, vb, foot[3], width, stand, s, sv, sink, look, cen[MAXPX], rbase[MAXPX], rcap = 0.0, per, reach, bump;
@@ -874,6 +876,57 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
 #define X_OF(ii) (foot[0] + ((ii) - W / 2.0) * s)
 #define Y_OF(jj) (foot[1] + (r->jlast + 1 - (jj)) * sv - sink)       /* the top of row jj */
 #define Z_OF(kk) (foot[2] + ((kk) - R) * s)                           /* +z is south */
+    /* `coarse=N`: the body's shape in blocks N pixels across (each face still a pixel of the picture): a block of
+     * N by N by N pixels is whole when half of it or more was filled, else empty.  Fewer, larger faces. */
+    {
+        const int cs = (int)rm_optf(opt, "coarse", 1);
+
+        if (cs > 1) {
+            int j0b, k0b, c0b, jj, kk, cc;
+
+            for (j0b = 0; j0b < H; j0b += cs) {
+                for (k0b = 0; k0b < D; k0b += cs) {
+                    for (c0b = 0; c0b < W; c0b += cs) {
+                        int cnt = 0, tot = 0;
+                        short from[2] = { 0, 0 };
+
+                        for (jj = j0b; jj < j0b + cs && jj < H; jj++) {
+                            for (kk = k0b; kk < k0b + cs && kk < D; kk++) {
+                                for (cc = c0b; cc < c0b + cs && cc < W; cc++) {
+                                    tot++;
+                                    if (VOX(jj, kk, cc)) {
+                                        const short *cp2 = &colp[(((size_t)jj * D + (size_t)kk) * W + (size_t)cc) * 2u];
+
+                                        if (cnt++ == 0) {
+                                            from[0] = cp2[0];
+                                            from[1] = cp2[1];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        for (jj = j0b; jj < j0b + cs && jj < H; jj++) {
+                            for (kk = k0b; kk < k0b + cs && kk < D; kk++) {
+                                for (cc = c0b; cc < c0b + cs && cc < W; cc++) {
+                                    short *cp2 = &colp[(((size_t)jj * D + (size_t)kk) * W + (size_t)cc) * 2u];
+
+                                    if (cnt * 2 >= tot && cnt > 0) {
+                                        if (!VOX(jj, kk, cc)) {
+                                            VOX(jj, kk, cc) = 1;
+                                            cp2[0] = from[0];
+                                            cp2[1] = from[1];
+                                        }
+                                    } else {
+                                        VOX(jj, kk, cc) = 0;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     /* the faces of each of the six directions */
     rim_n = (int)rm_optf(opt, "rim", 2);
     if (rm_opt(opt, "toppic", ob, sizeof ob) != NULL) {
@@ -892,6 +945,10 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
                 const short *cp = &colp[(((size_t)j * D + (size_t)k) * W + (size_t)c) * 2u];
 
                 if (!VOX(j, k, c)) {
+                    continue;
+                }
+                /* (`trim=1`: no face of a row that lies wholly in the ground: never seen) */
+                if (trim && Y_OF(j) <= foot[1] + 1e-6) {
                     continue;
                 }
                 if (!FILLED(j, k + 1, c)) {
@@ -952,7 +1009,8 @@ static int build(const RmBatch *bt, const RmTex *tx, const char *opt, RmOut *out
                         ADD(TOP, j, c, k, cp[0], cp[1]);
                     }
                 }
-                if (j != r->jlast && !FILLED(j + 1, k, c)) ADD(UNDER, j, c, k, cp[0], cp[1]);
+                /* (`trim=1`: no undersides: a battle's camera is never under a rock) */
+                if (!trim && j != r->jlast && !FILLED(j + 1, k, c)) ADD(UNDER, j, c, k, cp[0], cp[1]);
             }
         }
     }
@@ -1450,6 +1508,135 @@ void rm_rock(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
             continue;
         }
         if ((!bt->bb && !lean) || bt->n < 2 || bt->tex < 0 || (unsigned)bt->tex >= ntex || tex[bt->tex].rgba == NULL) {
+            continue;
+        }
+        if (lean && !bt->bb && rm_optf(opt, "split", 0) != 0.0) {
+            /* `split=1` (with lean): a room's rocks, drawn into its mesh as leaning cards, one picture a rock; a
+             * row of rocks is one long card with the picture repeated along it.  Only a draw whose picture is a
+             * cut-out (its first pixel see-through) is taken; each repeat of each card is a body of its own. */
+            const RmTex *tx = &tex[bt->tex];
+            unsigned i, j2, body0 = 0, body1 = 0;       /* the first card's body: the others are copies of it */
+            double body_at[3] = { 0, 0, 0 };
+            int have = 0, failed = 0;
+
+            /* (a rock's picture: a cut-out, as wide as it is tall.  A cut-out lying level on the floor is no rock:
+             * Icirrus Gym's brown wedges are the pointed ends of its bare-ground patches) */
+            if (tx->rgba[3] >= 128 || tx->w != tx->h) {
+                continue;
+            }
+            for (i = 0; i < bt->n; i++) {
+                const RmTri *t = &bt->tri[i];
+                double m[3][3], e1[3], e2[3], nn[3], u0 = 1e30, u1 = -1e30, v0 = 1e30, v1 = -1e30;
+                double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 };
+                int k, seen = 0, rep, nrep;
+
+                for (k = 0; k < 3; k++) {
+                    e1[k] = (double)t->p[1][k] - t->p[0][k];
+                    e2[k] = (double)t->p[2][k] - t->p[0][k];
+                }
+                rm_cross(e1, e2, nn);
+                if (rm_norm(nn) < 1e-9 || fabs(nn[1]) > 0.95 || rm_plane(t, m) != 0) {
+                    continue;
+                }
+                for (j2 = 0; j2 < 3u; j2++) {
+                    for (k = 0; k < 3; k++) {
+                        lo[k] = fmin(lo[k], t->p[j2][k]);
+                        hi[k] = fmax(hi[k], t->p[j2][k]);
+                    }
+                    u0 = fmin(u0, t->uv[j2][0]); u1 = fmax(u1, t->uv[j2][0]);
+                    v0 = fmin(v0, t->uv[j2][1]); v1 = fmax(v1, t->uv[j2][1]);
+                }
+                /* (its twin, the card's other triangle, came first: the card is built) */
+                for (j2 = 0; j2 < i && !seen; j2++) {
+                    double l2[3] = { 1e30, 1e30, 1e30 }, h2[3] = { -1e30, -1e30, -1e30 };
+                    unsigned c2;
+
+                    for (c2 = 0; c2 < 3u; c2++) {
+                        for (k = 0; k < 3; k++) {
+                            l2[k] = fmin(l2[k], bt->tri[j2].p[c2][k]);
+                            h2[k] = fmax(h2[k], bt->tri[j2].p[c2][k]);
+                        }
+                    }
+                    seen = 1;
+                    for (k = 0; k < 3; k++) {
+                        seen &= fabs(l2[k] - lo[k]) < 0.05 && fabs(h2[k] - hi[k]) < 0.05;
+                    }
+                }
+                nrep = (int)rint(u1 - u0);
+                if (nrep < 1 || nrep > 64 || fabs(v1 - v0 - 1.0) > 0.05 || fabs(u1 - u0 - nrep) > 0.05 || failed) {
+                    continue;                   /* (not a rock's card: left as it is) */
+                }
+                rm_drop(out, t->id);
+                if (seen) {
+                    continue;
+                }
+                for (rep = 0; rep < nrep; rep++) {
+                    RmTri two[2];
+                    RmBatch one = *bt;
+                    const double cu[4] = { u0 + rep, u0 + rep + 1.0, u0 + rep + 1.0, u0 + rep }, cv[4] = { v0, v0, v1, v1 };
+                    double q[4][3];
+                    int c;
+
+                    for (c = 0; c < 4; c++) {
+                        rm_at(m, cu[c], cv[c], q[c]);
+                    }
+                    memset(two, 0, sizeof two);
+                    for (c = 0; c < 3; c++) {
+                        static const int ia[3] = { 0, 1, 2 }, ib[3] = { 0, 2, 3 };
+
+                        for (k = 0; k < 3; k++) {
+                            two[0].p[c][k] = (float)q[ia[c]][k];
+                            two[1].p[c][k] = (float)q[ib[c]][k];
+                        }
+                        two[0].uv[c][0] = (float)cu[ia[c]]; two[0].uv[c][1] = (float)cv[ia[c]];
+                        two[1].uv[c][0] = (float)cu[ib[c]]; two[1].uv[c][1] = (float)cv[ib[c]];
+                    }
+                    two[0].id = two[1].id = t->id;
+                    memcpy(two[0].rgb, t->rgb, 3u);
+                    memcpy(two[1].rgb, t->rgb, 3u);
+                    memcpy(one.rgb, t->rgb, 3u);
+                    one.tri = two;
+                    one.n = 2;
+                    {
+                        const double mid[3] = { 0.25 * (q[0][0] + q[1][0] + q[2][0] + q[3][0]),
+                                                0.25 * (q[0][1] + q[1][1] + q[2][1] + q[3][1]),
+                                                0.25 * (q[0][2] + q[1][2] + q[2][2] + q[3][2]) };
+
+                        if (!have) {
+                            body0 = out->ntri;
+                            if (!build(&one, tx, opt, out)) {
+                                failed = 1;     /* (no body: this card's two triangles stay out; the rest stay) */
+                                break;
+                            }
+                            body1 = out->ntri;
+                            memcpy(body_at, mid, sizeof body_at);
+                            have = 1;
+                        } else {
+                            /* the same picture, the same card: the first body again, moved here */
+                            unsigned ti;
+
+                            for (ti = body0; ti < body1 && !out->fail; ti++) {
+                                const RmNew src = out->tri[ti];
+                                double a[3], b2[3], c3[3], ua2[2], ub2[2], uc2[2];
+
+                                for (k = 0; k < 3; k++) {
+                                    a[k] = src.p[0][k] + mid[k] - body_at[k];
+                                    b2[k] = src.p[1][k] + mid[k] - body_at[k];
+                                    c3[k] = src.p[2][k] + mid[k] - body_at[k];
+                                }
+                                for (k = 0; k < 2; k++) {
+                                    ua2[k] = src.uv[0][k]; ub2[k] = src.uv[1][k]; uc2[k] = src.uv[2][k];
+                                }
+                                rm_tri(out, src.src, src.tex, src.cull, src.rgb, a, b2, c3, ua2, ub2, uc2, src.kind, src.alpha);
+                                if (!out->fail) {
+                                    out->tri[out->ntri - 1].lit = src.lit;
+                                    memcpy(out->tri[out->ntri - 1].n, src.n, sizeof src.n);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             continue;
         }
         if (lean && !bt->bb) {
