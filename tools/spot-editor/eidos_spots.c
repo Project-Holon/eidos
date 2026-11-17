@@ -2763,7 +2763,7 @@ static void draw_battle_view(int i)
         /* the map standing in front of this one, before the nearer ones
          * (the game's second backdrop pass, plat_gl3d.c) */
         if (far < v->nfronts && v->has_front[far] && !sendout[far]) {
-            gpu_op(v->ftex[far], 0, v->x, v->y, v->w, v->h, 1, v);
+            gpu_op(v->ftex[far], 4, v->x, v->y, v->w, v->h, 1, v);  /* (4: over the sprite just drawn) */
         }
         d[far] = -1e9f;
     }
@@ -4272,6 +4272,14 @@ static void gpu_flush(const char *shot)
 
         if (o->mode == 3) {
             eidos_gl_view_draw_fx(A.gl, o->tex, o->x, o->y, o->w, o->h, o->clip, o->fx, o->alpha);
+        } else if (o->mode == 4) {
+            /* the map in front of a Pokemon: its see-through pieces (a shadow strip, a water sheet) blended over
+             * the sprite queued right before it, as the game's second pass lays them over its own sprite (shown
+             * opaque they were solid bars of the piece's colour) */
+            const GpuOp *sp = i > 0 && (g_ops[i - 1].mode == 1 || g_ops[i - 1].mode == 3) ? &g_ops[i - 1] : NULL;
+
+            eidos_gl_view_draw_front(A.gl, o->tex, o->x, o->y, o->w, o->h, o->clip, sp != NULL ? sp->tex : 0u,
+                                     sp != NULL ? sp->x : 0, sp != NULL ? sp->y : 0, sp != NULL ? sp->w : 0, sp != NULL ? sp->h : 0);
         } else {
             eidos_gl_view_draw(A.gl, o->tex, o->mode, o->x, o->y, o->w, o->h, o->flip, o->clip);
         }

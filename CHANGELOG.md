@@ -5,6 +5,8 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.6
 
+3D Scenes overall, multiplayer goodness, more modding possiblities and bug fixes.
+
 ### Real-Map Battles & Spot Editor
 - **3D Props**: Replaced flat billboard sprites with full 3D models and native ground shadows for rocks, living-room pouffes, Dreamyard bottles, warp pads, the Pokémon League plaza gate, and Relic Castle vases. Fixed rebuilt prop textures bleeding into other objects on subsequent battles in the same session.
 - **Live Overworld State**: Real-map battles now reflect the current state of dynamic map objects, including opened gym curtains and switches, pushed strength boulders, Chargestone Cave's floating stones, and the Pokémon League's light pillars.
@@ -37,7 +39,7 @@ Each release's notes on GitHub start with its section here
   - **Surfing Mounts**: When starting a battle while Surfing, the water mount now floats beneath your active Pokémon rather than remaining at its overworld tile, and is hidden if that same Pokémon is fighting.
   - **Double Battles**: Fixed depth sorting on the second Pokémon slot so its body no longer renders in front of its face.
 - **Prebuilt Map Meshes**: Eliminated the initial black screen when entering battle by caching rebuilt map geometry to disk, pre-building area meshes in the background upon map entry, and holding scene rendering until the opening camera view is ready.
-- **Spot Editor**: Added automatic hot-reloading when the spot file is modified externally, update notifications, all eight Gym Badges in the built-in preview save, proper ground height detection on multi-layer maps (Pinwheel Forest), per-floor isolating in the Overworld view for stacked interiors (Driftveil Gym), a layout that shows the Intro and Command cameras together with the Overworld and tile map beside the place list, both opponent trainer positions (battle start and end-of-battle return) under Trainers, a tile map that shows the selected trainer's own floor in Driftveil Gym, and Professor Juniper's back sprite on the catching lesson. Fixed Overworld drag-to-pan and Preview opening a neighboring area's view when two wild areas sit one tile apart.
+- **Spot Editor**: Added automatic hot-reloading when the spot file is modified externally, update notifications, all eight Gym Badges in the built-in preview save, proper ground height detection on multi-layer maps (Pinwheel Forest), per-floor isolating in the Overworld view for stacked interiors (Driftveil Gym), a layout that shows the Intro and Command cameras together with the Overworld and tile map beside the place list, both opponent trainer positions (battle start and end-of-battle return) under Trainers, a tile map that shows the selected trainer's own floor in Driftveil Gym, and Professor Juniper's back sprite on the catching lesson. Fixed Overworld drag-to-pan and Preview opening a neighboring area's view when two wild areas sit one tile apart. Fixed see-through map pieces in front of a Pokémon (a bridge's shadow on a pond, tree shadows) showing as solid black bars and shards: they are now blended over the sprite as in the game.
 
 ### Multiplayer, Randomizers & Archipelago
 - **Redesigned Multiplayer Hub**: Rebuilt the one-screen Multiplayer menu across all three UI styles, combining your Trainer Card, game creation cards, a unified **Join** box, and **Your Games** on a single page. The lobby now displays connected player avatars in a row, readiness status, active session rules, and the room code above the Start button.

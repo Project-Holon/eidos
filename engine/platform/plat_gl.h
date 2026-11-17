@@ -107,6 +107,11 @@ void eidos_gl_view_draw(EidosGl *gl, unsigned tex, int mode, int x, int y, int w
  * way to fade[0..2] and blended at `alpha` (0..1). */
 void eidos_gl_view_draw_fx(EidosGl *gl, unsigned tex, int x, int y, int w, int h, const int *clip,
                            const float fade[4], float alpha);
+/* A kept 3D picture laid over the sprite just drawn (the map standing in front of a Pokemon): its opaque pixels
+ * shown as mode 0; its see-through ones blended, and only where the sprite (its texture and its rectangle of the
+ * window) has a pixel.  sprite_tex 0: no sprite, the opaque pixels alone. */
+void eidos_gl_view_draw_front(EidosGl *gl, unsigned tex, int x, int y, int w, int h, const int *clip, unsigned sprite_tex,
+                              int sx, int sy, int sw, int sh);
 int eidos_gl_view_read(EidosGl *gl, unsigned char *rgba);
 void eidos_gl_view_end(EidosGl *gl);
 

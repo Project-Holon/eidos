@@ -27,26 +27,39 @@ static const char *k_vs_view =
  * mode 1: a straight sprite, its clear pixels left out, the rest opaque;
  * mode 2: a straight canvas, blended by its alpha;
  * mode 3: a straight sprite as mode 1, its colours faded fx.a of the way to
- * fx.rgb and blended at `alpha` (eidos_gl_view_draw_fx) */
+ * fx.rgb and blended at `alpha` (eidos_gl_view_draw_fx);
+ * mode 4: a premultiplied 3D picture laid over a sprite (eidos_gl_view_draw_front): its opaque pixels as mode 0,
+ * its see-through ones blended, and only where the sprite (mask, in the window rectangle mrect) has a pixel */
 static const char *k_fs_view =
     "#version 330 core\n"
     "uniform sampler2D tex;\n"
     "uniform int mode;\n"
     "uniform vec4 fx;\n"
     "uniform float alpha;\n"
+    "uniform sampler2D mask;\n"
+    "uniform vec4 mrect;\n"
+    "uniform float winh;\n"
     "in vec2 uv;\n"
     "out vec4 color;\n"
     "void main() {\n"
     "    vec4 c = texture(tex, uv);\n"
     "    if (mode == 2) { color = c; return; }\n"
     "    if (c.a <= 0.0) discard;\n"
+    "    if (mode == 4) {\n"
+    "        if (c.a >= 0.999) { color = vec4(c.rgb / c.a, 1.0); return; }\n"
+    "        if (mrect.z <= mrect.x || mrect.w <= mrect.y) discard;\n"
+    "        vec2 m = (vec2(gl_FragCoord.x, winh - gl_FragCoord.y) - mrect.xy) / (mrect.zw - mrect.xy);\n"
+    "        if (m.x < 0.0 || m.y < 0.0 || m.x > 1.0 || m.y > 1.0 || texture(mask, m).a <= 0.0) discard;\n"
+    "        color = c;\n"
+    "        return;\n"
+    "    }\n"
     "    if (mode == 3) { color = vec4(mix(c.rgb, fx.rgb, fx.a), alpha); return; }\n"
     "    color = vec4(mode == 0 ? c.rgb / c.a : c.rgb, 1.0);\n"
     "}\n";
 
 typedef struct GlView {
     GLuint prog, vao;
-    GLint u_rect, u_uvr, u_tex, u_mode, u_fx, u_alpha;
+    GLint u_rect, u_uvr, u_tex, u_mode, u_fx, u_alpha, u_mask, u_mrect, u_winh;
     int win_w, win_h;
     int failed;
 } GlView;
@@ -71,6 +84,9 @@ static int view_init(EidosGl *g)
     v->u_mode = g->glGetUniformLocation(v->prog, "mode");
     v->u_fx = g->glGetUniformLocation(v->prog, "fx");
     v->u_alpha = g->glGetUniformLocation(v->prog, "alpha");
+    v->u_mask = g->glGetUniformLocation(v->prog, "mask");
+    v->u_mrect = g->glGetUniformLocation(v->prog, "mrect");
+    v->u_winh = g->glGetUniformLocation(v->prog, "winh");
     eidos_gl_quad_vao(g, &v->vao);
     return 0;
 }
@@ -157,6 +173,20 @@ void eidos_gl_view_begin(EidosGl *g, int win_w, int win_h, unsigned rgb)
 }
 
 static float g_fx[4], g_alpha = 1.0f;
+static unsigned g_mask_tex;         /* mode 4: the sprite's picture, 0 none */
+static float g_mrect[4];            /* ... and its rectangle of the window (x0 y0 x1 y1, top down) */
+
+void eidos_gl_view_draw_front(EidosGl *g, unsigned tex, int x, int y, int w, int h, const int *clip, unsigned sprite_tex,
+                              int sx, int sy, int sw, int sh)
+{
+    g_mask_tex = sprite_tex;
+    g_mrect[0] = (float)sx;
+    g_mrect[1] = (float)sy;
+    g_mrect[2] = sprite_tex != 0 ? (float)(sx + sw) : (float)sx;
+    g_mrect[3] = sprite_tex != 0 ? (float)(sy + sh) : (float)sy;
+    eidos_gl_view_draw(g, tex, 4, x, y, w, h, 1, clip);
+    g_mask_tex = 0;
+}
 
 void eidos_gl_view_draw_fx(EidosGl *g, unsigned tex, int x, int y, int w, int h, const int *clip, const float fade[4],
                            float alpha)
@@ -188,6 +218,9 @@ void eidos_gl_view_draw(EidosGl *g, unsigned tex, int mode, int x, int y, int w,
     if (mode == 2 || mode == 3) {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    } else if (mode == 4) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);    /* (the picture is premultiplied) */
     } else {
         glDisable(GL_BLEND);
     }
@@ -204,6 +237,13 @@ void eidos_gl_view_draw(EidosGl *g, unsigned tex, int mode, int x, int y, int w,
     if (mode == 3) {
         g->glUniform4f(v->u_fx, g_fx[0], g_fx[1], g_fx[2], g_fx[3]);
         g->glUniform1f(v->u_alpha, g_alpha);
+    }
+    if (mode == 4) {
+        g->glUniform4f(v->u_mrect, g_mrect[0], g_mrect[1], g_mrect[2], g_mrect[3]);
+        g->glUniform1f(v->u_winh, H);
+        g->glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, (GLuint)(g_mask_tex != 0 ? g_mask_tex : tex));
+        g->glUniform1i(v->u_mask, 1);
     }
     g->glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, (GLuint)tex);
