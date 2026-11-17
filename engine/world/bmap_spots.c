@@ -46,6 +46,8 @@ static float field_float(const char *f, float dflt)
     return (f[0] == '-' && f[1] == '\0') || f[0] == '\0' ? dflt : (float)atof(f);
 }
 
+static int g_fd_default;        /* the row parse_row read last left its foe distance at the default ('-') */
+
 static int mode_of(const char *f)
 {
     return strcmp(f, "fixed") == 0 ? BMAP_SPOT_FIXED : strcmp(f, "zone") == 0 ? BMAP_SPOT_ZONE
@@ -110,6 +112,7 @@ static int parse_row(char *line, BmapSpot *r)
     bmap_spot_defaults(r);
     r->foe_level = n > 24 ? field_int(f[24], 1) : 1;
     r->foe_dz = n > 25 ? field_float(f[25], r->foe_dz) : r->foe_dz;
+    g_fd_default = !(n > 25) || (f[25][0] == '-' && f[25][1] == '\0') || f[25][0] == '\0';
     r->intro.zoom = n > 26 ? field_float(f[26], r->intro.zoom) : r->intro.zoom;
     r->trainer_id = n > 27 ? field_int(f[27], -1) : -1;
     r->intro.yaw = n > 28 ? field_float(f[28], 0.0f) : 0.0f;
@@ -203,13 +206,17 @@ static int new_slot(void)
  * the intro zoom default: 1 written out where it was not set. */
 #define USER_HEAD_ZEROS "# battle spots written by the spot editor: tools/battle_spots.py merge"
 #define USER_HEAD_ZOOM1 "# battle spots written by the spot editor (- takes the default): tools/battle_spots.py merge"
-#define USER_HEAD       "# battle spots written by the spot editor, format 3 (- takes the default): tools/battle_spots.py merge"
+#define USER_HEAD_F3    "# battle spots written by the spot editor, format 3 (- takes the default): tools/battle_spots.py merge"
+/* format 4: a trainer row's default foe distance is 13 (BMAP_SPOT_FOE_DZ_TRAINER); it was 9 up to format 3 */
+#define USER_HEAD       "# battle spots written by the spot editor, format 4 (- takes the default): tools/battle_spots.py merge"
 
 static void load_text(char *text, int user)
 {
     char *line = text;
     int zeros = user && strncmp(text, USER_HEAD_ZEROS, sizeof USER_HEAD_ZEROS - 1) == 0;
     int zoom1 = zeros || (user && strncmp(text, USER_HEAD_ZOOM1, sizeof USER_HEAD_ZOOM1 - 1) == 0);
+    /* a file from before format 4: its trainer rows' default foe distance was 9 */
+    int fd9 = zoom1 || (user && strncmp(text, USER_HEAD_F3, sizeof USER_HEAD_F3 - 1) == 0);
 
     while (line != NULL && *line != '\0') {
         char *next = strchr(line, '\n');
@@ -233,6 +240,11 @@ static void load_text(char *text, int user)
                 r.trainer_own[1] = r.trainer_own[1] == 0.0f ? d.trainer_own[1] : r.trainer_own[1];
                 r.intro.side = r.intro.side == 0.0f ? d.intro.side : r.intro.side;
                 r.intro.tilt = r.intro.tilt == 0.0f ? d.intro.tilt : r.intro.tilt;
+            }
+            if (fd9 && r.kind == 'T' && g_fd_default && (r.mode != BMAP_SPOT_AUTO || r.ok)) {
+                /* a trainer row placed by hand or checked while the default foe distance was 9, its distance left
+                 * at the default: it keeps the 9 it was looked at with (a row nobody touched takes today's) */
+                r.foe_dz = BMAP_SPOT_FOE_DZ_TRAINER_F3;
             }
             if (zoom1 && r.mode == BMAP_SPOT_AUTO && !r.ok && r.intro.zoom == 1.0f) {
                 /* a place nobody placed, from a file that wrote its intro

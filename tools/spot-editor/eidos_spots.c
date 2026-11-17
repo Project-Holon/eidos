@@ -4839,7 +4839,8 @@ static void preview_in_game(int play)
         }
     }
     _putenv_s("EIDOS_DEBUG_BMAP_AT", v);
-    /* the view on show, whichever the game would take from this place */
+    /* the place by its id and the view on show, whichever the game would take from where the test player stands */
+    _putenv_s("EIDOS_DEBUG_ROW", r->id);
     snprintf(v, sizeof v, "%d", view_no(A.row));
     _putenv_s("EIDOS_DEBUG_VIEW", v);
     /* a party of four (the one on show first) and a bag of balls and
@@ -4892,6 +4893,7 @@ static void preview_in_game(int play)
     _putenv_s("EIDOS_DEBUG_ITEMS", "");
     _putenv_s("EIDOS_DEBUG_UNLOCK", "");
     _putenv_s("EIDOS_DEBUG_VIEW", "");
+    _putenv_s("EIDOS_DEBUG_ROW", "");
     _putenv_s("EIDOS_DEBUG_MOVES", "");
     _putenv_s("EIDOS_BATTLE_ONLY", "");
     if (saves != NULL) {

@@ -2083,21 +2083,39 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
     long long *keys = (long long *)malloc((s->nv > 0 ? s->nv : 1) * sizeof *keys);
     unsigned char *level = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);
     unsigned char *textured = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);
+    unsigned char *wsheet = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);    /* a triangle of a water sheet */
     float x0 = 1e9f, z0 = 1e9f, x1 = -1e9f, z1 = -1e9f;
     int gw, gh;
     unsigned *start = NULL, *idx = NULL, *fill = NULL;
 
-    if (keys == NULL || level == NULL || textured == NULL) {
+    if (keys == NULL || level == NULL || textured == NULL || wsheet == NULL) {
         goto out;
     }
     for (i = 0; i < s->nd; i++) {
         const BmapDraw *d = &s->d[i];
+
+        if (d->billboard == 0 && d->translucent && !still_pic(s, d) && d->count >= 3u && d->first % 3 == 0
+            && d->first + d->count <= s->nv && s->v[d->first].obj == 0u) {
+            /* (the map's water as it draws it: a see-through, moving sheet of the ground's own mesh) */
+            for (t = d->first / 3; t < (d->first + d->count) / 3; t++) {
+                wsheet[t] = 1;
+            }
+        }
 
         if (d->billboard == 0 && d->tex >= 0 && !d->translucent && still_pic(s, d) && d->first % 3 == 0 && d->first + d->count <= s->nv
             && !(grass != NULL && i < ngrass && grass[i])) {
             for (t = d->first / 3; t < (d->first + d->count) / 3; t++) {
                 textured[t] = 1;
             }
+        } else if (d->billboard == 0 && d->tex >= 0 && !d->translucent && d->count >= 3u && d->first % 3 == 0
+                   && d->first + d->count <= s->nv && !(grass != NULL && i < ngrass && grass[i]) && s->v[d->first].obj == 0u) {
+            /* (a moving picture of the ground's own mesh, what floats on a pond: laid only on a water sheet, below) */
+            for (t = d->first / 3; t < (d->first + d->count) / 3; t++) {
+                textured[t] = 2;
+            }
+        } else if (getenv("BMAP_NAME_LOG") != NULL && d->tex >= 0 && (unsigned)d->tex < s->nt && d->count >= 3u) {    /* research */
+            fprintf(stderr, "bmap: name no-decal %s billboard %d see-through %d moving %d (uvanim %u) grass %d\n", s->t[d->tex].name,
+                    d->billboard, d->translucent, !still_pic(s, d), (unsigned)d->uvanim, grass != NULL && i < ngrass && grass[i]);
         }
     }
     for (t = 0; t < ntri; t++) {
@@ -2190,7 +2208,7 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
         BmapVertex *v;
         float cx, cz, y, best = -1e30f;
         unsigned c, j;
-        int k, joined = 0;
+        int k, joined = 0, on_water = 0;
 
         t = order[i];
         v = &s->v[t * 3];
@@ -2200,8 +2218,17 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
              * ended at different heights and the ground showed through between them as a slit. */
             continue;
         }
-        if (bmap_tile_encounter(s, (v[0].x + v[1].x + v[2].x) / 3.0f, (v[0].z + v[1].z + v[2].z) / 3.0f)) {
-            continue;                   /* the grass's stacked layers: their height is their volume */
+        {
+            /* the grass's stacked layers stay: their height is their volume.  That is for the tiles where wild
+             * Pokemon appear on land; on a water tile (the game's own terrain of the tile) there is no grass, and
+             * what the map holds a little over the water (floating leaves, lily pads) is laid on the water like any
+             * other picture on its surface: it hung in the air over a pond with wild Pokemon, and lay on the
+             * water of a pond without */
+            const float mx = (v[0].x + v[1].x + v[2].x) / 3.0f, mz = (v[0].z + v[1].z + v[2].z) / 3.0f;
+
+            if (bmap_tile_encounter(s, mx, mz) && (bmap_tile(s, mx, mz) != BMAP_TILE_WATER || getenv("BMAP_NO_WATER_LAY") != NULL)) {
+                continue;
+            }
         }
         for (k = 0; k < 3 && !joined; k++) {
             long long key = pos_key(&v[k]);
@@ -2209,6 +2236,9 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
             joined = bsearch(&key, keys, nk, sizeof *keys, key_cmp) != NULL;
         }
         if (joined) {
+            if (getenv("BMAP_NAME_LOG") != NULL && bmap_tile(s, v[0].x, v[0].z) == BMAP_TILE_WATER) {      /* research */
+                fprintf(stderr, "bmap: name joined-on-water at %.0f %.1f %.0f\n", (double)v[0].x, (double)v[0].y, (double)v[0].z);
+            }
             continue;
         }
         cx = (v[0].x + v[1].x + v[2].x) / 3.0f;
@@ -2220,9 +2250,25 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
 
             if (idx[j] != t && u[0].y < y - 0.05f && u[0].y >= y - DECAL_MAX_H && u[0].y > best && in_tri_xz(u, cx, cz)) {
                 best = u[0].y;
+                on_water = wsheet[idx[j]];
             }
         }
+        if (best > -1e29f && textured[t] == 2 && (!on_water || getenv("BMAP_NO_WATER_LAY") != NULL)) {
+            best = -1e30f;              /* (a moving picture: only onto a water sheet) */
+        }
         if (best > -1e29f) {
+            if (getenv("BMAP_NAME_LOG") != NULL && (on_water || bmap_tile(s, cx, cz) == BMAP_TILE_WATER)) {    /* research */
+                unsigned q;
+
+                for (q = 0; q < s->nd; q++) {
+                    if (t * 3u >= s->d[q].first && t * 3u < s->d[q].first + s->d[q].count) {
+                        fprintf(stderr, "bmap: name on-water %s class %d encounter %d from %.1f onto %.1f\n",
+                                s->d[q].tex >= 0 && (unsigned)s->d[q].tex < s->nt && s->t[s->d[q].tex].name[0] ? s->t[s->d[q].tex].name : "-",
+                                textured[t], bmap_tile_encounter(s, cx, cz), (double)y, (double)best);
+                        break;
+                    }
+                }
+            }
             for (k = 0; k < 3; k++) {
                 v[k].y = best + DECAL_LIFT;
             }
@@ -2230,10 +2276,34 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
         }
     }
     (void)nlaid;
+    if (getenv("BMAP_NAME_LOG") != NULL) {
+        /* research: what still lies a little over a water tile's surface (0.5 to 6 units over the game's height
+         * of the tile), by its picture's name */
+        for (t = 0; t < ntri; t++) {
+            const BmapVertex *v = &s->v[t * 3];
+            const float mx = (v[0].x + v[1].x + v[2].x) / 3.0f, mz = (v[0].z + v[1].z + v[2].z) / 3.0f;
+            float ty;
+            unsigned q;
+
+            if (!level[t] || (v[0].obj & 0x80000000u) || bmap_tile(s, mx, mz) != BMAP_TILE_WATER || !bmap_tile_height(s, mx, mz, &ty)
+                || v[0].y < ty + 0.5f || v[0].y > ty + DECAL_MAX_H) {
+                continue;
+            }
+            for (q = 0; q < s->nd; q++) {
+                if (t * 3u >= s->d[q].first && t * 3u < s->d[q].first + s->d[q].count) {
+                    fprintf(stderr, "bmap: name over-water %s %.1f over, see-through %d object %d candidate %d\n",
+                            s->d[q].tex >= 0 && (unsigned)s->d[q].tex < s->nt && s->t[s->d[q].tex].name[0] ? s->t[s->d[q].tex].name : "-",
+                            (double)(v[0].y - ty), s->d[q].translucent, (v[0].obj & 0x3FFFFFFFu) != 0u, textured[t]);
+                    break;
+                }
+            }
+        }
+    }
 out:
     free(keys);
     free(level);
     free(textured);
+    free(wsheet);
     free(start);
     free(fill);
     free(idx);

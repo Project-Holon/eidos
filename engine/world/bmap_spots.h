@@ -79,7 +79,8 @@ typedef struct BmapSpot {
  * rows placed by hand in the spot editor (Route 1, Nuvema Town): the foe
  * closer, the player's own trainer raised, the intro camera to the side and
  * tilted.  bmap_spot_defaults sets them. */
-#define BMAP_SPOT_FOE_DZ_TRAINER (-8.0f)
+#define BMAP_SPOT_FOE_DZ_TRAINER (-4.0f)    /* (the two 13 apart: the spot editor shows 17 + this) */
+#define BMAP_SPOT_FOE_DZ_TRAINER_F3 (-8.0f) /* ... 9 apart: the default of the user's files up to format 3 */
 #define BMAP_SPOT_FOE_DZ_WILD    (-5.5f)
 #define BMAP_SPOT_OWN_UP         5.0f
 #define BMAP_SPOT_INTRO_SIDE     1.2f

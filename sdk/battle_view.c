@@ -1393,10 +1393,25 @@ static void battle_begin(uintptr_t eff)
      * player stands), then by the sight line, then the zone's nearest
      * story place */
     row = -1;
-    if (j->reach == 0 && j->trainer && j->trainer_id > 0) {
+    {
+        /* The spot editor's Preview names its place (EIDOS_DEBUG_ROW: the row's id).  Found again from where the
+         * test player stands, a place beside a smaller one took the neighbour's row (Pinwheel Forest's water 14
+         * starts a tile from area 13's box), and the view asked for was then another place's. */
+        const char *want = getenv("EIDOS_DEBUG_ROW");
+        int i;
+
+        for (i = 0; want != NULL && want[0] != '\0' && j->reach == 0 && row < 0 && i < bmap_spots_count(); i++) {
+            const BmapSpot *r = bmap_spots_get(i);
+
+            if (r != NULL && r->view == 0 && strcmp(r->id, want) == 0) {
+                row = i;
+            }
+        }
+    }
+    if (j->reach == 0 && row < 0 && j->trainer && j->trainer_id > 0) {
         row = bmap_spots_find_trainer(j->zone, j->trainer_id, j->px, j->pz);
     }
-    if (j->reach == 0 && j->lesson) {
+    if (j->reach == 0 && row < 0 && j->lesson) {
         /* the catching lesson: its own row; with none, where the player stands (never a wild area's row: the
          * lesson is a scene of the story, at its own place) */
         row = bmap_spots_find_trainer(j->zone, BMAP_SPOT_CATCH_LESSON, j->px, j->pz);

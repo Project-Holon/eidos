@@ -892,6 +892,9 @@ def cmd_gen(args):
 OLD_USER_HEAD = '# battle spots written by the spot editor: tools/battle_spots.py merge'
 # before the intro zoom default: 1 written out where it was not set
 ZOOM1_USER_HEAD = '# battle spots written by the spot editor (- takes the default): tools/battle_spots.py merge'
+# format 3: a trainer row's default foe distance was 9 (fd -8); it is 13 from format 4 on (bmap_spots.h)
+F3_USER_HEAD = '# battle spots written by the spot editor, format 3 (- takes the default): tools/battle_spots.py merge'
+FD_TRAINER_F3 = '-8'
 # The fields with a default (bmap_spot_defaults): '-' takes it.
 DEFAULTED = ('fd', 'is', 'it', 'tuy')
 
@@ -914,6 +917,11 @@ def cmd_merge(args):
                 for c in DEFAULTED:
                     if r[c] in ('0', '0.0'):
                         r[c] = '-'
+    if head in (OLD_USER_HEAD, ZOOM1_USER_HEAD, F3_USER_HEAD):
+        # a trainer row placed by hand or checked while the default foe distance was 9 keeps it
+        for r in theirs.values():
+            if r['kind'] == 'T' and r['fd'] == '-' and (r['mode'] != 'auto' or r['ok'] == '1'):
+                r['fd'] = FD_TRAINER_F3
     n = 0
     ids = {r['id'] for r in theirs.values()}
     for k in [k for k, r in rows.items() if r['id'] in ids and k not in theirs]:
