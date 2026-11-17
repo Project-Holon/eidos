@@ -81,10 +81,6 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp);
  * (the spot editor places one build many times).  bmap_place_spec does it
  * itself on a scene that has not had it.  `field`: as BmapPlaceSpec.field. */
 void bmap_place_prepare(BmapScene *s, int field);
-/* The height of a wild area's grass (its leafy sheets over the encounter
- * tiles in [x0, x1] x [z0, z1], map units, the lowest): the area's floor is
- * just under it.  0 when there is no grass there (water, a cave). */
-int bmap_wild_height(const BmapScene *s, float x0, float z0, float x1, float z1, float *y);
 
 /* The battle camera with a place's intro settings.  A camera on the way
  * from the command camera's eye to the intro's (the intro's, the

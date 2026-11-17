@@ -59,12 +59,12 @@ int bmap_mount_hidden(void);
 struct BmapScene;
 /* The trees a battle at this placed scene leaves out, the whole battle long: those the rule below takes at the
  * place's two still cameras, the command menu's and the intro's (as the place draws them: bmap_battle_camera), toward
- * the middle between the two sides' places.  Entries as bmap_clear_trees makes them; returns their count (max at
- * most).  The game and the spot editor both use it, so a battle shows the trees the editor shows. */
+ * the middle between the two sides' places, and every tree one of those two cameras stands inside (its place within
+ * 0.3 of the tree's box, at a height the tree has).  No other tree goes at any time: a camera move that passes
+ * through a tree shows it (a tree that left for those frames only popped out and back).  Entries as
+ * bmap_clear_trees makes them; returns their count (max at most).  The game and the spot editor both use it, so a
+ * battle shows the trees the editor shows. */
 unsigned bmap_place_trees(const struct BmapScene *s, float out[][4], unsigned max);
-/* The trees the eye stands inside right now (its place within 0.3 of the tree's box, at a height the tree has): not
- * drawn while it does (a camera move passing through one).  Entries as above; returns their count. */
-unsigned bmap_trees_inside(const struct BmapScene *s, const float eye[3], float out[][4], unsigned max);
 unsigned bmap_clear_trees(const struct BmapScene *s, const float eye[3], const float (*aim)[4], unsigned naim,
                           float clear[][4], unsigned n, unsigned max);
 
@@ -72,6 +72,8 @@ typedef struct BmapTexture {
     int w, h;
     unsigned char *rgba;    /* w*h*4, straight alpha                            */
     unsigned char repeat_s, repeat_t, flip_s, flip_t;
+    char name[17];          /* the picture's own name in the game's files (the map makers': "ki02ax" a tree's side,
+                               "kusa_ec1" tall grass); "" for a picture the port made */
 } BmapTexture;
 
 /* A texture-coordinate animation (a placed model's BTA0 texture SRT
@@ -250,6 +252,11 @@ enum { BMAP_TILE_NONE, BMAP_TILE_BLOCKED, BMAP_TILE_WATER, BMAP_TILE_OPEN };
 int   bmap_tile(const BmapScene *s, float x, float z);
 /* Whether wild Pokemon appear on the tile (grass, cave floor, sand, water). */
 int   bmap_tile_encounter(const BmapScene *s, float x, float z);
+/* The height the GAME gives the tile under (x, z), at its middle (map units): its collision tile's own plane, solved
+ * as the field solves it for the player (FIELD_G3D_MAPPER_GetTilePlane).  Where the chunk has two plane sections (a
+ * bridge over a path), the one where wild Pokemon appear, else the first.  Returns 0 when it is not known (no
+ * tile there, or the game's two plane tables could not be read: they come from the extract's overlay 21). */
+int   bmap_tile_height(const BmapScene *s, float x, float z, float *y);
 #define BMAP_TILE_ENCOUNTER 0x10    /* bmap_data.c: the flag beside the class */
 
 /* Black City (zone 0) and White Forest (zone 424): their buildings and

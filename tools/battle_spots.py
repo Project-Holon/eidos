@@ -67,6 +67,13 @@ WFBC = {0: 0x22, 424: 0x23}
 # two Pokemon can fight)
 DOUBLE_GRASS = {0x06, 0x07, 0x09, 0x22}
 WFBC_WILD = {424}
+# The catching lesson (script command 0x17D, SCRCMD_PROC_FLD_CallCatchTutorial: the professor's Minccino against a
+# wild Patrat of level 2; the battle setup's competitor is 4): {zone: the script that starts it}.  Its row holds, as a
+# legendary's, 100000 + level * 1000 + species (bmap_spots.h BMAP_SPOT_CATCH_LESSON).  Route 1's is the game's only
+# one; the same word in five other script files is not a command there (Abyssal Ruins, Tubeline Bridge, N's Castle,
+# Abundant Shrine, a file no zone uses).
+CATCH_LESSON = {317: 1}
+CATCH_LESSON_TID = 100000 + 2 * 1000 + 504
 LEADER_CODES = {85, 86, 87, 88, 89, 90, 91, 162, 178, 179}
 # NPC dir codes: 0 up (-z), 1 down (+z), 2 left (-x), 3 right (+x)
 # Story fights placed from their scenes (docs/battle-backdrop.md, "Story
@@ -667,6 +674,23 @@ def analyse(rom):
                                  tid=w['tid'], tn=w['tn'], tx=tx, tz=tz, dir=d, range=0,
                                  px=px, pz=pz, pf=pf, mode='auto'))
                 covered.update(range(w['tid'], w['tid'] + w['tn']))
+        if z in CATCH_LESSON:
+            # the catching lesson: before the character whose script starts it, as a story battle's
+            runner = next((n for n in npcs if n['script'] == CATCH_LESSON[z]), None)
+            if runner is not None:
+                vx, vz = DIRV.get(runner['dir'], (0, 1))
+                near = [(runner['gx'] + vx, runner['gz'] + vz)] + \
+                       [(runner['gx'] + dx, runner['gz'] + dz) for dx, dz in DIRV.values()]
+                near = [t for t in near if walk_cost(tiles.get(t)) is not None] or \
+                       [(runner['gx'] + vx, runner['gz'] + vz)]
+                best = min(near, key=lambda t: dist.get(t, 1 << 30))
+                fx, fz = runner['gx'] - best[0], runner['gz'] - best[1]
+                pf = facing_deg(fx, fz) if (fx, fz) in DIRV.values() else facing_deg(-vx, -vz)
+                px, pz = tile_center(best)
+                rows.append(dict(id='T%d.s%d' % (z, CATCH_LESSON[z]), kind='T', zone=z,
+                                 label='%s: Catching lesson (story)' % name, tid=CATCH_LESSON_TID, tn=1,
+                                 tx=runner['gx'], tz=runner['gz'], dir=runner['dir'], range=0,
+                                 px=px, pz=pz, pf=pf, mode='auto'))
         if has_enc:
             np = 0
             for water, comp in sorted(patches(tiles), key=lambda p: (min(p[1])[1], min(p[1])[0])):

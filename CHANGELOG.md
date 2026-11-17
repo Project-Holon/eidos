@@ -5,61 +5,67 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.6
 
+### Real-Map Battles & Spot Editor
+- **3D Props**: Replaced flat billboard sprites with full 3D models and native ground shadows for rocks, living-room pouffes, Dreamyard bottles, warp pads, the Pokémon League plaza gate, and Relic Castle vases. Fixed rebuilt prop textures bleeding into other objects on subsequent battles in the same session.
+- **Live Overworld State**: Real-map battles now reflect the current state of dynamic map objects, including opened gym curtains and switches, pushed strength boulders, Chargestone Cave's floating stones, and the Pokémon League's light pillars.
+- **Water, Sky & Fog**:
+  - Extended ocean geometry past map boundaries and removed distant sky-color terrain fading.
+  - Animated water surfaces and shorelines in battle to match the overworld.
+  - Added area-specific procedural voxel clouds to outdoor battles that drift in real time and respond to time-of-day lighting, while disabling clouds inside caves and indoor areas (Wellspring Cave, Chargestone Cave, Relic Castle).
+  - Matched battle fog depth calculation to the overworld camera axis so distant cave and room walls retain their geometry instead of flattening into solid fog (Chargestone Cave, Driftveil Gym).
+- **Gym & Dungeon Geometry**:
+  - **Nimbasa Gym**: Extruded roller-coaster rails and tracks into full 3D geometry, modeled raised 3D switch pads, and synced track/pad colors to the active switch state.
+  - **Driftveil Gym**: Positioned battles on each trainer's adjacent walkway and floor level; completed geometry for traffic cones, walkway undersides, lift posts, and pit walls.
+  - **Mistralton Gym**: Added 3D relief to cannon arrow plates, completed back-face geometry on entrance statues, and adjusted Pilot 2 and Worker 5 battle placements to clear nearby fences.
+  - **Icirrus Gym**: Replaced flat snowy rock and icicle sprites with 3D meshes, completed back-face geometry on entrance pedestals and platform mechanisms (levers, gears, floor switches), and repositioned two obstructed trainer battles.
+  - **Dragonspiral Tower**: Restored missing south walls on the pool and fallen-pillar floors while keeping doorway exits open, completed underside/south faces on upper-floor ledges, ramps, and stairs, and assigned dedicated battle spots for each trainer.
+  - **Opelucid City Houses**: Restored missing south walls and doorway lintels in both trainer houses, and fixed floating tabletop geometry on the upper-floor dining table.
+- **Camera & Placement Handling**:
+  - **Tree Occlusion**: Trees intersecting or immediately adjacent to the battle camera (including Pinwheel Forest's dark teal trees) are now culled cleanly as whole models across both camera angles, matching the Spot Editor preview without popping in or out mid-battle.
+  - **Seasons**: Fixed tree culling and Pokémon ground height breaking in summer, autumn, and winter by identifying trees and tall grass from the game's own material names and collision tile heights instead of texture color.
+  - **Catching Tutorial**: Fixed Professor Juniper's catching lesson on Route 1 borrowing an unrelated trainer's battle spot; it now has its own spot entry.
+  - **Small Prop Culling**: When the camera is positioned inside a small prop, its top face is now hidden alongside its sides rather than floating in view.
+  - **Fallback Ground Search**: Battles triggered on obstructed or seasonally blocked tiles now search outward for valid ground (or fall back to the nearest clear spot) instead of placing Pokémon inside trees.
+  - **Tall Grass & Flowers**: Anchored grass and flower placement to world map tiles so foliage stays consistent regardless of battle spot or camera angle.
+  - **Surfing Mounts**: When starting a battle while Surfing, the water mount now floats beneath your active Pokémon rather than remaining at its overworld tile, and is hidden if that same Pokémon is fighting.
+  - **Double Battles**: Fixed depth sorting on the second Pokémon slot so its body no longer renders in front of its face.
+- **Prebuilt Map Meshes**: Eliminated the initial black screen when entering battle by caching rebuilt map geometry to disk, pre-building area meshes in the background upon map entry, and holding scene rendering until the opening camera view is ready.
+- **Spot Editor**: Added automatic hot-reloading when the spot file is modified externally, update notifications, all eight Gym Badges in the built-in preview save, proper ground height detection on multi-layer maps (Pinwheel Forest), per-floor isolating in the Overworld view for stacked interiors (Driftveil Gym), a layout that shows the Intro and Command cameras together with the Overworld and tile map beside the place list, both opponent trainer positions (battle start and end-of-battle return) under Trainers, and Professor Juniper's back sprite on the catching lesson. Fixed Overworld drag-to-pan.
+
+### Multiplayer, Randomizers & Archipelago
+- **Redesigned Multiplayer Hub**: Rebuilt the one-screen Multiplayer menu across all three UI styles, combining your Trainer Card, game creation cards, a unified **Join** box, and **Your Games** on a single page. The lobby now displays connected player avatars in a row, readiness status, active session rules, and the room code above the Start button.
+- **Unified Join Box**: Enter any room code—whether for a friend's co-op session, a shared multiworld, or an Archipelago server (`host:port` with slot name and password)—in a single input box. Room rules and connected players are previewed before joining, and invalid codes are rejected without creating a save file.
+- **Your Games List**: Co-op sessions you host and multiplayer/modded runs started from the Multiplayer screen are now grouped under **Your Games** (labeled `Host` or `Joined`) and launched from there instead of cluttering the title menu's Continue screen.
+- **In-Game Check Tracker**: Added a `Tracker` button to the overworld top bar during tracked runs (randomizers, multiworlds, and Archipelago sessions). Displays an interactive Unova map with color-coded check completion squares (green = all reachable, orange = partially reachable, red = unreachable, grey = completed), a per-location checklist, key progression items, and a live player-location map.
+- **Archipelago Integration**: Join Archipelago rooms directly from the Join box, or export the host YAML options template from the Multiworld setup card.
+- **Trainer Customization**: Customize your trainer's hair, outfit, trousers, and skin tone on the Multiplayer screen. Custom palettes appear in lobbies, the overworld, and battles across all Multiplayer-launched modes (and are visible to other players), while standard single-player saves keep vanilla palettes.
+- **Mod-Defined Game Modes & Lobby Rules**: Mods can register custom game modes (randomizers, multiworlds, Archipelago presets) with structured, documented option pages that always initialize in a fresh save slot. Co-op hosts can configure mod rules (such as Nuzlocke lives and level caps) directly in the lobby for all participants.
+
 ### One-Screen Mode & UI
-- **Real-Map Battles, Solid Objects**: Rocks, the living rooms' pouffes, the Dreamyard's bottles, the warp pads, the Pokémon League's plaza gate and the Relic Castle's vases are bodies in battles on the real map instead of flat pictures, each with a shadow drawn the way the game draws a Pokémon's.
-- **Real-Map Battles, The Field As It Is**: A battle on the real map now shows the field's moving objects as you left them: a gym's opened curtains and switched devices, pushed boulders, Chargestone Cave's floating stones, the League's light pillars.
-- **Real-Map Battles, Sea & Distance**: The sea continues past the edge of the map instead of ending in a straight line, and the scenery no longer fades into the sky colour in the distance.
-- **Real-Map Battles, Fog**: A place's fog is now measured the way the field shows it, by depth along the field's own camera, so the far walls of a wide room or cave keep their look instead of turning into the fog's flat colour (Chargestone Cave's walls, Driftveil Gym's pit).
-- **Real-Map Battles, Driftveil Gym**: Battles stand on the walkway beside each trainer, on the trainer's own floor; the cones are whole, the walkways and lifts have their sides and undersides, the lifts' arrow posts have a back, the pit has its south wall, and its side walls are no longer black.
-- **Real-Map Battles, Mistralton Gym**: The arrow plates before the cannons are low raised plates with their bars and arrow in relief, the entrance statues are whole from every side, and two trainers' battles (Pilot 2, Worker 5) stand clear of the fences.
-- **Real-Map Battles, Icirrus Gym**: The snowy rocks and icicles are bodies instead of leaning pictures, the entrance statues' pedestals have their back, the turning platforms' levers, gears and floor switches are whole from every side, and two trainers' battles stand in a clear place.
-- **Real-Map Battles, Dragonspiral Tower**: The pool floor and the fallen pillars' floor have their south walls instead of opening onto black, with the way out left open; the upper floors' ledge, ramp and stairs are whole from below and from the south; each trainer's battle has its own place.
-- **Real-Map Battles, No Free Ground**: A battle that starts where no tile in reach can hold it (inside a tree, on ground the season closes off) now looks further for free ground, and takes the best closed place when there is none, instead of standing in the tree.
-- **Real-Map Battles, Opelucid City Houses**: The two houses with a trainer have their south wall instead of opening onto the void; the ground floor's way out is a dark doorway under its lintel, and the upper floor's dining table is whole from the north (its top floated there).
-- **Real-Map Battles, Trees By The Camera**: A tree the battle's camera stands in or right beside is left out whole for the whole battle, instead of losing a round piece that changed as the camera moved; the set is chosen once from the place's two views, so the fight shows what the spot editor shows.
-- **Real-Map Battles, Double Battles**: The second Pokémon of a side is drawn with its parts in the right order (its body lay over its face).
-- **Real-Map Battles, Battle Start**: A battle no longer begins on black with the map arriving a second later: the map's remade objects are made once and kept on disk, an area's are made in the background when you walk in, and the map is not shown before the intro's first view.
-- **Real-Map Battles, Remade Objects**: A remade rock or seat is no longer drawn in another object's picture from the second battle of a session on.
-- **Real-Map Battles, Tall Grass**: Tall grass and flowers stand on the map's own tiles, at the same places whatever the battle's spot and angle.
-- **Real-Map Battles, Clouds**: Caves and other inner places no longer have clouds (Wellspring Cave, Chargestone Cave, Relic Castle).
-- **Spot Editor**: It reads the spot file again when another program changes it, says when a newer editor is ready, gives its Preview the eight badges, and stands the Pokémon on a wild area's own ground where the map has a second layer under it (Pinwheel Forest).
-- **Real-Map Battles, Camera Inside Scenery**: When a battle's camera stands inside a small object, its flat top is hidden with its sides instead of being left floating as a sheet.
-- **Spot Editor, Stacked Floors**: The Overworld view shows the row's own floor where a place has several over one another (Driftveil Gym), instead of the floor above.
-- **Real-Map Battles, Moving Water**: The sea, rivers, ponds and shores move in battles on the real map as they do in the field, instead of standing still.
-- **Real-Map Battles, Surfing**: In a battle that starts while you surf, the Pokémon you ride floats under your own Pokémon instead of where the field left it, and is not shown while the Pokémon you ride is the one in battle.
-- **Plasma Battle Buttons**: In the Plasma style, the battle party's `BACK` and the next-Pokémon and run buttons after a faint are the style's leaning buttons, with the colour cap inside the button.
-- **Real-Map Battles, Clouds**: Outdoor battles have blocky clouds in the sky, each area with its own pattern, fixed to the map and drifting with the real clock, lit by the hour.
-- **Real-Map Battles, Nimbasa Gym**: The gym's rails and tracks are solid from every side, its switch pads are raised 3D buttons, and the pads and rails show the colours the switches left them in.
-- **Dowsing Machine**: The Dowsing Machine's rods now show on a small card at the top right instead of the whole lower screen, which hid the player in 4:3 and tall windows; the top bar's `Menu` button reads `Close` while the machine is on, thanks @aqali1 (#36).
-- **Fast Forward x4**: `Tab + F` runs the game at four times its speed, between `Tab` (x2) and `Left Shift + Tab` (uncapped); in one-screen mode a badge in the style's own look shows the speed, thanks @aqali1 (#42).
-- **Caught Mark**: In wild battles, a Pokémon whose species you have caught shows a small ball after its name, as the DS's battle screen does, in each style's own look.
-- **Touch Scrolling**: Lists with a scroll bar scroll on phones and tablets: drag the list itself, or drag its scroll bar to a place; a drag never counts as a tap on the row it started on.
-- **Musical Dress-Up**: The Pokémon Musical's dressing room has a one-screen layout: the stage at a whole scale in the game's own pink room, the game's messages in the style's text box below it, and the mouse or a finger as the stylus. The game takes only touch here; pad and keyboard controls come later (#44).
-- **Plasma Messages**: In the Plasma style, every message box (a band across the screen) now sits on the bottom edge above the hint bar, instead of wherever the DS window was.
-- **Multiplayer Screens**: The one-screen Multiplayer screen is new in all three styles: your trainer card, cards that start a game, one Join box and Your games on one page; the lobby shows the players standing in a row, what the start waits for, the session's rules and the code above Start.
-- **One Join Box**: Every code goes in the same box: a friend's co-op game, or a world, whose rules and players show before you join; a code that names nothing says so, and no save is made.
-- **Your Games**: The co-op games you host and the games you started or joined from the Multiplayer screen are listed together, marked Host or Joined; they are continued from there and no longer show on the title menu's Continue card.
-- **Tracker**: A Tracker button in the field's top bar, while a mod tracks the game (a randomizer, a multiworld, an Archipelago room): the Unova map with a square on every place with checks (green all in reach, orange some, red none, grey all found) and a list of the checks of the place you are in, or the one you choose; the items that matter under it; and a second map with you and the other players where they are.
-- **Archipelago Rooms**: Type a room's port in the Join box to play an Archipelago room, with your slot name and its password; the Archipelago type on the Multiworld card saves the options file the room's host needs.
-- **Your Look**: Choose your trainer's hair, outfit, trousers and skin on the Multiplayer screen; the colours show in the field and in battle in the games you start or join from the Multiplayer screen (co-op, randomizers, worlds, Archipelago rooms), and the other players see you in your look, in the lobby and in the field. Single-player saves and the title's Continue card keep the game's own colours.
-- **Ways to Play from Mods**: Mods can add their own ways to play to the Multiplayer screen (a randomizer, a multiworld, an Archipelago options file); each has a page of options with headings and a line on what each one does, and starts a new game in a free save slot, never over a save.
-- **Lobby Rules**: The host sets the multiplayer mods' rules (Nuzlocke lives, level caps and the like) in the lobby, and every player plays by them for that session.
-- **Keyboard Back**: The keyboards for your multiplayer name and a game's code have a Back key (and B on an empty field), keeping what was there.
-- **Mouse Wheel in Settings**: The wheel scrolls the settings list as a page does, without a sound for each step.
+- **Dowsing Machine Overlay**: Compacted the Dowsing Machine into a top-right HUD card so it no longer obscures the player in 4:3 and tall windows, and changed the top bar's `Menu` button to `Close` while active (thanks @aqali1, #36).
+- **4× Fast Forward**: Added `Tab + F` for 4× speed (between `Tab` at 2× and `Left Shift + Tab` uncapped), accompanied by a theme-styled speed badge in one-screen mode (thanks @aqali1, #42).
+- **Caught Species Indicator**: Wild battle plates now display a caught Poké Ball icon next to the Pokémon's name, styled to match the active UI theme.
+- **Touch List Scrolling**: Lists with scrollbars now support touch and mouse dragging—either by dragging the list content directly or dragging the scrollbar thumb—without triggering an accidental tap on release.
+- **Pokémon Musical Dress-Up**: Added a one-screen layout for the Musical dressing room featuring full-scale stage rendering, themed dialogue boxes, and mouse/touch stylus controls (gamepad/keyboard support planned; #44).
+- **Plasma Style Refinements**: Anchored Plasma dialogue bands consistently along the bottom edge above the hint bar, and updated battle party `BACK`, post-faint switch, and `RUN` buttons to use Plasma's angled button style.
+- **Keyboard & Settings Navigation**: Added a `Back` button (and `B` on an empty field) to the multiplayer name and room-code keyboards to cancel without clearing existing text, and enabled silent page scrolling with the mouse wheel in Settings.
 
 ### Modding
-- **Mod API 6**: Mods can change archive members and text lines from code (also in archives the game holds open), read and set script work variables, give badges, start field scripts, set the type chart, ask the player for a text, keep their own files, and play online in metaxy world sessions; new events let them change HM forgetting, the shiny chance, Gracidea use, the season, the wild slot, type matchups and the starters, and make a party member know a field move (`move.known`: Cut, Strength, Surf and Waterfall without learning them); settings files gain text options, ways to play (`mode`, with `joins`, `in=` and `export`), lobby rules (`@lobby`), rows shown only for some answers (`?key=value`), and `heading`, `help` and `yaml` lines, read with `setting_text`, `mode_get`, `mode_code` and `player_name` (`docs/mod-services.md`).
+- **Mod API v6**:
+  - Patch archive members and text strings at runtime from code (including archives already held open by the game), read/write script work variables, grant Gym Badges, trigger field scripts, customize the type chart, prompt the player for text input, manage per-mod persistent files, and participate in online `metaxy` world sessions.
+  - Added hooks to override HM move deletion, shiny odds, Gracidea usage, active season, wild encounter slots, type matchups, starter selection, and field move availability (`move.known` for using Cut, Strength, Surf, and Waterfall without teaching them).
+  - Extended mod settings definitions with text inputs, custom game modes (`mode` with `joins`, `in=`, and `export`), host-synced lobby rules (`@lobby`), conditional option rows (`?key=value`), and `heading`/`help`/`yaml` metadata, queryable via `setting_text`, `mode_get`, `mode_code`, and `player_name` (`docs/mod-services.md`).
 
 ### Fixes
-- **Menu Speed**: Fixed the game and its music running at twice their speed for a moment each time a pause-menu entry opened or closed in one-screen mode.
-- **Move Name Colours**: Fixed battle messages colouring the start of a Pokémon's name that reads like a move ("Charm" in "Charmander", "Dig" in "Diglett used Dig!") instead of the move itself, thanks @aqali1 (#35).
-- **Party Status**: Fixed the party list showing a paralyzed Pokémon as asleep (and other conditions as the wrong one), thanks @aqali1 (#41, #39).
-- **Style Option**: Fixed the `STYLE` row of the in-game Options menu, which keys and clicks could not reach; it is now on the `EXTRAS` page (#37).
-- **Debug Pictures**: Fixed the game writing `eidos_flash_*.png` pictures and a log into the saves folder; that check is now off unless asked for (#38).
-- **Dowsing Machine Messages**: Fixed the message of an item the Dowsing Machine found showing under the machine's card (#43).
-- **Yes/No Highlights**: Fixed the nickname question after a catch never showing which answer the cursor is on, and battle questions lighting the first answer again after you picked the second (#45).
-- **Nickname Keyboard**: Fixed the keyboard staying over the "transferred to the PC" message after naming a caught Pokémon (#45).
-- **Restart the Run**: Fixed the settings screen locking up when the run was restarted from its Mods page, and its question could not be answered Yes on a touch screen; Yes and No are now two choices to tap.
+- **Pause Menu Speed Spike**: Fixed game logic and audio briefly running at 2× speed when opening or closing pause-menu screens in one-screen mode.
+- **Move Name Highlighting**: Fixed type-colored battle text tinting prefixes inside Pokémon names that match move names (e.g., "Charm" in "Charmander" or "Dig" in "Diglett") instead of only coloring the move itself (thanks @aqali1, #35).
+- **Party Status Icons**: Fixed status condition badges in the party screen displaying the wrong ailment (such as showing paralysis as sleep; thanks @aqali1, #39, #41).
+- **In-Game Style Option**: Moved the unreachable `STYLE` setting in the in-game Options menu to the `EXTRAS` tab so it can be selected with keyboard/controller and mouse (#37).
+- **Flash Diagnostic Logging**: Disabled automatic `eidos_flash_*.png` screenshot and log generation in the `saves` folder unless explicitly enabled (#38).
+- **Dowsing Machine Dialogue**: Fixed item-found messages rendering underneath the Dowsing Machine HUD card (#43).
+- **Yes/No Cursor Highlight**: Fixed missing cursor highlight on the post-catch nickname prompt and fixed battle confirmation prompts resetting the highlight to the first option after selecting the second (#45).
+- **Nickname Keyboard Dismissal**: Fixed the on-screen keyboard remaining visible over the "transferred to the PC" message after nicknaming a caught Pokémon (#45).
+- **Run Restart Prompt**: Fixed a softlock when restarting a run from the Settings > Mods page, and converted the confirmation prompt into tappable `Yes` / `No` buttons for touch screens.
 
 ## 0.2.5
 

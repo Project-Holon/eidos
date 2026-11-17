@@ -1113,8 +1113,10 @@ typedef struct { int ent; u8 flags; } TexRef;
  * platform), floor only where the player's height is known (bmap_set_ref) */
 typedef struct { float p[3][3]; u8 water, placed; } GTri;
 
-/* One chunk's walk grid (bmap_tile): a class per tile, BMAP_TILE_*. */
-typedef struct { int cx, cz; u8 cls[32 * 32]; } WalkChunk;
+/* One chunk's walk grid (bmap_tile): a class per tile, BMAP_TILE_*; and the height the game gives each tile's
+ * middle in each of its (one or two) plane sections (bmap_tile_height), TILE_NO_Y where it has none. */
+#define TILE_NO_Y (-1.0e30f)
+typedef struct { int cx, cz; u8 cls[32 * 32]; float y[2][32 * 32]; u8 enc[2][32 * 32]; } WalkChunk;
 
 typedef struct { int tex; u8 alpha, cull, translucent; int bb; float pivot[3]; u8 far; unsigned short uvanim; u8 bob; u8 mount; } TriTag;
 
@@ -1619,6 +1621,7 @@ static int tex_ref(Ctx *c, int ent, const Mat *mt)
     c->tex[c->ntex].repeat_t = (u8)mt->repeat[1];
     c->tex[c->ntex].flip_s = (u8)mt->flip[0];
     c->tex[c->ntex].flip_t = (u8)mt->flip[1];
+    snprintf(c->tex[c->ntex].name, sizeof c->tex[0].name, "%s", mt->tex);
     c->texrefs[c->ntex].ent = ent;
     c->texrefs[c->ntex].flags = flags;
     return (int)c->ntex++;
@@ -2507,6 +2510,10 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                 tex = tex_ref(c, ent, mt);
             }
         }
+        if (getenv("BMAP_MAT_LOG") != NULL && !c->cur_far) {    /* research: the names the map's makers gave */
+            fprintf(stderr, "bmap: mat set %s material %s texture %s palette %s scene texture %d\n", setkey, mt->name,
+                    mt->has_tex ? mt->tex : "-", mt->has_pal ? mt->pal : "-", tex);
+        }
         translucent = mt->alpha < 31u || (ent >= 0 && c->ents[ent].partial);
         node = aff_then(&md->world[dc->node], base);
         lit = mt->light_mask != 0u && dc->bb == 0;
@@ -2779,10 +2786,80 @@ static int water_terrain(u32 t)
     return t == 0x14u || t == 0x17u || t == 0x1Cu || (t >= 0x3Du && t <= 0x3Fu) || t == 0x42u || t == 0x43u;
 }
 
+/* Overlay 21's two tables the game's tile planes index (field_g3d_tile_plane.c: gTileNormalTable at 0x021DB9A0,
+ * s16 triples; gTilePlaneDistTable at 0x021DC158, fx32), read once from the extract beside the data root (the
+ * overlay loads at 0x02187F00).  NULL where there is no extract: the heights are then not known. */
+#define OV21_BASE 0x02187F00u
+#define OV21_NORMALS (0x021DB9A0u - OV21_BASE)
+#define OV21_DISTS (0x021DC158u - OV21_BASE)
+static const u8 *tile_tables(size_t *len)
+{
+    static u8 *ov;
+    static size_t n;
+    static int tried;
+
+    if (!tried) {
+        static const char *const dirs[] = { "overlays_dec", "overlays" };
+        int i;
+
+        tried = 1;
+        for (i = 0; i < 2 && ov == NULL; i++) {
+            char path[1024];
+            FILE *f;
+            long sz;
+
+            snprintf(path, sizeof path, "%s/../%s/y9_0021.bin", bw_data_root(), dirs[i]);
+            f = fopen(path, "rb");
+            if (f == NULL) {
+                continue;
+            }
+            fseek(f, 0, SEEK_END);
+            sz = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            if (sz > (long)OV21_DISTS && (ov = (u8 *)malloc((size_t)sz)) != NULL) {
+                if (fread(ov, 1, (size_t)sz, f) != (size_t)sz) {
+                    free(ov);
+                    ov = NULL;
+                } else {
+                    n = (size_t)sz;
+                }
+            }
+            fclose(f);
+        }
+    }
+    *len = n;
+    return ov;
+}
+
+/* The height of the plane (normal index ni, distance index di) at the block's own (x, z), as the game solves it:
+ * -(dist + nx x + nz z) / ny, the table's z negated.  0 when the tables do not hold it. */
+static int tile_plane_y(const u8 *ov, size_t n, unsigned ni, unsigned di, float x, float z, float *y)
+{
+    Buf b;
+    float nx, ny, nz, dist;
+
+    b.p = ov;
+    b.n = n;
+    if (ov == NULL || (size_t)OV21_NORMALS + (size_t)ni * 6u + 6u > (size_t)OV21_DISTS || (size_t)OV21_DISTS + (size_t)di * 4u + 4u > n) {
+        return 0;
+    }
+    nx = (float)rds16(b, OV21_NORMALS + ni * 6u) / 4096.0f;
+    ny = (float)rds16(b, OV21_NORMALS + ni * 6u + 2u) / 4096.0f;
+    nz = -(float)rds16(b, OV21_NORMALS + ni * 6u + 4u) / 4096.0f;
+    dist = (float)rds32(b, OV21_DISTS + di * 4u) / 4096.0f;
+    if (fabsf(ny) < 1e-6f) {
+        return 0;
+    }
+    *y = -(dist + nx * x + nz * z) / ny;
+    return 1;
+}
+
 static void add_walk(Ctx *c, Buf bb, unsigned planes, int cx, int cz)
 {
     WalkChunk *w = (WalkChunk *)grow(c->walk, &c->walk_cap, c->nwalk + 1u, sizeof *w);
     unsigned pl, i;
+    size_t ovn = 0;
+    const u8 *ov = tile_tables(&ovn);
 
     if (w == NULL) {
         return;
@@ -2792,6 +2869,10 @@ static void add_walk(Ctx *c, Buf bb, unsigned planes, int cx, int cz)
     w->cx = cx;
     w->cz = cz;
     memset(w->cls, BMAP_TILE_NONE, sizeof w->cls);
+    memset(w->enc, 0, sizeof w->enc);
+    for (i = 0; i < 32u * 32u; i++) {
+        w->y[0][i] = w->y[1][i] = TILE_NO_Y;
+    }
     for (pl = 0; pl < planes; pl++) {
         u32 at = rd32(bb, 8u + 4u * pl);
 
@@ -2808,6 +2889,28 @@ static void add_walk(Ctx *c, Buf bb, unsigned planes, int cx, int cz)
                 w->cls[i] = (u8)((w->cls[i] & BMAP_TILE_ENCOUNTER) | k);
             }
             w->cls[i] |= enc;
+            if (pl < 2u) {
+                /* the tile's own plane at its middle (PackedTile: type in bits 0..1 of the first halfword, the
+                 * normal's index above them, then the distance's index; type 2: a split record after the tiles,
+                 * a plane a triangle, the middle's by the game's own test; another type: flat at 0) */
+                const unsigned h0 = rd16(bb, at + 4u + i * 8u), type = h0 & 3u, di = rd16(bb, at + 6u + i * 8u);
+                const float lx = ((float)(i % 32u) + 0.5f) * 16.0f - 256.0f, lz = ((float)(i / 32u) + 0.5f) * 16.0f - 256.0f;
+                float y = 0.0f;
+                int ok = 1;
+
+                if (type == 0u) {
+                    ok = tile_plane_y(ov, ovn, h0 >> 2, di, lx, lz, &y);
+                } else if (type == 2u) {
+                    const u32 sp = at + 4u + 32u * 32u * 8u + di * 8u;
+
+                    /* (the middle: fracX + fracZ is not under a tile, fracX is not over fracZ: the B triangle either way) */
+                    ok = (size_t)sp + 8u <= bb.n && tile_plane_y(ov, ovn, rd16(bb, sp + 2u), rd16(bb, sp + 6u), lx, lz, &y);
+                }
+                if (ok) {
+                    w->y[pl][i] = y;
+                    w->enc[pl][i] = enc != 0u;
+                }
+            }
         }
     }
     c->nwalk++;
@@ -3917,6 +4020,8 @@ typedef struct {
     float ref;                  /* bmap_set_ref: the player's height        */
     int wx0, wz0, ww, wh;       /* the walk grid, in tiles                   */
     u8 *walk;
+    float *wy[2];               /* the game's height of each tile, a plane section each (TILE_NO_Y: none) */
+    u8 *wenc[2];                /* ... and whether wild Pokemon appear on it there */
 } Priv;
 
 /* Water over the ground: a Pokemon stands on the water, never under it.  A
@@ -4025,13 +4130,32 @@ static void build_walk(Ctx *c, Priv *g)
     if (g->walk == NULL) {
         return;
     }
+    {
+        int pl;
+        size_t q;
+
+        for (pl = 0; pl < 2; pl++) {
+            g->wy[pl] = (float *)malloc((size_t)g->ww * (size_t)g->wh * sizeof(float));
+            g->wenc[pl] = (u8 *)calloc((size_t)g->ww * (size_t)g->wh, 1);
+            for (q = 0; g->wy[pl] != NULL && q < (size_t)g->ww * (size_t)g->wh; q++) {
+                g->wy[pl][q] = TILE_NO_Y;
+            }
+        }
+    }
     for (i = 0; i < c->nwalk; i++) {
         const WalkChunk *w = &c->walk[i];
-        int r;
+        int r, pl;
 
         for (r = 0; r < 32; r++) {
-            memcpy(&g->walk[(size_t)((w->cz - z0) * 32 + r) * (size_t)g->ww + (size_t)((w->cx - x0) * 32)],
-                   &w->cls[r * 32], 32);
+            const size_t to = (size_t)((w->cz - z0) * 32 + r) * (size_t)g->ww + (size_t)((w->cx - x0) * 32);
+
+            memcpy(&g->walk[to], &w->cls[r * 32], 32);
+            for (pl = 0; pl < 2; pl++) {
+                if (g->wy[pl] != NULL && g->wenc[pl] != NULL) {
+                    memcpy(&g->wy[pl][to], &w->y[pl][r * 32], 32 * sizeof(float));
+                    memcpy(&g->wenc[pl][to], &w->enc[pl][r * 32], 32);
+                }
+            }
         }
     }
 }
@@ -4223,6 +4347,33 @@ int bmap_tile(const BmapScene *s, float x, float z)
         return BMAP_TILE_NONE;
     }
     return g->walk[(size_t)tz * (size_t)g->ww + (size_t)tx] & 3;
+}
+
+int bmap_tile_height(const BmapScene *s, float x, float z, float *y)
+{
+    const Priv *g = s != NULL ? (const Priv *)s->priv : NULL;
+    int tx, tz, pl, pick = -1;
+    size_t at;
+
+    if (g == NULL || g->walk == NULL || g->wy[0] == NULL || g->wy[1] == NULL || g->wenc[0] == NULL || g->wenc[1] == NULL) {
+        return 0;
+    }
+    tx = (int)floorf(x / TILE) - g->wx0;
+    tz = (int)floorf(z / TILE) - g->wz0;
+    if (tx < 0 || tz < 0 || tx >= g->ww || tz >= g->wh) {
+        return 0;
+    }
+    at = (size_t)tz * (size_t)g->ww + (size_t)tx;
+    for (pl = 0; pl < 2; pl++) {
+        if (g->wy[pl][at] > TILE_NO_Y * 0.5f && (pick < 0 || (g->wenc[pl][at] && !g->wenc[pick][at]))) {
+            pick = pl;
+        }
+    }
+    if (pick < 0) {
+        return 0;
+    }
+    *y = g->wy[pick][at];
+    return 1;
 }
 
 int bmap_tile_encounter(const BmapScene *s, float x, float z)
@@ -5313,6 +5464,10 @@ void bmap_free(BmapScene *s)
         free(g->start);
         free(g->idx);
         free(g->walk);
+        free(g->wy[0]);
+        free(g->wy[1]);
+        free(g->wenc[0]);
+        free(g->wenc[1]);
         free(g);
     }
     memset(s, 0, sizeof *s);

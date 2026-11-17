@@ -100,6 +100,10 @@ BmapSpot *bmap_spots_get(int i);
  * wild area row whose box holds them.  -1 when none. */
 int       bmap_spots_find(unsigned zone, int trainer, float px, float pz);
 int       bmap_spots_find_trainer(unsigned zone, int trainer_id, float px, float pz);
+/* The catching lesson's row (Route 1: the professor shows how to catch; the game's own battle of a kind, competitor
+ * 4): a 'T' row whose number is, as a legendary's, 100000 + level * 1000 + species of the wild Pokemon it shows (the
+ * lesson's Patrat, level 2). */
+#define BMAP_SPOT_CATCH_LESSON (100000 + 2 * 1000 + 504)
 /* The views of the row at index i (any of its views): their count, the
  * table index of view v (0 is the first; -1 when there is none), and the one
  * a battle with the player at (px, pz) facing the game's 16-bit angle takes:

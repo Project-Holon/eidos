@@ -247,7 +247,7 @@ typedef struct App {
     Sprite hero[4];                 /* the player, facing up, down, left, right */
     float hero_h;                   /* its height (map units)                */
     /* the map */
-    int map_x, map_y, map_s;
+    int map_x, map_y, map_w, map_s;    /* the tile map's place, its width and its height */
     float zoom;                     /* map pixels a tile                   */
     float view_x, view_z;
     int follow;
@@ -258,7 +258,7 @@ typedef struct App {
     char edit_buf[24];
     int drag;                       /* 1 move, 2 turn, 3 area, 4 pan, 5 list scroll, 6-11 the views, 20 a slider */
     int drag_id, drag_undo, drag_dirty;   /* the slider dragged, kept for Undo, changed (saved on release) */
-    int tab;                        /* the view on show: TAB_COMMAND, TAB_INTRO, TAB_FIELD */
+    int tab;                        /* the active battle view (its camera in the inspector): TAB_COMMAND, TAB_INTRO */
     int last_move;                  /* the move scene played last */
     int insp_scroll, insp_h;        /* the inspector: scrolled by, its height */
     int prog_open, prog_scroll;     /* the Progress sheet: shown, scrolled by rows */
@@ -270,7 +270,7 @@ typedef struct App {
     u8 *emb_rgba;                   /* its last picture, for blit_rgba        */
     int emb_w, emb_h;
     uint32_t emb_frame;
-    int map_left;                   /* the map under the list, not in the inspector */
+    int map_left;                   /* the map under the list (it fits there), not in the inspector */
     float drag_x, drag_z;
     int drag_mx, drag_my;
     float drag_vx, drag_vz;
@@ -290,6 +290,7 @@ static void preview_stop(void);
 static void draw_embed(int x, int y, int w, int h);
 static const char *scene_name(int sc);
 static void scene_frames(void);
+static void tree_dump(const char *path);
 #define SCENE_MOVES 559             /* Black's moves */
 #define SCENE_COUNT (3 + SCENE_MOVES)
 #define SCENE_MID   SCENE_COUNT     /* a trainer back mid-battle to speak */
@@ -715,21 +716,15 @@ static void load_npcs(unsigned zone)
  * leader's, whoever stands on its tile).  Where
  * floors lie over one another (Nimbasa's walkways, a gym's stages) the
  * ground is the one nearest it (bmap_set_ref), as the game's own placement
- * takes the player's.  0 when it is not known (a wild area). */
+ * takes the player's.  A wild area: the game's own height of the player's tile.  0 when it is not known. */
 static int row_height(const BmapSpot *r, float *y)
 {
     int i;
 
     if (r != NULL && r->kind != 'T') {
-        /* a wild area: just under its grass (the game knows the player's
-         * height; a plane deep under the map, Dreamyard's, is no floor) */
-        if (A.have_base && r->rx1 >= r->rx0
-            && bmap_wild_height(&A.base, (float)r->rx0 * 16.0f, (float)r->rz0 * 16.0f, (float)r->rx1 * 16.0f + 16.0f,
-                                (float)r->rz1 * 16.0f + 16.0f, y)) {
-            *y -= 2.0f;
-            return 1;
-        }
-        return 0;
+        /* a wild area: the height the game itself gives the tile the test player stands on (its collision tile's
+         * plane, as the field solves it for the player) */
+        return A.have_base && bmap_tile_height(&A.base, A.tx, A.tz, y);
     }
     if (r == NULL) {
         return 0;
@@ -1022,10 +1017,9 @@ static void render_view(View3d *v, const BmapScene *s, u32 gen, const float (*po
                 mid[0] += poke[i][0] / (float)npoke; mid[1] += poke[i][1] / (float)npoke; mid[2] += poke[i][2] / (float)npoke;
             }
             (void)mid;
-            /* (the battle's own set, the same in both views, as the fight shows it; and a tree this view's camera
-             * stands inside) */
+            /* (the battle's own set, the same in both views and in every frame of a scene played, as the fight
+             * shows it) */
             snap.backdrop.n_clear = 1u + bmap_place_trees(s, &snap.backdrop.clear[1], G3D_BACKDROP_CLEAR - 5u);
-            snap.backdrop.n_clear += bmap_trees_inside(s, v->eye, &snap.backdrop.clear[snap.backdrop.n_clear], 4u);
         }
     }
     /* each picture stays on the GPU: kept in a texture, drawn at the frame's
@@ -1297,43 +1291,6 @@ static int trainer_lead(int tid)
     free(rec);
     bw_arc_close(&arc);
     return species >= 1 && species <= 649 ? species : 0;
-}
-
-/* Whether a trainer has a line mid-battle (the trainer messages' table
- * a/0/9/0: u16 trainer, u16 kind; kinds 17 to 24 are the battle's own: its
- * last Pokemon, a Pokemon low, the first hit), so comes back on the field to
- * say it (effect 63).  Cached for the last trainer asked. */
-static int trainer_speaks_mid(int tid)
-{
-    static int last = -1, answer;
-    BwArcFile arc;
-    long n;
-    u8 *t;
-    long i;
-
-    if (tid == last) {
-        return answer;
-    }
-    last = tid;
-    answer = 0;
-    if (tid < 0 || bw_arc_open(&arc, "a/0/9/0") != 0) {
-        return 0;
-    }
-    n = bw_arc_member_size(&arc, 0);
-    t = n >= 4 ? (u8 *)malloc((size_t)n) : NULL;
-    if (t != NULL && bw_arc_read_member(&arc, 0, t, (u32)n) >= 4) {
-        for (i = 0; i + 4 <= n; i += 4) {
-            int who = t[i] | t[i + 1] << 8, kind = t[i + 2] | t[i + 3] << 8;
-
-            if (who == tid && kind >= 17 && kind <= 24) {
-                answer = 1;
-                break;
-            }
-        }
-    }
-    free(t);
-    bw_arc_close(&arc);
-    return answer;
 }
 
 /* A trainer's battle picture: the foe's front (a/0/7/2) by its class, through
@@ -1621,11 +1578,17 @@ static void trainer_refresh(void)
         A.tr_foe_id = tid;
         tranim_load(&A.an_foe, tid, 0);
     }
-    if (A.tr_own_gender != A.gender) {
-        free(A.tr_own.rgba);
-        trainer_load(&A.tr_own, A.gender, 1);
-        A.tr_own_gender = A.gender;
-        tranim_load(&A.an_own, A.gender, 1);
+    {
+        /* your side's trainer: the player's own back, or in the catching lesson the professor's (a/0/7/3 set 2:
+         * she fights it, the player watches) */
+        const int own = r != NULL && r->kind == 'T' && r->trainer_id == BMAP_SPOT_CATCH_LESSON ? 2 : A.gender;
+
+        if (A.tr_own_gender != own) {
+            free(A.tr_own.rgba);
+            trainer_load(&A.tr_own, own, 1);
+            A.tr_own_gender = own;
+            tranim_load(&A.an_own, own, 1);
+        }
     }
     tid = r != NULL ? r->ally_id : -1;
     if (A.tr_ally_id != tid) {
@@ -1806,13 +1769,13 @@ static void ring(float x, float y, float r, u32 col)
 
 static void map_to_px(float mx, float mz, float *x, float *y)
 {
-    *x = (float)A.map_x + (float)A.map_s * 0.5f + (mx - A.view_x) * A.zoom / 16.0f;
+    *x = (float)A.map_x + (float)A.map_w * 0.5f + (mx - A.view_x) * A.zoom / 16.0f;
     *y = (float)A.map_y + (float)A.map_s * 0.5f + (mz - A.view_z) * A.zoom / 16.0f;
 }
 
 static void px_to_map(int x, int y, float *mx, float *mz)
 {
-    *mx = A.view_x + ((float)x - (float)A.map_x - (float)A.map_s * 0.5f) * 16.0f / A.zoom;
+    *mx = A.view_x + ((float)x - (float)A.map_x - (float)A.map_w * 0.5f) * 16.0f / A.zoom;
     *mz = A.view_z + ((float)y - (float)A.map_y - (float)A.map_s * 0.5f) * 16.0f / A.zoom;
 }
 
@@ -1864,7 +1827,7 @@ static void draw_map(void)
     int x, y, step;
     float mx, mz;
 
-    ui_fill(&C, A.map_x, A.map_y, A.map_s, A.map_s, 0x0C0D10u, 255);
+    ui_fill(&C, A.map_x, A.map_y, A.map_w, A.map_s, 0x0C0D10u, 255);
     if (r == NULL) {
         return;
     }
@@ -1873,11 +1836,11 @@ static void draw_map(void)
         A.view_z = r->mode == BMAP_SPOT_FIXED ? r->sz : A.tz;
     }
     ui_push(&C, 0, 0, &saved);
-    ui_clip(&C, A.map_x, A.map_y, A.map_s, A.map_s);
+    ui_clip(&C, A.map_x, A.map_y, A.map_w, A.map_s);
     step = (int)A.zoom;
     if (A.have_base && A.base_zone == r->zone) {
         float ox, oy;
-        int t0x, t0z, n = A.map_s / (step > 0 ? step : 1) + 2;
+        int t0x, t0z, n = (A.map_w > A.map_s ? A.map_w : A.map_s) / (step > 0 ? step : 1) + 2;
 
         px_to_map(A.map_x, A.map_y, &mx, &mz);
         t0x = (int)floorf(mx / 16.0f);
@@ -1987,7 +1950,7 @@ static void draw_map(void)
         arrow(ox, oy, A.tf, 16.0f, C_TEXT);
     }
     ui_pop(&C, 0, 0, &saved);
-    outline(A.map_x, A.map_y, A.map_s, A.map_s, C_LINE);
+    outline(A.map_x, A.map_y, A.map_w, A.map_s, C_LINE);
 }
 
 /* Mouse on the map: left drag moves (the fixed spot, else the player),
@@ -1997,7 +1960,7 @@ static void map_input(void)
 {
     BmapSpot *r = cur();
     float mx, mz;
-    int inside = hover(A.map_x, A.map_y, A.map_s, A.map_s);
+    int inside = hover(A.map_x, A.map_y, A.map_w, A.map_s);
 
     if (r == NULL) {
         return;
@@ -2238,7 +2201,7 @@ static void ow_input(void)
         v->dirty = 1;
     }
     if (inside && A.drag == 0 && (A.pressed || A.rpressed)) {
-        A.drag = A.pressed ? 6 : 7;
+        A.drag = A.pressed ? 14 : 15;       /* (its own numbers: 6 is the tile map's turn of the player) */
         A.drag_mx = A.mx;
         A.drag_my = A.my;
         A.drag_vx = A.ow_tx;
@@ -2246,7 +2209,7 @@ static void ow_input(void)
         A.drag_x = A.ow_yaw;
         A.drag_z = A.ow_pitch;
     }
-    if (A.drag == 6) {
+    if (A.drag == 14) {
         if (A.down) {
             /* the ground under the pointer stays under it, about */
             float per = 2.0f * A.ow_dist * tanf(A.ow_fov * 3.14159265f / 180.0f) / (float)(v->h > 0 ? v->h : 1);
@@ -2265,7 +2228,7 @@ static void ow_input(void)
                 A.ow_build = 1;
             }
         }
-    } else if (A.drag == 7) {
+    } else if (A.drag == 15) {
         if (A.rdown) {
             A.ow_yaw = A.drag_x - (float)(A.mx - A.drag_mx) * 0.4f;
             A.ow_pitch = clampf(A.drag_z + (float)(A.my - A.drag_my) * 0.3f, 8.0f, 88.0f);
@@ -2475,10 +2438,30 @@ static const float k_sendout[3] = { -15.0f, -11.0f, 0.0f };
  * that plays moves its camera and its Pokemon.  The sprites are the size
  * the game gives them, as with the game's own backdrop (sdk/battle_view.c,
  * MCSS_Draw): only what the place moves changes it. */
+enum { TAB_COMMAND, TAB_INTRO };
+static const char k_view_hint[] = "Drag: turn, height   Right: slide, tilt   Wheel: zoom";
+static const char k_field_hint[] = "Drag: move   Right drag: turn   Wheel: zoom";
+
+/* A view's frame and its name over its top left corner; the active battle view's in the accent colour. */
+static void view_frame(const View3d *v, const char *name, int active)
+{
+    const int lw = text_w(name) + U(16), lh = U(26);
+
+    outline(v->x, v->y, v->w, v->h, active ? C_ACCENT : C_LINE);
+    if (active) {
+        outline(v->x + 1, v->y + 1, v->w - 2, v->h - 2, C_ACCENT);
+    }
+    if (lw + U(8) <= v->w) {
+        ui_fill(&C, v->x, v->y, lw, lh, 0x0E1016u, 255);
+        text(v->x + U(8), v->y + U(3), active ? C_ACCENT : C_TEXT, "%s", name);
+    }
+}
+
 static void draw_battle_view(int i)
 {
     View3d *v = &A.battle[i];
-    const ClipFrame *cf = play_frame();
+    /* (a played scene shows in the command camera's view; the intro camera's view stays its still) */
+    const ClipFrame *cf = i == TAB_COMMAND ? play_frame() : NULL;
     /* the Pokemon: the single battle's two, the double's four (ov094's slot
      * tables) or where a played camera has them, all on the place's foe
      * side (bmap_battle_warp) */
@@ -2570,8 +2553,10 @@ static void draw_battle_view(int i)
         }
         if (A.show_tr) {
             /* the trainers at their own slots (8 yours, 9 the foe's), with
-             * the Pokemon unless those are hidden: yours (and an ally) in
-             * the intro camera, the foe's in the command camera */
+             * the Pokemon unless those are hidden, each in the camera that
+             * shows it in a fight: yours (and an ally) in the intro camera,
+             * the foe's at its starting place in the command camera (and at
+             * the place it comes back to in the intro camera, below) */
             for (a = 1; a >= 0; a--) {
                 const Sprite *t = a ? &A.tr_foe : &A.tr_own;
 
@@ -2603,13 +2588,17 @@ static void draw_battle_view(int i)
                 n++;
             }
             {
-                /* and where it comes back to mid-battle, when it has a line
-                 * there: effect 63's point (0.74, 0.4, -9) and its slide in
-                 * (to 4.24), the game's own numbers */
+                /* and where it comes back: at the end of the fight, every
+                 * trainer (btl_client.c, BTL_CLIENT_StepShowTrainerResult: the
+                 * sprite at slot 9 again, then effect 63), and mid-battle when
+                 * it has a line there (the same effect): effect 63's point
+                 * (0.74, 0.4, -9) and its slide in (to 4.24), the game's own
+                 * numbers.  In the command camera's view: effect 63 plays from
+                 * the command camera's place (the game's own camera of the
+                 * effect, bcam_sim), as the starting place is seen. */
                 const BmapSpot *rr = cur();
 
-                if (i == 0 && rr != NULL && rr->kind == 'T' && A.tr_foe.rgba != NULL && n < 16
-                    && trainer_speaks_mid(rr->trainer_id)) {
+                if (i == 0 && rr != NULL && rr->kind == 'T' && A.tr_foe.rgba != NULL && n < 16) {
                     p[n][0] = 3021.0f / 4096.0f + 22528.0f / 4096.0f - 8192.0f / 4096.0f;
                     p[n][1] = 1638.0f / 4096.0f;
                     p[n][2] = -36864.0f / 4096.0f;
@@ -2720,14 +2709,20 @@ static void draw_battle_view(int i)
         }
         d[far] = -1e9f;
     }
-    if (cf == NULL) {
-        text(v->x + U(10), v->y + v->h - U(26), 0xFFFFFFu, "Drag: turn, height   Right: slide, tilt   Wheel: zoom");
+    if (cf == NULL && A.tab == i && text_w(k_view_hint) + U(20) <= v->w) {
+        text(v->x + U(10), v->y + v->h - U(26), 0xFFFFFFu, "%s", k_view_hint);
     }
-    outline(v->x, v->y, v->w, v->h, C_LINE);
+    view_frame(v, i == TAB_INTRO ? "Intro camera" : "Command camera", A.tab == i);
 }
 
 /* The overworld view: the field camera, moved freely, the zone's
  * characters, the player and the battle's two places. */
+/* Whether a mark of radius r at (sx, sy) lies inside the view's picture. */
+static int view_holds(const View3d *v, float sx, float sy, float r)
+{
+    return sx - r >= (float)v->x && sx + r <= (float)(v->x + v->w) && sy - r >= (float)v->y && sy + r <= (float)(v->y + v->h);
+}
+
 static void draw_field_view(void)
 {
     const BmapSpot *r = cur();
@@ -2844,7 +2839,7 @@ static void draw_field_view(void)
 
         if (h->rgba != NULL) {
             draw_standing(v, h->rgba, h->w, h->h, pt, A.hero_h * A.field.place_k);
-        } else if (project(v, pt, &sx, &sy, &unit)) {
+        } else if (project(v, pt, &sx, &sy, &unit) && view_holds(v, sx, sy, 9.0f)) {
             ring(sx, sy, 8.0f, C_TEXT);
         }
     }
@@ -2855,7 +2850,7 @@ static void draw_field_view(void)
         map_to_battle(&A.field, (float)r->tx * 16.0f + 8.0f,
                       floor_y((float)r->tx * 16.0f + 8.0f, (float)r->tz * 16.0f + 8.0f),
                       (float)r->tz * 16.0f + 8.0f, pt);
-        if (project(v, pt, &sx, &sy, &unit)) {
+        if (project(v, pt, &sx, &sy, &unit) && view_holds(v, sx, sy, 9.0f)) {
             ring(sx, sy, 8.0f, C_FOE);
         }
     }
@@ -2864,17 +2859,19 @@ static void draw_field_view(void)
 
         battle_point_map(OWN_X, OWN_Z, &ax, &az);
         map_to_battle(&A.field, ax, A.placed.place_g[0], az, pt);
-        if (project(v, pt, &sx, &sy, &unit)) {
+        if (project(v, pt, &sx, &sy, &unit) && view_holds(v, sx, sy, 9.0f)) {
             ring(sx, sy, 6.0f, C_OWN);
         }
         battle_point_map(FOE_X, FOE_Z - A.placed.foe_dz, &ax, &az);
         map_to_battle(&A.field, ax, A.placed.place_g[1], az, pt);
-        if (project(v, pt, &sx, &sy, &unit)) {
+        if (project(v, pt, &sx, &sy, &unit) && view_holds(v, sx, sy, 9.0f)) {
             ring(sx, sy, 6.0f, C_FOE);
         }
     }
-    outline(v->x, v->y, v->w, v->h, C_LINE);
-    text(v->x + U(10), v->y + v->h - U(26), 0xFFFFFFu, "Drag: move   Right drag: turn   Wheel: zoom");
+    if (text_w(k_field_hint) + U(20) <= v->w) {
+        text(v->x + U(10), v->y + v->h - U(26), 0xFFFFFFu, "%s", k_field_hint);
+    }
+    view_frame(v, "Overworld", 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2886,17 +2883,17 @@ static void draw_field_view(void)
  *
  *   top      the place, Single / Double, what happened last, Checked, Undo,
  *            Preview, Play battle
- *   left     the places: search, filters, how far the checking is, the list
- *   centre   one view at a time (Command camera, Intro camera, Overworld);
- *            under a battle view the play bar: the scene (Intro, Mid-battle,
- *            Idle, a move), Play and a timeline
+ *   left     the overworld (small, with the season and the time of day), then
+ *            the places: search, filters, how far the checking is, the list
+ *   centre   the intro camera's view over the command camera's; under them
+ *            the play bar: the scene (Intro, Mid-battle, Idle, a move), Play
+ *            and a timeline (a played scene shows in the command camera's
+ *            view).  A press on a battle view makes it the active one.
  *   right    the inspector, scrolled by the wheel: Placement, Camera (of the
- *            view on show), Views, Trainers, Pokemon shown, More, the map
+ *            active view), Views, Trainers, Pokemon shown, More, the map
  *            from above
  */
 
-enum { TAB_COMMAND, TAB_INTRO, TAB_FIELD };
-static const char *k_tabs[3] = { "Command camera", "Intro camera", "Overworld" };
 
 #define TOP_H     U(60)
 #define SL_ROW    U(52)               /* a slider's height: its label line and track */
@@ -3283,22 +3280,25 @@ static void draw_top(int LW, int IW)
 
 /* The map at (x, y), w across, as tall as `room` lets it (hidden under 160
  * pixels: scroll to it), with its key under it.  Returns the y under all. */
-static int top_view(int x, int y, int w, int room)
+static int top_view(int x, int y, int w, int room, int hints, int wide)
 {
     int kx = x;
 
+    /* (a square in the inspector, the key under a slot w high; under the place list, `wide`, the map as wide as
+     * the column and `room` high, the key right under it) */
     A.map_x = x;
     A.map_y = y;
     A.map_s = room < w ? room : w;
+    A.map_w = wide ? w : A.map_s;
     if (A.map_s < 160 || A.map_y < TOP_H) {
-        A.map_s = 0;
+        A.map_s = A.map_w = 0;
     } else {
         draw_map();
-        if (!A.follow && button(x + A.map_s - U(92), y + U(6), U(86), U(26), "Center", 0)) {
+        if (!A.follow && button(x + A.map_w - U(92), y + U(6), U(86), U(26), "Center", 0)) {
             A.follow = 1;
         }
     }
-    y += w + U(10);
+    y += (wide ? room : w) + U(10);
     /* the key, and the mouse on the map */
     ring((float)kx + 7.0f, (float)y + 10.0f, 6.0f, C_OWN);
     kx = text(kx + U(18), y, C_MUTED, "Yours") + U(14);
@@ -3308,6 +3308,9 @@ static int top_view(int x, int y, int w, int room)
     kx = text(kx + U(18), y, C_MUTED, "Camera") + U(14);
     ui_ellipse(&C, kx + 1, y + U(4), U(11), U(11), C_TEXT, UI_INK, 255);
     text(kx + U(18), y, C_MUTED, "Player");
+    if (!hints) {
+        return y + U(30);
+    }
     y += U(26);
     text(x, y, C_MUTED, "Drag: move  Right: turn");
     y += U(26);
@@ -3319,17 +3322,17 @@ static int top_view(int x, int y, int w, int room)
     return y + U(30);
 }
 
-/* the height top_view takes, w across */
-static int top_view_h(int w)
+/* the height top_view takes, w across, with or without its lines of mouse hints */
+static int top_view_h(int w, int hints)
 {
-    return w + U(10) + 4 * U(26) + U(30);
+    return w + U(10) + (hints ? 4 * U(26) : 0) + U(30);
 }
 
 /* ---- the places ---- */
 
 static void draw_places(int x0, int y0, int w0, int h0)
 {
-    int x = x0 + U(12), y = y0 + U(12), w = w0 - U(24), i, rows, list_y, list_h, row_h = U(30), done = 0, n = 0;
+    int x = x0 + U(12), y = y0 + U(12), w = w0 - U(24), i, rows, list_y, list_h, row_h = U(30), done = 0, n = 0, map_s = 0, map_hints = 1;
 
     ui_fill(&C, x0, y0, w0, h0, C_PANEL, 255);
     ui_fill(&C, x0 + w0 - 1, y0, 1, h0, C_LINE, 255);
@@ -3377,7 +3380,18 @@ static void draw_places(int x0, int y0, int w0, int h0)
     y += U(14);
     /* the list, to the bottom (or to the map, on a big window) */
     list_y = y;
-    rows = (y0 + h0 - U(8) - (A.map_left ? top_view_h(w) + U(12) : 0) - list_y) / row_h;
+    {
+        /* the map under the list, as large as leaves the list six rows (the column's width at most): with its
+         * mouse hints when it takes the whole width even so, else without them (a larger map); with room for less
+         * than 200 it is in the inspector */
+        const int room = y0 + h0 - U(8) - list_y - 6 * row_h - U(12);
+
+        map_hints = room - top_view_h(0, 1) >= w;
+        map_s = room - top_view_h(0, map_hints);
+        map_s = map_s > w ? w : map_s;
+        A.map_left = map_s >= U(200);
+    }
+    rows = (y0 + h0 - U(8) - (A.map_left ? top_view_h(map_s, map_hints) + U(12) : 0) - list_y) / row_h;
     if (rows < 3) {
         rows = 3;
     }
@@ -3415,7 +3429,7 @@ static void draw_places(int x0, int y0, int w0, int h0)
         ui_fill(&C, x + w + U(6), by, U(3), bh, C_LINE, 255);
     }
     if (A.map_left) {
-        top_view(x, y0 + h0 - top_view_h(w), w, w);
+        top_view(x, y0 + h0 - top_view_h(map_s, map_hints), w, map_s, map_hints, 1);
     }
 }
 
@@ -3527,76 +3541,87 @@ static void draw_play_bar(int x0, int y0, int w0)
 
 static void draw_centre(int x0, int y0, int w0, int h0)
 {
-    int x = x0 + U(14), y = y0 + U(12), i, ph = play_h(w0);
+    const int ph = play_h(w0), gap = U(10), vx = x0 + U(14), vw = w0 - U(28), top = y0 + U(12);
+    const int vh = (y0 + h0 - ph - U(12) - top - gap) / 2;
+    int i;
 
     trainer_refresh();
     ui_fill(&C, x0, y0, w0, h0, C_BG, 255);
-    for (i = 0; i < 3; i++) {
-        if (chip(x, y, k_tabs[i], A.tab == i)) {
-            A.tab = i;
-            A.battle[0].dirty = A.battle[1].dirty = A.over.dirty = 1;
-        }
-        x += chip_w(k_tabs[i]) + U(6);
-    }
-    if (A.tab == TAB_FIELD) {
-        /* the season and the time of day it shows, while they fit */
-        x += U(12);
-        for (i = 0; i < 8; i++) {
-            const char *lab = i < 4 ? k_seasons[i] : k_hour_names[i - 4];
-            int on = i < 4 ? A.season == i : A.hour == i - 4;
-
-            if (x + chip_w(lab) > x0 + w0 - U(14)) {
-                break;
-            }
-            if (chip(x, y, lab, on)) {
-                if (i < 4) {
-                    A.season = i;
-                } else {
-                    A.hour = i - 4;
-                }
-                A.need_place = 1;
-            }
-            x += chip_w(lab) + (i == 3 ? U(16) : U(4));
-        }
-    }
-    y += U(42);
-    /* only the view on show takes the mouse: the others have no place */
-    for (i = 0; i < 2; i++) {
-        if (A.tab != i) {
-            A.battle[i].w = A.battle[i].h = 0;
-        }
-    }
-    if (A.tab != TAB_FIELD) {
-        A.over.w = A.over.h = 0;
-        fit_view(&A.battle[A.tab], x0 + U(14), y, w0 - U(28), y0 + h0 - ph - U(12) - y);
-    } else {
-        fit_view(&A.over, x0 + U(14), y, w0 - U(28), y0 + h0 - U(56) - y);
-    }
+    /* the intro camera's view over the command camera's */
+    fit_view(&A.battle[TAB_INTRO], vx, top, vw, vh);
+    fit_view(&A.battle[TAB_COMMAND], vx, top + vh + gap, vw, vh);
     if (A.need_place && cur() != NULL) {
         place_all();
     }
     if (A.emb != NULL) {
-        /* the game, played here: in the battle views' own frame (their
-         * 16:9 and their place), the play bar's room left empty */
+        /* the game, played here: in the room of the two battle views (its
+         * 16:9), the play bar's room left empty */
         View3d frame;
 
         memset(&frame, 0, sizeof frame);
-        fit_view(&frame, x0 + U(14), y, w0 - U(28), y0 + h0 - ph - U(12) - y);
-        A.battle[0].w = A.battle[0].h = A.battle[1].w = A.battle[1].h = A.over.w = A.over.h = 0;
+        fit_view(&frame, vx, top, vw, 2 * vh + gap);
+        A.battle[0].w = A.battle[0].h = A.battle[1].w = A.battle[1].h = 0;
         draw_embed(frame.x, frame.y, frame.w, frame.h);
-    } else if (A.tab == TAB_FIELD) {
-        draw_field_view();
-        if (button(x0 + U(14), y0 + h0 - U(44), chip_w("Field camera"), U(30), "Field camera", 0)) {
-            A.ow_reset = 1;
-            A.need_place = 1;
-        }
     } else {
-        draw_battle_view(A.tab);
+        for (i = 1; i >= 0; i--) {
+            /* a press on a view makes it the active one */
+            if ((A.pressed || A.rpressed) && hover(A.battle[i].x, A.battle[i].y, A.battle[i].w, A.battle[i].h) && A.tab != i) {
+                A.tab = i;
+                A.battle[0].dirty = A.battle[1].dirty = 1;
+            }
+            draw_battle_view(i);
+        }
         draw_play_bar(x0, y0 + h0 - ph, w0);
     }
     if (!A.have_base) {
-        text(x0 + U(24), y + U(24), C_MUTED, "Loading...");
+        text(x0 + U(24), top + U(34), C_MUTED, "Loading...");
     }
+}
+
+/* The season and the time of day under the overworld: two rows of four equal buttons.  Returns the y under them;
+ * draw 0 only measures. */
+static int ow_strip(int x, int y, int w, int draw)
+{
+    const int gap = U(4), cw = (w - 3 * gap) / 4;
+    int i;
+
+    for (i = 0; i < 8 && draw; i++) {
+        const char *lab = i < 4 ? k_seasons[i] : k_hour_names[i - 4];
+        const int on = i < 4 ? A.season == i : A.hour == i - 4;
+
+        if (button(x + (i % 4) * (cw + gap), y + (i / 4) * U(34), cw, U(30), lab, on)) {
+            if (i < 4) {
+                A.season = i;
+            } else {
+                A.hour = i - 4;
+            }
+            A.need_place = 1;
+        }
+    }
+    return y + 2 * U(34);
+}
+
+/* The overworld at the top of the left column: the field's own view, the season and the time of day it shows.
+ * Returns its height. */
+static int draw_overworld(int x0, int y0, int w0)
+{
+    const int x = x0 + U(12), w = w0 - U(24), vh = w * 9 / 16;
+    const int h = ow_strip(x, y0 + U(12) + vh + U(8), w, 0) - y0 + U(2);
+
+    if (A.emb != NULL) {
+        A.over.w = A.over.h = 0;        /* (the game plays in the centre: no overworld, the list takes its room) */
+        return 0;
+    }
+    ui_fill(&C, x0, y0, w0, h, C_PANEL, 255);
+    ui_fill(&C, x0 + w0 - 1, y0, 1, h, C_LINE, 255);
+    fit_view(&A.over, x, y0 + U(12), w, vh);
+    draw_field_view();
+    if (button(A.over.x + A.over.w - chip_w("Reset") - U(6), A.over.y + U(6), chip_w("Reset"), U(26), "Reset", 0)) {
+        A.ow_reset = 1;                 /* back to the zone's field camera */
+        A.need_place = 1;
+    }
+    ow_strip(x, y0 + U(12) + vh + U(8), w, 1);
+    return h;
 }
 
 /* ---- the inspector ---- */
@@ -3612,7 +3637,7 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
         return;
     }
     /* the wheel scrolls it (not over the map, where it zooms) */
-    if (A.wheel != 0 && A.drag == 0 && hover(x0, y0, w0, h0) && !hover(A.map_x, A.map_y, A.map_s, A.map_s)) {
+    if (A.wheel != 0 && A.drag == 0 && hover(x0, y0, w0, h0) && !hover(A.map_x, A.map_y, A.map_w, A.map_s)) {
         A.insp_scroll -= A.wheel * U(60);
     }
     if (A.insp_scroll > A.insp_h - h0) {
@@ -4001,7 +4026,7 @@ static void draw_inspector(int x0, int y0, int w0, int h0)
     /* the map from above, unless it is under the list */
     if (!A.map_left) {
         y = section(x, y, w, "TOP VIEW");
-        y = top_view(x, y, w, y0 + h0 - U(12) - y);
+        y = top_view(x, y, w, y0 + h0 - U(12) - y, 1, 0);
     }
     A.insp_h = y - top;
     A.mx = keep_mx;
@@ -4225,10 +4250,9 @@ static void frame(void)
     }
     SDL_GetWindowSize(A.win, &A.W, &A.H);
     /* 1440p and up: the text a half bigger, the room between a quarter
-     * (all of the inspector shows), the map under the list */
+     * (all of the inspector shows) */
     g_fk = A.H >= 1300 ? 3 : 2;
     g_u = g_fk == 3 ? 5 : 4;
-    A.map_left = g_fk == 3;
     LW = A.W * 20 / 100;
     LW = LW < U(300) ? U(300) : LW > U(420) ? U(420) : LW;
     IW = A.W * 25 / 100;
@@ -4257,7 +4281,11 @@ static void frame(void)
     view_input(1);
     /* the top bar last: the inspector scrolls under it */
     draw_centre(LW, TOP_H, A.W - LW - IW, A.H - TOP_H);
-    draw_places(0, TOP_H, LW, A.H - TOP_H);
+    {
+        const int oh = draw_overworld(0, TOP_H, LW);
+
+        draw_places(0, TOP_H + oh, LW, A.H - TOP_H - oh);
+    }
     draw_inspector(A.W - IW, TOP_H, IW, A.H - TOP_H);
     draw_top(LW, IW);
     if (hold.on) {
@@ -4388,6 +4416,49 @@ static void run_script(const char *path)
         } else if (sscanf(line, "frame %d", &x1) == 1) {
             A.play_at = x1;
             step();
+        } else if (strcmp(line, "placesweep") == 0) {
+            /* (research) every place in turn (its first view), placed once: for the logs the map code writes */
+            int row;
+
+            for (row = 0; row < bmap_spots_count(); row++) {
+                const BmapSpot *r = bmap_spots_get(row);
+
+                if (r == NULL || r->view != 0) {
+                    continue;
+                }
+                select_row(row);
+                step();
+                {
+                    /* (the game's height of the player's tile, and the map's own ground right under it) */
+                    float ty = 0.0f, gy = 0.0f;
+                    int hit = 0, have = A.have_base && bmap_tile_height(&A.base, A.tx, A.tz, &ty);
+
+                    if (have) {
+                        gy = bmap_ground_below(&A.base, A.tx, A.tz, ty + 6.0f, &hit);
+                    }
+                    fprintf(stderr, "placesweep row %s zone %d kind %c tile %d %.2f ground %d %.2f\n", r->id, r->zone, r->kind, have,
+                            (double)ty, hit, (double)gy);
+                }
+            }
+        } else if (strcmp(line, "treesets") == 0) {
+            /* (research) each fixed view in turn: its battle's trees (bmap_place_trees writes what the set is made
+             * of with BMAP_TREE_LOG set) */
+            int row;
+
+            for (row = 0; row < bmap_spots_count(); row++) {
+                const BmapSpot *r = bmap_spots_get(row);
+                float set[G3D_BACKDROP_CLEAR][4];
+
+                if (r == NULL || r->mode != BMAP_SPOT_FIXED) {
+                    continue;
+                }
+                select_row(row);
+                step();
+                fprintf(stderr, "treeset row %s view %d ok %d zone %d: %u trees, %u out\n", r->id, view_no(row), r->ok, r->zone,
+                        A.placed.n_trees, bmap_place_trees(&A.placed, set, G3D_BACKDROP_CLEAR - 5u));
+            }
+        } else if (sscanf(line, "treedump %199s", arg) == 1) {
+            tree_dump(arg);
         } else if (sscanf(line, "camdump %199s", arg) == 1) {
             /* each frame of the scene: the game's camera, then as this
              * place draws it (bmap_battle_camera) */
@@ -4412,6 +4483,137 @@ static void run_script(const char *path)
         }
     }
     fclose(f);
+}
+
+/* (research) the distance from a point to a triangle */
+static float tri_dist(const float p[3], const BmapVertex *v, float near[3])
+{
+    const float a[3] = { v[0].x, v[0].y, v[0].z }, b[3] = { v[1].x, v[1].y, v[1].z }, c[3] = { v[2].x, v[2].y, v[2].z };
+    float ab[3], ac[3], ap[3], bp[3], cp[3], q[3], d1, d2, d3, d4, d5, d6, va, vb, vc, t, w;
+    int k;
+
+    for (k = 0; k < 3; k++) {
+        ab[k] = b[k] - a[k]; ac[k] = c[k] - a[k]; ap[k] = p[k] - a[k]; bp[k] = p[k] - b[k]; cp[k] = p[k] - c[k];
+    }
+#define DOT3(x, y) ((x)[0] * (y)[0] + (x)[1] * (y)[1] + (x)[2] * (y)[2])
+    d1 = DOT3(ab, ap); d2 = DOT3(ac, ap); d3 = DOT3(ab, bp); d4 = DOT3(ac, bp); d5 = DOT3(ab, cp); d6 = DOT3(ac, cp);
+    vc = d1 * d4 - d3 * d2; vb = d5 * d2 - d1 * d6; va = d3 * d6 - d5 * d4;
+    if (d1 <= 0.0f && d2 <= 0.0f) {
+        memcpy(q, a, sizeof q);
+    } else if (d3 >= 0.0f && d4 <= d3) {
+        memcpy(q, b, sizeof q);
+    } else if (d6 >= 0.0f && d5 <= d6) {
+        memcpy(q, c, sizeof q);
+    } else if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
+        t = d1 / (d1 - d3);
+        for (k = 0; k < 3; k++) q[k] = a[k] + t * ab[k];
+    } else if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
+        t = d2 / (d2 - d6);
+        for (k = 0; k < 3; k++) q[k] = a[k] + t * ac[k];
+    } else if (va <= 0.0f && d4 - d3 >= 0.0f && d5 - d6 >= 0.0f) {
+        t = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        for (k = 0; k < 3; k++) q[k] = b[k] + t * (c[k] - b[k]);
+    } else {
+        t = vb / (va + vb + vc); w = vc / (va + vb + vc);
+        for (k = 0; k < 3; k++) q[k] = a[k] + ab[k] * t + ac[k] * w;
+    }
+    for (k = 0; k < 3; k++) {
+        near[k] = q[k];
+        q[k] -= p[k];
+    }
+    return sqrtf(DOT3(q, q));
+#undef DOT3
+}
+
+/* (research, script "treedump FILE") the scene's trees, then each frame of the scene chosen: the camera's place as
+ * this place draws it; the nearest drawn triangle of a tree that stays (the camera passing through one); the nearest
+ * upright triangle that is no tree. */
+static void tree_dump(const char *path)
+{
+    const BmapScene *s = &A.placed;
+    float set[G3D_BACKDROP_CLEAR][4];
+    unsigned nset, i, j, q;
+    FILE *o = fopen(path, "w");
+    int k;
+
+    scene_frames();
+    if (o == NULL) {
+        return;
+    }
+    nset = bmap_place_trees(s, set, G3D_BACKDROP_CLEAR - 5u);
+    fprintf(o, "# trees %u, the battle's own set %u:", s->n_trees, nset);
+    for (i = 0; i < nset; i++) {
+        fprintf(o, " [tag %.0f at %.1f %.1f width %.1f]", (double)set[i][1], (double)set[i][0], (double)set[i][2], (double)-set[i][3]);
+    }
+    fprintf(o, "\n");
+    for (i = 0; i < s->n_trees; i++) {
+        const float *t = s->trees[i];
+
+        fprintf(o, "T %u %.0f %.2f %.2f %.2f %.2f %.2f %.2f %.2f\n", i, (double)t[5], (double)t[0], (double)t[1], (double)t[2],
+                (double)t[3], (double)t[4], (double)t[6], (double)t[7]);
+    }
+    for (k = 0; k < A.nsim; k++) {
+        float e[3], t[3], dt = 1e30f, dp = 1e30f, tpos[3] = { 0, 0, 0 }, ppos[3] = { 0, 0, 0 };
+        unsigned ttag = 0, pobj = 0;
+
+        memcpy(e, A.sim[k].eye, sizeof e);
+        memcpy(t, A.sim[k].target, sizeof t);
+        bmap_battle_camera(e, t, s);
+        fprintf(o, "%d eye %.2f %.2f %.2f in", k, (double)e[0], (double)e[1], (double)e[2]);
+        for (i = 0; i < s->nd; i++) {
+            const BmapDraw *d = &s->d[i];
+
+            if (d->billboard || d->grass || d->count < 3u || d->first + d->count > s->nv) {
+                continue;
+            }
+            for (j = d->first; j + 2u < d->first + d->count; j += 3u) {
+                const BmapVertex *v = &s->v[j];
+                const float cx = (v[0].x + v[1].x + v[2].x) / 3.0f, cy = (v[0].y + v[1].y + v[2].y) / 3.0f,
+                            cz = (v[0].z + v[1].z + v[2].z) / 3.0f;
+                float dd, nr[3];
+
+                if (v[0].y < -900.0f) {
+                    continue;
+                }
+                (void)cx; (void)cy; (void)cz;
+                if (v[0].a != 0) {
+                    int out = 0;
+
+                    dd = tri_dist(e, v, nr);
+                    if (dd >= dt) {
+                        continue;
+                    }
+                    for (q = 0; q < nset && !out; q++) {
+                        const float *c = set[q];
+
+                        out = (v[0].a == 255 || (float)v[0].a == c[1])
+                              && sqrtf((nr[0] - c[0]) * (nr[0] - c[0]) + (nr[2] - c[2]) * (nr[2] - c[2])) < (c[3] == -7.0f ? 7.0f : -1.5f * c[3]);   /* (a narrow tree: its whole box; a wide one: the stretch) */
+                    }
+                    if (out) {
+                        continue;
+                    }
+                    dt = dd; ttag = v[0].a; tpos[0] = nr[0]; tpos[1] = nr[1]; tpos[2] = nr[2];
+                } else {
+                    const float ux = v[1].x - v[0].x, uy = v[1].y - v[0].y, uz = v[1].z - v[0].z;
+                    const float wx = v[2].x - v[0].x, wy = v[2].y - v[0].y, wz = v[2].z - v[0].z;
+                    const float nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+                    const float ln = sqrtf(nx * nx + ny * ny + nz * nz);
+
+                    if (ln < 1e-9f || fabsf(ny) / ln >= 0.7f) {
+                        continue;       /* (a floor is kept) */
+                    }
+                    dd = tri_dist(e, v, nr);
+                    if (dd < dp) {
+                        dp = dd; pobj = v[0].obj; ppos[0] = nr[0]; ppos[1] = nr[1]; ppos[2] = nr[2];
+                    }
+                }
+            }
+        }
+        fprintf(o, " | tree %.2f tag %u at %.1f %.1f %.1f | plain %.2f obj %08X draw at %.1f %.1f %.1f\n", (double)dt, ttag,
+                (double)tpos[0], (double)tpos[1], (double)tpos[2], (double)dp, pobj, (double)ppos[0], (double)ppos[1],
+                (double)ppos[2]);
+    }
+    fclose(o);
 }
 
 static const char *scene_name(int sc)

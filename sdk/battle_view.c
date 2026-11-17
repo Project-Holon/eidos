@@ -151,6 +151,7 @@ typedef struct BvJob {
     int has_py;                     /* py is known (the ground nearest it) */
     int season, hour, minute;
     int trainer;                    /* a trainer battle (the setup's competitor) */
+    int lesson;                     /* the catching lesson (competitor 4) */
     int trainer_id;                 /* the opponent's trainer number, 0 unknown */
     BmapPlaceSpec spec;
     int rc;
@@ -673,11 +674,10 @@ static void camera_clearance(G3dBackdrop *out)
     }
     {
         /* The trees.  The battle's own set, chosen once from the place's two still cameras (bmap_place_trees: what
-         * the spot editor shows), stays out the whole battle; nothing joins it.  A tree the camera stands inside
-         * this frame is left out for the frame. */
+         * the spot editor shows), stays out the whole battle; nothing joins it and nothing leaves it (a tree that
+         * went only while a camera move passed through it popped out and back). */
         const BmapScene *sc = (const BmapScene *)out->scene;
-        float in[4][4];
-        unsigned k, m;
+        unsigned k;
 
         if (sc != NULL && !g_tree_seeded) {
             g_tree_seeded = 1;
@@ -686,15 +686,11 @@ static void camera_clearance(G3dBackdrop *out)
                 fprintf(stderr, "trees: %u out for this battle (frame %u)\n", g_ntree_out, (unsigned)bw_input_frame_number());
             }
         }
-        m = bmap_trees_inside(sc, out->eye, in, 4u);
-        if (n + g_ntree_out + m > G3D_BACKDROP_CLEAR) {
-            n = G3D_BACKDROP_CLEAR - g_ntree_out - m;   /* (the oldest places make room) */
+        if (n + g_ntree_out > G3D_BACKDROP_CLEAR) {
+            n = G3D_BACKDROP_CLEAR - g_ntree_out;       /* (the oldest places make room) */
         }
         for (k = 0; k < g_ntree_out; k++) {
             memcpy(out->clear[n++], g_tree_out[k], 4 * sizeof(float));
-        }
-        for (k = 0; k < m; k++) {
-            memcpy(out->clear[n++], in[k], 4 * sizeof(float));
         }
     }
     out->n_clear = n;
@@ -931,7 +927,16 @@ static int read_place(uintptr_t eff, BvJob *j)
     }
     bm = rd32(eff, EFF_MAIN);
     setup = gptr_ok(bm) ? rd32(bm, 0) : 0;
-    j->trainer = gptr_ok(setup) && rd32(setup, 0) != 0;     /* competitor: 0 wild */
+    {
+        /* the setup's competitor (the game's btl_setup.c): 0 wild, 1 a trainer, 2 the Battle Subway's, 3 a link
+         * partner, 4 the catching lesson (BTL_SETUP_SetupDemo, started by EVENT_BATTLE_CreateCatchTutorial: the
+         * professor's Minccino against a wild Patrat).  The lesson is no trainer battle: it was read as one, and
+         * took the row of whatever trainer stood nearest. */
+        const u32 comp = gptr_ok(setup) ? rd32(setup, 0) : 0u;
+
+        j->trainer = comp >= 1u && comp <= 3u;
+        j->lesson = comp == 4u;
+    }
     if (j->trainer) {
         /* the opponent: trainerData[1]->trainerId (BattleSetupParam) */
         uintptr_t td = rd32(setup, SETUP_TRAINER1);
@@ -1391,7 +1396,12 @@ static void battle_begin(uintptr_t eff)
     if (j->reach == 0 && j->trainer && j->trainer_id > 0) {
         row = bmap_spots_find_trainer(j->zone, j->trainer_id, j->px, j->pz);
     }
-    if (j->reach == 0 && row < 0) {
+    if (j->reach == 0 && j->lesson) {
+        /* the catching lesson: its own row; with none, where the player stands (never a wild area's row: the
+         * lesson is a scene of the story, at its own place) */
+        row = bmap_spots_find_trainer(j->zone, BMAP_SPOT_CATCH_LESSON, j->px, j->pz);
+    }
+    if (j->reach == 0 && row < 0 && !j->lesson) {
         row = bmap_spots_find(j->zone, j->trainer, j->px, j->pz);
     }
     if (j->reach == 0 && row < 0 && j->trainer) {

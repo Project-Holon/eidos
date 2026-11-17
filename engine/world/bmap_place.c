@@ -78,27 +78,48 @@ static void quad(BmapVertex *v, const float p[4][3], const BmapVertex *src)
     }
 }
 
-/* Whether a grass sheet is a leafy one (its opaque texels are green), not
- * the soft shadow sheet under the leaves. */
-static int leafy(const BmapScene *s, const BmapDraw *g)
-{
-    const BmapTexture *t;
-    unsigned long sr = 0, sg = 0, sb = 0, cnt = 0;
-    int q;
+/* What a picture of the map is, by the name its makers gave it in the game's files (BmapTexture.name: the
+ * model's own texture name, the same in every season; a season only changes the pixels).  Exact names, each
+ * looked at beside its picture; a name not listed is none of these.
+ *
+ * k_tuft_names: the sheets that stand as tufts where they lie just over the ground: the tall grass and the dark
+ * tall grass (kusa_ec1, kusa_ec2 and their "s"), the flowers (hana01.1, the season's kisetu_hana), the loose grass
+ * blades and weeds (ue_grass00, ue_grass01, ou40_kusa01, t02kusa), the flower bushes (plant01, out40_pla01..03).
+ * k_tree_names: a tree's pictures: the card trees' side, crown and top (ki00, ki02, ki03: a/a2/ax the side, b the
+ * crown from above, d the top), White Forest's trees (wf_tree_*), and the forest's dead trunks and stumps
+ * (dtree_*, stump_*: placed objects the camera's ball would bite into).
+ * k_tree_shadow_names: the shadow a card tree lays on the ground (ki00c2, ki02c). */
+static const char *const k_tuft_names[] = {
+    "kusa_ec1", "kusa_ec1s", "kusa_ec2", "kusa_ec2s", "hana01.1", "kisetu_hana", "ue_grass00", "ue_grass01",
+    "ou40_kusa01", "t02kusa", "plant01", "out40_pla01", "out40_pla02", "out40_pla03",
+};
+static const char *const k_tree_names[] = {
+    "ki00a2", "ki00b2", "ki00d2", "ki02ax", "ki02bx", "ki02dx", "ki03ax", "ki03bx", "ki03dx",
+    "wf_tree_a", "wf_tree_a2", "wf_tree_b", "wf_tree_c", "wf_tree_k",
+    "dtree_01_01", "dtree_02_01", "dtree_02_02", "stump_01_01", "stump_01_02", "stump_02_01", "stump_02_02",
+};
+static const char *const k_tree_shadow_names[] = { "ki00c2", "ki02c" };
 
-    if (g->translucent || g->tex < 0 || (unsigned)g->tex >= s->nt) {
+static int name_in(const BmapScene *s, const BmapDraw *g, const char *const *names, unsigned n)
+{
+    unsigned i;
+
+    if (g->tex < 0 || (unsigned)g->tex >= s->nt || s->t[g->tex].name[0] == '\0') {
         return 0;
     }
-    t = &s->t[g->tex];
-    for (q = 0; q < t->w * t->h; q++) {
-        if (t->rgba[q * 4 + 3] > 128) {
-            sr += t->rgba[q * 4];
-            sg += t->rgba[q * 4 + 1];
-            sb += t->rgba[q * 4 + 2];
-            cnt++;
+    for (i = 0; i < n; i++) {
+        if (strcmp(s->t[g->tex].name, names[i]) == 0) {
+            return 1;
         }
     }
-    return cnt > 0 && sg >= sr + cnt * 16 && sg >= sb + cnt * 16;   /* green, not a blue rug */
+    return 0;
+}
+#define NAMED(s, g, table) name_in(s, g, table, (unsigned)(sizeof table / sizeof table[0]))
+
+/* Whether a sheet is one of the grass and flower sheets that stand as tufts (by its picture's name). */
+static int leafy(const BmapScene *s, const BmapDraw *g)
+{
+    return !g->translucent && NAMED(s, g, k_tuft_names);
 }
 
 /* The tufts, one set on each tile of the MAP that a grass triangle covers
@@ -2340,53 +2361,6 @@ static void rest_bodies(BmapScene *s)
     free(b);
 }
 
-int bmap_wild_height(const BmapScene *s, float x0, float z0, float x1, float z1, float *y)
-{
-    float best = 1e30f;
-    unsigned i, j;
-    int sheets;
-
-    /* First the grass itself: the level faces of leafy cut-out sheets (a picture with see-through pixels, not a
-     * see-through draw: the shadow sheet) over the area's wild tiles.  An area with none (its grass painted into the
-     * ground's own picture): every leafy level face there, as before.  (The lowest green face alone took a second
-     * ground layer under the visible one, Pinwheel Forest's inner map: 8 units too low.) */
-    for (sheets = 1; sheets >= 0 && best > 1e29f; sheets--) {
-        for (i = 0; i < s->nd; i++) {
-            const BmapDraw *d = &s->d[i];
-            const BmapVertex *v = &s->v[d->first];
-
-            if (d->count < 3 || d->billboard || d->first + d->count > s->nv || !leafy(s, d)) {
-                continue;
-            }
-            if (sheets) {
-                const BmapTexture *t = d->tex >= 0 && (unsigned)d->tex < s->nt ? &s->t[d->tex] : NULL;
-                int cut = 0, q;
-
-                for (q = 0; t != NULL && !cut && q < t->w * t->h; q++) {
-                    cut = t->rgba[q * 4 + 3] == 0;
-                }
-                if (!cut || d->translucent) {
-                    continue;
-                }
-            }
-            for (j = 0; j + 2 < d->count; j += 3) {
-                float cx = (v[j].x + v[j + 1].x + v[j + 2].x) / 3.0f, cz = (v[j].z + v[j + 1].z + v[j + 2].z) / 3.0f;
-
-                if (cx < x0 || cx > x1 || cz < z0 || cz > z1 || fabsf(v[j].y - v[j + 1].y) > 0.01f
-                    || fabsf(v[j].y - v[j + 2].y) > 0.01f || !bmap_tile_encounter(s, cx, cz)) {
-                    continue;
-                }
-                best = fminf(best, v[j].y);
-            }
-        }
-    }
-    if (best > 1e29f) {
-        return 0;
-    }
-    *y = best;
-    return 1;
-}
-
 /* A cave mouth's light: a white cut-out sheet of the map's own ground,
  * standing up at the exit (the dust lit by the daylight outside).  Seen from
  * the battle's low camera it is a white blot in the air, so the battle
@@ -2503,6 +2477,10 @@ void bmap_place_prepare(BmapScene *s, int field)
             }
             if (!lf && (d->translucent || !bmap_tile_encounter(s, cx, cz))) {
                 continue;
+            }
+            if (getenv("BMAP_NAME_LOG") != NULL && (grass == NULL || !grass[i])) {     /* research */
+                fprintf(stderr, "bmap: name grass %s leafy %d encounter %d see-through %d\n", t->name[0] ? t->name : "-", lf,
+                        bmap_tile_encounter(s, cx, cz), d->translucent != 0);
             }
             tmask[j / 3] = 1;
             if (grass != NULL) {
@@ -2697,24 +2675,25 @@ static void find_trees(BmapScene *s)
         if (d->tex >= 0 && (unsigned)d->tex < s->nt) {
             if (green[d->tex] == 0) {
                 const BmapTexture *t = &s->t[d->tex];
-                unsigned long clear = 0, sum = 0, cnt = 0;
+                unsigned long clear = 0;
                 int q;
 
-                green[d->tex] = leafy(s, d) ? 1 : -1;
+                /* (a tree's picture and a tree's shadow by their names; whether the picture has see-through
+                 * texels is counted: over 2 in 100) */
+                green[d->tex] = !d->translucent && NAMED(s, d, k_tree_names) ? 1 : -1;
                 for (q = 0; q < t->w * t->h; q++) {
-                    if (t->rgba[q * 4 + 3] < 128) {
-                        clear++;
-                    } else {
-                        sum += (unsigned long)t->rgba[q * 4] + t->rgba[q * 4 + 1] + t->rgba[q * 4 + 2];
-                        cnt++;
-                    }
+                    clear += t->rgba[q * 4 + 3] < 128;
                 }
-                cutout[d->tex] = clear * 50ul > (unsigned long)(t->w * t->h) ? 1 : -1;   /* (over 2 in 100 see-through) */
-                dark[d->tex] = cnt > 0ul && sum < cnt * 3ul * 90ul ? 1 : -1;            /* (a shadow's grey) */
+                cutout[d->tex] = clear * 50ul > (unsigned long)(t->w * t->h) ? 1 : -1;
+                dark[d->tex] = NAMED(s, d, k_tree_shadow_names) ? 1 : -1;
+                if (getenv("BMAP_NAME_LOG") != NULL) {  /* research: what the colour tests take, by name */
+                    fprintf(stderr, "bmap: name tree %s green %d cutout %d dark %d object %d\n", t->name[0] ? t->name : "-",
+                            green[d->tex] > 0, cutout[d->tex] > 0, dark[d->tex] > 0, (s->v[d->first].obj & 0x3FFFFFFFu) != 0u);
+                }
             }
             leaf = green[d->tex] > 0;
             cut = cutout[d->tex] > 0;
-            shade = !leaf && cut && dark[d->tex] > 0;
+            shade = dark[d->tex] > 0;
         }
         for (j = d->first; j < d->first + d->count; j++) {
             const BmapVertex *v = &s->v[j];
@@ -2856,6 +2835,23 @@ static void find_trees(BmapScene *s)
 
         if (tree_root(gpar, cidx[i]) != cidx[i] || !g->leaf || g->hi[1] - g->lo[1] < 2.0f || (r > 40.0f && !g->wide)) {
             continue;
+        }
+        if (getenv("BMAP_TREE_LOG") != NULL && r > 40.0f) {    /* research: the wide ones, and what they are made of */
+            unsigned nt3 = 0, q;
+
+            for (q = 0; q + 2u < s->nv; q += 3u) {
+                nt3 += vpc[q] >= 0 && tree_root(gpar, (unsigned)vpc[q]) == cidx[i];
+            }
+            fprintf(stderr, "trees: wide %u piece %u (%s) box x %.0f..%.0f y %.0f..%.0f z %.0f..%.0f, %u triangles\n", s->n_trees,
+                    cidx[i], cidx[i] >= npc0 ? "panel" : "piece", (double)g->lo[0], (double)g->hi[0], (double)g->lo[1],
+                    (double)g->hi[1], (double)g->lo[2], (double)g->hi[2], nt3);
+            for (q = 0; q + 2u < s->nv && nt3 <= 4u; q += 3u) {
+                if (vpc[q] >= 0 && tree_root(gpar, (unsigned)vpc[q]) == cidx[i]) {
+                    fprintf(stderr, "    (%.0f %.0f %.0f) (%.0f %.0f %.0f) (%.0f %.0f %.0f)\n", (double)s->v[q].x, (double)s->v[q].y,
+                            (double)s->v[q].z, (double)s->v[q + 1u].x, (double)s->v[q + 1u].y, (double)s->v[q + 1u].z,
+                            (double)s->v[q + 2u].x, (double)s->v[q + 2u].y, (double)s->v[q + 2u].z);
+                }
+            }
         }
         g->tag = (unsigned char)(s->n_trees % 254u + 1u);
         s->trees[s->n_trees][0] = 0.5f * (g->lo[0] + g->hi[0]);
@@ -3044,42 +3040,9 @@ unsigned bmap_clear_trees(const struct BmapScene *sc, const float eye[3], const 
     return n;
 }
 
-unsigned bmap_place_trees(const BmapScene *s, float out[][4], unsigned max)
-{
-    /* (the middle between the two sides' places: the own Pokemon's and the foe's) */
-    const float aim[1][4] = { { 0.5f * (PLACE_SX + FOE_SX), GROUND_Y, 0.5f * (PLACE_SZ + FOE_SZ_GAME), 1.0f } };
-    unsigned n = 0, e, k, q, m;
-
-    if (s == NULL) {
-        return 0;
-    }
-    for (e = 0; e < 2u; e++) {
-        float eye[3], at[3], c[8][4];
-
-        memcpy(eye, e ? k_intro_eye : k_cmd_eye, sizeof eye);
-        memcpy(at, e ? k_intro_target : k_cmd_target, sizeof at);
-        bmap_battle_camera(eye, at, s);
-        memcpy(c[0], eye, sizeof eye);
-        c[0][3] = 1.0f;
-        m = bmap_clear_trees(s, eye, aim, 1u, c, 1u, 8u);
-        for (k = 0; k < m; k++) {
-            int have = 0;
-
-            if (c[k][3] >= 0.0f) {
-                continue;
-            }
-            for (q = 0; q < n && !have; q++) {
-                have = out[q][1] == c[k][1] && fabsf(out[q][0] - c[k][0]) < 0.5f && fabsf(out[q][2] - c[k][2]) < 0.5f;
-            }
-            if (!have && n < max) {
-                memcpy(out[n++], c[k], 4 * sizeof(float));
-            }
-        }
-    }
-    return n;
-}
-
-unsigned bmap_trees_inside(const BmapScene *s, const float eye[3], float out[][4], unsigned max)
+/* The trees the eye stands inside (its place within 0.3 of the tree's box, at a height the tree has).  Entries as
+ * bmap_clear_trees makes them; returns their count. */
+static unsigned trees_inside(const BmapScene *s, const float eye[3], float out[][4], unsigned max)
 {
     unsigned n = 0, ti;
 
@@ -3100,6 +3063,49 @@ unsigned bmap_trees_inside(const BmapScene *s, const float eye[3], float out[][4
             out[n][3] = -TREE_WIDE;
         }
         n++;
+    }
+    return n;
+}
+
+#define TREES_IN 16u                    /* the trees one still camera may stand inside */
+unsigned bmap_place_trees(const BmapScene *s, float out[][4], unsigned max)
+{
+    /* (the middle between the two sides' places: the own Pokemon's and the foe's) */
+    const float aim[1][4] = { { 0.5f * (PLACE_SX + FOE_SX), GROUND_Y, 0.5f * (PLACE_SZ + FOE_SZ_GAME), 1.0f } };
+    unsigned n = 0, e, k, q, m, rule;
+
+    if (s == NULL) {
+        return 0;
+    }
+    for (e = 0; e < 2u; e++) {
+        float eye[3], at[3], c[8u + TREES_IN][4];
+
+        memcpy(eye, e ? k_intro_eye : k_cmd_eye, sizeof eye);
+        memcpy(at, e ? k_intro_target : k_cmd_target, sizeof at);
+        bmap_battle_camera(eye, at, s);
+        memcpy(c[0], eye, sizeof eye);
+        c[0][3] = 1.0f;
+        rule = bmap_clear_trees(s, eye, aim, 1u, c, 1u, 8u);
+        /* (and every tree this camera stands inside, whatever the rule's count: it would fill the view) */
+        m = rule + trees_inside(s, eye, &c[rule], TREES_IN);
+        for (k = 0; k < m; k++) {
+            int have = 0;
+
+            if (c[k][3] >= 0.0f) {
+                continue;
+            }
+            for (q = 0; q < n && !have; q++) {
+                have = out[q][1] == c[k][1] && fabsf(out[q][0] - c[k][0]) < 0.5f && fabsf(out[q][2] - c[k][2]) < 0.5f;
+            }
+            if (!have && n < max) {
+                if (getenv("BMAP_TREE_LOG") != NULL) {  /* research: what the set is made of */
+                    fprintf(stderr, "trees: set %u: %s camera, %s: tag %.0f at %.1f %.1f width %.1f\n", n, e ? "intro" : "command",
+                            k < rule ? "by the rule" : "stands inside", (double)c[k][1], (double)c[k][0], (double)c[k][2],
+                            (double)-c[k][3]);
+                }
+                memcpy(out[n++], c[k], 4 * sizeof(float));
+            }
+        }
     }
     return n;
 }
