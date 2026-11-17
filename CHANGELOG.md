@@ -24,6 +24,7 @@ Each release's notes on GitHub start with its section here
   - **Tree Occlusion**: Trees intersecting or immediately adjacent to the battle camera (including Pinwheel Forest's dark teal trees) are now culled cleanly as whole models across both camera angles, matching the Spot Editor preview without popping in or out mid-battle.
   - **Seasons**: Fixed tree culling and Pokémon ground height breaking in summer, autumn, and winter by identifying trees and tall grass from the game's own material names and collision tile heights instead of texture color.
   - **Catching Tutorial**: Fixed Professor Juniper's catching lesson on Route 1 borrowing an unrelated trainer's battle spot; it now has its own spot entry.
+  - **Relic Castle**: Removed walls that were wrongly generated around the quicksand pits on all five sand floors.
   - **Trainer Battle Spacing**: Increased the default distance between the two sides in trainer battles; spots already placed or checked keep their spacing.
   - **Floating Leaves & Shore Foam**: Fixed animated surface decals (Pinwheel Forest's drifting pond leaves, shoreline foam) hovering above the water in battle; they now rest on the water surface beneath the Pokémon.
   - **Small Prop Culling**: When the camera is positioned inside a small prop, its top face is now hidden alongside its sides rather than floating in view.
