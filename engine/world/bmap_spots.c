@@ -267,6 +267,18 @@ static void load_text(char *text, int user)
 
                 r.doubles = base >= 0 ? g_rows[base].doubles : 0;
                 r.ally_id = base >= 0 ? g_rows[base].ally_id : -1;
+                if (base >= 0) {
+                    /* and so is where the fight is: the opponent's tile and facing, and the player's place and
+                     * facing there.  The editor never changes them; a file written before the table was put
+                     * right kept the old ones (Opelucid Gym's story Veteran, whose rail words had been read as
+                     * a tile) */
+                    r.tx = g_rows[base].tx;
+                    r.tz = g_rows[base].tz;
+                    r.dir = g_rows[base].dir;
+                    r.px = g_rows[base].px;
+                    r.pz = g_rows[base].pz;
+                    r.pf = g_rows[base].pf;
+                }
             }
             if (at >= 0) {
                 if (r.trainer_id < 0) {
@@ -646,6 +658,7 @@ void bmap_spots_spec(const BmapSpot *e, float px, float pz, unsigned facing, Bma
     }
     switch (e->mode) {
     case BMAP_SPOT_FIXED:
+        out->spot_floor = e->kind != 'T';
         out->px = e->sx;
         out->pz = e->sz;
         out->facing = e->angle >= 0.0f ? deg_to_facing(e->angle) : out->facing;

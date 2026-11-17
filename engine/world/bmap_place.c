@@ -1880,6 +1880,12 @@ static int level_tri(const BmapVertex *v)
     return fabsf(v[1].y - v[0].y) < 0.01f && fabsf(v[2].y - v[0].y) < 0.01f && fabsf(a) > 1e-3f;
 }
 
+/* (a triangle whose corners turn so that its front looks up: the ground's own winding) */
+static int up_tri(const BmapVertex *v)
+{
+    return (v[1].z - v[0].z) * (v[2].x - v[0].x) - (v[1].x - v[0].x) * (v[2].z - v[0].z) > 0.0f;
+}
+
 static int key_cmp(const void *a, const void *b)
 {
     const long long *x = (const long long *)a, *y = (const long long *)b;
@@ -2416,6 +2422,53 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
         free(mem);
         free(mstart);
         free(done);
+    }
+    if (start != NULL && idx != NULL) {
+        /* A placed model's floor at the ground's own height (Route 5's gate: the tunnel's floor runs out over the
+         * lawn, both at height 0).  The field shows the model's floor there, whole; here the two took the same
+         * depth and the lawn came through the floor in stripes.  Each level face of a placed model that looks up,
+         * with the map's own solid ground under its middle at its height, is laid over that ground as a picture on
+         * the ground is (DECAL_LIFT): its solid faces, and its see-through ones (the gate's shadow, a ring round its
+         * floor at the lawn's height: it came through in streaks). */
+        unsigned char *solid = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);
+        unsigned nfloor = 0;
+
+        for (i = 0; solid != NULL && i < s->nd; i++) {
+            const BmapDraw *d = &s->d[i];
+
+            if (d->billboard == 0 && d->count >= 3u && d->first % 3 == 0 && d->first + d->count <= s->nv) {
+                for (t = d->first / 3; t < (d->first + d->count) / 3; t++) {
+                    solid[t] = !d->translucent && d->alpha >= 31u ? 1 : 2;     /* (2: see-through) */
+                }
+            }
+        }
+        for (t = 0; solid != NULL && t < ntri; t++) {
+            BmapVertex *v = &s->v[t * 3];
+            const float cx = (v[0].x + v[1].x + v[2].x) / 3.0f, cz = (v[0].z + v[1].z + v[2].z) / 3.0f;
+            unsigned c, j;
+            int k, on = 0;
+
+            if (!level[t] || !solid[t] || (v[0].obj & 0x3FFFFFFFu) == 0u || (v[0].obj & 0x80000000u) || !up_tri(v)) {
+                continue;
+            }
+            c = (unsigned)((int)((cz - z0) / DECAL_CELL) * gw + (int)((cx - x0) / DECAL_CELL));
+            for (j = start[c]; !on && j < start[c + 1]; j++) {
+                const BmapVertex *u = &s->v[idx[j] * 3u];
+
+                on = idx[j] != t && solid[idx[j]] == 1 && u[0].obj == 0u && fabsf(u[0].y - v[0].y) <= 0.05f && up_tri(u)
+                     && in_tri_xz(u, cx, cz);
+            }
+            if (on) {
+                for (k = 0; k < 3; k++) {
+                    v[k].y += DECAL_LIFT;
+                }
+                nfloor++;
+            }
+        }
+        if (nfloor > 0u && getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: %u floor triangles of placed models at the ground's own height laid over it\n", nfloor);
+        }
+        free(solid);
     }
     (void)nlaid;
     if (getenv("BMAP_NAME_LOG") != NULL) {
@@ -3551,6 +3604,18 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
     }
     ca = (float)cos(a);
     sa = (float)sin(a);
+    if (sp->spot_floor) {
+        /* a fixed view of a wild area: the floor is the game's own at the spot (bmap_place.h) */
+        float ty;
+
+        if (bmap_tile_height(s, px, pz, &ty)) {
+            if (getenv("BMAP_PLACE_LOG") != NULL) {
+                fprintf(stderr, "bmap: the view's own floor: the game's tile height %.1f at the spot (the ground by the player's height: %.1f)\n",
+                        (double)ty, (double)bmap_ground_y(s, px, pz));
+            }
+            bmap_set_ref(s, ty);
+        }
+    }
     gy = bmap_ground_y(s, px, pz);
     {
         /* the map point under the foe slot: invert the rotation */

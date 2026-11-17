@@ -327,7 +327,10 @@ static void box_lie(const RmBatch *bt, const RmTex *tex, unsigned ntex, const ch
 
 /* `slab=T`: a card leaning back over a bed (a pillow against the headboard) kept as it leans and given its thickness:
  * the card is the front, a back face T units behind it along its own normal (the pillow's back, its picture again),
- * and the four edges closed in the picture's own edge pixels.  The card stays as the map has it. */
+ * and the four edges closed in the picture's own edge pixels.  The card stays as the map has it.
+ * `outline=1` with it: a cut-out picture (a crest, a plaque): the rim follows the picture's own outline instead, a
+ * strip from front to back along each edge of an opaque pixel that has a see-through pixel (or the picture's end)
+ * beside it, in that pixel's colour. */
 static void box_slab(const RmBatch *bt, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
     const double thick = rm_optf(opt, "slab", 3.0);
@@ -415,6 +418,62 @@ static void box_slab(const RmBatch *bt, const RmTex *tex, unsigned ntex, const c
             nb[k] = -n[k];
         }
         bx_quad(&x, (const double (*)[3])b, (const double (*)[2])uv, nb, 0.85);
+        if (rm_optf(opt, "outline", 0.0) > 0.0 && bt->tex >= 0 && (unsigned)bt->tex < ntex && tex[bt->tex].rgba != NULL
+            && fabs(uv[1][0] - uv[0][0]) > 1e-9 && fabs(uv[3][1] - uv[0][1]) > 1e-9 && fabs(uv[1][1] - uv[0][1]) < 1e-6
+            && fabs(uv[3][0] - uv[0][0]) < 1e-6) {
+            /* the rim along the picture's outline (the card's foot runs along the picture's u, its side along v) */
+            const RmTex *tx = &tex[bt->tex];
+            const double u0 = uv[0][0], du = uv[1][0] - uv[0][0], v0 = uv[0][1], dv2 = uv[3][1] - uv[0][1];
+            const int ix0 = (int)floor((du > 0.0 ? u0 : u0 + du) * tx->w + 0.5), ix1 = (int)floor((du > 0.0 ? u0 + du : u0) * tx->w + 0.5);
+            const int iy0 = (int)floor((dv2 > 0.0 ? v0 : v0 + dv2) * tx->h + 0.5), iy1 = (int)floor((dv2 > 0.0 ? v0 + dv2 : v0) * tx->h + 0.5);
+            static const int side[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+            int ix, iy, sd;
+
+#define SLAB_OPAQUE(X, Y) ((X) >= ix0 && (X) < ix1 && (Y) >= iy0 && (Y) < iy1 \
+    && tx->rgba[((size_t)((((Y) % tx->h) + tx->h) % tx->h) * (size_t)tx->w + (size_t)((((X) % tx->w) + tx->w) % tx->w)) * 4u + 3u] >= 128)
+#define SLAB_AT(U, V, OUT) for (k = 0; k < 3; k++) { \
+        (OUT)[k] = c[0][k] + (c[1][k] - c[0][k]) * (((U) - u0) / du) + (c[3][k] - c[0][k]) * (((V) - v0) / dv2); }
+            for (iy = iy0; iy < iy1; iy++) {
+                for (ix = ix0; ix < ix1; ix++) {
+                    if (!SLAB_OPAQUE(ix, iy)) {
+                        continue;
+                    }
+                    for (sd = 0; sd < 4; sd++) {
+                        const int dx = side[sd][0], dy = side[sd][1];
+                        double ua, va, ub, vb, mid0[3], mid1[3], en[3];
+
+                        if (SLAB_OPAQUE(ix + dx, iy + dy)) {
+                            continue;
+                        }
+                        /* (the pixel's edge on that side, in the picture's own measure) */
+                        ua = ((double)ix + (dx > 0 ? 1.0 : 0.0)) / tx->w;
+                        ub = ((double)ix + (dx < 0 ? 0.0 : 1.0)) / tx->w;
+                        va = ((double)iy + (dy > 0 ? 1.0 : 0.0)) / tx->h;
+                        vb = ((double)iy + (dy < 0 ? 0.0 : 1.0)) / tx->h;
+                        SLAB_AT(ua, va, p[0]);
+                        SLAB_AT(ub, vb, p[1]);
+                        for (k = 0; k < 3; k++) {
+                            p[2][k] = p[1][k] - n[k] * thick;
+                            p[3][k] = p[0][k] - n[k] * thick;
+                        }
+                        SLAB_AT(((double)ix + 0.5) / tx->w, ((double)iy + 0.5) / tx->h, mid0);
+                        SLAB_AT(((double)ix + 0.5 + dx) / tx->w, ((double)iy + 0.5 + dy) / tx->h, mid1);
+                        for (k = 0; k < 3; k++) {
+                            en[k] = mid1[k] - mid0[k];
+                        }
+                        for (j = 0; j < 4; j++) {
+                            u[j][0] = ((double)ix + 0.5) / tx->w;
+                            u[j][1] = ((double)iy + 0.5) / tx->h;
+                        }
+                        bx_quad(&x, (const double (*)[3])p, (const double (*)[2])u, en, 0.9);
+                    }
+                }
+            }
+#undef SLAB_OPAQUE
+#undef SLAB_AT
+            (void)dv;
+            return;
+        }
         /* the four edges, each in the picture's pixels just inside that edge */
         for (j = 0; j < 4; j++) {
             const int j2 = (j + 1) % 4;

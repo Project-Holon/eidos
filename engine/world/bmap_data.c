@@ -465,6 +465,7 @@ typedef struct {
     int repeat[2], flip[2];
     float diffuse[3], ambient[3], emission[3];
     unsigned light_mask;
+    u32 poly;               /* the material's polygon attributes as the model holds them */
 } Mat;
 
 typedef struct { u32 off, size; } Shape;
@@ -761,6 +762,7 @@ static int parse_materials(Model *md)
         rgb555(diff_amb >> 16, mt->ambient);
         rgb555(spec_emi >> 16, mt->emission);
         mt->light_mask = poly & 15u;
+        mt->poly = poly;
     }
     return 0;
 }
@@ -2622,8 +2624,8 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
             }
         }
         if (getenv("BMAP_MAT_LOG") != NULL && !c->cur_far) {    /* research: the names the map's makers gave */
-            fprintf(stderr, "bmap: mat set %s material %s texture %s palette %s scene texture %d\n", setkey, mt->name,
-                    mt->has_tex ? mt->tex : "-", mt->has_pal ? mt->pal : "-", tex);
+            fprintf(stderr, "bmap: mat set %s material %s texture %s palette %s scene texture %d polygon attributes %08X\n", setkey,
+                    mt->name, mt->has_tex ? mt->tex : "-", mt->has_pal ? mt->pal : "-", tex, (unsigned)mt->poly);
         }
         translucent = mt->alpha < 31u || (ent >= 0 && c->ents[ent].partial);
         node = aff_then(&md->world[dc->node], base);
@@ -4061,18 +4063,32 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
     return 0;
 }
 
+/* The player's own place and height (bmap_set_rider): the lift under it stands at that height. */
+static struct { float x, z, y; int has; } g_rider;
+
+void bmap_set_rider(float x, float z, float y, int has)
+{
+    g_rider.x = x;
+    g_rider.z = z;
+    g_rider.y = y;
+    g_rider.has = has;
+}
+
 static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
 {
     const BmapGimmickModel *gm;
     unsigned n = bmap_gimmick_models(zone, &gm), i;
+    BmapGimmickFloor fl[24];
+    const unsigned nfl = bmap_gimmick_floors(zone, fl, 24);
 
     for (i = 0; i < n; i++) {
-        Blob mb, tb, ab;
+        Blob mb, tb, ab, lb;
         Model md;
         char setkey[40], name[20], okey[24];
         float t[3];
         Aff place;
-        int rc;
+        int rc, lift_anim = -1;
+        BldAnim ba;
 
         memset(&tb, 0, sizeof tb);
         if (arc_load(c, gm[i].arc, gm[i].model, &mb) != 0) {
@@ -4093,6 +4109,51 @@ static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
         t[0] = gm[i].x;
         t[1] = gm[i].y;
         t[2] = gm[i].z;
+        {
+            /* the lift the player rides: at the player's height (bmap_set_rider) */
+            unsigned q;
+
+            for (q = 0; q < nfl; q++) {
+                const BmapGimmickFloor *f = &fl[q];
+                const float x0 = (float)f->tx * 16.0f, x1 = x0 + (float)f->w * 16.0f;
+                const float z0 = (float)f->tz * 16.0f, z1 = z0 + (float)f->d * 16.0f;
+
+                if (f->lift && g_rider.has && gm[i].x >= x0 && gm[i].x < x1 && gm[i].z >= z0 && gm[i].z < z1
+                    && g_rider.x >= x0 && g_rider.x < x1 && g_rider.z >= z0 && g_rider.z < z1
+                    && (fabsf(f->y[0] - gm[i].y) < 1.0f || fabsf(f->y[1] - gm[i].y) < 1.0f)
+                    && (fabsf(f->y[0] - g_rider.y) < 1.0f || fabsf(f->y[1] - g_rider.y) < 1.0f)) {
+                    t[1] = fabsf(f->y[0] - g_rider.y) < 1.0f ? f->y[0] : f->y[1];
+                }
+            }
+        }
+        {
+            /* a lift: the texture animation of its state (which of its arrow signs is lit), held at its first frame
+             * as the gimmick holds it (bmap_gimmick_lift_anim) */
+            unsigned q, li = 0;
+
+            for (q = 0; q < nfl; q++) {
+                const BmapGimmickFloor *f = &fl[q];
+                const float x0 = (float)f->tx * 16.0f, x1 = x0 + (float)f->w * 16.0f;
+                const float z0 = (float)f->tz * 16.0f, z1 = z0 + (float)f->d * 16.0f;
+
+                if (!f->lift) {
+                    continue;
+                }
+                if (gm[i].x >= x0 && gm[i].x < x1 && gm[i].z >= z0 && gm[i].z < z1
+                    && (fabsf(f->y[0] - t[1]) < 1.0f || fabsf(f->y[1] - t[1]) < 1.0f)) {
+                    lift_anim = bmap_gimmick_lift_anim(zone, li, gm[i].model, fabsf(f->y[0] - t[1]) >= 1.0f);
+                }
+                li++;
+            }
+        }
+        memset(&ba, 0, sizeof ba);
+        memset(&lb, 0, sizeof lb);
+        if (lift_anim >= 0 && arc_load(c, gm[i].arc, (u32)lift_anim, &lb) == 0 && lb.n >= 4u && memcmp(lb.p, "BTA0", 4) == 0) {
+            ba.has_fixed = 1u;
+            ba.bta[0] = bb_of(&lb);
+            ba.fixed[0] = 0;
+            ba.n = 1u;
+        }
         place = aff_yaw(gm[i].turns, t);
         c->cur_far = (u8)(fabsf(gm[i].x - px) > NEAR_REACH || fabsf(gm[i].z - pz) > NEAR_REACH);
         c->obj++;
@@ -4105,11 +4166,12 @@ static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
                     (double)t[2], g_done != NULL ? " completed" : "");
         }
         /* The textures are the model's own unless a separate set is named. */
-        rc = add_model(c, &md, setkey, bb_of(tb.p != NULL ? &tb : &mb), &place, 2, NULL);   /* placed */
+        rc = add_model(c, &md, setkey, bb_of(tb.p != NULL ? &tb : &mb), &place, 2, ba.n > 0u ? &ba : NULL);   /* placed */
         g_done = NULL;
         model_free(&md);
         blob_free(&tb);
         blob_free(&mb);
+        blob_free(&lb);
         if (rc != 0) {
             return rc;
         }
@@ -4485,6 +4547,29 @@ int bmap_tile_height(const BmapScene *s, float x, float z, float *y)
     }
     *y = g->wy[pick][at];
     return 1;
+}
+
+int bmap_tile_planes(const BmapScene *s, float x, float z, float y[2])
+{
+    const Priv *g = s != NULL ? (const Priv *)s->priv : NULL;
+    int tx, tz, pl, n = 0;
+    size_t at;
+
+    if (g == NULL || g->walk == NULL || g->wy[0] == NULL || g->wy[1] == NULL) {
+        return 0;
+    }
+    tx = (int)floorf(x / TILE) - g->wx0;
+    tz = (int)floorf(z / TILE) - g->wz0;
+    if (tx < 0 || tz < 0 || tx >= g->ww || tz >= g->wh) {
+        return 0;
+    }
+    at = (size_t)tz * (size_t)g->ww + (size_t)tx;
+    for (pl = 0; pl < 2; pl++) {
+        if (g->wy[pl][at] > TILE_NO_Y * 0.5f) {
+            y[n++] = g->wy[pl][at];
+        }
+    }
+    return n;
 }
 
 int bmap_tile_encounter(const BmapScene *s, float x, float z)

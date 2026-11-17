@@ -39,6 +39,12 @@ typedef struct BmapGimmickFloor {
  * cannot be read. */
 unsigned bmap_gimmick_floors(unsigned zone, BmapGimmickFloor *out, unsigned max);
 
+/* The texture animation a lift of `zone`'s gimmick shows in its state (0 its first height, 1 its second): the member
+ * of the gimmick's archive, held at its first frame (Driftveil Gym: which of a lift's two arrow signs is lit).
+ * lift: its number among the lifts bmap_gimmick_floors gives, in their order; model: the lift's model member.
+ * Returns -1 when there is none or the game's tables cannot be read. */
+int bmap_gimmick_lift_anim(unsigned zone, unsigned lift, unsigned model, int state);
+
 #ifdef __cplusplus
 }
 #endif

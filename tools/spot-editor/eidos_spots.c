@@ -671,15 +671,50 @@ static void current_spec(BmapPlaceSpec *sp)
     bmap_spots_spec(cur(), A.tx, A.tz, deg_to_facing((float)A.tf), sp);
 }
 
+static int row_height(const BmapSpot *r, float *y);
+
+/* The lift of the zone's gimmick the test player stands on at the row's height (a trainer's row: the trainer's
+ * storey), and that height: 0 for none.  The base scene shows that lift there (bmap_set_rider). */
+static int rider_lift(const BmapSpot *r, float *y)
+{
+    static BmapGimmickFloor fl[24];
+    static unsigned nfl, zone = 0xFFFFFFFFu;
+    unsigned i;
+
+    if (r == NULL || r->kind != 'T') {
+        return 0;
+    }
+    if (zone != r->zone) {
+        zone = r->zone;
+        nfl = bmap_gimmick_floors(r->zone, fl, 24);
+    }
+    if (nfl == 0u || !row_height(r, y)) {
+        return 0;
+    }
+    for (i = 0; i < nfl; i++) {
+        const float x0 = (float)fl[i].tx * 16.0f, z0 = (float)fl[i].tz * 16.0f;
+
+        if (fl[i].lift && A.tx >= x0 && A.tx < x0 + (float)fl[i].w * 16.0f && A.tz >= z0 && A.tz < z0 + (float)fl[i].d * 16.0f
+            && (fabsf(fl[i].y[0] - *y) < 1.0f || fabsf(fl[i].y[1] - *y) < 1.0f)) {
+            return 1 + (int)i + 100 * (fabsf(fl[i].y[1] - *y) < 1.0f);
+        }
+    }
+    return 0;
+}
+
 static void ensure_base(const BmapPlaceSpec *sp)
 {
+    static int base_rider;
     const BmapSpot *r = cur();
-    float dx = sp->px - A.base_cx, dz = sp->pz - A.base_cz;
+    float dx = sp->px - A.base_cx, dz = sp->pz - A.base_cz, ry = 0.0f;
+    const int rider = rider_lift(r, &ry);
 
     if (A.have_base && A.base_zone == r->zone && dx * dx + dz * dz < 200.0f * 200.0f
-        && A.base_season == A.season && A.base_hour == k_hours[A.hour]) {
+        && A.base_season == A.season && A.base_hour == k_hours[A.hour] && base_rider == rider) {
         return;
     }
+    base_rider = rider;
+    bmap_set_rider(A.tx, A.tz, ry, rider != 0);
     scene_drop(&A.placed, &A.have_placed);
     scene_drop(&A.prep, &A.have_prep);
     scene_drop(&A.base, &A.have_base);
@@ -712,8 +747,47 @@ static void load_npcs(unsigned zone)
     }
 }
 
+/* A character's header height settled as the field settles a character on its tile (FLDMMDL_MOVE_UpdateHeight: the
+ * map's own height at its place): the nearest of the heights the game has for the tile (its plane sections, and the
+ * floors the zone's gimmick lays there: a gym's storeys and lifts).  The header alone can name a height the room has
+ * no floor at (the Champion's platform is at 48, its characters' headers say 32, and a lower floor passes under it
+ * at 16.15: the floor nearest 32 was the lower one).  Left as it is while the row's map is not built yet, or where
+ * the game has no height for the tile. */
+static int g_header_heights;        /* (research, "heightsweep": the headers' heights as they are) */
+
+static float settle_height(unsigned zone, int gx, int gz, float y)
+{
+    static BmapGimmickFloor fl[24];
+    static unsigned nfl, fzone = 0xFFFFFFFFu;
+    float c[2 + 48], best = y;
+    unsigned i, n = 0;
+
+    if (g_header_heights) {
+        return y;
+    }
+    if (A.have_base && A.base_zone == zone) {
+        n = (unsigned)bmap_tile_planes(&A.base, (float)gx * 16.0f + 8.0f, (float)gz * 16.0f + 8.0f, c);
+    }
+    if (fzone != zone) {
+        fzone = zone;
+        nfl = bmap_gimmick_floors(zone, fl, 24);
+    }
+    for (i = 0; i < nfl; i++) {
+        if (gx >= fl[i].tx && gx < fl[i].tx + fl[i].w && gz >= fl[i].tz && gz < fl[i].tz + fl[i].d) {
+            c[n++] = fl[i].y[0];
+            c[n++] = fl[i].y[1];
+        }
+    }
+    for (i = 0; i < n; i++) {
+        if (i == 0 || fabsf(c[i] - y) < fabsf(best - y)) {
+            best = c[i];
+        }
+    }
+    return best;
+}
+
 /* The height the player stands at for the row (map units): a trainer's
- * own, from its header (the player stands on the trainer's floor; a
+ * own, from its header settled on its tile (settle_height; the player stands on the trainer's floor; a
  * leader's, whoever stands on its tile).  Where
  * floors lie over one another (Nimbasa's walkways, a gym's stages) the
  * ground is the one nearest it (bmap_set_ref), as the game's own placement
@@ -733,7 +807,7 @@ static int row_height(const BmapSpot *r, float *y)
     load_npcs(r->zone);
     for (i = 0; i < A.nnpc; i++) {
         if (A.npcs[i].is_trainer && !A.npcs[i].resident && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
-            *y = A.npcs[i].y;
+            *y = A.npcs[i].rail ? A.npcs[i].y : settle_height(r->zone, A.npcs[i].gx, A.npcs[i].gz, A.npcs[i].y);
             return 1;
         }
     }
@@ -741,7 +815,7 @@ static int row_height(const BmapSpot *r, float *y)
      * it a trainer; whoever stands on the row's tile */
     for (i = 0; i < A.nnpc; i++) {
         if (!A.npcs[i].resident && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
-            *y = A.npcs[i].y;
+            *y = A.npcs[i].rail ? A.npcs[i].y : settle_height(r->zone, A.npcs[i].gx, A.npcs[i].gz, A.npcs[i].y);
             return 1;
         }
     }
@@ -761,7 +835,8 @@ static int row_height(const BmapSpot *r, float *y)
             }
         }
         if (best >= 0) {
-            *y = A.npcs[best].y;
+            *y = A.npcs[best].rail ? A.npcs[best].y
+                                    : settle_height(r->zone, A.npcs[best].gx, A.npcs[best].gz, A.npcs[best].y);
             return 1;
         }
     }
@@ -4505,6 +4580,38 @@ static void run_script(const char *path)
                     fprintf(stderr, "placesweep row %s zone %d kind %c tile %d %.2f ground %d %.2f\n", r->id, r->zone, r->kind, have,
                             (double)ty, hit, (double)gy);
                 }
+            }
+        } else if (strcmp(line, "heightsweep") == 0) {
+            /* (research) each trainer row in turn: its header's height, that height settled on its tile, and the
+             * ground under the test player with each as the floor to stand nearest to */
+            int row;
+
+            for (row = 0; row < bmap_spots_count(); row++) {
+                const BmapSpot *r = bmap_spots_get(row);
+                float yh = 0.0f, ys = 0.0f, gh, gs;
+                int hh, hs;
+
+                if (r == NULL || r->kind != 'T' || view_no(row) != 0) {
+                    continue;
+                }
+                select_row(row);
+                step();
+                if (!A.have_base || A.base_zone != r->zone) {
+                    continue;
+                }
+                g_header_heights = 1;
+                hh = row_height(r, &yh);
+                g_header_heights = 0;
+                hs = row_height(r, &ys);
+                if (!hh || !hs) {
+                    continue;
+                }
+                bmap_set_ref(&A.base, yh);
+                gh = bmap_ground_y(&A.base, A.tx, A.tz);
+                bmap_set_ref(&A.base, ys);
+                gs = bmap_ground_y(&A.base, A.tx, A.tz);
+                fprintf(stderr, "heightsweep row %s ok %d zone %d header %.2f settled %.2f ground %.2f -> %.2f%s\n", r->id, r->ok,
+                        r->zone, (double)yh, (double)ys, (double)gh, (double)gs, fabsf(gh - gs) > 0.5f ? " CHANGED" : "");
             }
         } else if (strcmp(line, "treesets") == 0) {
             /* (research) each fixed view in turn: its battle's trees (bmap_place_trees writes what the set is made

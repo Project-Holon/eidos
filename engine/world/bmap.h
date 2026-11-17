@@ -336,6 +336,9 @@ int   bmap_tile_encounter(const BmapScene *s, float x, float z);
  * bridge over a path), the one where wild Pokemon appear, else the first.  Returns 0 when it is not known (no
  * tile there, or the game's two plane tables could not be read: they come from the extract's overlay 21). */
 int   bmap_tile_height(const BmapScene *s, float x, float z, float *y);
+/* Every height the game has for the tile under (x, z): its plane sections' (one, or two where floors lie over one
+ * another), into y[0..1].  Returns their count (0: not known, as bmap_tile_height). */
+int   bmap_tile_planes(const BmapScene *s, float x, float z, float y[2]);
 #define BMAP_TILE_ENCOUNTER 0x10    /* bmap_data.c: the flag beside the class */
 
 /* Black City (zone 0) and White Forest (zone 424): their buildings and
@@ -370,6 +373,11 @@ typedef struct BmapFieldMatrix {
 /* The next bmap_build takes its maps from this when it is the build zone's matrix (the same zone, or the zone's own
  * matrix id); NULL or none set: the zone's matrix from the files.  Taken by that build. */
 void bmap_set_field_matrix(const BmapFieldMatrix *m);
+/* Where the player stands (map units), when it is known: a lift of the zone's gimmick whose area holds (x, z) is
+ * stood at the height y by the next bmap_build when y is one of the lift's own two heights (bmap_gimmick_floors:
+ * the player rides it; the gimmick's models stand at their first state otherwise).  has 0: not known.  Taken by
+ * that build.  (In play the field's own objects replace the gimmick's models: bmap_live_set.) */
+void bmap_set_rider(float x, float z, float y, int has);
 /* The weather the field showed (the game's weather id: 1 snow, 2 rain, 3 the sandstorm ...; 0 or negative: clear).
  * A weather kind changes two things of the place while it is on, and the next bmap_build makes them: the light
  * (WEATHER_TASK_SetLight: the weather's own light table, archive 0x3E, in place of the area's) and the fog

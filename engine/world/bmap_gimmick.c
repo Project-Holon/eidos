@@ -259,3 +259,37 @@ unsigned bmap_gimmick_floors(unsigned zone, BmapGimmickFloor *out, unsigned max)
     }
     return count;
 }
+
+/* Driftveil Gym's lifts (ov043): sLiftElevatorLiftAnimeFlip (0x021F4328, an int a lift) and the animation members
+ * of a lift's object: model 0's at 0x021F4308, model 1's at 0x021F4310 (two u16 pairs each: the member, 0).
+ * FIELD_GIMMICK_LIFT_ELEVATOR_ShowLiftAnime shows the animation numbered (state XOR flip). */
+int bmap_gimmick_lift_anim(unsigned zone, unsigned lift, unsigned model, int state)
+{
+    static const char *const dirs[] = { "overlays_dec", "overlays" };
+    const unsigned at_flip = 0x021F4328u - OV43_BASE, at_m0 = 0x021F4308u - OV43_BASE, at_m1 = 0x021F4310u - OV43_BASE;
+    unsigned char buf[0xF00];
+    size_t n = 0;
+    unsigned at;
+    int i, idx;
+
+    if (zone != 97u || lift >= 6u || model > 1u) {
+        return -1;
+    }
+    for (i = 0; i < 2 && n == 0; i++) {
+        char path[1024];
+        FILE *f;
+
+        snprintf(path, sizeof path, "%s/../%s/y9_0043.bin", bw_data_root(), dirs[i]);
+        f = fopen(path, "rb");
+        if (f != NULL) {
+            n = fread(buf, 1, sizeof buf, f);
+            fclose(f);
+        }
+    }
+    if (n < at_flip + 6u * 4u) {
+        return -1;
+    }
+    idx = (state != 0) != (gf_s32(buf + at_flip + lift * 4u) != 0);
+    at = (model == 0u ? at_m0 : at_m1) + (unsigned)idx * 4u;
+    return (int)((unsigned)buf[at] | ((unsigned)buf[at + 1u] << 8));
+}

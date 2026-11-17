@@ -9,6 +9,10 @@
  *       the angles A0..A1, copied turned half round there (a back arc whose
  *       front is another part).
  *   mirrorlit=1  mirror's copies lit as their source faces (not by the way the copy looks).
+ *   mirrorlean=Y0:Y1:A:B  mirror's copies of the faces between the heights Y0 and Y1 moved A + B * y along z (a
+ *       sign on a post whose front leans and whose back stands upright: its copy laid on the back).
+ *   walllit=1  a wall= or panel= wall takes the colour of its own source side face, not the mean of that face's whole draw
+ *       (a dark room whose walls are painted light and dark from place to place).
  *   mirror=X0:X1:Y0:Y1:ZC[:Z0:Z1[:W[:CX0:CX1]]]+..  the parts within that box are round about
  *       z = ZC (a balcony, a glass cab, its roof, lamps): their faces that
  *       look south are turned to look north, where the model has none (a face
@@ -33,8 +37,8 @@
  *   cutx=X0:X1:Z0:Z1+..  the model's faces wholly between Z0 and Z1 cut to X0..X1.
  *   lid=SX:SZ:Y:X0:X1:Z0:Z1+..  a level face at height Y looking up, in the picture of the level face
  *       at Y holding (SX, SZ) (a skirting's top carried on).
- *   bandx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR[:XTOP]+..  a band of a wall at x = X looking along DIR, in the picture
- *       of the upright face at x = SX holding (SZ, SY).
+ *   bandx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR[:XTOP[:YEND]]+..  a band of a wall at x = X looking along DIR, in the picture
+ *       of the upright face at x = SX holding (SZ, SY) (YEND: its top's height at Z1: the side of a ramp).
  *   band=SX:SY:SZ:X0:X1:Z:YB0:YT0:YB1:YT1[:DY]+..  a band of a wall at z = Z looking north, its foot
  *       and top rising along x, in the picture of the upright face at z = SZ holding (SX, SY)
  *       (DY: the picture read DY lower on that face: a window row stacked up a wall).
@@ -365,6 +369,10 @@ static void quad(RmOut *o, unsigned src, const unsigned char rgb[3], const doubl
  * zone's light comes from one side, so a copy that looks the other way would be black where the field shows the
  * same lit rock all round). */
 static int g_mirror_lit;
+/* `mirrorlean=Y0:Y1:A:B` (g_mirror_lean[4]: set) */
+static double g_mirror_lean[5];
+/* `walllit=1`: wall= in the source face's own colour */
+static int g_wall_lit;
 
 static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[10])
 {
@@ -412,6 +420,11 @@ static void do_mirror(const Ft *f, unsigned nf, RmOut *out, const double bx[10])
             p[j][0] = t->p[s][0];
             p[j][1] = t->p[s][1];
             p[j][2] = 2.0 * bx[4] - t->p[s][2];
+            if (g_mirror_lean[4] != 0.0 && t->p[0][1] >= g_mirror_lean[0] && t->p[0][1] <= g_mirror_lean[1]
+                && t->p[1][1] >= g_mirror_lean[0] && t->p[1][1] <= g_mirror_lean[1] && t->p[2][1] >= g_mirror_lean[0]
+                && t->p[2][1] <= g_mirror_lean[1]) {
+                p[j][2] += g_mirror_lean[2] + g_mirror_lean[3] * p[j][1];
+            }
             uv[j][0] = t->uv[s][0];
             uv[j][1] = t->uv[s][1];
             for (k = 0; k < 3; k++) {
@@ -619,7 +632,15 @@ static void wall_strip(RmOut *out, const Ft *f, unsigned nf, const Ft *sf, const
                     map_at(&m, zs, p[q][1], t[q]);
                 }
             }
-            quad(out, sf->t->id, sf->b->rgb, p, t, outn);
+            quad(out, sf->t->id, g_wall_lit ? sf->t->rgb : sf->b->rgb, p, t, outn);
+            if (g_wall_lit) {
+                /* (its colour is the source face's as the map lit it: not lit again by the way the wall looks) */
+                unsigned q2;
+
+                for (q2 = out->ntri >= 2u ? out->ntri - 2u : 0u; q2 < out->ntri; q2++) {
+                    out->tri[q2].lit = 0;
+                }
+            }
         }
     }
 }
@@ -713,7 +734,15 @@ static void do_panel(const Ft *f, unsigned nf, RmOut *out, const double p[9], co
         t[1][0] = u0; t[1][1] = v1;
         t[2][0] = u0; t[2][1] = v0;
         t[3][0] = ue; t[3][1] = v0;
-        quad(out, src->t->id, src->b->rgb, q, t, outn);
+        quad(out, src->t->id, g_wall_lit ? src->t->rgb : src->b->rgb, q, t, outn);
+        if (g_wall_lit) {
+            /* (the source face's colour as the map lit it: not lit again by the way the wall looks) */
+            unsigned q2;
+
+            for (q2 = out->ntri >= 2u ? out->ntri - 2u : 0u; q2 < out->ntri; q2++) {
+                out->tri[q2].lit = 0;
+            }
+        }
     }
 }
 
@@ -1150,11 +1179,12 @@ static void do_lid(const Ft *f, unsigned nf, RmOut *out, const double d[7])
     }
 }
 
-/* `bandx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR[:XTOP]+..`: a band of a wall at x = X looking along DIR (-1 west, 1 east), from z Z0 to Z1
+/* `bandx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR[:XTOP[:YEND]]+..`: a band of a wall at x = X looking along DIR (-1 west, 1 east), from z Z0 to Z1
  * and y Y0 to Y1, in the picture of the model's own upright face at x = SX that holds (SZ, SY) carried on by (z, y): an
  * east or west wall the field never needed, in its opposite wall's bands.  `:XTOP` after: its top edge at x = XTOP
- * (a molding's slanted face). */
-static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
+ * (a molding's slanted face).  `:YEND` after that: the top's height at Z1 (Y1 is its height at Z0): the side of a ramp,
+ * a triangle when YEND is Y0. */
+static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[11])
 {
     const Ft *src = NULL;
     double m[2][3];
@@ -1206,11 +1236,11 @@ static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
     {
         const double outn[3] = { d[8] < 0.0 ? -1.0 : 1.0, 0, 0 };
         double q[4][3], uv[4][2], e1[3], e2[3], n[3];
-        const double zs[4] = { d[4], d[5], d[5], d[4] }, ys[4] = { d[6], d[6], d[7], d[7] };
+        const double zs[4] = { d[4], d[5], d[5], d[4] }, ys[4] = { d[6], d[6], d[10], d[7] };
         const unsigned first = out->ntri;
 
         for (j = 0; j < 4; j++) {
-            q[j][0] = ys[j] == d[7] ? d[9] : d[3];     /* (XTOP: the top edge at another x, a leaning band) */
+            q[j][0] = j >= 2 ? d[9] : d[3];             /* (XTOP: the top edge at another x, a leaning band) */
             q[j][1] = ys[j];
             q[j][2] = zs[j];
             uv[j][0] = m[0][0] * zs[j] + m[0][1] * ys[j] + m[0][2];
@@ -1218,14 +1248,18 @@ static void do_bandx(const Ft *f, unsigned nf, RmOut *out, const double d[10])
         }
         for (k = 0; k < 3; k++) {
             e1[k] = q[1][k] - q[0][k];
-            e2[k] = q[2][k] - q[0][k];
+            e2[k] = q[3][k] - q[0][k];      /* (the upright at Z0: whole whatever the top does at Z1) */
         }
         rm_cross(e1, e2, n);
         if (rm_dot(n, outn) >= 0.0) {
-            rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+            if (fabs(d[10] - d[6]) > 1e-6) {
+                rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+            }
             rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[3], uv[0], uv[2], uv[3], 0, 0);
         } else {
-            rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+            if (fabs(d[10] - d[6]) > 1e-6) {
+                rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[2], q[1], uv[0], uv[2], uv[1], 0, 0);
+            }
             rm_tri(out, src->t->id, -1, 1, src->t->rgb, q[0], q[3], q[2], uv[0], uv[3], uv[2], 0, 0);
         }
         lit_as(out, first, src->t);     /* (the source wall's own light) */
@@ -3335,6 +3369,12 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
         }
     }
     g_mirror_lit = rm_optf(opt, "mirrorlit", 0.0) > 0.0;
+    memset(g_mirror_lean, 0, sizeof g_mirror_lean);
+    if (rm_opt(opt, "mirrorlean", buf, sizeof buf) != NULL
+        && sscanf(buf, "%lf:%lf:%lf:%lf", &g_mirror_lean[0], &g_mirror_lean[1], &g_mirror_lean[2], &g_mirror_lean[3]) == 4) {
+        g_mirror_lean[4] = 1.0;
+    }
+    g_wall_lit = rm_optf(opt, "walllit", 0.0) > 0.0;
     if (rm_opt(opt, "mirror", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
             double bx[10] = { 0, 0, 0, 0, 0, 0, 0, 0, -1e30, 1e30 };
@@ -3521,11 +3561,14 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
 
     if (rm_opt(opt, "bandx", buf, sizeof buf) != NULL) {
         for (ep = buf; ep != NULL && *ep != '\0'; ) {
-            double bd[10];
+            double bd[11];
 
             if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &bd[0], &bd[1], &bd[2], &bd[3], &bd[4], &bd[5], &bd[6], &bd[7], &bd[8], &bd[9]) >= 9) {
                 if (sscanf(ep, "%*f:%*f:%*f:%*f:%*f:%*f:%*f:%*f:%*f:%lf", &bd[9]) != 1) {
                     bd[9] = bd[3];
+                }
+                if (sscanf(ep, "%*f:%*f:%*f:%*f:%*f:%*f:%*f:%*f:%*f:%*f:%lf", &bd[10]) != 1) {
+                    bd[10] = bd[7];
                 }
                 do_bandx(f, nf, out, bd);
             }

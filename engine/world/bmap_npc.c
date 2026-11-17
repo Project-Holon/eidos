@@ -32,6 +32,7 @@
  * scale of 7, and stands on the position.
  */
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -230,6 +231,129 @@ int bmap_npc_picture(unsigned obj_code, int dir, unsigned char **rgba, int *w, i
     return rc;
 }
 
+/* The place of a rail location of `zone` (map units): line `line`, `grid` cells along it, `width` cells across.
+ * The zone's rail file: arm9's _ZoneSpecialKindTable (0x0209E026: 20 words, the zone in the low 11 bits, its kind
+ * above) gives the kind, a/1/0/9's member of that kind the file of a/0/7/9 (FIELD_NOGRID_MAPPER_LoadDataFromArc).
+ * The file: 7 section offsets; points (0x70 bytes, the place at 0x30), lines (0x48 bytes: start point, end point,
+ * key, shape entry, camera, length in cells), shape entries (0x24 bytes: the function, an arc's centre).  The
+ * place as FIELD_RAIL_LINEPOS_Straight and FIELD_RAIL_LINEPOS_Arc solve it.  Returns 0 when it cannot be read. */
+static int rail_place(unsigned zone, unsigned line, unsigned grid, int width, float out[3])
+{
+    const u8 *kt = (const u8 *)bw_arm9_rodata(0x0209E026u, 20u * 2u);
+    long rsize = 0, fsize = 0;
+    u8 *res, *f;
+    unsigned i, kind = 0xFFFFu, file, sec[7], np, nl, ns, s, e, shape, len, fn = 0;
+    double a[3], b[3], c[3] = { 0, 0, 0 }, p[3], t, off;
+    int k, ok = 0;
+
+    for (i = 0; kt != NULL && i < 20u; i++) {
+        if ((rd16(kt + i * 2u) & 0x7FFu) == zone) {
+            kind = rd16(kt + i * 2u) >> 11;
+        }
+    }
+    if (kind == 0xFFFFu) {
+        return 0;
+    }
+    res = member("a/1/0/9", kind, &rsize);
+    if (res == NULL || rsize < 4 || rd16(res) == 0xFFFFu) {
+        free(res);
+        return 0;
+    }
+    file = rd16(res);
+    free(res);
+    f = member("a/0/7/9", file, &fsize);
+    if (f == NULL || fsize < 28) {
+        free(f);
+        return 0;
+    }
+    for (i = 0; i < 7u; i++) {
+        sec[i] = rd32(f + i * 4u);
+    }
+    if (sec[2] <= sec[3] && sec[3] <= sec[4] && sec[5] <= sec[6] && (long)sec[6] <= fsize) {
+        np = (sec[3] - sec[2]) / 0x70u;
+        nl = (sec[4] - sec[3]) / 0x48u;
+        ns = (sec[6] - sec[5]) / 0x24u;
+        if (line < nl) {
+            const u8 *l = f + sec[3] + line * 0x48u;
+
+            s = rd32(l);
+            e = rd32(l + 4);
+            shape = rd32(l + 0x0C);
+            len = rd32(l + 0x14);
+            if (s < np && e < np && len > 0u) {
+                for (k = 0; k < 3; k++) {
+                    a[k] = (double)(int)rd32(f + sec[2] + s * 0x70u + 0x30u + (unsigned)k * 4u) / 4096.0;
+                    b[k] = (double)(int)rd32(f + sec[2] + e * 0x70u + 0x30u + (unsigned)k * 4u) / 4096.0;
+                }
+                if (shape < ns) {
+                    fn = rd32(f + sec[5] + shape * 0x24u);
+                    for (k = 0; k < 3; k++) {
+                        c[k] = (double)(int)rd32(f + sec[5] + shape * 0x24u + 4u + (unsigned)k * 4u) / 4096.0;
+                    }
+                }
+                t = (double)grid / (double)len;
+                off = (double)width * 16.0;       /* (a cell across is a cell along: 16 units) */
+                if (fn == 0u) {
+                    /* a straight line: along it, and across it along (end - start) x up */
+                    const double dx = b[0] - a[0], dz = b[2] - a[2], n = sqrt(dx * dx + dz * dz);
+
+                    for (k = 0; k < 3; k++) {
+                        p[k] = a[k] + (b[k] - a[k]) * t;
+                    }
+                    if (n > 1e-9) {
+                        p[0] += -dz / n * off;
+                        p[2] += dx / n * off;
+                    }
+                } else {
+                    /* an arc about the shape's centre: the direction turned from the start's to the end's, the
+                     * radius carried from one to the other; across it along the radius */
+                    double fa[3], fb[3], la, lb, ang, d[3], r, rad[3], dir[3], rn, dn, sy;
+
+                    for (k = 0; k < 3; k++) {
+                        fa[k] = a[k] - c[k];
+                        fb[k] = b[k] - c[k];
+                    }
+                    la = sqrt(fa[0] * fa[0] + fa[1] * fa[1] + fa[2] * fa[2]);
+                    lb = sqrt(fb[0] * fb[0] + fb[1] * fb[1] + fb[2] * fb[2]);
+                    if (la > 1e-9 && lb > 1e-9) {
+                        double dot = (fa[0] * fb[0] + fa[1] * fb[1] + fa[2] * fb[2]) / (la * lb);
+
+                        dot = dot > 1.0 ? 1.0 : dot < -1.0 ? -1.0 : dot;
+                        ang = acos(dot);
+                        for (k = 0; k < 3; k++) {
+                            d[k] = ang < 1e-6 ? fa[k] / la
+                                              : (sin((1.0 - t) * ang) * fa[k] / la + sin(t * ang) * fb[k] / lb) / sin(ang);
+                        }
+                        r = la + (lb - la) * t;
+                        for (k = 0; k < 3; k++) {
+                            p[k] = c[k] + d[k] * r;
+                            dir[k] = fb[k] - fa[k];
+                        }
+                        rad[0] = d[0]; rad[1] = 0.0; rad[2] = d[2];
+                        rn = sqrt(rad[0] * rad[0] + rad[2] * rad[2]);
+                        dn = sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+                        if (rn > 1e-9 && dn > 1e-9) {
+                            sy = rad[2] / rn * dir[0] / dn - rad[0] / rn * dir[2] / dn;   /* (radius x direction).y */
+                            p[0] += (sy < 0.0 ? -off : off) * rad[0] / rn;
+                            p[2] += (sy < 0.0 ? -off : off) * rad[2] / rn;
+                        }
+                    } else {
+                        for (k = 0; k < 3; k++) {
+                            p[k] = a[k] + (b[k] - a[k]) * t;
+                        }
+                    }
+                }
+                out[0] = (float)p[0];
+                out[1] = (float)p[1];
+                out[2] = (float)p[2];
+                ok = 1;
+            }
+        }
+    }
+    free(f);
+    return ok;
+}
+
 int bmap_npc_load(unsigned zone, BmapNpc **out, int *count)
 {
     long hsize = 0, esize = 0, psize = 0;
@@ -271,26 +395,43 @@ int bmap_npc_load(unsigned zone, BmapNpc **out, int *count)
         const u8 *r = ev + 8 + nbg * 0x14u + i * EVENT_NPC_SIZE;
         BmapNpc *p = &list[n];
 
-        if (rd32(r + 0x18) != 0u) {     /* a rail placed one */
-            continue;
+        float rp[3] = { 0.0f, 0.0f, 0.0f };
+        const int rail = rd32(r + 0x18) != 0u;
+        int gx = (int)rd16(r + 0x1C), gz = (int)rd16(r + 0x1E);
+
+        if (rail) {
+            /* a rail placed one: the header's words are a line, a cell along it and cells across (MmdlHeader.pos,
+             * FLDMMDL_MOVE_RequestRailMove), not a tile */
+            if (!rail_place(zone, rd16(r + 0x1C), rd16(r + 0x1E), (int)(short)rd16(r + 0x20), rp)) {
+                continue;
+            }
+            gx = (int)floorf(rp[0] / 16.0f);
+            gz = (int)floorf(rp[2] / 16.0f);
         }
         for (k = 0; k < n; k++) {       /* one NPC per tile, see the header */
-            if ((unsigned)list[k].gx == rd16(r + 0x1C) && (unsigned)list[k].gz == rd16(r + 0x1E)) {
+            if (list[k].gx == gx && list[k].gz == gz) {
                 break;
             }
         }
         if (k < n) {
             continue;
         }
-        p->gx = rd16(r + 0x1C);
-        p->gz = rd16(r + 0x1E);
+        p->gx = gx;
+        p->gz = gz;
+        p->rail = rail;
         p->model_file = p->model_tex = -1;
         p->obj_code = rd16(r + 2);
         p->is_trainer = rd16(r + 6) == 1u;
         p->dir = (int)rd16(r + 0x0C) & 3;
-        p->x = (float)rd16(r + 0x1C) * 16.0f + 8.0f;
-        p->z = (float)rd16(r + 0x1E) * 16.0f + 8.0f;
-        p->y = (float)(int)rd32(r + 0x20) / 4096.0f;
+        if (rail) {
+            p->x = rp[0];
+            p->y = rp[1];
+            p->z = rp[2];
+        } else {
+            p->x = (float)gx * 16.0f + 8.0f;
+            p->z = (float)gz * 16.0f + 8.0f;
+            p->y = (float)(int)rd32(r + 0x20) / 4096.0f;
+        }
         load_picture(p, params, psize);
         n++;
     }

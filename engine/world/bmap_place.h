@@ -48,6 +48,10 @@ typedef struct BmapPlaceSpec {
     float x0, z0, x1, z1;
     float foe_dz;           /* the foe this far further back (battle units;
                                negative: closer)                              */
+    int spot_floor;         /* 1: a fixed view of a wild area: the battle stands on the
+                               game's own ground at the spot (its tile's height), not
+                               on the surface nearest the player's height: the view
+                               may lie on another level than the player             */
     BmapIntro intro;        /* the far cameras' own settings (zoom 0 counts
                                as 1; bmap_camera_intro)                       */
     int field;              /* a field view (eidos_spots' overworld): the grass

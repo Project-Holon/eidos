@@ -732,6 +732,7 @@ static void job_main(void *arg)
         }
         bmap_set_wfbc(j->has_wfbc ? &j->wfbc : NULL);     /* else a full place */
         bmap_set_field_matrix(j->has_fmat ? &j->fmat : NULL);  /* else the zone's own from the files */
+        bmap_set_rider(j->px, j->pz, j->py, j->has_py);     /* (a lift under the player: at the player's height) */
         /* The weather's own light and fog on the map: not on yet.  How the fog is measured for a battle's camera
          * and whether the battle's sprites take it are open choices (bmap.h: fog_eye, fog_sprites);
          * BMAP_WEATHER_FOG=1 turns it on to try them. */
@@ -1347,6 +1348,7 @@ static void warm_main(void *arg)
     memset(&sc, 0, sizeof sc);
     bmap_set_wfbc(NULL);
     bmap_set_field_matrix(NULL);
+    bmap_set_rider(0.0f, 0.0f, 0.0f, 0);
     bmap_set_weather(-1);
     if (bmap_build(&sc, w->zone, w->px, w->pz, w->season, 12, 0) == 0) {
         bmap_free(&sc);

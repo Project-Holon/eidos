@@ -32,12 +32,16 @@ typedef struct BmapNpc {
     int gx, gz;             /* the header's tile                                */
     unsigned obj_code;
     int is_trainer;         /* event type 1 */
+    int rail;               /* placed on a rail (the header names a line and a cell of it):
+                               x, y, z and the tile are the place the rail gives, the
+                               height the rail's own                             */
     int resident;           /* a Black City or White Forest resident (the save
                                places them, bmap_npc_add_residents): y is not
                                known, the ground under it is               */
 } BmapNpc;
 
-/* The NPCs of `zone` (grid placed ones; rail placed ones are left out).  On
+/* The NPCs of `zone`: the grid placed ones, and the rail placed ones at the place their rail gives (left out
+ * where the zone's rail data cannot be read).  On
  * success returns 0 and *out is malloc'd (NULL when *count is 0). */
 int  bmap_npc_load(unsigned zone, BmapNpc **out, int *count);
 /* One standing picture of any object code facing `dir` (the player's, 1 hero

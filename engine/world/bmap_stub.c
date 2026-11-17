@@ -202,6 +202,11 @@ void bmap_set_field_matrix(const BmapFieldMatrix *m)
     (void)m;
 }
 
+void bmap_set_rider(float x, float z, float y, int has)
+{
+    (void)x; (void)z; (void)y; (void)has;
+}
+
 /* The weather: none in this build. */
 void bmap_set_weather(int weather_id)
 {

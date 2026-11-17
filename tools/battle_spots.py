@@ -92,7 +92,10 @@ SCENE_PLACES = {
     'T29.s21': (38, 24, 1, None),       # Castelia Gym: the Harlequin in the honey (object 7)
     'T30.s7': (15, 17, 1, None),        # Castelia: the Dancer
     'T37.s4': (17, 22, 1, None),        # Castelia: the Dancer
-    'T121.s11': (40, 1, 0, None),       # Opelucid Gym: the Veteran
+    # Opelucid Gym: the Veteran.  He is placed on a rail (his header's words are line 40, cell 1, not a tile): on
+    # the curved ramp of the upper walkways, at (513.1, 112.0, 600.8) by the zone's rail file (a/0/7/9 member 3; an
+    # arc about (440, 112, 552)).  The player comes along the line from its far end (cell 2: 518.8, 584.6).
+    'T121.s11': (32, 37, 0, (32, 36)),
     'T193.s12a': (5, 7, 1, None),       # Cold Storage: the four grunts
     'T193.s12b': (4, 9, 0, None),
     'T193.s12c': (5, 8, 2, None),
