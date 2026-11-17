@@ -42,6 +42,7 @@
 
 #include "bcam_sim.h"
 #include "bmap.h"
+#include "bmap_gimmick.h"
 #include "bmap_npc.h"
 #include "bmap_place.h"
 #include "bmap_spots.h"
@@ -1779,9 +1780,65 @@ static void px_to_map(int x, int y, float *mx, float *mz)
     *mz = A.view_z + ((float)y - (float)A.map_y - (float)A.map_s * 0.5f) * 16.0f / A.zoom;
 }
 
+/* The floors a gimmick lays over the row's map (Driftveil Gym's walkways and lifts), and the height of the one the
+ * row stands on: the tile map then shows that floor's areas, not the map's own walk tiles (the bottom floor's). */
+static BmapGimmickFloor g_floors[24];
+static unsigned g_nfloors;
+static int g_on_floor;                  /* the row stands on one of them, at g_floor_y */
+static float g_floor_y;
+
+static int row_height(const BmapSpot *r, float *y);
+
+static void floors_refresh(const BmapSpot *r)
+{
+    static unsigned zone = 0xFFFFFFFFu;
+    float y, best = 1e30f;
+    unsigned i;
+    int k;
+
+    if (r == NULL) {
+        g_on_floor = 0;
+        return;
+    }
+    if (zone != r->zone) {
+        zone = r->zone;
+        g_nfloors = bmap_gimmick_floors(r->zone, g_floors, 24);
+    }
+    g_on_floor = 0;
+    if (g_nfloors == 0u || !row_height(r, &y)) {
+        return;
+    }
+    for (i = 0; i < g_nfloors; i++) {
+        for (k = 0; k < 2; k++) {
+            if (fabsf(g_floors[i].y[k] - y) < fabsf(best - y)) {
+                best = g_floors[i].y[k];
+            }
+        }
+    }
+    if (fabsf(best - y) < 16.0f) {       /* (within a tile of the floor's own height) */
+        g_on_floor = 1;
+        g_floor_y = best;
+    }
+}
+
 static u32 tile_colour(const BmapScene *b, float x, float z)
 {
     int t = bmap_tile(b, x, z), e = bmap_tile_encounter(b, x, z);
+
+    if (g_on_floor) {
+        const int tx = (int)floorf(x / 16.0f), tz = (int)floorf(z / 16.0f);
+        unsigned i;
+
+        for (i = 0; i < g_nfloors; i++) {
+            const BmapGimmickFloor *f = &g_floors[i];
+
+            if (tx >= f->tx && tx < f->tx + f->w && tz >= f->tz && tz < f->tz + f->d
+                && (f->y[0] == g_floor_y || f->y[1] == g_floor_y)) {
+                return f->lift ? 0x8FA7C4u : 0xB3A98Cu;     /* (a lift's place; a walkway) */
+            }
+        }
+        return t == BMAP_TILE_NONE ? 0x101114u : 0x2A2C32u; /* (not on this floor) */
+    }
 
     switch (t) {
     case BMAP_TILE_OPEN: return e ? 0x5C9A4Eu : 0xB3A98Cu;
@@ -1838,6 +1895,7 @@ static void draw_map(void)
     ui_push(&C, 0, 0, &saved);
     ui_clip(&C, A.map_x, A.map_y, A.map_w, A.map_s);
     step = (int)A.zoom;
+    floors_refresh(r);
     if (A.have_base && A.base_zone == r->zone) {
         float ox, oy;
         int t0x, t0z, n = (A.map_w > A.map_s ? A.map_w : A.map_s) / (step > 0 ? step : 1) + 2;

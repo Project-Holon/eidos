@@ -36,6 +36,7 @@
 
 #include "battle_view.h"
 #include "bmap.h"
+#include "bweather.h"
 #include "bmap_place.h"
 #include "bmap_spots.h"
 #include "dsmem.h"
@@ -253,6 +254,7 @@ static int log_on(void)
 }
 
 extern uint8_t GAME_DATA_GetSeason(const void *gameData) __attribute__((weak));
+extern uint8_t GAME_DATA_GetWeatherId(const void *gameData) __attribute__((weak));
 
 static int real_map(void)
 {
@@ -924,6 +926,22 @@ static int read_place(uintptr_t eff, BvJob *j)
         pw = gd + GD_PLAYER;
     } else if (getenv("EIDOS_DEBUG_BMAP_AT") == NULL) {
         return -1;
+    }
+    {
+        /* The weather the field showed, replayed over the battle (engine/world/bweather.c): the game's own stored
+         * weather (GAME_DATA_GetWeatherId: the zone's, the season's, a roaming Pokemon's storm).
+         * EIDOS_DEBUG_WEATHER=<id> (tests, the spot editor's Preview): that one. */
+        const char *dw = getenv("EIDOS_DEBUG_WEATHER");
+
+        const int wid = dw != NULL && dw[0] != 0 ? atoi(dw)
+                        : gptr_ok(gd) && GAME_DATA_GetWeatherId != NULL ? (int)GAME_DATA_GetWeatherId((const void *)gd) : -1;
+
+        bweather_want(wid);
+        if (getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: weather %d (%s)%s", wid, dw != NULL && dw[0] != 0 ? "EIDOS_DEBUG_WEATHER" : "the game's own",
+                    GAME_DATA_GetWeatherId == NULL ? ", GAME_DATA_GetWeatherId not linked" : "");
+            fputc(10, stderr);
+        }
     }
     bm = rd32(eff, EFF_MAIN);
     setup = gptr_ok(bm) ? rd32(bm, 0) : 0;

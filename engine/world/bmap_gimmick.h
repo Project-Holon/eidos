@@ -26,6 +26,19 @@ typedef struct BmapGimmickModel {
  * without a gimmick) and sets *out to the first. */
 unsigned bmap_gimmick_models(unsigned zone, const BmapGimmickModel **out);
 
+/* A floor a gimmick lays over its map (the mapper's extra heights): a rectangle of tiles at a height, or at one of
+ * two (a lift: where it stands in each of its states). */
+typedef struct BmapGimmickFloor {
+    int tx, tz, w, d;       /* tiles */
+    float y[2];             /* map units */
+    int lift;               /* 1: a lift (two heights); 0: a fixed floor (y[1] = y[0]) */
+} BmapGimmickFloor;
+
+/* The floors `zone`'s gimmick lays over its map, read from the game's own tables (Driftveil Gym: overlay 43's
+ * fixed areas and lift zones).  Returns their count (max at most): 0 for a zone without any, or when the overlay
+ * cannot be read. */
+unsigned bmap_gimmick_floors(unsigned zone, BmapGimmickFloor *out, unsigned max);
+
 #ifdef __cplusplus
 }
 #endif

@@ -162,6 +162,10 @@ typedef struct UiImage {
 
 void ui_image(EidosUiCtx *c, int x, int y, const UiImage *im, int k);
 
+/* The field's weather over a battle view at (x, y, w, h): the replayed sprites of engine/world/bweather.c, advanced
+ * to frame60 (a count of 60 a second).  Nothing without a weather.  (engine/ui/weather_layer.c) */
+void ui_weather_layer(EidosUiCtx *c, int x, int y, int w, int h, unsigned frame60);
+
 /* Key names for hints: the DS's names ("A", "START", "L R") as the
  * player's device calls them (set every frame by the interface layer:
  * names[i] for BW_KEY bit i, NULL keeps the DS name). ui_keycap shows the

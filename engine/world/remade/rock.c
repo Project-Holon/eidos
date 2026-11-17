@@ -1432,6 +1432,12 @@ void rm_rock(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, con
     int lean = rm_opt(opt, "lean", lb, sizeof lb) != NULL, cards = rm_opt(opt, "cards", lb, sizeof lb) != NULL;
     unsigned bi;
 
+    /* `rest=1`: the body rests on what stands under it (a vase on its box: the battle lowers the box onto the
+     * room's floor, and the vase must go down with it) */
+    if (rm_optf(opt, "rest", 0) != 0.0) {
+        out->flags |= RM_FLAG_REST;
+    }
+
     /* `centre=1`: a card's body stands over the middle of the rest of the model (a pot, a pedestal), seen
      * from above: the box of every triangle that is no card and no flat sheet on the ground */
     if (cards && rm_optf(opt, "centre", 0) != 0.0) {

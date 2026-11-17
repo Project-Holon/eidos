@@ -798,6 +798,8 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
                        int own);
 static void battle_place(EidosUiCtx *c, const Shell *s, UiBattleLayout *l, int what);
 static void battle_begin(EidosUiCtx *c, Shell *s, UiBattleLayout *l, int what);
+extern int bw_battle_view_ready(void) __attribute__((weak));    /* sdk/battle_view.c, eidos_boot only */
+#define bw_battle_view_ready_w bw_battle_view_ready
 
 /*
  * Coloured move names.  The scene unit keeps the text it printed in a string
@@ -1720,6 +1722,10 @@ static void battle_begin(EidosUiCtx *c, Shell *s, UiBattleLayout *l, int what)
     battle_place(c, s, l, what);
     if (t->battle_backdrop != NULL) {
         t->battle_backdrop(c, l, what);
+    }
+    /* the field's weather (snow, a sandstorm's grains) over the real map, under the battle's own parts */
+    if (bw_battle_view_ready_w != NULL && bw_battle_view_ready_w()) {
+        ui_weather_layer(c, 0, 0, l->w, l->h, bw_input_frame_number());
     }
 }
 

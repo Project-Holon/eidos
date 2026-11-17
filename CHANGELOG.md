@@ -12,6 +12,7 @@ Each release's notes on GitHub start with its section here
   - Extended ocean geometry past map boundaries and removed distant sky-color terrain fading.
   - Animated water surfaces and shorelines in battle to match the overworld.
   - Added area-specific procedural voxel clouds to outdoor battles that drift in real time and respond to time-of-day lighting, while disabling clouds inside caves and indoor areas (Wellspring Cave, Chargestone Cave, Relic Castle).
+  - Added the overworld's weather particles to real-map battles: falling snow and sandstorm grains, replayed from the game's own weather routines and sprites.
   - Matched battle fog depth calculation to the overworld camera axis so distant cave and room walls retain their geometry instead of flattening into solid fog (Chargestone Cave, Driftveil Gym).
 - **Gym & Dungeon Geometry**:
   - **Nimbasa Gym**: Extruded roller-coaster rails and tracks into full 3D geometry, modeled raised 3D switch pads, and synced track/pad colors to the active switch state.
@@ -24,7 +25,8 @@ Each release's notes on GitHub start with its section here
   - **Tree Occlusion**: Trees intersecting or immediately adjacent to the battle camera (including Pinwheel Forest's dark teal trees) are now culled cleanly as whole models across both camera angles, matching the Spot Editor preview without popping in or out mid-battle.
   - **Seasons**: Fixed tree culling and Pokémon ground height breaking in summer, autumn, and winter by identifying trees and tall grass from the game's own material names and collision tile heights instead of texture color.
   - **Catching Tutorial**: Fixed Professor Juniper's catching lesson on Route 1 borrowing an unrelated trainer's battle spot; it now has its own spot entry.
-  - **Relic Castle**: Removed walls that were wrongly generated around the quicksand pits on all five sand floors.
+  - **Relic Castle**: Removed walls that were wrongly generated around the quicksand pits on all five sand floors, and fixed vases floating above their pedestals.
+  - **Ground Seams**: Fixed slits opening in roads and other solid ground where part of a connected surface was lowered onto a layer beneath it (Route 5's path by the gate).
   - **Trainer Battle Spacing**: Increased the default distance between the two sides in trainer battles; spots already placed or checked keep their spacing.
   - **Floating Leaves & Shore Foam**: Fixed animated surface decals (Pinwheel Forest's drifting pond leaves, shoreline foam) hovering above the water in battle; they now rest on the water surface beneath the Pokémon.
   - **Small Prop Culling**: When the camera is positioned inside a small prop, its top face is now hidden alongside its sides rather than floating in view.
@@ -33,7 +35,7 @@ Each release's notes on GitHub start with its section here
   - **Surfing Mounts**: When starting a battle while Surfing, the water mount now floats beneath your active Pokémon rather than remaining at its overworld tile, and is hidden if that same Pokémon is fighting.
   - **Double Battles**: Fixed depth sorting on the second Pokémon slot so its body no longer renders in front of its face.
 - **Prebuilt Map Meshes**: Eliminated the initial black screen when entering battle by caching rebuilt map geometry to disk, pre-building area meshes in the background upon map entry, and holding scene rendering until the opening camera view is ready.
-- **Spot Editor**: Added automatic hot-reloading when the spot file is modified externally, update notifications, all eight Gym Badges in the built-in preview save, proper ground height detection on multi-layer maps (Pinwheel Forest), per-floor isolating in the Overworld view for stacked interiors (Driftveil Gym), a layout that shows the Intro and Command cameras together with the Overworld and tile map beside the place list, both opponent trainer positions (battle start and end-of-battle return) under Trainers, and Professor Juniper's back sprite on the catching lesson. Fixed Overworld drag-to-pan and Preview opening a neighboring area's view when two wild areas sit one tile apart.
+- **Spot Editor**: Added automatic hot-reloading when the spot file is modified externally, update notifications, all eight Gym Badges in the built-in preview save, proper ground height detection on multi-layer maps (Pinwheel Forest), per-floor isolating in the Overworld view for stacked interiors (Driftveil Gym), a layout that shows the Intro and Command cameras together with the Overworld and tile map beside the place list, both opponent trainer positions (battle start and end-of-battle return) under Trainers, a tile map that shows the selected trainer's own floor in Driftveil Gym, and Professor Juniper's back sprite on the catching lesson. Fixed Overworld drag-to-pan and Preview opening a neighboring area's view when two wild areas sit one tile apart.
 
 ### Multiplayer, Randomizers & Archipelago
 - **Redesigned Multiplayer Hub**: Rebuilt the one-screen Multiplayer menu across all three UI styles, combining your Trainer Card, game creation cards, a unified **Join** box, and **Your Games** on a single page. The lobby now displays connected player avatars in a row, readiness status, active session rules, and the room code above the Start button.

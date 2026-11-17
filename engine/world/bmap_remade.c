@@ -23,7 +23,7 @@ static const BmapRemade k_remade[] = {
     { "b1_00055", rm_rock, ROCK_WATER },            /* small rock in water */
     { "b1_00054", rm_rock, ROCK_WATER },            /* rock in water */
     { "b0_00043", rm_rock,                          /* vase on a pedestal (Relic Castle): four bosses round it */
-      "lean=1,mouth=8,sink=0,high=1.7,bump=1.5,fat=1,rimw=1,lip=2,wrap=lathe,around=4,reach=6,boss=C5AC94+DEBDA4+E6CDB4+F6DECD" },
+      "lean=1,mouth=8,sink=0,high=1.7,bump=1.5,fat=1,rimw=1,lip=2,wrap=lathe,around=4,reach=6,boss=C5AC94+DEBDA4+E6CDB4+F6DECD,rest=1" },
     { "b0_00094", rm_cushion, "" },                 /* pouffe, orange (living rooms) */
     { "b0_00095", rm_cushion, "" },                 /* pouffe, blue (living rooms) */
     { "b0_00029", rm_bottles,                       /* bottles, one standing and one lying behind it (Dreamyard) */

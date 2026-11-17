@@ -1197,6 +1197,8 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_title.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_mystery.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_battle.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/weather_layer.c     # the field's weather over a battle view
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bweather.c       # ... replayed from the game's weather kinds
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_bag.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_shop.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_dex.c
@@ -2786,6 +2788,8 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_npc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bcam_sim.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bweather.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/weather_layer.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/kit.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/theme_debug.c

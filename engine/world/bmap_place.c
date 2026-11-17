@@ -2077,6 +2077,89 @@ static void stand_drift(BmapScene *s)
     free(sheet);
 }
 
+static const unsigned *g_sort_root;
+static unsigned tree_root(unsigned *par, unsigned a);
+
+static int tri_root_cmp(const void *a, const void *b)
+{
+    const unsigned ra = g_sort_root[*(const unsigned *)a], rb = g_sort_root[*(const unsigned *)b];
+
+    return ra < rb ? -1 : ra > rb;
+}
+
+static int corner_cmp(const void *a, const void *b)
+{
+    const long long x = *(const long long *)a, y = *(const long long *)b;     /* (the key is the record's first field) */
+
+    return x < y ? -1 : x > y;
+}
+
+/* (research) the name of the picture of triangle t's draw */
+static const char *decal_name(const BmapScene *s, unsigned t)
+{
+    unsigned q;
+
+    for (q = 0; q < s->nd; q++) {
+        if (t * 3u >= s->d[q].first && t * 3u < s->d[q].first + s->d[q].count) {
+            return s->d[q].tex >= 0 && (unsigned)s->d[q].tex < s->nt && s->t[s->d[q].tex].name[0] ? s->t[s->d[q].tex].name : "-";
+        }
+    }
+    return "-";
+}
+
+/* Whether one candidate triangle may be laid, and on what: 1 with *best the height of the level surface under its
+ * middle (the highest at most DECAL_MAX_H under it) and *water set when that surface is a water sheet; 0 when it
+ * stays where the map has it. */
+static int decal_target(const BmapScene *s, unsigned t, const unsigned char *textured, const unsigned char *wsheet,
+                        const long long *keys, unsigned nk, const unsigned *start, const unsigned *idx, float x0, float z0, int gw,
+                        float *best_out, int *water)
+{
+    const BmapVertex *v = &s->v[t * 3u];
+    float cx, cz, y, best = -1e30f;
+    unsigned c, j;
+    int k, on_water = 0;
+
+    if (v[0].obj & 0x80000000u) {
+        /* research: a completed body's own flat pieces (its shadow) keep the height they were made at */
+        return 0;
+    }
+    cx = (v[0].x + v[1].x + v[2].x) / 3.0f;
+    cz = (v[0].z + v[1].z + v[2].z) / 3.0f;
+    /* the grass's stacked layers stay: their height is their volume.  That is for the tiles where wild Pokemon
+     * appear on land; on a water tile (the game's own terrain of the tile) there is no grass, and what the map
+     * holds a little over the water (floating leaves, lily pads) is laid on the water like any other picture on
+     * its surface: it hung in the air over a pond with wild Pokemon, and lay on the water of a pond without */
+    if (bmap_tile_encounter(s, cx, cz) && (bmap_tile(s, cx, cz) != BMAP_TILE_WATER || getenv("BMAP_NO_WATER_LAY") != NULL)) {
+        return 0;
+    }
+    for (k = 0; k < 3; k++) {
+        const long long key = pos_key(&v[k]);
+
+        if (bsearch(&key, keys, nk, sizeof *keys, key_cmp) != NULL) {
+            return 0;                   /* (a corner of a wall or a slope: part of the ground's own shape) */
+        }
+    }
+    y = v[0].y;
+    c = (unsigned)((int)((cz - z0) / DECAL_CELL) * gw + (int)((cx - x0) / DECAL_CELL));
+    for (j = start[c]; j < start[c + 1]; j++) {
+        const BmapVertex *u = &s->v[idx[j] * 3u];
+
+        if (idx[j] != t && u[0].y < y - 0.05f && u[0].y >= y - DECAL_MAX_H && u[0].y > best && in_tri_xz(u, cx, cz)) {
+            best = u[0].y;
+            on_water = wsheet[idx[j]];
+        }
+    }
+    if (best < -1e29f) {
+        return 0;
+    }
+    if (textured[t] == 2 && (!on_water || getenv("BMAP_NO_WATER_LAY") != NULL)) {
+        return 0;                       /* (a moving picture: only onto a water sheet) */
+    }
+    *best_out = best;
+    *water = on_water;
+    return 1;
+}
+
 static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass)
 {
     unsigned ntri = s->nv / 3, t, nk = 0, i, nlaid = 0, norder = 0, *order = NULL;
@@ -2084,15 +2167,30 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
     unsigned char *level = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);
     unsigned char *textured = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);
     unsigned char *wsheet = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);    /* a triangle of a water sheet */
+    unsigned char *cutc = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);      /* a triangle of a cut-out picture */
     float x0 = 1e9f, z0 = 1e9f, x1 = -1e9f, z1 = -1e9f;
     int gw, gh;
     unsigned *start = NULL, *idx = NULL, *fill = NULL;
 
-    if (keys == NULL || level == NULL || textured == NULL || wsheet == NULL) {
+    if (keys == NULL || level == NULL || textured == NULL || wsheet == NULL || cutc == NULL) {
         goto out;
     }
     for (i = 0; i < s->nd; i++) {
         const BmapDraw *d = &s->d[i];
+
+        if (d->billboard == 0 && d->tex >= 0 && (unsigned)d->tex < s->nt && d->count >= 3u && d->first % 3 == 0
+            && d->first + d->count <= s->nv) {
+            /* (a cut-out picture: one with a see-through texel) */
+            const BmapTexture *tx = &s->t[d->tex];
+            int cut = 0, q;
+
+            for (q = 0; !cut && q < tx->w * tx->h; q++) {
+                cut = tx->rgba[q * 4 + 3] == 0;
+            }
+            for (t = d->first / 3; cut && t < (d->first + d->count) / 3; t++) {
+                cutc[t] = 1;
+            }
+        }
 
         if (d->billboard == 0 && d->translucent && !still_pic(s, d) && d->count >= 3u && d->first % 3 == 0
             && d->first + d->count <= s->nv && s->v[d->first].obj == 0u) {
@@ -2192,7 +2290,7 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
             }
         }
     }
-    /* lowest first: a picture laid on another picture finds it laid already */
+    /* (the candidates, the lowest first) */
     order = (unsigned *)malloc((ntri > 0 ? ntri : 1) * sizeof *order);
     if (order == NULL) {
         goto out;
@@ -2204,76 +2302,120 @@ static void lay_decals(BmapScene *s, const unsigned char *grass, unsigned ngrass
     }
     g_sort_v = s->v;
     qsort(order, norder, sizeof *order, tri_y_cmp);
-    for (i = 0; i < norder; i++) {
-        BmapVertex *v;
-        float cx, cz, y, best = -1e30f;
-        unsigned c, j;
-        int k, joined = 0, on_water = 0;
+    {
+        /* The sheets: candidates joined by shared corners (the triangles of one flat piece of the mesh: a path's edge
+         * strip, a rug).  A sheet of a solid picture is laid as one piece or not at all: it is ground or a floor,
+         * and laid a triangle at a time, each on what lay under its own middle, the triangles of one piece ended at
+         * different heights and the far ground showed through the slit between them (Route 5's path by the gate).
+         * A sheet of a cut-out picture is laid triangle by triangle (below). */
+        typedef struct { long long key; unsigned tri; } CornerOf;
+        CornerOf *co = (CornerOf *)malloc((norder * 3u + 1u) * sizeof *co);
+        unsigned *par = (unsigned *)malloc((ntri > 0 ? ntri : 1) * sizeof *par);
+        unsigned *mem = (unsigned *)malloc((norder + 1u) * sizeof *mem);
+        unsigned *mstart = (unsigned *)malloc((ntri > 0 ? ntri : 1) * sizeof *mstart);
+        unsigned char *done = (unsigned char *)calloc(ntri > 0 ? ntri : 1, 1);
+        unsigned q, nco = 0;
 
-        t = order[i];
-        v = &s->v[t * 3];
-        if (v[0].obj & 0x80000000u) {
-            /* research: a completed body's own flat pieces (its shadow) keep the height they were made at.
-             * Laid one triangle at a time, each on whatever lay under its own middle, the pieces of one shadow
-             * ended at different heights and the ground showed through between them as a slit. */
-            continue;
-        }
-        {
-            /* the grass's stacked layers stay: their height is their volume.  That is for the tiles where wild
-             * Pokemon appear on land; on a water tile (the game's own terrain of the tile) there is no grass, and
-             * what the map holds a little over the water (floating leaves, lily pads) is laid on the water like any
-             * other picture on its surface: it hung in the air over a pond with wild Pokemon, and lay on the
-             * water of a pond without */
-            const float mx = (v[0].x + v[1].x + v[2].x) / 3.0f, mz = (v[0].z + v[1].z + v[2].z) / 3.0f;
-
-            if (bmap_tile_encounter(s, mx, mz) && (bmap_tile(s, mx, mz) != BMAP_TILE_WATER || getenv("BMAP_NO_WATER_LAY") != NULL)) {
-                continue;
+        if (co != NULL && par != NULL && mem != NULL && mstart != NULL && done != NULL) {
+            for (t = 0; t < ntri; t++) {
+                par[t] = t;
+                mstart[t] = 0xFFFFFFFFu;
             }
-        }
-        for (k = 0; k < 3 && !joined; k++) {
-            long long key = pos_key(&v[k]);
+            for (i = 0; i < norder; i++) {
+                int k;
 
-            joined = bsearch(&key, keys, nk, sizeof *keys, key_cmp) != NULL;
-        }
-        if (joined) {
-            if (getenv("BMAP_NAME_LOG") != NULL && bmap_tile(s, v[0].x, v[0].z) == BMAP_TILE_WATER) {      /* research */
-                fprintf(stderr, "bmap: name joined-on-water at %.0f %.1f %.0f\n", (double)v[0].x, (double)v[0].y, (double)v[0].z);
-            }
-            continue;
-        }
-        cx = (v[0].x + v[1].x + v[2].x) / 3.0f;
-        cz = (v[0].z + v[1].z + v[2].z) / 3.0f;
-        y = v[0].y;
-        c = (unsigned)((int)((cz - z0) / DECAL_CELL) * gw + (int)((cx - x0) / DECAL_CELL));
-        for (j = start[c]; j < start[c + 1]; j++) {
-            const BmapVertex *u = &s->v[idx[j] * 3];
-
-            if (idx[j] != t && u[0].y < y - 0.05f && u[0].y >= y - DECAL_MAX_H && u[0].y > best && in_tri_xz(u, cx, cz)) {
-                best = u[0].y;
-                on_water = wsheet[idx[j]];
-            }
-        }
-        if (best > -1e29f && textured[t] == 2 && (!on_water || getenv("BMAP_NO_WATER_LAY") != NULL)) {
-            best = -1e30f;              /* (a moving picture: only onto a water sheet) */
-        }
-        if (best > -1e29f) {
-            if (getenv("BMAP_NAME_LOG") != NULL && (on_water || bmap_tile(s, cx, cz) == BMAP_TILE_WATER)) {    /* research */
-                unsigned q;
-
-                for (q = 0; q < s->nd; q++) {
-                    if (t * 3u >= s->d[q].first && t * 3u < s->d[q].first + s->d[q].count) {
-                        fprintf(stderr, "bmap: name on-water %s class %d encounter %d from %.1f onto %.1f\n",
-                                s->d[q].tex >= 0 && (unsigned)s->d[q].tex < s->nt && s->t[s->d[q].tex].name[0] ? s->t[s->d[q].tex].name : "-",
-                                textured[t], bmap_tile_encounter(s, cx, cz), (double)y, (double)best);
-                        break;
-                    }
+                for (k = 0; k < 3; k++) {
+                    co[nco].key = pos_key(&s->v[order[i] * 3u + (unsigned)k]);
+                    co[nco++].tri = order[i];
                 }
             }
-            for (k = 0; k < 3; k++) {
-                v[k].y = best + DECAL_LIFT;
+            qsort(co, nco, sizeof *co, corner_cmp);
+            for (q = 1; q < nco; q++) {
+                if (co[q].key == co[q - 1u].key) {
+                    par[tree_root(par, co[q].tri)] = tree_root(par, co[q - 1u].tri);
+                }
             }
-            nlaid++;
+            for (i = 0; i < norder; i++) {
+                (void)tree_root(par, order[i]);     /* (every path flat: par[t] is the sheet from here on) */
+                mem[i] = order[i];
+            }
+            for (i = 0; i < norder; i++) {
+                par[order[i]] = tree_root(par, order[i]);
+            }
+            g_sort_root = par;
+            qsort(mem, norder, sizeof *mem, tri_root_cmp);
+            for (i = 0; i < norder; i++) {
+                if (mstart[par[mem[i]]] == 0xFFFFFFFFu) {
+                    mstart[par[mem[i]]] = i;
+                }
+            }
+            /* lowest first: a picture laid on another picture finds it laid already */
+            for (i = 0; i < norder; i++) {
+                const unsigned r = par[order[i]];
+                unsigned m0, m1, nok = 0;
+                float lo = 1e30f, hi = -1e30f;
+                int water = 0;
+
+                if (done[r]) {
+                    continue;
+                }
+                done[r] = 1;
+                m0 = mstart[r];
+                for (m1 = m0; m1 < norder && par[mem[m1]] == r; m1++) {
+                    float best;
+                    int w = 0;
+
+                    if (decal_target(s, mem[m1], textured, wsheet, keys, nk, start, idx, x0, z0, gw, &best, &w)) {
+                        nok++;
+                        lo = fminf(lo, best);
+                        hi = fmaxf(hi, best);
+                        water |= w;
+                    }
+                }
+                if (cutc[mem[m0]]) {
+                    /* a cut-out picture (flowers, blades, the shore's foam, a shadow): each triangle on the ground
+                     * under it, as it lies over ground of several heights; a gap between two of them does not show */
+                    for (q = m0; q < m1; q++) {
+                        float best;
+                        int w = 0, k;
+
+                        if (!decal_target(s, mem[q], textured, wsheet, keys, nk, start, idx, x0, z0, gw, &best, &w)) {
+                            continue;
+                        }
+                        if (getenv("BMAP_NAME_LOG") != NULL && w) {     /* research */
+                            fprintf(stderr, "bmap: name on-water %s class %d tris 1 from %.1f onto %.1f\n", decal_name(s, mem[q]),
+                                    textured[mem[q]], (double)s->v[mem[q] * 3u].y, (double)best);
+                        }
+                        for (k = 0; k < 3; k++) {
+                            s->v[mem[q] * 3u + (unsigned)k].y = best + DECAL_LIFT;
+                        }
+                        nlaid++;
+                    }
+                } else if (nok == m1 - m0 && hi - lo <= 0.05f) {
+                    if (getenv("BMAP_NAME_LOG") != NULL && water) {     /* research */
+                        fprintf(stderr, "bmap: name on-water %s class %d tris %u from %.1f onto %.1f\n", decal_name(s, mem[m0]),
+                                textured[mem[m0]], m1 - m0, (double)s->v[mem[m0] * 3u].y, (double)lo);
+                    }
+                    for (q = m0; q < m1; q++) {
+                        int k;
+
+                        for (k = 0; k < 3; k++) {
+                            s->v[mem[q] * 3u + (unsigned)k].y = lo + DECAL_LIFT;
+                        }
+                        nlaid++;
+                    }
+                } else if (nok > 0u && getenv("BMAP_NAME_LOG") != NULL) {   /* research: a sheet the old rule tore */
+                    fprintf(stderr, "bmap: name sheet-kept %s tris %u of them %u had a surface under them (%.1f..%.1f), at %.0f %.1f %.0f\n",
+                            decal_name(s, mem[m0]), m1 - m0, nok, (double)lo, (double)hi, (double)s->v[mem[m0] * 3u].x,
+                            (double)s->v[mem[m0] * 3u].y, (double)s->v[mem[m0] * 3u].z);
+                }
+            }
         }
+        free(co);
+        free(par);
+        free(mem);
+        free(mstart);
+        free(done);
     }
     (void)nlaid;
     if (getenv("BMAP_NAME_LOG") != NULL) {
@@ -2304,6 +2446,7 @@ out:
     free(level);
     free(textured);
     free(wsheet);
+    free(cutc);
     free(start);
     free(fill);
     free(idx);

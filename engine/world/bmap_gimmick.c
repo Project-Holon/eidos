@@ -18,7 +18,10 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <stdio.h>
+
 #include "bmap_gimmick.h"
+#include "port.h"
 
 /* Striaton (zone 7, gimmick 4, ov042 button states).  Models 0 to 8 are the
  * curtains in three columns and three rows, models 9 to 11 the one-shot
@@ -194,4 +197,65 @@ unsigned bmap_gimmick_models(unsigned zone, const BmapGimmickModel **out)
         }
     }
     return 0;
+}
+
+/* Driftveil Gym's floors (ov043, FIELD_GIMMICK_LIFT_ELEVATOR_Init): overlay 43 loads at 0x021F36C0. */
+#define OV43_BASE 0x021F36C0u
+#define OV43_FIXED (0x021F4510u - OV43_BASE)    /* sLiftElevatorFixedHeightAreas: 8 of 5 ints */
+#define OV43_LIFTS (0x021F4480u - OV43_BASE)    /* sLiftElevatorLiftZones: 6 of 6 ints */
+
+static int gf_s32(const unsigned char *p)
+{
+    return (int)((unsigned)p[0] | ((unsigned)p[1] << 8) | ((unsigned)p[2] << 16) | ((unsigned)p[3] << 24));
+}
+
+unsigned bmap_gimmick_floors(unsigned zone, BmapGimmickFloor *out, unsigned max)
+{
+    static const char *const dirs[] = { "overlays_dec", "overlays" };
+    unsigned char buf[0xF00];
+    size_t n = 0;
+    unsigned k, count = 0;
+    int i;
+
+    if (zone != 97u) {
+        return 0;
+    }
+    for (i = 0; i < 2 && n == 0; i++) {
+        char path[1024];
+        FILE *f;
+
+        snprintf(path, sizeof path, "%s/../%s/y9_0043.bin", bw_data_root(), dirs[i]);
+        f = fopen(path, "rb");
+        if (f != NULL) {
+            n = fread(buf, 1, sizeof buf, f);
+            fclose(f);
+        }
+    }
+    if (n < OV43_FIXED + 8u * 20u) {
+        return 0;
+    }
+    for (k = 0; k < 8u && count < max; k++) {
+        const unsigned char *r = buf + OV43_FIXED + k * 20u;
+
+        out[count].tx = gf_s32(r);
+        out[count].tz = gf_s32(r + 4);
+        out[count].w = gf_s32(r + 8);
+        out[count].d = gf_s32(r + 12);
+        out[count].y[0] = out[count].y[1] = (float)gf_s32(r + 16) / 4096.0f;
+        out[count].lift = 0;
+        count++;
+    }
+    for (k = 0; k < 6u && count < max; k++) {
+        const unsigned char *r = buf + OV43_LIFTS + k * 24u;
+
+        out[count].tx = gf_s32(r);
+        out[count].tz = gf_s32(r + 4);
+        out[count].w = gf_s32(r + 8);
+        out[count].d = gf_s32(r + 12);
+        out[count].y[0] = (float)gf_s32(r + 16) / 4096.0f;
+        out[count].y[1] = (float)gf_s32(r + 20) / 4096.0f;
+        out[count].lift = 1;
+        count++;
+    }
+    return count;
 }
