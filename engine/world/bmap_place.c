@@ -2577,17 +2577,25 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
      * around the battle stays in view.  The lowest place_score wins;
      * distance and turning each cost a little, so the start wins whenever
      * it is as good.  With reach < 0 the start and facing are used as
-     * given. */
+     * given.  When no tile within reach can hold the battle (the start in a
+     * tree or on a wall, a trainer's row turned round to look away from the
+     * field camera), the reach grows a tile at a time, up to 6 more, until
+     * one can: the battle was left standing in the tree.  Where even that
+     * finds none (ground the game's tiles close off in this season:
+     * Dragonspiral Tower's garden outside winter), the closed tiles within
+     * the row's own reach are scored as the open ones are. */
     {
         clock_t t_start = clock();
         float best = 1e30f, bx = px, bz = pz, gp = bmap_ground_y(s, px, pz);
         float best_in = 1e30f, ibx = px, ibz = pz;
         double ba = a, iba = a;
-        int dx, dz, n, home = bmap_tile(s, px, pz);
+        int dx, dz, n, home = bmap_tile(s, px, pz), reach0 = reach, closed;
 
         if (reach < 0) {
             best = place_score(s, grass, px, pz, a, k, gp, home);
         }
+        for (closed = 0; closed < 2 && best > 1e29f; closed++)
+        for (reach = reach0; reach >= 0 && reach <= reach0 + (closed ? 0 : 6) && best > 1e29f; reach++)
         for (dz = -reach; dz <= reach; dz++) {
             for (dx = -reach; dx <= reach; dx++) {
                 float dist = sqrtf((float)(dx * dx + dz * dz));
@@ -2604,7 +2612,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
                         continue;           /* a turn toward the field camera */
                     }
 
-                    if (bmap_tile(s, cx, cz) == BMAP_TILE_BLOCKED) {
+                    if (!closed && bmap_tile(s, cx, cz) == BMAP_TILE_BLOCKED) {
                         continue;           /* never on a wall or a table */
                     }
                     if (sp->has_rect && (cx < sp->x0 || cx > sp->x1 || cz < sp->z0 || cz > sp->z1)) {
@@ -2622,6 +2630,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
                 }
             }
         }
+        reach = reach0;
         if (sp->has_area) {
             /* A wild area: both Pokemon in it, wherever in it (any spot of
              * the area and a few tiles round, any of the eight angles); the

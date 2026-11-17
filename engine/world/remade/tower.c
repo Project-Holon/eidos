@@ -2030,6 +2030,7 @@ static const Ft *near_wall(const Ft *f, unsigned nf, const double mid[3], double
     const Ft *best = NULL;
     double bd = 1e30, most = 0.0;
     unsigned i;
+    int mixed;
 
     /* (the largest upright draw that is not a floor's: the room's walls) */
     for (i = 0; i < nf; i++) {
@@ -2039,6 +2040,9 @@ static const Ft *near_wall(const Ft *f, unsigned nf, const double mid[3], double
             most = u > most ? u : most;
         }
     }
+    /* (first the walls of a wall draw; where none stands at that height, the walls of a draw that holds floors too:
+     * a brick band drawn with the wall tops and a pool's bed) */
+    for (mixed = 0; mixed < 2 && best == NULL; mixed++)
     for (i = 0; i < nf; i++) {
         const RmTri *t = f[i].t;
         const unsigned char *c = t->rgb;
@@ -2058,7 +2062,7 @@ static const Ft *near_wall(const Ft *f, unsigned nf, const double mid[3], double
 
             d += k == 1 ? 0.25 * m * m : m * m;    /* (height counts less: the wall's band over it) */
         }
-        if (d < bd && !draw_is_floor(f, nf, f[i].b) && draw_upright(f, nf, f[i].b) >= 0.25 * most) {
+        if (d < bd && (mixed || (!draw_is_floor(f, nf, f[i].b) && draw_upright(f, nf, f[i].b) >= 0.25 * most))) {
             bd = d;
             best = &f[i];
         }
@@ -2289,7 +2293,7 @@ static void do_blockwalls(const Ft *f, unsigned nf, RmOut *out, double y0, const
 static void do_edgewalls(const Ft *f, unsigned nf, RmOut *out, double y0, double h, const char *keep)
 {
     unsigned i, j;
-    int a, k;
+    int a, k, why[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
     for (i = 0; i < nf; i++) {
         const RmTri *t = f[i].t;
@@ -2331,6 +2335,7 @@ static void do_edgewalls(const Ft *f, unsigned nf, RmOut *out, double y0, double
             if (len < 0.5) {
                 continue;
             }
+            why[0]++;
             /* into the room: the side with floor; floor on both sides (an inner seam) or neither: no edge */
             in[0] = -ed[2];
             in[1] = 0.0;
@@ -2343,6 +2348,7 @@ static void do_edgewalls(const Ft *f, unsigned nf, RmOut *out, double y0, double
                     sb |= floor_under(f, nf, mid[0] - in[0] * 3.0 * step, mid[2] - in[2] * 3.0 * step, y0);
                 }
                 if (sa == sb) {
+                    why[1 + (sa != 0)]++;
                     continue;
                 }
                 if (sb) {
@@ -2375,6 +2381,7 @@ static void do_edgewalls(const Ft *f, unsigned nf, RmOut *out, double y0, double
                          && lo[1] <= y0 + h && hi[1] >= y0 + 2.0;
             }
             if (stands) {
+                why[3]++;
                 continue;
             }
             {
@@ -2391,6 +2398,7 @@ static void do_edgewalls(const Ft *f, unsigned nf, RmOut *out, double y0, double
                 }
             }
             if (kept) {
+                why[4]++;
                 continue;
             }
             {
@@ -2400,8 +2408,10 @@ static void do_edgewalls(const Ft *f, unsigned nf, RmOut *out, double y0, double
                 int r;
 
                 if (pic == NULL) {
+                    why[5]++;
                     continue;
                 }
+                why[6]++;
                 pe[0] = -pic->n[2]; pe[1] = 0.0; pe[2] = pic->n[0];
                 rm_norm(pe);
                 for (k = 0; k < 3; k++) {
@@ -2461,6 +2471,10 @@ static void do_edgewalls(const Ft *f, unsigned nf, RmOut *out, double y0, double
                 }
             }
         }
+    }
+    if (getenv("RM_EDGE_LOG") != NULL) {     /* research: why the open edges of the floor got no wall */
+        fprintf(stderr, "edgewalls y %.1f: %d open edges; no floor on either side %d, floor on both %d, a wall stands %d, "
+                "kept %d, no wall picture %d, walled %d\n", y0, why[0], why[1], why[2], why[3], why[4], why[5], why[6]);
     }
 }
 
@@ -3569,7 +3583,7 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
         }
     }
     if (rm_opt(opt, "backz", buf, sizeof buf) != NULL) {
-        for (ep = buf; ep != NULL && *ep != ' '; ) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
             double bz[5];
 
             if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf", &bz[0], &bz[1], &bz[2], &bz[3], &bz[4]) == 5) {

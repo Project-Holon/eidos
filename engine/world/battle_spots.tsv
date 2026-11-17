@@ -358,18 +358,18 @@ A202.3	A	202	Twist Mountain: area 3	-	-	-	-	50	47	59	49	808	760	0	auto	-	-	-	-	-
 A202.4	A	202	Twist Mountain: area 4	-	-	-	-	3	50	22	60	56	808	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 A203.1	A	203	Twist Mountain: area 1	-	-	-	-	6	6	25	25	104	104	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 A205.1	A	205	Dragonspiral Tower: area 1	-	-	-	-	177	147	180	158	2840	2536	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T206.0	T	206	Dragonspiral Tower: Ace Trainer (trainer 1)	38	40	0	4	-	-	-	-	616	632	180	auto	-	-	-	-	-	-	-	0	1	-	-	106	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T206.1	T	206	Dragonspiral Tower: Ace Trainer (trainer 2)	44	26	0	3	-	-	-	-	712	408	180	auto	-	-	-	-	-	-	-	0	1	-	-	102	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T206.0	T	206	Dragonspiral Tower: Ace Trainer (trainer 1)	38	40	0	4	-	-	-	-	616	632	180	fixed	614	618	0	-	-	-	-	0	1	-	-	106	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T206.1	T	206	Dragonspiral Tower: Ace Trainer (trainer 2)	44	26	0	3	-	-	-	-	712	408	180	fixed	694	554	0	-	-	-	-	0	1	-	-	102	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 A206.1	A	206	Dragonspiral Tower: water 1	-	-	-	-	20	36	23	42	328	584	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 A207.1	A	207	Dragonspiral Tower: area 1	-	-	-	-	12	1	26	29	200	392	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 A208.1	A	208	Dragonspiral Tower: area 1	-	-	-	-	1	1	26	25	24	216	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T210.9	T	210	Dragonspiral Tower: Team Plasma (trainer 1)	22	21	2	2	-	-	-	-	344	344	270	auto	-	-	-	-	-	-	-	0	1	-	-	303	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T210.10	T	210	Dragonspiral Tower: Team Plasma (trainer 2)	10	24	3	4	-	-	-	-	184	392	90	auto	-	-	-	-	-	-	-	0	1	-	-	304	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T210.11	T	210	Dragonspiral Tower: Team Plasma (trainer 3)	4	17	3	2	-	-	-	-	88	280	90	auto	-	-	-	-	-	-	-	0	1	-	-	312	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T210.12	T	210	Dragonspiral Tower: Team Plasma (trainer 4)	10	8	1	2	-	-	-	-	168	152	0	auto	-	-	-	-	-	-	-	0	1	-	-	302	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T210.14	T	210	Dragonspiral Tower: Team Plasma (trainer 5)	19	24	3	3	-	-	-	-	328	392	90	auto	-	-	-	-	-	-	-	0	1	-	-	612	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T212.s8a	T	212	Dragonspiral Tower: Team Plasma (story)	12	12	2	0	-	-	-	-	184	200	270	auto	-	-	-	-	-	-	-	0	1	-	-	305	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	3	1	1	0
-T212.s8b	T	212	Dragonspiral Tower: Team Plasma (story)	11	13	0	0	-	-	-	-	184	200	180	auto	-	-	-	-	-	-	-	0	1	-	-	313	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	1	1	1	0
+T210.9	T	210	Dragonspiral Tower: Team Plasma (trainer 1)	22	21	2	2	-	-	-	-	344	344	270	fixed	312	248	270	-	-	-	-	0	1	-	-	303	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T210.10	T	210	Dragonspiral Tower: Team Plasma (trainer 2)	10	24	3	4	-	-	-	-	184	392	90	fixed	232	408	90	-	-	-	-	0	1	-	-	304	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T210.11	T	210	Dragonspiral Tower: Team Plasma (trainer 3)	4	17	3	2	-	-	-	-	88	280	90	fixed	120	328	90	-	-	-	-	0	1	-	-	312	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T210.12	T	210	Dragonspiral Tower: Team Plasma (trainer 4)	10	8	1	2	-	-	-	-	168	152	0	fixed	248	168	0	-	-	-	-	0	1	-	-	302	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T210.14	T	210	Dragonspiral Tower: Team Plasma (trainer 5)	19	24	3	3	-	-	-	-	328	392	90	fixed	344	408	90	-	-	-	-	0	1	-	-	612	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T212.s8a	T	212	Dragonspiral Tower: Team Plasma (story)	12	12	2	0	-	-	-	-	184	200	270	fixed	232	184	270	-	-	-	-	0	1	-	-	305	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	3	1	1	0
+T212.s8b	T	212	Dragonspiral Tower: Team Plasma (story)	11	13	0	0	-	-	-	-	184	200	180	fixed	150	282	0	-	-	-	-	0	1	-	-	313	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	1	1	1	0
 A215.1	A	215	Victory Road: area 1	-	-	-	-	3	3	5	7	56	56	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 A215.2	A	215	Victory Road: water 2	-	-	-	-	7	4	14	29	120	72	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 A215.3	A	215	Victory Road: area 3	-	-	-	-	9	21	15	39	152	520	0	auto	-	-	-	-	-	-	-	0	1	-	-	-	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
