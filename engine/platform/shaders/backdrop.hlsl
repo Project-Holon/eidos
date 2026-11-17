@@ -71,6 +71,7 @@ cbuffer FragmentUniforms : register(b0, space3)
     float4 sky;         // the sky pass: on, the layer's height, (unused), the horizon's bend
     float4 skyu;        // ... the picture's u of a layer point (x, z, 1)
     float4 skyv;        // ... and its v
+    float4 fog2;        // research: a second fog measure (the thicker of the two is taken); zeros: none
 };
 
 struct FSOut
@@ -199,7 +200,16 @@ FSOut fs_main(VSOut i)
     if (a < cut.y || a >= cut.z) discard;
     if (cut.y > 0.4) a = 1.0;
     if (fogc.a > 0.0) {
-        float ff = clamp(dot(i.wpos, fog.xyz) - fog.w, 0.0, 1.0);
+        float ft = dot(i.wpos, fog.xyz) - fog.w;
+        float ff = clamp(ft, 0.0, 1.0);
+        if (fogc.a > 1.0) {
+            ft = max(ft, 0.0);
+            ff = clamp((fogc.a - 1.0) * ft / (1.0 + ft), 0.0, 1.0);
+            if (any(fog2.xyz != float3(0.0, 0.0, 0.0))) {
+                float fg = max(dot(i.wpos, fog2.xyz) - fog2.w, 0.0);
+                ff = max(ff, clamp((fogc.a - 1.0) * fg / (1.0 + fg), 0.0, 1.0));
+            }
+        }
         c.rgb = lerp(c.rgb, fogc.rgb, ff);
     }
     o.color = float4(c.rgb * a, a);

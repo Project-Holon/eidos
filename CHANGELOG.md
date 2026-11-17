@@ -12,7 +12,9 @@ Each release's notes on GitHub start with its section here
   - Extended ocean geometry past map boundaries and removed distant sky-color terrain fading.
   - Animated water surfaces and shorelines in battle to match the overworld.
   - Added area-specific procedural voxel clouds to outdoor battles that drift in real time and respond to time-of-day lighting, while disabling clouds inside caves and indoor areas (Wellspring Cave, Chargestone Cave, Relic Castle).
-  - Added the overworld's weather particles to real-map battles: falling snow and sandstorm grains, replayed from the game's own weather routines and sprites.
+  - Added the overworld's weather to real-map battles, replayed from the game's own weather routines, tables and sprites:
+    - Particles for every kind: snow, rain, sandstorm, blizzard, downpour, thunderstorm, storm and diamond dust.
+    - The scrolling sheets of the blizzard, the two storms and the Desert Resort sandstorm.
   - Matched battle fog depth calculation to the overworld camera axis so distant cave and room walls retain their geometry instead of flattening into solid fog (Chargestone Cave, Driftveil Gym).
 - **Gym & Dungeon Geometry**:
   - **Nimbasa Gym**: Extruded roller-coaster rails and tracks into full 3D geometry, modeled raised 3D switch pads, and synced track/pad colors to the active switch state.
@@ -62,6 +64,7 @@ Each release's notes on GitHub start with its section here
   - Extended mod settings definitions with text inputs, custom game modes (`mode` with `joins`, `in=`, and `export`), host-synced lobby rules (`@lobby`), conditional option rows (`?key=value`), and `heading`/`help`/`yaml` metadata, queryable via `setting_text`, `mode_get`, `mode_code`, and `player_name` (`docs/mod-services.md`).
 
 ### Fixes
+- **Diamond Dust Crash**: Fixed the game closing in Icirrus City on 31 December, the one day of diamond dust: the weather's own code divided by zero, which the DS tolerates and a PC does not.
 - **Pause Menu Speed Spike**: Fixed game logic and audio briefly running at 2× speed when opening or closing pause-menu screens in one-screen mode.
 - **Move Name Highlighting**: Fixed type-colored battle text tinting prefixes inside Pokémon names that match move names (e.g., "Charm" in "Charmander" or "Dig" in "Diglett") instead of only coloring the move itself (thanks @aqali1, #35).
 - **Party Status Icons**: Fixed status condition badges in the party screen displaying the wrong ailment (such as showing paralysis as sleep; thanks @aqali1, #39, #41).

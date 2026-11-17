@@ -79,6 +79,7 @@ typedef struct G3dUniforms {
     int d[4];           /* w-buffer                     */
     float e[4];         /* a sprite's depth (0: its own) */
     float toon[32][4];
+    float sfog[4];      /* research: a battle sprite under the map's fog: the colour, and how much */
 } G3dUniforms;
 
 typedef struct EdgeUniforms {
@@ -114,6 +115,7 @@ typedef struct BdFragmentUniforms {
     float sky[4];       /* the sky pass: on, the layer's height, (unused), the horizon's bend */
     float skyu[4];      /* ... the picture's u of a layer point (x, z, 1) (bmap_sky_uv) */
     float skyv[4];      /* ... and its v                                              */
+    float fog2[4];      /* research: a second fog measure (bmap_fog_k2); zeros: none */
 } BdFragmentUniforms;
 
 /* ------------------------------------------------------------------ */
@@ -1071,15 +1073,16 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     fu.flags[3] = (int)(bk->n_clear > 32u ? 32u : bk->n_clear);
     memcpy(fu.clr, bk->clear, sizeof fu.clr);
     memcpy(fu.poke, bk->poke, sizeof fu.poke);
-    /* the zone's fog: by the depth along the field camera's line of sight past the battle's place
-     * (BmapScene.fog_k, bmap_place); the colour's fourth: on */
+    /* the zone's fog, or the weather's: by the depth along the field camera's line of sight past the battle's place
+     * (BmapScene.fog_k, bmap_place); the colour's fourth: 0 off, 1 even, else 1 + the fog's curve (BmapScene.fog_curve) */
     if (sc->fog_on && sc->fog_end > sc->fog_start
         && (sc->fog_k[0] != 0.0f || sc->fog_k[1] != 0.0f || sc->fog_k[2] != 0.0f)) {
-        memcpy(fu.fog, sc->fog_k, sizeof fu.fog);
+        bmap_fog_k(sc, bk->eye, fwd, fu.fog);
+        bmap_fog_k2(sc, bk->eye, fwd, fu.fog2);
         fu.fogc[0] = (float)sc->fog[0] / 255.0f;
         fu.fogc[1] = (float)sc->fog[1] / 255.0f;
         fu.fogc[2] = (float)sc->fog[2] / 255.0f;
-        fu.fogc[3] = 1.0f;
+        fu.fogc[3] = sc->fog_curve > 0.0f ? 1.0f + sc->fog_curve : 1.0f;
     }
     if (front && !bk->front_only) {
         /* the game's sprites wrote the depth of their places (sprite_depths): the map nearer than a sprite
@@ -1390,6 +1393,7 @@ typedef struct Run {
     int textured, slot, wrap, id, two_pass, fog;
     float zo;           /* a backdrop sprite's depth (sprite_depths), 0: the polygon's own */
     float zref;         /* ... and the own depth of that sprite's first cell */
+    float sfog;         /* research: the map's fog at the sprite's place (BmapScene.fog_sprites) */
 } Run;
 
 static void draw_run(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pass,
@@ -1409,6 +1413,7 @@ static void draw_run(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pa
     u->b[3] = uid;
     u->e[0] = d->zo;
     u->e[1] = d->zref;
+    u->sfog[3] = d->sfog;
     if (d->textured && d->slot >= 0 && (unsigned)d->slot < s->n_gtex && s->gtex[d->slot] != NULL) {
         tb.texture = s->gtex[d->slot];
         u->a[2] = 1;
@@ -1699,6 +1704,20 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
 
                 cur.zo = k >= 0 ? sz[k] : 0.0f;
                 cur.zref = 0.0f;
+                cur.sfog = 0.0f;
+                if (k >= 0 && snap->backdrop.scene != NULL && ((const BmapScene *)snap->backdrop.scene)->fog_sprites) {
+                    const BmapScene *bsc = (const BmapScene *)snap->backdrop.scene;
+                    float fw[3];
+
+                    fw[0] = snap->backdrop.target[0] - snap->backdrop.eye[0];
+                    fw[1] = snap->backdrop.target[1] - snap->backdrop.eye[1];
+                    fw[2] = snap->backdrop.target[2] - snap->backdrop.eye[2];
+                    vnorm(fw);
+                    cur.sfog = bmap_fog_at(bsc, snap->backdrop.eye, fw, snap->backdrop.poke[k]);
+                    u.sfog[0] = (float)bsc->fog[0] / 255.0f;
+                    u.sfog[1] = (float)bsc->fog[1] / 255.0f;
+                    u.sfog[2] = (float)bsc->fog[2] / 255.0f;
+                }
                 if (k >= 0) {
                     if (!zr_set[k]) {       /* (the sprite's first cell this frame: its own depth) */
                         const G3dVertex *v0 = &snap->verts[snap->idx[p->first]];

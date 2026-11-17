@@ -202,6 +202,12 @@ void bmap_set_field_matrix(const BmapFieldMatrix *m)
     (void)m;
 }
 
+/* The weather: none in this build. */
+void bmap_set_weather(int weather_id)
+{
+    (void)weather_id;
+}
+
 int bmap_wfbc_grid(unsigned zone, const unsigned char *npc_ids, int n, unsigned player_id, BmapWfbc *out)
 {
     (void)zone;

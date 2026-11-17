@@ -47,6 +47,7 @@ cbuffer FragmentUniforms : register(b0, space3)
     int4 d;         // wbuf
     float4 e;       // x: a backdrop sprite's depth (0: the polygon's own); y: the own depth of its first cell
     float4 toontab[32];
+    float4 sfog;    // research: a battle sprite under the map's fog: the fog's colour, and how much of it
 };
 
 struct FSOut
@@ -115,7 +116,7 @@ FSOut fs_main(VSOut i, bool front : SV_IsFrontFace)
     if (a.w == 2 && a5 >= 31) discard;
     if (a5 == 0 || a5 <= b.z) discard;
     float al = float(a5) / 31.0;
-    o.color = float4(float3(colr) / 255.0 * al, al);
+    o.color = float4(lerp(float3(colr) / 255.0, sfog.rgb, sfog.a) * al, al);
     o.id = float(b.w) / 255.0;
     // (a sprite at the depth of its place: its cells keep their own order, each cell's depth against the sprite's
     // first cell's carried on at a twentieth)

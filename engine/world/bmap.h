@@ -142,8 +142,22 @@ typedef struct BmapScene {
                                  the field shows the place.  (A flat distance from the player turned every
                                  far wall of a wide room into the fog's colour.) */
     float fog_start, fog_end; /* fog_on: distance from the player (map units) where the
-                                 fog begins and where it is full; the zone's own
-                                 fog only, not the weather's                       */
+                                 fog begins and where it is full: the zone's own fog, or the
+                                 weather's (bmap_set_weather), which may begin in front of the
+                                 player (a negative start)                         */
+    float fog_curve;          /* fog_on: how the fog thickens past fog_start.  0: evenly, full at fog_end
+                                 (the zone's fog).  More (the weather's fog): as the DS's depth buffer
+                                 makes it, fast at first and slowly after, and not always to full: with
+                                 t the depth past fog_start over (fog_end - fog_start), which is then
+                                 the field camera's distance to fog_start, the fog is
+                                 curve * t / (1 + t), at most 1. */
+    int weather;              /* the weather the scene was built with (the game's weather id), -1 none */
+    float fog_dist;           /* fog_on: the field camera's distance from the player (map units): fog_start +
+                                 fog_dist is the depth from that camera where the fog begins */
+    int fog_sprites;          /* research (BMAP_WEATHER_SPRITE_FOG=1): the battle's own sprites (the Pokemon, the
+                                 trainers) take the fog of their place (bmap_fog_at) */
+    int fog_eye;              /* research (BMAP_WEATHER_FOG_EYE=1): the weather's fog measured from the battle's
+                                 own camera, along its line of sight, in place of the field camera's (bmap_fog_k) */
     void *priv;             /* the ground index (bmap_ground_y); owned by the scene */
     float place_k;          /* bmap_place: the scale chosen, battle units per map unit */
     float place_x, place_z; /* bmap_place: the spot chosen (map units: the own
@@ -196,6 +210,71 @@ typedef struct BmapScene {
                                this scene, copied by bmap_copy                 */
     unsigned prep_nd0, prep_ntri;
 } BmapScene;
+
+/* The fog's measure from the battle's own camera (eye and unit line of sight, battle units): the scene's two fog
+ * depths from that camera, in fog_k's form.  (research, fog_eye) */
+static inline void bmap_fog_k_eye(const BmapScene *s, const float eye[3], const float fwd[3], float out[4])
+{
+    const float span = (s->fog_end - s->fog_start) * s->place_k;
+
+    out[0] = fwd[0] / span;
+    out[1] = fwd[1] / span;
+    out[2] = fwd[2] / span;
+    out[3] = eye[0] * out[0] + eye[1] * out[1] + eye[2] * out[2] + (s->fog_start + s->fog_dist) * s->place_k / span;
+}
+
+/* The fog's measure for a frame of the battle's camera: out as fog_k, the fog of a point p being
+ * clamp(dot(p, out.xyz) - out.w, 0, 1), or bent by fog_curve.  The placed scene's own fog_k (the field camera's line
+ * of sight); with fog_eye 1 (research) the same two depths from the battle's camera. */
+static inline void bmap_fog_k(const BmapScene *s, const float eye[3], const float fwd[3], float out[4])
+{
+    out[0] = s->fog_k[0]; out[1] = s->fog_k[1]; out[2] = s->fog_k[2]; out[3] = s->fog_k[3];
+    if (s->fog_eye == 1 && s->fog_on && s->fog_end > s->fog_start && s->place_k > 0.0f) {
+        bmap_fog_k_eye(s, eye, fwd, out);
+    }
+}
+
+/* research (fog_eye 2): the second measure, from the battle's camera, to take the thicker of the two; zeros: none */
+static inline void bmap_fog_k2(const BmapScene *s, const float eye[3], const float fwd[3], float out[4])
+{
+    out[0] = out[1] = out[2] = out[3] = 0.0f;
+    if (s->fog_eye == 2 && s->fog_on && s->fog_end > s->fog_start && s->place_k > 0.0f) {
+        bmap_fog_k_eye(s, eye, fwd, out);
+    }
+}
+
+/* The fog at the point p of the placed scene (battle units) for a frame of the battle's camera: 0 none to 1 full. */
+static inline float bmap_fog_at(const BmapScene *s, const float eye[3], const float fwd[3], const float p[3])
+{
+    float k[4], f = 0.0f;
+    int pass;
+
+    if (!s->fog_on || s->fog_end <= s->fog_start || (s->fog_k[0] == 0.0f && s->fog_k[1] == 0.0f && s->fog_k[2] == 0.0f)) {
+        return 0.0f;
+    }
+    for (pass = 0; pass < 2; pass++) {
+        float t, g;
+
+        if (pass == 0) {
+            bmap_fog_k(s, eye, fwd, k);
+        } else {
+            bmap_fog_k2(s, eye, fwd, k);
+            if (k[0] == 0.0f && k[1] == 0.0f && k[2] == 0.0f) {
+                break;
+            }
+        }
+        t = p[0] * k[0] + p[1] * k[1] + p[2] * k[2] - k[3];
+        if (s->fog_curve > 0.0f) {
+            t = t < 0.0f ? 0.0f : t;
+            g = s->fog_curve * t / (1.0f + t);
+        } else {
+            g = t;
+        }
+        g = g < 0.0f ? 0.0f : g > 1.0f ? 1.0f : g;
+        f = g > f ? g : f;
+    }
+    return f;
+}
 
 /* The cloud layer's picture coordinates this moment: a point (x, z) of the
  * layer in battle space reads the picture at (u . (x, z, 1), v . (x, z, 1)).
@@ -291,6 +370,12 @@ typedef struct BmapFieldMatrix {
 /* The next bmap_build takes its maps from this when it is the build zone's matrix (the same zone, or the zone's own
  * matrix id); NULL or none set: the zone's matrix from the files.  Taken by that build. */
 void bmap_set_field_matrix(const BmapFieldMatrix *m);
+/* The weather the field showed (the game's weather id: 1 snow, 2 rain, 3 the sandstorm ...; 0 or negative: clear).
+ * A weather kind changes two things of the place while it is on, and the next bmap_build makes them: the light
+ * (WEATHER_TASK_SetLight: the weather's own light table, archive 0x3E, in place of the area's) and the fog
+ * (WEATHER_TASK_InitFog: the kind's own slope and offset, in the fog colour of that light table, in place of the
+ * zone's).  Taken by that build. */
+void bmap_set_weather(int weather_id);
 /* The remade models' store: a folder where each remade model (bmap_remade.h) is written once made and read back in
  * later sessions (making one takes about 0.3 s; a place's first battle waited for all of its own).  `stamp` names the
  * program that made them (its version and build): a file made by another is made again.  NULL or "": no store.

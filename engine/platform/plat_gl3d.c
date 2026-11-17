@@ -405,6 +405,7 @@ static const char *k_fsb =
     "uniform vec3 u_foc;\n"
     "uniform vec4 u_fog;\n"
     "uniform vec4 u_fogc;\n"
+    "uniform vec4 u_fog2;\n"
     "uniform int u_tex;\n"
     "uniform sampler2D u_texture;\n"
     "uniform float u_alpha;\n"
@@ -546,7 +547,16 @@ static const char *k_fsb =
     "    if (a < u_cut || a >= u_cut_hi) { discard; }\n"
     "    if (u_cut > 0.4) { a = 1.0; }\n"
     "    if (u_fogc.a > 0.0) {\n"
-    "        float f = clamp(dot(v_pos, u_fog.xyz) - u_fog.w, 0.0, 1.0);\n"
+    "        float t = dot(v_pos, u_fog.xyz) - u_fog.w;\n"
+    "        float f = clamp(t, 0.0, 1.0);\n"
+    "        if (u_fogc.a > 1.0) {\n"
+    "            t = max(t, 0.0);\n"
+    "            f = clamp((u_fogc.a - 1.0) * t / (1.0 + t), 0.0, 1.0);\n"
+    "            if (u_fog2.xyz != vec3(0.0)) {\n"
+    "                float g = max(dot(v_pos, u_fog2.xyz) - u_fog2.w, 0.0);\n"
+    "                f = max(f, clamp((u_fogc.a - 1.0) * g / (1.0 + g), 0.0, 1.0));\n"
+    "            }\n"
+    "        }\n"
     "        c.rgb = mix(c.rgb, u_fogc.rgb, f);\n"
     "    }\n"
     "    o = vec4(c.rgb * a, a);\n"
@@ -583,6 +593,7 @@ typedef struct BdBound {
 typedef struct Gl3dBackdrop {
     GLuint prog, vao, vbo, ibo;
     GLint u_lift;
+    GLint u_fog2;
     GLint u_r[4], u_pivot, u_bb, u_eye, u_foc, u_fog, u_fogc, u_tex, u_texture, u_alpha, u_cut, u_cut_hi;
     GLint u_front, u_poke, u_npoke, u_grass, u_uv0, u_uv1, u_clr, u_nclr, u_sky, u_skyu, u_skyv;
     const void *scene;          /* the scene on the GPU                    */
@@ -746,6 +757,7 @@ static int backdrop_init(EidosGl *g)
     g_bd.u_bb = g->glGetUniformLocation(g_bd.prog, "u_bb");
     g_bd.u_fog = g->glGetUniformLocation(g_bd.prog, "u_fog");
     g_bd.u_fogc = g->glGetUniformLocation(g_bd.prog, "u_fogc");
+    g_bd.u_fog2 = g->glGetUniformLocation(g_bd.prog, "u_fog2");
     g_bd.u_tex = g->glGetUniformLocation(g_bd.prog, "u_tex");
     g_bd.u_texture = g->glGetUniformLocation(g_bd.prog, "u_texture");
     g_bd.u_alpha = g->glGetUniformLocation(g_bd.prog, "u_alpha");
@@ -1202,19 +1214,23 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     g->glUniform4fv(g_bd.u_clr, G3D_BACKDROP_CLEAR, &b->clear[0][0]);
     g->glUniform3fv(g_bd.u_foc, 1, b->target);
     {
-        /* the zone's fog: by the depth along the field camera's line of
-         * sight past the battle's place (BmapScene.fog_k, bmap_place);
-         * the colour's fourth: on */
-        float fc[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        /* the zone's fog, or the weather's: by the depth along the field
+         * camera's line of sight past the battle's place (BmapScene.fog_k,
+         * bmap_place); the colour's fourth: 0 off, 1 even, else 1 + the
+         * fog's curve (BmapScene.fog_curve) */
+        float fc[4] = { 0.0f, 0.0f, 0.0f, 0.0f }, fk[4];
 
         if (sc->fog_on && sc->fog_end > sc->fog_start
             && (sc->fog_k[0] != 0.0f || sc->fog_k[1] != 0.0f || sc->fog_k[2] != 0.0f)) {
             fc[0] = (float)sc->fog[0] / 255.0f;
             fc[1] = (float)sc->fog[1] / 255.0f;
             fc[2] = (float)sc->fog[2] / 255.0f;
-            fc[3] = 1.0f;
+            fc[3] = sc->fog_curve > 0.0f ? 1.0f + sc->fog_curve : 1.0f;
         }
-        g->glUniform4fv(g_bd.u_fog, 1, sc->fog_k);
+        bmap_fog_k(sc, b->eye, fwd, fk);
+        g->glUniform4fv(g_bd.u_fog, 1, fk);
+        bmap_fog_k2(sc, b->eye, fwd, fk);
+        g->glUniform4fv(g_bd.u_fog2, 1, fk);
         g->glUniform4fv(g_bd.u_fogc, 1, fc);
     }
     g->glActiveTexture(GL_TEXTURE0);

@@ -151,6 +151,7 @@ typedef struct BvJob {
     float px, py, pz;
     int has_py;                     /* py is known (the ground nearest it) */
     int season, hour, minute;
+    int weather;                    /* the field's weather (the game's id), -1 none */
     int trainer;                    /* a trainer battle (the setup's competitor) */
     int lesson;                     /* the catching lesson (competitor 4) */
     int trainer_id;                 /* the opponent's trainer number, 0 unknown */
@@ -731,6 +732,10 @@ static void job_main(void *arg)
         }
         bmap_set_wfbc(j->has_wfbc ? &j->wfbc : NULL);     /* else a full place */
         bmap_set_field_matrix(j->has_fmat ? &j->fmat : NULL);  /* else the zone's own from the files */
+        /* The weather's own light and fog on the map: not on yet.  How the fog is measured for a battle's camera
+         * and whether the battle's sprites take it are open choices (bmap.h: fog_eye, fog_sprites);
+         * BMAP_WEATHER_FOG=1 turns it on to try them. */
+        bmap_set_weather(getenv("BMAP_WEATHER_FOG") != NULL ? j->weather : -1);
         j->rc = bmap_build(&b->s, j->zone, j->px, j->pz, j->season, j->hour, j->minute);
         if (j->rc != 0) {
             free(b);
@@ -739,6 +744,22 @@ static void job_main(void *arg)
         }
         if (j->has_py) {
             bmap_set_ref(&b->s, j->py);
+        } else {
+            /* A battle staged with no player height (EIDOS_DEBUG_BMAP_AT without one: a test, a wild row of the
+             * spot table): the height the game itself gives the player's tile (its collision tile's plane, as
+             * the spot editor takes it for a wild row), so the ground is the one the player would stand on.
+             * Without it the ground was the lowest surface under the place, which in a map with anything under
+             * its floor (Icirrus City) put the battle far below the map. */
+            float ty, low;
+
+            low = bmap_ground_y(&b->s, j->px, j->pz);
+            if (bmap_tile_height(&b->s, j->px, j->pz, &ty)) {
+                bmap_set_ref(&b->s, ty);
+                if (getenv("BMAP_PLACE_LOG") != NULL) {
+                    fprintf(stderr, "bmap: no player height: the game's tile height %.1f (the lowest surface there: %.1f)\n",
+                            (double)ty, (double)low);
+                }
+            }
         }
         b->zone = j->zone;
         b->cx = j->px;
@@ -928,8 +949,9 @@ static int read_place(uintptr_t eff, BvJob *j)
         return -1;
     }
     {
-        /* The weather the field showed, replayed over the battle (engine/world/bweather.c): the game's own stored
-         * weather (GAME_DATA_GetWeatherId: the zone's, the season's, a roaming Pokemon's storm).
+        /* The weather the field showed: the game's own stored weather (GAME_DATA_GetWeatherId: the zone's, the
+         * calendar's, a roaming Pokemon's storm).  Its sprites and sheets are replayed over the battle
+         * (engine/world/bweather.c); the scene can be built with its light and fog (bmap_set_weather, job_main).
          * EIDOS_DEBUG_WEATHER=<id> (tests, the spot editor's Preview): that one. */
         const char *dw = getenv("EIDOS_DEBUG_WEATHER");
 
@@ -937,6 +959,7 @@ static int read_place(uintptr_t eff, BvJob *j)
                         : gptr_ok(gd) && GAME_DATA_GetWeatherId != NULL ? (int)GAME_DATA_GetWeatherId((const void *)gd) : -1;
 
         bweather_want(wid);
+        j->weather = wid;
         if (getenv("BMAP_PLACE_LOG") != NULL) {
             fprintf(stderr, "bmap: weather %d (%s)%s", wid, dw != NULL && dw[0] != 0 ? "EIDOS_DEBUG_WEATHER" : "the game's own",
                     GAME_DATA_GetWeatherId == NULL ? ", GAME_DATA_GetWeatherId not linked" : "");
@@ -1324,6 +1347,7 @@ static void warm_main(void *arg)
     memset(&sc, 0, sizeof sc);
     bmap_set_wfbc(NULL);
     bmap_set_field_matrix(NULL);
+    bmap_set_weather(-1);
     if (bmap_build(&sc, w->zone, w->px, w->pz, w->season, 12, 0) == 0) {
         bmap_free(&sc);
     }

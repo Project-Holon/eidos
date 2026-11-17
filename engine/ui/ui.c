@@ -1585,6 +1585,10 @@ static void try_frame(EidosUiCtx *c)
 extern void *EVENT_MAPCHANGE_CreateWarpEventPlain(void *gsys, void *fieldMap, u16 zoneId, const s32 *pos, short dir) __attribute__((weak));
 extern void GAMESYSTEM_SetEvent(void *gsys, void *event) __attribute__((weak));
 extern void *GAMESYSTEM_GetEvent(const void *gsys) __attribute__((weak));
+extern u8 GAME_DATA_GetWeatherId(const void *gameData) __attribute__((weak));
+extern u8 GAME_DATA_GetSeason(const void *gameData) __attribute__((weak));
+extern u8 COMM_PLAYER_SUPPORT_GetSeasonFromClock(void) __attribute__((weak));
+extern void COMM_PLAYER_SUPPORT_SetSeason(void *gameData, s32 season) __attribute__((weak));
 
 static void debug_warp(void)
 {
@@ -1603,6 +1607,11 @@ static void debug_warp(void)
         const s32 *p = (const s32 *)(gd + 4 + 4 * 0x44 + 4);
 
         fprintf(stderr, "eidos: debug warp arrived at (%.1f, %.1f, %.1f)\n", p[0] / 4096.0, p[1] / 4096.0, p[2] / 4096.0);
+        if (GAME_DATA_GetWeatherId != NULL && GAME_DATA_GetSeason != NULL && COMM_PLAYER_SUPPORT_GetSeasonFromClock != NULL) {
+            /* (the weather the game stored for the place: the calendar's when the two seasons agree) */
+            fprintf(stderr, "eidos: debug warp weather %u, season %u (the save's) %u (the clock's)\n", (unsigned)GAME_DATA_GetWeatherId(gd),
+                    (unsigned)GAME_DATA_GetSeason(gd), (unsigned)COMM_PLAYER_SUPPORT_GetSeasonFromClock());
+        }
     }
     if (done || at == NULL || &bw_dsref__GameSystemGlobal == NULL || EVENT_MAPCHANGE_CreateWarpEventPlain == NULL
         || GAMESYSTEM_SetEvent == NULL || GAMESYSTEM_GetEvent == NULL) {
@@ -1620,6 +1629,13 @@ static void debug_warp(void)
     pos[0] = (s32)(x * 4096.0f);
     pos[1] = (s32)(y * 4096.0f);
     pos[2] = (s32)(zz * 4096.0f);
+    if (getenv("EIDOS_DEBUG_WARP_SEASON") != NULL && COMM_PLAYER_SUPPORT_SetSeason != NULL
+        && COMM_PLAYER_SUPPORT_GetSeasonFromClock != NULL) {
+        /* The plain warp has no season check (the game's own map changes have one,
+         * EVENT_MAPCHANGE_CheckSeasonChange): EIDOS_DEBUG_WARP_SEASON=1 takes the season from the clock here, as
+         * that check ends, so a test with EIDOS_RTC sees the place in that date's season and calendar weather. */
+        COMM_PLAYER_SUPPORT_SetSeason(*(void **)(gs + 0x1C), (s32)COMM_PLAYER_SUPPORT_GetSeasonFromClock());
+    }
     ev = EVENT_MAPCHANGE_CreateWarpEventPlain(gs, *(void **)(gs + 0x20), (u16)z, pos, (short)d);
     if (ev != NULL) {
         GAMESYSTEM_SetEvent(gs, ev);

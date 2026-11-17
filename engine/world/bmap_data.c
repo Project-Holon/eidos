@@ -1264,15 +1264,16 @@ static int area_record(Ctx *c, unsigned area, unsigned *texset, int *indoor, uns
     return 0;
 }
 
-static void load_lights(Ctx *c, unsigned light_type, int hour, int minute)
+/* The light of one table (a member of 0x34-byte keyframes) at hour:minute; 0 when it was read, -1 (and the light
+ * left as it was) when the member is not there. */
+static int load_light_table(Ctx *c, const char *arc, unsigned member, int hour, int minute)
 {
     Blob t;
     unsigned keys, k, pick = 0u;
     int seconds = hour * 3600 + minute * 60, found = 0;
 
-    lights_fixed(&c->lights);
-    if (arc_load(c, "a/0/6/1", light_type, &t) != 0) {
-        return;
+    if (arc_load(c, arc, member, &t) != 0) {
+        return -1;
     }
     keys = (unsigned)(t.n / 0x34u);
     for (k = 0; k < keys && !found; k++) {
@@ -1310,6 +1311,93 @@ static void load_lights(Ctx *c, unsigned light_type, int hour, int minute)
         }
     }
     blob_free(&t);
+    return keys > 0u ? 0 : -1;
+}
+
+/* The area's light (a/0/6/1 member lightType). */
+static void load_lights(Ctx *c, unsigned light_type, int hour, int minute)
+{
+    lights_fixed(&c->lights);
+    (void)load_light_table(c, "a/0/6/1", light_type, hour, minute);
+}
+
+/* ---- the weather (bmap_set_weather) ---- */
+
+static int g_weather_next = -1;
+
+void bmap_set_weather(int weather_id)
+{
+    g_weather_next = weather_id;
+}
+
+/* What a weather kind sets when it begins at once (aletheia src/game, the kinds' BeginPlain stages): its fog's
+ * slope and offset (WEATHER_TASK_InitFog) and the index of its light table (ZONEDATA_GetLightTableMember).
+ *   1 snow, 2 rain, 3 and 12 the sandstorm, 4 blizzard, 5 downpour, 6 thunderstorm, 7 storm, 8 diamond dust:
+ *     ov025/weather_snow_blizzard_downpour_diamond_dust.c, ov026/weather_rain_thunderstorm_storm.c,
+ *     ov027/weather_sandstorm.c;
+ *   9 the fog of a fixed depth, 10 11 13 14 the fogs whose depth is the camera setting's: ov028/weather_fog.c
+ *     (gFogSlopeByCameraState 0x021EEA80, bytes; gFogOffsetByCameraState 0x021EEAA4, ints; overlay 28 loads at
+ *     0x021EE740).
+ * Returns 0 for a weather that sets none (clear, an id not known, a table that cannot be read). */
+static int weather_look(int id, unsigned setting, unsigned *slope, unsigned *offset, unsigned *light)
+{
+    static const struct { unsigned char id, slope, light; unsigned short offset; } k[] = {
+        { 1, 8, 1, 0x7F5F }, { 2, 8, 2, 0x7F5F }, { 3, 8, 3, 0x7F5E }, { 12, 8, 3, 0x7F5E }, { 4, 4, 4, 0x7B18 },
+        { 5, 9, 5, 0x7F80 }, { 6, 9, 6, 0x7F80 }, { 7, 9, 7, 0x7F80 }, { 8, 8, 8, 0x7F57 }, { 9, 9, 9, 0x7F78 },
+    };
+    unsigned i;
+
+    for (i = 0; i < sizeof k / sizeof k[0]; i++) {
+        if (k[i].id == id) {
+            *slope = k[i].slope;
+            *offset = k[i].offset;
+            *light = k[i].light;
+            return 1;
+        }
+    }
+    if (id == 10 || id == 11 || id == 13 || id == 14) {
+        static const char *const dirs[] = { "overlays_dec", "overlays" };
+        const unsigned at_slope = 0x021EEA80u - 0x021EE740u, at_offset = 0x021EEAA4u - 0x021EE740u;
+        int d, ok = 0;
+
+        for (d = 0; d < 2 && !ok; d++) {
+            char path[1024];
+            unsigned char b[4];
+            FILE *f;
+
+            snprintf(path, sizeof path, "%s/../%s/y9_0028.bin", bw_data_root(), dirs[d]);
+            f = fopen(path, "rb");
+            if (f == NULL) {
+                continue;
+            }
+            /* (the slope table is one byte a camera setting, up to the offset table: 36 settings) */
+            if (setting < at_offset - at_slope && fseek(f, (long)(at_slope + setting), SEEK_SET) == 0 && fread(b, 1, 1, f) == 1) {
+                *slope = b[0];
+                if (fseek(f, (long)(at_offset + setting * 4u), SEEK_SET) == 0 && fread(b, 1, 4, f) == 4) {
+                    *offset = (unsigned)b[0] | ((unsigned)b[1] << 8) | ((unsigned)b[2] << 16) | ((unsigned)b[3] << 24);
+                    ok = 1;
+                }
+            }
+            fclose(f);
+        }
+        *light = (unsigned)id;
+        return ok;
+    }
+    return 0;
+}
+
+/* The weather's light: its table's member (the arm9 table of ZONEDATA_GetLightTableMember, 0x0209E054, a word an
+ * index) of archive 0x3E (a/0/6/2), at the scene's time.  The area's light stays when it cannot be read. */
+static void load_weather_lights(Ctx *c, unsigned light, int hour, int minute)
+{
+    const u8 *t = (const u8 *)bw_arm9_rodata(0x0209E054u, 16u * 4u);
+
+    if (t != NULL && light < 16u) {
+        const unsigned member = (unsigned)t[light * 4u] | ((unsigned)t[light * 4u + 1u] << 8)
+                                | ((unsigned)t[light * 4u + 2u] << 16) | ((unsigned)t[light * 4u + 3u] << 24);
+
+        (void)load_light_table(c, "a/0/6/2", member, hour, minute);
+    }
 }
 
 /* A scene whose walls the map's model paints dark (their vertex colours, no light on them), seen from a battle's
@@ -1349,12 +1437,79 @@ static void scene_wall_colours(unsigned zone, BmapScene *s)
  * slope in depth-buffer units).  The game fogs by depth relative to the field
  * camera, so the depths turn into distances from the camera, then into
  * distances from the player (the camera looks at the player from `distance`). */
+/* A fog of the DS's (offset and slope in depth-buffer units) as the zone's field camera shows it: the scene's fog
+ * distances from the player.  weather: the weather's fog, which may begin in front of the player (the zone's own
+ * never did here: its start is held at the player) and keeps the bend the depth buffer gives it (fog_curve). */
+static void fog_set(Ctx *c, unsigned zone, Buf headers, BmapScene *s, unsigned offset, unsigned slope, int weather)
+{
+    Blob cam;
+    const unsigned setting = rd16(headers, zone * 48u + 0x1Cu) >> 9;
+
+    if (offset < 0x7FFFu && arc_load(c, "a/0/6/0", 0u, &cam) == 0) {
+        Buf cb = bb_of(&cam);
+
+        if ((setting + 1u) * 0x2Cu <= cb.n) {
+            Buf rec = sub(cb, setting * 0x2Cu);
+            float dist = (float)rds32(rec, 0);
+            float n = (float)rds32(rec, 0x14) / 4096.0f;
+            float f = (float)rds32(rec, 0x18) / 4096.0f;
+            float step = (float)(0x400u >> (slope > 10u ? 10u : slope));
+            float k1, base, sl, zs, ze;
+
+            if (n < 0.5f) {
+                n = 0.5f;
+            }
+            if (f < n + 1.0f) {
+                f = n + 1.0f;
+            }
+            k1 = (f + n) / (f - n);
+            base = 16383.0f * (1.0f + k1);
+            sl = 16383.0f * 2.0f * f * n / (f - n);
+            zs = sl / (base - (float)offset);
+            ze = sl / (base - (float)offset - 32.0f * step);
+            if (rec.p[0x11] != 0u) {            /* W buffer: depth is 8 * distance */
+                zs = (float)offset / 8.0f;
+                ze = ((float)offset + 32.0f * step) / 8.0f;
+            }
+            if (rec.p[0x11] == 0u && (base - (float)offset - 32.0f * step <= 0.0f || ze < zs)) {
+                ze = f;
+            }
+            s->fog_start = zs - dist;
+            s->fog_end = ze - dist;
+            s->fog_dist = dist;
+            /* (the camera's own pitch and yaw: the fog lies along its line of sight, bmap_place) */
+            s->fog_pitch = (float)(rd32(rec, 4) & 0xFFFFu) * 6.2831853f / 65536.0f;
+            s->fog_yaw = (float)(rd32(rec, 8) & 0xFFFFu) * 6.2831853f / 65536.0f;
+            s->fog_curve = 0.0f;
+            if (weather) {
+                /* The fog table rises evenly over the depth BUFFER's values (FIELD_FOG_InitFogTable: 32
+                 * even steps of the slope), and a Z buffer's value is base - sl / distance: the fog at the
+                 * distance z is (sl / (32 * step)) * (1/zs - 1/z).  With t = (z - zs) / zs that is
+                 * (sl / (32 * step) / zs) * t / (1 + t); it need not reach 1 before the far plane (the
+                 * blizzard's stops near 0.6).  (A W buffer's value is the distance itself: even.) */
+                if (rec.p[0x11] == 0u && zs > 0.0f) {
+                    s->fog_end = s->fog_start + zs;
+                    s->fog_curve = sl / (32.0f * step) / zs;
+                }
+            } else if (s->fog_start < 0.0f) {
+                s->fog_start = 0.0f;
+            }
+            if (s->fog_end < s->fog_start + 1.0f) {
+                s->fog_end = s->fog_start + 1.0f;
+            }
+            s->fog_on = 1;
+        }
+        blob_free(&cam);
+    }
+}
+
 static void load_fog(Ctx *c, unsigned zone, Buf headers, BmapScene *s)
 {
-    Blob t, r, cam;
-    unsigned i, setting = rd16(headers, zone * 48u + 0x1Cu) >> 9;
+    Blob t, r;
+    unsigned i;
 
     s->fog_on = 0;
+    s->fog_curve = 0.0f;
     if (arc_load(c, "a/0/8/1", 13u, &t) != 0) {
         return;
     }
@@ -1363,52 +1518,8 @@ static void load_fog(Ctx *c, unsigned zone, Buf headers, BmapScene *s)
 
         if (rd16(tb, i) == zone && arc_load(c, "a/0/8/1", rd16(tb, i + 2u), &r) == 0) {
             Buf rb = bb_of(&r);
-            unsigned offset = rd32(rb, 0), slope = rd32(rb, 4);
 
-            if (offset < 0x7FFFu && arc_load(c, "a/0/6/0", 0u, &cam) == 0) {
-                Buf cb = bb_of(&cam);
-
-                if ((setting + 1u) * 0x2Cu <= cb.n) {
-                    Buf rec = sub(cb, setting * 0x2Cu);
-                    float dist = (float)rds32(rec, 0);
-                    float n = (float)rds32(rec, 0x14) / 4096.0f;
-                    float f = (float)rds32(rec, 0x18) / 4096.0f;
-                    float step = (float)(0x400u >> (slope > 10u ? 10u : slope));
-                    float k1, base, sl, zs, ze;
-
-                    if (n < 0.5f) {
-                        n = 0.5f;
-                    }
-                    if (f < n + 1.0f) {
-                        f = n + 1.0f;
-                    }
-                    k1 = (f + n) / (f - n);
-                    base = 16383.0f * (1.0f + k1);
-                    sl = 16383.0f * 2.0f * f * n / (f - n);
-                    zs = sl / (base - (float)offset);
-                    ze = sl / (base - (float)offset - 32.0f * step);
-                    if (rec.p[0x11] != 0u) {            /* W buffer: depth is 8 * distance */
-                        zs = (float)offset / 8.0f;
-                        ze = ((float)offset + 32.0f * step) / 8.0f;
-                    }
-                    if (rec.p[0x11] == 0u && (base - (float)offset - 32.0f * step <= 0.0f || ze < zs)) {
-                        ze = f;
-                    }
-                    s->fog_start = zs - dist;
-                    s->fog_end = ze - dist;
-                    /* (the camera's own pitch and yaw: the fog lies along its line of sight, bmap_place) */
-                    s->fog_pitch = (float)(rd32(rec, 4) & 0xFFFFu) * 6.2831853f / 65536.0f;
-                    s->fog_yaw = (float)(rd32(rec, 8) & 0xFFFFu) * 6.2831853f / 65536.0f;
-                    if (s->fog_start < 0.0f) {
-                        s->fog_start = 0.0f;
-                    }
-                    if (s->fog_end < s->fog_start + 1.0f) {
-                        s->fog_end = s->fog_start + 1.0f;
-                    }
-                    s->fog_on = 1;
-                }
-                blob_free(&cam);
-            }
+            fog_set(c, zone, headers, s, rd32(rb, 0), rd32(rb, 4), 0);
             blob_free(&r);
             break;
         }
@@ -5050,6 +5161,8 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     unsigned pcx, pcz, area, matrix_id, mode, w, h, cell;
     unsigned i;
     int rc = -1, wfbc_on = 0, fmat_on = 0, fmat_given = g_fmat_set, cloud_tex = -2;
+    int weather = -1, weather_on = 0;
+    unsigned w_slope = 0, w_offset = 0, w_light = 0;
     Area *player_area;
     BmapWfbc wfbc;
 
@@ -5066,6 +5179,8 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     }
     g_wfbc_set = 0;
     g_fmat_set = 0;
+    weather = g_weather_next;
+    g_weather_next = -1;
     if (c == NULL) {
         return -1;
     }
@@ -5114,6 +5229,11 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         goto out;
     }
     load_lights(c, player_area->light_type, hour, minute);
+    /* the weather the field showed: its own light in place of the area's (bmap_set_weather) */
+    weather_on = weather > 0 && weather_look(weather, rd16(hb, zone * 48u + 0x1Cu) >> 9, &w_slope, &w_offset, &w_light);
+    if (weather_on) {
+        load_weather_lights(c, w_light, hour, minute);
+    }
     {
         /* Research: BMAP_JOIN="zone ax ay az bx bz turn lx lz side width[;...]": another zone's whole map beside
          * this one: its point (bx, bz) on this map's (ax, ay, az), turned `turn` degrees about it; the line between
@@ -5268,6 +5388,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     cloud_tex = -2;
     if ((((rd16(hb, zone * 48u + 0x1Eu) & 0x2000u) != 0u && player_area != NULL && player_area->indoor)
          || getenv("EIDOS_FORCE_CLOUDS") != NULL)       /* (research: clouds anywhere, to test what they change) */
+        && !weather_on                                  /* (a weather's fog hides the sky: below) */
         && getenv("EIDOS_NO_CLOUDS") == NULL) {
         cloud_tex = add_clouds(c, px, pz, zone);
         if (cloud_tex == -1) {
@@ -5276,7 +5397,27 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     }
     s->clear[0] = c->lights.clear[0]; s->clear[1] = c->lights.clear[1]; s->clear[2] = c->lights.clear[2];
     s->fog[0] = c->lights.fog[0]; s->fog[1] = c->lights.fog[1]; s->fog[2] = c->lights.fog[2];
-    load_fog(c, zone, hb, s);
+    s->weather = weather_on ? weather : -1;
+    if (weather_on) {
+        /* the weather's fog in place of the zone's (only the clear weather sets the zone's own) */
+        s->fog_on = 0;
+        s->fog_curve = 0.0f;
+        fog_set(c, zone, hb, s, w_offset, w_slope, 1);
+        s->fog_sprites = getenv("BMAP_WEATHER_SPRITE_FOG") != NULL;   /* research: bmap.h */
+        s->fog_eye = getenv("BMAP_WEATHER_FOG_EYE") != NULL ? atoi(getenv("BMAP_WEATHER_FOG_EYE")) : 0;   /* research: bmap.h */
+        if (s->fog_on) {
+            /* The sky lies beyond the fog's far end, where the fog is full: it takes the fog's colour, and no
+             * clouds were made (above).  (The field shows no sky; the battle's is eidos's own.) */
+            memcpy(s->clear, s->fog, 3u);
+        }
+        if (getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: weather %d fog slope %u offset 0x%04X light table %u: fog %s from %.1f to %.1f of the player, curve %.2f, colour %u %u %u\n",
+                    weather, w_slope, w_offset, w_light, s->fog_on ? "on" : "off", (double)s->fog_start, (double)s->fog_end,
+                    (double)s->fog_curve, s->fog[0], s->fog[1], s->fog[2]);
+        }
+    } else {
+        load_fog(c, zone, hb, s);
+    }
     {
         const clock_t t0 = clock();
         const int rcf = finish(c, s);

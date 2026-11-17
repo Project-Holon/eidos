@@ -8,11 +8,22 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `ce8fb59a0e4e7e8c445c5696c94a5611189f2007`
-- Date: 2026-11-10
-- Subject: Script reads before the pc they move: warp table, trainer AI lists, script start, battle command filler (elevator menus, eidos #33)
+- Revision: `50731dd699fb0fb3f881cd028a67d8f6aa649a88`
+- Date: 2026-11-17
+- Subject: Host guard for the diamond dust divide by 0 (Icirrus City, 31 December); CLACT_GetActorAnimIndex (was GetActorAnimSeqCount)
 
-The step from `7f30ac00d6`: five sites read a stream pointer in the same
+The step from `ce8fb59a0e`: one host guard and names; the ROM is byte-identical.
+WEATHER_DIAMOND_DUST_UpdateParticle (ov025) takes a sparkle's age modulo two
+intervals that its spawn function can make 0 (remainders of a negative random
+number plus a constant).  The DS runtime divide gives 0 for a divisor of 0;
+the host build trapped, about a second after the weather began: Icirrus City
+on 31 December, the calendar's one diamond dust day, ended the program.  The
+host now takes the DS's result.  CLACT_GetActorAnimIndex (was
+CLACT_GetActorAnimSeqCount) returns an actor's current frame, and its ov127
+wrapper is WIFI_2DCHAR_GetActorAnimIndex; the port names neither.  `c69433ce23`
+on the way is a tool (tools/assets/waza.py), not game source.
+
+The step before, from `7f30ac00d6`: five sites read a stream pointer in the same
 expression as the call that moves it (`vm->pc + VM_GetU32(vm)`).  The DS
 calls first; the host GCC read the pointer first, 4 bytes short.  On PC
 SCRCMD_POKEMON_FLD_SetWarpTable's table then had no end marker where
