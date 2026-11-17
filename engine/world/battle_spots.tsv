@@ -147,8 +147,8 @@ T121.5	T	121	Opelucid Gym: Ace Trainer (trainer 5)	52	19	3	2	-	-	-	-	856	312	90	
 T121.6	T	121	Opelucid Gym: Veteran (trainer 6)	41	41	2	2	-	-	-	-	648	664	270	auto	-	-	-	-	-	-	-	0	1	-	-	275	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 T121.7	T	121	Opelucid Gym: Ace Trainer (trainer 7)	3	27	1	2	-	-	-	-	56	456	0	auto	-	-	-	-	-	-	-	0	1	-	-	267	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 T121.s11	T	121	Opelucid Gym: Veteran (story)	40	1	0	0	-	-	-	-	664	24	90	auto	-	-	-	-	-	-	-	0	1	-	-	274	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	1	1	1	0
-T125.1	T	125	Opelucid City: Ace Trainer (trainer 1)	9	10	1	0	-	-	-	-	152	184	0	auto	-	-	-	-	-	-	-	0	1	-	-	513	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
-T126.0	T	126	Opelucid City: Ace Trainer (trainer 1)	9	9	1	0	-	-	-	-	152	168	0	auto	-	-	-	-	-	-	-	0	1	-	-	605	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T125.1	T	125	Opelucid City: Ace Trainer (trainer 1)	9	10	1	0	-	-	-	-	152	184	0	fixed	152	200	0	-	-	-	-	0	1	-	-	513	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
+T126.0	T	126	Opelucid City: Ace Trainer (trainer 1)	9	9	1	0	-	-	-	-	152	168	0	fixed	184	152	0	-	-	-	-	0	1	-	-	605	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	-	1	1	0
 T140.0	T	140	Pokémon League: Elite Four (story)	15	8	1	0	-	-	-	-	248	152	0	auto	-	-	-	-	-	-	-	0	1	-	-	228	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	1	1	1	0
 T140.0b	T	140	Pokémon League: Elite Four (story)	15	8	1	0	-	-	-	-	248	152	0	auto	-	-	-	-	-	-	-	0	1	-	-	563	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	1	1	1	0
 T141.0	T	141	Pokémon League: Elite Four (story)	15	8	1	0	-	-	-	-	248	152	0	auto	-	-	-	-	-	-	-	0	1	-	-	230	0	0	-	-	0	1	0	0	0	0	0	0	0	0	0	-	0	-	0	1	1	1	0
