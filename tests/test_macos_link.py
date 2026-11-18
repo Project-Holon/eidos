@@ -70,6 +70,44 @@ class Symbols(unittest.TestCase):
             self.assertIn("_required", failed.stderr)
             self.assertFalse(exe.exists(), "do not leave an executable with a missing provider")
 
+    @unittest.skipUnless(sys.platform == "darwin", "requires Apple ld")
+    def test_weak_only_member_left_out(self):
+        """Apple ld loads an archive member for a weak reference; an ELF
+        linker does not.  A member wanted only weakly, whose own references
+        the program lacks (or whose definitions it has), is left out."""
+        wrapper = Path(macos_link.__file__)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def cc(name, text):
+                (root / (name + ".c")).write_text(text)
+                subprocess.run(["cc", "-c", str(root / (name + ".c")), "-o", str(root / (name + ".o"))],
+                               check=True)
+                return str(root / (name + ".o"))
+
+            main = cc("main", "extern int optional(void) __attribute__((weak));\n"
+                              "int mine(void) { return 3; }\n"
+                              "int main(void) { return optional ? optional() : mine(); }\n")
+            # the member: the weak provider, a call the program has no
+            # provider for, and a double of the program's own function
+            wanted = cc("wanted", "extern int nowhere(void);\n"
+                                  "int mine(void) { return 9; }\n"
+                                  "int optional(void) { return nowhere(); }\n")
+            # a second member of the same name in the same archive (sdk has
+            # two fs.c): members are left out by position
+            (root / "two").mkdir()
+            twin_src = root / "two" / "wanted.c"
+            twin_src.write_text("int unrelated(void) { return 1; }\n")
+            twin = root / "two" / "wanted.o"
+            subprocess.run(["cc", "-c", str(twin_src), "-o", str(twin)], check=True)
+            archive = root / "liboptional.a"
+            subprocess.run(["ar", "rcs", str(archive), wanted, str(twin)], check=True)
+            exe = root / "probe"
+            subprocess.run([sys.executable, str(wrapper), "--nm", "/usr/bin/nm", "--",
+                            "cc", main, str(archive), "-o", str(exe)], check=True)
+            self.assertEqual(subprocess.run([str(exe)]).returncode, 3,
+                             "the weak-only member must be left out")
+
 
 if __name__ == "__main__":
     unittest.main()
