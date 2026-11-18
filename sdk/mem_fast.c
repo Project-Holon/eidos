@@ -32,6 +32,11 @@
 #include <stdint.h>
 #include <string.h>
 
+/* macOS's string.h makes the two names macros (its _FORTIFY_SOURCE checked
+ * copies); the functions here are the names themselves */
+#undef memcpy
+#undef memcmp
+
 /* Eight bytes read at any address, whatever the bytes were stored as. */
 #if defined(_MSC_VER) && !defined(__clang__)
 /* Microsoft's compiler (development builds only): the two names are its

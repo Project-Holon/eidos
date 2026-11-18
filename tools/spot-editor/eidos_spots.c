@@ -56,6 +56,13 @@
 #include "spots_embed.h"
 #include "wizard.h"
 
+#if !defined(_WIN32)
+/* The editor's own file, to see a newer build arrive: Windows names it
+ * (_pgmptr), elsewhere main keeps argv[0]. */
+static const char *g_exe_path = "";
+#define _pgmptr g_exe_path
+#endif
+
 /* ------------------------------------------------------------------ */
 /* Look                                                                */
 /* ------------------------------------------------------------------ */
@@ -5383,6 +5390,12 @@ int main(int argc, char **argv)
     int check_floors = 0;
     const char *place = NULL, *shot = NULL, *script = NULL;
     int status = 0, i, win_w, win_h;
+
+#if !defined(_WIN32)
+    if (argc > 0 && argv[0] != NULL) {
+        g_exe_path = argv[0];
+    }
+#endif
 
     eidos_settings_load();
     memset(&setup, 0, sizeof setup);

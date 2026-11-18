@@ -3017,7 +3017,8 @@ option(EIDOS_BOOT
        "Link the game's own boot (NitroMain and its closure) into eidos_boot" OFF)
 
 add_executable(eidos_boot ${CMAKE_CURRENT_SOURCE_DIR}/demo/eidos_boot.c)
-target_include_directories(eidos_boot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform)
+target_include_directories(eidos_boot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/avatar)
 if(VITA)
     # sdk/plat_crash.c catches calls to DS code addresses through kubridge
     target_link_libraries(eidos PUBLIC kubridge_stub)

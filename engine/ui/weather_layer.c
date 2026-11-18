@@ -13,6 +13,8 @@
  * Each sprite pixel is one filled square of that size.
  */
 
+#include <stddef.h>
+
 #include "kit.h"
 #include "bweather.h"
 
