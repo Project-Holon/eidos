@@ -23,6 +23,9 @@
  *       its plain column between, row by row, as the sides are.
  *   panel=SX:SZ:SY:X0:X1:Z:Y0:Y1[:ZTOP]+..  a back wall at z = Z in the picture of the
  *       side face at x = SX holding (SZ, SY), repeated along at its own width.
+ *   stepsx=LSX:LSZ:LSY:BSX:BSZ:BSY:X:Y:DIR:Z0:Z1:N:LW:LH:BW:BH+..  a cliff stepped down from (X, Y) as the map builds
+ *       its own: N times a lip (LW out, LH down) and a band (BW out, BH down), in the pictures of the faces holding the
+ *       two source points, from Z0 to Z1.
  *   panelx=SX:SZ:SY:X:Z0:Z1:Y0:Y1:DIR+..  an end wall at x = X looking along DIR
  *       (-1, 1), in the picture of the face at x = SX holding (SZ, SY).
  *   panelz=SZ:SX:SY:X0:X1:Z:Y0:Y1[:ZTOP[:UA:UB]]+..  as panel, the picture from a front face at
@@ -743,6 +746,223 @@ static void do_panel(const Ft *f, unsigned nf, RmOut *out, const double p[9], co
                 out->tri[q2].lit = 0;
             }
         }
+    }
+}
+
+/* The face of the model holding (x, y, z) (within 1.5 of its plane, inside it), and its picture's u at that point and
+ * per unit of z along the face's level line.  0 when there is none. */
+static int face_at(const Ft *f, unsigned nf, double x, double y, double z, const Ft **out, double *u_at, double *u_per_z)
+{
+    unsigned i;
+    int k;
+
+    for (i = 0; i < nf; i++) {
+        const RmTri *t = f[i].t;
+        double e1[3], e2[3], w[3], d11, d12, d22, dw1, dw2, den, a, b;
+
+        if (f[i].b->tex < 0) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            e1[k] = (double)t->p[1][k] - t->p[0][k];
+            e2[k] = (double)t->p[2][k] - t->p[0][k];
+        }
+        w[0] = x - t->p[0][0];
+        w[1] = y - t->p[0][1];
+        w[2] = z - t->p[0][2];
+        if (fabs(rm_dot(w, f[i].n)) > 1.5) {
+            continue;
+        }
+        d11 = rm_dot(e1, e1); d12 = rm_dot(e1, e2); d22 = rm_dot(e2, e2);
+        dw1 = rm_dot(w, e1); dw2 = rm_dot(w, e2);
+        den = d11 * d22 - d12 * d12;
+        if (fabs(den) < 1e-12) {
+            continue;
+        }
+        a = (dw1 * d22 - dw2 * d12) / den;
+        b = (dw2 * d11 - dw1 * d12) / den;
+        if (a < -0.02 || b < -0.02 || a + b > 1.02) {
+            continue;
+        }
+        {
+            const double du1 = (double)t->uv[1][0] - t->uv[0][0], du2 = (double)t->uv[2][0] - t->uv[0][0];
+            const double a1 = (du1 * d22 - du2 * d12) / den, a2 = (du2 * d11 - du1 * d12) / den;
+            double gu[3], hd[3] = { 0.0, 0.0, 1.0 };
+
+            for (k = 0; k < 3; k++) {
+                gu[k] = a1 * e1[k] + a2 * e2[k];
+            }
+            *out = &f[i];
+            *u_at = t->uv[0][0] + rm_dot(gu, w);
+            *u_per_z = rm_dot(gu, hd);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* `stepsx=LSX:LSZ:LSY:BSX:BSZ:BSY:X:Y:DIR:Z0:Z1:N:LW:LH:BW:BH`: a cliff stepped down as the map builds its own (a
+ * route's ledges: a short lip of ground, then a band of cliff, again and again): from the top edge at (X, Y), N times a
+ * lip LW out along x (by DIR) and LH down, in the picture of the face holding (LSX, LSY, LSZ), then a band BW out and BH
+ * down, in the picture of the face holding (BSX, BSY, BSZ); from Z0 to Z1.  Each piece shows its picture once from its
+ * top (row 0) to its bottom (row 1), as the map's own lips and bands do; along z at its source face's own scale. */
+/* A tiered end wall in the plane x = X looking along `en`: under the stepped outline (z, y) down to `foot`, in the
+ * band picture's tiers of height `tier` (rows 0..rows of each), u along z at `uz` from `u0` at z = 0 offset `zs`. */
+static void steps_end(RmOut *out, const Ft *bs, double xw, const double (*ol)[2], int no, double foot, double ytop,
+                      double tier, double rows, double u0, double uz, double zs, const double en[3])
+{
+    int m, nt = (int)ceil((ytop - foot) / tier), seg, k;
+
+    for (m = 0; m < nt; m++) {
+        const double hi = ytop - tier * m, lo = fmax(hi - tier, foot);
+
+        for (seg = 0; seg + 1 < no; seg++) {
+            double poly[8][2], clip[8][2];
+            int np = 4, nc, e, cs;
+
+            poly[0][0] = ol[seg][0];     poly[0][1] = foot;
+            poly[1][0] = ol[seg + 1][0]; poly[1][1] = foot;
+            poly[2][0] = ol[seg + 1][0]; poly[2][1] = ol[seg + 1][1];
+            poly[3][0] = ol[seg][0];     poly[3][1] = ol[seg][1];
+            for (cs = 0; cs < 2; cs++) {
+                const double lim = cs == 0 ? lo : hi;
+
+                nc = 0;
+                for (e = 0; e < np; e++) {
+                    const double *c0 = poly[e], *c1 = poly[(e + 1) % np];
+                    const int in0 = cs == 0 ? c0[1] >= lim - 1e-9 : c0[1] <= lim + 1e-9;
+                    const int in1 = cs == 0 ? c1[1] >= lim - 1e-9 : c1[1] <= lim + 1e-9;
+
+                    if (in0 && nc < 8) {
+                        clip[nc][0] = c0[0]; clip[nc][1] = c0[1]; nc++;
+                    }
+                    if (in0 != in1 && fabs(c1[1] - c0[1]) > 1e-12 && nc < 8) {
+                        const double s2 = (lim - c0[1]) / (c1[1] - c0[1]);
+
+                        clip[nc][0] = c0[0] + (c1[0] - c0[0]) * s2;
+                        clip[nc][1] = lim;
+                        nc++;
+                    }
+                }
+                memcpy(poly, clip, sizeof clip);
+                np = nc;
+            }
+            if (np < 3) {
+                continue;
+            }
+            {
+                double qp[8][3], tt[8][2];
+                unsigned first = out->ntri, ti;
+
+                for (e = 0; e < np; e++) {
+                    qp[e][0] = xw; qp[e][1] = poly[e][1]; qp[e][2] = poly[e][0];
+                    tt[e][0] = u0 + uz * (poly[e][0] - zs);
+                    tt[e][1] = (hi - poly[e][1]) / tier * rows;
+                }
+                for (e = 1; e + 1 < np; e++) {
+                    double e1[3], e2[3], n3[3];
+
+                    for (k = 0; k < 3; k++) {
+                        e1[k] = qp[e][k] - qp[0][k];
+                        e2[k] = qp[e + 1][k] - qp[0][k];
+                    }
+                    rm_cross(e1, e2, n3);
+                    if (rm_dot(n3, en) >= 0.0) {
+                        rm_tri(out, bs->t->id, -1, 0, bs->b->rgb, qp[0], qp[e], qp[e + 1], tt[0], tt[e], tt[e + 1], 0, 0);
+                    } else {
+                        rm_tri(out, bs->t->id, -1, 0, bs->b->rgb, qp[0], qp[e + 1], qp[e], tt[0], tt[e + 1], tt[e], 0, 0);
+                    }
+                }
+                for (ti = first; ti < out->ntri; ti++) {
+                    out->tri[ti].lit = 1;
+                }
+            }
+        }
+    }
+}
+
+static void do_stepsx(const Ft *f, unsigned nf, RmOut *out, const double p[16])
+{
+    const Ft *ls, *bs;
+    double lu, luz, bu, buz, o = 0.0, y = p[7];
+    const double dir = p[8] < 0.0 ? -1.0 : 1.0, X = p[6];
+    const double zlo = fmin(p[9], p[10]), zhi = fmax(p[9], p[10]);
+    const double lw = p[12], lh = p[13], bw = p[14], bh = p[15];
+    const int n = (int)p[11];
+    double olo[64][2], ohi[64][2];      /* the arms' outlines (z, y) at x = X: the -z arm and the +z arm */
+    int no = 0, i, piece;
+
+    if (!face_at(f, nf, p[0], p[2], p[1], &ls, &lu, &luz) || !face_at(f, nf, p[3], p[5], p[4], &bs, &bu, &buz)) {
+        return;
+    }
+    olo[no][0] = zlo; olo[no][1] = y;
+    ohi[no][0] = zhi; ohi[no][1] = y;
+    no++;
+    for (i = 0; i <= n; i++) {
+        for (piece = 0; piece < 2; piece++) {
+            const Ft *src = piece == 0 ? ls : bs;
+            const double w = piece == 0 ? lw : bw, h = piece == 0 ? lh : bh;
+            const double u0 = piece == 0 ? lu : bu, uzs = piece == 0 ? luz : buz, sz = piece == 0 ? p[1] : p[4];
+            int copy;
+
+            if (i == n && piece == 1) {
+                break;                  /* (the foot: a last lip, no band under it) */
+            }
+            /* a lip twice: its own place, and once more back under the band above it (where the band's ragged bottom
+             * rows show it) */
+            for (copy = 0; copy < (piece == 0 ? 2 : 1); copy++) {
+                const double back = copy == 0 ? 0.0 : w;
+                const double oa = o - back, ob = o + w - back, ya = y + h * back / w, yb = y - h + h * back / w;
+                int side, k;
+
+                if (oa < -1e-9) {
+                    continue;           /* (the first lip's copy would reach back into the ledge) */
+                }
+                /* three sides: 0 east (x = X + dir o), 1 the -z arm (z = zlo - o), 2 the +z arm (z = zhi + o);
+                 * the corners mitred: each side's ends move out with o */
+                for (side = 0; side < 3; side++) {
+                    double q[4][3], t[4][2], outn[3];
+
+                    if (side == 0) {
+                        q[0][0] = X + dir * oa; q[0][1] = ya; q[0][2] = zlo - oa;
+                        q[1][0] = X + dir * oa; q[1][1] = ya; q[1][2] = zhi + oa;
+                        q[2][0] = X + dir * ob; q[2][1] = yb; q[2][2] = zhi + ob;
+                        q[3][0] = X + dir * ob; q[3][1] = yb; q[3][2] = zlo - ob;
+                        outn[0] = dir; outn[1] = 1.0; outn[2] = 0.0;
+                    } else {
+                        const double zs = side == 1 ? -1.0 : 1.0, z0 = side == 1 ? zlo : zhi;
+
+                        q[0][0] = X;            q[0][1] = ya; q[0][2] = z0 + zs * oa;
+                        q[1][0] = X + dir * oa; q[1][1] = ya; q[1][2] = z0 + zs * oa;
+                        q[2][0] = X + dir * ob; q[2][1] = yb; q[2][2] = z0 + zs * ob;
+                        q[3][0] = X;            q[3][1] = yb; q[3][2] = z0 + zs * ob;
+                        outn[0] = 0.0; outn[1] = 1.0; outn[2] = zs;
+                    }
+                    for (k = 0; k < 4; k++) {
+                        t[k][0] = side == 0 ? u0 + uzs * (q[k][2] - sz) : u0 + fabs(uzs) * dir * (q[k][0] - X);
+                        t[k][1] = (k == 0 || k == 1) ? 0.0 : 1.0;
+                    }
+                    if (side != 0 && fabs(q[1][0] - q[0][0]) < 1e-6 && fabs(q[2][0] - q[3][0]) < 1e-6) {
+                        continue;       /* (no arm yet at the first piece's top) */
+                    }
+                    quad(out, src->t->id, src->b->rgb, q, t, outn);
+                }
+            }
+            o += w;
+            y -= h;
+            if (no < 62) {
+                olo[no][0] = zlo - o; olo[no][1] = y;
+                ohi[no][0] = zhi + o; ohi[no][1] = y;
+                no++;
+            }
+        }
+    }
+    {
+        /* the arms' ends at x = X, looking back toward -dir (they meet the ledge there) */
+        const double en[3] = { -dir, 0.0, 0.0 };
+
+        steps_end(out, bs, X, (const double (*)[2])olo, no, y, p[7], bh, 0.8125, bu, buz, p[4], en);
+        steps_end(out, bs, X, (const double (*)[2])ohi, no, y, p[7], bh, 0.8125, bu, buz, p[4], en);
     }
 }
 
@@ -3448,6 +3668,18 @@ void rm_tower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, co
                     pp[8] = pp[5];
                 }
                 do_panel(f, nf, out, pp, tex, ntex);
+            }
+            ep = strchr(ep, '+');
+            ep = ep != NULL ? ep + 1 : NULL;
+        }
+    }
+    if (rm_opt(opt, "stepsx", buf, sizeof buf) != NULL) {
+        for (ep = buf; ep != NULL && *ep != '\0'; ) {
+            double sp[16];
+
+            if (sscanf(ep, "%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf:%lf", &sp[0], &sp[1], &sp[2], &sp[3], &sp[4],
+                       &sp[5], &sp[6], &sp[7], &sp[8], &sp[9], &sp[10], &sp[11], &sp[12], &sp[13], &sp[14], &sp[15]) == 16) {
+                do_stepsx(f, nf, out, sp);
             }
             ep = strchr(ep, '+');
             ep = ep != NULL ? ep + 1 : NULL;

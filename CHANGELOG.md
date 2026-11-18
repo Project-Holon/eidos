@@ -24,6 +24,7 @@ Each release's notes on GitHub start with its section here
   - **Mistralton Gym**: Added 3D relief to cannon arrow plates, completed back-face geometry on entrance statues, and adjusted Pilot 2 and Worker 5 battle placements to clear nearby fences.
   - **Icirrus Gym**: Replaced flat snowy rock and icicle sprites with 3D meshes, completed back-face geometry on entrance pedestals and platform mechanisms (levers, gears, floor switches), and repositioned two obstructed trainer battles.
   - **Dragonspiral Tower**: Restored missing south walls on the pool and fallen-pillar floors while keeping doorway exits open, completed underside/south faces on upper-floor ledges, ramps, and stairs, and assigned dedicated battle spots for each trainer.
+  - **Route 6**: Closed the open east side of the tree-topped ledge by the river, which floated over the sky in battle, with terraced steps that wrap around its corners, built like the route's own ledges.
   - **Opelucid Gym**: Completed the north faces of the four entrance statues and the north side of the entrance walkway, gave the dragon crests over the front statues a solid body in place of a flat picture, and moved the story Veteran's battle from the hall floor onto his walkway (his rail position had been read as a tile).
   - **N's Castle**: Closed the open sides of the throne platform and the steps below it.
   - **Liberty Garden**: Completed the north faces of the storage blocks in the basement.
