@@ -214,7 +214,9 @@ static size_t           g_reg_cap;
 
 #define VRAMCNT_OFF 0x240u
 
-static u8  g_vram[VRAM_TOTAL];
+/* (VRAM_TOTAL bytes each, allocated at the first bw_ds_reset, after identity_choose has reserved the DS windows:
+ * as static arrays they were 1.3 MB of the 32-bit program, which must end below 0x02000000) */
+static u8 *g_vram;
 static u8 *g_vpage[VRAM_PAGES];
 
 /*
@@ -228,7 +230,7 @@ static u8 *g_vpage[VRAM_PAGES];
 static u8 *g_bank_home[BW_VRAM_BANKS];
 static int g_vram_window;           /* 1: the window is the banks' home    */
 static int g_vram_window_wanted;    /* bw_ds_identity_prepare asked for it */
-static u8  g_vram_move[VRAM_TOTAL]; /* bytes in flight during a remap     */
+static u8 *g_vram_move;             /* bytes in flight during a remap     */
 
 /* The parts of the 16 MiB window a bank can be mapped at: the four engine
  * windows up to their mirror period, and LCDC. */
@@ -1146,7 +1148,7 @@ u32 bw_ds_addr_of(const void *host)
     if ((off = host_offset(h, g_oam, BW_DS_OAM_SIZE)) >= 0) {
         return BW_DS_OAM_BASE + (u32)off;
     }
-    if (host_offset(h, g_vram, sizeof(g_vram)) >= 0
+    if (host_offset(h, g_vram, VRAM_TOTAL) >= 0
         || (g_vram_window && h >= BW_DS_VRAM_BASE
             && h - BW_DS_VRAM_BASE < BW_DS_VRAM_SIZE)) {
         /* The first CPU address the bank byte is visible at: the engine
@@ -1301,7 +1303,14 @@ void bw_ds_reset(void)
     memset(g_wram, 0, BW_DS_WRAM_SIZE);
     memset(g_pal, 0, BW_DS_PAL_SIZE);
     memset(g_oam, 0, BW_DS_OAM_SIZE);
-    memset(g_vram, 0, sizeof(g_vram));
+    if (g_vram == NULL) {
+        g_vram = (u8 *)calloc(1, VRAM_TOTAL);
+        g_vram_move = (u8 *)calloc(1, VRAM_TOTAL);
+        if (g_vram == NULL || g_vram_move == NULL) {
+            bw_panic("bw_ds_reset", BW_DS_VRAM_BASE, "cannot allocate VRAM");
+        }
+    }
+    memset(g_vram, 0, VRAM_TOTAL);
     for (b = 0; b < BW_VRAM_BANKS; b++) {
         g_bank_home[b] = &g_vram[k_bank_off[b]];
     }
