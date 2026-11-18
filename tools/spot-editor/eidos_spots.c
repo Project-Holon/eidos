@@ -85,6 +85,12 @@ static const char *g_exe_path = "";
 static int g_fk = 2;               /* text at twice the game font's size (3 on a big window) */
 #define FK        g_fk
 static int g_u = 4;                /* layout sizes in quarters: 4 normal, 5 on a big window */
+/* The interface size the user chose (Ctrl or Cmd with + - 0): the text's
+ * size in pixels per font pixel, 0 for the automatic one; kept in
+ * spots_editor.ini beside the spot file.  g_dens: window pixels per mouse
+ * unit (a Mac's Retina window is drawn at its own pixels). */
+static int g_size;
+static float g_dens = 1.0f;
 #define U(n)      ((n) * g_u / 4)  /* a layout size, scaled with the window */
 #define LINE_H    22
 
@@ -4269,6 +4275,76 @@ static void on_key(const SDL_KeyboardEvent *k)
     }
 }
 
+/* spots_editor.ini, beside the spot file: the interface size */
+static void size_path(char *out, size_t cap)
+{
+    const char *u = bmap_spots_user_path();
+    const char *slash = strrchr(u, '/'), *bs = strrchr(u, '\\');
+
+    if (bs != NULL && (slash == NULL || bs > slash)) {
+        slash = bs;
+    }
+    if (slash == NULL) {
+        out[0] = '\0';
+        return;
+    }
+    snprintf(out, cap, "%.*s/spots_editor.ini", (int)(slash - u), u);
+}
+
+static void size_load(void)
+{
+    char path[640];
+    FILE *f;
+    int v;
+
+    size_path(path, sizeof path);
+    if (path[0] != '\0' && (f = fopen(path, "rb")) != NULL) {
+        if (fscanf(f, "ui_size=%d", &v) == 1 && v >= 0 && v <= 6) {
+            g_size = v;
+        }
+        fclose(f);
+    }
+}
+
+static void size_save(void)
+{
+    char path[640];
+    FILE *f;
+
+    size_path(path, sizeof path);
+    if (path[0] != '\0' && (f = fopen(path, "wb")) != NULL) {
+        fprintf(f, "ui_size=%d\n", g_size);
+        fclose(f);
+    }
+}
+
+/* Ctrl or Cmd with + (or =), - and 0: the interface bigger, smaller, or
+ * back to its automatic size.  1 when the key was one of them. */
+static int size_key(const SDL_KeyboardEvent *k)
+{
+    int now = g_fk;
+
+    if (!(k->mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
+        return 0;
+    }
+    if (k->scancode == SDL_SCANCODE_EQUALS || k->scancode == SDL_SCANCODE_KP_PLUS) {
+        g_size = now < 6 ? now + 1 : 6;
+    } else if (k->scancode == SDL_SCANCODE_MINUS || k->scancode == SDL_SCANCODE_KP_MINUS) {
+        g_size = now > 1 ? now - 1 : 1;
+    } else if (k->scancode == SDL_SCANCODE_0 || k->scancode == SDL_SCANCODE_KP_0) {
+        g_size = 0;
+    } else {
+        return 0;
+    }
+    size_save();
+    if (g_size == 0) {
+        say("Interface size: automatic (Ctrl or Cmd with + and - to change it)");
+    } else {
+        say("Interface size %d (Ctrl or Cmd with 0: automatic)", g_size);
+    }
+    return 1;
+}
+
 static void pump(void)
 {
     SDL_Event ev;
@@ -4281,12 +4357,12 @@ static void pump(void)
             A.quit = 1;
             break;
         case SDL_EVENT_MOUSE_MOTION:
-            A.mx = (int)ev.motion.x;
-            A.my = (int)ev.motion.y;
+            A.mx = (int)(ev.motion.x * g_dens);
+            A.my = (int)(ev.motion.y * g_dens);
             break;
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            A.mx = (int)ev.button.x;
-            A.my = (int)ev.button.y;
+            A.mx = (int)(ev.button.x * g_dens);
+            A.my = (int)(ev.button.y * g_dens);
             if (ev.button.button == SDL_BUTTON_LEFT) {
                 A.down = 1;
                 A.pressed = 1;
@@ -4325,6 +4401,9 @@ static void pump(void)
             }
             break;
         case SDL_EVENT_KEY_DOWN:
+            if (size_key(&ev.key)) {
+                break;
+            }
             on_key(&ev.key);
             break;
         default:
@@ -4397,10 +4476,21 @@ static void frame(void)
         prof = getenv("EIDOS_SPOTS_PROF") != NULL;
     }
     SDL_GetWindowSize(A.win, &A.W, &A.H);
+    {
+        /* drawn at the window's own pixels (a Mac's Retina window has two
+         * per point); the mouse comes in points */
+        int pw = 0, ph = 0;
+
+        if (SDL_GetWindowSizeInPixels(A.win, &pw, &ph) && A.W > 0 && pw > 0 && ph > 0) {
+            g_dens = (float)pw / (float)A.W;
+            A.W = pw;
+            A.H = ph;
+        }
+    }
     /* 1440p and up: the text a half bigger, the room between a quarter
-     * (all of the inspector shows) */
-    g_fk = A.H >= 1300 ? 3 : 2;
-    g_u = g_fk == 3 ? 5 : 4;
+     * (all of the inspector shows); or the size the user chose */
+    g_fk = g_size != 0 ? g_size : A.H >= 1300 ? 3 : 2;
+    g_u = g_fk <= 2 ? 4 : g_fk + 2;
     LW = A.W * 20 / 100;
     LW = LW < U(300) ? U(300) : LW > U(420) ? U(420) : LW;
     IW = A.W * 25 / 100;
@@ -5445,6 +5535,7 @@ int main(int argc, char **argv)
         if (slash != NULL) {
             snprintf(path, sizeof path, "%.*s/battle_spots.tsv", (int)(slash - set), set);
             bmap_spots_set_user_path(path);
+            size_load();
             /* the remade models' store (a folder of the editor's own: its program is another than the game's) */
             snprintf(path, sizeof path, "%.*s/remade-editor", (int)(slash - set), set);
             bmap_set_remade_store(path, "spots");
@@ -5466,6 +5557,9 @@ int main(int argc, char **argv)
     }
     A.win = SDL_CreateWindow("eidos battle spots", win_w, win_h,
                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+#if defined(__APPLE__)
+                             | SDL_WINDOW_HIGH_PIXEL_DENSITY   /* the Retina pixels, not a 2x blow-up */
+#endif
                              | (shot != NULL ? SDL_WINDOW_HIDDEN : SDL_WINDOW_MAXIMIZED));
     if (A.win == NULL) {
         fprintf(stderr, "eidos_spots: %s\n", SDL_GetError());
