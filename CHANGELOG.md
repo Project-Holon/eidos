@@ -36,6 +36,7 @@ Each release's notes on GitHub start with its section here
   - **Ground Seams**: Fixed slits opening in roads and other solid ground where part of a connected surface was lowered onto a layer beneath it (Route 5's path by the gate).
   - **Floors at Ground Height**: Fixed building floors and ground shadows that lie at exactly the ground's height showing the terrain through them in stripes (the tunnel floor of Route 5's gate); they are now laid over the ground as the overworld draws them.
   - **Fixed Views of Wild Areas**: Fixed-spot views of wild areas now take their floor from the spot's own tile instead of the floor nearest the player's height, which had sunk the Pokémon in two Wellspring Cave views.
+  - **Building Doors**: Added the doors of houses, labs and Pokémon Centers to real-map battles; the game keeps each building's door as a separate model placed beside it, which battles left out (every doorway was an empty black opening).
   - **Characters on Rails**: Characters the game places on walkway rails are now loaded at the position their rail gives instead of being left out (Opelucid Gym, Castelia City's streets).
   - **Trainer Battle Spacing**: Increased the default distance between the two sides in trainer battles; spots already placed or checked keep their spacing.
   - **Floating Leaves & Shore Foam**: Fixed animated surface decals (Pinwheel Forest's drifting pond leaves, shoreline foam) hovering above the water in battle; they now rest on the water surface beneath the Pokémon.

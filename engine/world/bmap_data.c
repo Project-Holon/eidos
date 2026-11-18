@@ -20,6 +20,9 @@
  *                area id; textures in a/1/7/7 or a/1/7/6, same member
  *   light        a/0/6/1 member lightType: 0x34-byte keyframes, the first
  *                whose time lies after "now" (FIELD_LIGHT_Create)
+ *   sub-model    a building's definition holds at +4 a building id (0xFFFF: none) and at +6, +8, +10 its
+ *                place from the building's (s16 x, y, z): the house's door, which the field adds beside every
+ *                copy of the building (FIELD_BUILDMODEL_RegisterObjects, FIELD_BUILDMODEL_GetPlacementPosition)
  *   animations   a building's definition (the member's first table) holds
  *                its animations at +0x10: u8 kind, then four s32 offsets
  *                from there (-1: none).  Kind 1 plays every one, looping
@@ -1102,6 +1105,8 @@ typedef struct Area {
     Model *bmodels;
     unsigned *bids;
     BldAnim *banims;
+    unsigned *bsub;             /* the building's sub-model (its door): a building id, 0xFFFF none */
+    float (*boff)[3];           /* ... placed this far from the building (map units x, y, z; not turned) */
     unsigned nb;
     Blob ita_file;              /* the area's ground animation (a/0/6/9, the record's itaAnime) */
     BldAnim ita;                /* ... as the ground chunks' looping texture animation: the water */
@@ -1607,7 +1612,9 @@ static Area *area_get(Ctx *c, unsigned area)
     a->bmodels = (Model *)calloc(n ? n : 1u, sizeof(Model));
     a->bids = (unsigned *)calloc(n ? n : 1u, sizeof(unsigned));
     a->banims = (BldAnim *)calloc(n ? n : 1u, sizeof(BldAnim));
-    if (a->bmodels == NULL || a->bids == NULL || a->banims == NULL) {
+    a->bsub = (unsigned *)calloc(n ? n : 1u, sizeof(unsigned));
+    a->boff = (float (*)[3])calloc(n ? n : 1u, sizeof *a->boff);
+    if (a->bmodels == NULL || a->bids == NULL || a->banims == NULL || a->bsub == NULL || a->boff == NULL) {
         return a;
     }
     for (k = 0; k < n; k++) {
@@ -1621,6 +1628,12 @@ static Area *area_get(Ctx *c, unsigned area)
 
             a->bmodels[a->nb] = md;
             a->bids[a->nb] = rd16(m, def);
+            a->bsub[a->nb] = def + 12u <= m.n ? rd16(m, def + 4u) : 0xFFFFu;
+            if (a->bsub[a->nb] != 0xFFFFu) {
+                a->boff[a->nb][0] = (float)rds16(m, def + 6u);
+                a->boff[a->nb][1] = (float)rds16(m, def + 8u);
+                a->boff[a->nb][2] = (float)rds16(m, def + 10u);
+            }
             if (at < m.n && m.p[at] == 1u) {        /* kind 1: every one, looping */
                 for (j = 0; j < 4u; j++) {
                     int off = rds32(m, at + 4u + j * 4u);
@@ -1647,6 +1660,8 @@ static void area_free(Area *a)
     free(a->bmodels);
     free(a->bids);
     free(a->banims);
+    free(a->bsub);
+    free(a->boff);
     blob_free(&a->btex);
     blob_free(&a->bfile);
     blob_free(&a->ita_file);
@@ -3029,6 +3044,40 @@ static void add_walk(Ctx *c, Buf bb, unsigned planes, int cx, int cz)
     c->nwalk++;
 }
 
+/* A building's sub-model (its door, Area.bsub), beside the copy of building `mi` placed at `t` turned `turn`:
+ * at t plus the sub-model's offset (not turned) and turned as the building is, as FIELD_BUILDMODEL_RegisterObjects
+ * adds it.  Its animations (a door's opening) are not played: the door stands as the field shows it, shut.
+ * Returns add_model's result, 0 when there is none to add. */
+static int add_sub_model(Ctx *c, const Area *ar, unsigned mi, const char *bkey, const float t[3], float turn)
+{
+    unsigned si;
+    float st[3];
+    Aff place;
+    int rc;
+
+    if (ar->bsub == NULL || ar->bsub[mi] == 0xFFFFu) {
+        return 0;
+    }
+    for (si = 0; si < ar->nb && ar->bids[si] != ar->bsub[mi]; si++) {
+    }
+    if (si >= ar->nb) {
+        return 0;
+    }
+    st[0] = t[0] + ar->boff[mi][0];
+    st[1] = t[1] + ar->boff[mi][1];
+    st[2] = t[2] + ar->boff[mi][2];
+    place = aff_yaw(turn, st);
+    c->obj++;
+    if (getenv("BMAP_MODEL_LOG") != NULL && !c->cur_far) {
+        fprintf(stderr, "bmap: model b%d_%05u at %.0f %.0f y %.0f (the sub-model of b%d_%05u)\n", ar->indoor, ar->bids[si],
+                (double)st[0], (double)st[2], (double)st[1], ar->indoor, ar->bids[mi]);
+    }
+    g_done = c->cur_far ? NULL : done_get(c, ar->indoor, ar->bids[si], &ar->bmodels[si], bkey, bb_of(&ar->btex));
+    rc = add_model(c, &ar->bmodels[si], bkey, bb_of(&ar->btex), &place, 2, NULL);
+    g_done = NULL;
+    return rc;
+}
+
 /* A placed model stands on the room's own floor.  The game places furniture at the placement's height, and the map
  * mesh often lays the room's floor 2 to 4 units lower (a plant, a stool, an office chair): the field's steep camera
  * hides the gap, a battle's low one shows the thing hovering over its shadow.  The model added from vertex v0 and
@@ -3169,6 +3218,10 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
             for (mi = 0; mi < ar->nb && ar->bids[mi] != id; mi++) {
             }
             if (mi >= ar->nb) {
+                if (getenv("BMAP_MODEL_LOG") != NULL && !c->cur_far) {    /* research: a placement the area's set lacks */
+                    fprintf(stderr, "bmap: model b%d_%05u at %.0f %.0f NOT IN THE AREA'S SET\n", ar->indoor, (unsigned)id,
+                            (double)(center[0] + (float)rds32(bb, at) / 4096.0f), (double)(center[2] - (float)rds32(bb, at + 8) / 4096.0f));
+                }
                 continue;
             }
             t[0] = center[0] + (float)rds32(bb, at) / 4096.0f;
@@ -3190,6 +3243,9 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
             g_done = NULL;
             if (rc == 0) {
                 drop_to_floor(c, v0, g0, gm0, gm1);
+            }
+            if (rc == 0) {
+                rc = add_sub_model(c, ar, mi, bkey, t, (float)rd16(bb, at + 12) / 65536.0f);
             }
             if (rc != 0) {
                 break;
@@ -3566,6 +3622,9 @@ static int add_wfbc(Ctx *c, Area *ar, const BmapWfbc *g, int cx, int cz)
                     g_done = c->cur_far ? NULL : done_get(c, ar->indoor, (unsigned)ar->bids[mi], &ar->bmodels[mi], bkey, bb_of(&ar->btex));
                     rc = add_model(c, &ar->bmodels[mi], bkey, bb_of(&ar->btex), &place, 2, &ar->banims[mi]);
                     g_done = NULL;
+                    if (rc == 0) {
+                        rc = add_sub_model(c, ar, mi, bkey, t, (float)rd16(bb, at + 12) / 65536.0f);
+                    }
                     if (rc != 0) {
                         break;
                     }
