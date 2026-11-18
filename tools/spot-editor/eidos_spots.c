@@ -4632,6 +4632,25 @@ static void run_script(const char *path)
             }
         } else if (sscanf(line, "treedump %199s", arg) == 1) {
             tree_dump(arg);
+        } else if (sscanf(line, "viewdump %199s", arg) == 1) {
+            /* (research) the two battle views' still cameras (battle space) and the placement that maps the map into
+             * battle space: a picture's pixel can then be traced back to the map */
+            FILE *o = fopen(arg, "w");
+            int vi;
+
+            for (vi = 0; o != NULL && vi < 2; vi++) {
+                const View3d *v = &A.battle[vi];
+
+                fprintf(o, "view %d eye %.4f %.4f %.4f at %.4f %.4f %.4f fsin %.6f fcos %.6f size %d %d\n", vi,
+                        (double)v->eye[0], (double)v->eye[1], (double)v->eye[2], (double)v->at[0], (double)v->at[1],
+                        (double)v->at[2], (double)v->fsin, (double)v->fcos, v->rw, v->rh);
+            }
+            if (o != NULL) {
+                fprintf(o, "place x %.4f z %.4f a %.6f k %.6f g %.4f %.4f foe_dy %.4f\n", (double)A.placed.place_x,
+                        (double)A.placed.place_z, (double)A.placed.place_a, (double)A.placed.place_k,
+                        (double)A.placed.place_g[0], (double)A.placed.place_g[1], (double)A.placed.foe_dy);
+                fclose(o);
+            }
         } else if (sscanf(line, "camdump %199s", arg) == 1) {
             /* each frame of the scene: the game's camera, then as this
              * place draws it (bmap_battle_camera) */
