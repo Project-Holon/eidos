@@ -29,7 +29,10 @@
  * across the back: a tower's back is its side), lean=D (the wall's foot
  * stands D out, as the sides' feet do), flare=D (and D wider at each end),
  * twosided=1 (every upright wall from both sides: an open basin), small=0
- * (no closing of small pieces: chimneys, posts).
+ * (no closing of small pieces: chimneys, posts), sides=0 (no wall under an
+ * eave that runs north-south: the model's own side walls stand set in under
+ * the roof, a hut on posts), eaves=1 (each side wall carried up to the roof's
+ * underside over it).
  */
 
 #include <math.h>
@@ -1055,6 +1058,9 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                     continue;           /* (the front has its wall) */
                 }
                 side = oz > -0.35;      /* looks east or west: a side wall */
+                if (side && rm_optf(opt, "sides", 1) == 0.0) {
+                    continue;           /* (`sides=0`: the model's own side walls stand set in under the eaves) */
+                }
                 /* an edge over the roof (a chimney's foot) is no place for a wall: is a roof under the air beside it? */
                 {
                     double po[3] = { mid[0] + ox * 2.0, mid[1] + 0.5, mid[2] + oz * 2.0 }, dn[3] = { 0.0, -1.0, 0.0 };
@@ -1825,6 +1831,84 @@ void rm_building(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex,
                         rm_tri(out, src, out->ntex, 1, white, a0, a3, a2, ta0, ta3, ta2, 0, 0);
                         rm_tri(out, src, out->ntex, 1, dark, a0, a1, a2, ta0, ta1, ta2, 0, 0);
                         rm_tri(out, src, out->ntex, 1, dark, a0, a2, a3, ta0, ta2, ta3, 0, 0);
+                    }
+                }
+            }
+        }
+        /* `eaves=1`: each side wall carried up from its top to the roof's underside over it, in its own picture
+         * carried on (a hut on posts, whose side walls stop under the slope: through the gap one saw into the hut) */
+        if (rm_optf(opt, "eaves", 0) != 0.0) {
+            int e;
+
+            for (e = 0; e < 2; e++) {
+                const double sgn = e == 0 ? -1.0 : 1.0;
+                const Tr *s = NULL;
+                double top = -1e30, z0 = 1e30, z1 = -1e30, xs = 0.0, rise = 1e30;
+
+                /* the side wall: the upright triangles that look this way; the highest one is the picture's */
+                for (i = 0; i < n0; i++) {
+                    if (fabs(tr[i].n[1]) > 0.3 || tr[i].n[0] * sgn < 0.7) {
+                        continue;
+                    }
+                    for (j = 0; j < 3u; j++) {
+                        z0 = tr[i].p[j][2] < z0 ? tr[i].p[j][2] : z0;
+                        z1 = tr[i].p[j][2] > z1 ? tr[i].p[j][2] : z1;
+                        if (tr[i].p[j][1] > top) {
+                            top = tr[i].p[j][1];
+                            xs = tr[i].p[j][0];
+                            s = &tr[i];
+                        }
+                    }
+                }
+                if (s == NULL || z1 - z0 < 1.0) {
+                    continue;
+                }
+                /* the roof's underside straight over the wall's top, the lowest along it */
+                for (j = 0; j < 5u; j++) {
+                    const double o[3] = { xs - sgn * 0.05, top + 0.01, z0 + (z1 - z0) * (0.1 + 0.2 * j) }, up[3] = { 0.0, 1.0, 0.0 };
+
+                    for (i = 0; i < n0; i++) {
+                        const double hd = fabs(tr[i].n[1]) > 0.25 ? ray_hit(&tr[i], o, up) : -1.0;
+
+                        if (hd > 0.0 && hd < rise) {
+                            rise = hd;
+                        }
+                    }
+                }
+                if (rise < 0.05 || rise > 24.0) {
+                    continue;
+                }
+                {
+                    /* the picture's place as a function of (z, y) on the wall, from its highest triangle */
+                    const double ax = s->p[0][2], ay = s->p[0][1];
+                    const double bx = s->p[1][2] - ax, by = s->p[1][1] - ay, cx = s->p[2][2] - ax, cy = s->p[2][1] - ay;
+                    const double det = bx * cy - cx * by;
+                    double q4[4][3], t4[4][2];
+                    int c;
+
+                    if (fabs(det) < 1e-9) {
+                        continue;
+                    }
+                    for (j = 0; j < 4u; j++) {
+                        const double zz = j == 0 || j == 3 ? z0 : z1, yy = j < 2 ? top : top + rise;
+
+                        q4[j][0] = xs;
+                        q4[j][1] = yy;
+                        q4[j][2] = zz;
+                        for (c = 0; c < 2; c++) {
+                            const double d1 = (double)s->uv[1][c] - s->uv[0][c], d2 = (double)s->uv[2][c] - s->uv[0][c];
+                            const double mz = (d1 * cy - d2 * by) / det, my = (d2 * bx - d1 * cx) / det;
+
+                            t4[j][c] = s->uv[0][c] + mz * (zz - ax) + my * (yy - ay);
+                        }
+                    }
+                    /* (looking out: from the east for the east wall) */
+                    if (sgn > 0.0) {
+                        rm_tri(out, s->id, -1, 1, s->rgb, q4[0], q4[2], q4[1], t4[0], t4[2], t4[1], 0, 0);
+                        rm_tri(out, s->id, -1, 1, s->rgb, q4[0], q4[3], q4[2], t4[0], t4[3], t4[2], 0, 0);
+                    } else {
+                        rm_tri(out, s->id, -1, 1, s->rgb, q4[0], q4[1], q4[2], t4[0], t4[1], t4[2], 0, 0);
+                        rm_tri(out, s->id, -1, 1, s->rgb, q4[0], q4[2], q4[3], t4[0], t4[2], t4[3], 0, 0);
                     }
                 }
             }

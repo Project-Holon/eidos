@@ -470,6 +470,9 @@ static RmBuild *mesh_builder(const char *name)
     if (strcmp(name, "rock") == 0) {
         return rm_rock;
     }
+    if (strcmp(name, "hedge") == 0) {
+        return rm_hedge;
+    }
     if (strcmp(name, "cup") == 0) {
         return rm_cup;
     }

@@ -108,6 +108,9 @@ SCENE_PLACES = {
     'T278.s16': (16, 49, 0, None),      # N's Castle: Ghetsis
     'T321.s21a': (741, 562, 1, None),   # Route 3: the Twins
     'T335.6': (7, 4, 2, None),          # Guidance Chamber: Cobalion
+    # Abundant Shrine: Landorus.  Its character waits off the map's top edge (22, 0) until the player checks the
+    # shrine (model b1_00177 at 360, 184, tile 22, 11), then comes down before it: on the tile in front of the shrine.
+    'T376.3': (22, 12, 1, None),
     'T396.s13': (6, 6, 3, None),        # Nuvema: Bianca in her house
     'T412.s3': (716, 307, 1, None),     # Undella: the Riches
     # scenes: someone walks up (or is placed) before the fight
@@ -650,6 +653,15 @@ def analyse(rom):
                     last['tn'] += w['tn']
                 else:
                     merged.append(dict(w))
+            # a one-off Pokemon a trigger or the map's load starts (Dragonspiral Tower's Reshiram or Zekrom after the
+            # game, Dreamyard's Musharna, Lostlorn Forest's Zoroark): a row of its own, unless a character's own
+            # script already has that fight in this zone
+            had = {int(r['tid']) for r in rows if r['zone'] == z and str(r.get('tid', '-')).isdigit()}
+            for w in fl:
+                tidw = 100000 + w['level'] * 1000 + w['species'] if w['kind'] == 'W' else None
+                if tidw is not None and tidw not in had:
+                    merged.append(dict(w, tid=tidw, tn=1))
+                    had.add(tidw)
             runner = next((n for n in npcs if n['script'] == sn), None)
             for w in merged:
                 if runner is not None:
@@ -672,11 +684,16 @@ def analyse(rom):
                 nx += 1
                 rid += '' if len(merged) == 1 else 'abcdefgh'[merged.index(w)]
                 px, pz = tile_center(best)
-                rows.append(dict(id=rid, kind='T', zone=z,
-                                 label='%s: %s (story)' % (name, rom.trainer_class(w['tid'])),
+                if w['kind'] == 'W':
+                    sp = rom.species[w['species']] if w['species'] < len(rom.species) else '#%d' % w['species']
+                    label = '%s: %s (legendary)' % (name, sp)
+                else:
+                    label = '%s: %s (story)' % (name, rom.trainer_class(w['tid']))
+                rows.append(dict(id=rid, kind='T', zone=z, label=label,
                                  tid=w['tid'], tn=w['tn'], tx=tx, tz=tz, dir=d, range=0,
                                  px=px, pz=pz, pf=pf, mode='auto'))
-                covered.update(range(w['tid'], w['tid'] + w['tn']))
+                if w['kind'] == 'T':
+                    covered.update(range(w['tid'], w['tid'] + w['tn']))
         if z in CATCH_LESSON:
             # the catching lesson: before the character whose script starts it, as a story battle's
             runner = next((n for n in npcs if n['script'] == CATCH_LESSON[z]), None)

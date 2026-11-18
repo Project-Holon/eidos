@@ -886,6 +886,7 @@ set(BW_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hedge.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/counter.c
@@ -2772,6 +2773,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hedge.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/counter.c
@@ -2827,6 +2829,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hedge.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/counter.c
@@ -3177,6 +3180,7 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/rock_faces.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/turned.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/hedge.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/backwall.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/building.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/counter.c
