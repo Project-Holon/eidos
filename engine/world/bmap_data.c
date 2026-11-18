@@ -2608,6 +2608,14 @@ static int done_tex(Ctx *c, Done *d, int t)
     return (int)c->ntex++;
 }
 
+/* A picture with clear pixels is no floor (leaf cards, grass tufts, a fence's top), except a grating the player
+ * walks on: Tubeline Bridge's deck (texture h03_02 of the bridge's set g46, 45% clear between its bars; without
+ * it the battle stood on the girders 146 under the deck). */
+static int walked_grating(const char *key)
+{
+    return strncmp(key, "g46|h03_02|", 11) == 0;
+}
+
 static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *base, int ground,
                      const BldAnim *anim)
 {
@@ -2816,7 +2824,7 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                 nn[2] = e1[0] * e2[1] - e1[1] * e2[0];
                 len = sqrtf(nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]);
                 level_ok = len > 0.0f && fabsf(nn[1]) >= 0.5f * len && dc->bb == 0 &&
-                           !(ent >= 0 && c->ents[ent].cutout);
+                           !(ent >= 0 && c->ents[ent].cutout && !walked_grating(c->ents[ent].key));
                 if (add_tri(c, bv, &tag1, (const float (*)[3])wp, ground, level_ok) != 0) {
                     free(tl.v);
                     return -1;
@@ -3072,7 +3080,7 @@ static int add_sub_model(Ctx *c, const Area *ar, unsigned mi, const char *bkey, 
         fprintf(stderr, "bmap: model b%d_%05u at %.0f %.0f y %.0f (the sub-model of b%d_%05u)\n", ar->indoor, ar->bids[si],
                 (double)st[0], (double)st[2], (double)st[1], ar->indoor, ar->bids[mi]);
     }
-    g_done = c->cur_far ? NULL : done_get(c, ar->indoor, ar->bids[si], &ar->bmodels[si], bkey, bb_of(&ar->btex));
+    g_done = done_get(c, ar->indoor, ar->bids[si], &ar->bmodels[si], bkey, bb_of(&ar->btex));
     rc = add_model(c, &ar->bmodels[si], bkey, bb_of(&ar->btex), &place, 2, NULL);
     g_done = NULL;
     return rc;
@@ -3085,14 +3093,14 @@ static int add_sub_model(Ctx *c, const Area *ar, unsigned mi, const char *bkey, 
  * its middle, when that floor lies at most DROP_MAX under its foot.  Only placed models move; the room stays. */
 #define DROP_MAX 6.0f
 
-static void drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
+static float drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
 {
     float foot = 1e30f, lx = 1e30f, hx = -1e30f, lz = 1e30f, hz = -1e30f, x, z, floor_y = -1e30f, gap;
     const char *e = getenv("BMAP_DROP");
     size_t i;
 
     if ((e != NULL && e[0] == '0') || c->nv <= v0) {
-        return;
+        return 0.0f;
     }
     for (i = v0; i < c->nv; i++) {
         const BmapVertex *v = &c->v[i];
@@ -3126,7 +3134,7 @@ static void drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
     }
     gap = foot - floor_y;
     if (gap <= 0.05f || gap > DROP_MAX) {
-        return;
+        return 0.0f;
     }
     for (i = v0; i < c->nv; i++) {
         c->v[i].y -= gap;
@@ -3139,9 +3147,102 @@ static void drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
     if (getenv("BMAP_MODEL_LOG") != NULL) {
         fprintf(stderr, "bmap: dropped %.1f onto the floor at %.0f %.0f\n", (double)gap, (double)x, (double)z);
     }
+    return gap;
+}
+
+/* One placed model of a chunk, for stack_down: its vertices [v0, v1), its ground triangles [g0, g1), its foot and
+ * middle as placed, and how far it has been set down. */
+typedef struct { size_t v0, v1, g0, g1; float foot, x, z, drop; } Placed;
+
+static int placed_foot_cmp(const void *a, const void *b)
+{
+    const float x = ((const Placed *)a)->foot, y = ((const Placed *)b)->foot;
+
+    return x < y ? -1 : x > y;
+}
+
+/* Placed models stacked on placed models (Cold Storage's ice blocks: 11 high, stacked every 16 units, each standing
+ * 2 over its placement): the game leaves a gap between each and the one under it, which the field's steep camera
+ * hides.  The lowest first, each model is set down onto the top of a placed model under its middle when that top, as
+ * it was placed, lay at most DROP_MAX under its foot; it goes down as far as that model went plus the gap, so the
+ * stack touches.  The floor's own drop (drop_to_floor) has already been made. */
+static void stack_down(Ctx *c, Placed *pl, unsigned n)
+{
+    unsigned j, k;
+    size_t i;
+
+    qsort(pl, n, sizeof *pl, placed_foot_cmp);
+    for (j = 0; j < n; j++) {
+        float best = -1e30f, bdrop = 0.0f, shift;
+        const float foot0 = pl[j].foot;     /* (as placed: drop_to_floor's drop is already in pl[j].drop) */
+
+        for (k = 0; k < j; k++) {
+            for (i = pl[k].g0; i < pl[k].g1 && i < c->ngt; i++) {
+                const GTri *t = &c->gt[i];
+                const float *a = t->p[0], *b = t->p[1], *cc = t->p[2];
+                const float area = (b[0] - a[0]) * (cc[2] - a[2]) - (b[2] - a[2]) * (cc[0] - a[0]);
+                float w0, w1, w2, h;
+
+                if (area == 0.0f || t->water) {
+                    continue;
+                }
+                w0 = ((b[0] - pl[j].x) * (cc[2] - pl[j].z) - (b[2] - pl[j].z) * (cc[0] - pl[j].x)) / area;
+                w1 = ((cc[0] - pl[j].x) * (a[2] - pl[j].z) - (cc[2] - pl[j].z) * (a[0] - pl[j].x)) / area;
+                w2 = 1.0f - w0 - w1;
+                if (w0 < -1e-4f || w1 < -1e-4f || w2 < -1e-4f) {
+                    continue;
+                }
+                h = w0 * a[1] + w1 * b[1] + w2 * cc[1] + pl[k].drop;    /* (its top as it was placed) */
+                if (h <= foot0 + 0.05f && h > best) {
+                    best = h;
+                    bdrop = pl[k].drop;
+                }
+            }
+        }
+        if (best < -1e29f || foot0 - best <= 0.05f || foot0 - best > DROP_MAX) {
+            continue;
+        }
+        shift = (foot0 - best) + bdrop - pl[j].drop;    /* (onto that top where it now is) */
+        if (shift <= 0.0f) {
+            continue;
+        }
+        for (i = pl[j].v0; i < pl[j].v1; i++) {
+            c->v[i].y -= shift;
+        }
+        for (i = pl[j].g0; i < pl[j].g1 && i < c->ngt; i++) {
+            c->gt[i].p[0][1] -= shift;
+            c->gt[i].p[1][1] -= shift;
+            c->gt[i].p[2][1] -= shift;
+        }
+        pl[j].drop += shift;
+        if (getenv("BMAP_MODEL_LOG") != NULL) {
+            fprintf(stderr, "bmap: stacked %.1f down onto the model under it at %.0f %.0f\n", (double)shift, (double)pl[j].x,
+                    (double)pl[j].z);
+        }
+    }
 }
 
 /* Cell chunk: ground model and its placed objects. */
+/* Placements the map's data puts at the wrong height, set right for battles (the field's steep camera hides them).
+ * Village Bridge (chunk 193): two of its four hedge planters (model 69) stand 8 over the street, the other two and
+ * the 18 elsewhere stand on it.  Each entry: the chunk, the model, the placement's x and z as stored, its height. */
+static const struct { unsigned chunk, id; s32 x, z; float y; } g_place_fix[] = {
+    { 193u, 69u, -96 * 4096, -104 * 4096, 0.0f },
+    { 193u, 69u, -104 * 4096, -56 * 4096, 0.0f },
+};
+
+static float placed_height(unsigned chunk, unsigned id, s32 x, s32 z, float y)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof g_place_fix / sizeof g_place_fix[0]; i++) {
+        if (g_place_fix[i].chunk == chunk && g_place_fix[i].id == id && g_place_fix[i].x == x && g_place_fix[i].z == z) {
+            return g_place_fix[i].y;
+        }
+    }
+    return y;
+}
+
 static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
 {
     Blob b;
@@ -3155,6 +3256,8 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
     unsigned count, k;
     size_t gm0, gm1, v0, g0;
     int rc = 0;
+    Placed *pl = NULL;
+    unsigned npl = 0;
 
     if (arc_load(c, "a/0/0/8", chunk, &b) != 0) {
         return 0;
@@ -3174,7 +3277,7 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
 
         /* (a chunk's mesh can be remade too: "m" and the chunk's number) */
         snprintf(mkey, sizeof mkey, "m%05u", chunk);
-        g_done = c->cur_far ? NULL : done_get_key(c, mkey, &md, setkey, bb_of(gs));
+        g_done = done_get_key(c, mkey, &md, setkey, bb_of(gs));
         if (getenv("BMAP_MODEL_LOG") != NULL && !c->cur_far) {
             fprintf(stderr, "bmap: mesh %s at %.0f %.0f%s\n", mkey, (double)center[0], (double)center[2],
                     g_done != NULL ? " completed" : "");
@@ -3207,6 +3310,7 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
 
         snprintf(bkey, sizeof bkey, "b%d_%u", ar->indoor, ar->id);
         count = rd32(bb, a);
+        pl = (Placed *)calloc(count ? count : 1u, sizeof *pl);
         for (k = 0; k < count && k < (e - a) / 16u; k++) {
             size_t at = a + 4u + (size_t)k * 16u;
             u32 id = rd16(bb, at + 14);
@@ -3225,12 +3329,12 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
                 continue;
             }
             t[0] = center[0] + (float)rds32(bb, at) / 4096.0f;
-            t[1] = (float)rds32(bb, at + 4) / 4096.0f;
+            t[1] = placed_height(chunk, id, rds32(bb, at), rds32(bb, at + 8), (float)rds32(bb, at + 4) / 4096.0f);
             t[2] = center[2] - (float)rds32(bb, at + 8) / 4096.0f;
             place = aff_yaw((float)rd16(bb, at + 12) / 65536.0f, t);
             c->obj++;
             /* (far chunks keep the picture: 40 tiles away it is a few pixels) */
-            g_done = c->cur_far ? NULL : done_get(c, ar->indoor, (unsigned)id, &ar->bmodels[mi], bkey, bb_of(&ar->btex));
+            g_done = done_get(c, ar->indoor, (unsigned)id, &ar->bmodels[mi], bkey, bb_of(&ar->btex));
             if (getenv("BMAP_MODEL_LOG") != NULL && (!c->cur_far || strcmp(getenv("BMAP_MODEL_LOG"), "all") == 0)) {
                 /* ("all": the far ones too: a census of what a zone places) */
                 fprintf(stderr, "bmap: model b%d_%05u at %.0f %.0f y %.0f turn %u%s\n", ar->indoor, (unsigned)id, (double)t[0],
@@ -3242,7 +3346,29 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
                            &ar->banims[mi]);   /* placed */
             g_done = NULL;
             if (rc == 0) {
-                drop_to_floor(c, v0, g0, gm0, gm1);
+                const float dropped = drop_to_floor(c, v0, g0, gm0, gm1);
+
+                if (pl != NULL && c->nv > v0) {
+                    Placed *q = &pl[npl++];
+                    float lx = 1e30f, hx = -1e30f, lz = 1e30f, hz = -1e30f, foot = 1e30f;
+                    size_t i;
+
+                    for (i = v0; i < c->nv; i++) {
+                        foot = c->v[i].y < foot ? c->v[i].y : foot;
+                        lx = c->v[i].x < lx ? c->v[i].x : lx;
+                        hx = c->v[i].x > hx ? c->v[i].x : hx;
+                        lz = c->v[i].z < lz ? c->v[i].z : lz;
+                        hz = c->v[i].z > hz ? c->v[i].z : hz;
+                    }
+                    q->v0 = v0;
+                    q->v1 = c->nv;
+                    q->g0 = g0;
+                    q->g1 = c->ngt;
+                    q->foot = foot + dropped;       /* (as placed) */
+                    q->x = (lx + hx) * 0.5f;
+                    q->z = (lz + hz) * 0.5f;
+                    q->drop = dropped;
+                }
             }
             if (rc == 0) {
                 rc = add_sub_model(c, ar, mi, bkey, t, (float)rd16(bb, at + 12) / 65536.0f);
@@ -3252,6 +3378,10 @@ static int add_chunk(Ctx *c, Area *ar, unsigned chunk, int cx, int cz)
             }
         }
     }
+    if (rc == 0 && pl != NULL && npl > 1u && !c->cur_far) {
+        stack_down(c, pl, npl);
+    }
+    free(pl);
     blob_free(&b);
     return rc;
 }
@@ -3619,7 +3749,7 @@ static int add_wfbc(Ctx *c, Area *ar, const BmapWfbc *g, int cx, int cz)
                     t[2] = center[1] - (float)rds32(bb, at + 8) / 4096.0f + (float)dz * TILE;
                     place = aff_yaw((float)rd16(bb, at + 12) / 65536.0f, t);
                     c->obj++;
-                    g_done = c->cur_far ? NULL : done_get(c, ar->indoor, (unsigned)ar->bids[mi], &ar->bmodels[mi], bkey, bb_of(&ar->btex));
+                    g_done = done_get(c, ar->indoor, (unsigned)ar->bids[mi], &ar->bmodels[mi], bkey, bb_of(&ar->btex));
                     rc = add_model(c, &ar->bmodels[mi], bkey, bb_of(&ar->btex), &place, 2, &ar->banims[mi]);
                     g_done = NULL;
                     if (rc == 0) {
@@ -4071,7 +4201,7 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
             char okey[24];
 
             snprintf(okey, sizeof okey, "o%s", name);
-            g_done = c->cur_far || name[0] == '\0' ? NULL : done_get_posed(c, okey, pose, &md, setkey, tb.p != NULL ? tb : mb);
+            g_done = name[0] == '\0' ? NULL : done_get_posed(c, okey, pose, &md, setkey, tb.p != NULL ? tb : mb);
         }
         {
             /* its texture animations at the frames the field had them on (a switch's pad, a rail's lit branch) */
@@ -4219,7 +4349,7 @@ static int add_gimmicks(Ctx *c, unsigned zone, float px, float pz)
         /* (remade by its own name, as the field's live object of the same model is: live_remade) */
         live_model_name(bb_of(&mb), name);
         snprintf(okey, sizeof okey, "o%s", name);
-        g_done = c->cur_far ? NULL : done_get_key(c, okey, &md, setkey, bb_of(tb.p != NULL ? &tb : &mb));
+        g_done = done_get_key(c, okey, &md, setkey, bb_of(tb.p != NULL ? &tb : &mb));
         if (getenv("BMAP_MODEL_LOG") != NULL && !c->cur_far) {
             fprintf(stderr, "bmap: gimmick %s (%s %u) at %.0f %.0f%s\n", okey, gm[i].arc, (unsigned)gm[i].model, (double)t[0],
                     (double)t[2], g_done != NULL ? " completed" : "");

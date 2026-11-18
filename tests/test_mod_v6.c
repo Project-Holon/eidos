@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "port.h"
 #include "fs.h"
@@ -400,7 +401,13 @@ int main(int argc, char **argv)
         BW_REPORT("test_mod_v6");
     }
     if (argc > 1 && argv[1] != NULL && argv[1][0] != '\0') {
-        real_data(argv[1]);
+        struct stat st;
+
+        if (stat(argv[1], &st) == 0 && (st.st_mode & S_IFMT) == S_IFDIR) {
+            real_data(argv[1]);
+        } else {
+            printf("real data: skipped (the data root %s does not exist)\n", argv[1]);   /* (as the other data tests) */
+        }
     } else {
         printf("real data: skipped (no data root given)\n");
     }

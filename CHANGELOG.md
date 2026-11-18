@@ -29,6 +29,10 @@ Each release's notes on GitHub start with its section here
   - **N's Castle**: Closed the open sides of the throne platform and the steps below it.
   - **Liberty Garden**: Completed the north faces of the storage blocks in the basement.
   - **Opelucid City Houses**: Restored missing south walls and doorway lintels in both trainer houses, and fixed floating tabletop geometry on the upper-floor dining table.
+  - **Black City**: Set the lamps, glass cases and boxes on the shop counters down onto the counters; they floated over them.
+  - **Village Bridge**: Gave the three benches by the river solid boards with depth, built from their own pieces, and set the two hedge planters behind them onto the street; the map's data places them 8 units over it.
+  - **Cold Storage**: Set the stacked ice blocks down onto the ones under them; each stood 2 units over the next.
+  - **Tubeline Bridge**: Battles on the bridge now stand on its deck; the deck is a see-through grating, which battles never took as a floor, so they stood on the girders under it.
 - **Camera & Placement Handling**:
   - **Tree Occlusion**: Trees intersecting or immediately adjacent to the battle camera (including Pinwheel Forest's dark teal trees) are now culled cleanly as whole models across both camera angles, matching the Spot Editor preview without popping in or out mid-battle.
   - **Seasons**: Fixed tree culling and Pokémon ground height breaking in summer, autumn, and winter by identifying trees and tall grass from the game's own material names and collision tile heights instead of texture color.
@@ -38,6 +42,7 @@ Each release's notes on GitHub start with its section here
   - **Floors at Ground Height**: Fixed building floors and ground shadows that lie at exactly the ground's height showing the terrain through them in stripes (the tunnel floor of Route 5's gate); they are now laid over the ground as the overworld draws them.
   - **Fixed Views of Wild Areas**: Fixed-spot views of wild areas now take their floor from the spot's own tile instead of the floor nearest the player's height, which had sunk the Pokémon in two Wellspring Cave views.
   - **Building Doors**: Added the doors of houses, labs and Pokémon Centers to real-map battles; the game keeps each building's door as a separate model placed beside it, which battles left out (every doorway was an empty black opening).
+  - **Distant Buildings**: Buildings and other completed 3D models far from the battle now use their completed form too; before, only nearby ones did, and distant ones showed their open, never-drawn sides (Route 8's view of the Icirrus City Pokémon Center).
   - **Characters on Rails**: Characters the game places on walkway rails are now loaded at the position their rail gives instead of being left out (Opelucid Gym, Castelia City's streets).
   - **Trainer Battle Spacing**: Increased the default distance between the two sides in trainer battles; spots already placed or checked keep their spacing.
   - **Floating Leaves & Shore Foam**: Fixed animated surface decals (Pinwheel Forest's drifting pond leaves, shoreline foam) hovering above the water in battle; they now rest on the water surface beneath the Pokémon.
