@@ -51,6 +51,7 @@
 #endif
 
 #include "bmap.h"
+#include "bmap_grass.h"
 #include "bmap_gimmick.h"
 #include "bmap_remade.h"
 #include "port.h"
@@ -5421,6 +5422,75 @@ static int extend_sea(Ctx *c)
     return rc;
 }
 
+/* The cells of the map grid that load for a battle in `zone` (1 a cell): the zone's own, the cells of other zones
+ * joined to them side by side through cells of real zones (a route and the city it leads to), and the filler cells
+ * (no zone: open sea, the ground between places) beside a cell that loads.  An island past open filler sea is
+ * another place: Liberty Garden's grid neighbour Unity Tower, reached by its own boat, is left out.  NULL (every
+ * cell loads) where the grid has no zone layer or names no cell of the zone. */
+static unsigned char *grid_cells_joined(Buf mb, unsigned w, unsigned h, unsigned zone)
+{
+    unsigned char *keep = (unsigned char *)calloc((size_t)w * h ? (size_t)w * h : 1u, 1);
+    unsigned *stack = (unsigned *)malloc(((size_t)w * h + 1u) * sizeof *stack);
+    unsigned n = 0, cell, any = 0;
+
+    if (keep == NULL || stack == NULL || 8u + (size_t)w * h * 8u > mb.n) {
+        free(keep);
+        free(stack);
+        return NULL;
+    }
+#define GZ(c_) rd32(mb, 8u + w * h * 4u + (c_) * 4u)
+#define GREAL(c_) (rd32(mb, 8u + (c_) * 4u) != NO_CHUNK && GZ(c_) != 0xFFFFFFFFu)
+    for (cell = 0; cell < w * h; cell++) {
+        if (GREAL(cell) && GZ(cell) == zone) {
+            keep[cell] = 1;
+            stack[n++] = cell;
+            any = 1;
+        }
+    }
+    while (n > 0) {
+        const unsigned c0 = stack[--n], x = c0 % w, z = c0 / w;
+        const unsigned nb[4] = { x > 0 ? c0 - 1u : c0, x + 1 < w ? c0 + 1u : c0, z > 0 ? c0 - w : c0, z + 1 < h ? c0 + w : c0 };
+        int k;
+
+        for (k = 0; k < 4; k++) {
+            if (!keep[nb[k]] && GREAL(nb[k])) {
+                keep[nb[k]] = 1;
+                stack[n++] = nb[k];
+            }
+        }
+    }
+    for (cell = 0; cell < w * h; cell++) {
+        const int x = (int)(cell % w), z = (int)(cell / w);
+        int dx, dz;
+
+        if (keep[cell] != 1 || GZ(cell) == 0xFFFFFFFFu) {
+            continue;
+        }
+        for (dz = -1; dz <= 1; dz++) {
+            for (dx = -1; dx <= 1; dx++) {
+                const int xx = x + dx, zz = z + dz;
+                unsigned c2;
+
+                if (xx < 0 || zz < 0 || xx >= (int)w || zz >= (int)h) {
+                    continue;
+                }
+                c2 = (unsigned)(zz * (int)w + xx);
+                if (!keep[c2] && rd32(mb, 8u + c2 * 4u) != NO_CHUNK && GZ(c2) == 0xFFFFFFFFu) {
+                    keep[c2] = 2;      /* (filler beside a cell that loads) */
+                }
+            }
+        }
+    }
+#undef GZ
+#undef GREAL
+    free(stack);
+    if (!any) {
+        free(keep);
+        return NULL;
+    }
+    return keep;
+}
+
 int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int hour, int minute)
 {
     Ctx *c = (Ctx *)calloc(1, sizeof *c);
@@ -5433,6 +5503,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     Blob headers, matrix;
     Buf hb, mb;
     unsigned pcx, pcz, area, matrix_id, mode, w, h, cell;
+    unsigned char *keepc = NULL;    /* (grid_cells_joined) */
     unsigned i;
     int rc = -1, wfbc_on = 0, fmat_on = 0, fmat_given = g_fmat_set, cloud_tex = -2;
     int weather = -1, weather_on = 0;
@@ -5544,6 +5615,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     pcx = (unsigned)(px / CELL_UNITS);
     pcz = (unsigned)(pz / CELL_UNITS);
     (void)pcx; (void)pcz;
+    keepc = mode == 1u && !fmat_on && getenv("BMAP_ALL_CELLS") == NULL ? grid_cells_joined(mb, w, h, zone) : NULL;
     for (cell = 0; cell < w * h; cell++) {
         unsigned chunk = fmat_on ? g_fmat.grid[cell] : rd32(mb, 8u + cell * 4u);
         int cx = (int)(cell % w), cz = (int)(cell / w);
@@ -5551,7 +5623,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         unsigned cz_zone = zone, carea = area;
         Area *ar;
 
-        if (chunk == NO_CHUNK) {
+        if (chunk == NO_CHUNK || (keepc != NULL && !keepc[cell])) {
             continue;
         }
         dx = x0 - px > px - (x0 + CELL_UNITS) ? x0 - px : px - (x0 + CELL_UNITS);
@@ -5696,6 +5768,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         const clock_t t0 = clock();
         const int rcf = finish(c, s);
 
+
         g_bt[5] += clock() - t0;
         if (getenv("BMAP_BUILD_TIME") != NULL) {
             fprintf(stderr, "bmap build: remade %u models %ld ms; near chunks %u %ld ms; far chunks %u %ld ms; joined %u %ld ms; "
@@ -5738,6 +5811,9 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     s->nt = (unsigned)c->ntex;
     s->tex_gen = bmap_tex_gen();
     c->tex = NULL;
+    if (bmap_grass_count() > 0) {
+        (void)bmap_grass_atlases(s);    /* (research: the hand-made grass layers' pictures) */
+    }
     memcpy(s->bob_y, c->bob_y, sizeof s->bob_y);
     scene_wall_colours(zone, s);        /* (the scene's vertices are made: finish) */
     s->bob_n = c->bob_n;
@@ -5804,6 +5880,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     build_ground(c, s, px, pz);
     rc = 0;
 out:
+    free(keepc);
     for (i = 0; i < c->nareas; i++) {
         area_free(&c->areas[i]);
     }

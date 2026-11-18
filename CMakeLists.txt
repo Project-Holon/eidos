@@ -874,6 +874,7 @@ set(BW_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/g3d/hw3d.c       # the 3D hardware: FIFO, ports, registers, swap
 
     # engine/world/ -- the overworld map as a lit, textured mesh (battle backdrop).
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_grass.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c  # zone -> chunks -> world-space mesh
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_gimmick.c  # the gym puzzles' models
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_remade.c  # the remade models: which model, which builder
@@ -2787,6 +2788,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/cup.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plate.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/candle.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_grass.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_npc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bcam_sim.c
@@ -2843,6 +2845,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/cup.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plate.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/candle.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_grass.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
     target_include_directories(bmap_npc_dump PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world
@@ -3195,6 +3198,7 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plate.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/candle.c)
     target_sources(eidos_boot PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_grass.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
     target_include_directories(eidos_boot PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform

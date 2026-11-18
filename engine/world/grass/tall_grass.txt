@@ -1,0 +1,377 @@
+# Normal tall grass: every leaf drawn by hand.
+#
+# The game's two sprites (kusa_ec1 the light top, kusa_ec2 the dark body) show the plant from above: a picture of
+# leaves lying.  A leaf stood up from that picture shows a top view from the side, in pixels as large as the
+# ground's.  So here each of the plant's thirteen leaves is drawn again, pixel by pixel, as that leaf seen flat on
+# (its tip up, its root down), in the sprite's own colours and with the sprite's own marks: its outline colour, its
+# lit streak where the sprite has it, its dark tip.  A drawn pixel is 0.42 map units (the size of the pixels of the
+# grass tufts the battles have now, and close to a Pokemon's), so a leaf is as long on the ground as the sprite
+# draws it.
+#
+# Compass: yaw 0 east, 90 south (toward the field's camera), 180 west, 270 north.  A tile is 16 map units.
+
+# ------------------------------------------------------------------ the light leaves (kusa_ec1's six)
+# The sprite (colours dark to light: 0 295A31 outline, 1 317339 shade, 3 398B41, 4 419441, 5 4A9C41, 6 5AAC52,
+# 7 5AB452, 8 62B452, 9 62BD5A, a 7BC55A, b 83C562, c 8BCD62):
+#      0123456789abcdef
+#  1   .......000......     B  the up leaf: dark tip 000, lit 9 down its middle, then 5, base 3 1 3 / 1
+#  2   ...0000595000...     A  the up-left leaf: outline 0 all round, lit 9 c at its outer end, 5 8 5 behind, root 3 6
+#  3   ..09c50353039...     C  the up-right leaf: the same the other way, lit b c 9
+#  4   ..005851313bc90.     D  the big left leaf: outline 3 on its outer side and 1 on its inner, lit c a along the
+#  5   ....0363139830..        outer side, 8 7 6 at its root, 7 5 toward its tip 0 0
+#  6   ....30133331.0..     F  the big right leaf: outline 1, 3 on its outer side, lit c a, 6 9 5 at its root
+#  7   ...3876336953...     E  the front leaf: narrow, outline 0 and 1, root 3 7 7, then 7 9, its lightest c c past
+#  8   ..3ca717358ca3..        the middle, 4 7 and 4 to its tip 1 1
+#  9   ..3ac13773158.1.
+# 10   ..17500790015.1.
+# 11   ..15020cc0..11..
+# 12   ..00..1470......
+# 13   .......141......
+# 14   ........11......
+grass kusa_ec1
+ink 0 7 1
+ink 1 7 4
+ink 3 7 3
+ink 4 7 12
+ink 5 7 2
+ink 6 6 5
+ink 7 5 7
+ink 8 4 7
+ink 9 8 2
+ink a 4 8
+ink b 11 4
+ink c 3 8
+
+# B, the up leaf: 7 wide, 15 long.
+draw B
+...0...
+..050..
+..090..
+.05950.
+.09c90.
+.09c90.
+059c950
+0599950
+0559550
+0355530
+0353530
+.03130.
+.03130.
+..313..
+..010..
+end
+piece B root 3.5 15 axis 270
+
+# A, the up-left leaf: 9 wide, 14 long.  Its lit streak 9 c runs down its left (its outer side in the bush).
+draw A
+....0....
+...090...
+..09c50..
+..0cc50..
+.09cc850.
+.09c8850.
+059c88550
+059885550
+055885530
+.0585530.
+.0355530.
+..03650..
+...030...
+...010...
+end
+piece A root 4.5 14 axis 270
+
+# C, the up-right leaf: the same build the other way, in its own colours b c 9.
+draw C
+....0....
+...090...
+..05b90..
+..05cc0..
+.058cc90.
+.0588c90.
+05588c950
+055588950
+035588550
+.0355850.
+.0355530.
+..05630..
+...030...
+...010...
+end
+piece C root 4.5 14 axis 270
+
+# D, the big left leaf: 11 wide, 18 long.  Outline 3 on its left (outer) side, 1 on its right; lit c a down the left.
+draw D
+.....0.....
+....050....
+....0750...
+...37750...
+...3a7510..
+..3ca7751..
+..3cca751..
+.3acca7751.
+.3accaa751.
+3aaccaa7751
+3aacaa77751
+37aaa777510
+.37aa77751.
+.387777651.
+..3877651..
+..3876631..
+...36631...
+....131....
+end
+piece D root 5.5 18 axis 270
+
+# F, the big right leaf: 11 wide, 16 long.  Outline 1, 3 on its right (outer) side; lit c a down the right.
+draw F
+.....0.....
+....010....
+...0151....
+...15851...
+..1588a3...
+..158aca3..
+.1588acc3..
+.158aacca3.
+1558aaccaa3
+15588acaa73
+01588aaa773
+.158889773.
+..1569963..
+..1366631..
+...13631...
+....131....
+end
+piece F root 5.5 16 axis 270
+
+# E, the front leaf: 9 wide, 19 long.  Its lightest part c c is past its middle, as the sprite has it.
+draw E
+....1....
+...141...
+...141...
+..14741..
+..04740..
+.04ccc40.
+.07ccc70.
+.0cccc70.
+07ccc9770
+079cc9770
+0799c9770
+077999770
+037797730
+.0377730.
+.0337730.
+.1337331.
+..13331..
+..13131..
+...111...
+end
+piece E root 4.5 19 axis 270
+
+# The crown: the six light leaves grow from the bush's heart, 2.8 up, each heading the way the sprite shows it.
+# The up leaf stands steepest and nods; the two upper side leaves lean out and curl; the two big leaves and the
+# front leaf, the long ones, arch right over and hang.  Each leaf is folded a little along its middle.
+put B at 0.0 3.0 -0.65   yaw 270 elev 76 bend 28 scale 0.42 cup 0.15
+put A at -1.3 3.0 -0.65  yaw 218 elev 62 bend 36 scale 0.42 cup 0.15
+put C at 1.3 3.0 -0.65   yaw 333 elev 62 bend 36 scale 0.42 cup 0.15
+put D at -1.3 2.8 0.0    yaw 132 elev 50 bend 70 scale 0.42 cup 0.15
+put F at 0.0 2.8 0.0     yaw 48  elev 50 bend 70 scale 0.42 cup 0.15
+put E at 0.0 2.7 0.65    yaw 88  elev 55 bend 85 scale 0.42 cup 0.15
+
+# ------------------------------------------------------------------ the dark leaves (kusa_ec2's seven)
+# The sprite (colours: 0 396229 deep outline, 1 397331 outline, 2 298B4A body, 4 398B41, 5 419C41, 6 7BB452 fleck):
+#      0123456789abcdef
+#  0   .......21112....     T  the up leaf: a round end, outline 1, plain body
+#  1   ....222122212...     A  the left leaf: outline 1, a fleck 5 6 / 6 5 near its tip
+#  2   .21111122221112.     C  the right leaf: flecks 5 6 5 / 5 6 4 / 5
+#  3   2156221222156512     D  the lower-left leaf: flecks 5 / 5 6 5, a deep tip 0 4 0 / 0 0
+#  4   1265222121225641     G  the lower-right leaf: flecks 5 / 5 / 5 5 / 5 5 6 / 6 5, tip 0 4 1 / 0 0
+#  5   1111222222222521     E  the front-left leaf: flecks 5 / 6 5 / 5 6 / 4, tip 0 0
+#  6   .221112222111111     F  the front-right leaf: flecks 5 / 5 6 / 6 5 / 4, tip 0 0
+#  7   .212222222225123
+#  8   2152212221222512
+#  9   1565122122122551
+# 10   0401222122215561
+# 11   0021522122510651
+# 12   .220651215612041
+# 13   ..20560206502200
+# 14   ..2040222040222.
+# 15   ...0022..2002...
+grass kusa_ec2
+ink 0 0 10
+ink 1 0 4
+ink 2 8 7
+ink 4 1 10
+ink 5 2 3
+ink 6 3 3
+
+# T, the up leaf: 11 wide, 13 long, its end round as the sprite's 1 1 1.
+draw T
+...11111...
+..1222221..
+.122222221.
+.122222221.
+12222222221
+12222222221
+12222222221
+.122222221.
+.122222221.
+..1222221..
+..1222221..
+...12221...
+...12221...
+end
+piece T root 5.5 13 axis 270
+
+# A, the left leaf: 10 wide, 17 long; the sprite's fleck 5 6 / 6 5 carried down from its tip.
+draw A
+....11....
+...1561...
+...1651...
+..125621..
+..126521..
+.12256221.
+.12265221.
+.12225221.
+1222252221
+1222222221
+1222222221
+1222222221
+.12222221.
+.12222221.
+..122221..
+..122221..
+...1221...
+end
+piece A root 5.0 17 axis 270
+
+# C, the right leaf: 11 wide, 15 long; flecks 5 6 5 / 5 6 4 / 5.
+draw C
+.....1.....
+....141....
+...15651...
+...16561...
+..1256521..
+..1225621..
+.122252221.
+.122222221.
+12222222221
+12222222221
+12222222221
+.122222221.
+.122222221.
+..1222221..
+...12221...
+end
+piece C root 5.5 15 axis 270
+
+# D, the lower-left leaf: 10 wide, 16 long; its deep tip 0 4 0, flecks 5 / 5 6 5.
+draw D
+....00....
+...0440...
+..015610..
+..125651..
+.12256521.
+.12225221.
+.12225221.
+1222222221
+1222222221
+1222222221
+1222222221
+.12222221.
+.12222221.
+..122221..
+..122221..
+...1221...
+end
+piece D root 5.0 16 axis 270
+
+# G, the lower-right leaf, the longest: 12 wide, 18 long; tip 0 4 1, its long fleck 5 / 5 / 5 5 / 5 5 6 / 6 5.
+draw G
+.....00.....
+....0410....
+....1651....
+...156551...
+...125561...
+..12255521..
+..12225521..
+.1222252221.
+.1222252221.
+122222522221
+122222222221
+122222222221
+122222222221
+.1222222221.
+.1222222221.
+..12222221..
+..12222221..
+...122221...
+end
+piece G root 6.0 18 axis 270
+
+# E, the front-left leaf: 12 wide, 17 long; tip 0 0, flecks 5 / 6 5 / 5 6 / 4.
+draw E
+.....00.....
+....0440....
+....0560....
+...016510...
+...125621...
+..12256221..
+..12225221..
+.1222252221.
+.1222222221.
+122222222221
+122222222221
+122222222221
+.1222222221.
+.1222222221.
+..12222221..
+..12222221..
+...122221...
+end
+piece E root 6.0 17 axis 270
+
+# F, the front-right leaf: 10 wide, 17 long; tip 0 0, flecks 5 / 5 6 / 6 5 / 4.
+draw F
+....00....
+...0440...
+...0650...
+..015610..
+..125621..
+.12252221.
+.12252221.
+1222222221
+1222222221
+1222222221
+1222222221
+1222222221
+.12222221.
+.12222221.
+..122221..
+..122221..
+...1221...
+end
+piece F root 5.0 17 axis 270
+
+# The skirt: the seven dark leaves grow in a ring round the heart, 1 up, each heading out the way the sprite shows
+# it and standing (the short up leaf steepest, the long front leaves lowest).  The leaves that head east and west
+# are turned a little about their own length toward the south, the side the sprite is drawn from.
+put T at 0.0 1.0 -3.1    yaw 270 elev 64 bend 20 scale 0.42 cup 0.15
+put A at -2.5 1.0 -2.5   yaw 194 elev 58 bend 24 roll 28 scale 0.42 cup 0.15
+put C at 2.5 1.0 -2.5    yaw 345 elev 58 bend 24 roll -28 scale 0.42 cup 0.15
+put D at -3.1 1.0 0.0    yaw 158 elev 54 bend 26 roll 20 scale 0.42 cup 0.15
+put G at 2.5 1.0 0.6     yaw 29  elev 54 bend 26 roll -20 scale 0.42 cup 0.15
+put E at -1.9 1.0 2.5    yaw 119 elev 50 bend 30 scale 0.42 cup 0.15
+put F at 0.6 1.0 2.5     yaw 70  elev 50 bend 30 scale 0.42 cup 0.15
+
+# The outer ring.  In the sprite the dark body fills the tile to its edges; seven leaves round the heart leave the
+# tile's rim bare.  So the same seven leaves grow once more, further out and lower, each between two leaves of the
+# first ring, their tips coming down near the tile's edge.
+put T at -2.0 0.4 -4.0   yaw 242 elev 46 bend 34 scale 0.42 cup 0.15
+put T at 2.0 0.4 -4.0    yaw 298 elev 46 bend 34 scale 0.42 cup 0.15
+put A at -4.0 0.4 -1.0   yaw 172 elev 40 bend 40 roll 22 scale 0.42 cup 0.15
+put C at 4.0 0.4 -1.0    yaw 8   elev 40 bend 40 roll -22 scale 0.42 cup 0.15
+put D at -3.4 0.4 2.4    yaw 140 elev 38 bend 44 scale 0.42 cup 0.15
+put G at 3.4 0.4 2.6     yaw 42  elev 38 bend 44 scale 0.42 cup 0.15
+put E at -0.6 0.4 4.0    yaw 96  elev 36 bend 48 scale 0.42 cup 0.15
+put F at 1.6 0.4 3.8     yaw 78  elev 40 bend 44 scale 0.42 cup 0.15

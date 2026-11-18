@@ -20,18 +20,25 @@ Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago sup
   - Ported overworld weather effects into real-map battles using the game's native weather routines, tables, and sprites—including particle systems for snow, rain, sandstorm, blizzard, downpour, thunderstorm, storm, and diamond dust, plus scrolling overlay sheets for blizzards, storms, and the Desert Resort sandstorm.
   - Matched battle fog depth calculation to the overworld camera axis so distant cave and room walls retain their geometry instead of flattening into solid fog (Chargestone Cave, Driftveil Gym).
 - **Location & Dungeon Geometry**:
-  - **Nimbasa Gym**: Extruded roller-coaster rails and tracks into full 3D geometry, modeled raised 3D switch pads, and synced track/pad colors to the active switch state.
-  - **Driftveil Gym**: Positioned battles on each trainer's adjacent walkway and floor level; completed geometry for traffic cones, walkway undersides, lift posts (including railed lift back faces), and pit walls; grounded cones and pads onto walkways; closed front/back gaps between lift arrow signs and their posts; and synced lift up/down arrow lighting to the lift's state.
-  - **Mistralton Gym**: Added 3D relief to cannon arrow plates, completed back-face geometry on entrance statues, and adjusted Pilot 2 and Worker 5 battle placements to clear nearby fences.
-  - **Icirrus Gym**: Replaced flat snowy rock and icicle sprites with 3D meshes, completed back-face geometry on entrance pedestals and platform mechanisms (levers, gears, floor switches), and repositioned two obstructed trainer battles.
-  - **Opelucid Gym**: Completed north faces on the four entrance statues and entrance walkway, replaced flat dragon crest sprites above the front statues with 3D geometry, and moved the story Veteran's battle from the hall floor onto his elevated walkway.
-  - **Dragonspiral Tower**: Restored missing south walls on the pool and fallen-pillar floors while keeping doorway exits open, completed underside/south faces on upper-floor ledges, ramps, and stairs, and assigned dedicated battle spots for each trainer.
+  - **Liberty Garden**: Completed the island's missing terrain and extended the surrounding sea, removed a neighboring area's map that rendered beside the island, and completed north faces on the basement storage blocks.
   - **Relic Castle**: Removed spurious generated walls around quicksand pits across all five sand floors and grounded floating vases onto their pedestals.
-  - **N's Castle & Liberty Garden**: Closed open sides on N's throne platform and steps, and completed north faces on the basement storage blocks in Liberty Garden.
-  - **Opelucid City & Undella Town**: Restored missing south walls and doorway lintels in both Opelucid trainer houses and the Undella villa, fixed floating tabletop geometry in Opelucid, replaced the Undella table's flat vase flowers with a 3D model, and filled hollow gaps inside the Undella fountain hedges.
-  - **Black City & Cold Storage**: Grounded floating shop-counter props (lamps, glass cases, boxes) in Black City and stacked ice blocks in Cold Storage.
-  - **Route 6, Village Bridge, Tubeline Bridge & Abundant Shrine**: Closed the open east face of Route 6's riverside ledge with wrap-around terraced steps; added 3D plank depth to Village Bridge benches and grounded the hedge planters behind them; recognized Tubeline Bridge's translucent grating deck as a valid battle floor instead of dropping battles onto the underlying girders; and sealed eaves gaps and a black side seam on the Abundant Shrine hut.
-  - **Ground Seams & Coplanar Floors**: Closed terrain seams where connected road surfaces drop onto a lower layer (Route 5 gate path), and resolved z-fighting stripes on building floors and ground shadows that sit flush with the terrain (Route 5 gate tunnel).
+  - **Nimbasa Gym**: Extruded roller-coaster rails and tracks into full 3D geometry, modeled raised 3D switch pads, and synced track/pad colors to the active switch state.
+  - **Route 5**: Closed terrain seams where connected road surfaces drop onto a lower layer by the gate path, and resolved z-fighting stripes on building floors and ground shadows that sit flush with the terrain in the gate tunnel.
+  - **Driftveil Gym**: Positioned battles on each trainer's adjacent walkway and floor level; completed geometry for traffic cones, walkway undersides, lift posts (including railed lift back faces), and pit walls; grounded cones and pads onto walkways; closed front/back gaps between lift arrow signs and their posts; and synced lift up/down arrow lighting to the lift's state.
+  - **Cold Storage**: Grounded stacked ice blocks onto the blocks beneath them instead of hovering 2 units above.
+  - **Route 6**: Closed the open east face of the tree-topped riverside ledge with wrap-around terraced steps matching the route's ledges.
+  - **Mistralton Gym**: Added 3D relief to cannon arrow plates, completed back-face geometry on entrance statues, and adjusted Pilot 2 and Worker 5 battle placements to clear nearby fences.
+  - **Route 7**: Fixed broken geometry on the raised wooden walkways.
+  - **Icirrus Gym**: Replaced flat snowy rock and icicle sprites with 3D meshes, completed back-face geometry on entrance pedestals and platform mechanisms (levers, gears, floor switches), and repositioned two obstructed trainer battles.
+  - **Dragonspiral Tower**: Restored missing south walls on the pool and fallen-pillar floors while keeping doorway exits open, completed underside/south faces on upper-floor ledges, ramps, and stairs, and assigned dedicated battle spots for each trainer.
+  - **Tubeline Bridge**: Recognized the bridge's translucent grating deck as a valid battle floor instead of dropping battles onto the girders underneath.
+  - **Opelucid City**: Restored missing south walls and doorway lintels in both trainer houses, and fixed floating tabletop geometry on the upper-floor dining table.
+  - **Opelucid Gym**: Completed north faces on the four entrance statues and entrance walkway, replaced flat dragon crest sprites above the front statues with 3D geometry, and moved the story Veteran's battle from the hall floor onto his elevated walkway.
+  - **N's Castle**: Closed open sides on the throne platform and the steps below it.
+  - **Village Bridge**: Added 3D plank depth to the three riverside benches and grounded the two floating hedge planters behind them onto the street.
+  - **Undella Town**: Restored missing south walls, entrance alcove sides, and doorway geometry in the villa, replaced the table's flat vase flowers with a 3D model, and filled hollow gaps inside the fountain hedges.
+  - **Abundant Shrine**: Removed a black seam down the shrine hut's side and sealed the gaps under its eaves where the side walls stopped short of the roof.
+  - **Black City**: Grounded floating shop-counter props (lamps, glass cases, and boxes) onto the counters.
 - **Camera & Placement Handling**:
   - **Tree Occlusion & Seasons**: Trees intersecting or adjacent to the battle camera (including Pinwheel Forest's dark teal trees) are culled cleanly as whole models across both camera angles without popping mid-battle. Tree culling and Pokémon ground height now use native material names and collision tile heights rather than texture colors, fixing summer, autumn, and winter behavior.
   - **Small Prop Culling**: When the camera is positioned inside a small prop, its top face is now hidden alongside its sides rather than floating in view.
@@ -45,6 +52,7 @@ Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago sup
 - **Spot Editor**:
   - Side-by-side workspace showing the Intro and Command camera views alongside the Overworld view, tile map, and location list.
   - Displays both opponent trainer positions (initial battle placement and post-battle return tile), per-floor tile maps and Overworld isolation for stacked interiors (Driftveil Gym), proper multi-layer ground height (Pinwheel Forest), Professor Juniper's back sprite during the catching tutorial, and all eight Gym Badges in the built-in preview save.
+  - Fixed Black City and White Forest residents rendering below ground level.
   - Added automatic hot-reloading when the spot file changes on disk, update notifications, and automatic migration when built-in battle tile coordinates change.
   - Fixed translucent foreground geometry (bridge and tree shadows) rendering as solid black artifacts over Pokémon sprites, fixed Overworld drag-to-pan and Preview selecting an adjacent wild area when two areas sit one tile apart, and fixed vertical placement for Driftveil Gym lifts and the Champion's platform.
 

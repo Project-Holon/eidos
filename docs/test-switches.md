@@ -73,6 +73,7 @@ holds the move steps (their frames then count from when it opens), and
 | `BMAP_PLACE_LOG=1` | Logs the battle map's placement: timings of its stages, the live objects, the bodies stood on the floor. |
 | `BMAP_REMADE_DUMP=DIR` | Writes what each builder of a remade model made as `DIR/<model>.bmc`, for comparing two builds triangle by triangle. |
 | `BMAP_DUMP=FILE`, `BMAP_MODELS_DUMP=DIR` | Research: write the whole battle scene, or every building model standing alone, for tools outside the game. |
+| `BMAP_GRASS_FILE=FILE` | Research: builds the tall grass of real-map battles from a hand-made layers file: `engine/world/grass/tall_grass.txt`, where every leaf is drawn pixel by pixel in the grass picture's colours and placed by hand (format at the top of `engine/world/bmap_grass.c`). Off by default: battles keep their tufts. `BMAP_GRASS_LOG=1` logs what it builds. `BMAP_GRASS_METHOD=N` and `BMAP_LONG_METHOD=N` are earlier tries, not for use. |
 | `BMAP_DEBUG_BACK=1` | Research: paints the never-drawn side of every one-sided draw magenta. |
 | `BMAP_CAM_YAW=DEG`, `BMAP_FORCE_FACING`, `BMAP_FREE_ANGLE` | Research: turn the battle cameras or fix the placement's facing. |
 | `BMAP_FIX_BACKS=1`, `BMAP_JOIN=...`, `BMAP_JOIN_MODE=...` | Research, not for use: tries that were shelved (`docs/research/battle-real-map-2026-11.md`). |

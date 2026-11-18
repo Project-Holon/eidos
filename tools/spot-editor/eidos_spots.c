@@ -825,9 +825,11 @@ static int row_height(const BmapSpot *r, float *y)
         }
     }
     /* a leader: its battle starts from a script, the header does not call
-     * it a trainer; whoever stands on the row's tile */
+     * it a trainer; whoever stands on the row's tile (a resident only on its
+     * own row, "T424.r9": White Forest's, else the floor was a plane under
+     * the forest) */
     for (i = 0; i < A.nnpc; i++) {
-        if (!A.npcs[i].resident && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
+        if ((!A.npcs[i].resident || strstr(r->id, ".r") != NULL) && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
             *y = A.npcs[i].rail ? A.npcs[i].y : settle_height(r->zone, A.npcs[i].gx, A.npcs[i].gz, A.npcs[i].y);
             return 1;
         }

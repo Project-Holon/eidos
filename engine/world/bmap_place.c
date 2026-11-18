@@ -27,6 +27,7 @@
 #include <time.h>
 
 #include "bmap_place.h"
+#include "bmap_grass.h"
 
 #define PLACE_SX 0.0f
 #define PLACE_SZ 7.0f
@@ -130,6 +131,1217 @@ static int leafy(const BmapScene *s, const BmapDraw *g)
  * the grass triangles are dropped after. */
 static const unsigned char *g_tmask;      /* the grass triangles (bmap_place_spec), by index */
 
+/* ---- Research: the grass rework's methods (BMAP_GRASS_METHOD, BMAP_LONG_METHOD) ---- */
+static int gm_on(void)
+{
+    const char *e = getenv("BMAP_GRASS_METHOD");
+
+    return e != NULL ? atoi(e) : 0;
+}
+
+static int lm_on(void)
+{
+    const char *e = getenv("BMAP_LONG_METHOD");
+
+    return e != NULL ? atoi(e) : 0;
+}
+
+/* A grass picture's height in the field over its ground (map units), by its name: the game's own layers. */
+static float gm_layer_h(const char *n)
+{
+    if (strcmp(n, "kusa_ec1") == 0) return 8.0f;
+    if (strcmp(n, "kusa_ec2") == 0) return 6.0f;
+    if (strcmp(n, "kusa_ec1s") == 0) return 10.0f;
+    if (strcmp(n, "kusa_ec2s") == 0) return 6.0f;
+    if (strcmp(n, "kusa1_wf") == 0) return 8.0f;
+    if (strncmp(n, "nagakusa", 8) == 0) return 16.0f;
+    return 0.0f;
+}
+
+static int gm_rosette(const char *n)
+{
+    return strncmp(n, "kusa_ec1", 8) == 0 || strncmp(n, "kusa_ec2", 8) == 0 || strcmp(n, "kusa1_wf") == 0;
+}
+
+typedef struct { BmapVertex *v; unsigned n, cap; int fail; } GmBuf;
+static float g_gm_shade = 1.0f;     /* (research: a new triangle's light, of its source's) */
+
+typedef struct { GmBuf *b; const BmapVertex *src; } GlCtx;
+
+static void gm_tri(GmBuf *b, const BmapVertex *src, const float p[3][3], const float uv[3][2]);
+
+static void gl_emit(void *ctx, const float p[3][3], const float uv[3][2], float shade)
+{
+    GlCtx *c = (GlCtx *)ctx;
+
+    g_gm_shade = shade > 1.0f ? 1.0f : shade;
+    gm_tri(c->b, c->src, p, uv);
+    g_gm_shade = 1.0f;
+}
+
+/* (research) the arm of a rosette nearest an angle */
+static int gm_arm(float ang, const float *aang, int na)
+{
+    int k, best = 0;
+    float bd = 1e9f;
+
+    for (k = 0; k < na; k++) {
+        float d = fabsf(ang - aang[k]);
+
+        d = d > 3.14159265f ? 6.2831853f - d : d;
+        if (d < bd) {
+            bd = d;
+            best = k;
+        }
+    }
+    return best;
+}
+
+static void gm_tri(GmBuf *b, const BmapVertex *src, const float p[3][3], const float uv[3][2])
+{
+    int k;
+
+    if (b->fail) {
+        return;
+    }
+    if (b->n + 3 > b->cap) {
+        unsigned nc = b->cap ? b->cap * 2 : 4096;
+        BmapVertex *nv = (BmapVertex *)realloc(b->v, nc * sizeof *nv);
+
+        if (nv == NULL) {
+            b->fail = 1;
+            return;
+        }
+        b->v = nv;
+        b->cap = nc;
+    }
+    for (k = 0; k < 3; k++) {
+        BmapVertex *o = &b->v[b->n++];
+
+        *o = *src;
+        o->x = p[k][0];
+        o->y = p[k][1];
+        o->z = p[k][2];
+        o->u = uv[k][0];
+        o->v = uv[k][1];
+        o->a = 255;
+        if (g_gm_shade != 1.0f) {
+            o->r = (unsigned char)(o->r * g_gm_shade);
+            o->g = (unsigned char)(o->g * g_gm_shade);
+            o->b = (unsigned char)(o->b * g_gm_shade);
+        }
+    }
+}
+
+/* a quad a b c d (both triangles) with its four uvs */
+static void gm_quad(GmBuf *b, const BmapVertex *src, const float q[4][3], const float uv[4][2])
+{
+    const float p1[3][3] = { { q[0][0], q[0][1], q[0][2] }, { q[1][0], q[1][1], q[1][2] }, { q[2][0], q[2][1], q[2][2] } };
+    const float p2[3][3] = { { q[0][0], q[0][1], q[0][2] }, { q[2][0], q[2][1], q[2][2] }, { q[3][0], q[3][1], q[3][2] } };
+    const float u1[3][2] = { { uv[0][0], uv[0][1] }, { uv[1][0], uv[1][1] }, { uv[2][0], uv[2][1] } };
+    const float u2[3][2] = { { uv[0][0], uv[0][1] }, { uv[2][0], uv[2][1] }, { uv[3][0], uv[3][1] } };
+
+    gm_tri(b, src, p1, u1);
+    gm_tri(b, src, p2, u2);
+}
+
+/* ---- Research: hand-made grass layers (bmap_grass.c; BMAP_GRASS_FILE) ---- */
+static void gl_emit(void *ctx, const float p[3][3], const float uv[3][2], float shade);
+
+/* (research) one slice method: the picture's pixels along lines through the tile; dirs: 1 rows (along x), 2 columns
+ * (along z), 4 the two diagonals; prof: 0 a clump highest in its middle, 1 lighter pixels taller, 2 flat with jitter;
+ * step: every Nth line; scale: the height (battle units) of the tallest strip. */
+static int g_slice_jit;      /* (research: N2, each strip moved off the grid and leaning) */
+
+static void gm_slices(GmBuf *b, const BmapVertex *src, const BmapTexture *t, float ox, float y, float oz, const float mxv[2],
+                      const float mzv[2], int dirs, int prof, int step, float scale)
+{
+    const int W = t->w, Hh = t->h;
+    const float cxp = (W - 1) * 0.5f, czp = (Hh - 1) * 0.5f, rm = W * 0.5f;
+    const unsigned hs0 = ((unsigned)(ox * 13.0f) * 2654435761u) ^ ((unsigned)(oz * 7.0f) * 40503u);
+    int d, line, k;
+#define SX(dx, dz) (ox + mxv[0] * (dx) + mzv[0] * (dz))
+#define SZ(dx, dz) (oz + mxv[1] * (dx) + mzv[1] * (dz))
+    for (d = 0; d < 4; d++) {
+        const int on = d == 0 ? (dirs & 1) : d == 1 ? (dirs & 2) : (dirs & 4);
+        const int nl = d < 2 ? (d == 0 ? Hh : W) : W + Hh - 1;
+
+        if (!on) {
+            continue;
+        }
+        for (line = 0; line < nl; line += step) {
+            const int nk = d < 2 ? (d == 0 ? W : Hh) : W;
+
+            for (k = 0; k < nk; k++) {
+                int px, py;
+                float a0x, a0z, a1x, a1z;     /* the strip's foot ends, map units from the tile's middle */
+
+                if (d == 0) { px = k; py = line; a0x = k - 8.0f; a1x = k + 1 - 8.0f; a0z = a1z = (py + 0.5f) - 8.0f; }
+                else if (d == 1) { px = line; py = k; a0z = k - 8.0f; a1z = k + 1 - 8.0f; a0x = a1x = (px + 0.5f) - 8.0f; }
+                else if (d == 2) { px = k; py = line - (W - 1) + k; a0x = k - 8.0f; a1x = k + 1 - 8.0f; a0z = py - 8.0f; a1z = py + 1 - 8.0f; }
+                else { px = k; py = line - k; a0x = k - 8.0f; a1x = k + 1 - 8.0f; a0z = py + 1 - 8.0f; a1z = py - 8.0f; }
+                if (py < 0 || py >= Hh || px < 0 || px >= W) {
+                    continue;
+                }
+                {
+                    const unsigned char *c = &t->rgba[((size_t)py * W + px) * 4];
+                    const float lum = (c[0] * 0.3f + c[1] * 0.59f + c[2] * 0.11f) / 255.0f;
+                    const unsigned hs = hs0 ^ (unsigned)(px * 977 + py * 131 + d * 7);
+                    const float jit = ((hs >> 9) % 100) / 100.0f;
+                    float h, mx, mz;
+
+                    if (c[3] < 128) {
+                        continue;
+                    }
+                    if (prof == 0) {
+                        const float r = sqrtf((px - cxp) * (px - cxp) + (py - czp) * (py - czp)) / rm;
+
+                        h = scale * (1.0f - 0.55f * r) * (0.85f + 0.3f * jit);
+                    } else if (prof == 1) {
+                        h = scale * (0.45f + 0.75f * lum) * (0.85f + 0.3f * jit);
+                    } else {
+                        h = scale * (0.7f + 0.3f * jit);
+                    }
+                    if (g_slice_jit) {
+                        const float jx = (((hs >> 3) % 100) / 100.0f - 0.5f) * 1.2f, jz = (((hs >> 14) % 100) / 100.0f - 0.5f) * 1.2f;
+                        const float shrink = 0.25f;
+
+                        a0x += jx; a1x += jx; a0z += jz; a1z += jz;
+                        mx = (a0x + a1x) * 0.5f; mz = (a0z + a1z) * 0.5f;
+                        a0x = mx + (a0x - mx) * (1.0f - shrink); a1x = mx + (a1x - mx) * (1.0f - shrink);
+                        a0z = mz + (a0z - mz) * (1.0f - shrink); a1z = mz + (a1z - mz) * (1.0f - shrink);
+                        mx += (((hs >> 21) % 100) / 100.0f - 0.5f) * 2.5f;
+                        mz += (((hs >> 5) % 100) / 100.0f - 0.5f) * 2.5f;
+                    } else {
+                        mx = (a0x + a1x) * 0.5f;
+                        mz = (a0z + a1z) * 0.5f;
+                    }
+                    {
+                        const float u = (px + 0.5f) / W, v = (py + 0.5f) / Hh, hb = h * 0.65f;
+                        const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+                        const float uv3[3][2] = { { u, v }, { u, v }, { u, v } };
+                        const float q[4][3] = { { SX(a0x, a0z), y, SZ(a0x, a0z) }, { SX(a1x, a1z), y, SZ(a1x, a1z) },
+                                                { SX(a1x, a1z), y + hb, SZ(a1x, a1z) }, { SX(a0x, a0z), y + hb, SZ(a0x, a0z) } };
+                        const float tri[3][3] = { { SX(a0x, a0z), y + hb, SZ(a0x, a0z) }, { SX(a1x, a1z), y + hb, SZ(a1x, a1z) },
+                                                  { SX(mx, mz), y + h, SZ(mx, mz) } };
+
+                        gm_quad(b, src, q, uv4);
+                        gm_tri(b, src, tri, uv3);
+                    }
+                }
+            }
+        }
+    }
+#undef SX
+#undef SZ
+}
+
+/* (research) the clump's core: an 8-sided cone from the ground, in the picture's darkest solid pixel, filling the gaps
+ * between the leaves (radius rr and height hh in map units / battle units) */
+static void gm_core(GmBuf *b, const BmapVertex *src, const BmapTexture *t, float ox, float y, float oz, const float mxv[2],
+                    const float mzv[2], float rr, float hh)
+{
+    int W = t->w, Hh = t->h, px, py, k, bx = 0, by = 0;
+    float best = 1e9f;
+
+    for (py = 0; py < Hh; py++) {
+        for (px = 0; px < W; px++) {
+            const unsigned char *c = &t->rgba[((size_t)py * W + px) * 4];
+            const float l = c[0] * 0.3f + c[1] * 0.59f + c[2] * 0.11f;
+
+            if (c[3] >= 128 && l < best) {
+                best = l;
+                bx = px;
+                by = py;
+            }
+        }
+    }
+    {
+        const float u = (bx + 0.5f) / W, v = (by + 0.5f) / Hh;
+        const float uv3[3][2] = { { u, v }, { u, v }, { u, v } };
+
+        for (k = 0; k < 8; k++) {
+            const float a0 = k * 0.785398f, a1 = (k + 1) * 0.785398f;
+            const float x0 = cosf(a0) * rr, z0 = sinf(a0) * rr, x1 = cosf(a1) * rr, z1 = sinf(a1) * rr;
+            const float tri[3][3] = { { ox + mxv[0] * x0 + mzv[0] * z0, y, oz + mxv[1] * x0 + mzv[1] * z0 },
+                                      { ox + mxv[0] * x1 + mzv[0] * z1, y, oz + mxv[1] * x1 + mzv[1] * z1 },
+                                      { ox, y + hh, oz } };
+
+            gm_tri(b, src, tri, uv3);
+        }
+    }
+}
+
+/* One tile of grass by method `m`: the tile's middle (ox, oz) and ground y in battle units; mxv, mzv the battle's
+ * vector for one map unit along the map's x and z; pk battle units a map unit; H the layer's height (map units);
+ * t its picture; fringe the long grass's fringe picture's draw index (or -1). */
+static void gm_tile(GmBuf *b, const BmapVertex *src, int m, float ox, float y, float oz, const float mxv[2], const float mzv[2],
+                    float pk, float H, const BmapTexture *t, int light_first)
+{
+    int i, j;
+#define GX(dx, dz) (ox + mxv[0] * (dx) + mzv[0] * (dz))
+#define GZ(dx, dz) (oz + mxv[1] * (dx) + mzv[1] * (dz))
+    if (m == 1) {
+        /* the dome: the picture over the tile, on a mound highest in the middle */
+        const int N = 8;
+        const float top = H * 1.6f * pk;
+
+        for (j = 0; j < N; j++) {
+            for (i = 0; i < N; i++) {
+                float q[4][3], uv[4][2];
+                int c;
+
+                for (c = 0; c < 4; c++) {
+                    const int ii = i + (c == 1 || c == 2), jj = j + (c >= 2);
+                    const float fx = (float)ii / N - 0.5f, fz = (float)jj / N - 0.5f, r2 = (fx * fx + fz * fz) * 4.0f;
+
+                    q[c][0] = GX(fx * 16.0f, fz * 16.0f);
+                    q[c][2] = GZ(fx * 16.0f, fz * 16.0f);
+                    q[c][1] = y + top * (1.0f - 0.85f * (r2 > 1.0f ? 1.0f : r2));
+                    uv[c][0] = (float)ii / N;
+                    uv[c][1] = (float)jj / N;
+                }
+                gm_quad(b, src, (const float (*)[3])q, (const float (*)[2])uv);
+            }
+        }
+    } else if (m == 2 && t != NULL && t->rgba != NULL) {
+        /* the voxels: each solid pixel a block, as tall as the layer, a lighter pixel taller */
+        const int W = t->w, Hh = t->h;
+        int px, py;
+
+        for (py = 0; py < Hh; py++) {
+            for (px = 0; px < W; px++) {
+                const unsigned char *c = &t->rgba[((size_t)py * W + px) * 4];
+                const float lum = (c[0] * 0.3f + c[1] * 0.59f + c[2] * 0.11f) / 255.0f;
+                const float h = y + H * pk * (0.55f + 0.9f * lum);
+                const float x0 = (float)px / W * 16.0f - 8.0f, x1 = (float)(px + 1) / W * 16.0f - 8.0f;
+                const float z0 = (float)py / Hh * 16.0f - 8.0f, z1 = (float)(py + 1) / Hh * 16.0f - 8.0f;
+                const float u = (px + 0.5f) / W, v = (py + 0.5f) / Hh;
+                const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+                static const int nb[4][2] = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } };
+                int sd;
+
+                if (c[3] < 128) {
+                    continue;
+                }
+                {
+                    const float qt[4][3] = { { GX(x0, z0), h, GZ(x0, z0) }, { GX(x1, z0), h, GZ(x1, z0) },
+                                             { GX(x1, z1), h, GZ(x1, z1) }, { GX(x0, z1), h, GZ(x0, z1) } };
+
+                    gm_quad(b, src, qt, uv4);
+                }
+                for (sd = 0; sd < 4; sd++) {
+                    const int qx = px + nb[sd][0], qy = py + nb[sd][1];
+                    float ex0, ez0, ex1, ez1, hn = y;
+
+                    if (qx >= 0 && qy >= 0 && qx < W && qy < Hh) {
+                        const unsigned char *c2 = &t->rgba[((size_t)qy * W + qx) * 4];
+
+                        if (c2[3] >= 128) {
+                            hn = y + H * pk * (0.55f + 0.9f * (c2[0] * 0.3f + c2[1] * 0.59f + c2[2] * 0.11f) / 255.0f);
+                        }
+                    }
+                    if (hn >= h - 0.001f) {
+                        continue;
+                    }
+                    ex0 = sd == 1 ? x1 : x0; ez0 = sd == 2 ? z1 : z0;
+                    ex1 = sd == 3 ? x0 : x1; ez1 = sd == 0 ? z0 : z1;
+                    if (sd == 1) { ex0 = x1; ex1 = x1; ez0 = z0; ez1 = z1; }
+                    if (sd == 3) { ex0 = x0; ex1 = x0; ez0 = z1; ez1 = z0; }
+                    if (sd == 0) { ex0 = x1; ex1 = x0; ez0 = z0; ez1 = z0; }
+                    if (sd == 2) { ex0 = x0; ex1 = x1; ez0 = z1; ez1 = z1; }
+                    {
+                        const float qs[4][3] = { { GX(ex0, ez0), hn, GZ(ex0, ez0) }, { GX(ex1, ez1), hn, GZ(ex1, ez1) },
+                                                 { GX(ex1, ez1), h, GZ(ex1, ez1) }, { GX(ex0, ez0), h, GZ(ex0, ez0) } };
+
+                        gm_quad(b, src, qs, uv4);
+                    }
+                }
+            }
+        }
+    } else if (m == 3) {
+        /* the shells: the picture as 8 sheets from the ground to the layer's height, a little larger */
+        int k;
+
+        for (k = 1; k <= 8; k++) {
+            const float h = y + H * 1.5f * pk * (float)k / 8.0f, e = 8.0f;
+            const float q[4][3] = { { GX(-e, -e), h, GZ(-e, -e) }, { GX(e, -e), h, GZ(e, -e) }, { GX(e, e), h, GZ(e, e) },
+                                    { GX(-e, e), h, GZ(-e, e) } };
+            static const float uv[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+
+            gm_quad(b, src, q, uv);
+        }
+    } else if (m == 4) {
+        /* the sprite card: one upright card facing the battle's camera (battle +z), the picture's top down */
+        const float hw = 8.0f * pk, ht = H * 2.0f * pk;
+        const float q[4][3] = { { ox - hw, y, oz }, { ox + hw, y, oz }, { ox + hw, y + ht, oz }, { ox - hw, y + ht, oz } };
+        static const float uv[4][2] = { { 0, 1 }, { 1, 1 }, { 1, 0 }, { 0, 0 } };
+
+        gm_quad(b, src, q, uv);
+    } else if (m == 11 || m == 12) {
+        /* the long grass: fringe cards, crossed (11) or rows facing the battle's camera (12), 16 tall */
+        const float ht = 16.0f * pk;
+        static const float uv[4][2] = { { 0, 1 }, { 1, 1 }, { 1, 0 }, { 0, 0 } };
+
+        if (m == 11) {
+            const float q1[4][3] = { { GX(-8, -8), y, GZ(-8, -8) }, { GX(8, 8), y, GZ(8, 8) }, { GX(8, 8), y + ht, GZ(8, 8) },
+                                     { GX(-8, -8), y + ht, GZ(-8, -8) } };
+            const float q2[4][3] = { { GX(-8, 8), y, GZ(-8, 8) }, { GX(8, -8), y, GZ(8, -8) }, { GX(8, -8), y + ht, GZ(8, -8) },
+                                     { GX(-8, 8), y + ht, GZ(-8, 8) } };
+
+            gm_quad(b, src, q1, uv);
+            gm_quad(b, src, q2, uv);
+        } else {
+            int r;
+
+            for (r = 0; r < 2; r++) {
+                const float hw = 8.0f * pk, oz2 = oz + (r ? 4.0f : -4.0f) * pk, ox2 = ox + (r ? 4.0f : 0.0f) * pk;
+                const float q[4][3] = { { ox2 - hw, y, oz2 }, { ox2 + hw, y, oz2 }, { ox2 + hw, y + ht, oz2 }, { ox2 - hw, y + ht, oz2 } };
+
+                gm_quad(b, src, q, uv);
+            }
+        }
+    }
+    if (m == 5 && t != NULL && t->rgba != NULL) {
+        /* the leaves: the rosette's arms (the picture's solid pixels by angle about its middle, 8 sectors), each a
+         * tapered leaf arching from the middle out to the arm's farthest pixel, coloured along the arm */
+        const int W = t->w, Hh = t->h, NS = 8, NSEG = 5;
+        const float cx = (W - 1) * 0.5f, cz = (Hh - 1) * 0.5f;
+        float rmax[8] = { 0 }, ang[8] = { 0 };
+        int cnt[8] = { 0 }, px, py, k;
+        const unsigned hsh = (unsigned)(ox * 13.0f) * 2654435761u ^ (unsigned)(oz * 7.0f) * 40503u;
+        const float twist = ((hsh >> 8) % 100) / 100.0f * 0.6f - 0.3f;
+
+        for (py = 0; py < Hh; py++) {
+            for (px = 0; px < W; px++) {
+                const unsigned char *c = &t->rgba[((size_t)py * W + px) * 4];
+                const float dx = px - cx, dz = py - cz, r = sqrtf(dx * dx + dz * dz);
+                float a = atan2f(dz, dx);
+                int sct;
+
+                if (c[3] < 128 || r < 1.0f) {
+                    continue;
+                }
+                a = a < 0 ? a + 6.2831853f : a;
+                sct = (int)(a / 6.2831853f * NS) % NS;
+                if (r > rmax[sct]) {
+                    rmax[sct] = r;
+                    ang[sct] = a;
+                }
+                cnt[sct]++;
+            }
+        }
+        for (k = 0; k < NS; k++) {
+            const float a = ang[k] + twist, len = rmax[k] / (W * 0.5f) * 8.0f, dxu = cosf(a), dzu = sinf(a);
+            const float base_w = 2.6f, peak = H * pk * 1.1f;
+            int sgi;
+
+            if (cnt[k] < 3 || len < 2.0f) {
+                continue;
+            }
+            for (sgi = 0; sgi < NSEG; sgi++) {
+                const float f0 = (float)sgi / NSEG, f1 = (float)(sgi + 1) / NSEG;
+                /* (along the leaf: out f*len, up an arch, the width tapering to the tip) */
+                const float r0 = f0 * len, r1 = f1 * len;
+                const float h0 = y + peak * sinf(3.14159f * (0.15f + 0.7f * f0)) * (1.0f - 0.35f * f0);
+                const float h1 = y + peak * sinf(3.14159f * (0.15f + 0.7f * f1)) * (1.0f - 0.35f * f1);
+                const float w0 = base_w * (1.0f - f0) * 0.5f, w1 = base_w * (1.0f - f1) * 0.5f;
+                const float nx = -dzu, nz = dxu;
+                /* (the arm's own pixel at that distance: its colour) */
+                const float sr = (f0 + f1) * 0.5f * rmax[k];
+                const float u = (cx + cosf(ang[k]) * sr + 0.5f) / W, v = (cz + sinf(ang[k]) * sr + 0.5f) / Hh;
+                const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+                const float q[4][3] = {
+                    { GX(dxu * r0 - nx * w0, dzu * r0 - nz * w0), h0, GZ(dxu * r0 - nx * w0, dzu * r0 - nz * w0) },
+                    { GX(dxu * r0 + nx * w0, dzu * r0 + nz * w0), h0, GZ(dxu * r0 + nx * w0, dzu * r0 + nz * w0) },
+                    { GX(dxu * r1 + nx * w1, dzu * r1 + nz * w1), h1, GZ(dxu * r1 + nx * w1, dzu * r1 + nz * w1) },
+                    { GX(dxu * r1 - nx * w1, dzu * r1 - nz * w1), h1, GZ(dxu * r1 - nx * w1, dzu * r1 - nz * w1) } };
+
+                gm_quad(b, src, q, uv4);
+            }
+        }
+    } else if (m == 6 && t != NULL && t->rgba != NULL) {
+        /* the sculpted voxels: each solid pixel a block, the clump highest in its middle */
+        const int W = t->w, Hh = t->h;
+        const float cxp = (W - 1) * 0.5f, czp = (Hh - 1) * 0.5f, rm = W * 0.5f;
+        int px, py;
+#define VH(px_, py_) (y + H * pk * 0.75f * (1.0f - 0.6f * sqrtf(((px_) - cxp) * ((px_) - cxp) + ((py_) - czp) * ((py_) - czp)) / rm))
+        for (py = 0; py < Hh; py++) {
+            for (px = 0; px < W; px++) {
+                const unsigned char *c = &t->rgba[((size_t)py * W + px) * 4];
+                const float h = VH(px, py);
+                const float x0 = (float)px / W * 16.0f - 8.0f, x1 = (float)(px + 1) / W * 16.0f - 8.0f;
+                const float z0 = (float)py / Hh * 16.0f - 8.0f, z1 = (float)(py + 1) / Hh * 16.0f - 8.0f;
+                const float u = (px + 0.5f) / W, v = (py + 0.5f) / Hh;
+                const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+                static const int nb[4][2] = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } };
+                int sd;
+
+                if (c[3] < 128) {
+                    continue;
+                }
+                {
+                    const float qt[4][3] = { { GX(x0, z0), h, GZ(x0, z0) }, { GX(x1, z0), h, GZ(x1, z0) },
+                                             { GX(x1, z1), h, GZ(x1, z1) }, { GX(x0, z1), h, GZ(x0, z1) } };
+
+                    gm_quad(b, src, qt, uv4);
+                }
+                for (sd = 0; sd < 4; sd++) {
+                    const int qx = px + nb[sd][0], qy = py + nb[sd][1];
+                    float ex0 = 0, ez0 = 0, ex1 = 0, ez1 = 0, hn = y;
+
+                    if (qx >= 0 && qy >= 0 && qx < W && qy < Hh && t->rgba[((size_t)qy * W + qx) * 4 + 3] >= 128) {
+                        hn = VH(qx, qy);
+                    }
+                    if (hn >= h - 0.001f) {
+                        continue;
+                    }
+                    if (sd == 1) { ex0 = x1; ex1 = x1; ez0 = z0; ez1 = z1; }
+                    if (sd == 3) { ex0 = x0; ex1 = x0; ez0 = z1; ez1 = z0; }
+                    if (sd == 0) { ex0 = x1; ex1 = x0; ez0 = z0; ez1 = z0; }
+                    if (sd == 2) { ex0 = x0; ex1 = x1; ez0 = z1; ez1 = z1; }
+                    {
+                        const float qs[4][3] = { { GX(ex0, ez0), hn, GZ(ex0, ez0) }, { GX(ex1, ez1), hn, GZ(ex1, ez1) },
+                                                 { GX(ex1, ez1), h, GZ(ex1, ez1) }, { GX(ex0, ez0), h, GZ(ex0, ez0) } };
+
+                        gm_quad(b, src, qs, uv4);
+                    }
+                }
+            }
+        }
+#undef VH
+    } else if (m == 7 && t != NULL && t->rgba != NULL) {
+        gm_slices(b, src, t, ox, y, oz, mxv, mzv, 3, 0, 1, H * pk * 1.0f);       /* S1: rows and columns, a clump */
+    } else if (m == 8 && t != NULL && t->rgba != NULL) {
+        gm_slices(b, src, t, ox, y, oz, mxv, mzv, 7, 1, 1, H * pk * 1.0f);       /* S2: and diagonals, light tall */
+    } else if (m == 9 && t != NULL && t->rgba != NULL) {
+        gm_slices(b, src, t, ox, y, oz, mxv, mzv, 3, 0, 2, H * pk * 1.4f);       /* S3: every other line, taller */
+    } else if (m == 17 && t != NULL && t->rgba != NULL) {
+        /* P: each solid pixel lifted on its leaf about the clump's middle (the leaf turned up from lying flat), so a leaf
+         * stands at its own depth; a lighter pixel (a leaf's tip) a little higher; the core fills between */
+        const int W = t->w, Hh = t->h;
+        const float cxp = W * 0.5f, czp = Hh * 0.5f, tilt = 1.05f, ct = cosf(tilt), st = sinf(tilt);
+        const float sc = 16.0f / W, hs = H * pk / 8.0f;
+        int px, py;
+
+        gm_core(b, src, t, ox, y, oz, mxv, mzv, 4.5f, H * pk * 0.9f);
+        for (py = 0; py < Hh; py++) {
+            for (px = 0; px < W; px++) {
+                const unsigned char *c = &t->rgba[((size_t)py * W + px) * 4];
+                float q[4][3];
+                int k;
+                const float u = (px + 0.5f) / W, v = (py + 0.5f) / Hh;
+                const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+
+                if (c[3] < 128) {
+                    continue;
+                }
+                for (k = 0; k < 4; k++) {
+                    const float fx = (px + (k == 1 || k == 2)) - cxp, fz = (py + (k >= 2)) - czp;
+                    const float r = sqrtf(fx * fx + fz * fz), rs = r * sc;
+                    const float dx = r > 1e-4f ? fx / r : 0.0f, dz = r > 1e-4f ? fz / r : 0.0f;
+                    const float hx = dx * rs * ct, hz = dz * rs * ct;
+
+                    q[k][0] = ox + mxv[0] * hx + mzv[0] * hz;
+                    q[k][2] = oz + mxv[1] * hx + mzv[1] * hz;
+                    q[k][1] = y + rs * st * hs * 1.1f;
+                }
+                gm_quad(b, src, (const float (*)[3])q, uv4);
+            }
+        }
+    } else if (m == 18 && t != NULL && t->rgba != NULL) {
+        /* V: the outline from each of the four sides: along each line of sight the nearest solid pixel (what that side
+         * shows) and how many solid pixels lie behind it (the clump's depth there: deeper is taller); an upright pointed
+         * strip on that nearest pixel's edge, in its colour; the core fills the inside */
+        const int W = t->w, Hh = t->h;
+        int side, line;
+
+        gm_core(b, src, t, ox, y, oz, mxv, mzv, 5.0f, H * pk * 1.0f);
+        for (side = 0; side < 4; side++) {
+            const int nl = side < 2 ? W : Hh;
+
+            for (line = 0; line < nl; line++) {
+                int k, first = -1, depth = 0, n = side < 2 ? Hh : W;
+
+                for (k = 0; k < n; k++) {
+                    /* (side 0 looks from the south: up the column; 1 from the north; 2 from the east; 3 from the west) */
+                    const int px = side < 2 ? line : (side == 2 ? W - 1 - k : k);
+                    const int py = side < 2 ? (side == 0 ? Hh - 1 - k : k) : line;
+
+                    if (t->rgba[((size_t)py * W + px) * 4 + 3] >= 128) {
+                        first = first < 0 ? k : first;
+                        depth++;
+                    }
+                }
+                if (first < 0) {
+                    continue;
+                }
+                {
+                    const int px = side < 2 ? line : (side == 2 ? W - 1 - first : first);
+                    const int py = side < 2 ? (side == 0 ? Hh - 1 - first : first) : line;
+                    const float u = (px + 0.5f) / W, v = (py + 0.5f) / Hh;
+                    const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+                    const float uv3[3][2] = { { u, v }, { u, v }, { u, v } };
+                    const float sc = 16.0f / W, h = H * pk * (0.45f + 0.95f * depth / n), hb = h * 0.65f;
+                    float ax0, az0, ax1, az1, mx, mz;
+
+                    if (side < 2) {
+                        const float ez = (side == 0 ? py + 1 : py) * sc - 8.0f;
+
+                        ax0 = px * sc - 8.0f; ax1 = (px + 1) * sc - 8.0f; az0 = az1 = ez;
+                    } else {
+                        const float ex = (side == 2 ? px + 1 : px) * sc - 8.0f;
+
+                        az0 = py * sc - 8.0f; az1 = (py + 1) * sc - 8.0f; ax0 = ax1 = ex;
+                    }
+                    mx = (ax0 + ax1) * 0.5f;
+                    mz = (az0 + az1) * 0.5f;
+                    {
+                        const float q[4][3] = { { ox + mxv[0] * ax0 + mzv[0] * az0, y, oz + mxv[1] * ax0 + mzv[1] * az0 },
+                                                { ox + mxv[0] * ax1 + mzv[0] * az1, y, oz + mxv[1] * ax1 + mzv[1] * az1 },
+                                                { ox + mxv[0] * ax1 + mzv[0] * az1, y + hb, oz + mxv[1] * ax1 + mzv[1] * az1 },
+                                                { ox + mxv[0] * ax0 + mzv[0] * az0, y + hb, oz + mxv[1] * ax0 + mzv[1] * az0 } };
+                        const float tri[3][3] = { { q[3][0], q[3][1], q[3][2] }, { q[2][0], q[2][1], q[2][2] },
+                                                  { ox + mxv[0] * mx + mzv[0] * mz, y + h, oz + mxv[1] * mx + mzv[1] * mz } };
+
+                        gm_quad(b, src, q, uv4);
+                        gm_tri(b, src, tri, uv3);
+                    }
+                }
+            }
+        }
+    } else if (m >= 21 && m <= 25 && t != NULL && t->rgba != NULL && t->w <= 32 && t->h <= 32) {
+        const int bush = m == 22, g8 = m == 25, g7 = m == 23 || m == 24 || g8, dense = m == 24;
+        float lrad[16] = { 0 };
+        enum { MAXL = 15 };
+        const int W = t->w, Hh = t->h, N = W * Hh;
+        const float cxp = W * 0.5f, czp = Hh * 0.5f, sc = 16.0f / W, thick = 0.7f * pk, Hb = H * pk;
+        signed char id[32 * 32], id2[32 * 32];      /* -1 clear, 0 the body, 1.. a leaf */
+        float lum[32 * 32], mean = 0.0f;
+        float lcx[MAXL + 1] = { 0 }, lcz[MAXL + 1] = { 0 }, lang[MAXL + 1] = { 0 }, lr[MAXL + 1] = { 0 }, loff[MAXL + 1] = { 0 };
+        int ln[MAXL + 1] = { 0 }, nl = 0, cnt = 0, i, px, py, l;
+
+        for (i = 0; i < N; i++) {
+            const unsigned char *c = &t->rgba[(size_t)i * 4];
+
+            lum[i] = c[0] * 0.3f + c[1] * 0.59f + c[2] * 0.11f;
+            id[i] = c[3] >= 128 ? 0 : -1;
+            if (c[3] >= 128) {
+                mean += lum[i];
+                cnt++;
+            }
+        }
+        mean = cnt ? mean / cnt : 0.0f;
+        /* the leaves: each connected patch of light pixels */
+        for (i = 0; i < N; i++) {
+            int stack[32 * 32], ns = 0;
+
+            if (id[i] != 0 || lum[i] <= mean * 1.08f || nl >= MAXL) {
+                continue;
+            }
+            nl++;
+            id[i] = (signed char)nl;
+            stack[ns++] = i;
+            while (ns > 0) {
+                const int c0 = stack[--ns], x = c0 % W, yy = c0 / W;
+                const int nb[4] = { x > 0 ? c0 - 1 : -1, x + 1 < W ? c0 + 1 : -1, yy > 0 ? c0 - W : -1, yy + 1 < Hh ? c0 + W : -1 };
+                int k;
+
+                for (k = 0; k < 4; k++) {
+                    if (nb[k] >= 0 && id[nb[k]] == 0 && lum[nb[k]] > mean * 1.08f) {
+                        id[nb[k]] = (signed char)nl;
+                        stack[ns++] = nb[k];
+                    }
+                }
+            }
+        }
+        /* a leaf's outline: the darker pixels right beside its light patch */
+        memcpy(id2, id, (size_t)N);
+        for (i = 0; i < N; i++) {
+            float bd = 1e9f;
+            int j, bl = 0;
+
+            if (id[i] != 0) {
+                continue;
+            }
+            for (j = 0; j < N; j++) {
+                if (id[j] > 0) {
+                    const float dx = (float)(j % W - i % W), dz = (float)(j / W - i / W), d = dx * dx + dz * dz;
+
+                    if (d < bd) {
+                        bd = d;
+                        bl = id[j];
+                    }
+                }
+            }
+            if (bd <= 2.25f) {
+                id2[i] = (signed char)bl;
+            }
+        }
+        for (i = 0; i < N; i++) {
+            if (id2[i] > 0) {
+                lcx[id2[i]] += i % W + 0.5f;
+                lcz[id2[i]] += i / W + 0.5f;
+                ln[id2[i]]++;
+            }
+        }
+        for (l = 1; l <= nl; l++) {
+            lcx[l] /= ln[l] ? ln[l] : 1;
+            lcz[l] /= ln[l] ? ln[l] : 1;
+            lang[l] = atan2f(lcz[l] - czp, lcx[l] - cxp);
+            loff[l] = ((float)((l * 37) % 7) - 3.0f) / 3.0f * 0.5f * pk + 0.35f * pk;
+            lrad[l] = sqrtf((float)ln[l] / 3.14159265f) + 0.7f;
+        }
+        for (i = 0; i < N; i++) {
+            if (id2[i] > 0) {
+                const float dx = i % W + 0.5f - cxp, dz = i / W + 0.5f - czp;
+                const float al = dx * cosf(lang[id2[i]]) + dz * sinf(lang[id2[i]]);
+
+                lr[id2[i]] = al > lr[id2[i]] ? al : lr[id2[i]];
+            }
+        }
+#define MOUND(f_) (0.8f + 0.3f * sinf(3.14159265f * (f_)) - 0.55f * (f_) * (f_))
+#define HT(gx_, gy_, l_, out_) do { \
+            const float ddx = (gx_) - cxp, ddz = (gy_) - czp, rr = sqrtf(ddx * ddx + ddz * ddz); \
+            if (g7) { \
+                float fg = rr / (W * 0.5f); fg = fg > 1.0f ? 1.0f : fg; \
+                (out_) = y + Hb * 0.14f * (1.0f - fg) + ((l_) > 0 ? 0.25f * pk : 0.0f); \
+            } else if (bush) { \
+                float fb = rr / (W * 0.72f); fb = fb > 0.96f ? 0.96f : fb; \
+                (out_) = y + Hb * 0.8f * sqrtf(1.0f - fb * fb); \
+                if ((l_) > 0) { \
+                    const float ux_ = (gx_) - lcx[l_], uz_ = (gy_) - lcz[l_]; \
+                    float dd = (ux_ * ux_ + uz_ * uz_) / (lrad[l_] * lrad[l_]); dd = dd > 1.0f ? 1.0f : dd; \
+                    (out_) += 0.22f * Hb * sqrtf(1.0f - dd); \
+                } \
+            } else if ((l_) == 0) { \
+                float ff = rr / (W * 0.5f); ff = ff > 1.0f ? 1.0f : ff; \
+                (out_) = y + Hb * MOUND(ff); \
+            } else { \
+                const float ca_ = cosf(lang[l_]), sa_ = sinf(lang[l_]); \
+                const float along = ddx * ca_ + ddz * sa_, lat = -ddx * sa_ + ddz * ca_; \
+                const float len = lr[l_] > W * 0.3f ? lr[l_] : W * 0.3f; \
+                float ff = along / len; ff = ff < 0.0f ? 0.0f : ff > 1.0f ? 1.0f : ff; \
+                (out_) = y + Hb * MOUND(ff) + loff[l_] - 0.18f * fabsf(lat) * sc * pk; \
+            } \
+        } while (0)
+        for (py = 0; py < Hh; py++) {
+            for (px = 0; px < W; px++) {
+                const int at = py * W + px, e = id2[at];
+                static const int cx4[4] = { 0, 1, 1, 0 }, cy4[4] = { 0, 0, 1, 1 };
+                static const int nb[4][2] = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } };
+                float q[4][3];
+                int c, sd;
+
+                if (e < 0 || (g8 && e > 0)) {
+                    continue;           /* (method 25: the lobes stand, see below) */
+                }
+                {
+                    const float u = (px + 0.5f) / W, v = (py + 0.5f) / Hh;
+                    const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+
+                    for (c = 0; c < 4; c++) {
+                        const float mxx = (px + cx4[c]) * sc - 8.0f, mzz = (py + cy4[c]) * sc - 8.0f;
+
+                        q[c][0] = GX(mxx, mzz);
+                        q[c][2] = GZ(mxx, mzz);
+                        HT(px + cx4[c], py + cy4[c], e, q[c][1]);
+                    }
+                    g_gm_shade = 1.0f;
+                    gm_quad(b, src, (const float (*)[3])q, uv4);
+                    g_gm_shade = 0.7f;
+                    for (sd = 0; sd < 4; sd++) {
+                        const int qx = px + nb[sd][0], qy = py + nb[sd][1], c0 = sd, c1 = (sd + 1) % 4;
+
+                        if (qx >= 0 && qy >= 0 && qx < W && qy < Hh && id2[qy * W + qx] == e) {
+                            continue;
+                        }
+                        {
+                            /* (the bush's own edge: closed down to the ground) */
+                            const int open = qx < 0 || qy < 0 || qx >= W || qy >= Hh || id2[qy * W + qx] < 0;
+                            const float tk = g7 ? thick * 0.4f : thick;
+                            const float l0 = bush && open ? y : q[c0][1] - tk, l1 = bush && open ? y : q[c1][1] - tk;
+                            const float ed[4][3] = { { q[c0][0], l0, q[c0][2] }, { q[c1][0], l1, q[c1][2] },
+                                                     { q[c1][0], q[c1][1], q[c1][2] }, { q[c0][0], q[c0][1], q[c0][2] } };
+
+                            if (bush && open) {
+                                const float seg = sc * pk;
+                                float ta = q[c0][1], tb = q[c1][1];
+                                int j2, lx = px, ly = py;
+
+                                g_gm_shade = 0.88f;
+                                for (j2 = 1; j2 < 32 && (ta > y + 1e-4f || tb > y + 1e-4f); j2++) {
+                                    const int ix = px - nb[sd][0] * j2, iy = py - nb[sd][1] * j2;
+                                    float ba = ta - seg, bb = tb - seg;
+
+                                    ba = ba < y ? y : ba;
+                                    bb = bb < y ? y : bb;
+                                    if (ix >= 0 && iy >= 0 && ix < W && iy < Hh && id2[iy * W + ix] >= 0) {
+                                        lx = ix;
+                                        ly = iy;
+                                    }
+                                    {
+                                        const float u2 = (lx + 0.5f) / W, v2 = (ly + 0.5f) / Hh;
+                                        const float uvs[4][2] = { { u2, v2 }, { u2, v2 }, { u2, v2 }, { u2, v2 } };
+                                        const float sq[4][3] = { { q[c0][0], ba, q[c0][2] }, { q[c1][0], bb, q[c1][2] },
+                                                                 { q[c1][0], tb, q[c1][2] }, { q[c0][0], ta, q[c0][2] } };
+
+                                        gm_quad(b, src, sq, uvs);
+                                    }
+                                    ta = ba;
+                                    tb = bb;
+                                }
+                                g_gm_shade = 0.7f;
+                            } else {
+                                gm_quad(b, src, ed, uv4);
+                            }
+                        }
+                    }
+                }
+                /* (a leaf goes on under the body to the clump's heart: a body pixel on the way from the middle to a
+                 * leaf also carries that leaf's own surface, just under the body's) */
+                for (l = 1; e == 0 && !bush && !g7 && l <= nl; l++) {
+                    const float vx = lcx[l] - cxp, vz = lcz[l] - czp, vv = vx * vx + vz * vz;
+                    const float wx = px + 0.5f - cxp, wz = py + 0.5f - czp;
+                    float tt = vv > 1e-6f ? (wx * vx + wz * vz) / vv : 0.0f, dx, dz;
+                    int sxp, syp;
+
+                    if (lr[l] < 3.0f) {
+                        continue;
+                    }
+                    tt = tt < 0.0f ? 0.0f : tt > 1.0f ? 1.0f : tt;
+                    dx = wx - vx * tt;
+                    dz = wz - vz * tt;
+                    if (dx * dx + dz * dz > 0.56f) {
+                        continue;
+                    }
+                    sxp = (int)lcx[l];
+                    syp = (int)lcz[l];
+                    sxp = sxp < 0 ? 0 : sxp >= W ? W - 1 : sxp;
+                    syp = syp < 0 ? 0 : syp >= Hh ? Hh - 1 : syp;
+                    if (id2[syp * W + sxp] != l) {
+                        continue;
+                    }
+                    {
+                        const float u = (sxp + 0.5f) / W, v = (syp + 0.5f) / Hh;
+                        const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+                        float f4[4][3];
+
+                        for (c = 0; c < 4; c++) {
+                            const float mxx = (px + cx4[c]) * sc - 8.0f, mzz = (py + cy4[c]) * sc - 8.0f;
+
+                            f4[c][0] = GX(mxx, mzz);
+                            f4[c][2] = GZ(mxx, mzz);
+                            HT(px + cx4[c], py + cy4[c], l, f4[c][1]);
+                            f4[c][1] -= thick;
+                        }
+                        g_gm_shade = 0.85f;
+                        gm_quad(b, src, (const float (*)[3])f4, uv4);
+                    }
+                }
+                g_gm_shade = 1.0f;
+            }
+        }
+        if (g8) {
+            const unsigned hs8 = ((unsigned)(ox * 13.0f) * 2654435761u) ^ ((unsigned)(oz * 7.0f) * 40503u);
+            const float S = 1.25f * H / 8.0f;       /* (a leaf's size, of its size in the sprite) */
+            unsigned char mk[32 * 32];
+
+            for (l = 1; l <= nl; l++) {
+                const float rcn = sqrtf((lcx[l] - cxp) * (lcx[l] - cxp) + (lcz[l] - czp) * (lcz[l] - czp)) / (W * 0.5f);
+                const float rc1 = rcn > 1.0f ? 1.0f : rcn;
+                const unsigned hsh = hs8 ^ (unsigned)(l * 977);
+                const float dir = rcn < 0.15f ? ((hsh >> 4) % 628) / 100.0f : lang[l];
+                const float ca_ = cosf(dir), sa_ = sinf(dir);
+                const float th = (84.0f - 20.0f * rc1) * 0.0174533f, ct = cosf(th), stn = sinf(th);
+                float amin = 1e9f, amax = -1e9f, rh, L, g;
+
+                if (ln[l] < 2) {
+                    continue;
+                }
+                memset(mk, 0, (size_t)N);
+                for (i = 0; i < N; i++) {
+                    if (id2[i] == l) {
+                        const float a_ = (i % W + 0.5f - cxp) * ca_ + (i / W + 0.5f - czp) * sa_;
+
+                        amin = a_ - 0.5f < amin ? a_ - 0.5f : amin;
+                        amax = a_ + 0.5f > amax ? a_ + 0.5f : amax;
+                        mk[i] = 1;
+                    }
+                }
+                g = amin > 2.5f ? 2.5f : amin > 0.0f ? amin : 0.0f;
+                rh = amin - g;
+                /* (the leaf's foot: the sprite's own pixels between its inner end and the clump's middle) */
+                for (i = 0; i < N; i++) {
+                    if (!mk[i] && id2[i] >= 0) {
+                        const float dx = i % W + 0.5f - cxp, dz = i / W + 0.5f - czp;
+                        const float a_ = dx * ca_ + dz * sa_, t_ = -dx * sa_ + dz * ca_;
+
+                        if (a_ >= rh && a_ < amin + 0.5f && fabsf(t_) <= lrad[l] * 0.8f) {
+                            mk[i] = 2;
+                        }
+                    }
+                }
+                L = amax - rh;
+                L = L < 1.0f ? 1.0f : L;
+#define LP(gx_, gy_, off_, out_) do { \
+                    const float ddx = (gx_) - cxp, ddz = (gy_) - czp; \
+                    const float a_ = ddx * ca_ + ddz * sa_, t_ = -ddx * sa_ + ddz * ca_; \
+                    float sl = a_ - rh, u_, hz, hy, lt; \
+                    sl = sl < 0.0f ? 0.0f : sl; \
+                    u_ = sl / L; \
+                    hz = rh * sc + sl * S * sc * ct + 0.12f * S * sc * L * u_ * u_ - 0.1f * fabsf(t_) * S * sc - (off_); \
+                    hy = sl * S * sc * stn - 0.1f * S * sc * L * u_ * u_ - 0.2f * (off_); \
+                    lt = t_ * S * sc; \
+                    (out_)[0] = GX(ca_ * hz - sa_ * lt, sa_ * hz + ca_ * lt); \
+                    (out_)[2] = GZ(ca_ * hz - sa_ * lt, sa_ * hz + ca_ * lt); \
+                    (out_)[1] = y + 0.3f * pk + hy * pk; \
+                } while (0)
+                for (py = 0; py < Hh; py++) {
+                    for (px = 0; px < W; px++) {
+                        static const int cx4[4] = { 0, 1, 1, 0 }, cy4[4] = { 0, 0, 1, 1 };
+                        static const int nb[4][2] = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } };
+                        const int at = py * W + px;
+                        const float u = (px + 0.5f) / W, v = (py + 0.5f) / Hh;
+                        const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+                        float fq[4][3], bq[4][3];
+                        int c, sd;
+
+                        if (!mk[at]) {
+                            continue;
+                        }
+                        for (c = 0; c < 4; c++) {
+                            LP(px + cx4[c], py + cy4[c], 0.0f, fq[c]);
+                            LP(px + cx4[c], py + cy4[c], 0.35f, bq[c]);
+                        }
+                        g_gm_shade = mk[at] == 2 ? 0.82f : 1.0f;
+                        gm_quad(b, src, (const float (*)[3])fq, uv4);
+                        g_gm_shade = mk[at] == 2 ? 0.8f : 0.94f;    /* (a leaf's other side: the same leaf) */
+                        gm_quad(b, src, (const float (*)[3])bq, uv4);
+                        g_gm_shade = 0.72f;
+                        for (sd = 0; sd < 4; sd++) {
+                            const int qx = px + nb[sd][0], qy = py + nb[sd][1], c0 = sd, c1 = (sd + 1) % 4;
+
+                            if (qx >= 0 && qy >= 0 && qx < W && qy < Hh && mk[qy * W + qx]) {
+                                continue;
+                            }
+                            {
+                                const float rq[4][3] = { { bq[c0][0], bq[c0][1], bq[c0][2] }, { bq[c1][0], bq[c1][1], bq[c1][2] },
+                                                         { fq[c1][0], fq[c1][1], fq[c1][2] }, { fq[c0][0], fq[c0][1], fq[c0][2] } };
+
+                                gm_quad(b, src, rq, uv4);
+                            }
+                        }
+                    }
+                }
+#undef LP
+            }
+            g_gm_shade = 1.0f;
+        }
+        if (g7 && !g8) {
+            const unsigned hs0 = ((unsigned)(ox * 13.0f) * 2654435761u) ^ ((unsigned)(oz * 7.0f) * 40503u);
+            int order[32 * 32], lightest = -1;
+
+            for (i = 0; i < N; i++) {
+                if (id2[i] >= 0 && (lightest < 0 || lum[i] > lum[lightest])) {
+                    lightest = i;
+                }
+            }
+            for (l = 1; l <= nl; l++) {
+                const float rc = sqrtf((lcx[l] - cxp) * (lcx[l] - cxp) + (lcz[l] - czp) * (lcz[l] - czp)) / (W * 0.5f);
+                const float inner = 1.0f - (rc > 1.0f ? 1.0f : rc);
+                const unsigned hsh = hs0 ^ (unsigned)(l * 977);
+                int n = 0, a2, v2;
+
+                if (ln[l] < 2) {
+                    continue;
+                }
+                for (i = 0; i < N; i++) {           /* (the lobe's pixels, dark to light) */
+                    if (id2[i] == l) {
+                        int at = n++;
+
+                        while (at > 0 && lum[order[at - 1]] > lum[i]) {
+                            order[at] = order[at - 1];
+                            at--;
+                        }
+                        order[at] = i;
+                    }
+                }
+                for (v2 = 0; v2 < (dense ? 4 : 2); v2++) {
+                    const unsigned hv = hsh ^ ((unsigned)(v2 + 1) * 2246822519u);
+                    const float r1 = ((hv >> 4) % 100) / 100.0f, r2 = ((hv >> 11) % 100) / 100.0f, r3 = ((hv >> 18) % 100) / 100.0f;
+                    const float fr = (v2 + 0.3f + 0.4f * r1) / 4.0f;       /* (how far out along the lobe) */
+                    const float dirj = dense ? lang[l] + (r2 - 0.5f) * 0.9f
+                                             : lang[l] + (v2 ? (((hsh >> 3) & 1u) ? 0.7f : -0.7f) : 0.0f)
+                                               + (((hsh >> 10) % 100) / 100.0f - 0.5f) * 0.3f;
+                    const float ca_ = cosf(dirj), sa_ = sinf(dirj);
+                    const float hgt = dense ? H * (1.3f - 0.6f * fr) * (0.85f + 0.3f * r3)
+                                            : H * (0.8f + 0.45f * inner) * (v2 ? 0.7f : 1.0f) * (0.9f + 0.2f * ((hsh >> 16) % 100) / 100.0f);
+                    const float wd = lrad[l] * sc * 0.42f;
+                    const float wid = dense ? (wd > 0.9f ? wd : 0.9f) : lrad[l] * sc * 0.95f * (v2 ? 0.8f : 1.0f);
+                    const float lean = dense ? hgt * (0.15f + 0.55f * fr) : hgt * 0.4f;
+                    const float pa = lang[l] + (r3 - 0.5f) * 0.8f, rb = fr * (rc * W * 0.5f * sc + 2.5f);
+                    const float bx0 = dense ? cosf(pa) * rb : lcx[l] * sc - 8.0f - (v2 ? ca_ : 0.0f);
+                    const float bz0 = dense ? sinf(pa) * rb : lcz[l] * sc - 8.0f - (v2 ? sa_ : 0.0f);
+                    static const float wp[5] = { 0.75f, 1.0f, 0.8f, 0.45f, 0.0f };
+                    int sg;
+
+                    for (sg = 0; sg < 4; sg++) {
+                        const float f0 = sg / 4.0f, f1 = (sg + 1) / 4.0f, w0 = wid * wp[sg], w1 = wid * wp[sg + 1];
+                        const float m0x = bx0 + ca_ * lean * f0 * f0, m0z = bz0 + sa_ * lean * f0 * f0;
+                        const float m1x = bx0 + ca_ * lean * f1 * f1, m1z = bz0 + sa_ * lean * f1 * f1;
+                        const float y0 = y + hgt * pk * f0, y1 = y + hgt * pk * f1;
+                        const int pix = order[(int)((sg + 0.5f) / 4.0f * n) < n ? (int)((sg + 0.5f) / 4.0f * n) : n - 1];
+                        const float u = (pix % W + 0.5f) / W, v = (pix / W + 0.5f) / Hh;
+                        const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+
+                        for (a2 = 0; a2 < 2; a2++) {
+                            const float sgn = a2 ? 1.0f : -1.0f;
+                            /* (the edge: across the leaf, and back from the midrib: the leaf is folded) */
+                            const float e0x = m0x - ca_ * 0.35f * w0 - sa_ * sgn * w0, e0z = m0z - sa_ * 0.35f * w0 + ca_ * sgn * w0;
+                            const float e1x = m1x - ca_ * 0.35f * w1 - sa_ * sgn * w1, e1z = m1z - sa_ * 0.35f * w1 + ca_ * sgn * w1;
+                            const float lq[4][3] = { { GX(m0x, m0z), y0, GZ(m0x, m0z) }, { GX(e0x, e0z), y0, GZ(e0x, e0z) },
+                                                     { GX(e1x, e1z), y1, GZ(e1x, e1z) }, { GX(m1x, m1z), y1, GZ(m1x, m1z) } };
+
+                            g_gm_shade = a2 ? 0.86f : 1.0f;
+                            gm_quad(b, src, lq, uv4);
+                        }
+                    }
+                }
+            }
+            /* the thin blades over the middle, in the picture's lightest colour */
+            if (lightest >= 0 && (!dense || H >= 7.5f)) {
+                const int nbl = (dense ? 3 : 2) + (int)((hs0 >> 5) % 3u);
+                const float u = (lightest % W + 0.5f) / W, v = (lightest / W + 0.5f) / Hh;
+                const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+                int k2, sg, ax;
+
+                g_gm_shade = 1.0f;
+                for (k2 = 0; k2 < nbl; k2++) {
+                    const unsigned hk = hs0 ^ (unsigned)(k2 * 7919 + 13);
+                    const float an = ((hk >> 4) % 628) / 100.0f, ca_ = cosf(an), sa_ = sinf(an);
+                    const float r0 = 1.0f + ((hk >> 12) % 100) / 50.0f, hgt = H * (1.45f + 0.5f * ((hk >> 20) % 100) / 100.0f);
+                    const float bx0 = ca_ * r0, bz0 = sa_ * r0, lean = hgt * 0.22f;
+
+                    for (ax = 0; ax < 2; ax++) {
+                        const float wx = ax ? ca_ : -sa_, wz = ax ? sa_ : ca_;
+
+                        for (sg = 0; sg < 4; sg++) {
+                            const float f0 = sg / 4.0f, f1 = (sg + 1) / 4.0f, w0 = 0.45f * (1.0f - f0), w1 = 0.45f * (1.0f - f1);
+                            const float c0x = bx0 + ca_ * lean * f0 * f0, c0z = bz0 + sa_ * lean * f0 * f0;
+                            const float c1x = bx0 + ca_ * lean * f1 * f1, c1z = bz0 + sa_ * lean * f1 * f1;
+                            const float y0 = y + hgt * pk * f0, y1 = y + hgt * pk * f1;
+                            const float bq[4][3] = { { GX(c0x - wx * w0, c0z - wz * w0), y0, GZ(c0x - wx * w0, c0z - wz * w0) },
+                                                     { GX(c0x + wx * w0, c0z + wz * w0), y0, GZ(c0x + wx * w0, c0z + wz * w0) },
+                                                     { GX(c1x + wx * w1, c1z + wz * w1), y1, GZ(c1x + wx * w1, c1z + wz * w1) },
+                                                     { GX(c1x - wx * w1, c1z - wz * w1), y1, GZ(c1x - wx * w1, c1z - wz * w1) } };
+
+                            gm_quad(b, src, bq, uv4);
+                        }
+                    }
+                }
+            }
+            g_gm_shade = 1.0f;
+        }
+#undef HT
+#undef MOUND
+    } else if ((m == 19 || m == 20) && t != NULL && t->rgba != NULL && t->w <= 32 && t->h <= 32) {
+        /* E: the picture's leaves as elements */
+        enum { NB = 24, MAXA = 12 };
+        const int W = t->w, Hh = t->h;
+        const float cxp = W * 0.5f, czp = Hh * 0.5f, sc = 16.0f / W;
+        const float hmax = H * pk * (m == 20 ? 1.6f : 1.0f), thick = (m == 20 ? 1.2f : 0.8f) * pk;
+        float ext[NB] = { 0 }, aang[MAXA], aext[MAXA];
+        signed char leaf[32 * 32];
+        unsigned char sx[32 * 32], sy[32 * 32];
+        int na = 0, px, py, k;
+
+#define SOLID(x_, y_) (t->rgba[((size_t)(y_) * W + (x_)) * 4 + 3] >= 128)
+        /* 1. how far the picture reaches at each angle about its middle; its arms: where that is a local most */
+        for (py = 0; py < Hh; py++) {
+            for (px = 0; px < W; px++) {
+                const float dx = px + 0.5f - cxp, dz = py + 0.5f - czp, r = sqrtf(dx * dx + dz * dz);
+                float a = atan2f(dz, dx);
+
+                if (!SOLID(px, py)) {
+                    continue;
+                }
+                a = a < 0 ? a + 6.2831853f : a;
+                k = (int)(a / 6.2831853f * NB) % NB;
+                ext[k] = r > ext[k] ? r : ext[k];
+            }
+        }
+        for (k = 0; k < NB && na < MAXA; k++) {
+            const float e0 = ext[(k + NB - 1) % NB], e1 = ext[k], e2 = ext[(k + 1) % NB];
+
+            if (e1 > 2.5f && e1 >= e0 && e1 > e2) {
+                aang[na] = (k + 0.5f) * 6.2831853f / NB;
+                aext[na] = e1;
+                na++;
+            }
+        }
+        if (na == 0) {
+            aang[0] = 0.0f;
+            aext[0] = cxp;
+            na = 1;
+        }
+        /* 2. each solid pixel its nearest arm's; a clear pixel between the middle and a solid pixel of its own arm
+         *    further out on its ray is filled with that pixel (the leaf's part the picture hides or leaves open) */
+        for (py = 0; py < Hh; py++) {
+            for (px = 0; px < W; px++) {
+                const float dx = px + 0.5f - cxp, dz = py + 0.5f - czp, r = sqrtf(dx * dx + dz * dz);
+                float a = atan2f(dz, dx);
+                const int at = py * W + px;
+                int arm, st;
+
+                a = a < 0 ? a + 6.2831853f : a;
+                arm = gm_arm(a, aang, na);
+                leaf[at] = -1;
+                if (SOLID(px, py)) {
+                    leaf[at] = (signed char)arm;
+                    sx[at] = (unsigned char)px;
+                    sy[at] = (unsigned char)py;
+                    continue;
+                }
+                if (r < 0.2f) {
+                    continue;
+                }
+                for (st = 1; st <= 12; st++) {
+                    const int qx = (int)floorf(cxp + dx / r * (r + st)), qy = (int)floorf(czp + dz / r * (r + st));
+                    float qa;
+
+                    if (qx < 0 || qy < 0 || qx >= W || qy >= Hh) {
+                        break;
+                    }
+                    if (!SOLID(qx, qy)) {
+                        continue;
+                    }
+                    qa = atan2f(qy + 0.5f - czp, qx + 0.5f - cxp);
+                    qa = qa < 0 ? qa + 6.2831853f : qa;
+                    if (gm_arm(qa, aang, na) == arm) {
+                        leaf[at] = (signed char)arm;
+                        sx[at] = (unsigned char)qx;
+                        sy[at] = (unsigned char)qy;
+                    }
+                    break;
+                }
+            }
+        }
+        /* 3. each leaf's pixels a surface over their own places: rising from the middle to near the tip, drooping a
+         *    little at the tip, its edges folded up from the midrib; a thin edge down where the leaf ends */
+#define LEAF_H(gx_, gy_, a_, out_) do { \
+            const float ddx = (gx_) - cxp, ddz = (gy_) - czp, rr = sqrtf(ddx * ddx + ddz * ddz); \
+            float da = atan2f(ddz, ddx) - aang[a_], along, lat, ff; \
+            da = da > 3.14159265f ? da - 6.2831853f : da < -3.14159265f ? da + 6.2831853f : da; \
+            along = rr * cosf(da); lat = rr * sinf(da); \
+            ff = along / aext[a_]; ff = ff < 0.0f ? 0.0f : ff > 1.0f ? 1.0f : ff; \
+            (out_) = y + hmax * sinf(1.95f * ff) + 0.22f * fabsf(lat) * sc * pk; \
+        } while (0)
+        for (py = 0; py < Hh; py++) {
+            for (px = 0; px < W; px++) {
+                const int at = py * W + px, a = leaf[at];
+                float hc[4], q[4][3];
+                static const int cx4[4] = { 0, 1, 1, 0 }, cy4[4] = { 0, 0, 1, 1 };
+                static const int nb[4][2] = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } };
+                int c, sd;
+
+                if (a < 0) {
+                    continue;
+                }
+                {
+                    const float u = (sx[at] + 0.5f) / W, v = (sy[at] + 0.5f) / Hh;
+                    const float uv4[4][2] = { { u, v }, { u, v }, { u, v }, { u, v } };
+
+                    for (c = 0; c < 4; c++) {
+                        const float mxx = (px + cx4[c]) * sc - 8.0f, mzz = (py + cy4[c]) * sc - 8.0f;
+
+                        LEAF_H(px + cx4[c], py + cy4[c], a, hc[c]);
+                        q[c][0] = GX(mxx, mzz);
+                        q[c][1] = hc[c];
+                        q[c][2] = GZ(mxx, mzz);
+                    }
+                    g_gm_shade = 1.0f;
+                    gm_quad(b, src, (const float (*)[3])q, uv4);
+                    g_gm_shade = 0.72f;
+                    for (sd = 0; sd < 4; sd++) {
+                        const int qx = px + nb[sd][0], qy = py + nb[sd][1];
+                        const int c0 = sd, c1 = (sd + 1) % 4;
+
+                        if (qx >= 0 && qy >= 0 && qx < W && qy < Hh && leaf[qy * W + qx] == a) {
+                            continue;
+                        }
+                        {
+                            const float e[4][3] = { { q[c0][0], q[c0][1] - thick, q[c0][2] }, { q[c1][0], q[c1][1] - thick, q[c1][2] },
+                                                    { q[c1][0], q[c1][1], q[c1][2] }, { q[c0][0], q[c0][1], q[c0][2] } };
+
+                            gm_quad(b, src, e, uv4);
+                        }
+                    }
+                    g_gm_shade = 1.0f;
+                }
+            }
+        }
+#undef LEAF_H
+#undef SOLID
+    } else if ((m == 15 || m == 16) && t != NULL && t->rgba != NULL) {
+        g_slice_jit = m == 16;                                                     /* N1 LS on rosettes; N2 jittered */
+        gm_slices(b, src, t, ox, y, oz, mxv, mzv, 3, 1, 2, H * pk * 1.6f);
+        g_slice_jit = 0;
+    } else if (m == 14 && t != NULL && t->rgba != NULL) {
+        gm_slices(b, src, t, ox, y, oz, mxv, mzv, 3, 1, 2, 16.0f * pk);          /* LS: the long grass sliced */
+    } else if (m == 13 && t != NULL && t->rgba != NULL) {
+        /* the long grass's blades: each light stripe of the picture (a column brighter than both its neighbours) a
+         * tapered blade standing up, leaning a little, coloured up its own column from base to tip */
+        const int W = t->w, Hh = t->h, NSEG = 4;
+        float lum[64];
+        int px, py;
+
+        for (px = 0; px < W && px < 64; px++) {
+            lum[px] = 0;
+            for (py = 0; py < Hh; py++) {
+                const unsigned char *c = &t->rgba[((size_t)py * W + px) * 4];
+
+                lum[px] += c[0] * 0.3f + c[1] * 0.59f + c[2] * 0.11f;
+            }
+        }
+        for (px = 0; px < W && px < 64; px++) {
+            const float l = lum[px], lp = lum[(px + W - 1) % W], ln = lum[(px + 1) % W];
+            int row;
+
+            if (!(l >= lp && l >= ln)) {
+                continue;
+            }
+            for (row = 0; row < 2; row++) {
+                const unsigned hsh = ((unsigned)(ox * 13.0f) * 2654435761u) ^ ((unsigned)(oz * 7.0f) * 40503u) ^ (unsigned)(px * 977 + row * 131);
+                const float jx = (float)px / W * 16.0f - 8.0f + ((hsh >> 4) % 100) / 100.0f - 0.5f;
+                const float jz = row ? 3.0f : -3.0f, jz2 = jz + (((hsh >> 12) % 100) / 100.0f - 0.5f) * 4.0f;
+                const float lean = (((hsh >> 20) % 100) / 100.0f - 0.5f) * 5.0f, tall = 16.0f * (0.8f + ((hsh >> 9) % 40) / 100.0f);
+                const float ba = ((hsh >> 3) % 628) / 100.0f, bdx = cosf(ba) * 0.9f, bdz = sinf(ba) * 0.9f;
+                int sgi;
+
+                for (sgi = 0; sgi < NSEG; sgi++) {
+                    const float f0 = (float)sgi / NSEG, f1 = (float)(sgi + 1) / NSEG;
+                    const float w0 = 1.0f - f0, w1 = 1.0f - f1;
+                    const float lx0 = jx + lean * f0 * f0, lx1 = jx + lean * f1 * f1;
+                    const float u = (px + 0.5f) / W;
+                    const float q[4][3] = {
+                        { GX(lx0 - bdx * w0, jz2 - bdz * w0), y + tall * pk * f0, GZ(lx0 - bdx * w0, jz2 - bdz * w0) },
+                        { GX(lx0 + bdx * w0, jz2 + bdz * w0), y + tall * pk * f0, GZ(lx0 + bdx * w0, jz2 + bdz * w0) },
+                        { GX(lx1 + bdx * w1, jz2 + bdz * w1), y + tall * pk * f1, GZ(lx1 + bdx * w1, jz2 + bdz * w1) },
+                        { GX(lx1 - bdx * w1, jz2 - bdz * w1), y + tall * pk * f1, GZ(lx1 - bdx * w1, jz2 - bdz * w1) } };
+                    const float uv4[4][2] = { { u, 1.0f - f0 * 0.98f }, { u, 1.0f - f0 * 0.98f }, { u, 1.0f - f1 * 0.98f },
+                                              { u, 1.0f - f1 * 0.98f } };
+
+                    gm_quad(b, src, q, uv4);
+                }
+            }
+        }
+    }
+    (void)light_first;
+#undef GX
+#undef GZ
+}
+
 static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned nd0, float tile)
 {
     const unsigned char *mask = g_tmask;
@@ -142,6 +1354,8 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
     /* (the placement: the map turned by place_a and scaled by place_k about the own Pokemon's place) */
     const float ca = cosf(s->place_a), sa = sinf(s->place_a), pk = s->place_k > 0.0f ? s->place_k : tile / 16.0f;
     const int tx0 = (int)floorf(s->place_x / 16.0f), tz0 = (int)floorf(s->place_z / 16.0f);
+    GmBuf *gbuf = NULL;             /* (research: the grass methods, a buffer a draw) */
+    int *gdraw_m = NULL;
     unsigned tufts_all = 0, tufts_ok = 0;
 
     for (i = 0; i < nd0; i++) {
@@ -160,6 +1374,37 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
     }
     nv = s->nv;
     nd = s->nd;
+    {
+        const int gm = gm_on(), lm = lm_on();
+
+        if ((gm || lm || bmap_grass_count() > 0) && nd0 > 0) {
+            gbuf = (GmBuf *)calloc(nd0, sizeof *gbuf);
+            gdraw_m = (int *)calloc(nd0, sizeof *gdraw_m);
+            for (i = 0; gbuf != NULL && gdraw_m != NULL && i < nd0; i++) {
+                const BmapTexture *gt = grass[i] && s->d[i].tex >= 0 && (unsigned)s->d[i].tex < s->nt ? &s->t[s->d[i].tex] : NULL;
+
+                if (gt == NULL) {
+                    continue;
+                }
+                if (getenv("BMAP_GRASS_LOG") != NULL) {
+                    fprintf(stderr, "bmap grass sheet %u: picture %s, kind %d\n", i, gt->name, bmap_grass_find(gt->name) != NULL);
+                }
+                if (bmap_grass_find(gt->name) != NULL) {
+                    gdraw_m[i] = 30;
+                } else if (gm && gm_rosette(gt->name)) {
+                    gdraw_m[i] = gm;
+                } else if (lm && strncmp(gt->name, "nagakusa", 8) == 0) {
+                    gdraw_m[i] = 10 + lm;
+                }
+            }
+            if (gdraw_m == NULL || gbuf == NULL) {
+                free(gbuf);
+                free(gdraw_m);
+                gbuf = NULL;
+                gdraw_m = NULL;
+            }
+        }
+    }
     for (i = 0; used != NULL && i < nd0; i++) {
         BmapDraw *g = &s->d[i];
         BmapDraw n;
@@ -167,6 +1412,13 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
 
         if (!grass[i]) {
             continue;
+        }
+        if (gdraw_m != NULL && gdraw_m[i] == 30) {      /* (a hand-made sheet begins: no tile is its own yet) */
+            unsigned q2;
+
+            for (q2 = 0; q2 < (unsigned)TUFT_SPAN * TUFT_SPAN; q2++) {
+                used[q2] &= (unsigned char)~2u;
+            }
         }
         for (j = g->first; j + 2 < g->first + g->count; j += 3) {
             const BmapVertex *a = &s->v[j], *b = &s->v[j + 1], *c = &s->v[j + 2];
@@ -200,8 +1452,16 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
                     int t;
 
                     if (!((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0))) continue;
-                    if (ux < 0 || uz < 0 || ux >= TUFT_SPAN || uz >= TUFT_SPAN || used[uz * TUFT_SPAN + ux]) continue;
-                    used[uz * TUFT_SPAN + ux] = 1;
+                    if (ux < 0 || uz < 0 || ux >= TUFT_SPAN || uz >= TUFT_SPAN) continue;
+                    if (gdraw_m != NULL && gdraw_m[i] == 30) {
+                        /* (a hand-made grass: each of a tile's sheets is built, the light top and the dark body;
+                         * bit 1: this sheet has this tile) */
+                        if (used[uz * TUFT_SPAN + ux] & 2u) continue;
+                        used[uz * TUFT_SPAN + ux] |= 2u;
+                    } else {
+                        if (used[uz * TUFT_SPAN + ux] & 1u) continue;
+                        used[uz * TUFT_SPAN + ux] |= 1u;
+                    }
                     {
                         /* research (BMAP_TUFT_LOG): the tile's middle put into the battle must lie in the triangle
                          * as the battle has it (the way there and the way back agree) */
@@ -215,6 +1475,39 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
                         tufts_ok += (e1 >= -tol && e2 >= -tol && e3 >= -tol) || (e1 <= tol && e2 <= tol && e3 <= tol);
                         tufts_all++;
                     }
+                    if (gbuf != NULL && gdraw_m[i] != 0) {
+                        const float rx = mx - s->place_x, rz = mz - s->place_z;
+                        const float bx = PLACE_SX + pk * (ca * rx - sa * rz), bz = PLACE_SZ + pk * (sa * rx + ca * rz);
+                        const float mxv[2] = { pk * ca, pk * sa }, mzv[2] = { -pk * sa, pk * ca };
+                        const BmapTexture *gt = g->tex >= 0 && (unsigned)g->tex < s->nt ? &s->t[g->tex] : NULL;
+
+                        if (gdraw_m[i] == 30 && gt != NULL) {
+                            const BmapGrassKind *gg = bmap_grass_find(gt->name);
+                            const BmapTexture *at = NULL;
+                            GlCtx gc;
+                            char an[17];
+                            unsigned k3;
+
+                            bmap_grass_atlas_name(gg, an);
+                            for (k3 = 0; k3 < s->nt; k3++) {
+                                if (strcmp(s->t[k3].name, an) == 0) {
+                                    at = &s->t[k3];
+                                    break;
+                                }
+                            }
+                            if (at == NULL) {
+                                goto old_tufts;         /* (a scene built without the atlas) */
+                            }
+                            gc.b = &gbuf[i];
+                            gc.src = a;
+                            bmap_grass_tile(gg, at, bx, y, bz, mxv, mzv, pk, ((unsigned)(cx * 73856093) ^ (unsigned)(cz * 19349663)),
+                                            gl_emit, &gc);
+                            continue;
+                        }
+                        gm_tile(&gbuf[i], a, gdraw_m[i], bx, y, bz, mxv, mzv, pk, gt != NULL ? gm_layer_h(gt->name) : 8.0f, gt, 0);
+                        continue;
+                    }
+old_tufts:
                     for (t = 0; t < 3 && nv + 12 <= s->nv + need; t++) {
                         /* (the tuft's place on the map, then in the battle; its two crossed cards along the map's
                          * diagonals, turned with the map) */
@@ -244,6 +1537,70 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
         }
     }
     free(used);
+    if (gbuf != NULL) {
+        /* (research: each method's triangles a draw of their own, the long grass in its fringe's picture) */
+        int fringe_tex = -1;
+        unsigned extra = 0, k;
+
+        for (k = 0; k < s->nd; k++) {
+            if (s->d[k].tex >= 0 && (unsigned)s->d[k].tex < s->nt && strcmp(s->t[s->d[k].tex].name, "nagakusa01b") == 0) {
+                fringe_tex = s->d[k].tex;
+            }
+        }
+        for (i = 0; i < nd0; i++) {
+            extra += gbuf[i].n;
+        }
+        if (extra > 0) {
+            BmapVertex *v2 = (BmapVertex *)realloc(s->v, (nv + extra) * sizeof *v2);
+            BmapDraw *d2 = v2 != NULL ? (BmapDraw *)realloc(s->d, (nd + nd0) * sizeof *d2) : NULL;
+
+            if (v2 != NULL) s->v = v2;
+            if (d2 != NULL) s->d = d2;
+            for (i = 0; v2 != NULL && d2 != NULL && i < nd0; i++) {
+                BmapDraw n2;
+
+                if (gbuf[i].n == 0) {
+                    continue;
+                }
+                memcpy(&s->v[nv], gbuf[i].v, gbuf[i].n * sizeof *gbuf[i].v);
+                n2 = s->d[i];
+                n2.first = nv;
+                n2.count = gbuf[i].n;
+                if (getenv("BMAP_GRASS_LOG") != NULL) {
+                    fprintf(stderr, "bmap grass draw %u: method %d, %u triangles, picture %s\n", i, gdraw_m[i], gbuf[i].n / 3u,
+                            s->d[i].tex >= 0 ? s->t[s->d[i].tex].name : "-");
+                }
+                n2.cull = 0;
+                n2.billboard = 0;
+                n2.grass = gdraw_m[i] < 10;
+                if (gdraw_m[i] == 30 && n2.tex >= 0 && (unsigned)n2.tex < s->nt) {
+                    const BmapGrassKind *gg = bmap_grass_find(s->t[n2.tex].name);
+                    char an[17];
+                    unsigned k3;
+
+                    if (gg != NULL) {
+                        n2.grass = (unsigned char)bmap_grass_over(gg);
+                        bmap_grass_atlas_name(gg, an);
+                        for (k3 = 0; k3 < s->nt; k3++) {
+                            if (strcmp(s->t[k3].name, an) == 0) {
+                                n2.tex = (int)k3;
+                                break;
+                            }
+                        }
+                    }
+                } else if (gdraw_m[i] >= 10 && gdraw_m[i] != 13 && gdraw_m[i] != 14 && fringe_tex >= 0) {
+                    n2.tex = fringe_tex;
+                }
+                s->d[nd++] = n2;
+                nv += gbuf[i].n;
+            }
+        }
+        for (i = 0; i < nd0; i++) {
+            free(gbuf[i].v);
+        }
+        free(gbuf);
+        free(gdraw_m);
+    }
     if (getenv("BMAP_TUFT_LOG") != NULL) {
         fprintf(stderr, "tufts: %u tiles, %u of them in their triangle in battle space; place %.0f %.0f angle %.0f\n", tufts_all,
                 tufts_ok, (double)s->place_x, (double)s->place_z, (double)(s->place_a * 57.29578f));
@@ -2714,12 +4071,47 @@ void bmap_place_prepare(BmapScene *s, int field)
         unsigned j;
         int cut = d->translucent != 0, lf;
 
+        const int gm = gm_on(), lm = lm_on(), glh = t != NULL && bmap_grass_find(t->name) != NULL;
+        const int wfg = (gm || glh) && t != NULL && strcmp(t->name, "kusa1_wf") == 0;     /* (research: grass methods) */
+        const int lgt = (lm || glh) && t != NULL && (strcmp(t->name, "nagakusa01a") == 0 || strcmp(t->name, "nagakusa02a") == 0);
+
         if (d->billboard != 0 || d->count < 3 || d->first % 3 != 0 || d->first + d->count > s->nv || t == NULL
-            || s->v[d->first].obj != 0) {
+            || (s->v[d->first].obj != 0 && !wfg)) {
             continue;                   /* a placed object (a gym button's leaf) stays */
+        }
+        if (t != NULL && ((lm && (strcmp(t->name, "nagakusa01b") == 0 || strcmp(t->name, "nagakusa02b") == 0)) || bmap_grass_hidden(t->name))) {
+            for (j = d->first; j + 2 < d->first + d->count; j += 3) {      /* (the fringe: the method builds its own) */
+                s->v[j + 1] = s->v[j];
+                s->v[j + 2] = s->v[j];
+            }
+            continue;
         }
         for (j = 0; !cut && j < (unsigned)(t->w * t->h); j++) {
             cut = t->rgba[j * 4 + 3] == 0;
+        }
+        cut |= wfg || lgt;
+        if (getenv("BMAP_ENC_LOG") != NULL) {
+            /* research: a level picture lying on a tile where wild Pokemon appear, once a draw: its name, whether it
+             * has see-through pixels, how high over the ground under it, how many of its triangles lie there */
+            unsigned on = 0;
+            float hmax = -1e30f;
+
+            for (j = d->first; j + 2 < d->first + d->count; j += 3) {
+                const BmapVertex *v = &s->v[j];
+                const float cx = (v[0].x + v[1].x + v[2].x) / 3.0f, cz = (v[0].z + v[1].z + v[2].z) / 3.0f;
+                int hit = 0;
+                float g;
+
+                if (fabsf(v[1].y - v[0].y) > 0.01f || fabsf(v[2].y - v[0].y) > 0.01f || !bmap_tile_encounter(s, cx, cz)) {
+                    continue;
+                }
+                g = bmap_ground_below(s, cx, cz, v[0].y - 0.6f, &hit);
+                on++;
+                hmax = hit && v[0].y - g > hmax ? v[0].y - g : hmax;
+            }
+            if (on > 0) {
+                fprintf(stderr, "bmap: enc %s cut %d over %.1f tris %u\n", t->name[0] ? t->name : "-", cut, (double)hmax, on);
+            }
         }
         if (!cut) {
             continue;
@@ -2730,19 +4122,49 @@ void bmap_place_prepare(BmapScene *s, int field)
             float y0 = v[0].y, cx = (v[0].x + v[1].x + v[2].x) / 3.0f, cz = (v[0].z + v[1].z + v[2].z) / 3.0f, g, dh;
             int hit, k2;
 
-            if (fabsf(v[1].y - y0) > 0.01f || fabsf(v[2].y - y0) > 0.01f || v[0].obj != 0) {
+            if (fabsf(v[1].y - y0) > 0.01f || fabsf(v[2].y - y0) > 0.01f || (v[0].obj != 0 && !wfg)) {
                 continue;
             }
-            g = bmap_ground_below(s, cx, cz, y0 - 0.01f, &hit);
+            g = bmap_ground_below(s, cx, cz, wfg ? y0 + 0.05f : lgt ? y0 - 0.6f : y0 - 0.01f, &hit);
+            if (wfg && (!hit || y0 - g > GRASS_MAX_H)) {
+                /* (White Forest's floor is a placed model too, no ground of the map: the grass lies on the walk
+                 * tile's own height, the map's ground 44 under it) */
+                float pl[2];
+                const int npl = bmap_tile_planes(s, cx, cz, pl);
+
+                for (k2 = 0; k2 < npl; k2++) {
+                    if (fabsf(pl[k2] - y0) < 2.0f) {
+                        g = y0;
+                        hit = 1;
+                    }
+                }
+            }
             if (!hit) {
                 continue;
             }
             dh = y0 - g;
-            if (dh <= 0.0f || dh > GRASS_MAX_H) {
+            if ((wfg ? dh < -0.05f : dh <= 0.0f) || dh > GRASS_MAX_H) {
                 continue;
             }
-            if (!lf && (d->translucent || !bmap_tile_encounter(s, cx, cz))) {
+            dh = dh < 0.0f ? 0.0f : dh;
+            if (!lf && !wfg && !lgt && (d->translucent || !bmap_tile_encounter(s, cx, cz))) {
                 continue;
+            }
+            {
+                /* a sheet the game walks the player on (a walk tile's height at it) is a floor, not grass: Route
+                 * 7's plank footbridges over the long grass, whose gaps between the planks are see-through */
+                float pl[2];
+                const int npl = bmap_tile_planes(s, cx, cz, pl);
+                int walked = 0;
+
+                /* (never a sheet named as grass: White Forest's grass lies at the walk tile's height, the map's
+                 * ground 2 under it) */
+                for (k2 = 0; !lf && !wfg && !lgt && k2 < npl && !walked; k2++) {
+                    walked = fabsf(pl[k2] - y0) < 2.0f && fabsf(pl[k2] - g) >= 2.0f;
+                }
+                if (walked) {
+                    continue;
+                }
             }
             if (getenv("BMAP_NAME_LOG") != NULL && (grass == NULL || !grass[i])) {     /* research */
                 fprintf(stderr, "bmap: name grass %s leafy %d encounter %d see-through %d\n", t->name[0] ? t->name : "-", lf,
