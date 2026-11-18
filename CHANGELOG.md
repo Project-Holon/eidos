@@ -30,6 +30,7 @@ Each release's notes on GitHub start with its section here
   - **Liberty Garden**: Completed the north faces of the storage blocks in the basement.
   - **Opelucid City Houses**: Restored missing south walls and doorway lintels in both trainer houses, and fixed floating tabletop geometry on the upper-floor dining table.
   - **Black City**: Set the lamps, glass cases and boxes on the shop counters down onto the counters; they floated over them.
+  - **Undella Town**: Built the villa's missing south walls in each room's own wall picture, with the entrance alcove's sides and its doorway at the exit mat, and gave the flowers in the vase on the table a solid body, set into the vase, in place of a flat picture.
   - **Village Bridge**: Gave the three benches by the river solid boards with depth, built from their own pieces, and set the two hedge planters behind them onto the street; the map's data places them 8 units over it.
   - **Cold Storage**: Set the stacked ice blocks down onto the ones under them; each stood 2 units over the next.
   - **Tubeline Bridge**: Battles on the bridge now stand on its deck; the deck is a see-through grating, which battles never took as a floor, so they stood on the girders under it.
