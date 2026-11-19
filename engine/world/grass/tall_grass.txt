@@ -4,9 +4,8 @@
 # leaves lying.  A leaf stood up from that picture shows a top view from the side, in pixels as large as the
 # ground's.  So here each of the plant's thirteen leaves is drawn again, pixel by pixel, as that leaf seen flat on
 # (its tip up, its root down), in the sprite's own colours and with the sprite's own marks: its outline colour, its
-# lit streak where the sprite has it, its dark tip.  A drawn pixel is 0.42 map units (the size of the pixels of the
-# grass tufts the battles have now, and close to a Pokemon's), so a leaf is as long on the ground as the sprite
-# draws it.
+# lit streak where the sprite has it, its dark tip.  A drawn pixel is 0.467 map units (a little larger than the
+# pixels of the battles' grass tufts, 0.42, and close to a Pokemon's): the bush stands 6.3 map units tall.
 #
 # Compass: yaw 0 east, 90 south (toward the field's camera), 180 west, 270 north.  A tile is 16 map units.
 
@@ -168,26 +167,33 @@ draw E
 end
 piece E root 4.5 19 axis 270
 
-# The crown: the six light leaves grow from the bush's heart, 2.8 up, each heading the way the sprite shows it.
-# The up leaf stands steepest and nods; the two upper side leaves lean out and curl; the two big leaves and the
-# front leaf, the long ones, arch right over and hang.  Each leaf is folded a little along its middle.
-put B at 0.0 3.0 -0.65   yaw 270 elev 76 bend 28 scale 0.42 cup 0.15
-put A at -1.3 3.0 -0.65  yaw 218 elev 62 bend 36 scale 0.42 cup 0.15
-put C at 1.3 3.0 -0.65   yaw 333 elev 62 bend 36 scale 0.42 cup 0.15
-put D at -1.3 2.8 0.0    yaw 132 elev 50 bend 70 scale 0.42 cup 0.15
-put F at 0.0 2.8 0.0     yaw 48  elev 50 bend 70 scale 0.42 cup 0.15
-put E at 0.0 2.7 0.65    yaw 88  elev 55 bend 85 scale 0.42 cup 0.15
+# Every leaf has an under side (0.13 under its upper side, lit 0.72 of it) and is darker at its root (0.72)
+# than at its tip.  C and F are turned over (flip) so the crown's four side leaves are all lit down the same
+# side.
+# The crown: the six light leaves grow from the bush's heart, their roots 0.44 from its middle and 0.89 up, one
+# every 60 degrees.  The three short leaves (B, C, A) stand and nod; the three long ones (F, E, D) stand between
+# them and arch over onto the dark leaves.
+put B at -0.000 0.889 -0.445  yaw 270.0 elev 66 bend 34 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put F at 0.389 0.889 -0.222  yaw 330.0 elev 54 bend 72 scale 0.4670 cup 0.15 flip 1 thick 0.1334 back 0.72 ao 0.72
+put C at 0.389 0.889 0.222  yaw 30.0 elev 66 bend 34 scale 0.4670 cup 0.15 flip 1 thick 0.1334 back 0.72 ao 0.72
+put E at 0.000 0.889 0.445  yaw 90.0 elev 54 bend 72 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put A at -0.389 0.889 0.222  yaw 150.0 elev 66 bend 34 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put D at -0.389 0.889 -0.222  yaw 210.0 elev 54 bend 72 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
 
 # ------------------------------------------------------------------ the dark leaves (kusa_ec2's seven)
-# The sprite (colours: 0 396229 deep outline, 1 397331 outline, 2 298B4A body, 4 398B41, 5 419C41, 6 7BB452 fleck):
+# The sprite (colours: 0 396229 deepest, 1 397331 dark, 2 298B4A body, 4 398B41 warm middle, 5 419C41 lit,
+# 6 7BB452 lightest).  The dark leaves are drawn in the manner of the crown's: the darkest colour at the outline,
+# a lit mass in the upper middle (widest about two fifths down), a darker lower third, a dark groove at the root.
+# A side leaf is lit on its outer side: there its outline is 1 and the lit mass sits off the middle; its other
+# side has the deep outline 0 and a dark band inside it lower down.
 #      0123456789abcdef
-#  0   .......21112....     T  the up leaf: a round end, outline 1, plain body
-#  1   ....222122212...     A  the left leaf: outline 1, a fleck 5 6 / 6 5 near its tip
-#  2   .21111122221112.     C  the right leaf: flecks 5 6 5 / 5 6 4 / 5
-#  3   2156221222156512     D  the lower-left leaf: flecks 5 / 5 6 5, a deep tip 0 4 0 / 0 0
-#  4   1265222121225641     G  the lower-right leaf: flecks 5 / 5 / 5 5 / 5 5 6 / 6 5, tip 0 4 1 / 0 0
-#  5   1111222222222521     E  the front-left leaf: flecks 5 / 6 5 / 5 6 / 4, tip 0 0
-#  6   .221112222111111     F  the front-right leaf: flecks 5 / 5 6 / 6 5 / 4, tip 0 0
+#  0   .......21112....     T  the up leaf: a round end, lit down its middle
+#  1   ....222122212...     A  the left leaf: lit on its left
+#  2   .21111122221112.     C  the right leaf: lit on its right
+#  3   2156221222156512     D  the lower-left leaf: a deep tip, lit on its left
+#  4   1265222121225641     G  the lower-right leaf, the longest: lit on its right
+#  5   1111222222222521     E  the front-left leaf: a broad lit mass, a little to its left
+#  6   .221112222111111     F  the front-right leaf: lit on its right
 #  7   .212222222225123
 #  8   2152212221222512
 #  9   1565122122122551
@@ -205,173 +211,199 @@ ink 4 1 10
 ink 5 2 3
 ink 6 3 3
 
-# T, the up leaf: 11 wide, 13 long, its end round as the sprite's 1 1 1.
+# T, the up leaf: 11 wide, 13 long, its end round as the sprite's 1 1 1; lit 5 6 5 down its middle.
 draw T
-...11111...
-..1222221..
-.122222221.
-.122222221.
-12222222221
-12222222221
-12222222221
-.122222221.
-.122222221.
-..1222221..
-..1222221..
-...12221...
-...12221...
+...00000...
+..0245420..
+.024565420.
+.024565420.
+02245654220
+02245554220
+02224542220
+.022454220.
+.012242210.
+..0122210..
+..0121210..
+...01110...
+...00000...
 end
 piece T root 5.5 13 axis 270
 
-# A, the left leaf: 10 wide, 17 long; the sprite's fleck 5 6 / 6 5 carried down from its tip.
+# L, the ground leaf: T's shape; it lies flat under the bush, its outer end lit, its root half dark.
+draw L
+...00000...
+..0245420..
+.024555420.
+.024565420.
+02245654220
+02244544220
+02224442220
+.022242220.
+.012222210.
+..0112110..
+..0011100..
+...00100...
+...00000...
+end
+piece L root 5.5 13 axis 270
+
+# A, the left leaf: 10 wide, 17 long; lit 5 6 6 down its left, outline 1 on that side and 0 on its right.
 draw A
-....11....
-...1561...
-...1651...
-..125621..
-..126521..
-.12256221.
-.12265221.
-.12225221.
-1222252221
-1222222221
-1222222221
-1222222221
-.12222221.
-.12222221.
-..122221..
-..122221..
-...1221...
+....10....
+...1540...
+...1650...
+..156420..
+..166420..
+.15664220.
+.15654220.
+.14554220.
+1245542220
+1244542210
+1224442210
+1222442210
+.12224210.
+.12222110.
+..121210..
+..111100..
+...1000...
 end
 piece A root 5.0 17 axis 270
 
-# C, the right leaf: 11 wide, 15 long; flecks 5 6 5 / 5 6 4 / 5.
+# C, the right leaf: 11 wide, 15 long; lit 5 6 6 down its right, outline 1 on that side and 0 on its left.
 draw C
 .....1.....
-....141....
-...15651...
-...16561...
-..1256521..
-..1225621..
-.122252221.
-.122222221.
-12222222221
-12222222221
-12222222221
-.122222221.
-.122222221.
-..1222221..
-...12221...
+....041....
+...04561...
+...04661...
+..0246651..
+..0245651..
+.022456541.
+.022455541.
+01224555421
+01222455421
+01222445421
+.012224421.
+.011222221.
+..0121221..
+...00111...
 end
 piece C root 5.5 15 axis 270
 
-# D, the lower-left leaf: 10 wide, 16 long; its deep tip 0 4 0, flecks 5 / 5 6 5.
+# D, the lower-left leaf: 10 wide, 16 long; its deep tip 0 0, lit 5 6 6 down its left.
 draw D
 ....00....
-...0440...
-..015610..
-..125651..
-.12256521.
-.12225221.
-.12225221.
-1222222221
-1222222221
-1222222221
-1222222221
-.12222221.
-.12222221.
-..122221..
-..122221..
-...1221...
+...0420...
+..015420..
+..156420..
+.15664220.
+.15665220.
+.14565220.
+1245654220
+1244554210
+1224544210
+1222444210
+.12224210.
+.12222110.
+..122110..
+..112100..
+...1000...
 end
 piece D root 5.0 16 axis 270
 
-# G, the lower-right leaf, the longest: 12 wide, 18 long; tip 0 4 1, its long fleck 5 / 5 / 5 5 / 5 5 6 / 6 5.
+# G, the lower-right leaf, the longest: 12 wide, 18 long; tip 0 0, a long lit mass 5 6 6 5 down its right.
 draw G
 .....00.....
-....0410....
-....1651....
-...156551...
-...125561...
-..12255521..
-..12225521..
-.1222252221.
-.1222252221.
-122222522221
-122222222221
-122222222221
-122222222221
-.1222222221.
-.1222222221.
-..12222221..
-..12222221..
-...122221...
+....0241....
+....0451....
+...024651...
+...024661...
+..02456651..
+..02245661..
+.0222456651.
+.0222456541.
+012224565421
+012224555421
+012222455421
+012222445421
+.0122244421.
+.0112224221.
+..01122221..
+..00121211..
+...000111...
 end
 piece G root 6.0 18 axis 270
 
-# E, the front-left leaf: 12 wide, 17 long; tip 0 0, flecks 5 / 6 5 / 5 6 / 4.
+# E, the front-left leaf: 12 wide, 17 long; tip 0 0, a broad lit mass 5 6 6 5 a little to its left.
 draw E
 .....00.....
-....0440....
-....0560....
-...016510...
-...125621...
-..12256221..
-..12225221..
-.1222252221.
-.1222222221.
-122222222221
-122222222221
-122222222221
-.1222222221.
-.1222222221.
-..12222221..
-..12222221..
-...122221...
+....0420....
+....1540....
+...156420...
+...166420...
+..15664220..
+..15665420..
+.1456654220.
+.1245654220.
+124455542210
+122445442210
+122244442210
+.1222442210.
+.1122222110.
+..11221210..
+..11121100..
+...110000...
 end
 piece E root 6.0 17 axis 270
 
-# F, the front-right leaf: 10 wide, 17 long; tip 0 0, flecks 5 / 5 6 / 6 5 / 4.
+# F, the front-right leaf: 10 wide, 17 long; tip 0 0, lit 6 6 5 down its right.
 draw F
 ....00....
-...0440...
-...0650...
-..015610..
-..125621..
-.12252221.
-.12252221.
-1222222221
-1222222221
-1222222221
-1222222221
-1222222221
-.12222221.
-.12222221.
-..122221..
-..122221..
-...1221...
+...0241...
+...0451...
+..024651..
+..024661..
+.02246651.
+.02245651.
+0222456541
+0122455541
+0122245541
+0122244541
+0122224421
+.01222421.
+.01122221.
+..012121..
+..001111..
+...0001...
 end
 piece F root 5.0 17 axis 270
 
-# The skirt: the seven dark leaves grow in a ring round the heart, 1 up, each heading out the way the sprite shows
-# it and standing (the short up leaf steepest, the long front leaves lowest).  The leaves that head east and west
-# are turned a little about their own length toward the south, the side the sprite is drawn from.
-put T at 0.0 1.0 -3.1    yaw 270 elev 64 bend 20 scale 0.42 cup 0.15
-put A at -2.5 1.0 -2.5   yaw 194 elev 58 bend 24 roll 28 scale 0.42 cup 0.15
-put C at 2.5 1.0 -2.5    yaw 345 elev 58 bend 24 roll -28 scale 0.42 cup 0.15
-put D at -3.1 1.0 0.0    yaw 158 elev 54 bend 26 roll 20 scale 0.42 cup 0.15
-put G at 2.5 1.0 0.6     yaw 29  elev 54 bend 26 roll -20 scale 0.42 cup 0.15
-put E at -1.9 1.0 2.5    yaw 119 elev 50 bend 30 scale 0.42 cup 0.15
-put F at 0.6 1.0 2.5     yaw 70  elev 50 bend 30 scale 0.42 cup 0.15
+# The first dark ring: the seven dark leaves round the crown's foot, their roots 1.11 from the middle and 0.56 up
+# (against the crown's roots), one every 51.4 degrees, all standing the same.
+put T at -0.000 0.556 -1.112  yaw 270.0 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put E at 0.867 0.556 -0.689  yaw 321.4 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put C at 1.078 0.556 0.245  yaw 12.9 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put G at 0.478 0.556 1.001  yaw 64.3 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put D at -0.478 0.556 1.001  yaw 115.7 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put F at -1.078 0.556 0.245  yaw 167.1 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put A at -0.867 0.556 -0.689  yaw 218.6 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
 
-# The outer ring.  In the sprite the dark body fills the tile to its edges; seven leaves round the heart leave the
-# tile's rim bare.  So the same seven leaves grow once more, further out and lower, each between two leaves of the
-# first ring, their tips coming down near the tile's edge.
-put T at -2.0 0.4 -4.0   yaw 242 elev 46 bend 34 scale 0.42 cup 0.15
-put T at 2.0 0.4 -4.0    yaw 298 elev 46 bend 34 scale 0.42 cup 0.15
-put A at -4.0 0.4 -1.0   yaw 172 elev 40 bend 40 roll 22 scale 0.42 cup 0.15
-put C at 4.0 0.4 -1.0    yaw 8   elev 40 bend 40 roll -22 scale 0.42 cup 0.15
-put D at -3.4 0.4 2.4    yaw 140 elev 38 bend 44 scale 0.42 cup 0.15
-put G at 3.4 0.4 2.6     yaw 42  elev 38 bend 44 scale 0.42 cup 0.15
-put E at -0.6 0.4 4.0    yaw 96  elev 36 bend 48 scale 0.42 cup 0.15
-put F at 1.6 0.4 3.8     yaw 78  elev 40 bend 44 scale 0.42 cup 0.15
+# The outer ring: the same seven once more, their roots 1.78 from the middle and 0.28 up (against the first
+# ring's), each between two leaves of the first ring and lower; each drawing stands opposite its twin.
+put D at 0.767 0.278 -1.601  yaw 295.7 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put F at 1.734 0.278 -0.400  yaw 347.1 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put A at 1.390 0.278 1.112  yaw 38.6 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put T at 0.000 0.278 1.779  yaw 90.0 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put E at -1.390 0.278 1.112  yaw 141.4 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put C at -1.734 0.278 -0.400  yaw 192.9 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put G at -0.767 0.278 -1.601  yaw 244.3 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+
+# The ground leaves: seven round dark leaves (the drawing L) lying low under the rings, from the bush's middle
+# (roots 0.33 out, 0.11 up), one between each leaf of the first ring and the next leaf of the outer ring, in the bush's shade.
+# Their lifts differ (6, 10, 14 degrees) so that no two lie flat on each other.
+put L at 0.078 0.111 -0.322  yaw 282.9 elev 6 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.300 0.111 -0.145  yaw 334.3 elev 10 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.300 0.111 0.145  yaw 25.7 elev 14 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.078 0.111 0.322  yaw 77.1 elev 6 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.211 0.111 0.256  yaw 128.6 elev 10 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.334 0.111 0.000  yaw 180.0 elev 14 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.211 0.111 -0.256  yaw 231.4 elev 8 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
