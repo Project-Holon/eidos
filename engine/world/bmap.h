@@ -337,6 +337,8 @@ void  bmap_set_ref(BmapScene *s, float y);
 /* The highest solid surface under (x, z) at height y or below (a sheet's
  * own ground); *hit 0 when there is none. */
 float bmap_ground_below(const BmapScene *s, float x, float z, float y, int *hit);
+/* The same, the floors of placed models counted too (White Forest's floor is one). */
+float bmap_floor_below(const BmapScene *s, float x, float z, float y, int *hit);
 /* Back to no player height: the lowest surface (with a step up allowed). */
 void  bmap_clear_ref(BmapScene *s);
 

@@ -4643,7 +4643,7 @@ void bmap_set_ref(BmapScene *s, float y)
     }
 }
 
-float bmap_ground_below(const BmapScene *s, float x, float z, float y, int *hit)
+static float surface_below(const BmapScene *s, float x, float z, float y, int placed, int *hit)
 {
     const Priv *g = (const Priv *)s->priv;
     float best = -1e30f;
@@ -4666,7 +4666,7 @@ float bmap_ground_below(const BmapScene *s, float x, float z, float y, int *hit)
         float area = (b[0] - a[0]) * (cc[2] - a[2]) - (b[2] - a[2]) * (cc[0] - a[0]);
         float w0, w1, w2, h;
 
-        if (area == 0.0f || t->water || t->placed) {
+        if (area == 0.0f || t->water || (t->placed && !placed)) {
             continue;
         }
         w0 = ((b[0] - x) * (cc[2] - z) - (b[2] - z) * (cc[0] - x)) / area;
@@ -4685,6 +4685,16 @@ float bmap_ground_below(const BmapScene *s, float x, float z, float y, int *hit)
     }
     *hit = 1;
     return best;
+}
+
+float bmap_ground_below(const BmapScene *s, float x, float z, float y, int *hit)
+{
+    return surface_below(s, x, z, y, 0, hit);
+}
+
+float bmap_floor_below(const BmapScene *s, float x, float z, float y, int *hit)
+{
+    return surface_below(s, x, z, y, 1, hit);
 }
 
 void bmap_clear_ref(BmapScene *s)

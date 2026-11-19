@@ -1,6 +1,6 @@
 # The hand-made grasses of the real-map battles (research, BMAP_GRASS_FILE; the statements are told at the top of
-# engine/world/bmap_grass.c).  Three kinds, one after the other: the normal tall grass, the dark grass (double
-# battles) and the long grass (green, and teal for double battles).
+# engine/world/bmap_grass.c).  Four kinds, one after the other: the normal tall grass, the dark grass (double
+# battles), the long grass (green, and teal for double battles) and White Forest's tall grass.
 #
 # ================================================================== the normal tall grass
 # Normal tall grass: every leaf drawn by hand.
@@ -1129,3 +1129,341 @@ jitter yaw 8 elev 5 scale 0.08
 part 10 30
 
 hide nagakusa02b
+
+# ================================================================== White Forest's tall grass
+# White Forest's tall grass: the normal tall grass's bush.
+#
+# Its picture (kusa1_wf) is the normal tall grass's two pictures in one: the light rosette lying on the dark body, in
+# the same colours.  So the bush is the normal bush, leaf for leaf: the same hand-drawn leaves, the same rings joined
+# at one heart, 6.3 map units tall.  The light leaves keep their letters (B A C D F E; colours 0 to c); the dark
+# leaves take other letters, one kind having one set (T L H I J G K M; colours p to u).  The picture lacks two of
+# the light picture's greens (419441, 5AAC52): their letters 4 and 6 read the nearest it has (419C41, 5AB452).
+grass kusa1_wf
+
+ink 0 7 0
+ink 1 5 8
+ink 3 7 2
+ink 4 3 4
+ink 5 7 1
+ink 6 5 6
+ink 7 5 6
+ink 8 5 3
+ink 9 8 1
+ink a 4 7
+ink b 11 3
+ink c 4 2
+ink p 0 10
+ink q 0 4
+ink r 1 2
+ink s 7 2
+ink t 3 4
+ink u 2 4
+
+# the light leaves and the crown
+draw B
+...0...
+..050..
+..090..
+.05950.
+.09c90.
+.09c90.
+059c950
+0599950
+0559550
+0355530
+0353530
+.03130.
+.03130.
+..313..
+..010..
+end
+piece B root 3.5 15 axis 270
+
+draw A
+....0....
+...090...
+..09c50..
+..0cc50..
+.09cc850.
+.09c8850.
+059c88550
+059885550
+055885530
+.0585530.
+.0355530.
+..03650..
+...030...
+...010...
+end
+piece A root 4.5 14 axis 270
+
+draw C
+....0....
+...090...
+..05b90..
+..05cc0..
+.058cc90.
+.0588c90.
+05588c950
+055588950
+035588550
+.0355850.
+.0355530.
+..05630..
+...030...
+...010...
+end
+piece C root 4.5 14 axis 270
+
+draw D
+.....0.....
+....050....
+....0750...
+...37750...
+...3a7510..
+..3ca7751..
+..3cca751..
+.3acca7751.
+.3accaa751.
+3aaccaa7751
+3aacaa77751
+37aaa777510
+.37aa77751.
+.387777651.
+..3877651..
+..3876631..
+...36631...
+....131....
+end
+piece D root 5.5 18 axis 270
+
+draw F
+.....0.....
+....010....
+...0151....
+...15851...
+..1588a3...
+..158aca3..
+.1588acc3..
+.158aacca3.
+1558aaccaa3
+15588acaa73
+01588aaa773
+.158889773.
+..1569963..
+..1366631..
+...13631...
+....131....
+end
+piece F root 5.5 16 axis 270
+
+draw E
+....1....
+...141...
+...141...
+..14741..
+..04740..
+.04ccc40.
+.07ccc70.
+.0cccc70.
+07ccc9770
+079cc9770
+0799c9770
+077999770
+037797730
+.0377730.
+.0337730.
+.1337331.
+..13331..
+..13131..
+...111...
+end
+piece E root 4.5 19 axis 270
+
+put B at -0.000 0.889 -0.445  yaw 270.0 elev 66 bend 34 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put F at 0.389 0.889 -0.222  yaw 330.0 elev 54 bend 72 scale 0.4670 cup 0.15 flip 1 thick 0.1334 back 0.72 ao 0.72
+put C at 0.389 0.889 0.222  yaw 30.0 elev 66 bend 34 scale 0.4670 cup 0.15 flip 1 thick 0.1334 back 0.72 ao 0.72
+put E at 0.000 0.889 0.445  yaw 90.0 elev 54 bend 72 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put A at -0.389 0.889 0.222  yaw 150.0 elev 66 bend 34 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put D at -0.389 0.889 -0.222  yaw 210.0 elev 54 bend 72 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+
+# the dark leaves, the two rings and the ground leaves
+draw T
+...ppppp...
+..prstsrp..
+.prstutsrp.
+.prstutsrp.
+prrstutsrrp
+prrstttsrrp
+prrrstsrrrp
+.prrstsrrp.
+.pqrrsrrqp.
+..pqrrrqp..
+..pqrqrqp..
+...pqqqp...
+...ppppp...
+end
+piece T root 5.5 13 axis 270
+
+draw L
+...ppppp...
+..prstsrp..
+.prstttsrp.
+.prstutsrp.
+prrstutsrrp
+prrsstssrrp
+prrrsssrrrp
+.prrrsrrrp.
+.pqrrrrrqp.
+..pqqrqqp..
+..ppqqqpp..
+...ppqpp...
+...ppppp...
+end
+piece L root 5.5 13 axis 270
+
+draw H
+....qp....
+...qtsp...
+...qutp...
+..qtusrp..
+..quusrp..
+.qtuusrrp.
+.qtutsrrp.
+.qsttsrrp.
+qrsttsrrrp
+qrsstsrrqp
+qrrsssrrqp
+qrrrssrrqp
+.qrrrsrqp.
+.qrrrrqqp.
+..qrqrqp..
+..qqqqpp..
+...qppp...
+end
+piece H root 5.0 17 axis 270
+
+draw I
+.....q.....
+....psq....
+...pstuq...
+...psuuq...
+..prsuutq..
+..prstutq..
+.prrstutsq.
+.prrstttsq.
+pqrrstttsrq
+pqrrrsttsrq
+pqrrrsstsrq
+.pqrrrssrq.
+.pqqrrrrrq.
+..pqrqrrq..
+...ppqqq...
+end
+piece I root 5.5 15 axis 270
+
+draw J
+....pp....
+...psrp...
+..pqtsrp..
+..qtusrp..
+.qtuusrrp.
+.qtuutrrp.
+.qstutrrp.
+qrstutsrrp
+qrssttsrqp
+qrrstssrqp
+qrrrsssrqp
+.qrrrsrqp.
+.qrrrrqqp.
+..qrrqqp..
+..qqrqpp..
+...qppp...
+end
+piece J root 5.0 16 axis 270
+
+draw G
+.....pp.....
+....prsq....
+....pstq....
+...prsutq...
+...prsuuq...
+..prstuutq..
+..prrstuuq..
+.prrrstuutq.
+.prrrstutsq.
+pqrrrstutsrq
+pqrrrstttsrq
+pqrrrrsttsrq
+pqrrrrsstsrq
+.pqrrrsssrq.
+.pqqrrrsrrq.
+..pqqrrrrq..
+..ppqrqrqq..
+...pppqqq...
+end
+piece G root 6.0 18 axis 270
+
+draw K
+.....pp.....
+....psrp....
+....qtsp....
+...qtusrp...
+...quusrp...
+..qtuusrrp..
+..qtuutsrp..
+.qstuutsrrp.
+.qrstutsrrp.
+qrsstttsrrqp
+qrrsstssrrqp
+qrrrssssrrqp
+.qrrrssrrqp.
+.qqrrrrrqqp.
+..qqrrqrqp..
+..qqqrqqpp..
+...qqpppp...
+end
+piece K root 6.0 17 axis 270
+
+draw M
+....pp....
+...prsq...
+...pstq...
+..prsutq..
+..prsuuq..
+.prrsuutq.
+.prrstutq.
+prrrstutsq
+pqrrstttsq
+pqrrrsttsq
+pqrrrsstsq
+pqrrrrssrq
+.pqrrrsrq.
+.pqqrrrrq.
+..pqrqrq..
+..ppqqqq..
+...pppq...
+end
+piece M root 5.0 17 axis 270
+
+put T at -0.000 0.556 -1.112  yaw 270.0 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put K at 0.867 0.556 -0.689  yaw 321.4 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put I at 1.078 0.556 0.245  yaw 12.9 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put G at 0.478 0.556 1.001  yaw 64.3 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put J at -0.478 0.556 1.001  yaw 115.7 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put M at -1.078 0.556 0.245  yaw 167.1 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put H at -0.867 0.556 -0.689  yaw 218.6 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put J at 0.767 0.278 -1.601  yaw 295.7 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put M at 1.734 0.278 -0.400  yaw 347.1 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put H at 1.390 0.278 1.112  yaw 38.6 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put T at 0.000 0.278 1.779  yaw 90.0 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put K at -1.390 0.278 1.112  yaw 141.4 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put I at -1.734 0.278 -0.400  yaw 192.9 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put G at -0.767 0.278 -1.601  yaw 244.3 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put L at 0.078 0.111 -0.322  yaw 282.9 elev 6 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.300 0.111 -0.145  yaw 334.3 elev 10 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.300 0.111 0.145  yaw 25.7 elev 14 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.078 0.111 0.322  yaw 77.1 elev 6 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.211 0.111 0.256  yaw 128.6 elev 10 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.334 0.111 0.000  yaw 180.0 elev 14 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.211 0.111 -0.256  yaw 231.4 elev 8 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85

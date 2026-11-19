@@ -28,6 +28,7 @@ Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago sup
   - **Cold Storage**: Grounded stacked ice blocks onto the blocks beneath them instead of hovering 2 units above.
   - **Route 6**: Closed the open east face of the tree-topped riverside ledge with wrap-around terraced steps matching the route's ledges.
   - **Mistralton Gym**: Added 3D relief to cannon arrow plates, completed back-face geometry on entrance statues, and adjusted Pilot 2 and Worker 5 battle placements to clear nearby fences.
+  - **White Forest**: Set the tall grass down onto the forest floor; it previously hung 8 units above the ground and cut across Pokémon.
   - **Route 7**: Fixed broken geometry on the raised wooden walkways, extended their posts down to the ground on all four sides, gave the planks thickness and an underside, and completed the back and west side of the wooden house's door.
   - **Icirrus Gym**: Replaced flat snowy rock and icicle sprites with 3D meshes, completed back-face geometry on entrance pedestals and platform mechanisms (levers, gears, floor switches), and repositioned two obstructed trainer battles.
   - **Dragonspiral Tower**: Restored missing south walls on the pool and fallen-pillar floors while keeping doorway exits open, completed underside/south faces on upper-floor ledges, ramps, and stairs, and assigned dedicated battle spots for each trainer.

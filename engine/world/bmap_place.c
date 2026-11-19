@@ -4195,6 +4195,29 @@ void bmap_place_prepare(BmapScene *s, int field)
         const int wfg = (gm || glh) && t != NULL && strcmp(t->name, "kusa1_wf") == 0;     /* (research: grass methods) */
         const int lgt = (lm || glh) && t != NULL && (strcmp(t->name, "nagakusa01a") == 0 || strcmp(t->name, "nagakusa02a") == 0);
 
+        if (t != NULL && strcmp(t->name, "kusa1_wf") == 0 && d->billboard == 0 && d->count >= 3 && d->first % 3 == 0
+            && d->first + d->count <= s->nv) {
+            /* White Forest's grass: the game draws the forest floor (a placed model) 8 units under the height it
+             * walks the player at, and the grass sheet at that walk height.  A battle stands on the drawn floor,
+             * so each level triangle of the sheet is set down onto the floor under it (within GRASS_MAX_H): the
+             * grass lies on the ground the Pokemon stand on, as a flat sheet or as what grows from it. */
+            for (j = d->first; j + 2 < d->first + d->count; j += 3) {
+                BmapVertex *v = &s->v[j];
+                const float y0 = v[0].y, cx = (v[0].x + v[1].x + v[2].x) / 3.0f, cz = (v[0].z + v[1].z + v[2].z) / 3.0f;
+                int hit = 0, k2;
+                float fl;
+
+                if (fabsf(v[1].y - y0) > 0.01f || fabsf(v[2].y - y0) > 0.01f) {
+                    continue;
+                }
+                fl = bmap_floor_below(s, cx, cz, y0 - 1.0f, &hit);
+                if (hit && y0 - fl <= GRASS_MAX_H) {
+                    for (k2 = 0; k2 < 3; k2++) {
+                        v[k2].y = fl + 0.05f;
+                    }
+                }
+            }
+        }
         if (d->billboard != 0 || d->count < 3 || d->first % 3 != 0 || d->first + d->count > s->nv || t == NULL
             || (s->v[d->first].obj != 0 && !wfg)) {
             continue;                   /* a placed object (a gym button's leaf) stays */
@@ -4245,7 +4268,9 @@ void bmap_place_prepare(BmapScene *s, int field)
             if (fabsf(v[1].y - y0) > 0.01f || fabsf(v[2].y - y0) > 0.01f || (v[0].obj != 0 && !wfg)) {
                 continue;
             }
-            g = bmap_ground_below(s, cx, cz, wfg ? y0 + 0.05f : lgt ? y0 - 0.6f : y0 - 0.01f, &hit);
+            /* (a White Forest sheet's ground is the forest floor, a placed model: it was set down onto it above) */
+            g = wfg ? bmap_floor_below(s, cx, cz, y0 + 0.05f, &hit)
+                    : bmap_ground_below(s, cx, cz, lgt ? y0 - 0.6f : y0 - 0.01f, &hit);
             if (wfg && (!hit || y0 - g > GRASS_MAX_H)) {
                 /* (White Forest's floor is a placed model too, no ground of the map: the grass lies on the walk
                  * tile's own height, the map's ground 44 under it) */
