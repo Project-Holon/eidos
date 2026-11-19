@@ -29,6 +29,9 @@
  *   spot X Z                       a bush stands there in the tile (every put is made at each spot)
  *   bush [pos P] [rot D] [size S]  each bush is moved by up to P, turned by up to D degrees as a whole and sized by
  *                                  up to S (0.15: 15% larger or smaller)
+ *   part R1 R2                     the grass is pressed down where a Pokemon stands: a bush whose heart is within
+ *                                  R1 map units of a Pokemon's place lies flat, its leaves pointing away from the
+ *                                  Pokemon; from R1 to R2 it leans less and less; past R2 it stands as drawn
  *   hide NAME                      the sheet NAME is left out (a fringe the pieces replace)
  * A piece put with yaw = its axis, elev 0, bend 0, scale 1 lies on the ground exactly as the picture shows it.
  */
@@ -64,6 +67,7 @@ struct BmapGrassKind {
     GlPiece pc[26];
     GlPut put[GL_PUTS];
     float jyaw, jelev, jscale, jpos, jrot, jsize, spot[8][2];
+    float part1, part2;                 /* "part": pressed flat within part1 map units of a Pokemon, upright past part2 */
     unsigned char ink[128][2], inkset[128];     /* a drawing's colour letters: the picture's pixel of that colour */
 };
 
@@ -250,6 +254,9 @@ static void gl_load(void)
                 if (strcmp(tok[i], "rot") == 0) g->jrot = (float)atof(tok[i + 1]);
                 if (strcmp(tok[i], "size") == 0) g->jsize = (float)atof(tok[i + 1]);
             }
+        } else if (strcmp(tok[0], "part") == 0 && nt >= 3) {
+            g->part1 = (float)atof(tok[1]);
+            g->part2 = (float)atof(tok[2]);
         } else if (strcmp(tok[0], "jitter") == 0) {
             for (i = 1; i + 1 < nt; i += 2) {
                 if (strcmp(tok[i], "yaw") == 0) g->jyaw = (float)atof(tok[i + 1]);
@@ -333,6 +340,22 @@ int bmap_grass_hidden(const char *name)
         }
     }
     return 0;
+}
+
+int bmap_grass_parts(const BmapGrassKind *g)
+{
+    return g->part2 > g->part1 && g->part2 > 0.0f;
+}
+
+static float g_press[8][2];
+static int g_npress;
+
+void bmap_grass_press(const float (*at)[2], int n)
+{
+    g_npress = n < 0 ? 0 : n > 8 ? 8 : n;
+    if (g_npress > 0) {
+        memcpy(g_press, at, (size_t)g_npress * sizeof g_press[0]);
+    }
 }
 
 int bmap_grass_over(const BmapGrassKind *g)
@@ -551,6 +574,32 @@ void bmap_grass_tile(const BmapGrassKind *g, const BmapTexture *atlas, float ox,
         const float bcx = (g->nspot > 0 ? g->spot[si][0] : 0.0f) + b1 * 2.0f * g->jpos;
         const float bcz = (g->nspot > 0 ? g->spot[si][1] : 0.0f) + b2 * 2.0f * g->jpos;
         const float bcs = cosf(bphi), bsn = sinf(bphi);
+        /* "part": how far this bush is pressed down (0 not, 1 flat) and the way away from the nearest Pokemon,
+         * in the tile's own axes */
+        float press = 0.0f, away = 0.0f;
+
+        if (bmap_grass_parts(g) && g_npress > 0) {
+            const float hx = ox + mxv[0] * bcx + mzv[0] * bcz, hz = oz + mxv[1] * bcx + mzv[1] * bcz;
+            const float unit2 = mxv[0] * mxv[0] + mxv[1] * mxv[1];        /* (a map unit in battle units, squared) */
+            float best = 1e30f;
+            int k, kb = 0;
+
+            for (k = 0; k < g_npress; k++) {
+                const float dx = hx - g_press[k][0], dz = hz - g_press[k][1], d2 = dx * dx + dz * dz;
+
+                if (d2 < best) {
+                    best = d2;
+                    kb = k;
+                }
+            }
+            if (unit2 > 1e-12f) {
+                const float dm = sqrtf(best / unit2);       /* (map units from that Pokemon) */
+                const float dx = hx - g_press[kb][0], dz = hz - g_press[kb][1];
+
+                press = dm <= g->part1 ? 1.0f : dm >= g->part2 ? 0.0f : (g->part2 - dm) / (g->part2 - g->part1);
+                away = atan2f((dx * mzv[0] + dz * mzv[1]) / unit2, (dx * mxv[0] + dz * mxv[1]) / unit2);
+            }
+        }
 
         for (pi = 0; pi < g->nput; pi++) {
             const GlPut *u = &g->put[pi];
@@ -558,8 +607,8 @@ void bmap_grass_tile(const BmapGrassKind *g, const BmapTexture *atlas, float ox,
             const unsigned hs = (hash ^ ((unsigned)(pi + 1 + si * 500) * 2246822519u)) * 2654435761u;
             const float r1 = ((hs >> 4) % 1000) / 1000.0f - 0.5f, r2 = ((hs >> 13) % 1000) / 1000.0f - 0.5f;
             const float r3 = ((hs >> 21) % 1000) / 1000.0f - 0.5f;
-            const float yaw = bphi + (u->yaw < -999.0f ? pc->axis + r1 * 2.0f * g->jyaw * D2R
-                                                       : (u->yaw + r1 * 2.0f * g->jyaw) * D2R);
+            float yaw = bphi + (u->yaw < -999.0f ? pc->axis + r1 * 2.0f * g->jyaw * D2R
+                                                 : (u->yaw + r1 * 2.0f * g->jyaw) * D2R);
             GlLeaf L;
             float ltot;
             int k;
@@ -573,13 +622,23 @@ void bmap_grass_tile(const BmapGrassKind *g, const BmapTexture *atlas, float ox,
             L.at3[1] = u->at[1] * bf;
             L.at3[2] = bcz + (u->at[0] * bsn + u->at[2] * bcs) * bf;
             L.th0 = (u->elev + r2 * 2.0f * g->jelev) * D2R;
+            if (press > 0.0f) {
+                /* pressed: the leaf turns toward the way away from the Pokemon (a flat bush keeps a fifth of its
+                 * leaves' spread, a fan) and lies down toward 6 to 14 degrees (each leaf its own) */
+                float dy = yaw - away;
+
+                while (dy > 3.14159265f) dy -= 6.2831853f;
+                while (dy < -3.14159265f) dy += 6.2831853f;
+                yaw = away + dy * (1.0f - 0.8f * press);
+                L.th0 = L.th0 * (1.0f - press) + (6.0f + 8.0f * (r2 + 0.5f)) * D2R * press;
+            }
             L.scale = u->scale * bf * (1.0f + r3 * 2.0f * g->jscale);
             L.aax = cosf(pc->axis);
             L.aay = sinf(pc->axis);
             L.dhx = cosf(yaw);
             L.dhz = sinf(yaw);
             ltot = pc->smax * L.scale;
-            L.kb = u->bend * D2R / (ltot > 1e-3f ? ltot : 1e-3f);
+            L.kb = u->bend * (1.0f - 0.6f * press) * D2R / (ltot > 1e-3f ? ltot : 1e-3f);
             L.cr = cosf(u->roll * D2R);
             L.sr = sinf(u->roll * D2R);
             L.ox = ox;

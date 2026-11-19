@@ -1,3 +1,8 @@
+# The hand-made grasses of the real-map battles (research, BMAP_GRASS_FILE; the statements are told at the top of
+# engine/world/bmap_grass.c).  Three kinds, one after the other: the normal tall grass, the dark grass (double
+# battles) and the long grass (green, and teal for double battles).
+#
+# ================================================================== the normal tall grass
 # Normal tall grass: every leaf drawn by hand.
 #
 # The game's two sprites (kusa_ec1 the light top, kusa_ec2 the dark body) show the plant from above: a picture of
@@ -407,3 +412,720 @@ put L at 0.078 0.111 0.322  yaw 77.1 elev 6 bend 0 scale 0.4670 cup 0.15 shade 0
 put L at -0.211 0.111 0.256  yaw 128.6 elev 10 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
 put L at -0.334 0.111 0.000  yaw 180.0 elev 14 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
 put L at -0.211 0.111 -0.256  yaw 231.4 elev 8 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+
+# ================================================================== the dark grass
+# Dark grass (the double-battle grass): the regular tall grass bush with one more layer.
+#
+# The game shows dark grass as a taller, deeper grass.  So this bush is the regular bush above (the same
+# hand-drawn leaves, the same rings joined at one heart) in the colours of the dark grass pictures (kusa_ec1s the
+# top, kusa_ec2s the body), with one more layer: a second ring of top leaves under the crown, and the crown lifted
+# on it.  It stands 7.4 map units tall (the regular bush 6.3).  A drawn pixel is 0.467 map units.
+#
+# Compass: yaw 0 east, 90 south (toward the field's camera), 180 west, 270 north.  A tile is 16 map units.
+
+# ------------------------------------------------------------------ the top leaves (kusa_ec1s)
+# Each ink letter of the regular bush's light leaves takes the dark top picture's colour of the same rank, dark to
+# light: 0 31524A outline, 1 396252, 3 418362, 4 4A8B62, 5 529C73, 6 5AA47B, 7 62A473, 8 62A47B, 9 6AAC83,
+# a 6AB473, b 73B47B, c 73BD7B lightest.
+grass kusa_ec1s
+
+ink 0 3 0
+ink 1 7 1
+ink 3 3 2
+ink 4 4 3
+ink 5 7 6
+ink 6 5 1
+ink 7 5 4
+ink 8 4 8
+ink 9 6 1
+ink a 13 8
+ink b 6 2
+ink c 7 2
+
+# B, the up leaf: 7 wide, 15 long.
+draw B
+...0...
+..050..
+..090..
+.05950.
+.09c90.
+.09c90.
+059c950
+0599950
+0559550
+0355530
+0353530
+.03130.
+.03130.
+..313..
+..010..
+end
+piece B root 3.5 15 axis 270
+
+# A, the up-left leaf: 9 wide, 14 long.  Its lit streak 9 c runs down its left (its outer side in the bush).
+draw A
+....0....
+...090...
+..09c50..
+..0cc50..
+.09cc850.
+.09c8850.
+059c88550
+059885550
+055885530
+.0585530.
+.0355530.
+..03650..
+...030...
+...010...
+end
+piece A root 4.5 14 axis 270
+
+# C, the up-right leaf: the same build the other way, in its own colours b c 9.
+draw C
+....0....
+...090...
+..05b90..
+..05cc0..
+.058cc90.
+.0588c90.
+05588c950
+055588950
+035588550
+.0355850.
+.0355530.
+..05630..
+...030...
+...010...
+end
+piece C root 4.5 14 axis 270
+
+# D, the big left leaf: 11 wide, 18 long.  Outline 3 on its left (outer) side, 1 on its right; lit c a down the left.
+draw D
+.....0.....
+....050....
+....0750...
+...37750...
+...3a7510..
+..3ca7751..
+..3cca751..
+.3acca7751.
+.3accaa751.
+3aaccaa7751
+3aacaa77751
+37aaa777510
+.37aa77751.
+.387777651.
+..3877651..
+..3876631..
+...36631...
+....131....
+end
+piece D root 5.5 18 axis 270
+
+# F, the big right leaf: 11 wide, 16 long.  Outline 1, 3 on its right (outer) side; lit c a down the right.
+draw F
+.....0.....
+....010....
+...0151....
+...15851...
+..1588a3...
+..158aca3..
+.1588acc3..
+.158aacca3.
+1558aaccaa3
+15588acaa73
+01588aaa773
+.158889773.
+..1569963..
+..1366631..
+...13631...
+....131....
+end
+piece F root 5.5 16 axis 270
+
+# E, the front leaf: 9 wide, 19 long.  Its lightest part c c is past its middle, as the sprite has it.
+draw E
+....1....
+...141...
+...141...
+..14741..
+..04740..
+.04ccc40.
+.07ccc70.
+.0cccc70.
+07ccc9770
+079cc9770
+0799c9770
+077999770
+037797730
+.0377730.
+.0337730.
+.1337331.
+..13331..
+..13131..
+...111...
+end
+piece E root 4.5 19 axis 270
+
+# Every leaf has an under side (0.13 under its upper side, lit 0.72 of it) and is darker at its root (0.72)
+# than at its tip.  C and F are turned over (flip) as in the regular bush.
+# The crown: the regular bush's six light leaves, their roots 0.44 from the middle, lifted to 2.2 up.
+put B at -0.000 2.200 -0.445  yaw 270.0 elev 66 bend 34 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put F at 0.389 2.200 -0.222  yaw 330.0 elev 54 bend 72 scale 0.4670 cup 0.15 flip 1 thick 0.1334 back 0.72 ao 0.72
+put C at 0.389 2.200 0.222  yaw 30.0 elev 66 bend 34 scale 0.4670 cup 0.15 flip 1 thick 0.1334 back 0.72 ao 0.72
+put E at 0.000 2.200 0.445  yaw 90.0 elev 54 bend 72 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put A at -0.389 2.200 0.222  yaw 150.0 elev 66 bend 34 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put D at -0.389 2.200 -0.222  yaw 210.0 elev 54 bend 72 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+
+# The second top ring (the layer the regular bush does not have): the same six drawings under the crown, their
+# roots 0.8 from the middle and 1.4 up, one every 60 degrees, each between two of the crown's leaves, all
+# standing the same.
+put E at 0.400 1.400 -0.693  yaw 300.0 elev 60 bend 44 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put A at 0.800 1.400 0.000  yaw 0.0 elev 60 bend 44 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put D at 0.400 1.400 0.693  yaw 60.0 elev 60 bend 44 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put B at -0.400 1.400 0.693  yaw 120.0 elev 60 bend 44 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put F at -0.800 1.400 0.000  yaw 180.0 elev 60 bend 44 scale 0.4670 cup 0.15 flip 1 thick 0.1334 back 0.72 ao 0.72
+put C at -0.400 1.400 -0.693  yaw 240.0 elev 60 bend 44 scale 0.4670 cup 0.15 flip 1 thick 0.1334 back 0.72 ao 0.72
+
+# ------------------------------------------------------------------ the body leaves (kusa_ec2s)
+# The dark body picture has five colours: 0 31625A outline, 1 31837B (its teal, here the shaded band and the root),
+# 2 41836A body, 4 and 5 4A9473 (the lit mass: the picture has one colour for both), 6 5AAC6A lightest.
+grass kusa_ec2s
+
+ink 0 0 1
+ink 1 2 0
+ink 2 9 0
+ink 4 1 2
+ink 5 1 2
+ink 6 1 10
+
+# T, the up leaf: 11 wide, 13 long, its end round as the sprite's 1 1 1; lit 5 6 5 down its middle.
+draw T
+...00000...
+..0245420..
+.024565420.
+.024565420.
+02245654220
+02245554220
+02224542220
+.022454220.
+.012242210.
+..0122210..
+..0121210..
+...01110...
+...00000...
+end
+piece T root 5.5 13 axis 270
+
+# L, the ground leaf: T's shape; it lies flat under the bush, its outer end lit, its root half dark.
+draw L
+...00000...
+..0245420..
+.024555420.
+.024565420.
+02245654220
+02244544220
+02224442220
+.022242220.
+.012222210.
+..0112110..
+..0011100..
+...00100...
+...00000...
+end
+piece L root 5.5 13 axis 270
+
+# A, the left leaf: 10 wide, 17 long; lit 5 6 6 down its left, outline 1 on that side and 0 on its right.
+draw A
+....10....
+...1540...
+...1650...
+..156420..
+..166420..
+.15664220.
+.15654220.
+.14554220.
+1245542220
+1244542210
+1224442210
+1222442210
+.12224210.
+.12222110.
+..121210..
+..111100..
+...1000...
+end
+piece A root 5.0 17 axis 270
+
+# C, the right leaf: 11 wide, 15 long; lit 5 6 6 down its right, outline 1 on that side and 0 on its left.
+draw C
+.....1.....
+....041....
+...04561...
+...04661...
+..0246651..
+..0245651..
+.022456541.
+.022455541.
+01224555421
+01222455421
+01222445421
+.012224421.
+.011222221.
+..0121221..
+...00111...
+end
+piece C root 5.5 15 axis 270
+
+# D, the lower-left leaf: 10 wide, 16 long; its deep tip 0 0, lit 5 6 6 down its left.
+draw D
+....00....
+...0420...
+..015420..
+..156420..
+.15664220.
+.15665220.
+.14565220.
+1245654220
+1244554210
+1224544210
+1222444210
+.12224210.
+.12222110.
+..122110..
+..112100..
+...1000...
+end
+piece D root 5.0 16 axis 270
+
+# G, the lower-right leaf, the longest: 12 wide, 18 long; tip 0 0, a long lit mass 5 6 6 5 down its right.
+draw G
+.....00.....
+....0241....
+....0451....
+...024651...
+...024661...
+..02456651..
+..02245661..
+.0222456651.
+.0222456541.
+012224565421
+012224555421
+012222455421
+012222445421
+.0122244421.
+.0112224221.
+..01122221..
+..00121211..
+...000111...
+end
+piece G root 6.0 18 axis 270
+
+# E, the front-left leaf: 12 wide, 17 long; tip 0 0, a broad lit mass 5 6 6 5 a little to its left.
+draw E
+.....00.....
+....0420....
+....1540....
+...156420...
+...166420...
+..15664220..
+..15665420..
+.1456654220.
+.1245654220.
+124455542210
+122445442210
+122244442210
+.1222442210.
+.1122222110.
+..11221210..
+..11121100..
+...110000...
+end
+piece E root 6.0 17 axis 270
+
+# F, the front-right leaf: 10 wide, 17 long; tip 0 0, lit 6 6 5 down its right.
+draw F
+....00....
+...0241...
+...0451...
+..024651..
+..024661..
+.02246651.
+.02245651.
+0222456541
+0122455541
+0122245541
+0122244541
+0122224421
+.01222421.
+.01122221.
+..012121..
+..001111..
+...0001...
+end
+piece F root 5.0 17 axis 270
+
+# The first ring, the outer ring and the ground leaves: placed as in the regular bush.
+put T at -0.000 0.556 -1.112  yaw 270.0 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put E at 0.867 0.556 -0.689  yaw 321.4 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put C at 1.078 0.556 0.245  yaw 12.9 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put G at 0.478 0.556 1.001  yaw 64.3 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put D at -0.478 0.556 1.001  yaw 115.7 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put F at -1.078 0.556 0.245  yaw 167.1 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put A at -0.867 0.556 -0.689  yaw 218.6 elev 56 bend 26 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put D at 0.767 0.278 -1.601  yaw 295.7 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put F at 1.734 0.278 -0.400  yaw 347.1 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put A at 1.390 0.278 1.112  yaw 38.6 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put T at 0.000 0.278 1.779  yaw 90.0 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put E at -1.390 0.278 1.112  yaw 141.4 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put C at -1.734 0.278 -0.400  yaw 192.9 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put G at -0.767 0.278 -1.601  yaw 244.3 elev 40 bend 42 scale 0.4670 cup 0.15 thick 0.1334 back 0.72 ao 0.72
+put L at 0.078 0.111 -0.322  yaw 282.9 elev 6 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.300 0.111 -0.145  yaw 334.3 elev 10 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.300 0.111 0.145  yaw 25.7 elev 14 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at 0.078 0.111 0.322  yaw 77.1 elev 6 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.211 0.111 0.256  yaw 128.6 elev 10 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.334 0.111 0.000  yaw 180.0 elev 14 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+put L at -0.211 0.111 -0.256  yaw 231.4 elev 8 bend 0 scale 0.4670 cup 0.15 shade 0.8 thick 0.1334 back 0.72 ao 0.85
+
+# ================================================================== the long grass
+# Long grass (Route 7 and the like): every blade drawn by hand.
+#
+# The field builds long grass as a block: a flat lid of blade tips seen from above (nagakusa01a) 16 map units up,
+# a whole tile's height, with fringes of blades seen from the side (nagakusa01b) standing round it, 2 to 24 up.
+# In a battle that lid buried the Pokemon.  So here the grass is what the block stands for: a stand of tall narrow
+# blades, 16 map units tall, growing in tussocks, five to a tile.  A tussock is one tall blade with shorter ones
+# leaning out round it; every blade is drawn pixel by pixel, tip up, in the lid picture's own seven colours.
+# A drawn pixel is 0.5 map units.
+#
+# Each blade is drawn in the manner of the game's side picture of them: a dark edge, a light core beside it, a
+# middle green on the other side; darker toward its root, the darkest colour at its base.
+#
+# The lid is replaced by the tussocks; the fringes are left out.
+#
+# Compass: yaw 0 east, 90 south (toward the field's camera), 180 west, 270 north.  A tile is 16 map units.
+
+# The lid picture's colours, dark to light: 0 416A6A, 1 4A7B62, 2 41944A, 3 4A9462, 4 4A9C5A, 5 52AC5A, 6 7BC562.
+grass nagakusa01a mesh 4
+ink 0 5 1
+ink 1 3 0
+ink 2 6 9
+ink 3 1 0
+ink 4 0 0
+ink 5 2 0
+ink 6 3 2
+
+# R, the tall blade: 5 wide, 32 long (16 map units).  Dark edge on its left, the light core 6 beside it.
+draw R
+..1..
+..1..
+.161.
+.161.
+.165.
+.165.
+.165.
+.1653
+.1653
+.1663
+.1663
+.1653
+.1653
+16653
+16653
+16653
+16553
+16653
+16653
+15653
+15553
+15543
+14543
+14542
+14442
+13442
+13432
+.1332
+.1322
+.1221
+.0110
+.010.
+end
+piece R root 2.5 32 axis 270
+
+# B, the broad blade: 5 wide, 28 long.  Its tip turns right; dark edges both sides, the light core left of its middle.
+draw B
+...1.
+..161
+..161
+.1651
+.1651
+.1661
+.1661
+16651
+16651
+16651
+16551
+16651
+16651
+15651
+15651
+15551
+15541
+14541
+14541
+14441
+13441
+13431
+13331
+.2331
+.2321
+.1221
+.0110
+..10.
+end
+piece B root 3.0 28 axis 270
+
+# M, the middle blade: 4 wide, 26 long.  Dark edge on its right, the light core beside it.
+draw M
+.1..
+.1..
+161.
+161.
+361.
+3561
+3561
+3661
+3661
+3561
+3561
+3661
+3651
+3561
+3561
+3551
+3451
+3451
+2451
+2441
+2341
+2331
+.231
+.221
+.110
+.01.
+end
+piece M root 2.0 26 axis 270
+
+# S, the short shoot: 4 wide, 18 long.
+draw S
+..1.
+.161
+.161
+1651
+1651
+1661
+1661
+1651
+1651
+1551
+1541
+1441
+1431
+1331
+.321
+.221
+.110
+.01.
+end
+piece S root 2.0 18 axis 270
+
+# A tussock: the tall blade in its middle, two broad ones against it, three middle ones leaning out, three short
+# shoots round its foot.
+put R at 0.000 0.000 0.000  yaw 90.0 elev 86 bend 14 scale 0.5
+put B at 0.520 0.000 0.300  yaw 30.0 elev 76 bend 24 scale 0.5
+put B at -0.520 0.000 -0.300  yaw 210.0 elev 76 bend 24 scale 0.5
+put M at 0.342 0.000 0.940  yaw 70.0 elev 68 bend 30 scale 0.5
+put M at -0.866 0.000 0.500  yaw 150.0 elev 68 bend 30 scale 0.5
+put M at 0.643 0.000 -0.766  yaw 310.0 elev 68 bend 30 scale 0.5
+put S at -0.243 0.000 1.379  yaw 100.0 elev 58 bend 36 scale 0.5
+put S at -1.316 0.000 -0.479  yaw 200.0 elev 58 bend 36 scale 0.5
+put S at 1.212 0.000 -0.700  yaw 330.0 elev 58 bend 36 scale 0.5
+
+# Five tussocks a tile, as the five of a die; each stands a little off its place, turned any way and sized a little.
+spot -4.2 -4.2
+spot 4.2 -4.2
+spot 0.0 0.0
+spot -4.2 4.2
+spot 4.2 4.2
+bush pos 1.2 rot 180 size 0.12
+jitter yaw 8 elev 5 scale 0.08
+
+# Where a Pokemon stands the grass is trodden down: tussocks within 10 map units of it lie flat, pointing away
+# from it; out to 30 they lean less and less.
+part 10 30
+
+hide nagakusa01b
+
+# ------------------------------------------------------------------ the teal long grass (double battles)
+# nagakusa02a is the same lid picture in teal greens (0 4A5A7B, 1 4A737B, 2 419483, 3 4A9494, 4 4A9C94,
+# 5 52AC94, 6 62C58B): the same blades, tussocks and trodden spots, each ink at the same pixel.
+grass nagakusa02a mesh 4
+ink 0 5 1
+ink 1 3 0
+ink 2 6 9
+ink 3 1 0
+ink 4 0 0
+ink 5 2 0
+ink 6 3 2
+
+# R, the tall blade: 5 wide, 32 long (16 map units).  Dark edge on its left, the light core 6 beside it.
+draw R
+..1..
+..1..
+.161.
+.161.
+.165.
+.165.
+.165.
+.1653
+.1653
+.1663
+.1663
+.1653
+.1653
+16653
+16653
+16653
+16553
+16653
+16653
+15653
+15553
+15543
+14543
+14542
+14442
+13442
+13432
+.1332
+.1322
+.1221
+.0110
+.010.
+end
+piece R root 2.5 32 axis 270
+
+# B, the broad blade: 5 wide, 28 long.  Its tip turns right; dark edges both sides, the light core left of its middle.
+draw B
+...1.
+..161
+..161
+.1651
+.1651
+.1661
+.1661
+16651
+16651
+16651
+16551
+16651
+16651
+15651
+15651
+15551
+15541
+14541
+14541
+14441
+13441
+13431
+13331
+.2331
+.2321
+.1221
+.0110
+..10.
+end
+piece B root 3.0 28 axis 270
+
+# M, the middle blade: 4 wide, 26 long.  Dark edge on its right, the light core beside it.
+draw M
+.1..
+.1..
+161.
+161.
+361.
+3561
+3561
+3661
+3661
+3561
+3561
+3661
+3651
+3561
+3561
+3551
+3451
+3451
+2451
+2441
+2341
+2331
+.231
+.221
+.110
+.01.
+end
+piece M root 2.0 26 axis 270
+
+# S, the short shoot: 4 wide, 18 long.
+draw S
+..1.
+.161
+.161
+1651
+1651
+1661
+1661
+1651
+1651
+1551
+1541
+1441
+1431
+1331
+.321
+.221
+.110
+.01.
+end
+piece S root 2.0 18 axis 270
+
+# A tussock: the tall blade in its middle, two broad ones against it, three middle ones leaning out, three short
+# shoots round its foot.
+put R at 0.000 0.000 0.000  yaw 90.0 elev 86 bend 14 scale 0.5
+put B at 0.520 0.000 0.300  yaw 30.0 elev 76 bend 24 scale 0.5
+put B at -0.520 0.000 -0.300  yaw 210.0 elev 76 bend 24 scale 0.5
+put M at 0.342 0.000 0.940  yaw 70.0 elev 68 bend 30 scale 0.5
+put M at -0.866 0.000 0.500  yaw 150.0 elev 68 bend 30 scale 0.5
+put M at 0.643 0.000 -0.766  yaw 310.0 elev 68 bend 30 scale 0.5
+put S at -0.243 0.000 1.379  yaw 100.0 elev 58 bend 36 scale 0.5
+put S at -1.316 0.000 -0.479  yaw 200.0 elev 58 bend 36 scale 0.5
+put S at 1.212 0.000 -0.700  yaw 330.0 elev 58 bend 36 scale 0.5
+
+# Five tussocks a tile, as the five of a die; each stands a little off its place, turned any way and sized a little.
+spot -4.2 -4.2
+spot 4.2 -4.2
+spot 0.0 0.0
+spot -4.2 4.2
+spot 4.2 4.2
+bush pos 1.2 rot 180 size 0.12
+jitter yaw 8 elev 5 scale 0.08
+
+# Where a Pokemon stands the grass is trodden down: tussocks within 10 map units of it lie flat, pointing away
+# from it; out to 30 they lean less and less.
+part 10 30
+
+hide nagakusa02b

@@ -25,6 +25,11 @@ const BmapGrassKind *bmap_grass_find(const char *name);
 int bmap_grass_hidden(const char *name);
 /* Whether the kind's pieces are drawn again over a Pokemon standing behind them (BmapDraw.grass). */
 int bmap_grass_over(const BmapGrassKind *g);
+/* Whether the kind is pressed down where a Pokemon stands (its file's "part" statement). */
+int bmap_grass_parts(const BmapGrassKind *g);
+/* Where the battle's Pokemon stand (battle units, x and z; up to 8), for the kinds that are pressed down there.
+ * Told before a placement grows its grass; n 0: nowhere. */
+void bmap_grass_press(const float (*at)[2], int n);
 /* The name of the kind's atlas picture in a scene ("NAME~"). */
 void bmap_grass_atlas_name(const BmapGrassKind *g, char out[17]);
 

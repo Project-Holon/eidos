@@ -153,6 +153,7 @@ typedef struct BvJob {
     int season, hour, minute;
     int weather;                    /* the field's weather (the game's id), -1 none */
     int trainer;                    /* a trainer battle (the setup's competitor) */
+    int doubles;                    /* a double battle (the setup's rule) */
     int lesson;                     /* the catching lesson (competitor 4) */
     int trainer_id;                 /* the opponent's trainer number, 0 unknown */
     BmapPlaceSpec spec;
@@ -977,6 +978,7 @@ static int read_place(uintptr_t eff, BvJob *j)
         const u32 comp = gptr_ok(setup) ? rd32(setup, 0) : 0u;
 
         j->trainer = comp >= 1u && comp <= 3u;
+        j->doubles = gptr_ok(setup) && rd32(setup, 4) == 1u;       /* (the setup's rule: 1 a double) */
         j->lesson = comp == 4u;
     }
     if (j->trainer) {
@@ -1476,6 +1478,7 @@ static void battle_begin(uintptr_t eff)
         row = v >= 0 ? v : bmap_spots_pick_view(row, j->px, j->pz, j->facing);
     }
     bmap_spots_spec(bmap_spots_get(row), j->px, j->pz, j->facing, &j->spec);
+    j->spec.doubles = j->doubles;
     if (getenv("BMAP_PLACE_LOG") != NULL) {
         const BmapSpot *r = bmap_spots_get(row);
 

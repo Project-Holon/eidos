@@ -1370,25 +1370,52 @@ static void gm_tile(GmBuf *b, const BmapVertex *src, int m, float ox, float y, f
 #undef GZ
 }
 
+static int g_place_doubles;     /* (research, BMAP_GRASS_FEET) the battle being placed is a double (BmapPlaceSpec.doubles) */
+static const float k_double[4][2];
+
 /* (research, BMAP_GRASS_FEET) where the hand-made bush of the map tile (cx, cz) stands, map units: the tile's
- * middle, or, when one of the single battle's two Pokemon stands on the tile, that Pokemon's place: it stands in
- * the bush, not beside it.  ca, sa, pk: the placement's turn and scale. */
+ * middle, or, when one of the battle's Pokemon stands on the tile (a single's two, a double's four), that Pokemon's
+ * place: it stands in the bush, not beside it.  A tile has one bush: with two Pokemon on the tile it stays at the
+ * tile's middle.  ca, sa, pk: the placement's turn and scale. */
 static void grass_bush_place(const BmapScene *s, float ca, float sa, float pk, int cx, int cz, float *mx, float *mz)
 {
     static int on = -1;
-    const float fx = (FOE_SX - PLACE_SX) / pk, fz = (FOE_SZ - PLACE_SZ) / pk;
-    const float at[2][2] = { { s->place_x, s->place_z }, { s->place_x + ca * fx + sa * fz, s->place_z - sa * fx + ca * fz } };
-    int k;
+    float at[4][2];
+    int k, n = 0, hit = -1, hits = 0;
 
     if (on < 0) {
         on = getenv("BMAP_GRASS_FEET") != NULL;
     }
-    for (k = 0; on && k < 2; k++) {
-        if ((int)floorf(at[k][0] / 16.0f) == cx && (int)floorf(at[k][1] / 16.0f) == cz) {
-            *mx = at[k][0];
-            *mz = at[k][1];
-            return;
+    if (!on) {
+        return;
+    }
+    if (g_place_doubles) {
+        for (k = 0; k < 4; k++) {
+            const float fx = (k_double[k][0] - PLACE_SX) / pk;
+            const float fz = (k_double[k][1] + (k >= 2 ? FOE_SZ - FOE_SZ_GAME : 0.0f) - PLACE_SZ) / pk;
+
+            at[n][0] = s->place_x + ca * fx + sa * fz;
+            at[n][1] = s->place_z - sa * fx + ca * fz;
+            n++;
         }
+    } else {
+        const float fx = (FOE_SX - PLACE_SX) / pk, fz = (FOE_SZ - PLACE_SZ) / pk;
+
+        at[0][0] = s->place_x;
+        at[0][1] = s->place_z;
+        at[1][0] = s->place_x + ca * fx + sa * fz;
+        at[1][1] = s->place_z - sa * fx + ca * fz;
+        n = 2;
+    }
+    for (k = 0; k < n; k++) {
+        if ((int)floorf(at[k][0] / 16.0f) == cx && (int)floorf(at[k][1] / 16.0f) == cz) {
+            hit = k;
+            hits++;
+        }
+    }
+    if (hits == 1) {
+        *mx = at[hit][0];
+        *mz = at[hit][1];
     }
 }
 
@@ -1432,6 +1459,21 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
         const int gm = gm_on(), lm = lm_on();
 
         if ((gm || lm || bmap_grass_count() > 0) && nd0 > 0) {
+            /* (the hand-made grass that is pressed down where a Pokemon stands: the places, battle units) */
+            if (g_place_doubles) {
+                float at[4][2];
+                int q;
+
+                for (q = 0; q < 4; q++) {
+                    at[q][0] = k_double[q][0];
+                    at[q][1] = k_double[q][1] + (q >= 2 ? FOE_SZ - FOE_SZ_GAME : 0.0f);
+                }
+                bmap_grass_press((const float (*)[2])at, 4);
+            } else {
+                const float at[2][2] = { { 0.5f, PLACE_SZ }, { FOE_SX, FOE_SZ } };
+
+                bmap_grass_press(at, 2);
+            }
             gbuf = (GmBuf *)calloc(nd0, sizeof *gbuf);
             gdraw_m = (int *)calloc(nd0, sizeof *gdraw_m);
             for (i = 0; gbuf != NULL && gdraw_m != NULL && i < nd0; i++) {
@@ -1531,7 +1573,10 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
                     }
                     if (gbuf != NULL && gdraw_m[i] != 0) {
                         float bmx = mx, bmz = mz;       /* (where the tile's bush stands) */
-                        const float rx = ((gdraw_m[i] == 30 ? grass_bush_place(s, ca, sa, pk, cx, cz, &bmx, &bmz) : (void)0), bmx)
+                        const BmapTexture *ft = g->tex >= 0 && (unsigned)g->tex < s->nt ? &s->t[g->tex] : NULL;
+                        const BmapGrassKind *fk = gdraw_m[i] == 30 && ft != NULL ? bmap_grass_find(ft->name) : NULL;
+                        /* (the bush at the feet: not for a kind that is pressed down there, its tile holds several) */
+                        const float rx = ((fk != NULL && !bmap_grass_parts(fk) ? grass_bush_place(s, ca, sa, pk, cx, cz, &bmx, &bmz) : (void)0), bmx)
                                          - s->place_x,
                                     rz = bmz - s->place_z;
                         const float bx = PLACE_SX + pk * (ca * rx - sa * rz), bz = PLACE_SZ + pk * (sa * rx + ca * rz);
@@ -4891,6 +4936,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
     }
 
     g_foe_z = FOE_SZ_GAME - sp->foe_dz;
+    g_place_doubles = sp->doubles;
     for (q = 3; q < N_SIGHT; q++) {
         k_sight[q][2] = g_foe_z;
     }

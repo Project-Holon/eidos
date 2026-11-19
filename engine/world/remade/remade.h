@@ -109,6 +109,7 @@ RmBuild rm_cup;                 /* cup.c: a teacup card made a cup: body, rim, i
 RmBuild rm_hedge;               /* hedge.c: a hollow hedge with see-through sides given a solid core */
 RmBuild rm_plate;               /* plate.c: flat floor pieces given height and sides (a switch's pad) */
 RmBuild rm_candle;              /* candle.c: a candle-on-its-dish card made a dish, a candle and its flame */
+RmBuild rm_boardwalk;           /* boardwalk.c: a plank walkway on posts: posts to the ground on four sides, planks with a thickness */
 
 /* --- helpers (common.c) --- */
 

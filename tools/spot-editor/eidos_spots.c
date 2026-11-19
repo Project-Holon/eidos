@@ -682,6 +682,7 @@ static void scene_drop(BmapScene *s, int *have)
 static void current_spec(BmapPlaceSpec *sp)
 {
     bmap_spots_spec(cur(), A.tx, A.tz, deg_to_facing((float)A.tf), sp);
+    sp->doubles = A.doubles;
 }
 
 static int row_height(const BmapSpot *r, float *y);
