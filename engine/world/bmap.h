@@ -103,7 +103,19 @@ typedef struct BmapDraw {
                                   left out while bmap_mount_hidden()                    */
     unsigned char bob;         /* 1: rises and falls by BmapScene.bob_y (a moving object
                                   of the game with its own animation)               */
+    unsigned char leafy;       /* 1: hand-made grass leaves (bmap_grass): its triangles
+                                  are listed leaf by leaf in BmapScene.leaf            */
 } BmapDraw;
+
+/* One hand-made grass leaf of a placed scene (bmap_grass, research): the pass that lays the
+ * grass over a Pokemon takes a leaf whole, and a ring of leaves together. */
+typedef struct BmapLeaf {
+    unsigned first, count;     /* its vertices in BmapScene.v                         */
+    unsigned draw;             /* its draw (BmapScene.d)                              */
+    float tip[3];              /* its tip (battle units)                              */
+    float heart[2];            /* its bush's heart, x and z (battle units)            */
+    float reach;               /* how far its ring's leaves reach from the heart      */
+} BmapLeaf;
 
 /* A place's own intro camera (the intro's and the send-out's, the cameras
  * further out than the command camera's), apart from the command camera:
@@ -198,6 +210,8 @@ typedef struct BmapScene {
                                along x and z; the camera's clearance leaves out whole the
                                one or two the camera stands in or right beside           */
     unsigned n_trees;
+    BmapLeaf *leaf;         /* the hand-made grass leaves (bmap_place, research); owned */
+    unsigned n_leaf;
     int shared;             /* a copy (bmap_copy): textures, the animations and
                                the ground index belong to the original, which
                                must outlive it                                */

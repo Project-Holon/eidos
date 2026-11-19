@@ -55,6 +55,7 @@ typedef struct {
 typedef struct {
     int piece, flip;
     float at[3], yaw, elev, bend, roll, scale, width, cup, shade, ao, thick, rim, back;
+    float reach;                        /* how far its ring's leaves reach from the bush's heart (map units) */
 } GlPut;
 
 struct BmapGrassKind {
@@ -108,6 +109,8 @@ static void gl_finish(BmapGrassKind *g)
     for (g->ah = 8; g->ah < h; g->ah *= 2) {
     }
 }
+
+static void gl_reaches(BmapGrassKind *g);
 
 static void gl_load(void)
 {
@@ -293,6 +296,7 @@ static void gl_load(void)
     fclose(f);
     for (i = 0; i < g_ngl; i++) {
         gl_finish(g_gl[i]);
+        gl_reaches(g_gl[i]);
     }
     if (getenv("BMAP_GRASS_LOG") != NULL) {
         fprintf(stderr, "bmap grass layers: %d grasses, %d hidden sheets from %s\n", g_ngl, g_gl_nhide, path);
@@ -469,8 +473,69 @@ static void gl_quad(BmapGrassEmit *emit, void *ctx, const float a[3], const floa
     emit(ctx, t2, u2, shade);
 }
 
+/* A put's leaf with nothing turned or moved: the bush at the origin, a map unit a unit. */
+static void gl_plain(const BmapGrassKind *g, const GlPut *u, GlLeaf *L)
+{
+    static const float ex[2] = { 1.0f, 0.0f }, ez[2] = { 0.0f, 1.0f };
+    const GlPiece *pc = &g->pc[u->piece];
+    const float yaw = u->yaw < -999.0f ? pc->axis : u->yaw * D2R, ltot = pc->smax * u->scale;
+
+    memset(L, 0, sizeof *L);
+    L->pc = pc;
+    L->u = u;
+    L->at3[0] = u->at[0];
+    L->at3[1] = u->at[1];
+    L->at3[2] = u->at[2];
+    L->th0 = u->elev * D2R;
+    L->scale = u->scale;
+    L->aax = cosf(pc->axis);
+    L->aay = sinf(pc->axis);
+    L->dhx = cosf(yaw);
+    L->dhz = sinf(yaw);
+    L->kb = u->bend * D2R / (ltot > 1e-3f ? ltot : 1e-3f);
+    L->cr = cosf(u->roll * D2R);
+    L->sr = sinf(u->roll * D2R);
+    L->pk = 1.0f;
+    L->mxv = ex;
+    L->mzv = ez;
+}
+
+/* Each put's ring (the puts of the kind whose roots lie equally far from the bush's middle, to a tenth) and how
+ * far that ring's leaves reach: the furthest tip. */
+static void gl_reaches(BmapGrassKind *g)
+{
+    int i, j;
+
+    for (i = 0; i < g->nput; i++) {
+        GlPut *u = &g->put[i];
+        const GlPiece *pc = &g->pc[u->piece];
+        GlLeaf L;
+        float F[3], B[3];
+
+        gl_plain(g, u, &L);
+        (void)gl_corner(&L, pc->rx + cosf(pc->axis) * pc->smax, pc->ry + sinf(pc->axis) * pc->smax, F, B);
+        u->reach = sqrtf(F[0] * F[0] + F[2] * F[2]);
+    }
+    for (i = 0; i < g->nput; i++) {
+        const long ri = lroundf(sqrtf(g->put[i].at[0] * g->put[i].at[0] + g->put[i].at[2] * g->put[i].at[2]) * 10.0f);
+        float m = g->put[i].reach;
+
+        for (j = 0; j < g->nput; j++) {
+            const long rj = lroundf(sqrtf(g->put[j].at[0] * g->put[j].at[0] + g->put[j].at[2] * g->put[j].at[2]) * 10.0f);
+
+            if (rj == ri && g->put[j].reach > m) {
+                m = g->put[j].reach;
+            }
+        }
+        g->put[i].reach = -m;           /* (kept negative until every ring is done) */
+    }
+    for (i = 0; i < g->nput; i++) {
+        g->put[i].reach = -g->put[i].reach;
+    }
+}
+
 void bmap_grass_tile(const BmapGrassKind *g, const BmapTexture *atlas, float ox, float y, float oz, const float mxv[2],
-                     const float mzv[2], float pk, unsigned hash, BmapGrassEmit *emit, void *ctx)
+                     const float mzv[2], float pk, unsigned hash, BmapGrassEmit *emit, BmapGrassLeafFn *leaf, void *ctx)
 {
     int pi, si;
 
@@ -523,6 +588,13 @@ void bmap_grass_tile(const BmapGrassKind *g, const BmapTexture *atlas, float ox,
             L.pk = pk;
             L.mxv = mxv;
             L.mzv = mzv;
+            if (leaf != NULL) {
+                const float heart[2] = { ox + mxv[0] * bcx + mzv[0] * bcz, oz + mxv[1] * bcx + mzv[1] * bcz };
+                float tip[3], under[3];
+
+                (void)gl_corner(&L, pc->rx + cosf(pc->axis) * pc->smax, pc->ry + sinf(pc->axis) * pc->smax, tip, under);
+                leaf(ctx, tip, heart, u->reach * bf * sqrtf(mxv[0] * mxv[0] + mxv[1] * mxv[1]));
+            }
             if (pc->drawn) {
                 /* a drawn leaf: its picture laid over the leaf's surface, cut in strips across the leaf (every
                  * `mesh` rows) and along its middle (the fold of its cup).  The leaf runs along the picture's
@@ -550,6 +622,9 @@ void bmap_grass_tile(const BmapGrassKind *g, const BmapTexture *atlas, float ox,
                         }
                         lit = u->shade * (u->ao + (1.0f - u->ao) * fa);
                         gl_quad(emit, ctx, F[0], F[1], F[2], F[3], (const float (*)[2])uv, lit);
+                        if (u->thick > 0.0f) {      /* (its under side, a little under it and darker) */
+                            gl_quad(emit, ctx, B[0], B[1], B[2], B[3], (const float (*)[2])uv, lit * u->back);
+                        }
                     }
                 }
                 continue;

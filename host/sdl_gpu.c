@@ -722,6 +722,19 @@ void w2c_env_SDL_SetGPUStencilReference(struct w2c_env *e, u32 pass, u32 ref)
     SDL_SetGPUStencilReference((SDL_GPURenderPass *)H(pass), (Uint8)ref);
 }
 
+/* (six floats: the same in the guest and the host) */
+void w2c_env_SDL_SetGPUViewport(struct w2c_env *e, u32 pass, u32 viewport)
+{
+    SDL_GPUViewport v;
+
+    (void)e;
+    if (M(viewport, sizeof v) == NULL) {
+        return;
+    }
+    memcpy(&v, M(viewport, sizeof v), sizeof v);
+    SDL_SetGPUViewport((SDL_GPURenderPass *)H(pass), &v);
+}
+
 /* SDL_FColor by value: wasm32's C ABI passes it as the address of a copy */
 void w2c_env_SDL_SetGPUBlendConstants(struct w2c_env *e, u32 pass, u32 color)
 {

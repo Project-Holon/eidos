@@ -35,11 +35,15 @@ int bmap_grass_atlases(BmapScene *s);
 /* One triangle of a tile: corners (battle units), texture coordinates in the atlas, its light (of the sheet's). */
 typedef void BmapGrassEmit(void *ctx, const float p[3][3], const float uv[3][2], float shade);
 
+/* A leaf begins (the triangles emitted next are its own): its tip (battle units), its bush's heart (x, z) and how
+ * far its ring's leaves reach from the heart (battle units). */
+typedef void BmapGrassLeafFn(void *ctx, const float tip[3], const float heart[2], float reach);
+
 /* A tile's pieces: the tile's middle (ox, oz) and ground y in battle units; mxv, mzv: the battle's vector for one
  * map unit east and one south; pk: battle units a map unit of height; hash: the tile's own number (each tile's
- * bushes differ); atlas: the kind's atlas picture in the scene. */
+ * bushes differ); atlas: the kind's atlas picture in the scene; leaf (or NULL): told as each leaf begins. */
 void bmap_grass_tile(const BmapGrassKind *g, const BmapTexture *atlas, float ox, float y, float oz, const float mxv[2],
-                     const float mzv[2], float pk, unsigned hash, BmapGrassEmit *emit, void *ctx);
+                     const float mzv[2], float pk, unsigned hash, BmapGrassEmit *emit, BmapGrassLeafFn *leaf, void *ctx);
 
 #ifdef __cplusplus
 }

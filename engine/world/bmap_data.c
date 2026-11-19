@@ -5939,6 +5939,7 @@ void bmap_free(BmapScene *s)
     free(s->d);
     free(s->prep);
     free(s->trees);
+    free(s->leaf);
     if (s->shared) {                    /* a copy (bmap_copy): the rest is the original's */
         memset(s, 0, sizeof *s);
         return;

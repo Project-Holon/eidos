@@ -39,6 +39,7 @@ static const char *k_fs_view =
     "uniform sampler2D mask;\n"
     "uniform vec4 mrect;\n"
     "uniform float winh;\n"
+    "uniform int strict;\n"
     "in vec2 uv;\n"
     "out vec4 color;\n"
     "void main() {\n"
@@ -46,10 +47,13 @@ static const char *k_fs_view =
     "    if (mode == 2) { color = c; return; }\n"
     "    if (c.a <= 0.0) discard;\n"
     "    if (mode == 4) {\n"
-    "        if (c.a >= 0.999) { color = vec4(c.rgb / c.a, 1.0); return; }\n"
+    "        /* (research, BMAP_FRONT_SPRITE_ONLY: the opaque pixels too only on the sprite's own pixels, as the\n"
+    "           game's second pass lays the map only where the game drew) */\n"
+    "        if (c.a >= 0.999 && strict == 0) { color = vec4(c.rgb / c.a, 1.0); return; }\n"
     "        if (mrect.z <= mrect.x || mrect.w <= mrect.y) discard;\n"
     "        vec2 m = (vec2(gl_FragCoord.x, winh - gl_FragCoord.y) - mrect.xy) / (mrect.zw - mrect.xy);\n"
     "        if (m.x < 0.0 || m.y < 0.0 || m.x > 1.0 || m.y > 1.0 || texture(mask, m).a <= 0.0) discard;\n"
+    "        if (c.a >= 0.999) { color = vec4(c.rgb / c.a, 1.0); return; }\n"
     "        color = c;\n"
     "        return;\n"
     "    }\n"
@@ -59,7 +63,7 @@ static const char *k_fs_view =
 
 typedef struct GlView {
     GLuint prog, vao;
-    GLint u_rect, u_uvr, u_tex, u_mode, u_fx, u_alpha, u_mask, u_mrect, u_winh;
+    GLint u_rect, u_uvr, u_tex, u_mode, u_fx, u_alpha, u_mask, u_mrect, u_winh, u_strict;
     int win_w, win_h;
     int failed;
 } GlView;
@@ -87,6 +91,7 @@ static int view_init(EidosGl *g)
     v->u_mask = g->glGetUniformLocation(v->prog, "mask");
     v->u_mrect = g->glGetUniformLocation(v->prog, "mrect");
     v->u_winh = g->glGetUniformLocation(v->prog, "winh");
+    v->u_strict = g->glGetUniformLocation(v->prog, "strict");
     eidos_gl_quad_vao(g, &v->vao);
     return 0;
 }
@@ -241,6 +246,7 @@ void eidos_gl_view_draw(EidosGl *g, unsigned tex, int mode, int x, int y, int w,
     if (mode == 4) {
         g->glUniform4f(v->u_mrect, g_mrect[0], g_mrect[1], g_mrect[2], g_mrect[3]);
         g->glUniform1f(v->u_winh, H);
+        g->glUniform1i(v->u_strict, getenv("BMAP_FRONT_SPRITE_ONLY") != NULL);     /* (research) */
         g->glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, (GLuint)(g_mask_tex != 0 ? g_mask_tex : tex));
         g->glUniform1i(v->u_mask, 1);

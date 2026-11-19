@@ -163,7 +163,7 @@ static int gm_rosette(const char *n)
     return strncmp(n, "kusa_ec1", 8) == 0 || strncmp(n, "kusa_ec2", 8) == 0 || strcmp(n, "kusa1_wf") == 0;
 }
 
-typedef struct { BmapVertex *v; unsigned n, cap; int fail; } GmBuf;
+typedef struct { BmapVertex *v; unsigned n, cap; int fail; BmapLeaf *lf; unsigned nlf, lcap; } GmBuf;
 static float g_gm_shade = 1.0f;     /* (research: a new triangle's light, of its source's) */
 
 typedef struct { GmBuf *b; const BmapVertex *src; } GlCtx;
@@ -177,6 +177,34 @@ static void gl_emit(void *ctx, const float p[3][3], const float uv[3][2], float 
     g_gm_shade = shade > 1.0f ? 1.0f : shade;
     gm_tri(c->b, c->src, p, uv);
     g_gm_shade = 1.0f;
+    if (c->b->nlf > 0u) {
+        c->b->lf[c->b->nlf - 1u].count = c->b->n - c->b->lf[c->b->nlf - 1u].first;
+    }
+}
+
+/* (research) a hand-made grass leaf begins: listed, for the pass that lays the grass over a Pokemon leaf by leaf */
+static void gl_leaf(void *ctx, const float tip[3], const float heart[2], float reach)
+{
+    GmBuf *b = ((GlCtx *)ctx)->b;
+    BmapLeaf *lf;
+
+    if (b->nlf == b->lcap) {
+        const unsigned nc = b->lcap ? b->lcap * 2u : 256u;
+        BmapLeaf *nl = (BmapLeaf *)realloc(b->lf, nc * sizeof *nl);
+
+        if (nl == NULL) {
+            return;
+        }
+        b->lf = nl;
+        b->lcap = nc;
+    }
+    lf = &b->lf[b->nlf++];
+    lf->first = b->n;
+    lf->count = 0u;
+    lf->draw = 0u;
+    memcpy(lf->tip, tip, sizeof lf->tip);
+    memcpy(lf->heart, heart, sizeof lf->heart);
+    lf->reach = reach;
 }
 
 /* (research) the arm of a rosette nearest an angle */
@@ -1342,6 +1370,28 @@ static void gm_tile(GmBuf *b, const BmapVertex *src, int m, float ox, float y, f
 #undef GZ
 }
 
+/* (research, BMAP_GRASS_FEET) where the hand-made bush of the map tile (cx, cz) stands, map units: the tile's
+ * middle, or, when one of the single battle's two Pokemon stands on the tile, that Pokemon's place: it stands in
+ * the bush, not beside it.  ca, sa, pk: the placement's turn and scale. */
+static void grass_bush_place(const BmapScene *s, float ca, float sa, float pk, int cx, int cz, float *mx, float *mz)
+{
+    static int on = -1;
+    const float fx = (FOE_SX - PLACE_SX) / pk, fz = (FOE_SZ - PLACE_SZ) / pk;
+    const float at[2][2] = { { s->place_x, s->place_z }, { s->place_x + ca * fx + sa * fz, s->place_z - sa * fx + ca * fz } };
+    int k;
+
+    if (on < 0) {
+        on = getenv("BMAP_GRASS_FEET") != NULL;
+    }
+    for (k = 0; on && k < 2; k++) {
+        if ((int)floorf(at[k][0] / 16.0f) == cx && (int)floorf(at[k][1] / 16.0f) == cz) {
+            *mx = at[k][0];
+            *mz = at[k][1];
+            return;
+        }
+    }
+}
+
 static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned nd0, float tile)
 {
     const unsigned char *mask = g_tmask;
@@ -1357,6 +1407,10 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
     GmBuf *gbuf = NULL;             /* (research: the grass methods, a buffer a draw) */
     int *gdraw_m = NULL;
     unsigned tufts_all = 0, tufts_ok = 0;
+
+    free(s->leaf);                  /* (the leaves of an earlier placement) */
+    s->leaf = NULL;
+    s->n_leaf = 0u;
 
     for (i = 0; i < nd0; i++) {
         if (grass[i]) {
@@ -1476,7 +1530,10 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
                         tufts_all++;
                     }
                     if (gbuf != NULL && gdraw_m[i] != 0) {
-                        const float rx = mx - s->place_x, rz = mz - s->place_z;
+                        float bmx = mx, bmz = mz;       /* (where the tile's bush stands) */
+                        const float rx = ((gdraw_m[i] == 30 ? grass_bush_place(s, ca, sa, pk, cx, cz, &bmx, &bmz) : (void)0), bmx)
+                                         - s->place_x,
+                                    rz = bmz - s->place_z;
                         const float bx = PLACE_SX + pk * (ca * rx - sa * rz), bz = PLACE_SZ + pk * (sa * rx + ca * rz);
                         const float mxv[2] = { pk * ca, pk * sa }, mzv[2] = { -pk * sa, pk * ca };
                         const BmapTexture *gt = g->tex >= 0 && (unsigned)g->tex < s->nt ? &s->t[g->tex] : NULL;
@@ -1501,7 +1558,7 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
                             gc.b = &gbuf[i];
                             gc.src = a;
                             bmap_grass_tile(gg, at, bx, y, bz, mxv, mzv, pk, ((unsigned)(cx * 73856093) ^ (unsigned)(cz * 19349663)),
-                                            gl_emit, &gc);
+                                            gl_emit, gl_leaf, &gc);
                             continue;
                         }
                         gm_tile(&gbuf[i], a, gdraw_m[i], bx, y, bz, mxv, mzv, pk, gt != NULL ? gm_layer_h(gt->name) : 8.0f, gt, 0);
@@ -1563,6 +1620,20 @@ old_tufts:
                     continue;
                 }
                 memcpy(&s->v[nv], gbuf[i].v, gbuf[i].n * sizeof *gbuf[i].v);
+                if (gbuf[i].nlf > 0u) {         /* (its leaves: listed in the scene) */
+                    BmapLeaf *nl = (BmapLeaf *)realloc(s->leaf, (s->n_leaf + gbuf[i].nlf) * sizeof *nl);
+                    unsigned q;
+
+                    for (q = 0; nl != NULL && q < gbuf[i].nlf; q++) {
+                        nl[s->n_leaf + q] = gbuf[i].lf[q];
+                        nl[s->n_leaf + q].first += nv;
+                        nl[s->n_leaf + q].draw = nd;
+                    }
+                    if (nl != NULL) {
+                        s->leaf = nl;
+                        s->n_leaf += gbuf[i].nlf;
+                    }
+                }
                 n2 = s->d[i];
                 n2.first = nv;
                 n2.count = gbuf[i].n;
@@ -1573,6 +1644,7 @@ old_tufts:
                 n2.cull = 0;
                 n2.billboard = 0;
                 n2.grass = gdraw_m[i] < 10;
+                n2.leafy = gbuf[i].nlf > 0u;
                 if (gdraw_m[i] == 30 && n2.tex >= 0 && (unsigned)n2.tex < s->nt) {
                     const BmapGrassKind *gg = bmap_grass_find(s->t[n2.tex].name);
                     char an[17];
@@ -1597,6 +1669,7 @@ old_tufts:
         }
         for (i = 0; i < nd0; i++) {
             free(gbuf[i].v);
+            free(gbuf[i].lf);
         }
         free(gbuf);
         free(gdraw_m);
@@ -2430,6 +2503,8 @@ int bmap_copy(BmapScene *dst, const BmapScene *src)
     dst->shared = 1;
     dst->trees = NULL;                  /* (found again when the copy is placed) */
     dst->n_trees = 0;
+    dst->leaf = NULL;                   /* (listed again when the copy is placed) */
+    dst->n_leaf = 0;
     dst->v = (BmapVertex *)malloc((src->nv > 0 ? src->nv : 1) * sizeof *dst->v);
     dst->d = (BmapDraw *)malloc((src->nd > 0 ? src->nd : 1) * sizeof *dst->d);
     dst->prep = NULL;

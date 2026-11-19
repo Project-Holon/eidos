@@ -415,6 +415,9 @@ static const char *k_fsb =
     "uniform vec4 u_poke[32];\n"
     "uniform int u_npoke;\n"
     "uniform int u_grass;\n"
+    "uniform int u_leaf;\n"
+    "uniform float u_tint;\n"
+    "uniform int u_only;\n"
     "uniform vec4 u_clr[32];\n"
     "uniform int u_nclr;\n"
     "uniform vec4 u_sky;\n"
@@ -535,7 +538,14 @@ static const char *k_fsb =
     "                   tested against the sprite's own size, not the loose\n"
     "                   box (a near Pokemon's loose box reaches the far one\n"
     "                   on screen, and the map in front of the far one went) */\n"
-    "                if (along <= L - 0.3) { keep = true; }\n"
+    "                if (u_leaf == 1) {\n"
+    "                    /* a grass leaf sent whole for the Pokemon u_only (chosen leaf by\n"
+    "                       leaf): over that one, wherever its pixels lie; never over\n"
+    "                       another Pokemon it is behind */\n"
+    "                    if (i == u_only) { keep = true; }\n"
+    "                    else if (along > L - 0.3 && abs(sx) < 0.25 * hgt && uy < 0.6 * hgt) { behind = true; }\n"
+    "                }\n"
+    "                else if (along <= L - 0.3) { keep = true; }\n"
     "                else if (abs(sx) < 0.25 * hgt && uy < 0.6 * hgt) { behind = true; }\n"
     "            }\n"
     "        }\n"
@@ -543,6 +553,7 @@ static const char *k_fsb =
     "    }\n"
     "    vec4 c = vec4(v_rgb, 1.0);\n"
     "    if (u_tex == 1) { c *= texture(u_texture, v_st); }\n"
+    "    if (u_front == 1 && u_tint > 0.0) { c.rgb = mix(c.rgb, vec3(1.0, 0.0, 0.0), u_tint); }\n"
     "    float a = c.a * u_alpha;\n"
     "    if (a < u_cut || a >= u_cut_hi) { discard; }\n"
     "    if (u_cut > 0.4) { a = 1.0; }\n"
@@ -595,6 +606,7 @@ typedef struct Gl3dBackdrop {
     GLint u_lift;
     GLint u_fog2;
     GLint u_r[4], u_pivot, u_bb, u_eye, u_foc, u_fog, u_fogc, u_tex, u_texture, u_alpha, u_cut, u_cut_hi;
+    GLint u_leaf, u_only, u_tint;
     GLint u_front, u_poke, u_npoke, u_grass, u_uv0, u_uv1, u_clr, u_nclr, u_sky, u_skyu, u_skyv;
     const void *scene;          /* the scene on the GPU                    */
     unsigned gen;
@@ -769,6 +781,9 @@ static int backdrop_init(EidosGl *g)
     g_bd.u_clr = g->glGetUniformLocation(g_bd.prog, "u_clr");
     g_bd.u_nclr = g->glGetUniformLocation(g_bd.prog, "u_nclr");
     g_bd.u_grass = g->glGetUniformLocation(g_bd.prog, "u_grass");
+    g_bd.u_leaf = g->glGetUniformLocation(g_bd.prog, "u_leaf");
+    g_bd.u_only = g->glGetUniformLocation(g_bd.prog, "u_only");
+    g_bd.u_tint = g->glGetUniformLocation(g_bd.prog, "u_tint");
     g_bd.u_uv0 = g->glGetUniformLocation(g_bd.prog, "u_uv0");
     g_bd.u_uv1 = g->glGetUniformLocation(g_bd.prog, "u_uv1");
     g_bd.u_sky = g->glGetUniformLocation(g_bd.prog, "u_sky");
@@ -1176,11 +1191,26 @@ static void front_depth_clear(const G3dBackdrop *b, const float r[4][4])
     glDisable(GL_SCISSOR_TEST);
 }
 
+/* (research) BMAP_GRASS_LEAFRULE=1: the hand-made grass is laid over a Pokemon leaf by leaf and ring by ring
+ * (a leaf always whole), not by the flat cut in front of the Pokemon. */
+static int leaf_rule(void)
+{
+    static int on = -1;
+
+    if (on < 0) {
+        const char *e = getenv("BMAP_GRASS_LEAFRULE");
+
+        on = e != NULL && e[0] != '0' && e[0] != '\0';
+    }
+    return on;
+}
+
 static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
 {
     const BmapScene *sc = (const BmapScene *)b->scene;
     float r[4][4], fwd[3];
     unsigned pass, i;
+    int leaf_pass = 0;
     /* the field plays its animations a frame a field frame (60 a second) */
     unsigned uv_frame = (unsigned)(SDL_GetTicks() * 60u / 1000u);
     int uv_set = 1;
@@ -1213,6 +1243,9 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     g->glUniform1i(g_bd.u_nclr, (GLint)(b->n_clear > G3D_BACKDROP_CLEAR ? G3D_BACKDROP_CLEAR : b->n_clear));
     g->glUniform4fv(g_bd.u_clr, G3D_BACKDROP_CLEAR, &b->clear[0][0]);
     g->glUniform3fv(g_bd.u_foc, 1, b->target);
+    g->glUniform1i(g_bd.u_leaf, 0);
+    g->glUniform1f(g_bd.u_tint, getenv("BMAP_FRONT_TINT") != NULL ? 0.75f : 0.0f);   /* (research) */
+    g->glUniform1i(g_bd.u_only, -1);
     {
         /* the zone's fog, or the weather's: by the depth along the field
          * camera's line of sight past the battle's place (BmapScene.fog_k,
@@ -1288,6 +1321,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         glDrawArrays(GL_TRIANGLES, (GLint)sc->sky_first, (GLsizei)sc->sky_count);
         g->glUniform4f(g_bd.u_sky, 0.0f, 0.0f, 0.0f, 0.0f);
     }
+    leaf_pass = front == 1 && b->front_only && sc->n_leaf > 0u && sc->leaf != NULL && leaf_rule();
     for (pass = front == 3 ? 1 : 0; pass < 2; pass++) {
         if (pass == 1) {
             glEnable(GL_BLEND);
@@ -1354,6 +1388,11 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
             }
             /* the surf mount while the Pokemon surfed on is out itself */
             if (d->mount && bmap_mount_hidden()) {
+                i += run - 1;
+                continue;
+            }
+            /* (research) the hand-made grass leaves are laid over the sprites leaf by leaf, below */
+            if (leaf_pass && d->leafy) {
                 i += run - 1;
                 continue;
             }
@@ -1426,6 +1465,94 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                 glDrawArrays(GL_TRIANGLES, (GLint)first, (GLsizei)count);
             }
         }
+    }
+    if (leaf_pass) {
+        /* (research, BMAP_GRASS_LEAFRULE) the hand-made grass over each Pokemon, leaf by leaf and ring by ring:
+         * a leaf is laid whole over a Pokemon or not at all.  While the Pokemon stands outside a ring's reach,
+         * the whole ring goes by its bush's heart (nearer the eye than the Pokemon: over it).  While it stands
+         * inside the reach, a leaf of that ring is over it when the leaf reaches past it toward the eye (its tip
+         * nearer the eye than the Pokemon's feet). */
+        static const float id[6] = { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f };
+        static GLuint *lidx;
+        static unsigned lcap;
+        static GLuint lbo;
+        unsigned pi, li;
+
+        if (lbo == 0) {
+            g->glGenBuffers(1, &lbo);
+        }
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_CULL_FACE);
+        g->glUniform1i(g_bd.u_leaf, 1);
+        g->glUniform1i(g_bd.u_bb, 0);
+        g->glUniform1f(g_bd.u_lift, 0.0f);
+        g->glUniform1f(g_bd.u_cut, 0.5f);
+        g->glUniform1f(g_bd.u_cut_hi, 2.0f);
+        g->glUniform3fv(g_bd.u_uv0, 1, id);
+        g->glUniform3fv(g_bd.u_uv1, 1, id + 3);
+        g->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, lbo);
+        for (pi = 0; pi < b->n_poke && pi < G3D_BACKDROP_SPRITES; pi++) {
+            const float *pp = b->poke[pi];
+            float cx = b->eye[0] - pp[0], cz = b->eye[2] - pp[2];
+            const float cl = sqrtf(cx * cx + cz * cz);
+
+            if (pp[3] <= 0.0f || cl < 1e-3f) {      /* (a shield is never covered) */
+                continue;
+            }
+            cx /= cl;
+            cz /= cl;
+            g->glUniform1i(g_bd.u_only, (GLint)pi);
+            for (li = 0; li < sc->n_leaf;) {
+                const unsigned di = sc->leaf[li].draw;
+                const BmapDraw *d = di < sc->nd ? &sc->d[di] : NULL;
+                unsigned n = 0;
+
+                for (; li < sc->n_leaf && sc->leaf[li].draw == di; li++) {
+                    const BmapLeaf *lf = &sc->leaf[li];
+                    const float hx = lf->heart[0] - pp[0], hz = lf->heart[1] - pp[2];
+                    const float val = sqrtf(hx * hx + hz * hz) > lf->reach
+                                          ? hx * cx + hz * cz
+                                          : (lf->tip[0] - pp[0]) * cx + (lf->tip[2] - pp[2]) * cz;
+                    unsigned k;
+
+                    /* (not over it; or too far to the side of the line from the eye to stand over its picture) */
+                    if (val <= 0.0f || lf->count == 0u || lf->first + lf->count > sc->nv
+                        || fabsf(hz * cx - hx * cz) > pp[3] + lf->reach + 1.0f) {
+                        continue;
+                    }
+                    if (n + lf->count > lcap) {
+                        const unsigned nc = (n + lf->count) * 2u + 4096u;
+                        GLuint *ni = (GLuint *)realloc(lidx, nc * sizeof *ni);
+
+                        if (ni == NULL) {
+                            continue;
+                        }
+                        lidx = ni;
+                        lcap = nc;
+                    }
+                    for (k = 0; k < lf->count; k++) {
+                        lidx[n++] = lf->first + k;
+                    }
+                }
+                if (n == 0u || d == NULL) {
+                    continue;
+                }
+                if (d->tex >= 0 && (unsigned)d->tex < g_bd.n_tex) {
+                    glBindTexture(GL_TEXTURE_2D, g_bd.tex[d->tex]);
+                    g->glUniform1i(g_bd.u_tex, 1);
+                } else {
+                    g->glUniform1i(g_bd.u_tex, 0);
+                }
+                g->glUniform1i(g_bd.u_grass, d->grass);
+                g->glUniform1f(g_bd.u_alpha, (float)d->alpha / 31.0f);
+                g->glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)((size_t)n * sizeof *lidx), lidx, GL_STREAM_DRAW);
+                glDrawElements(GL_TRIANGLES, (GLsizei)n, GL_UNSIGNED_INT, (const void *)0);
+            }
+        }
+        g->glUniform1i(g_bd.u_leaf, 0);
+        g->glUniform1i(g_bd.u_only, -1);
+        g->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_bd.ibo);
     }
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
