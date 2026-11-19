@@ -903,6 +903,7 @@ set(BW_ENGINE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/candle.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/boardwalk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/stake.c
 
     # engine/audio/ -- the SDAT sequencer and mixer, the host's stand-in for
     # the ARM7 sound core.  No SDL here either: the platform layer's audio
@@ -2791,6 +2792,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plate.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/candle.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/boardwalk.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/stake.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_grass.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_leaf.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c
@@ -2850,6 +2852,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plate.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/candle.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/boardwalk.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/stake.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_grass.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_leaf.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_data.c)
@@ -3203,7 +3206,8 @@ if(NOT MSVC AND NOT APPLE AND EIDOS_BOOT AND TARGET eidos_platform)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/cup.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/plate.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/candle.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/boardwalk.c)
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/boardwalk.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/remade/stake.c)
     target_sources(eidos_boot PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_grass.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/world/bmap_leaf.c

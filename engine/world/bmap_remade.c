@@ -58,6 +58,11 @@ static const BmapRemade k_remade[] = {
     { "m00061", rm_boardwalk, "" },   /* Route 7, the chunk at (1792, 3840): the same walkway */
     { "m00062", rm_boardwalk, "" },   /* Route 7, the chunk at (2304, 3840): the same walkway */
     { "m00204", rm_boardwalk, "" },   /* Route 7, the chunk at (2304, 4352): the same walkway (the chunk also lies at (2816, 3840), with no walkway there) */
+    { "m00068", rm_stake, "y=0" },   /* Route 8, the chunk at (3328, 2816): the stakes in its ponds (the water lies at 0) */
+    { "m00069", rm_stake, "y=0" },   /* Route 8, the chunk at (3840, 2816): the same stakes */
+    { "m00383", rm_stake, "y=0" },   /* Moor of Icirrus, the chunk at (256, 256): the same stakes (the water lies at 0) */
+    { "m00384", rm_stake, "y=0" },   /* Moor of Icirrus, the chunk at (256, 768): the same stakes */
+    { "m00386", rm_stake, "y=0" },   /* Moor of Icirrus, the chunk at (768, 768): the same stakes */
     { "m00055", rm_mesh, "tower|seal=0,stepsx=244:-160:78:252:-160:70:256:64:1:-240:-64:3:8:4:8:12" },   /* Route 6, the chunk at (1792, 5376): the east side of the tree-topped ledge at x 2048, where the chunk ends and the chunk east of it has nothing over z 5120..5504 (the field never looks there): a wall from the ground's own profile down to -16, the lowest ground about it, in the picture of the ledge's own east cliff (from a battle camera to its east the ledge floated over the sky) */
     { "m00600", rm_mesh, "settle@-256:256:10.5:28:-256:256|max=6" },   /* Black City, the hall: the lamps on the counters stand 1.6 over the counter's top (their base at 12.6, the counter at 11), set down onto it */
     { "m00093", rm_mesh, "hedge@-226:98:-46.1:-31.9:-226:146|inset=0.5" },   /* Undella Town, the flower hedges by the fountain: hollow boxes whose sides' picture has a ragged see-through edge; each given a solid core in its own green (hedge.c) */

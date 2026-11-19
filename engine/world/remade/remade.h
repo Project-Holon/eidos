@@ -110,6 +110,7 @@ RmBuild rm_hedge;               /* hedge.c: a hollow hedge with see-through side
 RmBuild rm_plate;               /* plate.c: flat floor pieces given height and sides (a switch's pad) */
 RmBuild rm_candle;              /* candle.c: a candle-on-its-dish card made a dish, a candle and its flame */
 RmBuild rm_boardwalk;           /* boardwalk.c: a plank walkway on posts: posts to the ground on four sides, planks with a thickness */
+RmBuild rm_stake;               /* stake.c: a stake in a pond drawn as a lying card: a round post, its ring on the water */
 
 /* --- helpers (common.c) --- */
 
