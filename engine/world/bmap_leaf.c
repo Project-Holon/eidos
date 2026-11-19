@@ -15,7 +15,7 @@ int bmap_leaf_rule(void)
     if (on < 0) {
         const char *e = getenv("BMAP_GRASS_LEAFRULE");
 
-        on = e != NULL && e[0] != '0' && e[0] != '\0';
+        on = e == NULL || (e[0] != '0' && e[0] != '\0');     /* (on; BMAP_GRASS_LEAFRULE=0: the flat cut) */
     }
     return on;
 }

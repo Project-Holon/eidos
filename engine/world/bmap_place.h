@@ -54,9 +54,10 @@ typedef struct BmapPlaceSpec {
                                may lie on another level than the player             */
     BmapIntro intro;        /* the far cameras' own settings (zoom 0 counts
                                as 1; bmap_camera_intro)                       */
-    int doubles;            /* a double battle: four Pokemon stand at the double's
-                               places (research, BMAP_GRASS_FEET: whose feet a
-                               tile's hand-made bush grows at)                 */
+    int doubles;            /* the battle's rule: 0 single, 1 double, 2 triple,
+                               3 rotation: where its Pokemon stand (whose feet a
+                               tile's hand-made bush grows at, where the long
+                               grass is pressed down)                          */
     int field;              /* a field view (eidos_spots' overworld): the grass
                                sheets stay as the field draws them, no tufts  */
     int foe_level;          /* 1: the ground levelled between the two (the foe

@@ -316,29 +316,63 @@ static void gm_blocks(GmBuf *b)
     b->nblk = nb;
 }
 
-static int g_place_doubles;     /* (research, BMAP_GRASS_FEET) the battle being placed is a double (BmapPlaceSpec.doubles) */
+static int g_place_doubles;     /* the rule of the battle being placed (BmapPlaceSpec.doubles): 0 single, 1 double, 2 triple, 3 rotation */
 static const float k_double[4][2];
+/* A triple battle's and a rotation battle's six places (ov094 gBtlvMcssSlotPosTriple, gBtlvMcssSlotPosRotation):
+ * the player's three, then the foe's three. */
+static const float k_triple[6][2] = {
+    { -4.0f, 7.0f }, { 0.75f, 4.75f }, { 5.19f, 6.19f }, { 4.5f, -12.0f }, { 0.74f, -9.0f }, { -4.39f, -12.0f },
+};
+static const float k_rotation[6][2] = {
+    { 0.0f, 7.0f }, { -4.33f, 14.5f }, { 4.33f, 14.5f }, { 0.0f, -8.0f }, { 4.33f, -15.5f }, { -4.33f, -15.5f },
+};
 
-/* (research, BMAP_GRASS_FEET) where the hand-made bush of the map tile (cx, cz) stands, map units: the tile's
- * middle, or, when one of the battle's Pokemon stands on the tile (a single's two, a double's four), that Pokemon's
- * place: it stands in the bush, not beside it.  A tile has one bush: with two Pokemon on the tile it stays at the
- * tile's middle.  ca, sa, pk: the placement's turn and scale. */
+/* The places of the battle's Pokemon by its rule (battle units, x and z): the player's side first, then the foe's
+ * (pushed back with the foe's slot).  Returns how many. */
+static int battle_places(float at[6][2])
+{
+    const float (*t)[2] = g_place_doubles == 1 ? k_double : g_place_doubles == 2 ? k_triple : g_place_doubles == 3 ? k_rotation : NULL;
+    const int n = g_place_doubles == 1 ? 4 : 6;
+    int k;
+
+    if (t == NULL) {
+        at[0][0] = 0.5f;
+        at[0][1] = PLACE_SZ;
+        at[1][0] = FOE_SX;
+        at[1][1] = FOE_SZ;
+        return 2;
+    }
+    for (k = 0; k < n; k++) {
+        at[k][0] = t[k][0];
+        at[k][1] = t[k][1] + (k >= n / 2 ? FOE_SZ - FOE_SZ_GAME : 0.0f);
+    }
+    return n;
+}
+
+/* Where the hand-made bush of the map tile (cx, cz) stands, map units: the tile's middle, or, when one of the
+ * battle's Pokemon stands on the tile, that Pokemon's place: it stands in the bush, not beside it.  A tile has one
+ * bush: with two Pokemon on the tile it stays at the tile's middle.  ca, sa, pk: the placement's turn and scale.
+ * BMAP_GRASS_FEET=0: every bush at its tile's middle. */
 static void grass_bush_place(const BmapScene *s, float ca, float sa, float pk, int cx, int cz, float *mx, float *mz)
 {
     static int on = -1;
-    float at[4][2];
+    float at[6][2];
     int k, n = 0, hit = -1, hits = 0;
 
     if (on < 0) {
-        on = getenv("BMAP_GRASS_FEET") != NULL;
+        const char *e = getenv("BMAP_GRASS_FEET");
+
+        on = e == NULL || e[0] != '0';
     }
     if (!on) {
         return;
     }
-    if (g_place_doubles) {
-        for (k = 0; k < 4; k++) {
-            const float fx = (k_double[k][0] - PLACE_SX) / pk;
-            const float fz = (k_double[k][1] + (k >= 2 ? FOE_SZ - FOE_SZ_GAME : 0.0f) - PLACE_SZ) / pk;
+    if (g_place_doubles != 0) {
+        float bt[6][2];
+        const int nb = battle_places(bt);
+
+        for (k = 0; k < nb; k++) {
+            const float fx = (bt[k][0] - PLACE_SX) / pk, fz = (bt[k][1] - PLACE_SZ) / pk;
 
             at[n][0] = s->place_x + ca * fx + sa * fz;
             at[n][1] = s->place_z - sa * fx + ca * fz;
@@ -404,20 +438,10 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
     {
         if (bmap_grass_count() > 0 && nd0 > 0) {
             /* (the hand-made grass that is pressed down where a Pokemon stands: the places, battle units) */
-            if (g_place_doubles) {
-                float at[4][2];
-                int q;
+            float at[6][2];
+            const int nat = battle_places(at);
 
-                for (q = 0; q < 4; q++) {
-                    at[q][0] = k_double[q][0];
-                    at[q][1] = k_double[q][1] + (q >= 2 ? FOE_SZ - FOE_SZ_GAME : 0.0f);
-                }
-                bmap_grass_press((const float (*)[2])at, 4);
-            } else {
-                const float at[2][2] = { { 0.5f, PLACE_SZ }, { FOE_SX, FOE_SZ } };
-
-                bmap_grass_press(at, 2);
-            }
+            bmap_grass_press((const float (*)[2])at, nat);
             gbuf = (GmBuf *)calloc(nd0, sizeof *gbuf);
             gdraw_m = (int *)calloc(nd0, sizeof *gdraw_m);
             for (i = 0; gbuf != NULL && gdraw_m != NULL && i < nd0; i++) {

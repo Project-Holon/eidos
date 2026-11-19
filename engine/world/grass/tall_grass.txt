@@ -1,5 +1,6 @@
-# The hand-made grasses of the real-map battles (research, BMAP_GRASS_FILE; the statements are told at the top of
-# engine/world/bmap_grass.c).  Four kinds, one after the other: the normal tall grass, the dark grass (double
+# The hand-made grasses of the real-map battles (the statements are told at the top of engine/world/bmap_grass.c).
+# This file is built into the program: run tools/grass_inc.py after a change.  BMAP_GRASS_FILE=PATH makes the
+# game read a file in its place (to try a change without a build).  Four kinds, one after the other: the normal tall grass, the dark grass (double
 # battles), the long grass (green, and teal for double battles) and White Forest's tall grass.
 #
 # ================================================================== the normal tall grass

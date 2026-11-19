@@ -12,6 +12,11 @@ Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago sup
   - Replaced flat billboard sprites with full 3D models and native ground shadows for rocks, living-room pouffes, Dreamyard bottles, warp pads, the Pokémon League plaza gate, and Relic Castle vases. Fixed rebuilt prop textures bleeding into other objects on subsequent battles in the same session.
   - Added separate 3D door models to houses, labs, and Pokémon Centers so doorways no longer render as empty black openings.
   - Applied completed 3D building geometry to distant landmarks as well as nearby ones, fixing missing back/side walls on far-off structures (such as the Icirrus City Pokémon Center viewed from Route 8).
+- **Grass**:
+  - Rebuilt tall grass, dark grass, long grass, and White Forest grass as hand-drawn 3D plants in place of flat crossed tufts. Each leaf is drawn pixel by pixel in the grass's own colors and follows the seasons.
+  - Pokémon now stand inside the bush of their tile, and leaves cover them one whole leaf at a time instead of being cut along a flat plane.
+  - Replaced the flat lid of long grass, which buried Pokémon up to their heads, with tall blades that are trodden down around each Pokémon in single, double, triple, and rotation battles.
+  - Skipped map geometry that is off screen in both renderers, lowering the cost of every real-map battle.
 - **Live Overworld State**: Real-map battles now reflect the current state of dynamic map objects, including opened gym curtains and switches, pushed strength boulders, Chargestone Cave's floating stones, and the Pokémon League's light pillars.
 - **Water, Sky, Weather & Fog**:
   - Extended ocean geometry past map boundaries and removed distant sky-color terrain fading.

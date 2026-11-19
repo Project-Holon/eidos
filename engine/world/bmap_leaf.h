@@ -1,6 +1,6 @@
 /*
  * engine/world/bmap_leaf.h -- the hand-made grass over a battle's sprites, leaf by leaf (bmap_grass.c's leaves,
- * BmapScene.leaf; research switch BMAP_GRASS_LEAFRULE).
+ * BmapScene.leaf; BMAP_GRASS_LEAFRULE=0 turns the rule off).
  *
  * The game hides a sprite behind the map by depth: the sprite's polygons write the depth of its place.  A leaf of
  * grass that crosses that depth would be cut along it.  The rule keeps a leaf whole: it is over a sprite or under
@@ -43,7 +43,7 @@ typedef struct BmapLeafItem {
                                    0: laid there as well as at its own depth (over a sprite, part of it farther) */
 } BmapLeafItem;
 
-/* Whether the rule is on (BMAP_GRASS_LEAFRULE). */
+/* Whether the rule is on (it is, unless BMAP_GRASS_LEAFRULE=0). */
 int bmap_leaf_rule(void);
 
 /* The leaves of the scene the rule moves for this view, by leaf index ascending; `r` is the view's matrix (clip =

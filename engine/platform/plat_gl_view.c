@@ -47,8 +47,8 @@ static const char *k_fs_view =
     "    if (mode == 2) { color = c; return; }\n"
     "    if (c.a <= 0.0) discard;\n"
     "    if (mode == 4) {\n"
-    "        /* (research, BMAP_FRONT_SPRITE_ONLY: the opaque pixels too only on the sprite's own pixels, as the\n"
-    "           game's second pass lays the map only where the game drew) */\n"
+    "        /* (strict: the opaque pixels too only on the sprite's own pixels, as the game lays the map over a\n"
+    "           sprite only where the sprite is; BMAP_FRONT_SPRITE_ONLY=0: over the sprite's whole box) */\n"
     "        if (c.a >= 0.999 && strict == 0) { color = vec4(c.rgb / c.a, 1.0); return; }\n"
     "        if (mrect.z <= mrect.x || mrect.w <= mrect.y) discard;\n"
     "        vec2 m = (vec2(gl_FragCoord.x, winh - gl_FragCoord.y) - mrect.xy) / (mrect.zw - mrect.xy);\n"
@@ -246,7 +246,11 @@ void eidos_gl_view_draw(EidosGl *g, unsigned tex, int mode, int x, int y, int w,
     if (mode == 4) {
         g->glUniform4f(v->u_mrect, g_mrect[0], g_mrect[1], g_mrect[2], g_mrect[3]);
         g->glUniform1f(v->u_winh, H);
-        g->glUniform1i(v->u_strict, getenv("BMAP_FRONT_SPRITE_ONLY") != NULL);     /* (research) */
+        {
+            const char *e = getenv("BMAP_FRONT_SPRITE_ONLY");
+
+            g->glUniform1i(v->u_strict, e == NULL || e[0] != '0');
+        }
         g->glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, (GLuint)(g_mask_tex != 0 ? g_mask_tex : tex));
         g->glUniform1i(v->u_mask, 1);

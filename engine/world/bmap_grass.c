@@ -1,6 +1,7 @@
 /*
- * engine/world/bmap_grass.c -- hand-made grass layers of the battle backdrop (bmap_grass.h; research:
- * BMAP_GRASS_FILE names the layers file).
+ * engine/world/bmap_grass.c -- hand-made grass layers of the battle backdrop (bmap_grass.h).  The layers file is
+ * grass/tall_grass.txt, built into the program (grass/tall_grass_txt.inc, made by tools/grass_inc.py).
+ * BMAP_GRASS_FILE=PATH reads another file in its place; BMAP_GRASS_FILE=0: no hand-made grass (the tufts).
  *
  * The file, a line a statement ('#' starts a comment):
  *   grass NAME [from PICTURE] [over 0|1]
@@ -71,6 +72,11 @@ struct BmapGrassKind {
     unsigned char ink[128][2], inkset[128];     /* a drawing's colour letters: the picture's pixel of that colour */
 };
 
+/* The layers file as built in. */
+static const char k_grass_builtin[] =
+#include "grass/tall_grass_txt.inc"
+    ;
+
 static BmapGrassKind *g_gl[16];
 static int g_ngl, g_gl_loaded;
 static char g_gl_hide[8][17];
@@ -119,7 +125,8 @@ static void gl_reaches(BmapGrassKind *g);
 static void gl_load(void)
 {
     const char *path = getenv("BMAP_GRASS_FILE");
-    FILE *f;
+    const char *at = k_grass_builtin;
+    char *own = NULL;                   /* (another file's text) */
     char line[512];
     BmapGrassKind *g = NULL;
     int maprow = -1, paint = -1, paintx = 0, painty = 0, drawp = -1, drawrow = 0, i;
@@ -128,13 +135,44 @@ static void gl_load(void)
         return;
     }
     g_gl_loaded = 1;
-    f = path != NULL ? fopen(path, "r") : NULL;
-    if (f == NULL) {
-        return;
+    if (path != NULL) {
+        FILE *f;
+        long size;
+
+        if (path[0] == '\0' || strcmp(path, "0") == 0) {
+            return;                     /* (no hand-made grass) */
+        }
+        f = fopen(path, "rb");
+        if (f == NULL) {
+            return;
+        }
+        fseek(f, 0, SEEK_END);
+        size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        own = size >= 0 ? (char *)malloc((size_t)size + 1u) : NULL;
+        if (own != NULL) {
+            own[fread(own, 1, (size_t)size, f)] = '\0';
+        }
+        fclose(f);
+        if (own == NULL) {
+            return;
+        }
+        at = own;
     }
-    while (fgets(line, sizeof line, f) != NULL) {
-        char *tok[40], *q, *hash = strchr(line, '#');
+    while (*at != '\0') {
+        char *tok[40], *q, *hash;
         int nt = 0;
+        size_t ln = 0, take;
+
+        while (at[ln] != '\0' && at[ln] != '\n') {      /* (the next line, as fgets gave it) */
+            ln++;
+        }
+        take = ln < sizeof line - 2u ? ln : sizeof line - 2u;
+        memcpy(line, at, take);
+        line[take] = '\n';
+        line[take + 1u] = '\0';
+        at += ln + (at[ln] == '\n');
+        hash = strchr(line, '#');
 
         if (drawp >= 0 && g != NULL) {          /* (a row of a drawing, or its end) */
             GlPiece *pc = &g->pc[drawp];
@@ -300,7 +338,7 @@ static void gl_load(void)
             }
         }
     }
-    fclose(f);
+    free(own);
     for (i = 0; i < g_ngl; i++) {
         gl_finish(g_gl[i]);
         gl_reaches(g_gl[i]);
