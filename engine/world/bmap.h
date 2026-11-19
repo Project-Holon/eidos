@@ -105,6 +105,7 @@ typedef struct BmapDraw {
                                   of the game with its own animation)               */
     unsigned char leafy;       /* 1: hand-made grass leaves (bmap_grass): its triangles
                                   are listed leaf by leaf in BmapScene.leaf            */
+    unsigned leaf0, nleaf;     /* ... its leaves there: the first, and how many       */
 } BmapDraw;
 
 /* One hand-made grass leaf of a placed scene (bmap_grass, research): the pass that lays the

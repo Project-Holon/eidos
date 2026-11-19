@@ -55,6 +55,7 @@
 #undef far /* the windows headers define it; BmapDraw has a member of that name */
 #endif
 #include "bmap.h"
+#include "bmap_leaf.h"
 #include "bmap_place.h"
 #include "g3d.h"
 #include "hw3d.h"
@@ -1191,18 +1192,77 @@ static void front_depth_clear(const G3dBackdrop *b, const float r[4][4])
     glDisable(GL_SCISSOR_TEST);
 }
 
-/* (research) BMAP_GRASS_LEAFRULE=1: the hand-made grass is laid over a Pokemon leaf by leaf and ring by ring
- * (a leaf always whole), not by the flat cut in front of the Pokemon. */
+/* (research, BMAP_GRASS_LEAFRULE) the hand-made grass is laid over a Pokemon leaf by leaf and ring by ring (a
+ * leaf always whole), not by the flat cut in front of the Pokemon (bmap_leaf.h). */
 static int leaf_rule(void)
 {
-    static int on = -1;
+    return bmap_leaf_rule();
+}
 
-    if (on < 0) {
-        const char *e = getenv("BMAP_GRASS_LEAFRULE");
+/* ... whether this frame's backdrop takes the rule in the game's own pass (the spot editor's views, front_only,
+ * take it in their pass below) */
+static int gl_leaf_on(const G3dBackdrop *b)
+{
+    const BmapScene *sc = (const BmapScene *)b->scene;
 
-        on = e != NULL && e[0] != '0' && e[0] != '\0';
+    return bmap_leaf_rule() && !b->front_only && b->n_poke > 0 && sc != NULL && sc->n_leaf > 0u && sc->leaf != NULL;
+}
+
+/* The leaves the rule moves in depth for this frame's camera and sprites (bmap_leaf_plan). */
+static const BmapLeafItem *gl_leaf_items(const G3dBackdrop *b, const float r[4][4], unsigned *n)
+{
+    BmapLeafView v;
+    unsigned i;
+
+    memset(&v, 0, sizeof v);
+    memcpy(v.eye, b->eye, sizeof v.eye);
+    memcpy(v.target, b->target, sizeof v.target);
+    v.znear = b->znear;
+    v.np = b->n_poke < G3D_BACKDROP_SPRITES ? b->n_poke : G3D_BACKDROP_SPRITES;
+    v.np = v.np < BMAP_LEAF_SPRITES ? v.np : BMAP_LEAF_SPRITES;
+    for (i = 0; i < v.np; i++) {
+        memcpy(v.poke[i], b->poke[i], sizeof v.poke[i]);
+        v.covered[i] = b->key[i][0] != 0xFFFFFFFFu;
     }
-    return on;
+    return bmap_leaf_plan((const BmapScene *)b->scene, b->scene_gen, &v, r, n);
+}
+
+/* One draw of hand-made grass in the depth passes round the game's sprites (backdrop_draw, front 4 and 5): its
+ * vertices `first`..`first + count`, its state set.  Front 4: the draw at its own depth, but a leaf the rule lays
+ * under a sprite whole at that depth alone, and a leaf it lays over a sprite a second time whole at that depth.
+ * `back` (front 5, after the sprites): only the leaves laid under a sprite, at their own depth again: what the game
+ * draws after its sprites (their shadows) is hidden under them as under any leaf. */
+static void gl_leaf_draws(const BmapScene *sc, const BmapDraw *d, unsigned first, unsigned count, const BmapLeafItem *it,
+                          unsigned n_it, int back)
+{
+    const unsigned l1 = d->leaf0 + d->nleaf;
+    unsigned k = it != NULL ? bmap_leaf_seek(it, n_it, d->leaf0) : 0u, run0 = first;
+
+    for (; it != NULL && k < n_it && it[k].leaf < l1; k++) {
+        const BmapLeaf *lf = &sc->leaf[it[k].leaf];
+
+        if (lf->count == 0u || lf->first < run0 || lf->first + lf->count > first + count) {
+            continue;
+        }
+        if (it[k].under) {
+            if (back) {
+                glDrawArrays(GL_TRIANGLES, (GLint)lf->first, (GLsizei)lf->count);
+                continue;
+            }
+            if (lf->first > run0) {
+                glDrawArrays(GL_TRIANGLES, (GLint)run0, (GLsizei)(lf->first - run0));
+            }
+            run0 = lf->first + lf->count;
+        } else if (back) {
+            continue;
+        }
+        glDepthRange((double)it[k].at, (double)it[k].at);
+        glDrawArrays(GL_TRIANGLES, (GLint)lf->first, (GLsizei)lf->count);
+        glDepthRange(0.0, 1.0);
+    }
+    if (!back && first + count > run0) {
+        glDrawArrays(GL_TRIANGLES, (GLint)run0, (GLsizei)(first + count - run0));
+    }
 }
 
 static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
@@ -1211,12 +1271,23 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     float r[4][4], fwd[3];
     unsigned pass, i;
     int leaf_pass = 0;
+    /* (research, BMAP_GRASS_LEAFRULE) front 4: the depth over the sprites' boxes laid again before the game's
+     * sprites, the hand-made grass leaf by leaf (gl_leaf_draws); front 5: the leaves laid under a sprite back at
+     * their own depth.  No colour, the first pass's draws and state. */
+    const int leaf_back = front == 5, leaf_fix = front == 4 || leaf_back;
+    const BmapLeafItem *leaf_it = NULL;
+    unsigned n_leaf_it = 0;
+    /* (test switch EIDOS_ANIM_HOLD: the map's animations stand still, for captures that must be equal) */
+    const Uint64 ticks = getenv("EIDOS_ANIM_HOLD") != NULL ? 0u : SDL_GetTicks();
     /* the field plays its animations a frame a field frame (60 a second) */
-    unsigned uv_frame = (unsigned)(SDL_GetTicks() * 60u / 1000u);
+    unsigned uv_frame = (unsigned)(ticks * 60u / 1000u);
     int uv_set = 1;
 
     if (g_bd.prog == 0 || sc == NULL || sc->nv == 0) {
         return;
+    }
+    if (leaf_fix) {
+        front = 0;
     }
     if (g_bd.scene != sc || g_bd.gen != b->scene_gen) {
         backdrop_upload(g, sc);
@@ -1289,12 +1360,19 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
             glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
         }
     }
+    if (leaf_fix) {
+        if (!leaf_back) {
+            front_depth_clear(b, (const float (*)[4])r);
+        }
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        leaf_it = gl_leaf_items(b, (const float (*)[4])r, &n_leaf_it);
+    }
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(0.0f, 1.0f); /* no slope term: it pushed far, grazing triangles over the near map */
     g->glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    if (!front && sc->sky_count > 0u && sc->sky_first + sc->sky_count <= sc->nv && sc->sky_tex >= 0
+    if (!front && !leaf_fix && sc->sky_count > 0u && sc->sky_first + sc->sky_count <= sc->nv && sc->sky_tex >= 0
         && (unsigned)sc->sky_tex < g_bd.n_tex) {
         /* the sky pass: the cloud dome first, blended over the clear colour, writing no depth (all the map
          * draws over it) */
@@ -1322,7 +1400,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         g->glUniform4f(g_bd.u_sky, 0.0f, 0.0f, 0.0f, 0.0f);
     }
     leaf_pass = front == 1 && b->front_only && sc->n_leaf > 0u && sc->leaf != NULL && leaf_rule();
-    for (pass = front == 3 ? 1 : 0; pass < 2; pass++) {
+    for (pass = front == 3 ? 1 : 0; pass < (leaf_fix ? 1u : 2u); pass++) {
         if (pass == 1) {
             glEnable(GL_BLEND);
             g->glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,
@@ -1392,7 +1470,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                 continue;
             }
             /* (research) the hand-made grass leaves are laid over the sprites leaf by leaf, below */
-            if (leaf_pass && d->leafy) {
+            if ((leaf_pass && d->leafy) || (leaf_back && !d->leafy)) {
                 i += run - 1;
                 continue;
             }
@@ -1446,7 +1524,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
             g->glUniform3fv(g_bd.u_pivot, 1, d->pivot);
             /* a moving object rises and falls as its animation does in the field (30 frames a second) */
             g->glUniform1f(g_bd.u_lift, d->bob && sc->bob_n > 0u
-                           ? sc->place_k * sc->bob_y[(SDL_GetTicks() * 30u / 1000u) % sc->bob_n] : 0.0f);
+                           ? sc->place_k * sc->bob_y[(ticks * 30u / 1000u) % sc->bob_n] : 0.0f);
             g->glUniform1f(g_bd.u_alpha, (float)d->alpha / 31.0f);
             if (pass == 0) {
                 g->glUniform1f(g_bd.u_cut, d->translucent ? BD_CORE_CUT : 0.5f);
@@ -1461,10 +1539,15 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                 glDrawElements(GL_TRIANGLES, (GLsizei)(end - g_bd.at[i]), GL_UNSIGNED_INT,
                                (const void *)((size_t)g_bd.at[i] * sizeof(GLuint)));
                 i += run - 1;
+            } else if (leaf_fix && d->leafy) {
+                gl_leaf_draws(sc, d, first, count, leaf_it, n_leaf_it, leaf_back);
             } else {
                 glDrawArrays(GL_TRIANGLES, (GLint)first, (GLsizei)count);
             }
         }
+    }
+    if (leaf_fix) {
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     }
     if (leaf_pass) {
         /* (research, BMAP_GRASS_LEAFRULE) the hand-made grass over each Pokemon, leaf by leaf and ring by ring:
@@ -2354,6 +2437,11 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
             RunSent sent;
             float sz[G3D_BACKDROP_SPRITES], zr[G3D_BACKDROP_SPRITES];
             unsigned char zr_set[G3D_BACKDROP_SPRITES];
+            /* (research, BMAP_GRASS_LEAFRULE) 0: the map's own depth; 1: the leaf depth pass is laid (from the
+             * game's first sprite polygon on); 2: the leaves under a sprite are back at their own depth (from
+             * the first polygon after the sprites on) */
+            const int leaf_on = backdrop && gl_leaf_on(&s->backdrop);
+            int leaf_state = 0;
 
             memset(sz, 0, sizeof sz);
             memset(zr, 0, sizeof zr);
@@ -2407,6 +2495,36 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                 {
                     const int k = backdrop && s->backdrop.n_poke > 0 ? sprite_of(&s->backdrop, p) : -1;
 
+                    if (leaf_on && ((k >= 0 && leaf_state == 0) || (k < 0 && leaf_state == 1))) {
+                        if (have) {
+                            draw_run(g, s, &run, run_first, run_verts, &prev_depth_eq,
+                                     &prev_mask, &bound_tex, &sent);
+                            drawn++;
+                            have = 0;
+                        }
+                        leaf_state++;
+                        backdrop_draw(g, &s->backdrop, 3 + leaf_state);
+                        /* (the game's polygons again: their buffer, program and state as before the loop,
+                         * and nothing of a run taken as sent) */
+                        g->glBindVertexArray(g->vao3);
+                        g->glBindBuffer(GL_ARRAY_BUFFER, g->vbo3);
+                        g->glUseProgram(g->p3d);
+                        glEnable(GL_DEPTH_TEST);
+                        glEnable(GL_STENCIL_TEST);
+                        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+                        glEnable(GL_BLEND);
+                        g->glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,
+                                               GL_ONE_MINUS_SRC_ALPHA);
+                        g->glActiveTexture(GL_TEXTURE0);
+                        prev_depth_eq = -1;
+                        prev_mask = -1;
+                        bound_tex = -2;
+                        run_sent_reset(&sent);
+                    }
+                    if (k >= 0 && getenv("EIDOS_HIDE_SPRITES") != NULL) {    /* (research: the map alone, to compare) */
+                        first += verts;
+                        continue;
+                    }
                     cur.zo = k >= 0 ? sz[k] : 0.0f;
                     cur.zref = 0.0f;
                     if (k >= 0) {

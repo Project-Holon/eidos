@@ -493,6 +493,8 @@ old_tufts:
                 if (gbuf[i].n == 0) {
                     continue;
                 }
+                const unsigned lf0 = s->n_leaf;
+
                 memcpy(&s->v[nv], gbuf[i].v, gbuf[i].n * sizeof *gbuf[i].v);
                 if (gbuf[i].nlf > 0u) {         /* (its leaves: listed in the scene) */
                     BmapLeaf *nl = (BmapLeaf *)realloc(s->leaf, (s->n_leaf + gbuf[i].nlf) * sizeof *nl);
@@ -518,7 +520,9 @@ old_tufts:
                 n2.cull = 0;
                 n2.billboard = 0;
                 n2.grass = 0;
-                n2.leafy = gbuf[i].nlf > 0u;
+                n2.leafy = s->n_leaf > lf0;
+                n2.leaf0 = lf0;
+                n2.nleaf = s->n_leaf - lf0;
                 if (gdraw_m[i] == 30 && n2.tex >= 0 && (unsigned)n2.tex < s->nt) {
                     const BmapGrassKind *gg = bmap_grass_find(s->t[n2.tex].name);
                     char an[17];

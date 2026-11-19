@@ -37,6 +37,7 @@
 #undef far /* the windows headers define it; BmapDraw has a member of that name */
 #endif
 #include "bmap.h"
+#include "bmap_leaf.h"
 #include "bmap_place.h"
 #include "g3d.h"
 #include "hw3d.h"
@@ -1038,124 +1039,57 @@ static void bd_front_clear(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPa
     SDL_DrawGPUPrimitives(pass, 4, 1, 0, 0);
 }
 
-/* (research, BMAP_GRASS_LEAFRULE=1) The hand-made grass is laid over a sprite leaf by leaf and ring by ring (a leaf
- * always whole), not by the flat cut at the sprite's depth. */
+/* (research, BMAP_GRASS_LEAFRULE) The hand-made grass is laid over a sprite leaf by leaf (bmap_leaf.h), not by the
+ * flat cut at the sprite's depth: whether this frame's backdrop takes the rule. */
 static int bd_leaf_rule(const G3dBackdrop *bk)
 {
-    static int on = -1;
     const BmapScene *sc = (const BmapScene *)bk->scene;
 
-    if (on < 0) {
-        const char *e = getenv("BMAP_GRASS_LEAFRULE");
-
-        on = e != NULL && e[0] != '0' && e[0] != '\0';
-    }
-    return on && !bk->front_only && bk->n_poke > 0 && sc != NULL && sc->n_leaf > 0u && sc->leaf != NULL;
+    return bmap_leaf_rule() && !bk->front_only && bk->n_poke > 0 && sc != NULL && sc->n_leaf > 0u && sc->leaf != NULL;
 }
 
-/* The depth (the depth buffer's) of the point `off` units nearer the camera than sprite i's place, along the
- * camera's line of sight (sprite_depths: the sprite itself is 0.3 nearer); 0 for a sprite the map never covers. */
-static float bd_place_depth(const G3dBackdrop *b, const float r[4][4], unsigned i, float off)
+/* The leaves the rule moves in depth for this frame's camera and sprites (bmap_leaf_plan). */
+static const BmapLeafItem *bd_leaf_items(const G3dBackdrop *bk, const float r[4][4], unsigned *n)
 {
-    float fwd[3], l, d, p[3], c[4], z;
-    unsigned k;
+    BmapLeafView v;
+    unsigned i;
 
-    for (k = 0; k < 3; k++) {
-        fwd[k] = b->target[k] - b->eye[k];
+    memset(&v, 0, sizeof v);
+    memcpy(v.eye, bk->eye, sizeof v.eye);
+    memcpy(v.target, bk->target, sizeof v.target);
+    v.znear = bk->znear;
+    v.np = bk->n_poke < G3D_BACKDROP_SPRITES ? bk->n_poke : G3D_BACKDROP_SPRITES;
+    v.np = v.np < BMAP_LEAF_SPRITES ? v.np : BMAP_LEAF_SPRITES;
+    for (i = 0; i < v.np; i++) {
+        memcpy(v.poke[i], bk->poke[i], sizeof v.poke[i]);
+        v.covered[i] = bk->key[i][0] != 0xFFFFFFFFu;
     }
-    l = sqrtf(fwd[0] * fwd[0] + fwd[1] * fwd[1] + fwd[2] * fwd[2]);
-    if (i >= b->n_poke || l < 1e-6f || b->key[i][0] == 0xFFFFFFFFu || b->poke[i][3] <= 0.0f) {
-        return 0.0f;
-    }
-    d = ((b->poke[i][0] - b->eye[0]) * fwd[0] + (b->poke[i][1] - b->eye[1]) * fwd[1] +
-         (b->poke[i][2] - b->eye[2]) * fwd[2]) / l;
-    if (d - 0.3f < b->znear * 1.01f || d - off < b->znear * 1.01f) {
-        return 0.0f;
-    }
-    for (k = 0; k < 3; k++) {
-        p[k] = b->eye[k] + fwd[k] / l * (d - off);
-    }
-    for (k = 0; k < 4; k++) {
-        c[k] = r[k][0] * p[0] + r[k][1] * p[1] + r[k][2] * p[2] + r[k][3];
-    }
-    z = c[3] > 1e-6f ? 0.5f * (c[2] / c[3]) + 0.5f : 0.0f;
-    return z < 1e-6f ? 0.0f : z > 1.0f ? 1.0f : z;
+    return bmap_leaf_plan((const BmapScene *)bk->scene, bk->scene_gen, &v, r, n);
 }
 
-/* (research, BMAP_GRASS_LEAFRULE) One draw of hand-made grass in the depth pass that follows the map (bd_draw, front
- * 4): its vertices `first`..`first + count`, the pipeline and the uniforms bound.  A leaf the rule does not concern
- * keeps its own depth.  A leaf over a sprite (outside its ring's reach: its bush's heart nearer the eye than the
- * sprite; inside: its tip nearer the eye than the sprite's feet) must lie in front of that sprite's depth, a leaf
- * under it behind; one whose own depth says otherwise is laid whole at a depth just in front of the sprite (0.3 units)
- * or just behind it (0.25 units, still before the ground at its feet).
- * `back` (front 5, after the game's sprites): only the leaves that were laid behind a sprite, now at their own
- * depth: what the game draws after its sprites (their shadows) is hidden under them as under any leaf. */
-static void bd_leaf_draws(SDL_GPURenderPass *pass, const BmapScene *sc, const G3dBackdrop *bk, const float r[4][4],
-                          unsigned di, unsigned first, unsigned count, int w, int h, int back)
+/* One draw of hand-made grass in the depth passes round the game's sprites (bd_draw, front 4 and 5): its vertices
+ * `first`..`first + count`, the pipeline and the uniforms bound.  Front 4: the draw at its own depth, but a leaf
+ * the rule lays under a sprite whole at that depth alone, and a leaf it lays over a sprite a second time whole at
+ * that depth.  `back` (front 5, after the sprites): only the leaves laid under a sprite, at their own depth again:
+ * what the game draws after its sprites (their shadows) is hidden under them as under any leaf. */
+static void bd_leaf_draws(SDL_GPURenderPass *pass, const BmapScene *sc, const BmapDraw *d, unsigned first, unsigned count,
+                          const BmapLeafItem *it, unsigned n_it, int w, int h, int back)
 {
-    float before[G3D_BACKDROP_SPRITES], behind[G3D_BACKDROP_SPRITES];
-    const unsigned np = bk->n_poke < G3D_BACKDROP_SPRITES ? bk->n_poke : G3D_BACKDROP_SPRITES;
-    unsigned li, k, run0 = first;
+    const unsigned l1 = d->leaf0 + d->nleaf;
+    unsigned k = it != NULL ? bmap_leaf_seek(it, n_it, d->leaf0) : 0u, run0 = first;
     SDL_GPUViewport vp;
 
     memset(&vp, 0, sizeof vp);
     vp.w = (float)w;
     vp.h = (float)h;
     vp.max_depth = 1.0f;
-    for (k = 0; k < np; k++) {
-        before[k] = bd_place_depth(bk, r, k, 0.6f);
-        behind[k] = bd_place_depth(bk, r, k, 0.05f);
-    }
-    for (li = 0; li < sc->n_leaf; li++) {
-        const BmapLeaf *lf = &sc->leaf[li];
-        float lo = 0.0f, hi = 1.0f, dmin = 1.0f, dmax = 0.0f, at;
-        unsigned v;
+    for (; it != NULL && k < n_it && it[k].leaf < l1; k++) {
+        const BmapLeaf *lf = &sc->leaf[it[k].leaf];
 
-        if (lf->draw != di || lf->count == 0u || lf->first < run0 || lf->first + lf->count > first + count) {
+        if (lf->count == 0u || lf->first < run0 || lf->first + lf->count > first + count) {
             continue;
         }
-        for (k = 0; k < np; k++) {
-            const float *pp = bk->poke[k];
-            float cx = bk->eye[0] - pp[0], cz = bk->eye[2] - pp[2];
-            const float cl = sqrtf(cx * cx + cz * cz);
-            const float hx = lf->heart[0] - pp[0], hz = lf->heart[1] - pp[2];
-            float val;
-
-            if (before[k] <= 0.0f || behind[k] <= 0.0f || cl < 1e-3f) {     /* (a sprite the map never covers) */
-                continue;
-            }
-            cx /= cl;
-            cz /= cl;
-            /* (too far to the side of the line from the eye to stand over or under its picture) */
-            if (fabsf(hz * cx - hx * cz) > pp[3] + lf->reach + 1.0f) {
-                continue;
-            }
-            val = sqrtf(hx * hx + hz * hz) > lf->reach ? hx * cx + hz * cz
-                                                       : (lf->tip[0] - pp[0]) * cx + (lf->tip[2] - pp[2]) * cz;
-            if (val > 0.0f) {
-                hi = before[k] < hi ? before[k] : hi;
-            } else {
-                lo = behind[k] > lo ? behind[k] : lo;
-            }
-        }
-        if (lo <= 0.0f && hi >= 1.0f) {
-            continue;
-        }
-        for (v = lf->first; v < lf->first + lf->count; v++) {
-            const BmapVertex *q = &sc->v[v];
-            const float c2 = r[2][0] * q->x + r[2][1] * q->y + r[2][2] * q->z + r[2][3];
-            const float c3 = r[3][0] * q->x + r[3][1] * q->y + r[3][2] * q->z + r[3][3];
-            const float z = c3 > 1e-6f ? 0.5f * (c2 / c3) + 0.5f : 0.0f;
-
-            dmin = z < dmin ? z : dmin;
-            dmax = z > dmax ? z : dmax;
-        }
-        if (dmin >= lo && dmax <= hi) {
-            continue;
-        }
-        if (dmin < lo && lo < hi) {
-            /* a leaf under a sprite, part of it nearer than that sprite: whole just behind the sprite (and so still
-             * before a farther sprite it is over); after the sprites (`back`) at its own depth again */
+        if (it[k].under) {
             if (back) {
                 SDL_DrawGPUPrimitives(pass, lf->count, 1, lf->first, 0);
                 continue;
@@ -1164,17 +1098,10 @@ static void bd_leaf_draws(SDL_GPURenderPass *pass, const BmapScene *sc, const G3
                 SDL_DrawGPUPrimitives(pass, lf->first - run0, 1, run0, 0);
             }
             run0 = lf->first + lf->count;
-            at = lo;
-        } else {
-            /* a leaf over a sprite, part of it farther than that sprite: at its own depth too (it stays in the run)
-             * and whole just before the sprite; the nearer of the two holds, so the part of it that reaches far
-             * before the sprite still hides what lies under it (the sprite's shadow) */
-            if (back) {
-                continue;
-            }
-            at = hi;
+        } else if (back) {
+            continue;
         }
-        vp.min_depth = vp.max_depth = at;
+        vp.min_depth = vp.max_depth = it[k].at;
         SDL_SetGPUViewport(pass, &vp);
         SDL_DrawGPUPrimitives(pass, lf->count, 1, lf->first, 0);
         vp.min_depth = 0.0f;
@@ -1206,6 +1133,8 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
      * hand-made grass leaf by leaf (bd_leaf_draws); no colour, the first pass's draws and state */
     const int leaf_back = front == 5;       /* (... and front 5: the leaves under a sprite back at their own depth) */
     const int leaf_fix = front == 4 || leaf_back;
+    const BmapLeafItem *leaf_it = NULL;
+    unsigned n_leaf_it = 0;
 
     if (leaf_fix) {
         front = 0;
@@ -1263,6 +1192,7 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
             bd_front_clear(s, cmd, pass, bk, (const float (*)[4])r, w, h, cdepth);
         }
         base |= PKB_NOCOL;
+        leaf_it = bd_leaf_items(bk, (const float (*)[4])r, &n_leaf_it);
     }
     vb.buffer = b->vbuf.buf;
     vb.offset = 0;
@@ -1397,7 +1327,7 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
                 SDL_DrawGPUIndexedPrimitives(pass, end - b->at[i], 1, b->at[i], 0, 0);
                 i += run - 1;
             } else if (leaf_fix && d->leafy) {
-                bd_leaf_draws(pass, sc, bk, (const float (*)[4])r, di, first, count, w, h, leaf_back);
+                bd_leaf_draws(pass, sc, d, first, count, leaf_it, n_leaf_it, w, h, leaf_back);
             } else if (leaf_back) {
                 /* (only the leaves) */
             } else {
