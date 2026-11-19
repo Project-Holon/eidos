@@ -1117,12 +1117,16 @@ static int sprite_of(const G3dBackdrop *b, const G3dPoly *p)
  * Pokemon (the shader keeps those parts only).  The depth is cleared over
  * the Pokemon's boxes first, so the parts drawn again hide one another in
  * the right order (a hedge before the ground behind it). */
-static void front_depth_clear(const G3dBackdrop *b, const float r[4][4])
+static void front_depth_clear(const G3dBackdrop *b, const float r[4][4], float *box)
 {
     GLint vp[4];
     float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
     unsigned i, c;
 
+    if (box != NULL) {              /* (`box`: the rectangle cleared, a little wider, for bmap_view_misses; empty: none) */
+        box[0] = box[1] = 2.0f;
+        box[2] = box[3] = -2.0f;
+    }
     glGetIntegerv(GL_VIEWPORT, vp);
     for (i = 0; i < b->n_poke && i < G3D_BACKDROP_SPRITES; i++) {
         float d[3], L, n[3], side[3];
@@ -1181,6 +1185,12 @@ static void front_depth_clear(const G3dBackdrop *b, const float r[4][4])
     y1 = fminf(y1, 1.0f);
     if (x1 <= x0 || y1 <= y0) {
         return;
+    }
+    if (box != NULL && vp[2] > 0 && vp[3] > 0) {
+        box[0] = x0 - 8.0f / (float)vp[2];
+        box[1] = y0 - 8.0f / (float)vp[3];
+        box[2] = x1 + 8.0f / (float)vp[2];
+        box[3] = y1 + 8.0f / (float)vp[3];
     }
     glEnable(GL_SCISSOR_TEST);
     glScissor(vp[0] + (GLint)floorf((x0 * 0.5f + 0.5f) * (float)vp[2]),
@@ -1277,6 +1287,8 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     const int leaf_back = front == 5, leaf_fix = front == 4 || leaf_back;
     const BmapLeafItem *leaf_it = NULL;
     unsigned n_leaf_it = 0;
+    /* (the part of the screen a draw must reach to be sent: all of it; in front 4 the rectangle cleared) */
+    float view_box[4] = { -1.0f, -1.0f, 1.0f, 1.0f };
     /* (test switch EIDOS_ANIM_HOLD: the map's animations stand still, for captures that must be equal) */
     const Uint64 ticks = getenv("EIDOS_ANIM_HOLD") != NULL ? 0u : SDL_GetTicks();
     /* the field plays its animations a frame a field frame (60 a second) */
@@ -1350,7 +1362,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         glStencilFunc(GL_EQUAL, STENCIL_GAME, STENCIL_GAME);
         glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
     } else if (front) {
-        front_depth_clear(b, (const float (*)[4])r);
+        front_depth_clear(b, (const float (*)[4])r, NULL);
         if (!b->front_only) {
             /* only where the game drew (its sprites, their shadows and
              * effects): the map in front of a sprite covers the sprite and
@@ -1362,7 +1374,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
     }
     if (leaf_fix) {
         if (!leaf_back) {
-            front_depth_clear(b, (const float (*)[4])r);
+            front_depth_clear(b, (const float (*)[4])r, view_box);
         }
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         leaf_it = gl_leaf_items(b, (const float (*)[4])r, &n_leaf_it);
@@ -1480,7 +1492,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
                 float depth = fwd[0] * (bb->c[0] - b->eye[0]) + fwd[1] * (bb->c[1] - b->eye[1])
                               + fwd[2] * (bb->c[2] - b->eye[2]);
 
-                if (depth < -bb->r) {
+                if (depth < -bb->r || (!d->bob && bmap_view_misses((const float (*)[4])r, view_box, bb->c, bb->r))) {
                     i += run - 1;
                     continue;
                 }

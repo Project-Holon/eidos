@@ -17,6 +17,8 @@
 #ifndef EIDOS_ENGINE_WORLD_BMAP_LEAF_H
 #define EIDOS_ENGINE_WORLD_BMAP_LEAF_H
 
+#include <math.h>
+
 #include "bmap.h"
 
 #ifdef __cplusplus
@@ -48,6 +50,32 @@ int bmap_leaf_rule(void);
  * r * (x, y, z, 1), depth = 0.5 * z / w + 0.5); `gen` tells one build of the scene from the next.  The answer is
  * kept while the scene, the view and the matrix stay the same.  NULL with *n 0 when there are none. */
 const BmapLeafItem *bmap_leaf_plan(const BmapScene *sc, unsigned gen, const BmapLeafView *v, const float r[4][4], unsigned *n);
+
+/* Whether a sphere (centre c, radius rad, battle units) lies wholly outside the part of a view that shows in the
+ * rectangle box (x0, y0, x1, y1 in the view's -1..1 coordinates; the whole screen is -1, -1, 1, 1): outside one of
+ * the four planes through the eye along the rectangle's sides.  `r` is the view's matrix (clip = r * (x, y, z, 1)).
+ * An empty rectangle (x0 > x1) misses everything.  Never says so of a sphere any part of which could show there. */
+static inline int bmap_view_misses(const float r[4][4], const float box[4], const float c[3], float rad)
+{
+    int k;
+
+    if (box[0] > box[2] || box[1] > box[3]) {
+        return 1;
+    }
+    for (k = 0; k < 4; k++) {
+        /* (x >= x0 w, x <= x1 w, y >= y0 w, y <= y1 w) */
+        const float *ra = r[k < 2 ? 0 : 1];
+        const float e = box[k == 0 ? 0 : k == 1 ? 2 : k == 2 ? 1 : 3], sg = (k & 1) ? -1.0f : 1.0f;
+        const float a = sg * (ra[0] - e * r[3][0]), b = sg * (ra[1] - e * r[3][1]), cc = sg * (ra[2] - e * r[3][2]),
+                    d = sg * (ra[3] - e * r[3][3]);
+        const float len = sqrtf(a * a + b * b + cc * cc);
+
+        if (len > 1e-12f && (a * c[0] + b * c[1] + cc * c[2] + d) / len < -rad) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 /* The first of `n` items whose leaf is `leaf` or later. */
 unsigned bmap_leaf_seek(const BmapLeafItem *it, unsigned n, unsigned leaf);

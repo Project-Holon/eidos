@@ -132,7 +132,19 @@ static int leafy(const BmapScene *s, const BmapDraw *g)
 static const unsigned char *g_tmask;      /* the grass triangles (bmap_place_spec), by index */
 
 /* ---- The hand-made grass (bmap_grass.c): a buffer of triangles a grass sheet, and its leaves ---- */
-typedef struct { BmapVertex *v; unsigned n, cap; int fail; BmapLeaf *lf; unsigned nlf, lcap; } GmBuf;
+/* A tile's part of a buffer: its first vertex and leaf, where they end, and its block (4 x 4 map tiles). */
+typedef struct { unsigned v0, v1, l0, l1; int key; } GmTile;
+typedef struct {
+    BmapVertex *v;
+    unsigned n, cap;
+    int fail;
+    BmapLeaf *lf;
+    unsigned nlf, lcap;
+    GmTile *tile;               /* a tile's part, in the order the tiles were built */
+    unsigned ntile, tcap;
+    unsigned *blk;              /* gm_blocks: nblk + 1 pairs (first vertex, first leaf): each block's start, and the end */
+    unsigned nblk;
+} GmBuf;
 static float g_gm_shade = 1.0f;     /* (a new triangle's light, of its source's) */
 
 typedef struct { GmBuf *b; const BmapVertex *src; } GlCtx;
@@ -210,6 +222,98 @@ static void gm_tri(GmBuf *b, const BmapVertex *src, const float p[3][3], const f
             o->b = (unsigned char)(o->b * g_gm_shade);
         }
     }
+}
+
+/* A tile's grass begins in the buffer (block `key`). */
+static void gm_tile_begin(GmBuf *b, int key)
+{
+    if (b->ntile == b->tcap) {
+        const unsigned nc = b->tcap ? b->tcap * 2u : 256u;
+        GmTile *nt = (GmTile *)realloc(b->tile, nc * sizeof *nt);
+
+        if (nt == NULL) {
+            return;
+        }
+        b->tile = nt;
+        b->tcap = nc;
+    }
+    b->tile[b->ntile].v0 = b->n;
+    b->tile[b->ntile].l0 = b->nlf;
+    b->tile[b->ntile].key = key;
+    b->ntile++;
+}
+
+static int gm_tile_cmp(const void *pa, const void *pb)
+{
+    const GmTile *a = (const GmTile *)pa, *b = (const GmTile *)pb;
+
+    return a->key != b->key ? (a->key < b->key ? -1 : 1) : a->v0 < b->v0 ? -1 : a->v0 > b->v0;
+}
+
+/* The buffer's tiles put in the order of their blocks, a block's tiles together: its vertices and leaves moved, and
+ * b->blk filled.  A buffer with no tile list, or with no memory for the move, is one block as it is. */
+static void gm_blocks(GmBuf *b)
+{
+    BmapVertex *nv = NULL;
+    BmapLeaf *nl = NULL;
+    unsigned *blk = NULL;
+    unsigned k, q, vn = 0, ln = 0, nb = 0;
+
+    free(b->blk);
+    b->blk = NULL;
+    b->nblk = 0;
+    if (b->n == 0u || b->fail) {
+        return;
+    }
+    for (k = 0; k < b->ntile; k++) {
+        b->tile[k].v1 = k + 1u < b->ntile ? b->tile[k + 1u].v0 : b->n;
+        b->tile[k].l1 = k + 1u < b->ntile ? b->tile[k + 1u].l0 : b->nlf;
+    }
+    if (b->ntile > 0u && b->tile[0].v0 == 0u && b->tile[0].l0 == 0u) {
+        nv = (BmapVertex *)malloc((size_t)b->n * sizeof *nv);
+        nl = (BmapLeaf *)malloc((size_t)(b->nlf > 0u ? b->nlf : 1u) * sizeof *nl);
+        blk = (unsigned *)malloc(((size_t)b->ntile + 1u) * 2u * sizeof *blk);
+    }
+    if (nv == NULL || nl == NULL || blk == NULL) {
+        free(nv);
+        free(nl);
+        free(blk);
+        b->blk = (unsigned *)malloc(4u * sizeof *b->blk);
+        if (b->blk != NULL) {
+            b->blk[0] = b->blk[1] = 0u;
+            b->blk[2] = b->n;
+            b->blk[3] = b->nlf;
+            b->nblk = 1;
+        }
+        return;
+    }
+    qsort(b->tile, b->ntile, sizeof *b->tile, gm_tile_cmp);
+    for (k = 0; k < b->ntile; k++) {
+        const GmTile *t = &b->tile[k];
+
+        if (k == 0u || t->key != b->tile[k - 1u].key) {
+            blk[nb * 2u] = vn;
+            blk[nb * 2u + 1u] = ln;
+            nb++;
+        }
+        memcpy(&nv[vn], &b->v[t->v0], (size_t)(t->v1 - t->v0) * sizeof *nv);
+        for (q = t->l0; q < t->l1; q++) {
+            nl[ln] = b->lf[q];
+            nl[ln].first = b->lf[q].first - t->v0 + vn;
+            ln++;
+        }
+        vn += t->v1 - t->v0;
+    }
+    blk[nb * 2u] = vn;
+    blk[nb * 2u + 1u] = ln;
+    free(b->v);
+    free(b->lf);
+    b->v = nv;
+    b->lf = nl;
+    b->cap = b->n;
+    b->lcap = b->nlf > 0u ? b->nlf : 1u;
+    b->blk = blk;
+    b->nblk = nb;
 }
 
 static int g_place_doubles;     /* (research, BMAP_GRASS_FEET) the battle being placed is a double (BmapPlaceSpec.doubles) */
@@ -438,6 +542,7 @@ static void grass_grow_fixed(BmapScene *s, const unsigned char *grass, unsigned 
                             }
                             gc.b = &gbuf[i];
                             gc.src = a;
+                            gm_tile_begin(&gbuf[i], (uz / 4) * (TUFT_SPAN / 4 + 1) + ux / 4);
                             bmap_grass_tile(gg, at, bx, y, bz, mxv, mzv, pk, ((unsigned)(cx * 73856093) ^ (unsigned)(cz * 19349663)),
                                             gl_emit, gl_leaf, &gc);
                             continue;
@@ -475,54 +580,52 @@ old_tufts:
     }
     free(used);
     if (gbuf != NULL) {
-        /* (each sheet's hand-made triangles a draw of their own) */
-        unsigned extra = 0;
+        /* (each sheet's hand-made triangles: a draw a block of 4 x 4 map tiles, so a renderer leaves out the blocks
+         * that are off the screen) */
+        unsigned extra = 0, nblocks = 0;
 
         for (i = 0; i < nd0; i++) {
-            extra += gbuf[i].n;
+            gm_blocks(&gbuf[i]);
+            extra += gbuf[i].blk != NULL ? gbuf[i].n : 0u;
+            nblocks += gbuf[i].nblk;
         }
         if (extra > 0) {
             BmapVertex *v2 = (BmapVertex *)realloc(s->v, (nv + extra) * sizeof *v2);
-            BmapDraw *d2 = v2 != NULL ? (BmapDraw *)realloc(s->d, (nd + nd0) * sizeof *d2) : NULL;
+            BmapDraw *d2 = v2 != NULL ? (BmapDraw *)realloc(s->d, (nd + nblocks) * sizeof *d2) : NULL;
 
             if (v2 != NULL) s->v = v2;
             if (d2 != NULL) s->d = d2;
             for (i = 0; v2 != NULL && d2 != NULL && i < nd0; i++) {
                 BmapDraw n2;
+                unsigned lf0, bk, q;
+                int listed = 0;
 
-                if (gbuf[i].n == 0) {
+                if (gbuf[i].n == 0 || gbuf[i].blk == NULL) {
                     continue;
                 }
-                const unsigned lf0 = s->n_leaf;
-
+                lf0 = s->n_leaf;
                 memcpy(&s->v[nv], gbuf[i].v, gbuf[i].n * sizeof *gbuf[i].v);
                 if (gbuf[i].nlf > 0u) {         /* (its leaves: listed in the scene) */
                     BmapLeaf *nl = (BmapLeaf *)realloc(s->leaf, (s->n_leaf + gbuf[i].nlf) * sizeof *nl);
-                    unsigned q;
 
                     for (q = 0; nl != NULL && q < gbuf[i].nlf; q++) {
                         nl[s->n_leaf + q] = gbuf[i].lf[q];
                         nl[s->n_leaf + q].first += nv;
-                        nl[s->n_leaf + q].draw = nd;
                     }
                     if (nl != NULL) {
                         s->leaf = nl;
                         s->n_leaf += gbuf[i].nlf;
+                        listed = 1;
                     }
                 }
                 n2 = s->d[i];
-                n2.first = nv;
-                n2.count = gbuf[i].n;
                 if (getenv("BMAP_GRASS_LOG") != NULL) {
-                    fprintf(stderr, "bmap grass draw %u: %u triangles, picture %s\n", i, gbuf[i].n / 3u,
+                    fprintf(stderr, "bmap grass draw %u: %u triangles in %u blocks, picture %s\n", i, gbuf[i].n / 3u, gbuf[i].nblk,
                             s->d[i].tex >= 0 ? s->t[s->d[i].tex].name : "-");
                 }
                 n2.cull = 0;
                 n2.billboard = 0;
                 n2.grass = 0;
-                n2.leafy = s->n_leaf > lf0;
-                n2.leaf0 = lf0;
-                n2.nleaf = s->n_leaf - lf0;
                 if (gdraw_m[i] == 30 && n2.tex >= 0 && (unsigned)n2.tex < s->nt) {
                     const BmapGrassKind *gg = bmap_grass_find(s->t[n2.tex].name);
                     char an[17];
@@ -539,13 +642,30 @@ old_tufts:
                         }
                     }
                 }
-                s->d[nd++] = n2;
+                for (bk = 0; bk < gbuf[i].nblk; bk++) {
+                    const unsigned *b0 = &gbuf[i].blk[bk * 2u], *b1 = b0 + 2;
+
+                    if (b1[0] == b0[0]) {
+                        continue;
+                    }
+                    n2.first = nv + b0[0];
+                    n2.count = b1[0] - b0[0];
+                    n2.leafy = listed && b1[1] > b0[1];
+                    n2.leaf0 = listed ? lf0 + b0[1] : 0u;
+                    n2.nleaf = listed ? b1[1] - b0[1] : 0u;
+                    for (q = b0[1]; listed && q < b1[1]; q++) {
+                        s->leaf[lf0 + q].draw = nd;
+                    }
+                    s->d[nd++] = n2;
+                }
                 nv += gbuf[i].n;
             }
         }
         for (i = 0; i < nd0; i++) {
             free(gbuf[i].v);
             free(gbuf[i].lf);
+            free(gbuf[i].tile);
+            free(gbuf[i].blk);
         }
         free(gbuf);
         free(gdraw_m);

@@ -966,11 +966,15 @@ static int sprite_of(const G3dBackdrop *b, const G3dPoly *p)
 /* The depth reset to the clear plane's over the Pokemon's boxes, before the
  * front pass (plat_gl3d.c front_depth_clear: a scissored clear there). */
 static void bd_front_clear(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pass,
-                           const G3dBackdrop *b, const float r[4][4], int w, int h, float cdepth)
+                           const G3dBackdrop *b, const float r[4][4], int w, int h, float cdepth, float *box)
 {
     float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f, rect[4], u[4];
     unsigned i, c;
 
+    if (box != NULL) {              /* (`box`: the rectangle cleared, a little wider, for bmap_view_misses; empty: none) */
+        box[0] = box[1] = 2.0f;
+        box[2] = box[3] = -2.0f;
+    }
     for (i = 0; i < b->n_poke && i < G3D_BACKDROP_SPRITES; i++) {
         float d[3], L, n[3], side[3], sl;
 
@@ -1031,6 +1035,12 @@ static void bd_front_clear(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPa
     rect[1] = y0;
     rect[2] = x1;
     rect[3] = y1;
+    if (box != NULL) {
+        box[0] = x0 - 8.0f / (float)w;
+        box[1] = y0 - 8.0f / (float)h;
+        box[2] = x1 + 8.0f / (float)w;
+        box[3] = y1 + 8.0f / (float)h;
+    }
     memset(u, 0, sizeof u);
     u[0] = cdepth;
     SDL_BindGPUGraphicsPipeline(pass, s->p_dclear);
@@ -1135,6 +1145,8 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     const int leaf_fix = front == 4 || leaf_back;
     const BmapLeafItem *leaf_it = NULL;
     unsigned n_leaf_it = 0;
+    /* (the part of the screen a draw must reach to be sent: all of it; in front 4 the rectangle cleared) */
+    float view_box[4] = { -1.0f, -1.0f, 1.0f, 1.0f };
 
     if (leaf_fix) {
         front = 0;
@@ -1178,7 +1190,7 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
         base |= PKB_STEN;
         SDL_SetGPUStencilReference(pass, (Uint8)STENCIL_GAME);
     } else if (front) {
-        bd_front_clear(s, cmd, pass, bk, (const float (*)[4])r, w, h, cdepth);
+        bd_front_clear(s, cmd, pass, bk, (const float (*)[4])r, w, h, cdepth, NULL);
         if (!bk->front_only) {
             base |= PKB_STEN;
             SDL_SetGPUStencilReference(pass, (Uint8)STENCIL_GAME);
@@ -1189,7 +1201,7 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     }
     if (leaf_fix) {
         if (!leaf_back) {
-            bd_front_clear(s, cmd, pass, bk, (const float (*)[4])r, w, h, cdepth);
+            bd_front_clear(s, cmd, pass, bk, (const float (*)[4])r, w, h, cdepth, view_box);
         }
         base |= PKB_NOCOL;
         leaf_it = bd_leaf_items(bk, (const float (*)[4])r, &n_leaf_it);
@@ -1267,7 +1279,7 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
                 float depth = fwd[0] * (bb->c[0] - bk->eye[0]) + fwd[1] * (bb->c[1] - bk->eye[1])
                               + fwd[2] * (bb->c[2] - bk->eye[2]);
 
-                if (depth < -bb->r) {
+                if (depth < -bb->r || (!d->bob && bmap_view_misses((const float (*)[4])r, view_box, bb->c, bb->r))) {
                     i += run - 1;
                     continue;
                 }
