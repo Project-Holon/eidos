@@ -3126,6 +3126,126 @@ static void drop_cave_light(BmapScene *s)
     }
 }
 
+/* White Forest's great trees (a placed model: a block of the forest with its own floor).  The model's floor lies 8
+ * units under the height the game walks the player at; its trees' roots begin 4 over that floor and their shadow
+ * lies 2 over it, under the roots.  The field's steep camera never shows the difference; a battle stands on the
+ * drawn floor and sees the roots hang in the air over their own shadow.  So each block's trees (every triangle of
+ * its tree pictures but the shadow) go down by what its lowest root corner stands over the floor under it, and the
+ * shadow (the see-through level triangles of those pictures near the floor) is laid on the floor, at the height
+ * the battle lays a thing's shadow (DECAL_LIFT + 0.15).  Nothing moves where the gap is over FOREST_GAP. */
+static const char *const k_forest_tree_names[] = { "wf_tree_a", "wf_tree_a2", "wf_tree_b", "wf_tree_c", "wf_tree_k" };
+#define FOREST_GAP 8.0f
+
+static int forest_shadow_tri(const BmapScene *s, const BmapDraw *d, const BmapVertex *v, float *floor_y)
+{
+    int hit = 0;
+    float fl;
+
+    if (!d->translucent || !level_tri(v)) {
+        return 0;
+    }
+    fl = bmap_floor_below(s, (v[0].x + v[1].x + v[2].x) / 3.0f, (v[0].z + v[1].z + v[2].z) / 3.0f, v[0].y - 1.0f, &hit);
+    if (!hit || v[0].y - fl > FOREST_GAP) {
+        return 0;
+    }
+    *floor_y = fl;
+    return 1;
+}
+
+static void forest_set_down(BmapScene *s)
+{
+    struct ForestTree {
+        unsigned obj;
+        float lo, x, z, gap;
+    } *tr = NULL;
+    unsigned n = 0, cap = 0, i, j, k, q, moved = 0, laid = 0;
+
+    for (i = 0; i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+
+        if (!NAMED(s, d, k_forest_tree_names) || d->billboard != 0 || d->count < 3 || d->first % 3 != 0 || d->first + d->count > s->nv) {
+            continue;
+        }
+        for (j = d->first; j + 2 < d->first + d->count; j += 3) {
+            const BmapVertex *v = &s->v[j];
+            float fl;
+
+            if (v->obj == 0u || (v->obj & 0x80000000u) != 0u || forest_shadow_tri(s, d, v, &fl)) {
+                continue;
+            }
+            for (q = 0; q < n && tr[q].obj != v->obj; q++) {
+            }
+            if (q == n) {
+                if (n == cap) {
+                    const unsigned nc = cap ? cap * 2u : 32u;
+                    struct ForestTree *nt = (struct ForestTree *)realloc(tr, nc * sizeof *nt);
+
+                    if (nt == NULL) {
+                        free(tr);
+                        return;
+                    }
+                    tr = nt;
+                    cap = nc;
+                }
+                tr[n].obj = v->obj;
+                tr[n].lo = 1e30f;
+                tr[n].x = tr[n].z = tr[n].gap = 0.0f;
+                n++;
+            }
+            for (k = 0; k < 3; k++) {
+                if (v[k].y < tr[q].lo) {
+                    tr[q].lo = v[k].y;
+                    tr[q].x = v[k].x;
+                    tr[q].z = v[k].z;
+                }
+            }
+        }
+    }
+    for (q = 0; q < n; q++) {
+        int hit = 0;
+        const float fl = bmap_floor_below(s, tr[q].x, tr[q].z, tr[q].lo - 1.0f, &hit);
+
+        tr[q].gap = hit && tr[q].lo - fl > 0.05f && tr[q].lo - fl <= FOREST_GAP ? tr[q].lo - fl : 0.0f;
+    }
+    for (i = 0; n > 0 && i < s->nd; i++) {
+        const BmapDraw *d = &s->d[i];
+
+        if (!NAMED(s, d, k_forest_tree_names) || d->billboard != 0 || d->count < 3 || d->first % 3 != 0 || d->first + d->count > s->nv) {
+            continue;
+        }
+        for (j = d->first; j + 2 < d->first + d->count; j += 3) {
+            BmapVertex *v = &s->v[j];
+            float fl = 0.0f;
+
+            if (v->obj == 0u || (v->obj & 0x80000000u) != 0u) {
+                continue;
+            }
+            if (forest_shadow_tri(s, d, v, &fl)) {
+                for (k = 0; k < 3; k++) {
+                    v[k].y = fl + DECAL_LIFT + 0.15f;
+                }
+                laid++;
+                continue;
+            }
+            for (q = 0; q < n && tr[q].obj != v->obj; q++) {
+            }
+            if (q < n && tr[q].gap > 0.0f) {
+                for (k = 0; k < 3; k++) {
+                    v[k].y -= tr[q].gap;
+                }
+                moved++;
+            }
+        }
+    }
+    if (getenv("BMAP_PLACE_LOG") != NULL && n > 0) {
+        fprintf(stderr, "bmap: forest: %u blocks of great trees, %u triangles set down, %u shadow triangles laid on the floor\n", n, moved, laid);
+        for (q = 0; q < n && q < 4; q++) {
+            fprintf(stderr, "bmap: forest: block %08X lowest corner %.2f, set down by %.2f\n", tr[q].obj, (double)tr[q].lo, (double)tr[q].gap);
+        }
+    }
+    free(tr);
+}
+
 void bmap_place_prepare(BmapScene *s, int field)
 {
     unsigned i, nd0, ntri;
@@ -3137,6 +3257,9 @@ void bmap_place_prepare(BmapScene *s, int field)
     /* the same map for the battle and the editor's free field view */
     clock_t t0 = clock(), t1, t2;       /* research: where the time goes */
 
+    if (!field) {
+        forest_set_down(s);             /* (before anything reads where a thing stands) */
+    }
     stand_cards(s);
     t1 = clock();
     if (!field) {
