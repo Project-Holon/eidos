@@ -183,6 +183,7 @@ def find_lib(build, patterns, extra_dirs):
 def common(pkg, version, run, userdir, scratch, extra_note=""):
     for d in DOCS:
         pkg.add(d, os.path.join(ROOT, d))
+    pkg.add("recomplauncher.json", os.path.join(ROOT, "recomplauncher.json"))
     pkg.add_text("README.txt", README_TXT % {
         "version": version, "run": run, "userdir": userdir} + extra_note,
         scratch=scratch)
@@ -297,6 +298,7 @@ def package_linux(args, scratch):
     with open(os.path.join(appdir, "AppRun"), "w", newline="\n") as fh:
         fh.write(APPRUN)
     os.chmod(os.path.join(appdir, "AppRun"), 0o755)
+    shutil.copy2(os.path.join(ROOT, "recomplauncher.json"), appdir)
     share = os.path.join(appdir, "usr/share/doc/eidos")
     os.makedirs(share)
     for d in DOCS:
