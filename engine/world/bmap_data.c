@@ -6035,6 +6035,8 @@ static unsigned char *grid_cells_joined(Buf mb, unsigned w, unsigned h, unsigned
     return keep;
 }
 
+static void stadium_shell(BmapScene *s, unsigned zone);
+
 int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int hour, int minute)
 {
     Ctx *c = (Ctx *)calloc(1, sizeof *c);
@@ -6368,6 +6370,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     s->nuva = (unsigned)c->nuva;
     c->uva = NULL;
     c->nuva = 0;
+    stadium_shell(s, zone);             /* (the scene has its pictures now) */
     if (s->clear[0] < 24u && s->clear[1] < 24u && s->clear[2] < 24u) {
         /* A room or a cave has a black "sky": nothing is drawn beyond its
          * walls.  In battle the camera sees over them, so the space around
@@ -6691,4 +6694,310 @@ int bmap_add_bmd(BmapScene *s, const unsigned char *bmd, size_t bmd_n,
     free(c->walk);
     free(c);
     return rc;
+}
+
+/* The inside of Nimbasa City's two sports buildings, the Big Stadium and the Small Court.
+ *
+ * The game draws a sports floor as the pitch or the court alone: turf, lines, goal posts, and nothing round it (the
+ * field's steep camera never shows more).  A battle's low camera looks across the floor into the empty room.  So the
+ * room gets the building it stands in: four walls and a roof, made of that building's own pictures (the model of the
+ * city outside), three times as large as outside, which stands the wall's top over the goal posts (208 high):
+ *   - the Big Stadium (model b1_00109: the football, baseball and soccer fields): a wall of its siding (the picture's
+ *     left half, its drawn rows; the outside's open rows between the boards are left out) 204 high, over it its row
+ *     of windows 99 high, a window every 96 units, and a roof of its dome's glass, a pane 96 by 48;
+ *   - the Small Court (model b1_00110: the tennis and basketball courts): a wall of its panelled front, a panel 96
+ *     wide and 192 high, and a roof in its dome's blue bands.
+ * Every pixel of a wall's picture is drawn, a window's pane in the picture's own colour for it (the daylight; the
+ * outside leaves the panes clear).  The roof: four slopes that rise 129 over 219, and a level middle.  A room is
+ * square as its floor is; the faces look into the room only (a camera beyond a wall sees the floor).  The walls are
+ * lit as the builders light a thing's sides: the north full, the east and west 0.86, the south 0.78.
+ *
+ * k_shell_kinds: a building: its model in the pack, its pictures (the wall, the row over it or none, the roof), the
+ * wall's and the row's heights outside, and how the wall's picture goes on (0: the siding, its left half stretched
+ * along the wall; else the picture's width outside, repeated).
+ * k_stadium_rooms: a room's zone, its building, the box of its floor (map units) and the floor's height. */
+static const struct {
+    unsigned model;
+    const char *wall, *row, *roof;
+    float wall_h, row_h, wall_w;
+} k_shell_kinds[] = {
+    { 109u, "c4_bp05", "c4_bp02", "c4_bp01", 68.0f, 33.0f, 0.0f },      /* the Big Stadium */
+    { 110u, "c4_tc01", NULL, "c4_tc04", 64.0f, 0.0f, 32.0f },       /* the Small Court */
+};
+static const struct {
+    unsigned zone, kind;
+    float x0, x1, z0, z1, y;
+} k_stadium_rooms[] = {
+    { 81u, 0u, -48.0f, 1072.0f, -48.0f, 608.0f, -6.0f },        /* the Big Stadium's football field */
+    { 82u, 0u, -80.0f, 1104.0f, -96.0f, 1120.0f, -6.0f },       /* ... its baseball field (its poles reach 379, under the roof's level middle) */
+    { 83u, 0u, -48.0f, 1072.0f, -48.0f, 608.0f, -6.0f },        /* ... its soccer field */
+    { 86u, 1u, -64.0f, 576.0f, -1.0f, 512.0f, -6.0f },          /* the Small Court's tennis court */
+    { 87u, 1u, -64.0f, 576.0f, -1.0f, 512.0f, -6.0f },          /* ... its basketball court */
+};
+#define SHELL_K 3.0f                    /* the outside's pictures, this many times as large */
+#define SHELL_PACK 6u                   /* the pack of a/2/2/9 (and its pictures, a/1/7/6) that holds both buildings */
+
+typedef struct {
+    BmapVertex *v;
+    unsigned n, cap;
+    int fail;
+} ShellMesh;
+
+static void shell_quad(ShellMesh *m, const float p[4][3], const float uv[4][2], float shade)
+{
+    static const int ix[6] = { 0, 1, 2, 0, 2, 3 };
+    const unsigned char c = (unsigned char)(255.0f * shade);
+    int k;
+
+    if (m->n + 6u > m->cap) {
+        const unsigned nc = m->cap ? m->cap * 2u : 96u;
+        BmapVertex *nv = (BmapVertex *)realloc(m->v, nc * sizeof *nv);
+
+        if (nv == NULL) {
+            m->fail = 1;
+            return;
+        }
+        m->v = nv;
+        m->cap = nc;
+    }
+    for (k = 0; k < 6; k++) {
+        BmapVertex *q = &m->v[m->n++];
+
+        memset(q, 0, sizeof *q);
+        q->x = p[ix[k]][0];
+        q->y = p[ix[k]][1];
+        q->z = p[ix[k]][2];
+        q->u = uv[ix[k]][0];
+        q->v = uv[ix[k]][1];
+        q->r = q->g = q->b = c;
+        q->a = 255;
+    }
+}
+
+/* A band of a wall from (ax, az) to (bx, bz), from y0 up to y1: it looks to the left of the way from a to b. */
+static void shell_band(ShellMesh *m, float ax, float az, float bx, float bz, float y0, float y1, float u1, float shade)
+{
+    const float p[4][3] = { { ax, y0, az }, { bx, y0, bz }, { bx, y1, bz }, { ax, y1, az } };
+    const float uv[4][2] = { { 0.0f, 1.0f }, { u1, 1.0f }, { u1, 0.0f }, { 0.0f, 0.0f } };
+
+    shell_quad(m, p, uv, shade);
+}
+
+static void stadium_shell(BmapScene *s, unsigned zone)
+{
+    static const float shade[4] = { 1.0f, 0.86f, 0.78f, 0.86f };                   /* north, east, south, west */
+    const float K = SHELL_K;
+    const char *names[3];
+    Ctx *c0, *c = NULL;
+    Blob bfile, btex;
+    Buf m;
+    Model md;
+    BmapScene t;
+    Aff base = aff_identity();
+    ShellMesh mesh[3];
+    BmapTexture pic[3], made[3];
+    BmapVertex *nv;
+    BmapTexture *nt;
+    BmapDraw *nd;
+    unsigned room, kind, n, k, i, first_tr, o, total = 0, ndraw = 0, slot[3];
+    int have = 0, parsed = 0;
+
+    for (room = 0; room < sizeof k_stadium_rooms / sizeof k_stadium_rooms[0] && k_stadium_rooms[room].zone != zone; room++) {
+    }
+    if (room == sizeof k_stadium_rooms / sizeof k_stadium_rooms[0] || s->shared || getenv("BMAP_NO_SHELL") != NULL) {
+        return;
+    }
+    kind = k_stadium_rooms[room].kind;
+    names[0] = k_shell_kinds[kind].wall;
+    names[1] = k_shell_kinds[kind].row;
+    names[2] = k_shell_kinds[kind].roof;
+    memset(mesh, 0, sizeof mesh);
+    memset(pic, 0, sizeof pic);
+    memset(made, 0, sizeof made);
+    memset(&bfile, 0, sizeof bfile);
+    memset(&btex, 0, sizeof btex);
+    memset(&t, 0, sizeof t);
+    c0 = (Ctx *)calloc(1, sizeof *c0);
+    if (c0 == NULL) {
+        return;
+    }
+    /* the building as the city draws it, alone: its pictures */
+    if (arc_load(c0, "a/2/2/9", SHELL_PACK, &bfile) != 0 || arc_load(c0, "a/1/7/6", SHELL_PACK, &btex) != 0) {
+        goto out;
+    }
+    m = bb_of(&bfile);
+    n = m.n > 2u ? m.p[2] / 2u : 0u;
+    for (k = 0; k < n && !parsed; k++) {
+        const u32 def = rd32(m, 4u + k * 4u), file = rd32(m, 4u + (n + k) * 4u);
+
+        if (file < m.n && def + 2u <= m.n && rd16(m, def) == k_shell_kinds[kind].model && model_parse(sub(m, file), &md) == 0) {
+            parsed = 1;
+        }
+    }
+    c = parsed ? (Ctx *)calloc(1, sizeof *c) : NULL;
+    if (c == NULL) {
+        goto out;
+    }
+    lights_fixed(&c->lights);
+    c->obj = 1;
+    if (add_model(c, &md, "shell", bb_of(&btex), &base, 2, NULL) != 0 || c->ntag == 0 || finish(c, &t) != 0) {
+        goto out;
+    }
+    for (i = 0; i < (unsigned)c->ntex; i++) {
+        if (getenv("BMAP_SHELL_LOG") != NULL) {
+            fprintf(stderr, "bmap: shell: the building's picture %s, %d x %d\n", c->tex[i].name, c->tex[i].w, c->tex[i].h);
+        }
+        for (k = 0; k < 3u; k++) {
+            if (names[k] != NULL && strcmp(c->tex[i].name, names[k]) == 0 && c->tex[i].rgba != NULL) {
+                pic[k] = c->tex[i];
+                have |= 1 << k;
+            }
+        }
+    }
+    if ((have | (names[1] == NULL ? 2 : 0)) != 7 || pic[0].w < 16 || pic[0].h < 16 || pic[2].w < 8 || pic[2].h < 8) {
+        goto out;
+    }
+    /* the room's own pictures: every pixel drawn */
+    for (k = 0; k < 3u; k++) {
+        const int half = k == 0 && k_shell_kinds[kind].wall_w == 0.0f;       /* the siding: the left half's drawn rows */
+        int rows[256], nr = 0, x, y, w;
+
+        if (names[k] == NULL) {
+            continue;
+        }
+        w = half ? pic[k].w / 2 : pic[k].w;
+        for (y = 0; y < pic[k].h && y < 256; y++) {
+            /* (a row of the siding is drawn when its pixel in column 4 is; any other picture: every row) */
+            if (!half || pic[k].rgba[((size_t)y * (size_t)pic[k].w + 4u) * 4u + 3u] >= 128) {
+                rows[nr++] = y;
+            }
+        }
+        if (nr == 0) {
+            goto out;
+        }
+        made[k].w = w;
+        made[k].h = nr;
+        made[k].rgba = (unsigned char *)malloc((size_t)w * (size_t)nr * 4u);
+        if (made[k].rgba == NULL) {
+            goto out;
+        }
+        for (y = 0; y < nr; y++) {
+            for (x = 0; x < w; x++) {
+                unsigned char *d = &made[k].rgba[((size_t)y * (size_t)w + (size_t)x) * 4u];
+
+                memcpy(d, &pic[k].rgba[((size_t)rows[y] * (size_t)pic[k].w + (size_t)x) * 4u], 4u);
+                d[3] = 255;
+            }
+        }
+        made[k].repeat_s = made[k].repeat_t = 1;
+    }
+    {
+        const float x0 = k_stadium_rooms[room].x0, x1 = k_stadium_rooms[room].x1, z0 = k_stadium_rooms[room].z0, z1 = k_stadium_rooms[room].z1;
+        const float y0 = k_stadium_rooms[room].y, h1 = y0 + k_shell_kinds[kind].wall_h * K, h2 = h1 + k_shell_kinds[kind].row_h * K;
+        const float rise = 43.0f * K, run = 73.0f * K, yr = h2 + rise, sl = sqrtf(rise * rise + run * run);
+        const float ru = (float)pic[2].w * K, rv = (float)pic[2].h * K;      /* the roof's picture, once */
+        const float cx[5] = { x0, x1, x1, x0, x0 }, cz[5] = { z0, z0, z1, z1, z0 };       /* the corners: the north wall first */
+        const float ix[5] = { x0 + run, x1 - run, x1 - run, x0 + run, x0 + run }, iz[5] = { z0 + run, z0 + run, z1 - run, z1 - run, z0 + run };
+
+        for (k = 0; k < 4u; k++) {
+            const float len = fabsf(cx[k + 1] - cx[k]) + fabsf(cz[k + 1] - cz[k]);
+            const float p[4][3] = { { cx[k], h2, cz[k] }, { cx[k + 1], h2, cz[k + 1] }, { ix[k + 1], yr, iz[k + 1] }, { ix[k], yr, iz[k] } };
+            const float uv[4][2] = { { 0.0f, sl / rv }, { len / ru, sl / rv }, { (len - run) / ru, 0.0f }, { run / ru, 0.0f } };
+            const float ww = k_shell_kinds[kind].wall_w;
+
+            shell_band(&mesh[0], cx[k], cz[k], cx[k + 1], cz[k + 1], y0, h1, ww == 0.0f ? 1.0f : len / (ww * K), shade[k]);
+            if (names[1] != NULL) {
+                shell_band(&mesh[1], cx[k], cz[k], cx[k + 1], cz[k + 1], h1, h2, len / ((float)pic[1].w * K), shade[k]);
+            }
+            shell_quad(&mesh[2], p, uv, 0.92f);
+        }
+        {
+            const float p[4][3] = { { ix[0], yr, iz[0] }, { ix[1], yr, iz[1] }, { ix[2], yr, iz[2] }, { ix[3], yr, iz[3] } };
+            const float uv[4][2] = { { 0.0f, 0.0f }, { (ix[1] - ix[0]) / ru, 0.0f }, { (ix[1] - ix[0]) / ru, (iz[2] - iz[1]) / rv },
+                                     { 0.0f, (iz[2] - iz[1]) / rv } };
+
+            shell_quad(&mesh[2], p, uv, 1.0f);
+        }
+    }
+    for (k = 0; k < 3u; k++) {
+        if (mesh[k].fail) {
+            goto out;
+        }
+        if (mesh[k].n > 0u) {
+            slot[ndraw++] = k;
+            total += mesh[k].n;
+        }
+    }
+    nv = (BmapVertex *)realloc(s->v, (s->nv + total) * sizeof *nv);
+    if (nv != NULL) {
+        s->v = nv;
+    }
+    nt = (BmapTexture *)realloc(s->t, (s->nt + ndraw) * sizeof *nt);
+    if (nt != NULL) {
+        s->t = nt;
+    }
+    nd = (BmapDraw *)malloc((s->nd + ndraw) * sizeof *nd);
+    if (nv == NULL || nt == NULL || nd == NULL) {
+        free(nd);
+        goto out;
+    }
+    /* the room's draws: solid, after the scene's solid ones */
+    for (first_tr = 0; first_tr < s->nd && !s->d[first_tr].translucent; first_tr++) {
+    }
+    memcpy(nd, s->d, first_tr * sizeof *nd);
+    o = s->nv;
+    for (i = 0; i < ndraw; i++) {
+        BmapDraw *d = &nd[first_tr + i];
+
+        k = slot[i];
+        memcpy(s->v + o, mesh[k].v, mesh[k].n * sizeof *nv);
+        memset(d, 0, sizeof *d);
+        d->tex = (int)(s->nt + i);
+        d->first = o;
+        d->count = mesh[k].n;
+        d->alpha = 31;
+        d->cull = 1;
+        o += mesh[k].n;
+        s->t[s->nt + i] = made[k];              /* the scene owns the pixels now */
+        made[k].rgba = NULL;
+    }
+    memcpy(nd + first_tr + ndraw, s->d + first_tr, (s->nd - first_tr) * sizeof *nd);
+    free(s->d);
+    s->d = nd;
+    s->nd += ndraw;
+    s->nv += total;
+    s->nt += ndraw;
+    s->tex_gen = bmap_tex_gen();
+out:
+    for (k = 0; k < 3u; k++) {
+        free(mesh[k].v);
+        free(made[k].rgba);
+    }
+    free(t.v);
+    free(t.d);
+    if (parsed) {
+        model_free(&md);
+    }
+    if (c != NULL) {
+        for (i = 0; i < (unsigned)c->ntex; i++) {
+            free(c->tex[i].rgba);
+        }
+        for (i = 0; i < (unsigned)c->nents; i++) {
+            free(c->ents[i].rgba);
+        }
+        free(c->tex);
+        free(c->texrefs);
+        free(c->ents);
+        free(c->v);
+        free(c->tag);
+        free(c->gt);
+        free(c->walk);
+        free(c);
+    }
+    for (i = 0; i < c0->narcs; i++) {
+        bw_arc_close(&c0->arcs[i].f);
+    }
+    blob_free(&bfile);
+    blob_free(&btex);
+    free(c0);
 }
