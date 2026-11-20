@@ -5248,6 +5248,540 @@ static void research_models(const char *dir)
 }
 
 /*
+ * The far coast closed.
+ *
+ * The map is a grid of cells 32 tiles (512 units) wide.  A cell of open sea is one sheet of water over its bed; a
+ * cell of forest between places is one square of ground with trees on it; some cells hold nothing at all.  The
+ * field's steep camera never looks across them.  A battle's low camera on an island does: it sees the sea end at a
+ * cell's border, the sky through the cell that holds nothing, and beyond it a square of forest that hangs in the
+ * air, 27 units over the water, with no side.  So, for a scene with a sea (the level see-through water that covers
+ * the most ground, and the bed that covers the most under it):
+ *   - where a sheet of water (and its bed) ends on the whole side of a cell and the next cell holds no level
+ *     ground or water at all, the same sheet goes on over that cell, laid on as extend_sea lays it, cell after cell;
+ *   - where far ground (TriTag.far: beyond the battle's own reach) over the sea's height has an edge on a cell's
+ *     border and nothing level lies beside it across the border within 2 units of its height, it gets a cliff: from
+ *     the edge down, in the map's own cliff pictures (the rim gake1_1 on the top 4 units, the rock gake01a under
+ *     it in rows 12 high, of the picture's solid rows only: its last rows are a ragged see-through edge), 0.86
+ *     as bright as the ground, seen from both sides.  The land keeps its levels: with lower solid ground beside
+ *     it the cliff is that step's own, ends on that ground and stands upright on the border (the lower level's
+ *     trees stand to the border: a leaning cliff would bury them); with the sea or nothing beside it the cliff
+ *     goes down to the sea's bed and leans out as the map's own cliffs do (the rim 8 out, the rock 0.8 out a
+ *     unit down), and where such a stretch ends it is closed: a mitre at an outer corner of the ground, else a
+ *     face under the corner.  A map without those two pictures gets none.  Only the ground itself gets one,
+ *     and only ground counts beside it: a level sheet whose picture is a cut-out (a tree's flat layers of
+ *     leaves, a patch laid on the ground) is not ground, nor is a see-through one that is no water (a shadow).
+ * Only the map's own mesh (object 0) counts and changes.  BMAP_NO_COAST: the scene as the map has it.
+ */
+#define COAST_CELL 512.0f
+#define COAST_RIM 4.0f              /* a cliff's rim: the top of the side, map units */
+#define COAST_RIM_OUT 8.0f          /* ... and how far it leans out (the map's own rims: 4 down, 8 out) */
+#define COAST_ROW 12.0f             /* a row of the cliff's rock, map units down */
+#define COAST_LEAN 0.8f             /* the rock leans out this far a unit down (the map's own: 10 down, 8 out) */
+
+/* A stretch of far ground's edge that hangs open: along z at x = c (along_z) or along x at z = c, from t0 to t1,
+ * at the height y; out: the way out of the ground, +1 or -1 along the other axis. */
+typedef struct {
+    int along_z;
+    float c, t0, t1, y, out;
+    float bottom;               /* where its cliff ends: the lower ground beside it, or the sea's bed */
+    int upright;                /* a step down to lower ground: the cliff stands on the border */
+    BmapVertex ref;
+    TriTag tag;
+} CoastSide;
+
+typedef struct {
+    int gx0, gz0, gw, gh;
+    unsigned char *cov;         /* a cell holds level ground or water                */
+    unsigned char *fill;        /* this step's sea in it: 1 the water, 2 the bed     */
+    unsigned *start, *idx;      /* a cell's level triangles                          */
+} CoastGrid;
+
+static int coast_cell(const CoastGrid *g, float x, float z)
+{
+    const int cx = (int)floorf(x / COAST_CELL) - g->gx0, cz = (int)floorf(z / COAST_CELL) - g->gz0;
+
+    return cx < 0 || cz < 0 || cx >= g->gw || cz >= g->gh ? -1 : cz * g->gw + cx;
+}
+
+static int coast_level(const Ctx *c, size_t i)
+{
+    const BmapVertex *v = &c->v[i * 3u];
+
+    return c->tag[i].bb == 0 && v[0].obj == 0u && fabsf(v[1].y - v[0].y) <= 0.01f && fabsf(v[2].y - v[0].y) <= 0.01f
+           && fabsf((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[2].x - v[0].x) * (v[1].z - v[0].z)) > 1e-3f;
+}
+
+static int coast_on_border(float t)
+{
+    return fabsf(t / COAST_CELL - roundf(t / COAST_CELL)) * COAST_CELL < 0.5f;
+}
+
+/* The ground of cell `cell` under (x, z): its highest solid level surface no higher than y + 2.  A level sheet whose
+ * picture is a cut-out (`cut`: a tree's flat layers of leaves, a patch laid on the ground) is no ground; nor is a
+ * see-through picture that is no water (a tree's shadow).  *water: water (a see-through sheet with a material alpha
+ * under 31, as the loader tells water) lies over that ground there, or there is water and no ground (*found is then
+ * the water's height).  0: nothing there. */
+static int coast_below(const Ctx *c, const CoastGrid *g, const unsigned char *cut, int cell, float x, float z, float y, float *found,
+                       int *water)
+{
+    unsigned k;
+    int solid = 0, wet = 0;
+    float sy = 0.0f, wy = 0.0f;
+
+    for (k = g->start[cell]; k < g->start[cell + 1]; k++) {
+        const size_t i = g->idx[k];
+        const BmapVertex *v = &c->v[i * 3u];
+        const float d = (v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[2].x - v[0].x) * (v[1].z - v[0].z);
+        const float w1 = ((x - v[0].x) * (v[2].z - v[0].z) - (v[2].x - v[0].x) * (z - v[0].z)) / d;
+        const float w2 = ((v[1].x - v[0].x) * (z - v[0].z) - (x - v[0].x) * (v[1].z - v[0].z)) / d;
+
+        if (w1 < -1e-4f || w2 < -1e-4f || w1 + w2 > 1.0001f || v[0].y > y + 2.0f) {
+            continue;
+        }
+        if (c->tag[i].translucent) {
+            if (c->tag[i].alpha < 31u && (!wet || v[0].y > wy)) {
+                wy = v[0].y;
+                wet = 1;
+            }
+        } else if (!(c->tag[i].tex >= 0 && (size_t)c->tag[i].tex < (size_t)c->ntex && cut[c->tag[i].tex]) && (!solid || v[0].y > sy)) {
+            sy = v[0].y;
+            solid = 1;
+        }
+    }
+    *found = solid ? sy : wy;
+    *water = wet && (!solid || wy > sy);
+    return solid || wet;
+}
+
+static int close_coast(Ctx *c)
+{
+    const size_t ntri0 = c->ntag;
+    float lo[2] = { 1e30f, 1e30f }, hi[2] = { -1e30f, -1e30f }, sea_y = 0.0f, bed_y = 0.0f, best;
+    float *hy = NULL, *ha = NULL;
+    size_t i, nh = 0, k, made_sea = 0, made_side = 0;
+    CoastGrid g;
+    int pass, rc = 0, cells, any, rock = -1, rim = -1;
+    CoastSide *sd = NULL;
+    unsigned char *cut = NULL;
+    size_t nsd = 0, sdcap = 0;
+    float rock_v = 0.0f;
+
+    memset(&g, 0, sizeof g);
+    if (getenv("BMAP_NO_COAST") != NULL) {
+        return 0;
+    }
+    /* the sea and its bed: the level water that covers the most ground, the solid level ground that covers the most
+     * under it */
+    hy = (float *)malloc(64u * sizeof *hy);
+    ha = (float *)calloc(64u, sizeof *ha);
+    if (hy == NULL || ha == NULL) {
+        goto out;
+    }
+    for (pass = 0; pass < 2; pass++) {
+        nh = 0;
+        memset(ha, 0, 64u * sizeof *ha);
+        for (i = 0; i < ntri0; i++) {
+            const BmapVertex *v = &c->v[i * 3u];
+            const TriTag *t = &c->tag[i];
+            const int water = t->translucent && t->alpha < 31u;
+            float area;
+
+            if (!coast_level(c, i) || (pass == 0 ? !water : (t->translucent || v[0].y >= sea_y - 0.01f || sea_y - v[0].y > WATER_MAX))) {
+                continue;
+            }
+            area = 0.5f * fabsf((v[1].x - v[0].x) * (v[2].z - v[0].z) - (v[2].x - v[0].x) * (v[1].z - v[0].z));
+            for (k = 0; k < nh && fabsf(hy[k] - v[0].y) > 0.01f; k++) {
+            }
+            if (k == nh && nh < 64u) {
+                hy[nh++] = v[0].y;
+            }
+            if (k < nh) {
+                ha[k] += area;
+            }
+            if (pass == 0) {
+                for (k = 0; k < 3; k++) {
+                    lo[0] = fminf(lo[0], v[k].x); hi[0] = fmaxf(hi[0], v[k].x);
+                    lo[1] = fminf(lo[1], v[k].z); hi[1] = fmaxf(hi[1], v[k].z);
+                }
+            }
+        }
+        for (best = 0.0f, k = 0; k < nh; k++) {
+            if (ha[k] > best) {
+                best = ha[k];
+                *(pass == 0 ? &sea_y : &bed_y) = hy[k];
+            }
+        }
+        if (best <= 0.0f) {
+            if (pass == 0) {
+                goto out;               /* (no sea: nothing to close) */
+            }
+            bed_y = sea_y;
+        }
+    }
+    /* the grid, over everything level of the map's own mesh */
+    for (i = 0; i < ntri0; i++) {
+        if (coast_level(c, i)) {
+            const BmapVertex *v = &c->v[i * 3u];
+
+            for (k = 0; k < 3; k++) {
+                lo[0] = fminf(lo[0], v[k].x); hi[0] = fmaxf(hi[0], v[k].x);
+                lo[1] = fminf(lo[1], v[k].z); hi[1] = fmaxf(hi[1], v[k].z);
+            }
+        }
+    }
+    g.gx0 = (int)floorf(lo[0] / COAST_CELL);
+    g.gz0 = (int)floorf(lo[1] / COAST_CELL);
+    g.gw = (int)ceilf(hi[0] / COAST_CELL) - g.gx0;
+    g.gh = (int)ceilf(hi[1] / COAST_CELL) - g.gz0;
+    cells = g.gw * g.gh;
+    if (g.gw <= 0 || g.gh <= 0 || cells > 16384) {
+        goto out;
+    }
+    g.cov = (unsigned char *)calloc((size_t)cells, 1);
+    g.fill = (unsigned char *)calloc((size_t)cells, 1);
+    g.start = (unsigned *)calloc((size_t)cells + 2u, sizeof *g.start);
+    if (g.cov == NULL || g.fill == NULL || g.start == NULL) {
+        rc = -1;
+        goto out;
+    }
+    for (pass = 0; pass < 2; pass++) {          /* count, then fill: a level triangle in every cell its box touches */
+        for (i = 0; i < ntri0; i++) {
+            const BmapVertex *v = &c->v[i * 3u];
+            int x0, x1, z0, z1, x, z;
+
+            if (!coast_level(c, i)) {
+                continue;
+            }
+            x0 = (int)floorf((fminf(v[0].x, fminf(v[1].x, v[2].x)) + 1.0f) / COAST_CELL) - g.gx0;
+            x1 = (int)floorf((fmaxf(v[0].x, fmaxf(v[1].x, v[2].x)) - 1.0f) / COAST_CELL) - g.gx0;
+            z0 = (int)floorf((fminf(v[0].z, fminf(v[1].z, v[2].z)) + 1.0f) / COAST_CELL) - g.gz0;
+            z1 = (int)floorf((fmaxf(v[0].z, fmaxf(v[1].z, v[2].z)) - 1.0f) / COAST_CELL) - g.gz0;
+            for (z = z0 < 0 ? 0 : z0; z <= z1 && z < g.gh; z++) {
+                for (x = x0 < 0 ? 0 : x0; x <= x1 && x < g.gw; x++) {
+                    const int cell = z * g.gw + x;
+
+                    g.cov[cell] = 1;
+                    if (pass == 0) {
+                        g.start[cell + 1]++;
+                    } else {
+                        g.idx[g.start[cell]++] = (unsigned)i;
+                    }
+                }
+            }
+        }
+        if (pass == 0) {
+            for (k = 0; k < (size_t)cells; k++) {
+                g.start[k + 1] += g.start[k];
+            }
+            g.idx = (unsigned *)malloc(((size_t)g.start[cells] + 1u) * sizeof *g.idx);
+            if (g.idx == NULL) {
+                rc = -1;
+                goto out;
+            }
+        } else {
+            for (k = (size_t)cells; k > 0; k--) {       /* (the fill moved each start to its end) */
+                g.start[k] = g.start[k - 1];
+            }
+            g.start[0] = 0;
+        }
+    }
+    /* the sea into the cells that hold nothing */
+    for (pass = 0, any = 1; pass < 32 && any && rc == 0; pass++) {
+        const size_t n = c->ntag;
+
+        any = 0;
+        for (i = 0; i < n && rc == 0; i++) {
+            TriTag tag = c->tag[i];
+            BmapVertex v[3];
+            int water, e;
+            float det, ax, az, bx, bz, ny;
+
+            if (!coast_level(c, i)) {
+                continue;
+            }
+            memcpy(v, &c->v[i * 3u], sizeof v);
+            water = tag.translucent && tag.alpha < 31u;
+            if (water ? fabsf(v[0].y - sea_y) > 0.01f : (tag.translucent || fabsf(v[0].y - bed_y) > 0.01f || bed_y >= sea_y)) {
+                continue;               /* (the sea's own sheet and its bed only) */
+            }
+            ax = v[1].x - v[0].x; az = v[1].z - v[0].z;
+            bx = v[2].x - v[0].x; bz = v[2].z - v[0].z;
+            det = ax * bz - bx * az;
+            ny = az * bx - ax * bz;
+            for (e = 0; e < 3 && rc == 0; e++) {
+                const BmapVertex p = v[e], q = v[(e + 1) % 3], r = v[(e + 2) % 3];
+                const int along_z = fabsf(p.x - q.x) < 0.01f && coast_on_border(p.x);
+                const int along_x = fabsf(p.z - q.z) < 0.01f && coast_on_border(p.z);
+                const float a0 = along_z ? fminf(p.z, q.z) : fminf(p.x, q.x), a1 = along_z ? fmaxf(p.z, q.z) : fmaxf(p.x, q.x);
+                float out[2] = { 0.0f, 0.0f }, s0;
+
+                if (!along_z && !along_x) {
+                    continue;
+                }
+                out[along_z ? 0 : 1] = (along_z ? r.x < p.x : r.z < p.z) ? COAST_CELL : -COAST_CELL;
+                /* (the edge cell by cell: a sheet of open sea is often one square over several cells) */
+                for (s0 = floorf((a0 + 0.5f) / COAST_CELL) * COAST_CELL; s0 + COAST_CELL <= a1 + 0.5f && rc == 0; s0 += COAST_CELL) {
+                    BmapVertex cn[4], bv[3];
+                    float wp[3][3];
+                    int cell, tri, q2;
+
+                    if (s0 < a0 - 0.5f) {
+                        continue;
+                    }
+                    for (q2 = 0; q2 < 4; q2++) {        /* (the cell's square: on the border, then across it) */
+                        const float t = (q2 == 0 || q2 == 3) ? s0 : s0 + COAST_CELL;
+                        const float o = q2 < 2 ? 0.0f : 1.0f;
+                        float dx, dz, s1, s2;
+
+                        cn[q2] = p;
+                        cn[q2].x = (along_z ? p.x : t) + out[0] * o;
+                        cn[q2].z = (along_z ? t : p.z) + out[1] * o;
+                        dx = cn[q2].x - v[0].x;
+                        dz = cn[q2].z - v[0].z;
+                        s1 = (dx * bz - bx * dz) / det;
+                        s2 = (ax * dz - dx * az) / det;
+                        /* (the texture goes on as the triangle lays it) */
+                        cn[q2].u = v[0].u + s1 * (v[1].u - v[0].u) + s2 * (v[2].u - v[0].u);
+                        cn[q2].v = v[0].v + s1 * (v[1].v - v[0].v) + s2 * (v[2].v - v[0].v);
+                    }
+                    cell = coast_cell(&g, 0.5f * (cn[0].x + cn[2].x), 0.5f * (cn[0].z + cn[2].z));
+                    if (cell < 0 || g.cov[cell] || (g.fill[cell] & (water ? 1 : 2)) != 0) {
+                        continue;
+                    }
+                    g.fill[cell] |= (unsigned char)(water ? 1 : 2);
+                    for (tri = 0; tri < 2 && rc == 0; tri++) {
+                        float e1x, e1z, e2x, e2z;
+
+                        bv[0] = cn[0];
+                        bv[1] = tri == 0 ? cn[1] : cn[2];
+                        bv[2] = tri == 0 ? cn[2] : cn[3];
+                        e1x = bv[1].x - bv[0].x; e1z = bv[1].z - bv[0].z;
+                        e2x = bv[2].x - bv[0].x; e2z = bv[2].z - bv[0].z;
+                        if ((e1z * e2x - e1x * e2z) * ny < 0.0f) {      /* facing as the sheet it continues */
+                            const BmapVertex sw = bv[1];
+
+                            bv[1] = bv[2];
+                            bv[2] = sw;
+                        }
+                        for (q2 = 0; q2 < 3; q2++) {
+                            wp[q2][0] = bv[q2].x; wp[q2][1] = bv[q2].y; wp[q2][2] = bv[q2].z;
+                        }
+                        rc = add_tri(c, bv, &tag, (const float (*)[3])wp, 0, 0);
+                        made_sea++;
+                    }
+                    any = 1;
+                }
+            }
+        }
+    }
+    /* far ground's open edges on the cells' borders: a cliff down, where the map has the cliff's pictures */
+    for (k = 0; k < (size_t)c->ntex; k++) {
+        if (rock < 0 && strcmp(c->tex[k].name, "gake01a") == 0) {
+            rock = (int)k;
+        }
+        if (rim < 0 && strcmp(c->tex[k].name, "gake1_1") == 0) {
+            rim = (int)k;
+        }
+    }
+    if (rock >= 0 && c->tex[rock].rgba != NULL && c->tex[rock].h > 0) {
+        /* (the rock picture's solid rows: its last rows are a ragged, see-through edge) */
+        int y, x;
+
+        for (y = 0; y < c->tex[rock].h; y++) {
+            for (x = 0; x < c->tex[rock].w && c->tex[rock].rgba[((size_t)y * (size_t)c->tex[rock].w + (size_t)x) * 4u + 3u] >= 128; x++) {
+            }
+            if (x < c->tex[rock].w) {
+                break;
+            }
+        }
+        rock_v = (float)y / (float)c->tex[rock].h;
+    }
+    /* the pictures that are cut-outs */
+    cut = (unsigned char *)calloc((size_t)(c->ntex > 0 ? c->ntex : 1), 1);
+    if (cut == NULL) {
+        rc = -1;
+    }
+    for (k = 0; cut != NULL && k < (size_t)c->ntex; k++) {
+        const BmapTexture *tx = &c->tex[k];
+        long q;
+
+        for (q = 0; tx->rgba != NULL && !cut[k] && q < (long)tx->w * tx->h; q++) {
+            cut[k] = tx->rgba[(size_t)q * 4u + 3u] < 128;
+        }
+    }
+    /* the open stretches, each a piece of a cell's border */
+    for (i = 0; i < ntri0 && rc == 0 && rock >= 0 && rim >= 0 && rock_v > 0.2f; i++) {
+        const TriTag tag = c->tag[i];
+        BmapVertex v[3];
+        int e;
+
+        /* (the ground only: no cut-out picture, as coast_below tells ground) */
+        if (!tag.far || tag.translucent || !coast_level(c, i) || c->v[i * 3u].y < sea_y + 2.0f
+            || (tag.tex >= 0 && (size_t)tag.tex < (size_t)c->ntex && cut[tag.tex])) {
+            continue;
+        }
+        memcpy(v, &c->v[i * 3u], sizeof v);
+        for (e = 0; e < 3 && rc == 0; e++) {
+            const BmapVertex p = v[e], q = v[(e + 1) % 3], r = v[(e + 2) % 3];
+            const int along_z = fabsf(p.x - q.x) < 0.01f && coast_on_border(p.x);
+            const int along_x = fabsf(p.z - q.z) < 0.01f && coast_on_border(p.z);
+            const float a0 = along_z ? fminf(p.z, q.z) : fminf(p.x, q.x), a1 = along_z ? fmaxf(p.z, q.z) : fmaxf(p.x, q.x);
+            float out[2] = { 0.0f, 0.0f }, s0;
+
+            if (!along_z && !along_x) {
+                continue;
+            }
+            out[along_z ? 0 : 1] = (along_z ? r.x < p.x : r.z < p.z) ? 1.0f : -1.0f;
+            for (s0 = floorf((a0 + 0.5f) / COAST_CELL) * COAST_CELL; s0 < a1 - 0.5f && rc == 0; s0 += COAST_CELL) {    /* cell by cell */
+                const float t0 = fmaxf(a0, s0), t1 = fminf(a1, s0 + COAST_CELL), tm = 0.5f * (t0 + t1);
+                const float mx = (along_z ? p.x : tm) + out[0], mz = (along_z ? tm : p.z) + out[1];
+                float found = 0.0f;
+                CoastSide *ns;
+                int cell, water = 0, hit, step;
+
+                if (t1 - t0 < 1.0f) {
+                    continue;
+                }
+                cell = coast_cell(&g, mx, mz);
+                if (cell < 0) {
+                    continue;           /* (the edge of everything loaded) */
+                }
+                hit = coast_below(c, &g, cut, cell, mx, mz, p.y, &found, &water);
+                if ((hit && !water && fabsf(found - p.y) <= 2.0f) || p.y - bed_y < 2.0f) {
+                    continue;           /* (the ground goes on across the border) */
+                }
+                /* (lower solid ground beside it: the step's own cliff, down to that ground; the sea or nothing: down
+                 * to the bed) */
+                step = hit && !water && found > bed_y + 0.5f;
+                ns = (CoastSide *)grow(sd, &sdcap, nsd, sizeof *ns);
+                if (ns == NULL) {
+                    rc = -1;
+                    break;
+                }
+                sd = ns;
+                sd[nsd].along_z = along_z;
+                sd[nsd].c = along_z ? p.x : p.z;
+                sd[nsd].t0 = t0;
+                sd[nsd].t1 = t1;
+                sd[nsd].y = p.y;
+                sd[nsd].out = out[along_z ? 0 : 1];
+                sd[nsd].bottom = step ? found : bed_y;
+                sd[nsd].upright = step;
+                sd[nsd].ref = p;
+                sd[nsd].tag = tag;
+                nsd++;
+            }
+        }
+    }
+    /* each stretch its slope: the rim COAST_RIM down and COAST_RIM_OUT out, then the rock COAST_LEAN out a unit
+     * down in rows COAST_ROW high, to the bed; its two ends closed */
+    for (i = 0; i < nsd && rc == 0; i++) {
+        const CoastSide *S = &sd[i];
+        float dd[40], oo[40];           /* the slope's steps: how far down, how far out */
+        int nstep = 0, end, j;
+
+        dd[0] = oo[0] = 0.0f;
+        dd[1] = fminf(COAST_RIM, S->y - S->bottom);
+        oo[1] = S->upright ? 0.0f : COAST_RIM_OUT * dd[1] / COAST_RIM;
+        nstep = 1;
+        while (S->y - dd[nstep] > S->bottom + 0.25f && nstep < 38) {
+            const float d = fminf(COAST_ROW, S->y - dd[nstep] - S->bottom);
+
+            dd[nstep + 1] = dd[nstep] + d;
+            oo[nstep + 1] = oo[nstep] + (S->upright ? 0.0f : COAST_LEAN * d);
+            nstep++;
+        }
+        for (end = -1; end <= 1 && rc == 0; end++) {    /* -1 and 1: its ends (at t0, at t1); 0: the stretch itself */
+            const float te = end < 0 ? S->t0 : S->t1, away = (float)end;
+            int kind = 0;               /* an end: 0 a cap under the corner, 1 a mitre (an outer corner), 2 nothing */
+
+            if (end != 0 && S->upright) {
+                continue;               /* (an upright cliff has no ends to close) */
+            }
+            for (k = 0; end != 0 && k < nsd && kind == 0; k++) {
+                const CoastSide *T = &sd[k];
+
+                if (k == i || fabsf(T->y - S->y) > 0.01f || T->upright) {
+                    continue;
+                }
+                if (T->along_z == S->along_z && fabsf(T->c - S->c) < 0.5f && T->out == S->out
+                    && fabsf((end < 0 ? T->t1 : T->t0) - te) < 0.5f) {
+                    kind = 2;           /* (the stretch goes on) */
+                } else if (T->along_z != S->along_z && fabsf(T->c - te) < 0.5f && T->out == away
+                           && fabsf((S->out > 0.0f ? T->t1 : T->t0) - S->c) < 0.5f) {
+                    kind = 1;
+                }
+            }
+            if (kind == 2) {
+                continue;
+            }
+            for (j = 0; j < nstep && rc == 0; j++) {
+                const float us = j == 0 ? 16.0f : 24.0f;
+                TriTag st = S->tag;
+                BmapVertex cn[4], bv[3];
+                float wp[3][3];
+                int q2, tri;
+
+                st.tex = j == 0 ? rim : rock;
+                st.alpha = 31;
+                st.translucent = 0;
+                st.cull = 0;
+                st.uvanim = 0;
+                for (q2 = 0; q2 < 4; q2++) {
+                    /* the stretch: its two ends at this step, then at the next; an end: the slope's end and the
+                     * point beside it (under the corner, or out along the border for a mitre), likewise */
+                    const int lower = q2 >= 2, second = q2 == 1 || q2 == 2;
+                    const float d = dd[j + lower], o = oo[j + lower];
+                    float t, off;
+
+                    if (end == 0) {
+                        t = second ? S->t1 : S->t0;
+                        off = o;
+                    } else {
+                        t = second && kind == 1 ? te + away * o : te;
+                        off = second && kind == 0 ? 0.0f : o;
+                    }
+                    cn[q2] = S->ref;
+                    cn[q2].x = S->along_z ? S->c + S->out * off : t;
+                    cn[q2].z = S->along_z ? t : S->c + S->out * off;
+                    cn[q2].y = S->y - d;
+                    cn[q2].u = (end != 0 && second && kind == 0 ? te - away * o : t) / us;
+                    cn[q2].v = j == 0 ? (lower ? 1.0f : 0.0f) : (lower ? rock_v * (dd[j + 1] - dd[j]) / COAST_ROW : 0.0f);
+                    cn[q2].r = (unsigned char)(cn[q2].r * 0.86f);
+                    cn[q2].g = (unsigned char)(cn[q2].g * 0.86f);
+                    cn[q2].b = (unsigned char)(cn[q2].b * 0.86f);
+                }
+                for (tri = 0; tri < 2 && rc == 0; tri++) {
+                    bv[0] = cn[0];
+                    bv[1] = tri == 0 ? cn[1] : cn[2];
+                    bv[2] = tri == 0 ? cn[2] : cn[3];
+                    for (q2 = 0; q2 < 3; q2++) {
+                        wp[q2][0] = bv[q2].x; wp[q2][1] = bv[q2].y; wp[q2][2] = bv[q2].z;
+                    }
+                    rc = add_tri(c, bv, &st, (const float (*)[3])wp, 0, 0);
+                    made_side++;
+                }
+            }
+        }
+    }
+    free(sd);
+    free(cut);
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        fprintf(stderr, "bmap: coast: the sea at %.1f over its bed at %.1f; %u triangles of sea into cells that hold nothing, %u of sides under far ground\n",
+                (double)sea_y, (double)bed_y, (unsigned)made_sea, (unsigned)made_side);
+    }
+out:
+    free(hy);
+    free(ha);
+    free(g.cov);
+    free(g.fill);
+    free(g.start);
+    free(g.idx);
+    return rc;
+}
+
+
+/*
  * The sea goes on past the map's edge.
  *
  * A map ends where its model ends: the pier's sea is one sheet 61 by 65
@@ -5727,7 +6261,7 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
     c->join_cur = -2;
     {
         const clock_t t0 = clock();
-        const int rcs = extend_sea(c);
+        const int rcs = close_coast(c) != 0 ? -1 : extend_sea(c);
 
         g_bt[4] += clock() - t0;
         if (rcs != 0) {
