@@ -81,6 +81,7 @@ holds the move steps (their frames then count from when it opens), and
 | `EIDOS_HIDE_SPRITES=1` | Native renderer: the battle's sprites are not drawn (the map and the shadows alone). For comparing what covers a sprite. |
 | `EIDOS_ANIM_HOLD=1` | Native renderer: the battle map's texture animations and bobbing objects stand still, so two captures of one scene are equal pixel for pixel. |
 | `BMAP_DEBUG_BACK=1` | Research: paints the never-drawn side of every one-sided draw magenta. |
+| `BMAP_NO_COAST=1` | Real-map battles leave the far coast as the map has it: no sea in the grid cells that hold nothing, no cliffs under far ground whose edge hangs open (`close_coast`, `engine/world/bmap_data.c`). |
 | `BMAP_CAM_YAW=DEG`, `BMAP_FORCE_FACING`, `BMAP_FREE_ANGLE` | Research: turn the battle cameras or fix the placement's facing. |
 | `BMAP_FIX_BACKS=1`, `BMAP_JOIN=...`, `BMAP_JOIN_MODE=...` | Research, not for use: tries that were shelved (`docs/research/battle-real-map-2026-11.md`). |
 | `EIDOS_DEBUG_WHERE=1` | Logs the player's zone and position once the field runs, as an `EIDOS_DEBUG_WARP` value: a test can then start from that spot with any save. |
