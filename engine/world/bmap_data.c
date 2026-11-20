@@ -2611,10 +2611,12 @@ static int done_tex(Ctx *c, Done *d, int t)
 
 /* A picture with clear pixels is no floor (leaf cards, grass tufts, a fence's top), except a grating the player
  * walks on: Tubeline Bridge's deck (texture h03_02 of the bridge's set g46, 45% clear between its bars; without
- * it the battle stood on the girders 146 under the deck). */
+ * it the battle stood on the girders 146 under the deck); and Route 7's plank walkway over the long grass (texture
+ * gura_hasi01 of the route's set g38: the planks share their picture with the posts' cut-out feet; without it a
+ * battle against a trainer on the walkway stood on the ground 32 under the planks, which then cut across it). */
 static int walked_grating(const char *key)
 {
-    return strncmp(key, "g46|h03_02|", 11) == 0;
+    return strncmp(key, "g46|h03_02|", 11) == 0 || strncmp(key, "g38|gura_hasi01|", 16) == 0;
 }
 
 static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *base, int ground,

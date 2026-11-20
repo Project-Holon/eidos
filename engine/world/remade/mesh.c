@@ -482,6 +482,15 @@ static RmBuild *mesh_builder(const char *name)
     if (strcmp(name, "candle") == 0) {
         return rm_candle;
     }
+    if (strcmp(name, "skirt") == 0) {
+        return rm_skirt;
+    }
+    if (strcmp(name, "stake") == 0) {
+        return rm_stake;
+    }
+    if (strcmp(name, "driftwood") == 0) {
+        return rm_driftwood;
+    }
     return NULL;
 }
 
