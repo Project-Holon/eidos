@@ -4042,6 +4042,37 @@ unsigned bmap_place_trees(const BmapScene *s, float out[][4], unsigned max)
     return n;
 }
 
+/* bmap_place_where: the search's answer goes here, and the scene stays as it is */
+static float *g_where;
+
+void bmap_place_views(BmapScene *s, const BmapPlaceSpec *sp)
+{
+    s->view_set = !sp->field;
+    s->trainer_size = sp->trainer_size > 0.0f ? sp->trainer_size : 1.0f;
+    s->trainer_own_size = sp->trainer_own_size > 0.0f ? sp->trainer_own_size : 1.0f;
+    s->has_ally = sp->has_ally;
+    s->trainer_ally_size = sp->trainer_ally_size > 0.0f ? sp->trainer_ally_size : 1.0f;
+    memset(s->trainer_ally, 0, sizeof s->trainer_ally);
+    if (s->view_set) {
+        s->cam = sp->cam;
+        memcpy(s->trainer_foe, sp->trainer_foe, sizeof s->trainer_foe);
+        memcpy(s->trainer_own, sp->trainer_own, sizeof s->trainer_own);
+        memcpy(s->trainer_ally, sp->trainer_ally, sizeof s->trainer_ally);
+    }
+    s->intro = sp->intro;
+    if (s->intro.zoom <= 0.0f) {
+        s->intro.zoom = 1.0f;
+    }
+}
+
+void bmap_place_where(BmapScene *s, const BmapPlaceSpec *sp, float out[4])
+{
+    out[0] = out[1] = out[2] = out[3] = 0.0f;
+    g_where = out;
+    bmap_place_spec(s, sp);
+    g_where = NULL;
+}
+
 void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
 {
     const BmapPlaceSpec loc = research_spec(sp0), *sp = &loc;
@@ -4071,22 +4102,7 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
     memcpy(k_eyes[0][1], k_cmd_target, sizeof k_cmd_target);
     bmap_camera_view(k_eyes[0][0], k_eyes[0][1], &sp->cam, 1.0f);
     bmap_camera_intro(k_eyes[1][0], k_eyes[1][1], &sp->intro);
-    s->view_set = !sp->field;
-    s->trainer_size = sp->trainer_size > 0.0f ? sp->trainer_size : 1.0f;
-    s->trainer_own_size = sp->trainer_own_size > 0.0f ? sp->trainer_own_size : 1.0f;
-    s->has_ally = sp->has_ally;
-    s->trainer_ally_size = sp->trainer_ally_size > 0.0f ? sp->trainer_ally_size : 1.0f;
-    memset(s->trainer_ally, 0, sizeof s->trainer_ally);
-    if (s->view_set) {
-        s->cam = sp->cam;
-        memcpy(s->trainer_foe, sp->trainer_foe, sizeof s->trainer_foe);
-        memcpy(s->trainer_own, sp->trainer_own, sizeof s->trainer_own);
-        memcpy(s->trainer_ally, sp->trainer_ally, sizeof s->trainer_ally);
-    }
-    s->intro = sp->intro;
-    if (s->intro.zoom <= 0.0f) {
-        s->intro.zoom = 1.0f;
-    }
+    bmap_place_views(s, sp);
     float ca, sa;
     float gy, k = BMAP_PLACE_K, th[6];
     unsigned i, nd0;
@@ -4269,6 +4285,15 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
                     s->nd, s->nv);
         }
     }
+    if (g_where != NULL) {
+        /* (bmap_place_where: the place alone) */
+        g_where[0] = px;
+        g_where[1] = pz;
+        g_where[2] = (float)a;
+        g_where[3] = k;
+        g_tmask = NULL;
+        return;
+    }
     ca = (float)cos(a);
     sa = (float)sin(a);
     if (sp->spot_floor) {
@@ -4442,11 +4467,28 @@ void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp0)
         stand_drift(s);
     }
     topview_dump(s, nd0, 1, th);
-    if (grass != NULL) {
-        grass_grow_fixed(s, grass, nd0, 16.0f * k);
+    {
+        /* research (BMAP_PLACE_LOG): what the steps after the search cost */
+        const clock_t tg0 = clock();
+        const unsigned nv_map = s->nv;
+        clock_t tg1;
+
+        /* the trees first, among the map's own triangles: the grass that grows next is no tree, and its hundreds of
+         * thousands of corners made this step several times as long */
+        find_trees(s);
+        tg1 = clock();
+        if (grass != NULL) {
+            grass_grow_fixed(s, grass, nd0, 16.0f * k);
+        }
+        g_tmask = NULL;                 /* the scene's own (prep) */
+        for (i = nv_map; i < s->nv; i++) {
+            s->v[i].a = 0;              /* (no tree: find_trees' mark, as it left the grass when it ran after it) */
+        }
+        if (getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: after the search: the trees %.0f ms, the grass %.0f ms (%u draws, %u vertices)\n",
+                    1000.0 * (double)(tg1 - tg0) / CLOCKS_PER_SEC, 1000.0 * (double)(clock() - tg1) / CLOCKS_PER_SEC, s->nd, s->nv);
+        }
     }
-    g_tmask = NULL;                     /* the scene's own (prep) */
-    find_trees(s);
     if (getenv("BMAP_PLACE_LOG") != NULL) {
         /* research: how far the placed map's four edges lie from the own slot */
         float x0 = 0.0f, x1 = 0.0f, z0 = PLACE_SZ, z1 = PLACE_SZ;

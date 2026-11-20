@@ -259,6 +259,9 @@ typedef struct App {
                                        bar's switch, kept for every such area) */
     int idle_ticks;                 /* event waits without an event since the last draw */
     Sprite hero[4];                 /* the player, facing up, down, left, right */
+    Sprite standin[4];              /* the game's default character (object code 10), the same four ways: an
+                                       opponent no character of the event file stands for */
+    float standin_h;
     float hero_h;                   /* its height (map units)                */
     /* the map */
     int map_x, map_y, map_w, map_s;    /* the tile map's place, its width and its height */
@@ -896,6 +899,7 @@ static void place_all(void)
 {
     BmapPlaceSpec sp;
     const BmapSpot *r = cur();
+    int prep_new = 0;
 
     if (r == NULL) {
         return;
@@ -905,7 +909,6 @@ static void place_all(void)
     if (!A.have_base) {
         return;
     }
-    scene_drop(&A.placed, &A.have_placed);
     {
         float y = 0.0f;
         int has = row_height(r, &y);
@@ -922,16 +925,45 @@ static void place_all(void)
         }
         if (!A.have_prep && bmap_copy(&A.prep, &A.base) == 0) {
             bmap_place_prepare(&A.prep, sp.field);
+            prep_new = 1;
             A.have_prep = 1;
             A.prep_field = sp.field;
             A.prep_has_ref = has;
             A.prep_ref = y;
         }
     }
-    if (bmap_copy(&A.placed, A.have_prep ? &A.prep : &A.base) == 0) {
-        bmap_place_spec(&A.placed, &sp);
-        A.have_placed = 1;
-        A.battle_gen = ++A.gen;
+    {
+        /* Only the cameras or the trainers' sprites changed, and the battle would stand where it stands (the search
+         * alone tells, on the prepared scene): the placed scene stays, with the new view settings.  A placement
+         * turns and scales the whole map, grows its grass and looks for its trees: most of a second on a route,
+         * and a camera slider moves no ground. */
+        static BmapPlaceSpec last;
+        static int have_last;
+        BmapPlaceSpec ga = sp, gb = last;
+        float w[4];
+
+        memset(&ga.cam, 0, sizeof ga.cam); memset(&gb.cam, 0, sizeof gb.cam);
+        memset(&ga.intro, 0, sizeof ga.intro); memset(&gb.intro, 0, sizeof gb.intro);
+        memset(ga.trainer_foe, 0, sizeof ga.trainer_foe); memset(gb.trainer_foe, 0, sizeof gb.trainer_foe);
+        memset(ga.trainer_own, 0, sizeof ga.trainer_own); memset(gb.trainer_own, 0, sizeof gb.trainer_own);
+        memset(ga.trainer_ally, 0, sizeof ga.trainer_ally); memset(gb.trainer_ally, 0, sizeof gb.trainer_ally);
+        ga.trainer_size = gb.trainer_size = ga.trainer_own_size = gb.trainer_own_size = 0.0f;
+        ga.trainer_ally_size = gb.trainer_ally_size = 0.0f;
+        ga.has_ally = gb.has_ally = 0;
+        if (A.have_placed && A.have_prep && !prep_new && have_last && memcmp(&ga, &gb, sizeof ga) == 0
+            && (bmap_place_where(&A.prep, &sp, w), w[0] == A.placed.place_x && w[1] == A.placed.place_z
+                && w[2] == A.placed.place_a && w[3] == A.placed.place_k)) {
+            bmap_place_views(&A.placed, &sp);
+        } else {
+            scene_drop(&A.placed, &A.have_placed);
+            if (bmap_copy(&A.placed, A.have_prep ? &A.prep : &A.base) == 0) {
+                bmap_place_spec(&A.placed, &sp);
+                A.have_placed = 1;
+                A.battle_gen = ++A.gen;
+            }
+        }
+        last = sp;
+        have_last = 1;
     }
     if (A.ow_reset) {
         float dist, pitch, yaw, fov, lift;
@@ -2484,6 +2516,66 @@ static void gpu_hole(const View3d *v)
     }
 }
 
+/* The row's own opponent as the field shows it (bmap_npc_trainer_code, bmap_npc_species_code), facing d; NULL where
+ * the game's data names no sprite for it.  The pictures are kept (a picture is known to the GPU by its address). */
+static float g_row_foe_h;
+
+static const Sprite *row_foe_sprite(const BmapSpot *r, int d)
+{
+    static struct {
+        int code, dir, ok;
+        float h;
+        Sprite s;
+    } keep[64];
+    static int nkeep;
+    const int code = r == NULL || r->kind != 'T' ? -1
+                     : r->trainer_id >= 100000 ? bmap_npc_species_code(r->trainer_id % 1000) : bmap_npc_trainer_code(r->trainer_id);
+    int i;
+
+    if (code < 0) {
+        return NULL;
+    }
+    for (i = 0; i < nkeep && (keep[i].code != code || keep[i].dir != d); i++) {
+    }
+    if (i == nkeep) {
+        float ww = 0.0f, wh = 0.0f;
+        unsigned char *px = NULL;
+        int pw = 0, ph = 0;
+
+        if (nkeep == 64) {
+            return NULL;
+        }
+        keep[i].code = code;
+        keep[i].dir = d;
+        keep[i].ok = bmap_npc_picture((unsigned)code, d, &px, &pw, &ph, &ww, &wh) == 0 && px != NULL;
+        keep[i].s.rgba = px;
+        keep[i].s.w = pw;
+        keep[i].s.h = ph;
+        keep[i].h = wh;
+        nkeep++;
+    }
+    g_row_foe_h = keep[i].h;
+    return keep[i].ok ? &keep[i].s : NULL;
+}
+
+static float row_foe_h(void)
+{
+    return g_row_foe_h;
+}
+
+/* Does the default character (an object code read from an event variable) stand on the row's tile already? */
+static int row_tile_standin(const BmapSpot *r)
+{
+    int i;
+
+    for (i = 0; i < A.nnpc && A.npc_zone == r->zone; i++) {
+        if (A.npcs[i].stand_in && A.npcs[i].rgba != NULL && A.npcs[i].gx == r->tx && A.npcs[i].gz == r->tz) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* A picture's GPU texture: the pictures (sprites, NPCs) are known by their
  * pixels' address and size, and a few of their bytes in case an address is
  * used again. */
@@ -2954,6 +3046,11 @@ static void draw_field_view(void)
             if (A.npcs[a].rgba == NULL) {
                 continue;
             }
+            /* (the default character on the row's tile, where the row's own opponent is known: that one is drawn) */
+            if (A.npcs[a].stand_in && r->kind == 'T' && A.npcs[a].gx == r->tx && A.npcs[a].gz == r->tz
+                && row_foe_sprite(r, r->dir >= 0 && r->dir < 4 ? r->dir : 1) != NULL) {
+                continue;
+            }
             map_to_battle(&A.field, A.npcs[a].x, A.npcs[a].y, A.npcs[a].z, pt);
             d0 = pt[0] - v->eye[0];
             d1 = pt[2] - v->eye[2];
@@ -2996,9 +3093,29 @@ static void draw_field_view(void)
         gpu_op(v->ftex[16], 0, v->x, v->y, v->w, v->h, 1, v);    /* the map in front of them */
     }
     if (r->kind == 'T') {
+        int here = 0, a2;
+
         map_to_battle(&A.field, (float)r->tx * 16.0f + 8.0f,
                       floor_y((float)r->tx * 16.0f + 8.0f, (float)r->tz * 16.0f + 8.0f),
                       (float)r->tz * 16.0f + 8.0f, pt);
+        /* a story fight's opponent is walked or added by its script: no character of the event file stands on the
+         * row's tile (or one whose look the game reads from an event variable: the default character).  The row's
+         * own opponent stands there, facing the row's way: the trainer's class's field sprite or the Pokemon's
+         * (bmap_npc_trainer_code, bmap_npc_species_code); the game's default character where the data names none. */
+        for (a2 = 0; a2 < A.nnpc && A.npc_zone == r->zone && !here; a2++) {
+            here = A.npcs[a2].gx == r->tx && A.npcs[a2].gz == r->tz && !A.npcs[a2].stand_in
+                   && (A.npcs[a2].rgba != NULL || A.npcs[a2].model_file >= 0);
+        }
+        if (!here && r->tx >= 0 && r->tz >= 0) {
+            const int d = r->dir >= 0 && r->dir < 4 ? r->dir : 1;
+            const Sprite *sd = row_foe_sprite(r, d);
+
+            if (sd != NULL && sd->rgba != NULL) {
+                draw_standing(v, sd->rgba, sd->w, sd->h, pt, row_foe_h() * A.field.place_k);
+            } else if (A.standin[d].rgba != NULL && !row_tile_standin(r)) {
+                draw_standing(v, A.standin[d].rgba, A.standin[d].w, A.standin[d].h, pt, A.standin_h * A.field.place_k);
+            }
+        }
         if (project(v, pt, &sx, &sy, &unit) && view_holds(v, sx, sy, 9.0f)) {
             ring(sx, sy, 8.0f, C_FOE);
         }
@@ -5598,6 +5715,13 @@ int main(int argc, char **argv)
             A.hero[i].w = pw;
             A.hero[i].h = ph;
             A.hero_h = wh;
+        }
+        px = NULL;
+        if (bmap_npc_picture(10, i, &px, &pw, &ph, &ww, &wh) == 0) {    /* the game's default character */
+            A.standin[i].rgba = px;
+            A.standin[i].w = pw;
+            A.standin[i].h = ph;
+            A.standin_h = wh;
         }
     }
     refilter();

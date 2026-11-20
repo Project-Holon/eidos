@@ -12,35 +12,35 @@ Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago sup
   - Replaced flat billboard sprites with full 3D models and native ground shadows for rocks, living-room pouffes, Dreamyard bottles, warp pads, the Pokémon League plaza gate, and Relic Castle vases. Fixed rebuilt prop textures bleeding into other objects on subsequent battles in the same session.
   - Added separate 3D door models to houses, labs, and Pokémon Centers so doorways no longer render as empty black openings.
   - Applied completed 3D building geometry to distant landmarks as well as nearby ones, fixing missing back/side walls on far-off structures (such as the Icirrus City Pokémon Center viewed from Route 8).
-- **Grass**:
-  - Rebuilt tall grass, dark grass, long grass, and White Forest grass as hand-drawn 3D plants in place of flat crossed tufts. Each leaf is drawn pixel by pixel in the grass's own colors and follows the seasons.
-  - Pokémon now stand inside the bush of their tile, and leaves cover them one whole leaf at a time instead of being cut along a flat plane.
-  - Replaced the flat lid of long grass, which buried Pokémon up to their heads, with tall blades that are trodden down around each Pokémon in single, double, triple, and rotation battles.
-  - Skipped map geometry that is off screen in both renderers, lowering the cost of every real-map battle.
+- **3D Grass & Foliage**:
+  - Replaced flat crossed-tuft sprites for tall grass, dark grass, long grass, and White Forest grass with seasonal 3D foliage models using native palette colors.
+  - Pokémon now stand inside their tile's grass cluster with per-blade depth sorting so individual leaves occlude sprites cleanly instead of clipping along a flat plane.
+  - Replaced the flat top plane of long grass (which previously submerged Pokémon up to their heads) with full-height blades that flatten around each combatant across single, double, triple, and rotation battles.
 - **Live Overworld State**: Real-map battles now reflect the current state of dynamic map objects, including opened gym curtains and switches, pushed strength boulders, Chargestone Cave's floating stones, and the Pokémon League's light pillars.
 - **Water, Sky, Weather & Fog**:
-  - Extended ocean geometry past map boundaries and removed distant sky-color terrain fading.
+  - Extended ocean geometry past map boundaries and across empty map cells, removed distant sky-color terrain fading, and generated rock/grass cliff skirts beneath distant coastlines so far-off land no longer floats in midair (Route 1, Route 18, P2 Laboratory).
   - Animated water surfaces and shorelines in battle to match the overworld, and anchored animated surface decals (Pinwheel Forest's drifting pond leaves, shoreline foam) directly onto the water plane beneath Pokémon.
   - Added area-specific procedural voxel clouds to outdoor battles that drift in real time and respond to time-of-day lighting, while disabling clouds inside caves and indoor areas (Wellspring Cave, Chargestone Cave, Relic Castle).
   - Ported overworld weather effects into real-map battles using the game's native weather routines, tables, and sprites—including particle systems for snow, rain, sandstorm, blizzard, downpour, thunderstorm, storm, and diamond dust, plus scrolling overlay sheets for blizzards, storms, and the Desert Resort sandstorm.
+  - Applied native per-weather lighting and fog tables to real-map battles so rain, snow, sandstorms, and fog tint and haze the environment just like in the overworld, with an optional `Extras > Weather haze` setting (off by default) to apply weather haze to Pokémon and trainers as well.
   - Matched battle fog depth calculation to the overworld camera axis so distant cave and room walls retain their geometry instead of flattening into solid fog (Chargestone Cave, Driftveil Gym).
 - **Location & Dungeon Geometry**:
   - **Liberty Garden**: Completed the island's missing terrain and extended the surrounding sea, removed a neighboring area's map that rendered beside the island, and completed north faces on the basement storage blocks.
   - **Relic Castle**: Removed spurious generated walls around quicksand pits across all five sand floors and grounded floating vases onto their pedestals.
+  - **Nimbasa City**: Added enclosing walls and roofs (textured from each building's exterior models) to the Big Stadium's football, baseball, and soccer fields and the Small Court's tennis and basketball courts so interior battles no longer sit in an empty void.
   - **Nimbasa Gym**: Extruded roller-coaster rails and tracks into full 3D geometry, modeled raised 3D switch pads, and synced track/pad colors to the active switch state.
   - **Route 5**: Closed terrain seams where connected road surfaces drop onto a lower layer by the gate path, and resolved z-fighting stripes on building floors and ground shadows that sit flush with the terrain in the gate tunnel.
   - **Driftveil Gym**: Positioned battles on each trainer's adjacent walkway and floor level; completed geometry for traffic cones, walkway undersides, lift posts (including railed lift back faces), and pit walls; grounded cones and pads onto walkways; closed front/back gaps between lift arrow signs and their posts; and synced lift up/down arrow lighting to the lift's state.
   - **Cold Storage**: Grounded stacked ice blocks onto the blocks beneath them instead of hovering 2 units above.
   - **Route 6**: Closed the open east face of the tree-topped riverside ledge with wrap-around terraced steps matching the route's ledges.
   - **Mistralton Gym**: Added 3D relief to cannon arrow plates, completed back-face geometry on entrance statues, and adjusted Pilot 2 and Worker 5 battle placements to clear nearby fences.
-  - **White Forest**: Set the tall grass down onto the forest floor; it previously hung 8 units above the ground and cut across Pokémon. Set the great trees down onto the floor with their shadows under them; their roots previously hung 4 units above it.
-  - **Nimbasa City sports floors**: Gave the Big Stadium's football, baseball and soccer fields and the Small Court's tennis and basketball courts walls and a roof, built from each building's own outside pictures; they previously stood in an empty void.
-  - **Far coasts**: Land seen across the sea no longer hangs in the air: the sea continues through empty map cells, and far land gets cliffs in the map's own rock and grass rim, down to the water or to the level below (P2 Laboratory, Route 18, Route 1).
-  - **Route 8 & Moor of Icirrus**: Rebuilt the wooden stakes in the ponds as round 3D stumps with a ring on the water; they previously showed as thin slanted sticks in the air.
-  - **Route 7**: Fixed broken geometry on the raised wooden walkways, extended their posts down to the ground on all four sides, gave the planks thickness and an underside, and completed the back and west side of the wooden house's door.
+  - **Route 7**: Fixed broken geometry on the raised wooden walkways, extended support posts down to the ground on all four sides, added plank thickness and undersides, completed the back and west faces of the cabin door, and placed walkway trainer battles onto the planks rather than the ground below.
   - **Icirrus Gym**: Replaced flat snowy rock and icicle sprites with 3D meshes, completed back-face geometry on entrance pedestals and platform mechanisms (levers, gears, floor switches), and repositioned two obstructed trainer battles.
-  - **Dragonspiral Tower**: Restored missing south walls on the pool and fallen-pillar floors while keeping doorway exits open, completed underside/south faces on upper-floor ledges, ramps, and stairs, and assigned dedicated battle spots for each trainer.
+  - **Dragonspiral Tower**: Restored missing south walls on the pool and fallen-pillar floors while keeping doorway exits open, completed underside/south faces on upper-floor ledges, ramps, and stairs, extended upper-floor ramp and doorway landing walls down into the pit using matching block textures, and assigned dedicated battle spots for each trainer.
+  - **Route 8**: Rebuilt the pond stakes as cylindrical 3D wooden posts with water-surface ripples instead of flat angled sprites, and replaced the flat tilted driftwood sheet in the pond with a 3D branched trunk.
+  - **Moor of Icirrus**: Rebuilt the marsh pond stakes as cylindrical 3D wooden posts with water-surface ripples and replaced the flat driftwood sheet with a 3D branched trunk.
   - **Tubeline Bridge**: Recognized the bridge's translucent grating deck as a valid battle floor instead of dropping battles onto the girders underneath.
+  - **Shopping Mall Nine**: Added back faces to railings, stair sides, benches, planters, and counters; restored the missing windowed south wall around the open entrance; and grounded cash registers and shelving onto the shop counters.
   - **Opelucid City**: Restored missing south walls and doorway lintels in both trainer houses, and fixed floating tabletop geometry on the upper-floor dining table.
   - **Opelucid Gym**: Completed north faces on the four entrance statues and entrance walkway, replaced flat dragon crest sprites above the front statues with 3D geometry, and moved the story Veteran's battle from the hall floor onto his elevated walkway.
   - **N's Castle**: Closed open sides on the throne platform and the steps below it.
@@ -48,6 +48,7 @@ Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago sup
   - **Undella Town**: Restored missing south walls, entrance alcove sides, and doorway geometry in the villa, replaced the table's flat vase flowers with a 3D model, and filled hollow gaps inside the fountain hedges.
   - **Abundant Shrine**: Removed a black seam down the shrine hut's side and sealed the gaps under its eaves where the side walls stopped short of the roof.
   - **Black City**: Grounded floating shop-counter props (lamps, glass cases, and boxes) onto the counters.
+  - **White Forest**: Grounded floating tall grass (previously hovering 8 units above the floor) and great tree roots (previously hovering 4 units above) onto the forest floor with proper ground shadows.
 - **Camera & Placement Handling**:
   - **Tree Occlusion & Seasons**: Trees intersecting or adjacent to the battle camera (including Pinwheel Forest's dark teal trees) are culled cleanly as whole models across both camera angles without popping mid-battle. Tree culling and Pokémon ground height now use native material names and collision tile heights rather than texture colors, fixing summer, autumn, and winter behavior.
   - **Small Prop Culling**: When the camera is positioned inside a small prop, its top face is now hidden alongside its sides rather than floating in view.
@@ -57,13 +58,14 @@ Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago sup
   - **Tall Grass & Flowers**: Anchored grass and flower placement to world map tiles so foliage stays consistent regardless of battle spot or camera angle.
   - **Surfing Mounts**: When starting a battle while Surfing, the water mount now floats beneath your active Pokémon rather than remaining at its overworld tile, and is hidden if that same Pokémon is fighting.
   - **Double Battles**: Fixed depth sorting on the second Pokémon slot so its body no longer renders in front of its face.
-- **Prebuilt Map Meshes**: Eliminated the initial black screen when entering battle by caching rebuilt map geometry to disk, pre-building area meshes in the background upon map entry, and holding scene rendering until the opening camera view is ready.
+- **Prebuilt Map Meshes & Culling**: Eliminated the initial black screen when entering battle by caching rebuilt map geometry to disk, pre-building area meshes in the background upon map entry, and holding scene rendering until the opening camera view is ready. Added off-screen map geometry culling across both renderers to reduce per-frame battle overhead.
 - **Spot Editor**:
   - Side-by-side workspace showing the Intro and Command camera views alongside the Overworld view, tile map, and location list.
   - Displays both opponent trainer positions (initial battle placement and post-battle return tile), per-floor tile maps and Overworld isolation for stacked interiors (Driftveil Gym), proper multi-layer ground height (Pinwheel Forest), Professor Juniper's back sprite during the catching tutorial, and all eight Gym Badges in the built-in preview save.
-  - Fixed Black City and White Forest residents rendering below ground level.
+  - Resolved missing opponent sprites in the Overworld view for dynamic or script-spawned encounters (stadium visitors, story battles, Drayden, Landorus, Musharna) by falling back to trainer class or Pokémon species sprites, or a default marker when none is specified.
+  - Avoided full battle placement recalculation while dragging cameras or adjusting sliders, making camera manipulation several times faster on large outdoor maps.
   - Added automatic hot-reloading when the spot file changes on disk, update notifications, and automatic migration when built-in battle tile coordinates change.
-  - Fixed translucent foreground geometry (bridge and tree shadows) rendering as solid black artifacts over Pokémon sprites, fixed Overworld drag-to-pan and Preview selecting an adjacent wild area when two areas sit one tile apart, and fixed vertical placement for Driftveil Gym lifts and the Champion's platform.
+  - Fixed Black City and White Forest residents rendering below ground level, translucent foreground geometry (bridge and tree shadows) rendering as solid black artifacts over Pokémon sprites, Overworld drag-to-pan and Preview selecting an adjacent wild area when two areas sit one tile apart, and vertical placement for Driftveil Gym lifts and the Champion's platform.
 
 ### Multiplayer, Randomizers & Archipelago
 - **Redesigned Multiplayer Hub**: Rebuilt the one-screen Multiplayer menu across all three UI styles, combining your Trainer Card, game creation cards, a unified **Join** box, and **Your Games** on a single page. The lobby now displays connected player avatars in a row, readiness status, active session rules, and the room code above the Start button.

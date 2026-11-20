@@ -35,6 +35,8 @@ typedef struct BmapNpc {
     int rail;               /* placed on a rail (the header names a line and a cell of it):
                                x, y, z and the tile are the place the rail gives, the
                                height the rail's own                             */
+    int stand_in;           /* its picture is the game's default character (object code 10): its own object code
+                               is read from an event variable, and there is no save here */
     int resident;           /* a Black City or White Forest resident (the save
                                places them, bmap_npc_add_residents): y is not
                                known, the ground under it is               */
@@ -48,6 +50,10 @@ int  bmap_npc_load(unsigned zone, BmapNpc **out, int *count);
  * and 4 heroine, too): *rgba is malloc'd, w*h*4, and the billboard is
  * world_w x world_h map units, standing on its position.  0 on success; -1
  * for a 3D object, an invisible one or an event-variable alias. */
+/* The object code of the field sprite a trainer wears (its class's), -1 when the game's data does not tell; and of a
+ * Pokemon met in a scripted fight, -1 for one that has no field sprite of its own (bmap_npc.c). */
+int  bmap_npc_trainer_code(int trainer_id);
+int  bmap_npc_species_code(int species);
 int  bmap_npc_picture(unsigned obj_code, int dir, unsigned char **rgba, int *w, int *h,
                       float *world_w, float *world_h);
 /* Adds the 3D objects of `npcs` (those with model_file >= 0) to a scene just

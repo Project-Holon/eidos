@@ -190,6 +190,110 @@ static int picture(unsigned code, int dir, const u8 *params, long psize, u8 **rg
     return 0;
 }
 
+/*
+ * The field sprite of a trainer.
+ *
+ * The event files do not always say what an opponent looks like: a story fight's opponent is walked in or added by
+ * its script, and a stadium's visitor has an object code that the game reads from an event variable.  The game's own
+ * data still tells, by the trainer's class: every trainer that stands in an event file as a trainer (event type 1)
+ * has the script 3000 + its trainer number (5000 + the number: the second of a pair), and its trainer record
+ * (a/0/9/2) names its class.  Over all the event files (a/1/2/5) each class wears one object code (83 classes; where
+ * a class has more than one, the commonest holds: Cheren's stands once as a gift box).  The classes that never
+ * stand as plain trainers are named here by the object code of the character, known by the places the game puts it:
+ *   38 Bianca -> 134 (Nacrene, Castelia, Nimbasa, Icirrus, the Dreamyard, Chargestone Cave, Routes 1, 3 and 10)
+ *   40, 47 N -> 103 (Accumula, Nimbasa, Chargestone Cave, Dragonspiral Tower, the League, his castle)
+ *   101 Ghetsis -> 100 (Accumula, Castelia, Driftveil, Opelucid, the Relic Castle, the castle)
+ *   55 the Opelucid leader -> 92, Drayden (Black's; White's is Iris, 93)
+ * A Pokemon met in a scripted fight wears the object code its zone's event file gives it: Landorus (645) -> 120
+ * (the Abundant Shrine), Musharna (518) -> 127 (the Dreamyard).
+ */
+#define CLASS_MAX 256
+static short g_class_code[CLASS_MAX];
+static int g_class_built;
+
+static void class_codes_build(void)
+{
+    static const short named[][2] = { { 38, 134 }, { 40, 103 }, { 47, 103 }, { 101, 100 }, { 55, 92 } };
+    static unsigned short vote[CLASS_MAX][4][2];        /* a class's object codes and how often each */
+    unsigned file, i, k;
+
+    g_class_built = 1;
+    for (i = 0; i < CLASS_MAX; i++) {
+        g_class_code[i] = -1;
+    }
+    for (file = 0; file < 2048u; file++) {
+        long esize = 0, tsize = 0;
+        u8 *ev = member("a/1/2/5", file, &esize);
+        unsigned nbg, nnpc;
+
+        if (ev == NULL) {
+            break;
+        }
+        nbg = esize >= 8 ? ev[4] : 0u;
+        nnpc = esize >= 8 ? ev[5] : 0u;
+        for (i = 0; i < nnpc && 8 + (long)nbg * 0x14 + (long)(i + 1u) * EVENT_NPC_SIZE <= esize; i++) {
+            const u8 *r = ev + 8 + nbg * 0x14u + i * EVENT_NPC_SIZE;
+            const unsigned code = rd16(r + 2), script = rd16(r + 10);
+            const int tid = script >= 5000u && script < 6000u ? (int)script - 5000 : script >= 3000u && script < 4000u ? (int)script - 3000 : -1;
+            u8 *tr;
+            unsigned cls;
+
+            if (rd16(r + 6) != 1u || tid <= 0 || (code >= 162u && code <= 177u)) {
+                continue;
+            }
+            tr = member("a/0/9/2", (u32)tid, &tsize);
+            cls = tr != NULL && tsize > 1 ? tr[1] : CLASS_MAX;
+            free(tr);
+            if (cls >= CLASS_MAX) {
+                continue;
+            }
+            for (k = 0; k < 4u && vote[cls][k][1] != 0u && vote[cls][k][0] != code; k++) {
+            }
+            if (k < 4u) {
+                vote[cls][k][0] = (unsigned short)code;
+                vote[cls][k][1]++;
+            }
+        }
+        free(ev);
+    }
+    for (i = 0; i < CLASS_MAX; i++) {
+        unsigned best = 0;
+
+        for (k = 0; k < 4u; k++) {
+            if (vote[i][k][1] > best) {
+                best = vote[i][k][1];
+                g_class_code[i] = (short)vote[i][k][0];
+            }
+        }
+    }
+    for (i = 0; i < sizeof named / sizeof named[0]; i++) {
+        g_class_code[named[i][0]] = named[i][1];
+    }
+}
+
+int bmap_npc_trainer_code(int trainer_id)
+{
+    long tsize = 0;
+    u8 *tr;
+    int cls;
+
+    if (trainer_id <= 0 || trainer_id >= 100000) {
+        return -1;
+    }
+    if (!g_class_built) {
+        class_codes_build();
+    }
+    tr = member("a/0/9/2", (u32)trainer_id, &tsize);
+    cls = tr != NULL && tsize > 1 ? tr[1] : -1;
+    free(tr);
+    return cls >= 0 && cls < CLASS_MAX ? g_class_code[cls] : -1;
+}
+
+int bmap_npc_species_code(int species)
+{
+    return species == 645 ? 120 : species == 518 ? 127 : -1;
+}
+
 static void load_picture(BmapNpc *n, const u8 *params, long psize)
 {
     float off[3];
@@ -201,6 +305,19 @@ static void load_picture(BmapNpc *n, const u8 *params, long psize)
         n->x += off[0];
         n->y += off[1];
         n->z += off[2];
+        return;
+    }
+    n->w = n->h = 0;
+    n->rgba = NULL;
+    /* an object code the game reads from an event variable (162..177: the day's visitor in a stadium, a leader that
+     * depends on the version): there is no save here, and without event variables the game itself shows object code
+     * 10 (FLDMMDL_GetEventWorkObjCode), so that character's picture stands for it */
+    if (n->obj_code >= 162u && n->obj_code <= 177u
+        && picture(10u, n->dir, params, psize, &n->rgba, &n->w, &n->h, &n->world_w, &n->world_h, off) == 0) {
+        n->x += off[0];
+        n->y += off[1];
+        n->z += off[2];
+        n->stand_in = 1;
         return;
     }
     n->w = n->h = 0;
@@ -432,7 +549,19 @@ int bmap_npc_load(unsigned zone, BmapNpc **out, int *count)
             p->z = (float)gz * 16.0f + 8.0f;
             p->y = (float)(int)rd32(r + 0x20) / 4096.0f;
         }
-        load_picture(p, params, psize);
+        {
+            /* (a trainer whose object code is read from an event variable, a stadium's visitor: its class's
+             * field sprite; the code it is listed with stays) */
+            const unsigned listed = p->obj_code, script = rd16(r + 10);
+            const int tid = script >= 5000u && script < 6000u ? (int)script - 5000 : script >= 3000u && script < 4000u ? (int)script - 3000 : -1;
+            const int worn = listed >= 162u && listed <= 177u && p->is_trainer ? bmap_npc_trainer_code(tid) : -1;
+
+            if (worn >= 0) {
+                p->obj_code = (unsigned)worn;
+            }
+            load_picture(p, params, psize);
+            p->obj_code = listed;
+        }
         n++;
     }
     free(ev);

@@ -82,6 +82,12 @@ typedef struct BmapPlaceSpec {
                                facing back along the same line.  For the auto
                                placement only (bmap_spots_spec)              */
 } BmapPlaceSpec;
+/* The search of bmap_place_spec alone: where it would place the battle of `sp` on the prepared scene `s`, which stays
+ * unplaced: out = the own Pokemon's place x, z (map units), the angle (radians), the scale.  And the cameras' and
+ * the trainers' sprites' settings of `sp` put on a scene that is placed already: with the same place and the same
+ * ground rules these are all a new placement would change (the spot editor: a camera slider moves no ground). */
+void bmap_place_where(BmapScene *s, const BmapPlaceSpec *sp, float out[4]);
+void bmap_place_views(BmapScene *s, const BmapPlaceSpec *sp);
 void bmap_place_spec(BmapScene *s, const BmapPlaceSpec *sp);
 /* The part of bmap_place_spec that does not depend on where the battle
  * stands (the standing cards, the grass laid on the ground, the decals):
