@@ -99,6 +99,7 @@ static const char *k_fs3 =
     "uniform int u_pass;\n"
     "uniform float u_zover;\n"
     "uniform float u_zref;\n"
+    "uniform vec4 u_sfog;\n"
     "int wrapc(int v, int size, int rep, int flip) {\n"
     "    if (size <= 0) { return 0; }\n"
     "    if (rep == 0) { return clamp(v, 0, size - 1); }\n"
@@ -149,7 +150,8 @@ static const char *k_fs3 =
     "    if (u_pass == 2 && a5 >= 31) { discard; }\n"
     "    if (a5 == 0 || a5 <= u_alpharef) { discard; }\n"
     "    float a = float(a5) / 31.0;\n"
-    "    o = vec4(vec3(col) / 255.0 * a, a);\n"
+    "    /* (a battle sprite under the map's fog: the fog's colour, and how much of it) */\n"
+    "    o = vec4(mix(vec3(col) / 255.0, u_sfog.rgb, u_sfog.a) * a, a);\n"
     "    o_id = uint(u_id);\n"
     "    /* (a sprite at the depth of its place: its cells keep their own order, each\n"
     "       cell's depth against the sprite's first cell's carried on at a twentieth) */\n"
@@ -1684,6 +1686,7 @@ int eidos_gl3d_init(EidosGl *g)
     LOC(u_wbuf, "u_wbuf");
     LOC(u_zover, "u_zover");
     LOC(u_zref, "u_zref");
+    LOC(u_sfog, "u_sfog");
     LOC(u_pass, "u_pass");
     LOC(u_id, "u_id");
 #undef LOC
@@ -2096,6 +2099,7 @@ typedef struct Gl3dRun {
     int fog;           /* POLYGON_ATTR bit 15: ID buffer bit 6           */
     float zo;          /* a backdrop sprite's depth (sprite_depths), 0: the polygon's own */
     float zref;        /* ... and the own depth of that sprite's first cell */
+    float sfog;        /* the map's fog at a backdrop sprite's place (BmapScene.fog_sprites), 0: none */
 } Gl3dRun;
 
 /* What the runs of one pass last sent (draw_run): a value that stays is not
@@ -2105,6 +2109,7 @@ typedef struct RunSent {
     GLint stencil;      /* the stencil function: 0 always, else the reference of "not equal" */
     float zo;           /* u_zover (-1: not sent) */
     float zref;
+    float sfog;         /* u_sfog's fourth (-1: not sent) */
     GLint cmask;        /* colour mask of target 1 */
 } RunSent;
 
@@ -2115,6 +2120,7 @@ static void run_sent_reset(RunSent *st)
     st->cmask = -1;
     st->zo = -1.0f;
     st->zref = -2.0f;
+    st->sfog = -1.0f;
 }
 
 static void run_stencil(RunSent *st, GLint ref)
@@ -2174,6 +2180,18 @@ static void draw_run(EidosGl *g, const G3dSnapshot *s, const Gl3dRun *d,
     if (st->zref != d->zref) {
         g->glUniform1f(g->u_zref, d->zref);
         st->zref = d->zref;
+    }
+    if (st->sfog != d->sfog) {
+        const BmapScene *bsc = (const BmapScene *)s->backdrop.scene;
+        float f4[4] = { 0.0f, 0.0f, 0.0f, d->sfog };
+
+        if (bsc != NULL) {
+            f4[0] = (float)bsc->fog[0] / 255.0f;
+            f4[1] = (float)bsc->fog[1] / 255.0f;
+            f4[2] = (float)bsc->fog[2] / 255.0f;
+        }
+        g->glUniform4fv(g->u_sfog, 1, f4);
+        st->sfog = d->sfog;
     }
     if (d->textured) {
         GLint tw = (GLint)s->tex[d->slot].w, th = (GLint)s->tex[d->slot].h;
@@ -2539,6 +2557,17 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
                     }
                     cur.zo = k >= 0 ? sz[k] : 0.0f;
                     cur.zref = 0.0f;
+                    cur.sfog = 0.0f;
+                    if (k >= 0 && s->backdrop.scene != NULL && ((const BmapScene *)s->backdrop.scene)->fog_sprites) {
+                        /* (the setting Extras > Weather haze: the sprite takes the fog of its place) */
+                        float fw[3];
+
+                        fw[0] = s->backdrop.target[0] - s->backdrop.eye[0];
+                        fw[1] = s->backdrop.target[1] - s->backdrop.eye[1];
+                        fw[2] = s->backdrop.target[2] - s->backdrop.eye[2];
+                        vnorm(fw);
+                        cur.sfog = bmap_fog_at((const BmapScene *)s->backdrop.scene, s->backdrop.eye, fw, s->backdrop.poke[k]);
+                    }
                     if (k >= 0) {
                         if (!zr_set[k]) {       /* (the sprite's first cell this frame: its own depth) */
                             const G3dVertex *v0 = &s->verts[s->idx[p->first]];

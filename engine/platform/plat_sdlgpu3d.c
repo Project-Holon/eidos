@@ -80,7 +80,7 @@ typedef struct G3dUniforms {
     int d[4];           /* w-buffer                     */
     float e[4];         /* a sprite's depth (0: its own) */
     float toon[32][4];
-    float sfog[4];      /* research: a battle sprite under the map's fog: the colour, and how much */
+    float sfog[4];      /* a battle sprite under the map's fog (Extras > Weather haze): the colour, and how much */
 } G3dUniforms;
 
 typedef struct EdgeUniforms {
@@ -116,7 +116,7 @@ typedef struct BdFragmentUniforms {
     float sky[4];       /* the sky pass: on, the layer's height, (unused), the horizon's bend */
     float skyu[4];      /* ... the picture's u of a layer point (x, z, 1) (bmap_sky_uv) */
     float skyv[4];      /* ... and its v                                              */
-    float fog2[4];      /* research: a second fog measure (bmap_fog_k2); zeros: none */
+    float fog2[4];      /* a weather's fog: the second measure (bmap_fog_k2); zeros: none */
 } BdFragmentUniforms;
 
 /* ------------------------------------------------------------------ */
@@ -1502,7 +1502,7 @@ typedef struct Run {
     int textured, slot, wrap, id, two_pass, fog;
     float zo;           /* a backdrop sprite's depth (sprite_depths), 0: the polygon's own */
     float zref;         /* ... and the own depth of that sprite's first cell */
-    float sfog;         /* research: the map's fog at the sprite's place (BmapScene.fog_sprites) */
+    float sfog;         /* the map's fog at the sprite's place (BmapScene.fog_sprites) */
 } Run;
 
 static void draw_run(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pass,

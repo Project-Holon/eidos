@@ -734,11 +734,13 @@ static void job_main(void *arg)
         bmap_set_wfbc(j->has_wfbc ? &j->wfbc : NULL);     /* else a full place */
         bmap_set_field_matrix(j->has_fmat ? &j->fmat : NULL);  /* else the zone's own from the files */
         bmap_set_rider(j->px, j->pz, j->py, j->has_py);     /* (a lift under the player: at the player's height) */
-        /* The weather's own light and fog on the map: not on yet.  How the fog is measured for a battle's camera
-         * and whether the battle's sprites take it are open choices (bmap.h: fog_eye, fog_sprites);
-         * BMAP_WEATHER_FOG=1 turns it on to try them. */
-        bmap_set_weather(getenv("BMAP_WEATHER_FOG") != NULL ? j->weather : -1);
+        /* The weather's own light and fog on the map (BMAP_WEATHER_FOG=0, a test switch: the map as in clear
+         * weather).  The battle's sprites take the fog with the setting Extras > Weather haze. */
+        bmap_set_weather(getenv("BMAP_WEATHER_FOG") != NULL && atoi(getenv("BMAP_WEATHER_FOG")) == 0 ? -1 : j->weather);
         j->rc = bmap_build(&b->s, j->zone, j->px, j->pz, j->season, j->hour, j->minute);
+        if (j->rc == 0 && b->s.weather >= 0 && eidos_settings_get(EIDOS_OPT_WEATHER_HAZE) != 0) {
+            b->s.fog_sprites = 1;
+        }
         if (j->rc != 0) {
             free(b);
             j->done = 1;

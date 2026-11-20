@@ -95,6 +95,8 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       1, k_offon, "", 0, NULL },
     { "Layout", "ui_theme", "Interface style", EIDOS_OPTKIND_CHOICE, 0, 2, 1,
       0, k_ui_themes, "", 0, NULL },
+    { "Extras", "weather_haze", "Weather haze", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
+      0, k_offon, "", 0, NULL },
 };
 
 /* sdk/field_fade.c reads this option by number */

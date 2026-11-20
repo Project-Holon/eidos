@@ -120,6 +120,8 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
                                         "under the Pokemon." },
     [EIDOS_OPT_MOVE_COLOURS]        = { "Move names in battle messages",
                                         "show their type colour." },
+    [EIDOS_OPT_WEATHER_HAZE]        = { "Fog, sand and snow also dim",
+                                        "the Pokemon in battle." },
     [EIDOS_OPT_PAD_ICONS]           = { "The controller's buttons in hints.",
                                         "Auto follows the controller." },
     [EIDOS_OPT_OUTLINES]            = { "Dark edges on 3D objects,",
@@ -240,6 +242,7 @@ static const char *const k_option_labels[EIDOS_OPT_COUNT] = {
     [EIDOS_OPT_BATTLE_BACKDROP]     = "Battle backdrop",
     [EIDOS_OPT_BATTLE_PLATFORMS]    = "Battle platforms",
     [EIDOS_OPT_MOVE_COLOURS]        = "Move colours",
+    [EIDOS_OPT_WEATHER_HAZE]        = "Weather haze",
     [EIDOS_OPT_PAD_ICONS]           = "Button icons",
     [EIDOS_OPT_OUTLINES]            = "3D outlines",
     [EIDOS_OPT_TRANSITIONS]         = "Map transitions",
@@ -278,6 +281,8 @@ static const ValueName k_value_names[] = {
     { EIDOS_OPT_BATTLE_PLATFORMS,    1, "On" },
     { EIDOS_OPT_MOVE_COLOURS,        0, "Off" },
     { EIDOS_OPT_MOVE_COLOURS,        1, "On" },
+    { EIDOS_OPT_WEATHER_HAZE,        0, "Off" },
+    { EIDOS_OPT_WEATHER_HAZE,        1, "On" },
     { EIDOS_OPT_PAD_ICONS,           0, "Auto" },
     { EIDOS_OPT_PAD_ICONS,           1, "Xbox 360" },
     { EIDOS_OPT_PAD_ICONS,           2, "Xbox One" },
@@ -1006,6 +1011,10 @@ static void build_rows(void)
             add_row(ROW_OPTION, EIDOS_OPT_BATTLE_BACKDROP, 0);
             add_row(ROW_OPTION, EIDOS_OPT_BATTLE_PLATFORMS, 0);
             add_row(ROW_OPTION, EIDOS_OPT_MOVE_COLOURS, 0);
+            if (eidos_settings_get(EIDOS_OPT_BATTLE_BACKDROP) == 0) {
+                /* the weather's fog is the real-map backdrop's own */
+                add_row(ROW_OPTION, EIDOS_OPT_WEATHER_HAZE, 0);
+            }
         }
         break;
     case TAB_MODS:

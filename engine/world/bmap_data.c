@@ -6295,8 +6295,8 @@ int bmap_build(BmapScene *s, unsigned zone, float px, float pz, int season, int 
         s->fog_on = 0;
         s->fog_curve = 0.0f;
         fog_set(c, zone, hb, s, w_offset, w_slope, 1);
-        s->fog_sprites = getenv("BMAP_WEATHER_SPRITE_FOG") != NULL;   /* research: bmap.h */
-        s->fog_eye = getenv("BMAP_WEATHER_FOG_EYE") != NULL ? atoi(getenv("BMAP_WEATHER_FOG_EYE")) : 0;   /* research: bmap.h */
+        s->fog_sprites = getenv("BMAP_WEATHER_SPRITE_FOG") != NULL;   /* (test switch; the setting: sdk/battle_view.c) */
+        s->fog_two = 1;
         if (s->fog_on) {
             /* The sky lies beyond the fog's far end, where the fog is full: it takes the fog's colour, and no
              * clouds were made (above).  (The field shows no sky; the battle's is eidos's own.) */

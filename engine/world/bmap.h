@@ -167,10 +167,12 @@ typedef struct BmapScene {
     int weather;              /* the weather the scene was built with (the game's weather id), -1 none */
     float fog_dist;           /* fog_on: the field camera's distance from the player (map units): fog_start +
                                  fog_dist is the depth from that camera where the fog begins */
-    int fog_sprites;          /* research (BMAP_WEATHER_SPRITE_FOG=1): the battle's own sprites (the Pokemon, the
-                                 trainers) take the fog of their place (bmap_fog_at) */
-    int fog_eye;              /* research (BMAP_WEATHER_FOG_EYE=1): the weather's fog measured from the battle's
-                                 own camera, along its line of sight, in place of the field camera's (bmap_fog_k) */
+    int fog_sprites;          /* the battle's own sprites (the Pokemon, the trainers) take the fog of their
+                                 place (bmap_fog_at): the setting Extras > Weather haze, a weather's fog only */
+    int fog_two;              /* a weather's fog: measured from the battle's own camera too, along its line of
+                                 sight, and the thicker of the two measures holds (bmap_fog_k2).  The field
+                                 camera's measure alone leaves a battle that looks across the field's line of
+                                 sight clear where the field was hazed; the zone's own fog keeps that one */
     void *priv;             /* the ground index (bmap_ground_y); owned by the scene */
     float place_k;          /* bmap_place: the scale chosen, battle units per map unit */
     float place_x, place_z; /* bmap_place: the spot chosen (map units: the own
@@ -227,7 +229,7 @@ typedef struct BmapScene {
 } BmapScene;
 
 /* The fog's measure from the battle's own camera (eye and unit line of sight, battle units): the scene's two fog
- * depths from that camera, in fog_k's form.  (research, fog_eye) */
+ * depths from that camera, in fog_k's form. */
 static inline void bmap_fog_k_eye(const BmapScene *s, const float eye[3], const float fwd[3], float out[4])
 {
     const float span = (s->fog_end - s->fog_start) * s->place_k;
@@ -240,20 +242,19 @@ static inline void bmap_fog_k_eye(const BmapScene *s, const float eye[3], const 
 
 /* The fog's measure for a frame of the battle's camera: out as fog_k, the fog of a point p being
  * clamp(dot(p, out.xyz) - out.w, 0, 1), or bent by fog_curve.  The placed scene's own fog_k (the field camera's line
- * of sight); with fog_eye 1 (research) the same two depths from the battle's camera. */
+ * of sight). */
 static inline void bmap_fog_k(const BmapScene *s, const float eye[3], const float fwd[3], float out[4])
 {
+    (void)eye;
+    (void)fwd;
     out[0] = s->fog_k[0]; out[1] = s->fog_k[1]; out[2] = s->fog_k[2]; out[3] = s->fog_k[3];
-    if (s->fog_eye == 1 && s->fog_on && s->fog_end > s->fog_start && s->place_k > 0.0f) {
-        bmap_fog_k_eye(s, eye, fwd, out);
-    }
 }
 
-/* research (fog_eye 2): the second measure, from the battle's camera, to take the thicker of the two; zeros: none */
+/* The second measure, from the battle's camera (fog_two: a weather's fog): the thicker of the two holds; zeros: none */
 static inline void bmap_fog_k2(const BmapScene *s, const float eye[3], const float fwd[3], float out[4])
 {
     out[0] = out[1] = out[2] = out[3] = 0.0f;
-    if (s->fog_eye == 2 && s->fog_on && s->fog_end > s->fog_start && s->place_k > 0.0f) {
+    if (s->fog_two && s->fog_on && s->fog_end > s->fog_start && s->place_k > 0.0f) {
         bmap_fog_k_eye(s, eye, fwd, out);
     }
 }

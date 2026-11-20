@@ -113,6 +113,10 @@ enum {
     EIDOS_OPT_UI_THEME,             /* the one-screen interface's style
                                        (engine/ui/theme.h): 0 Kosmos (the
                                        default), 1 Plasma, 2 Harmonia      */
+    EIDOS_OPT_WEATHER_HAZE,         /* 0 off (the default), 1 on: in a
+                                       real-map battle under a weather with
+                                       fog, the Pokemon and the trainers
+                                       take the fog too (sdk/battle_view.c) */
     EIDOS_OPT_COUNT
 };
 
