@@ -251,6 +251,11 @@ void eidos_ui_reset(void);
  */
 int eidos_ui_lower_shown(void);
 extern int ui_lower_sheet_drawn;
+/* 1 while the title's intro has the lower screen repeat the upper one's
+ * scene (Reshiram over the checkerboard, which the one-screen view
+ * already shows up top): its edges are lit.  0 once the lower screen is
+ * the game's logo on black, and outside the title. */
+int eidos_ui_title_intro_lower(void);
 
 /* ------------------------------------------------------------------ */
 /* For recipes: actions and hit regions                                */

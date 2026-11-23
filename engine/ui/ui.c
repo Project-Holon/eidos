@@ -104,6 +104,38 @@ const char *eidos_ui_scene_name(void)
 
 int ui_lower_sheet_drawn;
 static int g_lower_sheet_last;      /* the last frame's ui_lower_sheet_drawn */
+static int g_title_intro;           /* eidos_ui_title_intro_lower          */
+
+/* The lower screen's edges (the top rows and the side columns, away from
+ * the logo in the middle and PRESS START below it) lit: the intro's
+ * checkerboard and dragon, not the logo on black. */
+static int edges_lit(const u8 *px)
+{
+    u32 sum = 0, n = 0;
+    int x, y;
+
+    if (px == NULL) {
+        return 0;
+    }
+    for (y = 0; y < 192; y++) {
+        for (x = 0; x < 256; x++) {
+            const u8 *q;
+
+            if (!(y < 32 || x < 24 || x >= 232)) {
+                continue;
+            }
+            q = px + ((size_t)y * 256u + (size_t)x) * 4u;
+            sum += (u32)q[0] + q[1] + q[2];
+            n++;
+        }
+    }
+    return n > 0 && sum / n > 90u;      /* of 765: more than a dim backdrop */
+}
+
+int eidos_ui_title_intro_lower(void)
+{
+    return g_title_intro;
+}
 
 int eidos_ui_lower_shown(void)
 {
@@ -3750,6 +3782,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     }
     g_lower_sheet_last = ui_lower_sheet_drawn;
     ui_lower_sheet_drawn = 0;
+    g_title_intro = r != NULL && strcmp(r->name, "title") == 0 && edges_lit(in->screen_rgba[1]);
     if (r != NULL) {
         g_scene = r->name;
         EidosUiFrame f = *in;

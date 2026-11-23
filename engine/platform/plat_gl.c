@@ -1965,7 +1965,12 @@ void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDisable(GL_SCISSOR_TEST);
         glDisable(GL_BLEND);
-        if (cover != NULL) {
+        if (cover == NULL && dst2[0].w <= 0 && dst2[1].w <= 0) {
+            /* nothing to show there: dark */
+            glViewport(0, 0, out2_w, out2_h);
+            glClearColor(0.f, 0.f, 0.f, 1.f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        } else if (cover != NULL) {
             /* the panel's picture (the platform layer put its card there:
              * the one-screen view already shows the lower screen) on the
              * card's own backdrop colour */

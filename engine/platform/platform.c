@@ -1640,7 +1640,11 @@ static void render(EidosPlatform *p)
             int covered = eidos_ui_lower_shown();
 
             memset(second_r, 0, sizeof second_r);
-            dual_fit(w2, h2, &second_r[1]);
+            if (!eidos_ui_title_intro_lower()) {
+                /* (the title's intro repeats the top's dragon below: the
+                 * second display stays dark until the game's logo) */
+                dual_fit(w2, h2, &second_r[1]);
+            }
             if (strcmp(eidos_ui_scene_name(), "fallback") == 0) {
                 /* no scene of the port's own: the fallback's two screens
                  * side by side would show the lower one twice */
