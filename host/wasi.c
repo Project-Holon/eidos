@@ -20,6 +20,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <stdatomic.h>
+
 #include "host.h"
 
 #if defined(_WIN32)
@@ -231,18 +233,25 @@ static void filestat_out(u32 buf, int type, u64 size, u64 mt)
     st64(buf + 56, mt);
 }
 
+/* (two threads open files: the game's, and the job thread with the battle map's builder, host/par.c; the lock is
+ * held for the search of a free slot alone) */
+static atomic_flag g_fd_lock = ATOMIC_FLAG_INIT;
+
 static int alloc_fd(void)
 {
-    int i;
+    int i, got = -1;
 
-    for (i = 4; i < FDS_MAX; i++) {
+    while (atomic_flag_test_and_set(&g_fd_lock)) {
+    }
+    for (i = 4; i < FDS_MAX && got < 0; i++) {
         if (!g_fd[i].used) {
             memset(&g_fd[i], 0, sizeof(g_fd[i]));
             g_fd[i].used = 1;
-            return i;
+            got = i;
         }
     }
-    return -1;
+    atomic_flag_clear(&g_fd_lock);
+    return got;
 }
 
 /* ------------------------------------------------------------------ */

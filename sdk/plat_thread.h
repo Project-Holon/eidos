@@ -40,6 +40,21 @@ void     bw_cond_broadcast(BwCond *c);
 BwThread *bw_thread_start(void (*fn)(void *arg), void *arg);
 /* Wait for the thread to return, then release the handle.                 */
 void      bw_thread_join(BwThread *t);
+/* A thread for long work beside the game (the battle map's builder), at a
+ * low priority: the game's own threads get the processor first.  Joined as
+ * any other.  bw_thread_beside: 1 when such a thread runs while the game
+ * runs; 0 where the threads take turns and it would stop the game for as
+ * long as it works (the wasm32 build with no job thread on the host): work
+ * that is only done ahead is then not started.                            */
+BwThread *bw_thread_start_beside(void (*fn)(void *arg), void *arg);
+int       bw_thread_beside(void);
+/* The one lock that holds between every real thread that runs the
+ * program's code, the wasm32 build's host threads too (the mutexes above
+ * are the fibers' own there, and hold only between fibers).  For the few
+ * tables a thread beside the game shares with it.  Recursive; held for a
+ * moment only.                                                            */
+void      bw_shared_lock(void);
+void      bw_shared_unlock(void);
 /* The calling host thread's identity (never 0): equal for the same thread. */
 unsigned long long bw_thread_self_id(void);
 

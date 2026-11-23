@@ -11,7 +11,9 @@
 
 #if defined(__wasm__)
 
+#include <stdarg.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #include "wasm_host.h"
 
@@ -28,6 +30,91 @@ void *__wrap_realloc(void *p, size_t n);
 void __wrap_free(void *p);
 int __wrap_posix_memalign(void **out, size_t align, size_t n);
 void *__wrap_aligned_alloc(size_t align, size_t n);
+
+/*
+ * The same for what else of the C library is shared between threads and has
+ * no lock in this build, now that the host's job thread runs the battle
+ * map's builder beside the game (sdk/plat_thread.c):
+ *   - the list of open files: fopen and fclose link a FILE into it;
+ *   - formatted output: vfprintf lends an unbuffered stream (stderr) a
+ *     buffer on its own stack for the call, so two threads printing to it
+ *     at once write into one another's stack.  Every printf goes through
+ *     vfprintf; fputs, fputc and fwrite on a shared stream are guarded too.
+ * A FILE that one thread opened and uses alone needs nothing more.
+ */
+FILE *__real_fopen(const char *path, const char *mode);
+int __real_fclose(FILE *f);
+int __real_vfprintf(FILE *f, const char *fmt, va_list ap);
+int __real_fputs(const char *s, FILE *f);
+int __real_fputc(int c, FILE *f);
+int __real_fflush(FILE *f);
+
+FILE *__wrap_fopen(const char *path, const char *mode);
+int __wrap_fclose(FILE *f);
+int __wrap_vfprintf(FILE *f, const char *fmt, va_list ap);
+int __wrap_fputs(const char *s, FILE *f);
+int __wrap_fputc(int c, FILE *f);
+int __wrap_fflush(FILE *f);
+
+FILE *__wrap_fopen(const char *path, const char *mode)
+{
+    FILE *f;
+
+    bw_host_heap_lock();
+    f = __real_fopen(path, mode);
+    bw_host_heap_unlock();
+    return f;
+}
+
+int __wrap_fclose(FILE *f)
+{
+    int rc;
+
+    bw_host_heap_lock();
+    rc = __real_fclose(f);
+    bw_host_heap_unlock();
+    return rc;
+}
+
+int __wrap_vfprintf(FILE *f, const char *fmt, va_list ap)
+{
+    int rc;
+
+    bw_host_heap_lock();
+    rc = __real_vfprintf(f, fmt, ap);
+    bw_host_heap_unlock();
+    return rc;
+}
+
+int __wrap_fputs(const char *s, FILE *f)
+{
+    int rc;
+
+    bw_host_heap_lock();
+    rc = __real_fputs(s, f);
+    bw_host_heap_unlock();
+    return rc;
+}
+
+int __wrap_fputc(int c, FILE *f)
+{
+    int rc;
+
+    bw_host_heap_lock();
+    rc = __real_fputc(c, f);
+    bw_host_heap_unlock();
+    return rc;
+}
+
+int __wrap_fflush(FILE *f)
+{
+    int rc;
+
+    bw_host_heap_lock();
+    rc = __real_fflush(f);
+    bw_host_heap_unlock();
+    return rc;
+}
 
 void *__wrap_malloc(size_t n)
 {

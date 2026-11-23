@@ -96,11 +96,43 @@ static int SDLCALL worker_main(void *arg)
     }
 }
 
+/* A thread that runs the module's code on an instance of its own (the comment at the top): the copy, its stack
+ * in module memory, its table, the thread.  0 when it runs. */
+static int worker_start(Worker *w, SDL_ThreadFunction fn, const char *name)
+{
+    u32 stack = host_malloc(PAR_STACK), k;
+    SDL_PropertiesID props;
+
+    if (stack == 0) {
+        return -1;
+    }
+    w->inst = g_game;
+    w->table = (wasm_rt_funcref_t *)malloc(sizeof(*w->table) * g_game.w2c_T0.size);
+    if (w->table == NULL) {
+        return -1;
+    }
+    for (k = 0; k < g_game.w2c_T0.size; k++) {
+        w->table[k] = g_game.w2c_T0.data[k];
+        if (w->table[k].module_instance == (void *)&g_game) {
+            w->table[k].module_instance = &w->inst;
+        }
+    }
+    w->inst.w2c_T0.data = w->table;
+    w->inst.w2c_0x5F_stack_pointer = (stack + PAR_STACK) & ~15u;
+    props = SDL_CreateProperties();
+    SDL_SetPointerProperty(props, SDL_PROP_THREAD_CREATE_ENTRY_FUNCTION_POINTER, (void *)fn);
+    SDL_SetStringProperty(props, SDL_PROP_THREAD_CREATE_NAME_STRING, name);
+    SDL_SetPointerProperty(props, SDL_PROP_THREAD_CREATE_USERDATA_POINTER, w);
+    SDL_SetNumberProperty(props, SDL_PROP_THREAD_CREATE_STACKSIZE_NUMBER, PAR_NATIVE);
+    w->thread = SDL_CreateThreadWithProperties(props);
+    SDL_DestroyProperties(props);
+    return w->thread != NULL ? 0 : -1;
+}
+
 static void start(void)
 {
     int cpus = SDL_GetNumLogicalCPUCores();
     int n = cpus > 1 ? cpus - 1 : 0, i;
-    u32 k;
 
     if (getenv("EIDOS_PAR_WORKERS") != NULL) {
         n = atoi(getenv("EIDOS_PAR_WORKERS"));
@@ -116,43 +148,104 @@ static void start(void)
     g_work = SDL_CreateCondition();
     g_done = SDL_CreateCondition();
     for (i = 0; i < n; i++) {
-        Worker *w = &g_w[i];
-        u32 stack = host_malloc(PAR_STACK);
-        SDL_PropertiesID props;
-
-        if (stack == 0) {
-            break;
-        }
-        w->inst = g_game;
-        w->table = (wasm_rt_funcref_t *)malloc(sizeof(*w->table) * g_game.w2c_T0.size);
-        if (w->table == NULL) {
-            break;
-        }
-        for (k = 0; k < g_game.w2c_T0.size; k++) {
-            w->table[k] = g_game.w2c_T0.data[k];
-            if (w->table[k].module_instance == (void *)&g_game) {
-                w->table[k].module_instance = &w->inst;
-            }
-        }
-        w->inst.w2c_T0.data = w->table;
-        w->inst.w2c_0x5F_stack_pointer = (stack + PAR_STACK) & ~15u;
-        props = SDL_CreateProperties();
-        SDL_SetPointerProperty(props, SDL_PROP_THREAD_CREATE_ENTRY_FUNCTION_POINTER, (void *)worker_main);
-        SDL_SetStringProperty(props, SDL_PROP_THREAD_CREATE_NAME_STRING, "eidos-par");
-        SDL_SetPointerProperty(props, SDL_PROP_THREAD_CREATE_USERDATA_POINTER, w);
-        SDL_SetNumberProperty(props, SDL_PROP_THREAD_CREATE_STACKSIZE_NUMBER, PAR_NATIVE);
-        w->thread = SDL_CreateThreadWithProperties(props);
-        SDL_DestroyProperties(props);
-        if (w->thread == NULL) {
+        if (worker_start(&g_w[i], worker_main, "eidos-par") != 0) {
             break;
         }
         g_nw++;
     }
 }
 
+/*
+ * The job thread (sdk/plat_thread.h, bw_thread_start_beside): one long task
+ * at a time beside the game: the battle map's builder.  A thread of its
+ * own, not one of the pool's, so the compositors keep every worker; and at
+ * a low priority, so with few cores the frame's own work comes first.  It
+ * runs the module's code as a pool worker does, on an instance of its own.
+ */
+static Worker g_jw;
+static int g_job_on = -1;           /* -1: not tried yet; 1: the thread runs  */
+static SDL_Mutex *g_jm;
+static SDL_Condition *g_jc;
+static u32 g_job_fn, g_job_ctx;
+static int g_job_state;             /* 0 none, 1 given or running, 2 done     */
+
+static int SDLCALL job_main(void *arg)
+{
+    Worker *w = (Worker *)arg;
+
+    SDL_SetTLS(&g_self, w, NULL);
+    wasm_rt_init_thread();
+#if !defined(__SWITCH__)            /* (its SDL3-on-SDL2 layer has no such call: host/switch/sdl3_on_sdl2.c) */
+    SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_LOW);
+#endif
+    for (;;) {
+        u32 fn, ctx;
+
+        SDL_LockMutex(g_jm);
+        while (g_job_state != 1) {
+            SDL_WaitCondition(g_jc, g_jm);
+        }
+        fn = g_job_fn;
+        ctx = g_job_ctx;
+        SDL_UnlockMutex(g_jm);
+        w2c_game_bw_par_task(&w->inst, fn, ctx, 0);
+        SDL_LockMutex(g_jm);
+        g_job_state = 2;
+        SDL_BroadcastCondition(g_jc);
+        SDL_UnlockMutex(g_jm);
+    }
+}
+
+u32 w2c_eidos_job_ready(struct w2c_eidos *e)
+{
+    (void)e;
+    if (g_job_on < 0) {
+        g_job_on = 0;
+        g_jm = SDL_CreateMutex();
+        g_jc = SDL_CreateCondition();
+        if (g_jm != NULL && g_jc != NULL && worker_start(&g_jw, job_main, "eidos-job") == 0) {
+            g_job_on = 1;
+        }
+    }
+    return (u32)g_job_on;
+}
+
+u32 w2c_eidos_job_start(struct w2c_eidos *e, u32 fn, u32 ctx)
+{
+    u32 ok = 0;
+
+    if (!w2c_eidos_job_ready(e)) {
+        return 0;
+    }
+    SDL_LockMutex(g_jm);
+    if (g_job_state == 0) {
+        g_job_fn = fn;
+        g_job_ctx = ctx;
+        g_job_state = 1;
+        ok = 1;
+        SDL_BroadcastCondition(g_jc);
+    }
+    SDL_UnlockMutex(g_jm);
+    return ok;
+}
+
+void w2c_eidos_job_join(struct w2c_eidos *e)
+{
+    (void)e;
+    if (g_job_on != 1) {
+        return;
+    }
+    SDL_LockMutex(g_jm);
+    while (g_job_state == 1) {
+        SDL_WaitCondition(g_jc, g_jm);
+    }
+    g_job_state = 0;
+    SDL_UnlockMutex(g_jm);
+}
+
 w2c_game *host_instance(void)
 {
-    Worker *self = g_nw > 0 ? (Worker *)SDL_GetTLS(&g_self) : NULL;
+    Worker *self = g_nw > 0 || g_job_on == 1 ? (Worker *)SDL_GetTLS(&g_self) : NULL;
 
     return self != NULL ? &self->inst : &g_game;
 }

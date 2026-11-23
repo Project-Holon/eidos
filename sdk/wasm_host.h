@@ -59,6 +59,14 @@ BW_WASM_IMPORT(tz_offset) long long bw_host_tz_offset(long long t);
  * stack. */
 BW_WASM_IMPORT(par_workers) unsigned bw_host_par_workers(void);
 BW_WASM_IMPORT(par_run) void bw_host_par_run(unsigned fn, void *ctx, unsigned n);
+/* The host's job thread (sdk/plat_thread.h, bw_thread_start_beside): one
+ * long task at a time beside the game, at a low priority.  job_ready: 1
+ * when the host has the thread.  job_start: `fn(ctx, 0)` given to it, in
+ * through bw_par_task as a compositor's task; 0 when it is busy or absent.
+ * job_join: wait until the job given is done. */
+BW_WASM_IMPORT(job_ready) int bw_host_job_ready(void);
+BW_WASM_IMPORT(job_start) int bw_host_job_start(unsigned fn, void *ctx);
+BW_WASM_IMPORT(job_join) void bw_host_job_join(void);
 /* The heap's lock (sdk/wasm_heap.c): the C library's malloc has none, and
  * the host's threads run module code that allocates.  Recursive. */
 BW_WASM_IMPORT(heap_lock) void bw_host_heap_lock(void);

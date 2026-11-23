@@ -97,6 +97,42 @@ BwThread *bw_thread_start(void (*fn)(void *arg), void *arg)
     return t;
 }
 
+BwThread *bw_thread_start_beside(void (*fn)(void *arg), void *arg)
+{
+    BwThread *t = bw_thread_start(fn, arg);
+
+    SetThreadPriority(t->h, THREAD_PRIORITY_BELOW_NORMAL);
+    return t;
+}
+
+int bw_thread_beside(void)
+{
+    return 1;
+}
+
+static CRITICAL_SECTION g_shared;
+static INIT_ONCE g_shared_once = INIT_ONCE_STATIC_INIT;
+
+static BOOL CALLBACK shared_init(PINIT_ONCE once, PVOID arg, PVOID *ctx)
+{
+    (void)once;
+    (void)arg;
+    (void)ctx;
+    InitializeCriticalSection(&g_shared);
+    return TRUE;
+}
+
+void bw_shared_lock(void)
+{
+    InitOnceExecuteOnce(&g_shared_once, shared_init, NULL, NULL);
+    EnterCriticalSection(&g_shared);
+}
+
+void bw_shared_unlock(void)
+{
+    LeaveCriticalSection(&g_shared);
+}
+
 void bw_thread_join(BwThread *t)
 {
     if (t != NULL) {
@@ -141,6 +177,7 @@ unsigned long long bw_clock_ns(void)
  * they do on the native builds; the port's helper threads (the battle map,
  * the 2D workers) run when the others wait.
  */
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
@@ -153,7 +190,7 @@ enum { F_FREE, F_READY, F_BLOCKED, F_DONE };
 
 struct BwMutex  { int locked; };
 struct BwCond   { unsigned gen; };
-struct BwThread { int id; };
+struct BwThread { int id; void (*fn)(void *); void *arg; };   /* id < 0: the host's job thread runs it */
 
 typedef struct Fiber {
     int state;
@@ -349,11 +386,80 @@ BwThread *bw_thread_start(void (*fn)(void *arg), void *arg)
     return t;
 }
 
+/*
+ * A thread beside the game.  The fibers take turns, so a fiber that builds
+ * a battle's map stops the game for as long as it works.  The host has one
+ * thread for such work (host/par.c, the job thread): it runs the module's
+ * code on an instance of its own, as the compositors' workers do, while the
+ * fibers go on.  What runs there must keep to what holds between real
+ * threads: the heap (sdk/wasm_heap.c), the C library's file list and
+ * formatted output (the same file), bw_shared_lock; never the fibers' own
+ * mutexes and conditions.  One job at a time: with the thread busy, or
+ * with none (EIDOS_NO_BESIDE=1, a host that could not start one), the work
+ * runs on a fiber as before.
+ */
+static void beside_task(void *ctx, unsigned index)
+{
+    BwThread *t = (BwThread *)ctx;
+
+    (void)index;
+    t->fn(t->arg);
+}
+
+int bw_thread_beside(void)
+{
+    static int on = -1;
+
+    if (on < 0) {
+        on = getenv("EIDOS_NO_BESIDE") == NULL && bw_host_job_ready() != 0;
+    }
+    return on;
+}
+
+BwThread *bw_thread_start_beside(void (*fn)(void *arg), void *arg)
+{
+    BwThread *t;
+
+    if (!bw_thread_beside()) {
+        return bw_thread_start(fn, arg);
+    }
+    t = (BwThread *)malloc(sizeof(*t));
+    if (t == NULL) {
+        bw_panic("bw_thread_start_beside", 0, "out of memory");
+    }
+    t->id = -1;
+    t->fn = fn;
+    t->arg = arg;
+    if (!bw_host_job_start((unsigned)(uintptr_t)beside_task, t)) {
+        /* (the callers run one job at a time, so this is not expected: said, because the game then stops for
+         * as long as the job works) */
+        fprintf(stderr, "eidos: the host's job thread is busy: the work runs on the game's own thread\n");
+        free(t);
+        return bw_thread_start(fn, arg);
+    }
+    return t;
+}
+
+void bw_shared_lock(void)
+{
+    bw_host_heap_lock();
+}
+
+void bw_shared_unlock(void)
+{
+    bw_host_heap_unlock();
+}
+
 void bw_thread_join(BwThread *t)
 {
     Fiber *f;
 
     if (t == NULL) {
+        return;
+    }
+    if (t->id < 0) {
+        bw_host_job_join();             /* (the host thread waits: every fiber with it) */
+        free(t);
         return;
     }
     f = &g_f[t->id];
@@ -483,6 +589,40 @@ BwThread *bw_thread_start(void (*fn)(void *arg), void *arg)
         bw_panic("bw_thread_start", 0, "pthread_create failed");
     }
     return t;
+}
+
+BwThread *bw_thread_start_beside(void (*fn)(void *arg), void *arg)
+{
+    return bw_thread_start(fn, arg);    /* (no priority of its own here) */
+}
+
+int bw_thread_beside(void)
+{
+    return 1;
+}
+
+static pthread_mutex_t g_shared;
+static pthread_once_t g_shared_once = PTHREAD_ONCE_INIT;
+
+static void shared_init(void)
+{
+    pthread_mutexattr_t at;
+
+    pthread_mutexattr_init(&at);
+    pthread_mutexattr_settype(&at, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&g_shared, &at);
+    pthread_mutexattr_destroy(&at);
+}
+
+void bw_shared_lock(void)
+{
+    pthread_once(&g_shared_once, shared_init);
+    pthread_mutex_lock(&g_shared);
+}
+
+void bw_shared_unlock(void)
+{
+    pthread_mutex_unlock(&g_shared);
 }
 
 void bw_thread_join(BwThread *t)

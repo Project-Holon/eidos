@@ -478,14 +478,22 @@ int bw_vfs_file_layer(const char *rel)
     }
     a = &g_layer[h % LAYER_CACHE];
     now = bw_clock_ns();
-    if (a->gen == g_layer_gen && now - a->at < LAYER_KEEP_NS && strcmp(a->rel, rel) == 0) {
-        return a->layer;
+    /* (the answers are shared with the battle map's builder, a thread beside the game: an answer is read and
+     * written whole) */
+    bw_shared_lock();
+    i = a->gen == g_layer_gen && now - a->at < LAYER_KEEP_NS && strcmp(a->rel, rel) == 0;
+    layer = a->layer;
+    bw_shared_unlock();
+    if (i) {
+        return layer;
     }
     layer = file_layer_look(rel);
+    bw_shared_lock();
     memcpy(a->rel, rel, len + 1u);
     a->layer = layer;
     a->at = now;
     a->gen = g_layer_gen;
+    bw_shared_unlock();
     return layer;
 }
 

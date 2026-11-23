@@ -3112,7 +3112,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     # The heap behind the host's lock, and a sleep that lets the other
     # fibers run (sdk/wasm_heap.c).
     target_sources(eidos_boot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/wasm_heap.c)
-    foreach(_f malloc calloc realloc free posix_memalign aligned_alloc nanosleep)
+    foreach(_f malloc calloc realloc free posix_memalign aligned_alloc nanosleep
+               fopen fclose vfprintf fputs fputc fflush)
         target_link_options(eidos_boot PRIVATE "-Wl,--wrap=${_f}")
     endforeach()
     add_custom_command(TARGET eidos_boot POST_BUILD
