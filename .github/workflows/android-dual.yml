@@ -1,0 +1,79 @@
+# android-dual.yml -- the Android APK alone, for testing the dual-display
+# branch: the game module (tools/build64.py --module-only) and the APK
+# (android/build.py) in one job, without the release workflow's Linux
+# tests and packages.  Runs on every push to dual-display, or by hand.
+#
+# Signed with android/eidos-ds-test.keystore, a key for this fork's test
+# builds only (its password is below, so it is not a secret): every APK it
+# signs installs over the last.
+
+name: android (dual display)
+
+on:
+  push:
+    branches: [dual-display]
+  workflow_dispatch:
+
+concurrency:
+  group: android-dual-${{ github.ref }}
+  cancel-in-progress: true          # a newer push replaces a running build
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EIDOS_SDL_CACHE: ${{ github.workspace }}/.cache/sdl
+      EIDOS_WAMR_CACHE: ${{ github.workspace }}/.cache/wamr
+      EIDOS_MBEDTLS_CACHE: ${{ github.workspace }}/.cache/mbedtls
+      EIDOS_WASM_CACHE: ${{ github.workspace }}/.cache/wasm
+    steps:
+      - uses: actions/checkout@v4
+      - name: The aletheia pin
+        id: pin
+        run: echo "pin=$(sed -n 's/^set(EIDOS_ALETHEIA_PIN "\([0-9a-f]*\)").*/\1/p' cmake/aletheia_pin.cmake)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: Project-Holon/aletheia
+          ref: ${{ steps.pin.outputs.pin }}
+          path: aletheia
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Packages
+        run: sudo apt-get install -y ninja-build
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: deps-android-dual-${{ hashFiles('tools/fetch_sdl.py', 'tools/fetch_wamr.py', 'tools/fetch_mbedtls.py', 'tools/fetch_wasm.py') }}
+      - name: Fetch SDL3, WAMR, Mbed TLS, the wasm toolchain (each is checked against a recorded SHA-256)
+        run: |
+          python3 tools/fetch_sdl.py --flavor mingw     # the module's SDL3 headers
+          python3 tools/fetch_sdl.py --flavor source    # the APK's SDL3
+          python3 tools/fetch_wamr.py
+          python3 tools/fetch_mbedtls.py
+          python3 tools/fetch_wasm.py
+      - name: Stand-ins for the few ROM bytes the sources include (docs/release.md)
+        run: python3 tools/package_release.py placeholders --aletheia-root aletheia
+      - name: Build the game module
+        run: |
+          python3 tools/build64.py --module-only --build-dir build64 --release \
+            --aletheia-root "$PWD/aletheia" \
+            --data-root "$PWD/no-game-data/extract/data" \
+            --relay "${{ vars.EIDOS_DEFAULT_RELAY }}"
+      - name: Build the APK
+        env:
+          EIDOS_KEYSTORE: ${{ github.workspace }}/android/eidos-ds-test.keystore
+          EIDOS_KEYSTORE_PASSWORD: eidos-ds-test
+          EIDOS_KEY_ALIAS: eidosds
+        run: |
+          python3 android/build.py --module build64/module/eidos_boot.wasm --build-dir build-android --jobs 4 --release
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/*.apk dist/eidos-ds-android.apk
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eidos-ds-android
+          path: dist/*.apk
+          if-no-files-found: error
