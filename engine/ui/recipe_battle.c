@@ -1720,12 +1720,14 @@ static void battle_begin(EidosUiCtx *c, Shell *s, UiBattleLayout *l, int what)
 
     s->what = what;
     battle_place(c, s, l, what);
-    if (t->battle_backdrop != NULL) {
-        t->battle_backdrop(c, l, what);
-    }
-    /* the field's weather (snow, a sandstorm's grains) over the real map, under the battle's own parts */
+    /* the field's weather (snow, a sandstorm's grains) over the real map, under the battle's own parts: the
+     * theme's backdrop too (Plasma's band under the commands, Harmonia's tile under the moves are parts of the
+     * interface; the grains were drawn over them) */
     if (bw_battle_view_ready_w != NULL && bw_battle_view_ready_w()) {
         ui_weather_layer(c, 0, 0, l->w, l->h, bw_input_frame_number());
+    }
+    if (t->battle_backdrop != NULL) {
+        t->battle_backdrop(c, l, what);
     }
 }
 
