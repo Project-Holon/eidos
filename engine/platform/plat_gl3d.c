@@ -55,6 +55,7 @@
 #undef far /* the windows headers define it; BmapDraw has a member of that name */
 #endif
 #include "bmap.h"
+#include "plat_thread.h"
 #include "bmap_leaf.h"
 #include "bmap_place.h"
 #include "g3d.h"
@@ -626,6 +627,9 @@ typedef struct Gl3dBackdrop {
     float idx_eye[3];           /* the camera the ibo was sorted for       */
     int idx_ok;
     BdBound *bound;             /* one sphere per draw (sc->nd), or NULL   */
+    const void *up_scene;       /* a scene on its way up (backdrop_upload), or NULL */
+    unsigned up_gen, up_tex;    /* ... its generation; its pictures done   */
+    int up_verts;               /* ... its vertices are up                 */
 } Gl3dBackdrop;
 
 static Gl3dBackdrop g_bd;
@@ -662,6 +666,7 @@ static void backdrop_free_scene(int keep_tex)
     g_bd.idx_ok = 0;
     g_bd.n_piece = 0;
     g_bd.scene = NULL;
+    g_bd.up_scene = NULL;
 }
 
 /* The see-through parts of a scene (see BdPiece). */
@@ -904,92 +909,100 @@ static void backdrop_mips(const BmapTexture *t)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, lvl);
 }
 
-static void backdrop_upload(EidosGl *g, const BmapScene *sc)
+/*
+ * A new scene to the GPU: its textures (unless the same build's), its bounds, its see-through pieces, its vertices.
+ * `gen` is the scene's generation.  Returns 1 when the scene is all there (g_bd.scene is it), 0 when more is to
+ * come.  budget_ns 0: all of it now (the scene is on show).  Else a part a call: first the vertices with the bounds
+ * and the pieces, then textures, as many a call as the time allows: a scene that is not shown yet goes up this way
+ * over the blank frames before it shows (G3dBackdrop.warm), as in the native renderer (plat_sdlgpu3d.c, bd_upload:
+ * the whole of it in the frame it first showed stood 0.1 s, more than the sound's queue holds).
+ */
+#define BD_WARM_NS 14000000u            /* a frame's share of an upload ahead: 14 ms */
+
+static int backdrop_upload(EidosGl *g, const BmapScene *sc, unsigned gen, unsigned long long budget_ns)
 {
-    unsigned i;
-    /* another placing of the same build (the spot editor's drags): its
-     * textures are already up, mipmaps and all */
-    int keep = sc->tex_gen != 0 && sc->tex_gen == g_bd.tex_gen && sc->nt == g_bd.n_tex && g_bd.tex != NULL;
+    const unsigned long long t0 = bw_clock_ns();
 
-    backdrop_free_scene(keep);
+    if (g_bd.up_scene != sc || g_bd.up_gen != gen) {
+        /* it begins.  (Another placing of the same build, the spot editor's drags: its textures are already up,
+         * mipmaps and all.) */
+        const int keep = sc->tex_gen != 0 && sc->tex_gen == g_bd.tex_gen && sc->nt == g_bd.n_tex && g_bd.tex != NULL;
+
+        backdrop_free_scene(keep);
+        if (!keep && sc->nt > 0) {
+            g_bd.tex = (GLuint *)calloc(sc->nt, sizeof(GLuint));
+            if (g_bd.tex == NULL) {
+                return 0;
+            }
+            g_bd.n_tex = sc->nt;
+            g_bd.tex_gen = sc->tex_gen;
+            glGenTextures((GLsizei)sc->nt, g_bd.tex);
+        }
+        g_bd.up_scene = sc;
+        g_bd.up_gen = gen;
+        g_bd.up_tex = keep ? sc->nt : 0u;
+        g_bd.up_verts = 0;
+    }
+    if (!g_bd.up_verts) {
+        free(g_bd.bound);
+        g_bd.bound = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof *g_bd.bound) : NULL;
+        if (g_bd.bound != NULL) {
+            /* (BdBound is four floats: the scene's own when its placing made them, bmap.h) */
+            if (sc->bound != NULL && sc->n_bound == sc->nd) {
+                memcpy(g_bd.bound, sc->bound, sc->nd * sizeof *g_bd.bound);
+            } else {
+                bmap_draw_bounds(sc, (float (*)[4])g_bd.bound);
+            }
+        }
+        backdrop_pieces(sc);
+        g->glBindVertexArray(g_bd.vao);
+        g->glBindBuffer(GL_ARRAY_BUFFER, g_bd.vbo);
+        g->glBufferData(GL_ARRAY_BUFFER,
+                        (GLsizeiptr)((size_t)sc->nv * sizeof(BmapVertex)), sc->v,
+                        GL_STATIC_DRAW);
+        g->glEnableVertexAttribArray(0);
+        g->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(BmapVertex),
+                                 (void *)offsetof(BmapVertex, x));
+        g->glEnableVertexAttribArray(1);
+        g->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(BmapVertex),
+                                 (void *)offsetof(BmapVertex, u));
+        g->glEnableVertexAttribArray(2);
+        g->glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE,
+                                 sizeof(BmapVertex),
+                                 (void *)offsetof(BmapVertex, r));
+        g_bd.up_verts = 1;
+        if (budget_ns != 0 && g_bd.up_tex < sc->nt) {
+            return 0;                   /* (the textures in the calls after this one) */
+        }
+    }
+    if (g_bd.up_tex < sc->nt) {
+        const unsigned first = g_bd.up_tex;
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        while (g_bd.up_tex < sc->nt && (budget_ns == 0 || g_bd.up_tex == first || bw_clock_ns() - t0 < budget_ns)) {
+            const BmapTexture *t = &sc->t[g_bd.up_tex];
+
+            glBindTexture(GL_TEXTURE_2D, g_bd.tex[g_bd.up_tex]);
+            backdrop_mips(t);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                            GL_NEAREST_MIPMAP_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                            !t->repeat_s ? GL_CLAMP_TO_EDGE
+                            : t->flip_s ? GL_MIRRORED_REPEAT : GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                            !t->repeat_t ? GL_CLAMP_TO_EDGE
+                            : t->flip_t ? GL_MIRRORED_REPEAT : GL_REPEAT);
+            g_bd.up_tex++;
+        }
+        if (g_bd.up_tex < sc->nt) {
+            return 0;                   /* (more textures in the next call) */
+        }
+    }
     g_bd.scene = sc;
-    if (!keep && sc->nt > 0) {
-        g_bd.tex = (GLuint *)calloc(sc->nt, sizeof(GLuint));
-        if (g_bd.tex == NULL) {
-            g_bd.scene = NULL;
-            return;
-        }
-        g_bd.n_tex = sc->nt;
-        g_bd.tex_gen = sc->tex_gen;
-        glGenTextures((GLsizei)sc->nt, g_bd.tex);
-    }
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    for (i = 0; !keep && i < sc->nt; i++) {
-        const BmapTexture *t = &sc->t[i];
-
-        glBindTexture(GL_TEXTURE_2D, g_bd.tex[i]);
-        backdrop_mips(t);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                        GL_NEAREST_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                        !t->repeat_s ? GL_CLAMP_TO_EDGE
-                        : t->flip_s ? GL_MIRRORED_REPEAT : GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                        !t->repeat_t ? GL_CLAMP_TO_EDGE
-                        : t->flip_t ? GL_MIRRORED_REPEAT : GL_REPEAT);
-    }
-    free(g_bd.bound);
-    g_bd.bound = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof *g_bd.bound) : NULL;
-    if (g_bd.bound != NULL) {
-        unsigned d, k;
-
-        for (d = 0; d < sc->nd; d++) {
-            const BmapDraw *dr = &sc->d[d];
-            BdBound *bb = &g_bd.bound[d];
-            float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
-            float r2 = 0.0f;
-
-            for (k = 0; k < dr->count && dr->first + k < sc->nv; k++) {
-                const BmapVertex *v = &sc->v[dr->first + k];
-
-                lo[0] = fminf(lo[0], v->x); hi[0] = fmaxf(hi[0], v->x);
-                lo[1] = fminf(lo[1], v->y); hi[1] = fmaxf(hi[1], v->y);
-                lo[2] = fminf(lo[2], v->z); hi[2] = fmaxf(hi[2], v->z);
-            }
-            if (lo[0] > hi[0]) {
-                bb->c[0] = bb->c[1] = bb->c[2] = 0.0f;
-                bb->r = 1e30f;          /* no triangles: never left out    */
-                continue;
-            }
-            for (k = 0; k < 3; k++) {
-                bb->c[k] = dr->billboard ? dr->pivot[k] : 0.5f * (lo[k] + hi[k]);
-            }
-            for (k = 0; k < dr->count && dr->first + k < sc->nv; k++) {
-                const BmapVertex *v = &sc->v[dr->first + k];
-                float dx = v->x - bb->c[0], dy = v->y - bb->c[1], dz = v->z - bb->c[2];
-
-                r2 = fmaxf(r2, dx * dx + dy * dy + dz * dz);
-            }
-            bb->r = sqrtf(r2);
-        }
-    }
-    backdrop_pieces(sc);
-    g->glBindVertexArray(g_bd.vao);
-    g->glBindBuffer(GL_ARRAY_BUFFER, g_bd.vbo);
-    g->glBufferData(GL_ARRAY_BUFFER,
-                    (GLsizeiptr)((size_t)sc->nv * sizeof(BmapVertex)), sc->v,
-                    GL_STATIC_DRAW);
-    g->glEnableVertexAttribArray(0);
-    g->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(BmapVertex),
-                             (void *)offsetof(BmapVertex, x));
-    g->glEnableVertexAttribArray(1);
-    g->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(BmapVertex),
-                             (void *)offsetof(BmapVertex, u));
-    g->glEnableVertexAttribArray(2);
-    g->glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE,
-                             sizeof(BmapVertex),
-                             (void *)offsetof(BmapVertex, r));
+    g_bd.gen = gen;
+    g_bd.up_scene = NULL;
+    return 1;
 }
 
 static void vcross(const float *a, const float *b, float *o)
@@ -1304,9 +1317,7 @@ static void backdrop_draw(EidosGl *g, const G3dBackdrop *b, int front)
         front = 0;
     }
     if (g_bd.scene != sc || g_bd.gen != b->scene_gen) {
-        backdrop_upload(g, sc);
-        g_bd.gen = b->scene_gen;
-        if (g_bd.scene == NULL) {
+        if (!backdrop_upload(g, sc, b->scene_gen, 0)) {
             return;
         }
     }
@@ -2413,6 +2424,15 @@ static int render_into(EidosGl *g, GlFb *fb, const G3dSnapshot *s, int w, int h)
         }
         backdrop_draw(g, &s->backdrop, 0);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        if (s->backdrop.scene == NULL && s->backdrop.warm != NULL) {
+            /* the battle's scene is not shown yet (the blank frames before the intro's first view): a part of
+             * it sent now, so the frame it first shows only draws it */
+            const BmapScene *wsc = (const BmapScene *)s->backdrop.warm;
+
+            if (wsc->nv != 0 && (g_bd.scene != wsc || g_bd.gen != s->backdrop.warm_gen)) {
+                (void)backdrop_upload(g, wsc, s->backdrop.warm_gen, BD_WARM_NS);
+            }
+        }
     }
     if (nv > 0) {
         unsigned drawn = 0, first = 0;

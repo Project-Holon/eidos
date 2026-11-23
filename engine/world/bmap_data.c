@@ -4244,9 +4244,18 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
         }
         shown++;
         if (getenv("BMAP_PLACE_LOG") != NULL) {
+            float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+
+            for (k = v0; k < c->nv; k++) {
+                lo[0] = fminf(lo[0], c->v[k].x); hi[0] = fmaxf(hi[0], c->v[k].x);
+                lo[1] = fminf(lo[1], c->v[k].y); hi[1] = fmaxf(hi[1], c->v[k].y);
+                lo[2] = fminf(lo[2], c->v[k].z); hi[2] = fmaxf(hi[2], c->v[k].z);
+            }
             fprintf(stderr, "bmap: live %s at %.0f %.0f %.0f, %u animations (first at frame %d)%s\n", name, (double)live[i].t[0],
                     (double)live[i].t[1], (double)live[i].t[2], live[i].nanim, live[i].nanim ? live[i].anim[0].frame : -1,
                     fieldcam ? ", made for the field's camera" : "");
+            fprintf(stderr, "bmap: live %s: %u triangles, x %.1f to %.1f, y %.1f to %.1f, z %.1f to %.1f\n", name,
+                    (unsigned)((c->nv - v0) / 3u), (double)lo[0], (double)hi[0], (double)lo[1], (double)hi[1], (double)lo[2], (double)hi[2]);
         }
     }
     if (getenv("BMAP_PLACE_LOG") != NULL) {
@@ -6489,6 +6498,7 @@ void bmap_free(BmapScene *s)
     free(s->prep);
     free(s->trees);
     free(s->leaf);
+    free(s->bound);
     if (s->shared) {                    /* a copy (bmap_copy): the rest is the original's */
         memset(s, 0, sizeof *s);
         return;

@@ -2499,6 +2499,22 @@ static void debug_battle(void)
         }
         return;
     }
+    {
+        /* EIDOS_DEBUG_BATTLE_AGAIN=N (tests): the battle starts N more times, each once the field is quiet again
+         * after the one before (a second battle in one session, in the same place) */
+        static int again = -1;
+
+        if (again < 0) {
+            const char *e = getenv("EIDOS_DEBUG_BATTLE_AGAIN");
+
+            again = e != NULL ? atoi(e) : 0;
+        }
+        if (done && again > 0 && g_try_what == NULL) {
+            again--;
+            done = 0;
+            wait = 0;
+        }
+    }
 
     if (done || what == NULL || &bw_dsref__GameSystemGlobal == NULL || GAMESYSTEM_SetEvent == NULL
         || GAMESYSTEM_GetEvent == NULL || ov021_FIELDMAP_GetEncount == NULL) {
@@ -3065,9 +3081,14 @@ int eidos_ui_script_quit(void)
     return g_us.quit;
 }
 
+extern void bw_battle_view_game_frame(void) __attribute__((weak));     /* sdk/battle_view.c, eidos_boot only */
+
 void eidos_ui_game_frame(void)
 {
     g_try_game_frames++;
+    if (bw_battle_view_game_frame != NULL) {
+        bw_battle_view_game_frame();
+    }
     int i, n = g_sound_n;
 
     while (g_call_head != g_call_tail) {

@@ -142,6 +142,8 @@ typedef struct BvPlaced {
     BvBase *base;
 } BvPlaced;
 
+#define BV_LIVE_MAX 160             /* the field's objects noted (g_fo) */
+
 /* One battle's scene, built and placed off the game's thread. */
 typedef struct BvJob {
     BvBase *base;                   /* in: place from it; NULL: build one  */
@@ -166,6 +168,8 @@ typedef struct BvJob {
     int has_wfbc;
     BmapFieldMatrix fmat;           /* the field's matrix, after the game's map replacement */
     int has_fmat;
+    int ahead;                      /* started when the encounter started (ahead_field), not yet a battle's own */
+    uint32_t ahead_frame;           /* ... at this input frame */
 } BvJob;
 
 typedef struct BvFrame {
@@ -581,7 +585,11 @@ static void backdrop_hook(G3dBackdrop *out)
         if (moved || bw_input_frame_number() - g_begin_frame > SHOW_AFTER) {
             g_show = 1;
         } else {
-            out->scene = NULL;          /* (the game's own dark comes next: nothing of the map before it) */
+            /* (the game's own dark comes next: nothing of the map before it; the renderer may send it to the
+             * GPU meanwhile, so the frame it first shows does not stand still for that) */
+            out->warm = out->scene;
+            out->warm_gen = out->scene_gen;
+            out->scene = NULL;
         }
     }
     memcpy(out->poke, g_frame.poke, sizeof(out->poke));
@@ -742,6 +750,9 @@ static void job_main(void *arg)
             b->s.fog_sprites = 1;
         }
         if (j->rc != 0) {
+            /* (always said: the battle then has no map, and nothing else tells why) */
+            fprintf(stderr, "bmap: zone %u at %.0f %.0f: the map was not built (bmap_build: %d)\n", j->zone, (double)j->px,
+                    (double)j->pz, j->rc);
             free(b);
             j->done = 1;
             return;
@@ -775,6 +786,7 @@ static void job_main(void *arg)
     }
     p = (BvPlaced *)calloc(1, sizeof *p);
     if (p == NULL || bmap_copy(&p->s, &b->s) != 0) {
+        fprintf(stderr, "bmap: zone %u: no memory for the battle's copy of the map\n", j->zone);
         free(p);
         j->rc = -1;
         j->done = 1;
@@ -782,6 +794,14 @@ static void job_main(void *arg)
     }
     p->base = b;
     bmap_place_spec(&p->s, &j->spec);
+    /* the draws' bounds here, not in the frame the map first shows (the renderer made them then) */
+    free(p->s.bound);
+    p->s.n_bound = 0;
+    p->s.bound = p->s.nd > 0u ? (float (*)[4])malloc((size_t)p->s.nd * sizeof *p->s.bound) : NULL;
+    if (p->s.bound != NULL) {
+        bmap_draw_bounds(&p->s, p->s.bound);
+        p->s.n_bound = p->s.nd;
+    }
     j->placed = p;
     if (getenv("BMAP_PLACE_LOG") != NULL) {
         fprintf(stderr, "bmap: ready in %.0f ms\n", 1000.0 * (double)(clock() - t_job) / CLOCKS_PER_SEC);
@@ -935,10 +955,12 @@ static void field_maps_frame(void)
     note_field_maps(gd, fm, rd16(gd, 4u + 4u * 0x44u));
 }
 
-/* Where the battle began, from GameData (the player's work) and the setup. */
-static int read_place(uintptr_t eff, BvJob *j)
+/* Where the battle began, from GameData (the player's work) and the setup (the battle's BattleSetupParam; 0: none
+ * known).  It changes nothing: it is read at the battle's first frame, and ahead of it when the encounter starts
+ * (ahead_field). */
+static int read_place(uintptr_t setup, BvJob *j)
 {
-    uintptr_t gs = 0, gd = 0, pw = 0, bm, setup;
+    uintptr_t gs = 0, gd = 0, pw = 0;
 
     /* the player's place: the game system's; a battle with none (the spot
      * editor's battle only, engine/ui/ui.c) has its place in
@@ -962,7 +984,6 @@ static int read_place(uintptr_t eff, BvJob *j)
         const int wid = dw != NULL && dw[0] != 0 ? atoi(dw)
                         : gptr_ok(gd) && GAME_DATA_GetWeatherId != NULL ? (int)GAME_DATA_GetWeatherId((const void *)gd) : -1;
 
-        bweather_want(wid);
         j->weather = wid;
         if (getenv("BMAP_PLACE_LOG") != NULL) {
             fprintf(stderr, "bmap: weather %d (%s)%s", wid, dw != NULL && dw[0] != 0 ? "EIDOS_DEBUG_WEATHER" : "the game's own",
@@ -970,8 +991,6 @@ static int read_place(uintptr_t eff, BvJob *j)
             fputc(10, stderr);
         }
     }
-    bm = rd32(eff, EFF_MAIN);
-    setup = gptr_ok(bm) ? rd32(bm, 0) : 0;
     {
         /* the setup's competitor (the game's btl_setup.c): 0 wild, 1 a trainer, 2 the Battle Subway's, 3 a link
          * partner, 4 the catching lesson (BTL_SETUP_SetupDemo, started by EVENT_BATTLE_CreateCatchTutorial: the
@@ -1328,10 +1347,19 @@ static void job_finish(void)
 
 /*
  * The area's models made ahead.  When the player comes into a zone (the field's first frame there), its battle map
- * is built once on a thread of its own and thrown away: what stays is its remade models, made (about 0.3 s each)
- * and written to the store (bmap_set_remade_store), so the first battle there finds them ready.  The map builder
- * works on one map at a time: a battle that starts while this runs waits for it first (warm_wait).
+ * is built once on a thread beside the game and thrown away: what stays is its remade models, made (about 0.3 s
+ * each) and written to the store (bmap_set_remade_store), so the first battle there finds them ready.  The map
+ * builder works on one map at a time: a battle that starts while this runs waits for it first (warm_wait).
  * EIDOS_BMAP_NO_WARM=1 turns it off.
+ *
+ * It runs only where a thread runs beside the game (bw_thread_beside): where the threads take turns it would stop
+ * the game for as long as it works (measured in the 64-bit build, whose threads are fibers: 0.7 s with the models
+ * stored, 3.6 s without, in the middle of the encounter's effect).
+ * It starts from the game's every frame (bw_battle_view_game_frame).  It hung off the field's model draws
+ * (field_note) before: a place where the field draws no model (Route 1's grass) started it with the encounter
+ * effect's own model, and the battle then waited for the whole of it on a dark screen.
+ * It takes no live objects: the list is the last battle's, and its copies of the files are freed when the player
+ * comes into another zone.
  */
 typedef struct BvWarm {
     unsigned zone;
@@ -1384,7 +1412,8 @@ static void warm_field(uintptr_t gd, unsigned zone)
     if (g_warm != NULL && g_warm->done) {
         warm_wait();
     }
-    if (off || zone == g_warm_zone || g_warm != NULL || g_job != NULL || !real_map() || !gptr_ok(gd)) {
+    if (off || zone == g_warm_zone || g_warm != NULL || g_job != NULL || !real_map() || !gptr_ok(gd)
+        || !bw_thread_beside()) {
         return;
     }
     g_warm_zone = zone;
@@ -1396,47 +1425,89 @@ static void warm_field(uintptr_t gd, unsigned zone)
     g_warm->px = rdfx(gd + GD_PLAYER, PW_X);
     g_warm->pz = rdfx(gd + GD_PLAYER, PW_Z);
     g_warm->season = GAME_DATA_GetSeason != NULL ? (int)(GAME_DATA_GetSeason((const void *)gd) & 3u) : 0;
-    g_warm->thread = bw_thread_start(warm_main, g_warm);
+    bmap_live_set(0xFFFFFFFFu, NULL, 0);        /* (no live objects: the comment above) */
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        fprintf(stderr, "bmap: zone %u: the build ahead starts (input frame %u)\n", zone, (unsigned)bw_input_frame_number());
+    }
+    g_warm->thread = bw_thread_start_beside(warm_main, g_warm);
+}
+
+/* The game's every frame (engine/ui/ui.c, eidos_ui_game_frame): in the field, the area's build ahead, and the
+ * battle's own when an encounter starts (ahead_field). */
+static void ahead_field(uintptr_t gs, uintptr_t gd, uintptr_t fm);
+static uintptr_t battle_task(uintptr_t gs, int *seq);
+
+void bw_battle_view_game_frame(void);
+
+void bw_battle_view_game_frame(void)
+{
+    uintptr_t gs, fm, gd;
+
+    if (&bw_dsref__GameSystemGlobal == NULL || bw_dsref__GameSystemGlobal == NULL || battle_on()) {
+        return;
+    }
+    gs = (uintptr_t)*(void **)bw_dsref__GameSystemGlobal;
+    fm = gs != 0 ? (uintptr_t)*(void **)(gs + 0x20) : 0;
+    gd = gs != 0 ? (uintptr_t)*(void **)(gs + 0x1C) : 0;
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        /* research: the battle task's steps and the field, frame by frame */
+        static int last = -2, last_fm = -1;
+        int seq = -1;
+        const int now = battle_task(gs, &seq) != 0 ? seq : -1;
+
+        if (now != last || (fm != 0) != last_fm) {
+            fprintf(stderr, "bmap: the battle task: step %d, the field %s (input frame %u)\n", now, fm != 0 ? "is up" : "is closed",
+                    (unsigned)bw_input_frame_number());
+            last = now;
+            last_fm = fm != 0;
+        }
+    }
+    if (fm == 0 || !gptr_ok(gd)) {
+        return;                         /* (not in the field) */
+    }
+    warm_field(gd, rd16(gd + GD_PLAYER, PW_ZONE));
+    ahead_field(gs, gd, fm);
 }
 
 /* A job that is running: wait for it and take what it made. */
 static void job_drop(void)
 {
     if (g_job != NULL) {
-        bw_thread_join(g_job->thread);
-        g_job->done = 1;
+        /* (job_finish waits for the thread itself.  The thread was waited for here too, before it: the second
+         * wait read a handle that the first had freed; the 64-bit build stopped on it, 2026-11-21.) */
         job_finish();
     }
 }
 
-/* The first battle frame: read the place and start the build. */
-static void sprite_size_reset(void);
-
-static void field_hand_over(void);
-
-static void battle_begin(uintptr_t eff)
+/* A job that is not wanted (started ahead for inputs that changed, or for a battle that never came): waited for,
+ * and what it made freed.  It never becomes the scene on show, so the battle's slots and camera stay as they are. */
+static void job_discard(void)
 {
-    BvJob *j;
-    int row;
+    BvJob *j = g_job;
 
-    job_drop();
-    warm_wait();                        /* (the area's build ahead, if it still runs: one map at a time) */
-    g_ntree_out = 0;                    /* (no tree is out yet) */
-    g_tree_seeded = 0;
-    g_show = 0;                         /* (the map waits for the intro's first view) */
-    g_begin_frame = bw_input_frame_number();
-    sprite_size_reset();
-    field_hand_over();
-    /* a scene from an earlier battle must not show under this one's start */
-    if (g_cur != NULL) {
-        retire();
-    }
-    j = (BvJob *)calloc(1, sizeof(*j));
-    if (j == NULL || read_place(eff, j) != 0) {
-        free(j);
+    if (j == NULL) {
         return;
     }
-    /* the battle's row of the spot table (bmap_spots.c) */
+    bw_thread_join(j->thread);
+    g_job = NULL;
+    if (j->built != NULL) {
+        j->built->refs = 1;             /* (its placed scene's, or the job's own) */
+    }
+    if (j->placed != NULL) {
+        placed_free(j->placed);         /* (and with it the base) */
+    } else if (j->built != NULL) {
+        base_release(j->built);
+    } else {
+        base_release(j->base);
+    }
+    free(j);
+}
+
+/* The job's row of the spot table (bmap_spots.c) and its placing, from its place (read_place). */
+static void job_spec(BvJob *j)
+{
+    int row;
+
     /* a trainer by its number first (a story battle starts wherever the
      * player stands), then by the sight line, then the zone's nearest
      * story place */
@@ -1499,6 +1570,249 @@ static void battle_begin(uintptr_t eff)
                 "season %d time %02d:%02d %s %d row %s\n", j->zone, (double)j->px,
                 (double)j->pz, j->facing, j->season, j->hour, j->minute,
                 j->trainer ? "trainer" : "wild", j->trainer_id, r != NULL ? r->id : "none");
+    }
+}
+
+static void sprite_size_reset(void);
+
+static unsigned field_list(BmapLive *list, unsigned zone);
+static void mount_note(const BmapLive *list, unsigned n);
+
+/*
+ * The battle's map started ahead.
+ *
+ * The game's battle task (ov010 EVENT_BATTLE_ProcBattleTask, every field battle's) fades the music, plays the
+ * encounter's effect, closes the field and only then calls the battle: about two seconds in which the player
+ * stands still and the place is known.  The map's job (about a second on a grassy route) ran after them, at the
+ * battle's first frame, with the game standing still on a dark screen for it.  It now starts when the task is
+ * first seen among the running events (its first steps: before the battle is called), on a thread beside the game,
+ * from the very inputs the battle's first frame reads: the task's setup, the player's work, the field's maps and
+ * live objects.
+ *
+ * At the battle's first frame the inputs are read again, as before.  The job started ahead is the battle's own
+ * only when every one of them is still the same (job_same); else it is thrown away and the job starts as it
+ * always did.  So the map is the one the battle would have built, and only the waiting moves.
+ * EIDOS_BMAP_NO_AHEAD=1: never ahead.  BMAP_PLACE_LOG tells which way each battle went.
+ *
+ * The field's objects are the one input that is not read again: the battle shows them as they were when the
+ * encounter started (enc_objects), the last moment the player saw the field plainly.  They went into the map as
+ * the field's last frame under the encounter's effect had them, and a place whose objects move through those two
+ * seconds (Route 4's trucks, Chargestone Cave's stones, Route 13's spray on the rocks) threw the job started
+ * ahead away each time and waited 0.3 to 1.2 s for another (the user's decision, 2026-11-21).  The encounter
+ * effect's own model (the shards the screen breaks into, a cave's closing dark; drawn at the map's origin for the
+ * effect's camera) is first drawn after that moment, so it is no longer among them.
+ */
+static BmapLive g_enc_live[BV_LIVE_MAX];    /* the field's objects when the battle task was first seen */
+static unsigned g_enc_n, g_enc_zone;
+static uintptr_t g_enc_setup;               /* ... that task's setup; 0: no list is held */
+static int g_enc_used;                      /* ... a battle has begun with the list */
+extern void *GAMESYSTEM_GetEvent(const void *gameSystem) WEAK;
+extern int ov010_EVENT_BATTLE_ProcBattleTask(void *event, int *state, void *work) WEAK;
+
+#define EV_PARENT 0x00u             /* struct GameEvent (the game's game_event.c) */
+#define EV_FUNC   0x04u
+#define EV_SEQ    0x08u
+#define EV_WORK   0x0Cu
+#define TASK_SETUP 0x08u            /* BattleTask.btlSetup (the game's event_battle.c) */
+#define TASK_CALLS_BATTLE 3         /* the task's step that calls the battle */
+
+/* The game's battle task among the running events: its setup, and the step it is at; 0 when there is none. */
+static uintptr_t battle_task(uintptr_t gs, int *seq)
+{
+    uintptr_t ev;
+    int k;
+
+    if (GAMESYSTEM_GetEvent == NULL || ov010_EVENT_BATTLE_ProcBattleTask == NULL || !gptr_ok(gs)) {
+        return 0;
+    }
+    ev = (uintptr_t)GAMESYSTEM_GetEvent((const void *)gs);
+    for (k = 0; k < 8 && gptr_ok(ev); k++, ev = rd32(ev, EV_PARENT)) {
+        if (rd32(ev, EV_FUNC) == (uint32_t)(uintptr_t)ov010_EVENT_BATTLE_ProcBattleTask) {
+            const uintptr_t work = rd32(ev, EV_WORK);
+
+            *seq = (int)rd32(ev, EV_SEQ);
+            return gptr_ok(work) ? rd32(work, TASK_SETUP) : 0;
+        }
+    }
+    return 0;
+}
+
+/* The job started ahead against the battle's own inputs: NULL when every one is the same, else the first that
+ * is not. */
+static const char *job_same(const BvJob *a, const BvJob *b)
+{
+    unsigned k;
+
+    if (a->zone != b->zone) return "the zone";
+    if (a->px != b->px || a->pz != b->pz || a->facing != b->facing) return "the player's place";
+    if (a->has_py != b->has_py || a->py != b->py) return "the player's height";
+    if (a->season != b->season || a->hour != b->hour || a->minute != b->minute) return "the season or the time";
+    if (a->weather != b->weather) return "the weather";
+    if (a->trainer != b->trainer || a->trainer_id != b->trainer_id || a->doubles != b->doubles || a->lesson != b->lesson) {
+        return "the opponent or the rule";
+    }
+    if (a->reach != b->reach || memcmp(&a->spec, &b->spec, sizeof a->spec) != 0) return "the spot table's row";
+    if (a->has_wfbc != b->has_wfbc || (a->has_wfbc && memcmp(&a->wfbc, &b->wfbc, sizeof a->wfbc) != 0)) return "the city's blocks";
+    if (a->has_fmat != b->has_fmat || (a->has_fmat && memcmp(&a->fmat, &b->fmat, sizeof a->fmat) != 0)) {
+        if (getenv("BMAP_PLACE_LOG") != NULL) {
+            /* research: which of the field's maps is another */
+            fprintf(stderr, "bmap: the field's maps: has %d and %d, zone %u and %u, matrix %u and %u, %ux%u and %ux%u\n", a->has_fmat,
+                    b->has_fmat, a->fmat.zone, b->fmat.zone, a->fmat.matrix, b->fmat.matrix, a->fmat.w, a->fmat.h, b->fmat.w, b->fmat.h);
+            for (k = 0; k < 900u; k++) {
+                if (a->fmat.grid[k] != b->fmat.grid[k]) {
+                    fprintf(stderr, "bmap: the field's maps: cell %u: %u and %u\n", k, a->fmat.grid[k], b->fmat.grid[k]);
+                }
+            }
+        }
+        return "the field's maps";
+    }
+    return NULL;
+}
+
+/* The field's objects for the battle in `zone`, into list[BV_LIVE_MAX]; how many: those held from the encounter's
+ * start, or, with none held (a battle the game's battle task did not start), the field's last frames'. */
+static unsigned enc_objects(BmapLive *list, unsigned zone)
+{
+    if (g_enc_setup != 0 && g_enc_zone == zone) {
+        memcpy(list, g_enc_live, g_enc_n * sizeof *list);
+        return g_enc_n;
+    }
+    return field_list(list, zone);
+}
+
+/* Each field frame (bw_battle_view_game_frame). */
+static void ahead_field(uintptr_t gs, uintptr_t gd, uintptr_t fm)
+{
+    static int off = -1;
+    static uintptr_t seen;
+    uintptr_t setup;
+    BvJob *j;
+    int seq = 0;
+
+    if (off < 0) {
+        off = getenv("EIDOS_BMAP_NO_AHEAD") != NULL;
+    }
+    setup = battle_task(gs, &seq);
+    if (setup == 0) {
+        seen = 0;
+        g_enc_setup = 0;
+        if (g_job != NULL && g_job->ahead) {
+            job_discard();              /* (its battle never came) */
+        }
+        return;
+    }
+    if (seq < TASK_CALLS_BATTLE && (g_enc_setup != setup || g_enc_used)) {
+        /* the encounter starts: the field's objects as they are now */
+        g_enc_zone = rd16(gd + GD_PLAYER, PW_ZONE);
+        g_enc_n = field_list(g_enc_live, g_enc_zone);
+        g_enc_setup = setup;
+        g_enc_used = 0;
+    }
+    if (off || setup == seen || seq >= TASK_CALLS_BATTLE || g_job != NULL || !real_map() || !bw_thread_beside()) {
+        return;
+    }
+    if (g_warm != NULL) {
+        if (!g_warm->done) {
+            return;                     /* (one map at a time: the next frame asks again) */
+        }
+        warm_wait();
+    }
+    seen = setup;
+    /* the field's maps as they are now (they are noted when the field draws: with no object drawn in this place
+     * yet, the last note is another place's); this frame's own note still comes */
+    g_fmap_frame = 0xFFFFFFFFu;
+    note_field_maps(gd, fm, rd16(gd + GD_PLAYER, PW_ZONE));
+    g_fmap_frame = 0xFFFFFFFFu;
+    j = (BvJob *)calloc(1, sizeof(*j));
+    if (j == NULL || read_place(setup, j) != 0) {
+        free(j);
+        return;
+    }
+    job_spec(j);
+    {
+        static BmapLive list[BV_LIVE_MAX];
+        const unsigned n = enc_objects(list, j->zone);
+
+        bmap_live_set(j->zone, list, n);
+    }
+    /* The last battle's scene is put away now, as the battle's first frame did before its job started: the job
+     * then holds no more memory at its peak than it did (a grassy route's scene is over 100 MB).  Nothing draws
+     * that scene in the field; the one before it is freed, and this one stays for the renderer (retire). */
+    if (g_cur != NULL) {
+        retire();
+    }
+    j->ahead = 1;
+    j->ahead_frame = bw_input_frame_number();
+    if (getenv("BMAP_PLACE_LOG") != NULL) {
+        fprintf(stderr, "bmap: the battle's map starts ahead, at the encounter (input frame %u, the task's step %d)\n",
+                (unsigned)j->ahead_frame, seq);
+    }
+    j->thread = bw_thread_start_beside(job_main, j);
+    g_job = j;
+}
+
+/* The first battle frame: read the place and start the build, or take the one started ahead. */
+static void battle_begin(uintptr_t eff)
+{
+    static BmapLive list[BV_LIVE_MAX];
+    const uintptr_t bm = rd32(eff, EFF_MAIN), setup = gptr_ok(bm) ? rd32(bm, 0) : 0;
+    BvJob *j;
+    unsigned n;
+    int ok;
+
+    g_ntree_out = 0;                    /* (no tree is out yet) */
+    g_tree_seeded = 0;
+    g_show = 0;                         /* (the map waits for the intro's first view) */
+    g_begin_frame = bw_input_frame_number();
+    sprite_size_reset();
+    j = (BvJob *)calloc(1, sizeof(*j));
+    ok = j != NULL && read_place(setup, j) == 0;
+    n = ok ? enc_objects(list, j->zone) : 0u;
+    g_enc_used = 1;
+    if (ok) {
+        bweather_want(j->weather);
+        job_spec(j);
+        if (g_job != NULL && g_job->ahead) {
+            const char *why = job_same(g_job, j);
+
+            if (getenv("BMAP_PLACE_LOG") != NULL) {
+                if (why == NULL) {
+                    fprintf(stderr, "bmap: the battle's map: the one started at the encounter, %u frames ago (%s)\n",
+                            (unsigned)(g_begin_frame - g_job->ahead_frame), g_job->done ? "ready" : "still at work");
+                } else {
+                    fprintf(stderr, "bmap: the battle's map: started again now: since the encounter, %s changed\n", why);
+                }
+            }
+            if (why == NULL) {
+                /* the job started ahead is this battle's */
+                free(j);
+                g_job->ahead = 0;
+                mount_note(list, n);
+                /* a scene from an earlier battle must not show under this one's start */
+                if (g_cur != NULL) {
+                    retire();
+                }
+                return;
+            }
+        } else if (getenv("BMAP_PLACE_LOG") != NULL) {
+            fprintf(stderr, "bmap: the battle's map: started now (none was started at the encounter)\n");
+        }
+    }
+    if (g_job != NULL && g_job->ahead) {
+        job_discard();                  /* (started ahead for inputs that have changed since) */
+    } else {
+        job_drop();
+    }
+    warm_wait();                        /* (the area's build ahead, if it still runs: one map at a time) */
+    bmap_live_set(ok ? j->zone : 0xFFFFFFFFu, list, n);
+    mount_note(list, n);
+    /* a scene from an earlier battle must not show under this one's start */
+    if (g_cur != NULL) {
+        retire();
+    }
+    if (!ok) {
+        free(j);
+        return;
     }
     j->thread = bw_thread_start(job_main, j);
     g_job = j;
@@ -2013,7 +2327,7 @@ static const unsigned char *file_copy(const void *src, unsigned *n_out)
 }
 
 typedef struct { const void *obj; uint32_t frame; BmapLive live; } FieldObj;
-static FieldObj g_fo[160];
+static FieldObj g_fo[BV_LIVE_MAX];
 static unsigned g_nfo, g_fo_zone = 0xFFFFFFFFu;
 static uint32_t g_fo_last;
 
@@ -2039,7 +2353,6 @@ static void field_note(void *obj_, const void *status_)
 
         zone = (unsigned)(pw[0] | (pw[1] << 8));
     }
-    warm_field(gs != 0 ? (uintptr_t)*(void **)(gs + 0x1C) : 0, zone);
     if (zone != g_fo_zone) {            /* another place: its objects are other objects */
         g_fo_zone = zone;
         g_nfo = 0;
@@ -2064,8 +2377,8 @@ static void field_note(void *obj_, const void *status_)
         memset(e, 0, sizeof *e);
         e->obj = obj_;
         if (getenv("EIDOS_LIVE_LOG") != NULL) {
-            fprintf(stderr, "eidos: field draws: zone %u object %p at (%.1f, %.1f, %.1f), %u animations\n", zone, obj_,
-                    st[0] / 4096.0, st[1] / 4096.0, st[2] / 4096.0, (unsigned)o->nanm);
+            fprintf(stderr, "eidos: field draws: zone %u object %p at (%.1f, %.1f, %.1f), %u animations (input frame %u)\n", zone,
+                    obj_, st[0] / 4096.0, st[1] / 4096.0, st[2] / 4096.0, (unsigned)o->nanm, (unsigned)bw_input_frame_number());
         }
     }
     l = &e->live;
@@ -2179,20 +2492,20 @@ static void mount_frame(void)
                           pid == g_surf_pid);
 }
 
-/* A battle begins: the objects the field drew in its last frames go to the map's builder. */
-static void field_hand_over(void)
+/* The objects the field drew in its last frames in `zone`, for the map's builder: into list[BV_LIVE_MAX]; how
+ * many.  None when the objects noted are another zone's (no object was drawn in this one yet). */
+static unsigned field_list(BmapLive *list, unsigned zone)
 {
-    static BmapLive list[160];
     unsigned k, n = 0;
 
-    for (k = 0; k < g_nfo; k++) {
+    for (k = 0; k < g_nfo && g_fo_zone == zone; k++) {
         if (g_fo_last - g_fo[k].frame <= 2u && g_fo[k].live.mdl != NULL) {
             list[n++] = g_fo[k].live;
         }
     }
-    bmap_live_set(g_fo_zone, list, n);
-    mount_note(list, n);
+    return n;
 }
+
 
 int __wrap_G3D_SYSTEM_DrawObjectCulling(void *obj, void *status)
 {
@@ -2222,6 +2535,8 @@ void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
         }
         if (!g_in_battle || now - g_last_frame > 8u) {
             eidos_bv_fixed_move_set(NULL);  /* the last battle's move is not this one's */
+            const clock_t t_hold = clock();
+
             battle_begin(eff);
             /* The battle's first frame waits for its map (job_finish joins the worker).  A big zone takes over a
              * second to build, and the battle ran on meanwhile: the foes faded in on black, the camera jumped when
@@ -2229,6 +2544,11 @@ void __wrap_G3D_SYSTEM_DrawObject(void *obj, void *status)
              * shows as a slightly longer dark.  EIDOS_BMAP_NO_WAIT=1: as before. */
             if (g_job != NULL && getenv("EIDOS_BMAP_NO_WAIT") == NULL) {
                 job_finish();
+            }
+            if (getenv("BMAP_PLACE_LOG") != NULL) {
+                /* research: how long the battle's first frame stood still for its map */
+                fprintf(stderr, "bmap: the battle's first frame held %.0f ms (input frame %u)\n",
+                        1000.0 * (double)(clock() - t_hold) / CLOCKS_PER_SEC, (unsigned)now);
             }
         }
         g_in_battle = 1;

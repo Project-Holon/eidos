@@ -167,6 +167,9 @@ typedef struct G3dBackdrop {
     float fovy_sin, fovy_cos, aspect, znear, zfar;
     const void *scene;      /* a BmapScene, or NULL: only the sky colour   */
     u32 scene_gen;
+    const void *warm;       /* a BmapScene that is not shown yet (scene is NULL) and will be, as generation
+                               warm_gen: a renderer may send it to the GPU now; or NULL */
+    u32 warm_gen;
     u8  sky[3];
     /* the Pokemon and the trainers on the field (battle space: x, y, z and
      * how tall the sprite's box is, its half-width a 0.47th of that): the map

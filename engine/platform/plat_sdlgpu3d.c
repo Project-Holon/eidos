@@ -42,6 +42,7 @@
 #include "g3d.h"
 #include "hw3d.h"
 #include "prof.h"
+#include "plat_thread.h"
 
 /* A step of the GPU 3D path failed: said once a place (the caller falls
  * back to the software rasteriser, which costs about 10 ms a frame). */
@@ -369,6 +370,8 @@ static void buf_upload(SdlGpu *s, SDL_GPUCopyPass *cp, SgBuf *b, const void *src
     void *dst = SDL_MapGPUTransferBuffer(s->dev, b->up, true);
 
     if (dst == NULL) {
+        fprintf(stderr, "eidos: GPU: %u bytes not sent, the transfer buffer cannot be mapped: %s\n", (unsigned)bytes,
+                SDL_GetError());
         return;
     }
     memcpy(dst, src, bytes);
@@ -471,6 +474,9 @@ typedef struct SgBd {
     BdBound *bound;
     SgBuf vbuf, ibuf;
     int vdirty;                 /* the scene's vertices wait to go up        */
+    const void *up_scene;       /* a scene on its way up (bd_upload), or NULL */
+    unsigned up_gen, up_tex;    /* ... its generation; its pictures done      */
+    int up_verts;               /* ... its vertices are up                    */
 } SgBd;
 
 static SgBd *bd_of(SdlGpu *s)
@@ -516,6 +522,7 @@ static void bd_free_scene(SdlGpu *s, SgBd *b, int keep_tex)
     b->idx_ok = 0;
     b->n_piece = 0;
     b->scene = NULL;
+    b->up_scene = NULL;
 }
 
 static void bd_pieces(SgBd *b, const BmapScene *sc)
@@ -586,10 +593,140 @@ static int piece_far_first(const void *a, const void *b)
     return da < db ? 1 : da > db ? -1 : 0;
 }
 
+/*
+ * The backdrop's pictures go to the GPU through one transfer buffer: every level of every picture is laid in
+ * one block of memory first (bd_stage_add), and the block is sent once (bd_stage_send).
+ *
+ * Each level had a transfer buffer of its own: about 2,000 of them for a route's 304 pictures (3.9 MB of texels
+ * in all).  Making them took 0.43 s of the frame the map first showed, and the graphics layer freed them in the
+ * next frame's submit, another 0.22 s (measured 2026-11-21, Direct3D 12, Route 1).
+ *
+ * The layout is the one Direct3D 12 takes as it is: a row every 256 bytes (64 texels; SDL copies a level whose
+ * rows are not on that pitch into a buffer of its own first, a resource a level again), a level every 512 bytes.
+ * The other backends take any pitch.  The texels sent are the same.
+ */
+typedef struct BdLevel {
+    SDL_GPUTexture *tex;
+    unsigned lvl, w, h, row;        /* row: texels from one row to the next */
+    size_t off;
+} BdLevel;
+
+typedef struct BdStage {
+    unsigned char *p;
+    size_t n, cap;
+    BdLevel *lv;
+    unsigned nl, lcap;
+    int fail;
+} BdStage;
+
+static void bd_stage_add(BdStage *st, SDL_GPUTexture *tex, int lvl, int w, int h, const unsigned char *px)
+{
+    const unsigned row = ((unsigned)w + 63u) & ~63u;
+    const size_t off = (st->n + 511u) & ~(size_t)511u, end = off + (size_t)row * 4u * (size_t)h;
+    BdLevel *l;
+    int y;
+
+    if (st->fail) {
+        return;
+    }
+    if (end > st->cap) {
+        size_t nc = st->cap ? st->cap * 2u : (size_t)1 << 22;
+        unsigned char *np;
+
+        while (nc < end) {
+            nc *= 2u;
+        }
+        np = (unsigned char *)realloc(st->p, nc);
+        if (np == NULL) {
+            st->fail = 1;
+            return;
+        }
+        st->p = np;
+        st->cap = nc;
+    }
+    if (st->nl == st->lcap) {
+        const unsigned nc = st->lcap ? st->lcap * 2u : 1024u;
+        BdLevel *nl = (BdLevel *)realloc(st->lv, nc * sizeof *nl);
+
+        if (nl == NULL) {
+            st->fail = 1;
+            return;
+        }
+        st->lv = nl;
+        st->lcap = nc;
+    }
+    memset(st->p + st->n, 0, off - st->n);
+    for (y = 0; y < h; y++) {
+        unsigned char *d = st->p + off + (size_t)y * row * 4u;
+
+        memcpy(d, px + (size_t)y * (size_t)w * 4u, (size_t)w * 4u);
+        memset(d + (size_t)w * 4u, 0, (size_t)(row - (unsigned)w) * 4u);
+    }
+    l = &st->lv[st->nl++];
+    l->tex = tex;
+    l->lvl = (unsigned)lvl;
+    l->w = (unsigned)w;
+    l->h = (unsigned)h;
+    l->row = row;
+    l->off = off;
+    st->n = end;
+}
+
+static void bd_stage_send(SdlGpu *s, SDL_GPUCopyPass *cp, BdStage *st)
+{
+    if (!st->fail && st->n > 0) {
+        SDL_GPUTransferBufferCreateInfo ti;
+        SDL_GPUTransferBuffer *tb;
+        void *dst;
+        unsigned k;
+
+        memset(&ti, 0, sizeof ti);
+        ti.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+        ti.size = (Uint32)st->n;
+        tb = SDL_CreateGPUTransferBuffer(s->dev, &ti);
+        dst = tb != NULL ? SDL_MapGPUTransferBuffer(s->dev, tb, false) : NULL;
+        if (dst == NULL) {
+            fprintf(stderr, "eidos: backdrop: %u texture levels (%u bytes) not sent, no transfer buffer: %s\n", st->nl,
+                    (unsigned)st->n, SDL_GetError());
+        }
+        if (dst != NULL) {
+            memcpy(dst, st->p, st->n);
+            SDL_UnmapGPUTransferBuffer(s->dev, tb);
+            for (k = 0; k < st->nl; k++) {
+                const BdLevel *l = &st->lv[k];
+                SDL_GPUTextureTransferInfo from;
+                SDL_GPUTextureRegion to;
+
+                memset(&from, 0, sizeof from);
+                memset(&to, 0, sizeof to);
+                from.transfer_buffer = tb;
+                from.offset = (Uint32)l->off;
+                from.pixels_per_row = l->row;
+                from.rows_per_layer = l->h;
+                to.texture = l->tex;
+                to.mip_level = l->lvl;
+                to.w = l->w;
+                to.h = l->h;
+                to.d = 1;
+                SDL_UploadToGPUTexture(cp, &from, &to, false);
+            }
+        }
+        if (tb != NULL) {
+            SDL_ReleaseGPUTransferBuffer(s->dev, tb);   /* freed once the pass is done */
+        }
+    } else if (st->fail) {
+        fprintf(stderr, "eidos: backdrop: %u texture levels not sent, no memory for their %u bytes\n", st->nl,
+                (unsigned)st->n);
+    }
+    free(st->p);
+    free(st->lv);
+    memset(st, 0, sizeof *st);
+}
+
 /* A texture's box-filtered mip chain (plat_gl3d.c backdrop_mips: alpha-
- * weighted colour; a cut-out texture keeps its covered share), uploaded
- * level by level through the staging buffer, in the copy pass. */
-static SDL_GPUTexture *bd_mips(SdlGpu *s, SDL_GPUCopyPass *cp, const BmapTexture *t)
+ * weighted colour; a cut-out texture keeps its covered share), each level
+ * laid in the staging block (bd_stage_add). */
+static SDL_GPUTexture *bd_mips(SdlGpu *s, BdStage *st, const BmapTexture *t)
 {
     int w = t->w, h = t->h, lvl = 0, cut = 0, levels = 1, lw, lh;
     float cov = 0.0f;
@@ -603,6 +740,8 @@ static SDL_GPUTexture *bd_mips(SdlGpu *s, SDL_GPUCopyPass *cp, const BmapTexture
     tex = sg_texture(s, SG_RGBA, w, h, levels, 0);
     cur = (unsigned char *)malloc((size_t)w * h * 4);
     if (tex == NULL || cur == NULL) {
+        fprintf(stderr, "eidos: backdrop: the picture %s (%dx%d) is not sent: %s\n", t->name, w, h,
+                tex == NULL ? SDL_GetError() : "no memory");
         free(cur);
         return tex;
     }
@@ -622,36 +761,8 @@ static SDL_GPUTexture *bd_mips(SdlGpu *s, SDL_GPUCopyPass *cp, const BmapTexture
     for (;;) {
         int nw, nh, x, y;
         unsigned char *nx;
-        SDL_GPUTransferBufferCreateInfo ti;
-        SDL_GPUTransferBuffer *tb;
 
-        memset(&ti, 0, sizeof ti);
-        ti.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-        ti.size = (Uint32)(w * h * 4);
-        tb = SDL_CreateGPUTransferBuffer(s->dev, &ti);
-        if (tb != NULL) {
-            void *dst = SDL_MapGPUTransferBuffer(s->dev, tb, false);
-
-            if (dst != NULL) {
-                SDL_GPUTextureTransferInfo from;
-                SDL_GPUTextureRegion to;
-
-                memcpy(dst, cur, (size_t)w * h * 4);
-                SDL_UnmapGPUTransferBuffer(s->dev, tb);
-                memset(&from, 0, sizeof from);
-                memset(&to, 0, sizeof to);
-                from.transfer_buffer = tb;
-                from.pixels_per_row = (Uint32)w;
-                from.rows_per_layer = (Uint32)h;
-                to.texture = tex;
-                to.mip_level = (Uint32)lvl;
-                to.w = (Uint32)w;
-                to.h = (Uint32)h;
-                to.d = 1;
-                SDL_UploadToGPUTexture(cp, &from, &to, false);
-            }
-            SDL_ReleaseGPUTransferBuffer(s->dev, tb);   /* freed once the pass is done */
-        }
+        bd_stage_add(st, tex, lvl, w, h, cur);
         if (w == 1 && h == 1) {
             break;
         }
@@ -721,71 +832,111 @@ static SDL_GPUTexture *bd_mips(SdlGpu *s, SDL_GPUCopyPass *cp, const BmapTexture
     return tex;
 }
 
-/* A new scene on the GPU: its textures (unless the same build's), its
- * bounds, its see-through pieces; its vertices go up in the copy pass. */
-static void bd_upload(SdlGpu *s, SgBd *b, SDL_GPUCopyPass *cp, const BmapScene *sc)
+/* research (EIDOS_SLOW_LOG=1): a step that took over 2 ms, by name */
+static void slow_log(const char *what, Uint64 *t)
 {
-    unsigned i;
-    int keep = sc->tex_gen != 0 && sc->tex_gen == b->tex_gen && sc->nt == b->n_tex && b->tex != NULL;
+    static int on = -1;
+    const Uint64 now = bw_clock_ns();
 
-    bd_free_scene(s, b, keep);
+    if (on < 0) {
+        on = getenv("EIDOS_SLOW_LOG") != NULL;
+    }
+    if (on && now - *t > 2000000u) {
+        fprintf(stderr, "slow: %s %.1f ms\n", what, (double)(now - *t) / 1e6);
+    }
+    *t = now;
+}
+
+/*
+ * A new scene to the GPU: its textures (unless the same build's), its bounds, its see-through pieces, its vertices.
+ * `gen` is the scene's generation.  Returns 1 when the scene is all there (b->scene is it), 0 when more is to come.
+ *
+ * budget_ns 0: all of it now (the scene is on show).  Else a part a call: first the vertices with the bounds and
+ * the pieces (the one part that cannot be split: about 25 ms for a grassy route's 78 MB), then textures, as many a
+ * call as the time allows.  A scene that is not shown yet goes up this way, over the blank frames before it shows
+ * (G3dBackdrop.warm).  The whole of it in one frame
+ * took 0.15 to 0.2 s, and the sound's queue holds 70 ms (demo/eidos_boot.c, AUDIO_LATENCY_FRAMES): the battle's
+ * music would have had a gap.  What is sent is the same either way.
+ */
+#define BD_WARM_NS 14000000u            /* a frame's share of an upload ahead: 14 ms (a route's 304 textures take
+                                           about 130 ms, and about ten blank frames come before the map shows) */
+
+static int bd_upload(SdlGpu *s, SgBd *b, SDL_GPUCopyPass *cp, const BmapScene *sc, unsigned gen, Uint64 budget_ns)
+{
+    const Uint64 t0 = bw_clock_ns();
+    Uint64 t_slow = t0;
+
+    if (b->up_scene != sc || b->up_gen != gen) {
+        /* it begins */
+        const int keep = sc->tex_gen != 0 && sc->tex_gen == b->tex_gen && sc->nt == b->n_tex && b->tex != NULL;
+
+        bd_free_scene(s, b, keep);
+        if (!keep && sc->nt > 0) {
+            b->tex = (SDL_GPUTexture **)calloc(sc->nt, sizeof *b->tex);
+            b->wrap = (unsigned char *)calloc(sc->nt, 1);
+            if (b->tex == NULL || b->wrap == NULL) {
+                fprintf(stderr, "eidos: backdrop: no memory for the list of %u pictures\n", sc->nt);
+                return 0;
+            }
+            b->n_tex = sc->nt;
+            b->tex_gen = sc->tex_gen;
+        }
+        b->up_scene = sc;
+        b->up_gen = gen;
+        b->up_tex = keep ? sc->nt : 0u;
+        b->up_verts = 0;
+    }
+    if (!b->up_verts) {
+        b->bound = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof *b->bound) : NULL;
+        if (b->bound != NULL) {
+            /* (BdBound is four floats: the scene's own when its placing made them, bmap.h) */
+            if (sc->bound != NULL && sc->n_bound == sc->nd) {
+                memcpy(b->bound, sc->bound, sc->nd * sizeof *b->bound);
+            } else {
+                bmap_draw_bounds(sc, (float (*)[4])b->bound);
+            }
+        }
+        slow_log("backdrop upload: the draws' bounds", &t_slow);
+        bd_pieces(b, sc);
+        slow_log("backdrop upload: the see-through pieces", &t_slow);
+        if (buf_reserve(s, &b->vbuf, SDL_GPU_BUFFERUSAGE_VERTEX,
+                        (Uint32)((size_t)sc->nv * sizeof(BmapVertex))) == 0) {
+            slow_log("backdrop upload: the vertex buffer made", &t_slow);
+            buf_upload(s, cp, &b->vbuf, sc->v, (Uint32)((size_t)sc->nv * sizeof(BmapVertex)));
+        } else {
+            fprintf(stderr, "eidos: backdrop: no vertex buffer of %u bytes, the map cannot be drawn: %s\n",
+                    (unsigned)((size_t)sc->nv * sizeof(BmapVertex)), SDL_GetError());
+        }
+        slow_log("backdrop upload: the vertices sent", &t_slow);
+        b->up_verts = 1;
+        if (budget_ns != 0 && b->up_tex < sc->nt) {
+            return 0;                   /* (the textures in the calls after this one) */
+        }
+    }
+    if (b->up_tex < sc->nt) {
+        BdStage st;
+        const unsigned first = b->up_tex;
+
+        memset(&st, 0, sizeof st);
+        while (b->up_tex < sc->nt && (budget_ns == 0 || b->up_tex == first || bw_clock_ns() - t0 < budget_ns)) {
+            const BmapTexture *t = &sc->t[b->up_tex];
+
+            b->tex[b->up_tex] = bd_mips(s, &st, t);
+            b->wrap[b->up_tex] = (unsigned char)((t->repeat_s ? 1 : 0) | (t->repeat_t ? 2 : 0) |
+                                                 (t->flip_s ? 4 : 0) | (t->flip_t ? 8 : 0));
+            b->up_tex++;
+        }
+        slow_log("backdrop upload: textures made, their levels laid out", &t_slow);
+        bd_stage_send(s, cp, &st);
+        slow_log("backdrop upload: the pictures sent", &t_slow);
+        if (b->up_tex < sc->nt) {
+            return 0;                   /* (more textures in the next call) */
+        }
+    }
     b->scene = sc;
-    if (!keep && sc->nt > 0) {
-        b->tex = (SDL_GPUTexture **)calloc(sc->nt, sizeof *b->tex);
-        b->wrap = (unsigned char *)calloc(sc->nt, 1);
-        if (b->tex == NULL || b->wrap == NULL) {
-            b->scene = NULL;
-            return;
-        }
-        b->n_tex = sc->nt;
-        b->tex_gen = sc->tex_gen;
-        for (i = 0; i < sc->nt; i++) {
-            const BmapTexture *t = &sc->t[i];
-
-            b->tex[i] = bd_mips(s, cp, t);
-            b->wrap[i] = (unsigned char)((t->repeat_s ? 1 : 0) | (t->repeat_t ? 2 : 0) |
-                                         (t->flip_s ? 4 : 0) | (t->flip_t ? 8 : 0));
-        }
-    }
-    b->bound = sc->nd > 0 ? (BdBound *)malloc(sc->nd * sizeof *b->bound) : NULL;
-    if (b->bound != NULL) {
-        unsigned d, k;
-
-        for (d = 0; d < sc->nd; d++) {
-            const BmapDraw *dr = &sc->d[d];
-            BdBound *bb = &b->bound[d];
-            float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
-            float r2 = 0.0f;
-
-            for (k = 0; k < dr->count && dr->first + k < sc->nv; k++) {
-                const BmapVertex *v = &sc->v[dr->first + k];
-
-                lo[0] = fminf(lo[0], v->x); hi[0] = fmaxf(hi[0], v->x);
-                lo[1] = fminf(lo[1], v->y); hi[1] = fmaxf(hi[1], v->y);
-                lo[2] = fminf(lo[2], v->z); hi[2] = fmaxf(hi[2], v->z);
-            }
-            if (lo[0] > hi[0]) {
-                bb->c[0] = bb->c[1] = bb->c[2] = 0.0f;
-                bb->r = 1e30f;
-                continue;
-            }
-            for (k = 0; k < 3; k++) {
-                bb->c[k] = dr->billboard ? dr->pivot[k] : 0.5f * (lo[k] + hi[k]);
-            }
-            for (k = 0; k < dr->count && dr->first + k < sc->nv; k++) {
-                const BmapVertex *v = &sc->v[dr->first + k];
-                float dx = v->x - bb->c[0], dy = v->y - bb->c[1], dz = v->z - bb->c[2];
-
-                r2 = fmaxf(r2, dx * dx + dy * dy + dz * dz);
-            }
-            bb->r = sqrtf(r2);
-        }
-    }
-    bd_pieces(b, sc);
-    if (buf_reserve(s, &b->vbuf, SDL_GPU_BUFFERUSAGE_VERTEX,
-                    (Uint32)((size_t)sc->nv * sizeof(BmapVertex))) == 0) {
-        buf_upload(s, cp, &b->vbuf, sc->v, (Uint32)((size_t)sc->nv * sizeof(BmapVertex)));
-    }
+    b->gen = gen;
+    b->up_scene = NULL;
+    return 1;
 }
 
 static SDL_GPUSampler *bd_sampler(SdlGpu *s, SgBd *b, unsigned wrap)
@@ -1147,11 +1298,27 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
     unsigned n_leaf_it = 0;
     /* (the part of the screen a draw must reach to be sent: all of it; in front 4 the rectangle cleared) */
     float view_box[4] = { -1.0f, -1.0f, 1.0f, 1.0f };
+    /* research (EIDOS_BD_LOG=1): what the map's first pass sent, every 120th frame (a battle that showed the fog's
+     * colour in place of its map, 2026-11-23) */
+    static int bd_log = -1;
+    static unsigned bd_log_n;
+    unsigned n_sent = 0, n_behind = 0, n_missed = 0, n_other = 0;
+    int logging;
 
+    if (bd_log < 0) {
+        bd_log = getenv("EIDOS_BD_LOG") != NULL;
+    }
+    logging = bd_log && front == 0 && (bd_log_n++ % 120u) == 0u;
     if (leaf_fix) {
         front = 0;
     }
     if (b == NULL || sc == NULL || sc->nv == 0 || b->scene != sc || b->vbuf.buf == NULL) {
+        if (logging) {
+            fprintf(stderr, "backdrop log: not drawn: scene %p (%u vertices), the one sent %p, on its way %p (%u of %u "
+                    "pictures, vertices %d), vertex buffer %p\n", (const void *)sc, sc != NULL ? sc->nv : 0u,
+                    b != NULL ? b->scene : NULL, b != NULL ? b->up_scene : NULL, b != NULL ? b->up_tex : 0u,
+                    sc != NULL ? sc->nt : 0u, b != NULL ? b->up_verts : 0, b != NULL ? (void *)b->vbuf.buf : NULL);
+        }
         return;
     }
     bd_matrix(bk, r);
@@ -1204,7 +1371,12 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
             bd_front_clear(s, cmd, pass, bk, (const float (*)[4])r, w, h, cdepth, view_box);
         }
         base |= PKB_NOCOL;
-        leaf_it = bd_leaf_items(bk, (const float (*)[4])r, &n_leaf_it);
+        {
+            Uint64 t_slow = bw_clock_ns();
+
+            leaf_it = bd_leaf_items(bk, (const float (*)[4])r, &n_leaf_it);
+            slow_log("backdrop: the leaves' plan", &t_slow);
+        }
     }
     vb.buffer = b->vbuf.buf;
     vb.offset = 0;
@@ -1280,6 +1452,11 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
                               + fwd[2] * (bb->c[2] - bk->eye[2]);
 
                 if (depth < -bb->r || (!d->bob && bmap_view_misses((const float (*)[4])r, view_box, bb->c, bb->r))) {
+                    if (depth < -bb->r) {
+                        n_behind++;
+                    } else {
+                        n_missed++;
+                    }
                     i += run - 1;
                     continue;
                 }
@@ -1294,9 +1471,11 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
             p = pipe_get(s, base | (pass_i == 1 ? PKB_BLEND : 0u) |
                                 (d->cull == 0 ? 0u : d->cull == 1 ? 1u : 2u));
             if (p == NULL) {
+                n_other++;
                 i += run - 1;
                 continue;
             }
+            n_sent++;
             SDL_BindGPUGraphicsPipeline(pass, p);
             if (d->tex >= 0 && (unsigned)d->tex < b->n_tex && b->tex[d->tex] != NULL) {
                 tb.texture = b->tex[d->tex];
@@ -1346,6 +1525,14 @@ static void bd_draw(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SDL_GPURenderPass *pas
                 SDL_DrawGPUPrimitives(pass, count, 1, first, 0);
             }
         }
+    }
+    if (logging) {
+        fprintf(stderr, "backdrop log: %u draws sent of %u (%u behind the camera, %u beside the view, %u with no "
+                "pipeline); eye %.1f %.1f %.1f, target %.1f %.1f %.1f; fog %g %g %g %g colour's fourth %g; view %dx%d, "
+                "%u pictures, front only %d\n", n_sent, sc->nd, n_behind, n_missed, n_other, (double)bk->eye[0],
+                (double)bk->eye[1], (double)bk->eye[2], (double)bk->target[0], (double)bk->target[1],
+                (double)bk->target[2], (double)fu.fog[0], (double)fu.fog[1], (double)fu.fog[2], (double)fu.fog[3],
+                (double)fu.fogc[3], w, h, b->n_tex, bk->front_only);
     }
 }
 
@@ -1682,13 +1869,31 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
     if (backdrop && snap->backdrop.scene != NULL) {
         const BmapScene *sc = (const BmapScene *)snap->backdrop.scene;
 
+        Uint64 t_slow = bw_clock_ns();
+
         if (bd->scene != sc || bd->gen != snap->backdrop.scene_gen) {
-            bd_upload(s, bd, cp, sc);
-            bd->gen = snap->backdrop.scene_gen;
+            (void)bd_upload(s, bd, cp, sc, snap->backdrop.scene_gen, 0);
         }
+        slow_log("backdrop upload, what was left of it", &t_slow);
         bd_sort(s, bd, cp, &snap->backdrop);
+        slow_log("backdrop: the see-through pieces sorted", &t_slow);
+    } else if (backdrop && snap->backdrop.warm != NULL) {
+        /* the battle's scene is not shown yet (the game's dark before the intro's first view): sent now, so
+         * the frame it first shows only draws it */
+        const BmapScene *sc = (const BmapScene *)snap->backdrop.warm;
+        Uint64 t_slow = bw_clock_ns();
+
+        if (bd->scene != sc || bd->gen != snap->backdrop.warm_gen) {
+            (void)bd_upload(s, bd, cp, sc, snap->backdrop.warm_gen, BD_WARM_NS);
+        }
+        slow_log("backdrop upload ahead of its first view, a frame's share", &t_slow);
     }
-    SDL_EndGPUCopyPass(cp);
+    {
+        Uint64 t_slow = bw_clock_ns();
+
+        SDL_EndGPUCopyPass(cp);
+        slow_log("the copy pass ended", &t_slow);
+    }
 
     edges = (snap->disp3dcnt & 0x20u) != 0 && s->p_edge != NULL && s->edge_mode != 0 &&
             !(getenv("EIDOS_EDGE") != NULL && getenv("EIDOS_EDGE")[0] == '0');
@@ -1734,12 +1939,18 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
     dt.stencil_load_op = SDL_GPU_LOADOP_CLEAR;
     dt.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
     dt.clear_stencil = 0;
-    pass = SDL_BeginGPURenderPass(cmd, ct, 3, &dt);
-    if (pass == NULL) {
-        return SG_FAIL();
-    }
-    if (backdrop) {
-        bd_draw(s, cmd, pass, &snap->backdrop, 0, w, h, cdepth);
+    {
+        Uint64 t_slow = bw_clock_ns();
+
+        pass = SDL_BeginGPURenderPass(cmd, ct, 3, &dt);
+        slow_log("3D pass begun", &t_slow);
+        if (pass == NULL) {
+            return SG_FAIL();
+        }
+        if (backdrop) {
+            bd_draw(s, cmd, pass, &snap->backdrop, 0, w, h, cdepth);
+        }
+        slow_log("3D pass: the backdrop's first draw", &t_slow);
     }
     if (nv > 0) {
         G3dUniforms u;
@@ -1872,10 +2083,16 @@ static int render_into(SdlGpu *s, SDL_GPUCommandBuffer *cmd, SgFb *fb, const G3d
             draw_run(s, cmd, pass, snap, &run, run_first, run_verts, &u);
         }
     }
-    if (backdrop && snap->backdrop.n_poke > 0) {
-        bd_draw(s, cmd, pass, &snap->backdrop, 1, w, h, cdepth);
+    {
+        Uint64 t_slow = bw_clock_ns();
+
+        if (backdrop && snap->backdrop.n_poke > 0) {
+            bd_draw(s, cmd, pass, &snap->backdrop, 1, w, h, cdepth);
+        }
+        slow_log("3D pass: the backdrop's front draw", &t_slow);
+        SDL_EndGPURenderPass(pass);
+        slow_log("3D pass ended", &t_slow);
     }
-    SDL_EndGPURenderPass(pass);
 
     if (edges) {
         EdgeUniforms eu;
@@ -1984,8 +2201,14 @@ int sg3d_render3d(SdlGpu *s, const G3dSnapshot *snap, int w, int h)
     if (cmd == NULL) {
         return SG_FAIL();
     }
-    rc = sg3d_render(s, cmd, 0, snap, w, h);
-    SDL_SubmitGPUCommandBuffer(cmd);
+    {
+        Uint64 t_slow = bw_clock_ns();
+
+        rc = sg3d_render(s, cmd, 0, snap, w, h);
+        slow_log("3D render (sg3d_render3d)", &t_slow);
+        SDL_SubmitGPUCommandBuffer(cmd);
+        slow_log("3D commands submitted", &t_slow);
+    }
     return rc;
 }
 

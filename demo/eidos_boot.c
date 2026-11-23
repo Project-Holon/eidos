@@ -1628,6 +1628,21 @@ static void boot_flash_watch(BootRun *run, u64 frame)
     }
 }
 
+/* research (EIDOS_SLOW_LOG=1): a step of the frame's render that took over 2 ms, by name */
+static void boot_slow_log(const char *what, unsigned long long *t)
+{
+    static int on = -1;
+    const unsigned long long now = bw_clock_ns();
+
+    if (on < 0) {
+        on = getenv("EIDOS_SLOW_LOG") != NULL;
+    }
+    if (on && now - *t > 2000000ull) {
+        fprintf(stderr, "slow: %s %.1f ms\n", what, (double)(now - *t) / 1e6);
+    }
+    *t = now;
+}
+
 static void boot_render(void *user, u8 *top, u8 *bottom)
 {
     u32 unsupported[2];
@@ -1766,14 +1781,22 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
             }
             g2d_hw_main_zero_request(run->zero);
         }
-        (void)g2d_hw_render_dsmem_adaptive_ex(
-            n, rgba3d, run->hi_top, run->hi_bottom, unsupported, run->hi_sn,
-            run->frame1x_valid && !run->gpu2d3d ? run->behind : NULL, &behind_done);
+        {
+            unsigned long long ts = bw_clock_ns();
+
+            (void)g2d_hw_render_dsmem_adaptive_ex(
+                n, rgba3d, run->hi_top, run->hi_bottom, unsupported, run->hi_sn,
+                run->frame1x_valid && !run->gpu2d3d ? run->behind : NULL, &behind_done);
+            boot_slow_log("the 2D screens composed", &ts);
+        }
         {
             unsigned long long t3 = eidos_prof_begin();
+            unsigned long long ts = bw_clock_ns();
 
             boot_gpu3d(run, behind_done);
+            boot_slow_log("the 3D drawn (boot_gpu3d)", &ts);
             boot_capture_run(run, &capt);
+            boot_slow_log("the display capture", &ts);
             eidos_prof_end(EIDOS_PROF_BOOT3D, t3);
         }
     }
@@ -1790,13 +1813,18 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
             const G2dGpuFrame *f = g2d_gpu_frame(slot);
 
             if (f != NULL && f->valid && run->hi_sn[f->screen] == 1u) {
+                unsigned long long ts = bw_clock_ns();
+
                 (void)eidos_platform_gpu2d_show(run->plat, f, f->screen);
+                boot_slow_log("a 2D screen shown by the GPU", &ts);
                 if (g2d_gpu_cpu_skipped(slot)) {
                     /* the readers of the pixels (the one-screen interface,
                      * the held screens) get the GPU's, a frame late; none
                      * when the last frame was not shown (fast forward) */
                     int got = eidos_platform_gpu2d_pixels(run->plat, f->screen,
                                                           f->screen == 0 ? run->hi_top : run->hi_bottom) == 0;
+
+                    boot_slow_log("a 2D screen's pixels read back from the GPU", &ts);
 
                     if (f->screen == 0) {
                         top_fresh = got;

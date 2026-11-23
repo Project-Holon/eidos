@@ -215,6 +215,10 @@ typedef struct BmapScene {
     unsigned n_trees;
     BmapLeaf *leaf;         /* the hand-made grass leaves (bmap_place, research); owned */
     unsigned n_leaf;
+    float (*bound)[4];      /* a sphere a draw (bmap_draw_bounds), or NULL: the renderer makes them; owned.
+                               The battle's job makes them on its own thread (0.09 s of the frame the map
+                               first showed, on a grassy route) */
+    unsigned n_bound;       /* nd when they were made */
     int shared;             /* a copy (bmap_copy): textures, the animations and
                                the ground index belong to the original, which
                                must outlive it                                */
@@ -227,6 +231,45 @@ typedef struct BmapScene {
                                this scene, copied by bmap_copy                 */
     unsigned prep_nd0, prep_ntri;
 } BmapScene;
+
+/* A sphere around each draw of a placed scene, into out[nd][4]: its middle (x, y, z; a billboard's pivot, so it
+ * holds the triangles whichever way they turn) and its radius, battle units; the radius 1e30 for a draw with no
+ * vertex (never left out).  The renderers leave out a draw whose sphere is off the screen.  (In the header: the
+ * renderers are linked into programs with no bmap_place.c.) */
+static inline void bmap_draw_bounds(const BmapScene *s, float (*out)[4])
+{
+    unsigned d, k;
+
+    for (d = 0; d < s->nd; d++) {
+        const BmapDraw *dr = &s->d[d];
+        float *bb = out[d];
+        float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
+        float r2 = 0.0f;
+
+        for (k = 0; k < dr->count && dr->first + k < s->nv; k++) {
+            const BmapVertex *v = &s->v[dr->first + k];
+
+            lo[0] = fminf(lo[0], v->x); hi[0] = fmaxf(hi[0], v->x);
+            lo[1] = fminf(lo[1], v->y); hi[1] = fmaxf(hi[1], v->y);
+            lo[2] = fminf(lo[2], v->z); hi[2] = fmaxf(hi[2], v->z);
+        }
+        if (lo[0] > hi[0]) {
+            bb[0] = bb[1] = bb[2] = 0.0f;
+            bb[3] = 1e30f;              /* no triangles: never left out */
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            bb[k] = dr->billboard ? dr->pivot[k] : 0.5f * (lo[k] + hi[k]);
+        }
+        for (k = 0; k < dr->count && dr->first + k < s->nv; k++) {
+            const BmapVertex *v = &s->v[dr->first + k];
+            float dx = v->x - bb[0], dy = v->y - bb[1], dz = v->z - bb[2];
+
+            r2 = fmaxf(r2, dx * dx + dy * dy + dz * dz);
+        }
+        bb[3] = sqrtf(r2);
+    }
+}
 
 /* The fog's measure from the battle's own camera (eye and unit line of sight, battle units): the scene's two fog
  * depths from that camera, in fog_k's form. */

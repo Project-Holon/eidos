@@ -1521,6 +1521,8 @@ int bmap_copy(BmapScene *dst, const BmapScene *src)
 {
     *dst = *src;
     dst->shared = 1;
+    dst->bound = NULL;                  /* (made again when the copy is placed) */
+    dst->n_bound = 0;
     dst->trees = NULL;                  /* (found again when the copy is placed) */
     dst->n_trees = 0;
     dst->leaf = NULL;                   /* (listed again when the copy is placed) */
@@ -2191,7 +2193,7 @@ static void stand_cards(BmapScene *s)
 
         if (d->billboard != 0 || d->count < 3 || d->first + d->count > s->nv || d->tex < 0 || (unsigned)d->tex >= s->nt
             || !still_pic(s, d)) {
-            continue;                   /* (an animated sheet: stand_drift) */
+            continue;                   /* (an animated sheet: stand_drift, plants_both_sides) */
         }
         t = &s->t[d->tex];
         /* the draw holds every object with this material: one object a run
@@ -2307,6 +2309,30 @@ static void stand_cards(BmapScene *s)
     free(grid.next);
     free(grid.moved);
     free(grid.mlist);
+}
+
+/* Route 1's seasonal plant (a placed model of Routes 1, 2, 3, 17 and 18 and the towns round them: spring's flower
+ * spike, summer's flower, autumn's stalk, winter's dry tuft; the pictures r01_<season>_01, each looked at beside
+ * its picture).  Rows of flat sheets that lean 24 degrees back from upright and show their south face only: made
+ * for the field's camera, in the south.  A battle camera north of a row saw nothing of it.  Both faces are drawn;
+ * the sheets stay where and as the map has them (not stood up, not crossed: their picture sways, stand_cards
+ * leaves them).  For these plants only, by their pictures' names.  BMAP_PLANTS_ONE_SIDE=1 (research): as before. */
+static const char *const k_season_plant_names[] = { "r01_sp_01", "r01_su_01", "r01_au_01", "r01_wi_01" };
+
+static void plants_both_sides(BmapScene *s)
+{
+    unsigned i;
+
+    if (getenv("BMAP_PLANTS_ONE_SIDE") != NULL) {
+        return;
+    }
+    for (i = 0; i < s->nd; i++) {
+        BmapDraw *d = &s->d[i];
+
+        if (d->billboard == 0 && d->cull != 0 && NAMED(s, d, k_season_plant_names)) {
+            d->cull = 0;
+        }
+    }
 }
 
 /* The field's floor pictures: a gym's emblem, a button's icon, a flower,
@@ -3263,6 +3289,7 @@ void bmap_place_prepare(BmapScene *s, int field)
     stand_cards(s);
     t1 = clock();
     if (!field) {
+        plants_both_sides(s);
         drop_cave_light(s);
         fix_backs(s);                   /* research: before the search, which then keeps clear of them */
     }
@@ -3619,8 +3646,9 @@ static void find_trees(BmapScene *s)
                 cutout[d->tex] = clear * 50ul > (unsigned long)(t->w * t->h) ? 1 : -1;
                 dark[d->tex] = NAMED(s, d, k_tree_shadow_names) ? 1 : -1;
                 if (getenv("BMAP_NAME_LOG") != NULL) {  /* research: what the colour tests take, by name */
-                    fprintf(stderr, "bmap: name tree %s green %d cutout %d dark %d object %d\n", t->name[0] ? t->name : "-",
-                            green[d->tex] > 0, cutout[d->tex] > 0, dark[d->tex] > 0, (s->v[d->first].obj & 0x3FFFFFFFu) != 0u);
+                    fprintf(stderr, "bmap: name tree %s green %d cutout %d dark %d object %d (picture %d, %dx%d, draw %u)\n",
+                            t->name[0] ? t->name : "-", green[d->tex] > 0, cutout[d->tex] > 0, dark[d->tex] > 0,
+                            (s->v[d->first].obj & 0x3FFFFFFFu) != 0u, d->tex, t->w, t->h, i);
                 }
             }
             leaf = green[d->tex] > 0;

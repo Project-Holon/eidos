@@ -322,10 +322,47 @@ a builder, add the model's line to the table, and judge the result from every si
 A battle map built from the map's files alone shows everything in its first state: a gym's curtains closed
 again, a pushed boulder back in its place. So `sdk/battle_view.c` notes every 3D object the field draws, each
 field frame (the game's two object draw calls are wrapped): its model, textures, animation frames, place and
-size. When a battle starts, the last frame's objects go to the map builder (`bmap_live_set`), which stands
+size. The objects as they are when the encounter starts go to the map builder (`bmap_live_set`), which stands
 them in the scene as the field drew them and leaves out the same objects from the map's files. It is one
 mechanism for every kind of object. A model made for the field's camera alone (Chargestone Cave's floating
 stones) is stood where that camera shows it. Texture and material animations of such objects are not played.
+
+The moment is the one the game's battle task is first seen among the running events (`enc_objects`): the last
+time the player saw the field plainly. The objects go on moving for the two seconds of the encounter's effect
+(Route 4's trucks drive on, Chargestone Cave's stones bob, the spray on Route 13's rocks plays); the battle
+does not show that. It did until 2026-11-21, and in those places every battle built its map twice. The
+encounter effect's own model (the shards the screen breaks into, a cave's closing dark; drawn at the map's
+origin for the effect's camera) is first drawn after that moment and is not in the map. A battle the task did
+not start (the Battle Subway, a link battle) takes the field's last frame's objects.
+
+## When the map is built
+
+The map's work runs on a thread beside the game, and none of it waits on a frame the player sees.
+
+1. **The area's remade models, when the player comes into a zone** (`warm_field`). The zone's map is built once
+   and thrown away; its remade models stay in the store on disk. It starts on the zone's first field frame
+   (`bw_battle_view_game_frame`, the game's every frame), with no live objects.
+2. **The battle's map, when the encounter starts** (`ahead_field`). The game's battle task
+   (`EVENT_BATTLE_ProcBattleTask`) fades the music, plays the encounter's effect and closes the field before it
+   calls the battle: about two seconds. The job starts when the task is first seen among the running events,
+   from the inputs the battle's first frame reads: the task's setup, the player's work, the field's maps, and
+   the field's objects of that moment.
+3. **At the battle's first frame** the inputs are read again, all but the objects. The job started ahead is
+   taken only when every one is still the same (`job_same`); else it is thrown away and the job starts as
+   before, with the game standing still for it.
+4. **Before the map first shows**, in the blank frames after the encounter's effect, the renderer sends the
+   scene to the GPU (`G3dBackdrop.warm`). The job has made the draws' bounds; every level of every picture goes
+   in one transfer.
+
+In the 64-bit build the game's threads are fibers that take turns, so a fiber that built a map stopped the game
+for as long as it worked. There the map's work runs on the host's job thread (`host/par.c`,
+`bw_thread_start_beside`): a real thread at a low priority that runs the module's code on an instance of its
+own, as the compositors' workers do. What runs there keeps to what holds between real threads: the heap, the C
+library's file list and formatted output (`sdk/wasm_heap.c`), `bw_shared_lock`. Where the host has no such
+thread, nothing is built ahead.
+
+`BMAP_PLACE_LOG=1` tells which way each battle's map went. `EIDOS_BMAP_NO_AHEAD=1`, `EIDOS_BMAP_NO_WARM=1` and
+`EIDOS_NO_BESIDE=1` turn the three parts off (`docs/test-switches.md`).
 
 ## The sea and the far distance
 
