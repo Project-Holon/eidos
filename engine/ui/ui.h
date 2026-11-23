@@ -251,12 +251,6 @@ void eidos_ui_reset(void);
  */
 int eidos_ui_lower_shown(void);
 extern int ui_lower_sheet_drawn;
-/* The game's own lower screen on the title (its logo), 256 x 192 RGBA,
- * as it showed at its brightest with the blinking PRESS START out: the
- * second display's picture where the one-screen view already shows the
- * lower screen.  NULL before the title has shown; *generation changes
- * when the picture does. */
-const u8 *eidos_ui_title_lower(u32 *generation);
 
 /* ------------------------------------------------------------------ */
 /* For recipes: actions and hit regions                                */

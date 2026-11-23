@@ -105,46 +105,6 @@ const char *eidos_ui_scene_name(void)
 int ui_lower_sheet_drawn;
 static int g_lower_sheet_last;      /* the last frame's ui_lower_sheet_drawn */
 
-/* eidos_ui_title_lower: the title's lower screen at its brightest */
-static u8 g_title_lower[256 * 192 * 4];
-static u32 g_title_lower_score, g_title_lower_gen;
-
-static void keep_title_lower(const u8 *px)
-{
-    u32 score = 0, band = 0;
-    int x, y;
-
-    if (px == NULL) {
-        return;
-    }
-    for (y = 0; y < 192; y++) {
-        for (x = 0; x < 256; x++) {
-            const u8 *q = px + ((size_t)y * 256u + (size_t)x) * 4u;
-            u32 v = (u32)q[0] + q[1] + q[2];
-
-            if (y >= 156 && y < 180) {
-                band += v > 600u;       /* PRESS START's bright letters */
-            } else {
-                score += v;
-            }
-        }
-    }
-    if (band > 24u || score <= g_title_lower_score + g_title_lower_score / 64u) {
-        return;                         /* the prompt lit, or no brighter */
-    }
-    memcpy(g_title_lower, px, sizeof g_title_lower);
-    g_title_lower_score = score;
-    g_title_lower_gen++;
-}
-
-const u8 *eidos_ui_title_lower(u32 *generation)
-{
-    if (generation != NULL) {
-        *generation = g_title_lower_gen;
-    }
-    return g_title_lower_gen != 0 ? g_title_lower : NULL;
-}
-
 int eidos_ui_lower_shown(void)
 {
     /* the scenes that leave the game's lower screen alone: the world with
@@ -3790,9 +3750,6 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     }
     g_lower_sheet_last = ui_lower_sheet_drawn;
     ui_lower_sheet_drawn = 0;
-    if (r != NULL && strcmp(r->name, "title") == 0 && g_scene_frames > 30) {
-        keep_title_lower(in->screen_rgba[1]);
-    }
     if (r != NULL) {
         g_scene = r->name;
         EidosUiFrame f = *in;

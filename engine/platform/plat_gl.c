@@ -1028,19 +1028,12 @@ void eidos_gl_upload(EidosGl *g, int i, const unsigned char *rgba, int w,
  * The picture is uploaded when it changes and not once per frame: the
  * platform layer asks for it only when the model's generation has moved.
  */
-static float g_panel_corner[3] = { 16.f / 255.f, 16.f / 255.f, 20.f / 255.f };
-
 void eidos_gl_upload_panel(EidosGl *g, const unsigned char *rgba, int w,
                             int h)
 {
     if (g == NULL || rgba == NULL || w <= 0 || h <= 0 || g_panel.tex == 0) {
         return;
     }
-    /* the corner's colour: the backdrop around the picture when it is the
-     * second display's cover (eidos_gl_present_dual) */
-    g_panel_corner[0] = rgba[0] / 255.f;
-    g_panel_corner[1] = rgba[1] / 255.f;
-    g_panel_corner[2] = rgba[2] / 255.f;
     glBindTexture(GL_TEXTURE_2D, g_panel.tex);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     if (g_panel.w != w || g_panel.h != h) {
@@ -1977,7 +1970,7 @@ void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[
              * the one-screen view already shows the lower screen) on the
              * card's own backdrop colour */
             glViewport(0, 0, out2_w, out2_h);
-            glClearColor(g_panel_corner[0], g_panel_corner[1], g_panel_corner[2], 1.f);
+            glClearColor(16.f / 255.f, 16.f / 255.f, 20.f / 255.f, 1.f);
             glClear(GL_COLOR_BUFFER_BIT);
             g->glBindVertexArray(g->vao);
             draw_panel(g, out2_w, out2_h, cover);
