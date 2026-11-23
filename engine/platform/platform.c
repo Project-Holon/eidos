@@ -104,6 +104,7 @@ struct EidosPlatform {
 
     int dual_cover_ok;              /* the panel texture holds the second
                                        display's card (dual_cover)          */
+    u32 dual_cover_gen;             /* eidos_ui_title_lower's, when it is  */
     int touch_down;                 /* the stylus, bottom-screen pixels      */
     int touch_x, touch_y;
 
@@ -695,6 +696,18 @@ static void dual_cover(EidosPlatform *p)
     const char *line1 = "See top screen";
     const int scale = 2;
     int x, y, tw, ty, ax, ay;
+    u32 gen = 0;
+    const u8 *logo = eidos_ui_title_lower(&gen);
+
+    if (logo != NULL) {
+        /* the game's own title logo, as its lower screen showed it */
+        eidos_gpu_upload_panel(p->gl, logo, COVER_W, COVER_H);
+        p->panel_gen_ok = 0;
+        p->dual_cover_ok = 1;
+        p->dual_cover_gen = gen;
+        return;
+    }
+    p->dual_cover_gen = 0;
 
     for (y = 0; y < COVER_H; y++) {
         /* the backdrop, with faint scanlines */
@@ -1647,8 +1660,13 @@ static void render(EidosPlatform *p)
                 memset(rects, 0, sizeof rects);
                 dual_fit(ow, oh, &rects[0]);
             }
-            if (covered && !p->dual_cover_ok) {
-                dual_cover(p);
+            if (covered) {
+                u32 gen = 0;
+
+                (void)eidos_ui_title_lower(&gen);
+                if (!p->dual_cover_ok || gen != p->dual_cover_gen) {
+                    dual_cover(p);      /* first, or the title's logo came */
+                }
             }
             cover = second_r[1];
             eidos_gpu_present_dual(p->gl, ow, oh, rects, w2, h2, second_r,
