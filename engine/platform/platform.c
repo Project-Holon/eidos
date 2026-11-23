@@ -1564,6 +1564,13 @@ static void render(EidosPlatform *p)
     place(p, &pl);
     out_size(p, &ow, &oh);
     viewport(p, &pl, ow, oh, &vp);
+    {
+        int w2, h2;
+
+        /* the interface's touch-screen scenes give way to the DS's own
+         * on a second display (ui.h) */
+        eidos_ui_dual_display = p->layout == EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2);
+    }
     have_panel = p->layout != EIDOS_LAYOUT_ONE && panel_view(&vp, &pl, &view) == 0;
     if (have_panel) {
         upload_panel(p, &view);

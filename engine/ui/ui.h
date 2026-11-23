@@ -256,6 +256,11 @@ extern int ui_lower_sheet_drawn;
  * already shows up top): its edges are lit.  0 once the lower screen is
  * the game's logo on black, and outside the title. */
 int eidos_ui_title_intro_lower(void);
+/* Set by the platform layer each frame: the DS's lower screen has a
+ * physical display of its own (plat_dual.h).  Scenes played on the touch
+ * screen as on a DS (the name entry's keyboard) then give the interface
+ * up: the game's own screens show, the keyboard below to tap. */
+extern int eidos_ui_dual_display;
 
 /* ------------------------------------------------------------------ */
 /* For recipes: actions and hit regions                                */

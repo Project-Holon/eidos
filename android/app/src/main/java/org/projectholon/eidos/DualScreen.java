@@ -9,7 +9,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.graphics.Color;
+import android.graphics.PixelFormat;
 import android.view.Display;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -17,6 +20,7 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
 
 /*
  * The second display of a dual-screen handheld (the AYN Thor, the Ayaneo
@@ -120,11 +124,27 @@ final class DualScreen implements DisplayManager.DisplayListener {
         @Override
         protected void onCreate(Bundle state) {
             super.onCreate(state);
+            FrameLayout root = new FrameLayout(getContext());
             SurfaceView view = new SurfaceView(getContext());
+            android.graphics.Point size = new android.graphics.Point();
+            int w, h;
 
+            /* the DS screen's shape (256 x 192), as large as fits, centred
+             * on black: the game copies its picture in at this size */
+            getDisplay().getRealSize(size);
+            if ((long) size.x * 192 <= (long) size.y * 256) {
+                w = size.x;
+                h = size.x * 192 / 256;
+            } else {
+                h = size.y;
+                w = size.y * 256 / 192;
+            }
+            root.setBackgroundColor(Color.BLACK);
+            view.getHolder().setFormat(PixelFormat.RGBA_8888);
             view.getHolder().addCallback(this);
             view.setOnTouchListener(Screen::touch);
-            setContentView(view);
+            root.addView(view, new FrameLayout.LayoutParams(w, h, Gravity.CENTER));
+            setContentView(root);
             /* touches only: the buttons and sticks stay with the game's
              * window, which a focused window here would take them from */
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON

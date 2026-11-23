@@ -1941,12 +1941,39 @@ void eidos_gl_swap(EidosGl *g)
 }
 
 /*
- * Two physical displays: the second display's screen first, into its own
- * surface (the same context, so every texture and program is shared), then
- * the window's, whose swap keeps the pacing.  The second surface swaps
- * without waiting for its vblank (host/dual.c), so two displays never halve
- * the frame rate.
+ * Two physical displays: the second display's picture is drawn into a
+ * framebuffer of the presenter's own, the size of the second display, and
+ * handed to the host (plat_dual.h), which reads it back and copies it
+ * there; then the window's picture as ever.  GL never leaves the window's
+ * surface: switching one context between two surfaces each frame let the
+ * GPU's readbacks of the screens be cut off on an AYN Thor (static).
  */
+static struct {
+    GLuint fbo, tex;
+    int w, h;
+} g_dual;
+
+static int dual_target(EidosGl *g, int w, int h)
+{
+    if (g_dual.fbo != 0 && g_dual.w == w && g_dual.h == h) {
+        return 0;
+    }
+    if (g_dual.fbo == 0) {
+        glGenTextures(1, &g_dual.tex);
+        g->glGenFramebuffers(1, &g_dual.fbo);
+    }
+    g->glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_dual.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    g->glBindFramebuffer(GL_FRAMEBUFFER, g_dual.fbo);
+    g->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_dual.tex, 0);
+    g_dual.w = w;
+    g_dual.h = h;
+    return 0;
+}
+
 void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2],
                            int out2_w, int out2_h, const SDL_Rect dst2[2],
                            const SDL_Rect *cover)
@@ -1954,15 +1981,10 @@ void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[
     if (g == NULL) {
         return;
     }
-    /* Everything the frame asked of the GPU done first: the 3D drawn into
-     * its framebuffers and the readbacks it started (read3d_1x's async
-     * PBO) finish on the window's surface, not across the switch to the
-     * second one, where a driver may hand them over half done (seen as
-     * static on the top screen of an AYN Thor). */
-    glFinish();
-    if (out2_w > 0 && out2_h > 0 && eidos_dual_begin()) {
+    if (out2_w > 0 && out2_h > 0 && out2_w <= 4096 && out2_h <= 4096 &&
+        dual_target(g, out2_w, out2_h) == 0) {
+        g->glBindFramebuffer(GL_FRAMEBUFFER, g_dual.fbo);
         /* the one-screen view's drawing may have left these on */
-        g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDisable(GL_SCISSOR_TEST);
         glDisable(GL_BLEND);
         if (cover == NULL && dst2[0].w <= 0 && dst2[1].w <= 0) {
@@ -1982,7 +2004,7 @@ void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[
         } else {
             draw_frame(g, out2_w, out2_h, dst2);
         }
-        eidos_dual_end();
+        eidos_dual_post(g_dual.fbo, out2_w, out2_h);
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     eidos_gl_present_panel(g, out_w, out_h, dst, NULL);

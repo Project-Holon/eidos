@@ -105,6 +105,22 @@ const char *eidos_ui_scene_name(void)
 int ui_lower_sheet_drawn;
 static int g_lower_sheet_last;      /* the last frame's ui_lower_sheet_drawn */
 static int g_title_intro;           /* eidos_ui_title_intro_lower          */
+int eidos_ui_dual_display;
+
+/* The scenes the game's own touch screen plays better on a second display
+ * than the interface's version (eidos_ui_dual_display). */
+static int ds_touch_scene(const char *name)
+{
+    static const char *const names[] = { "name entry" };
+    u32 i;
+
+    for (i = 0; i < sizeof names / sizeof names[0]; i++) {
+        if (strcmp(name, names[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 /* The lower screen's edges (the top rows and the side columns, away from
  * the logo in the middle and PRESS START below it) lit: the intro's
@@ -3698,6 +3714,9 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
 
             if (skip != NULL && strstr(skip, g->recipes[j]->name) != NULL) {
                 continue;
+            }
+            if (eidos_ui_dual_display && ds_touch_scene(g->recipes[j]->name)) {
+                continue;           /* the DS's keyboard on the second display */
             }
             if (g->recipes[j]->match != NULL && g->recipes[j]->match()) {
                 r = g->recipes[j];
