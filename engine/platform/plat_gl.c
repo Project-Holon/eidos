@@ -1954,7 +1954,10 @@ void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[
         return;
     }
     if (out2_w > 0 && out2_h > 0 && eidos_dual_begin()) {
+        /* the one-screen view's drawing may have left these on */
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_BLEND);
         draw_frame(g, out2_w, out2_h, dst2);
         eidos_dual_end();
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);

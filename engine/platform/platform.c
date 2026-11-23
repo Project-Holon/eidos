@@ -546,7 +546,7 @@ void eidos_platform_viewport(const EidosPlatform *p, EidosViewport *vp)
     place(p, &pl);
     out_size(p, &w, &h);
     viewport(p, &pl, w, h, vp);
-    if (dual_active(p, &w2, &h2)) {
+    if (p->layout != EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2)) {
         /* two displays: each screen's size as drawn there, so the internal
          * resolution's "auto" fits the larger pictures (plat_dual.h) */
         SDL_Rect a, b;
@@ -597,16 +597,18 @@ static int world_active(const EidosPlatform *p)
 /* ------------------------------------------------------------------ */
 
 /*
- * On a dual-screen handheld each DS screen gets a display of its own: the
- * window shows the top screen (the bottom one with the screens swapped)
- * and the second display the other, each as large as fits, centred.  Only
- * the two-screen layouts: the one-screen layout keeps the window to itself.
+ * On a dual-screen handheld each DS screen gets a display of its own.  In
+ * the two-screen layouts the window shows the top screen (the bottom one
+ * with the screens swapped) and the second display the other, each as
+ * large as fits, centred.  In the one-screen layout the window keeps the
+ * one-screen view (the world, the port's own menus) and the second display
+ * shows the DS's bottom screen, the touch screen.
  * The size of the second display in w2 x h2; 0 when there is none.
  */
 static int dual_active(const EidosPlatform *p, int *w2, int *h2)
 {
     *w2 = *h2 = 0;
-    return p != NULL && p->gl != NULL && p->layout != EIDOS_LAYOUT_ONE &&
+    return p != NULL && p->gl != NULL &&
            eidos_gpu_can_dual(p->gl) && !eidos_embed_on() &&
            eidos_dual_size(w2, h2) && *w2 > 0 && *h2 > 0;
 }
@@ -659,7 +661,8 @@ static int read_stylus_dual(EidosPlatform *p)
     if (!dual_active(p, &w2, &h2)) {
         return 0;
     }
-    if (!p->swap) {
+    if (!p->swap || p->layout == EIDOS_LAYOUT_ONE) {
+        /* the touch screen is on the second display */
         int nx = 0, ny = 0;
 
         if (!eidos_dual_touch(&nx, &ny)) {
@@ -1457,7 +1460,7 @@ static void render(EidosPlatform *p)
         SDL_Rect prect;
         int w2, h2;
 
-        if (dual_active(p, &w2, &h2)) {
+        if (p->layout != EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2)) {
             /* each DS screen on a display of its own (plat_dual.h) */
             SDL_Rect main_r[2], second_r[2];
             int m = p->swap ? 1 : 0;
@@ -1514,6 +1517,16 @@ static void render(EidosPlatform *p)
             if (px != NULL && eidos_gpu_grab(p->gl, ow, oh, rects, px) == 0) {
                 eidos_embed_publish(ow, oh);
             }
+            return;
+        }
+        if (p->layout == EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2)) {
+            /* the one-screen view in the window, the DS's bottom screen
+             * on the second display (plat_dual.h) */
+            SDL_Rect second_r[2];
+
+            memset(second_r, 0, sizeof second_r);
+            dual_fit(w2, h2, &second_r[1]);
+            eidos_gpu_present_dual(p->gl, ow, oh, rects, w2, h2, second_r);
             return;
         }
         if (have_panel && view.dst.w > 0 && view.dst.h > 0) {
