@@ -85,6 +85,10 @@ static void op_set_vsync(EidosGpu *g, int on)
     eidos_gl_set_vsync(gl(g), on);
 }
 
+static void op_present_dual(EidosGpu *g, int out_w, int out_h, const SDL_Rect dst[2],
+                            int out2_w, int out2_h, const SDL_Rect dst2[2])
+{ eidos_gl_present_dual(gl(g), out_w, out_h, dst, out2_w, out2_h, dst2); }
+
 static const EidosGpuOps g_gl_ops = {
     "OpenGL",
     op_destroy,
@@ -97,6 +101,7 @@ static const EidosGpuOps g_gl_ops = {
     op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
     op_read3d_1x,
     op_set_vsync,
+    op_present_dual,
 };
 
 EidosGpu *eidos_gpu_create_gl(SDL_Window *window)

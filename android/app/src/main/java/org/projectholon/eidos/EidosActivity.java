@@ -3,6 +3,7 @@ package org.projectholon.eidos;
 import android.content.Context;
 import android.graphics.Insets;
 import android.os.Build;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowInsets;
 
@@ -19,6 +20,9 @@ import org.libsdl.app.SDLSurface;
  * covers the picture there, so the one-screen layout would leave empty
  * bands for nothing.  The game is told only about what does cover it: the
  * display's cutouts (a camera hole) and the system bars while they show.
+ *
+ * On a dual-screen handheld the second display shows the second DS screen
+ * (DualScreen, host/dual.c).
  */
 public class EidosActivity extends SDLActivity {
 
@@ -44,5 +48,35 @@ public class EidosActivity extends SDLActivity {
     @Override
     protected SDLSurface createSDLSurface(Context context) {
         return new EidosSurface(context);
+    }
+
+    private DualScreen dual;
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (mBrokenLibraries) {
+            return;                     /* libmain.so did not load          */
+        }
+        try {
+            if (dual == null) {
+                dual = new DualScreen(this);
+                dual.start();
+            } else {
+                dual.update();
+            }
+        } catch (UnsatisfiedLinkError e) {
+            Log.w("eidos", "dual screen: not in this build", e);
+            dual = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (dual != null) {
+            dual.stop();
+            dual = null;
+        }
+        super.onDestroy();
     }
 }

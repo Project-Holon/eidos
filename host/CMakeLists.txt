@@ -126,6 +126,7 @@ set(_host_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/wasi.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/sdl_gpu.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/dual.c
     ${_root}/install/picker.c
     ${_root}/install/location.c
     ${_root}/sdk/plat_save.c
@@ -265,7 +266,7 @@ if(WIN32)
 elseif(EIDOS_HOST_SDL_SOURCE)
     target_link_libraries(eidos PRIVATE SDL3::SDL3 m)
     if(ANDROID)
-        target_link_libraries(eidos PRIVATE dl log android)
+        target_link_libraries(eidos PRIVATE dl log android EGL)
     endif()
 else()
     find_library(_sdl3 NAMES SDL3 PATHS ${SDL3_PREFIX}/lib ${SDL3_PREFIX}/lib64)

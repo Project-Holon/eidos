@@ -22,6 +22,7 @@
 #include "input.h"
 #include "mod_panel_draw.h"
 #include "platform.h"
+#include "plat_dual.h"
 #include "plat_embed.h"
 #include "plat_gpu.h"
 #include "plat_thread.h"
@@ -534,14 +535,34 @@ static void world_size(const EidosPlatform *p, int *w, int *h)
     }
 }
 
+static int dual_active(const EidosPlatform *p, int *w2, int *h2);
+static void dual_fit(int w, int h, SDL_Rect *r);
+
 void eidos_platform_viewport(const EidosPlatform *p, EidosViewport *vp)
 {
     EidosScreenPlacement pl;
-    int w, h;
+    int w, h, w2, h2;
 
     place(p, &pl);
     out_size(p, &w, &h);
     viewport(p, &pl, w, h, vp);
+    if (dual_active(p, &w2, &h2)) {
+        /* two displays: each screen's size as drawn there, so the internal
+         * resolution's "auto" fits the larger pictures (plat_dual.h) */
+        SDL_Rect a, b;
+        int m = p->swap ? 1 : 0;
+
+        dual_fit(w, h, &a);
+        dual_fit(w2, h2, &b);
+        vp->screen[m].x = vp->content.x = a.x;
+        vp->screen[m].y = vp->content.y = a.y;
+        vp->screen[m].w = vp->content.w = a.w;
+        vp->screen[m].h = vp->content.h = a.h;
+        vp->screen[1 - m].x = b.x;
+        vp->screen[1 - m].y = b.y;
+        vp->screen[1 - m].w = b.w;
+        vp->screen[1 - m].h = b.h;
+    }
 }
 
 int eidos_platform_window_to_touch(const EidosPlatform *p, int win_w,
@@ -571,12 +592,118 @@ static int world_active(const EidosPlatform *p)
            eidos_gpu_has3d(p->gl) && p->ui_view.mode == EIDOS_VIEW_WORLD;
 }
 
+/* ------------------------------------------------------------------ */
+/* A second physical display (plat_dual.h)                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * On a dual-screen handheld each DS screen gets a display of its own: the
+ * window shows the top screen (the bottom one with the screens swapped)
+ * and the second display the other, each as large as fits, centred.  Only
+ * the two-screen layouts: the one-screen layout keeps the window to itself.
+ * The size of the second display in w2 x h2; 0 when there is none.
+ */
+static int dual_active(const EidosPlatform *p, int *w2, int *h2)
+{
+    *w2 = *h2 = 0;
+    return p != NULL && p->gl != NULL && p->layout != EIDOS_LAYOUT_ONE &&
+           eidos_gpu_can_dual(p->gl) && !eidos_embed_on() &&
+           eidos_dual_size(w2, h2) && *w2 > 0 && *h2 > 0;
+}
+
+/* One DS screen as large as fits in w x h, centred. */
+static void dual_fit(int w, int h, SDL_Rect *r)
+{
+    const int sw = (int)EIDOS_DS_SCREEN_WIDTH, sh = (int)EIDOS_DS_SCREEN_HEIGHT;
+
+    if ((s64)w * sh <= (s64)h * sw) {
+        r->w = w;
+        r->h = (int)((s64)w * sh / sw);
+    } else {
+        r->h = h;
+        r->w = (int)((s64)h * sw / sh);
+    }
+    r->x = (w - r->w) / 2;
+    r->y = (h - r->h) / 2;
+}
+
+/* A point of an output into the DS screen fitted there: 1 inside, and the
+ * point clamped to the screen either way. */
+static int dual_point(int w, int h, int px, int py, int *x, int *y)
+{
+    SDL_Rect r;
+    int tx, ty, inside;
+
+    dual_fit(w, h, &r);
+    if (r.w <= 0 || r.h <= 0) {
+        return 0;
+    }
+    tx = (int)((s64)(px - r.x) * (int)EIDOS_DS_SCREEN_WIDTH / r.w);
+    ty = (int)((s64)(py - r.y) * (int)EIDOS_DS_SCREEN_HEIGHT / r.h);
+    inside = tx >= 0 && ty >= 0 && tx < (int)EIDOS_DS_SCREEN_WIDTH &&
+             ty < (int)EIDOS_DS_SCREEN_HEIGHT;
+    *x = tx < 0 ? 0 : tx >= (int)EIDOS_DS_SCREEN_WIDTH ? (int)EIDOS_DS_SCREEN_WIDTH - 1 : tx;
+    *y = ty < 0 ? 0 : ty >= (int)EIDOS_DS_SCREEN_HEIGHT ? (int)EIDOS_DS_SCREEN_HEIGHT - 1 : ty;
+    return inside;
+}
+
+/*
+ * The stylus with two displays: the bottom screen is on the second display
+ * (a finger there), or with the screens swapped on the window (the mouse,
+ * which is SDL's touch).  1 when this answered for the stylus.
+ */
+static int read_stylus_dual(EidosPlatform *p)
+{
+    int w2, h2, x = 0, y = 0, inside;
+
+    if (!dual_active(p, &w2, &h2)) {
+        return 0;
+    }
+    if (!p->swap) {
+        int nx = 0, ny = 0;
+
+        if (!eidos_dual_touch(&nx, &ny)) {
+            p->touch_down = 0;
+            return 1;
+        }
+        inside = dual_point(w2, h2, (int)((s64)nx * w2 / 65536), (int)((s64)ny * h2 / 65536),
+                            &x, &y);
+    } else {
+        float fx = 0.0f, fy = 0.0f;
+        int ww = 0, wh = 0, ow = 0, oh = 0;
+
+        if (!(SDL_GetMouseState(&fx, &fy) & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) ||
+            p->window == NULL) {
+            p->touch_down = 0;
+            return 1;
+        }
+        SDL_GetWindowSize(p->window, &ww, &wh);
+        out_size(p, &ow, &oh);
+        if (ww <= 0 || wh <= 0 || ow <= 0 || oh <= 0) {
+            p->touch_down = 0;
+            return 1;
+        }
+        inside = dual_point(ow, oh, (int)((s64)fx * ow / ww), (int)((s64)fy * oh / wh), &x, &y);
+    }
+    if (!p->touch_down && !inside) {
+        return 1;                       /* a press off the screen           */
+    }
+    p->touch_down = 1;
+    p->touch_x = x;
+    p->touch_y = y;
+    return 1;
+}
+
 static void read_stylus(EidosPlatform *p)
 {
     float fx = 0.0f, fy = 0.0f;
     SDL_MouseButtonFlags buttons = eidos_embed_on() ? (SDL_MouseButtonFlags)eidos_embed_mouse(&fx, &fy)
                                                     : SDL_GetMouseState(&fx, &fy);
     int mx = (int)fx, my = (int)fy, ww = 0, wh = 0, x = 0, y = 0, inside;
+
+    if (read_stylus_dual(p)) {
+        return;                         /* two displays: plat_dual.h       */
+    }
 
     if (!(buttons & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) || p->window == NULL ||
         world_active(p)) {
@@ -1328,6 +1455,21 @@ static void render(EidosPlatform *p)
     if (p->gl != NULL) {
         SDL_Rect rects[2];
         SDL_Rect prect;
+        int w2, h2;
+
+        if (dual_active(p, &w2, &h2)) {
+            /* each DS screen on a display of its own (plat_dual.h) */
+            SDL_Rect main_r[2], second_r[2];
+            int m = p->swap ? 1 : 0;
+
+            eidos_gpu_one_set(p->gl, 0, 0, 0, NULL, 0, 0, 0);
+            memset(main_r, 0, sizeof main_r);
+            memset(second_r, 0, sizeof second_r);
+            dual_fit(ow, oh, &main_r[m]);
+            dual_fit(w2, h2, &second_r[1 - m]);
+            eidos_gpu_present_dual(p->gl, ow, oh, main_r, w2, h2, second_r);
+            return;
+        }
 
         /* The one-screen layout's state for this frame: the world's
          * rectangle for the DS screen's 2D layers, or off. */

@@ -11,6 +11,7 @@
 
 #include "plat_gl_int.h"
 #include "prof.h"
+#include "plat_dual.h"
 
 #if defined(__vita__)
 #include <stdint.h>
@@ -1937,6 +1938,28 @@ void eidos_gl_swap(EidosGl *g)
     }
     GL_SWAP(g);
 #undef GL_SWAP
+}
+
+/*
+ * Two physical displays: the second display's screen first, into its own
+ * surface (the same context, so every texture and program is shared), then
+ * the window's, whose swap keeps the pacing.  The second surface swaps
+ * without waiting for its vblank (host/dual.c), so two displays never halve
+ * the frame rate.
+ */
+void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2],
+                           int out2_w, int out2_h, const SDL_Rect dst2[2])
+{
+    if (g == NULL) {
+        return;
+    }
+    if (out2_w > 0 && out2_h > 0 && eidos_dual_begin()) {
+        g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        draw_frame(g, out2_w, out2_h, dst2);
+        eidos_dual_end();
+        g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    eidos_gl_present_panel(g, out_w, out_h, dst, NULL);
 }
 
 /* The two screens alone: the panel is the port's own, and a caller that
