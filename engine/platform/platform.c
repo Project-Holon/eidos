@@ -2418,6 +2418,13 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
     render(p);
 }
 
+int eidos_platform_dual(const EidosPlatform *p)
+{
+    int w2, h2;
+
+    return dual_active(p, &w2, &h2);
+}
+
 int eidos_platform_gpu3d(const EidosPlatform *p)
 {
     return p != NULL && p->gl != NULL && eidos_gpu_has3d(p->gl);

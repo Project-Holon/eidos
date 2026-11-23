@@ -2658,10 +2658,17 @@ int eidos_settings_internal_scale(void)
         return 1;
     }
     eidos_platform_viewport(g_plat, &vp);
-    return eidos_resolution_fit_cap(
+    r = eidos_resolution_fit_cap(
         &vp, k_options[EIDOS_OPT_DISPLAY_RESOLUTION].max,
         eidos_platform_gpu3d(g_plat) ? EIDOS_RESOLUTION_MAX
                                      : EIDOS_RESOLUTION_FIT_CAP);
+    /* Two displays: each screen is drawn far larger than in one window,
+     * and "auto" would ask a phone's GPU for 6x 3D or more.  4x (768 rows)
+     * is about what the phone builds draw the world's 3D at (rows_3d). */
+    if (eidos_platform_dual(g_plat) && r > 4) {
+        r = 4;
+    }
+    return r;
 }
 
 void eidos_settings_on_resize(EidosPlatform *p, int w, int h)
