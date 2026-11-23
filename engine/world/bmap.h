@@ -346,7 +346,13 @@ static inline void bmap_sky_uv(const BmapScene *s, float u[3], float v[3])
     struct timespec ts;
     int i;
 
+    /* (the real clock: C11's timespec_get where the C library offers it; the 32-bit Linux and the Vita builds
+     * compile as C99, where it is not declared: POSIX's clock there) */
+#if defined(TIME_UTC)
     if (s->sky_drift > 0.0f && timespec_get(&ts, TIME_UTC) == TIME_UTC) {
+#else
+    if (s->sky_drift > 0.0f && clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+#endif
         const double period = (double)s->sky_drift;
 
         t = fmod((double)(ts.tv_sec % 86400) + (double)ts.tv_nsec * 1e-9, period) / period;
