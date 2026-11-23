@@ -1954,6 +1954,12 @@ void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[
     if (g == NULL) {
         return;
     }
+    /* Everything the frame asked of the GPU done first: the 3D drawn into
+     * its framebuffers and the readbacks it started (read3d_1x's async
+     * PBO) finish on the window's surface, not across the switch to the
+     * second one, where a driver may hand them over half done (seen as
+     * static on the top screen of an AYN Thor). */
+    glFinish();
     if (out2_w > 0 && out2_h > 0 && eidos_dual_begin()) {
         /* the one-screen view's drawing may have left these on */
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
