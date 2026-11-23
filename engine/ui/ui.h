@@ -240,6 +240,18 @@ const char *eidos_ui_scene_name(void);
 /* Forget every recipe's state (a restart, a new run). */
 void eidos_ui_reset(void);
 
+/*
+ * For a second physical display under the one-screen view (plat_dual.h):
+ * 1 when the last frame's scene already shows what the game draws on its
+ * lower screen (a full-screen app, the start menu, the battle controls,
+ * the lower screen as a sheet), so the second display need not show it
+ * again; 0 when the scene leaves the lower screen to it (the field, a
+ * cutscene).  ui_lower_sheet_drawn: set by a recipe that drew the game's
+ * lower screen as a sheet this frame.
+ */
+int eidos_ui_lower_shown(void);
+extern int ui_lower_sheet_drawn;
+
 /* ------------------------------------------------------------------ */
 /* For recipes: actions and hit regions                                */
 /* ------------------------------------------------------------------ */

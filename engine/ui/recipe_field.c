@@ -2178,6 +2178,7 @@ static int lower_sheet(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch,
     if (in->screen_rgba[1] == NULL || cw < w + 12 || ch < top + h + (closable ? 24 : 8)) {
         return -1;
     }
+    ui_lower_sheet_drawn = 1;           /* eidos_ui_lower_shown */
     px = cw - w - 6;
     py = top + (ch - top - h) / 2 + (closable ? 8 : 0);
     ui_fill(c, px - 3, py - 3, w + 6, h + 6, UI_EDGE, 255);

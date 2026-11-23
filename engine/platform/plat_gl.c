@@ -1948,7 +1948,8 @@ void eidos_gl_swap(EidosGl *g)
  * the frame rate.
  */
 void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2],
-                           int out2_w, int out2_h, const SDL_Rect dst2[2])
+                           int out2_w, int out2_h, const SDL_Rect dst2[2],
+                           const SDL_Rect *cover)
 {
     if (g == NULL) {
         return;
@@ -1958,7 +1959,18 @@ void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDisable(GL_SCISSOR_TEST);
         glDisable(GL_BLEND);
-        draw_frame(g, out2_w, out2_h, dst2);
+        if (cover != NULL) {
+            /* the panel's picture (the platform layer put its card there:
+             * the one-screen view already shows the lower screen) on the
+             * card's own backdrop colour */
+            glViewport(0, 0, out2_w, out2_h);
+            glClearColor(16.f / 255.f, 16.f / 255.f, 20.f / 255.f, 1.f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            g->glBindVertexArray(g->vao);
+            draw_panel(g, out2_w, out2_h, cover);
+        } else {
+            draw_frame(g, out2_w, out2_h, dst2);
+        }
         eidos_dual_end();
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }

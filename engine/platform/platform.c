@@ -22,6 +22,7 @@
 #include "input.h"
 #include "mod_panel_draw.h"
 #include "platform.h"
+#include "font.h"
 #include "plat_dual.h"
 #include "plat_embed.h"
 #include "plat_gpu.h"
@@ -101,6 +102,8 @@ struct EidosPlatform {
     SDL_Gamepad *pads[MAX_PADS];
     int   pad_subsystem;            /* SDL_INIT_GAMEPAD is up                */
 
+    int dual_cover_ok;              /* the panel texture holds the second
+                                       display's card (dual_cover)          */
     int touch_down;                 /* the stylus, bottom-screen pixels      */
     int touch_x, touch_y;
 
@@ -627,6 +630,115 @@ static void dual_fit(int w, int h, SDL_Rect *r)
     }
     r->x = (w - r->w) / 2;
     r->y = (h - r->h) / 2;
+}
+
+/*
+ * The second display's card, for a one-screen scene that already shows the
+ * game's lower screen up top: a dark DS-sized panel, a thin frame, an
+ * arrow up and "See top screen", in the pixel font, drawn once and kept in
+ * the panel's texture (the one-screen layout has no run-status panel).
+ */
+#define COVER_W 256
+#define COVER_H 192
+
+static void cover_px(u8 *rgba, int x, int y, u32 rgb)
+{
+    u8 *d;
+
+    if (x < 0 || y < 0 || x >= COVER_W || y >= COVER_H) {
+        return;
+    }
+    d = rgba + ((size_t)y * COVER_W + (size_t)x) * 4u;
+    d[0] = (u8)(rgb >> 16);
+    d[1] = (u8)(rgb >> 8);
+    d[2] = (u8)rgb;
+    d[3] = 255;
+}
+
+static int cover_text_w(const char *text, int scale)
+{
+    int n = 0;
+
+    while (eidos_utf8_next(&text) != 0) {
+        n++;
+    }
+    return n > 0 ? (n * EIDOS_FONT_ADVANCE - 1) * scale : 0;
+}
+
+static void cover_text(u8 *rgba, int x, int y, int scale, const char *text, u32 rgb)
+{
+    u32 ch;
+
+    while ((ch = eidos_utf8_next(&text)) != 0) {
+        const u8 *g = eidos_font_glyph(ch);
+        int r, c, sx, sy;
+
+        for (r = 0; g != NULL && r < EIDOS_FONT_ROWS; r++) {
+            for (c = 0; c < EIDOS_FONT_COLS; c++) {
+                if (!(g[r] & (0x10 >> c))) {
+                    continue;
+                }
+                for (sy = 0; sy < scale; sy++) {
+                    for (sx = 0; sx < scale; sx++) {
+                        cover_px(rgba, x + c * scale + sx, y + r * scale + sy, rgb);
+                    }
+                }
+            }
+        }
+        x += EIDOS_FONT_ADVANCE * scale;
+    }
+}
+
+static void dual_cover(EidosPlatform *p)
+{
+    static u8 rgba[COVER_W * COVER_H * 4];
+    const char *line1 = "See top screen";
+    const int scale = 2;
+    int x, y, tw, ty, ax, ay;
+
+    for (y = 0; y < COVER_H; y++) {
+        /* the backdrop, with faint scanlines */
+        for (x = 0; x < COVER_W; x++) {
+            cover_px(rgba, x, y, (y & 1) ? 0x131318u : 0x101014u);
+        }
+    }
+    for (x = 8; x < COVER_W - 8; x++) {
+        /* a thin double frame */
+        cover_px(rgba, x, 8, 0x3a3a46u);
+        cover_px(rgba, x, COVER_H - 9, 0x3a3a46u);
+        cover_px(rgba, x, 11, 0x24242cu);
+        cover_px(rgba, x, COVER_H - 12, 0x24242cu);
+    }
+    for (y = 8; y < COVER_H - 8; y++) {
+        cover_px(rgba, 8, y, 0x3a3a46u);
+        cover_px(rgba, COVER_W - 9, y, 0x3a3a46u);
+        if (y >= 11 && y < COVER_H - 11) {
+            cover_px(rgba, 11, y, 0x24242cu);
+            cover_px(rgba, COVER_W - 12, y, 0x24242cu);
+        }
+    }
+    /* the arrow up: a triangle and its stem */
+    ax = COVER_W / 2;
+    ay = 58;
+    for (y = 0; y < 16; y++) {
+        for (x = -y; x <= y; x++) {
+            cover_px(rgba, ax + x, ay + y, 0xd0d0dcu);
+        }
+    }
+    for (y = ay + 16; y < ay + 30; y++) {
+        for (x = -4; x <= 4; x++) {
+            cover_px(rgba, ax + x, y, 0xd0d0dcu);
+        }
+    }
+    /* the words, with a drop shadow */
+    tw = cover_text_w(line1, scale);
+    ty = 112;
+    cover_text(rgba, (COVER_W - tw) / 2 + 1, ty + 1, scale, line1, 0x000000u);
+    cover_text(rgba, (COVER_W - tw) / 2, ty, scale, line1, 0xf0f0f5u);
+
+    eidos_gpu_upload_panel(p->gl, rgba, COVER_W, COVER_H);
+    p->panel_gen_ok = 0;                /* the run-status panel's is gone */
+    p->dual_cover_ok = 1;
 }
 
 /* A point of an output into the DS screen fitted there: 1 inside, and the
@@ -1406,6 +1518,7 @@ static void upload_panel(EidosPlatform *p, const EidosModPanelView *view)
     }
     p->panel_gen = view->generation;
     p->panel_gen_ok = 1;
+    p->dual_cover_ok = 0;               /* the card is overwritten        */
     p->panel_w = view->w;
     p->panel_h = view->h;
     if (p->gl != NULL) {
@@ -1470,7 +1583,7 @@ static void render(EidosPlatform *p)
             memset(second_r, 0, sizeof second_r);
             dual_fit(ow, oh, &main_r[m]);
             dual_fit(w2, h2, &second_r[1 - m]);
-            eidos_gpu_present_dual(p->gl, ow, oh, main_r, w2, h2, second_r);
+            eidos_gpu_present_dual(p->gl, ow, oh, main_r, w2, h2, second_r, NULL);
             return;
         }
 
@@ -1521,12 +1634,25 @@ static void render(EidosPlatform *p)
         }
         if (p->layout == EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2)) {
             /* the one-screen view in the window, the DS's bottom screen
-             * on the second display (plat_dual.h) */
-            SDL_Rect second_r[2];
+             * on the second display (plat_dual.h); a scene that already
+             * shows the lower screen up there gets the card below */
+            SDL_Rect second_r[2], cover;
+            int covered = eidos_ui_lower_shown();
 
             memset(second_r, 0, sizeof second_r);
             dual_fit(w2, h2, &second_r[1]);
-            eidos_gpu_present_dual(p->gl, ow, oh, rects, w2, h2, second_r);
+            if (strcmp(eidos_ui_scene_name(), "fallback") == 0) {
+                /* no scene of the port's own: the fallback's two screens
+                 * side by side would show the lower one twice */
+                memset(rects, 0, sizeof rects);
+                dual_fit(ow, oh, &rects[0]);
+            }
+            if (covered && !p->dual_cover_ok) {
+                dual_cover(p);
+            }
+            cover = second_r[1];
+            eidos_gpu_present_dual(p->gl, ow, oh, rects, w2, h2, second_r,
+                                   covered && p->dual_cover_ok ? &cover : NULL);
             return;
         }
         if (have_panel && view.dst.w > 0 && view.dst.h > 0) {

@@ -102,6 +102,31 @@ const char *eidos_ui_scene_name(void)
     return g_scene;
 }
 
+int ui_lower_sheet_drawn;
+static int g_lower_sheet_last;      /* the last frame's ui_lower_sheet_drawn */
+
+int eidos_ui_lower_shown(void)
+{
+    /* the scenes that leave the game's lower screen alone: the world with
+     * the C-Gear bar, cutscenes, the title, the battle's plain messages.
+     * Every other scene redraws the lower screen's content its own way. */
+    static const char *const own_lower[] = {
+        "fallback", "field", "boot", "title", "demo3d", "ending",
+        "evolution", "egg_hatch", "whiteout", "battle_plain",
+    };
+    u32 i;
+
+    if (g_lower_sheet_last) {
+        return 1;
+    }
+    for (i = 0; i < sizeof own_lower / sizeof own_lower[0]; i++) {
+        if (strcmp(g_scene, own_lower[i]) == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 void eidos_ui_reset(void)
 {
     u32 i;
@@ -3723,6 +3748,8 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             UI_SetInputMode(0);
         }
     }
+    g_lower_sheet_last = ui_lower_sheet_drawn;
+    ui_lower_sheet_drawn = 0;
     if (r != NULL) {
         g_scene = r->name;
         EidosUiFrame f = *in;
