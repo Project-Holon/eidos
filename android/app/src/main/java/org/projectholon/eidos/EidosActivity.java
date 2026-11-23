@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Insets;
 import android.os.Build;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowInsets;
 
@@ -42,6 +43,19 @@ public class EidosActivity extends SDLActivity {
                 SDLActivity.onNativeInsetsChanged(in.left, in.right, in.top, in.bottom);
             }
             return out;
+        }
+
+        /* the second display's touches, when the system hands them to this
+         * window: to the game as the stylus, not as SDL's touch */
+        @Override
+        public boolean onTouch(View v, MotionEvent e) {
+            int own = Build.VERSION.SDK_INT >= 30 && getDisplay() != null
+                    ? getDisplay().getDisplayId() : 0;
+
+            if (DualScreen.fromMainWindow(e, own)) {
+                return true;
+            }
+            return super.onTouch(v, e);
         }
     }
 
