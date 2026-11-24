@@ -276,6 +276,22 @@ typedef struct BwModState {
      * English White; the last letter is the language), copied to `out`
      * (up to `size` bytes, ended with a NUL when there is room).  0. */
     int (*game_code)(char *out, u32 size);
+    /* Version 7. */
+    /* Whether the Pokedex has its National mode: 1 or 0, a negative
+     * number with no game loaded. */
+    s32 (*national_dex)(void);
+    /* Turn the Pokedex's National mode on, as the game's own script
+     * command does.  The game has no call that turns it off.  0, or -1
+     * with no game loaded. */
+    int (*national_dex_set)(void);
+    /* Put a Wonder Card (the 204 bytes of a .pgf file) in the Mystery
+     * Gift album, once per save: the card is dated today, and the
+     * delivery man in a Pokemon Centre hands its gift over, as for a card
+     * received from Mystery Gift.  Returns the album slot (0 to 11).
+     * -1: not a card (the size, the gift type, a card id past 2047), or no
+     * game loaded.  -2: the save received a card of this id before, or the
+     * album holds one: nothing changes.  -3: the album is full. */
+    s32 (*mystery_card_add)(const void *pgf, u32 size);
 } BwModState;
 
 /* Version 6: the type chart, as the battle keeps it: 17 rows of 17, the

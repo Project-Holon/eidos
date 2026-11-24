@@ -1,0 +1,145 @@
+{
+  "status": "open",
+  "api": 7,
+  "import_module": "eidos",
+  "imports": [
+    {
+      "name": "log",
+      "ret": "void",
+      "params": [
+        "const char *text",
+        "uint32_t len"
+      ],
+      "doc": "a line in the mod log"
+    },
+    {
+      "name": "on",
+      "ret": "int32_t",
+      "params": [
+        "uint32_t kind",
+        "uint32_t handler_index"
+      ],
+      "doc": "bind a handler to an event; 0 or non-zero"
+    },
+    {
+      "name": "script",
+      "ret": "int32_t",
+      "params": [
+        "uint32_t vm",
+        "uint32_t opcode",
+        "uint32_t handler_index"
+      ],
+      "doc": "bind a handler to a script command (EIDOS_SCRIPT_VM_*)"
+    },
+    {
+      "name": "override",
+      "ret": "int32_t",
+      "params": [
+        "uint32_t region",
+        "uint32_t addr",
+        "uint32_t handler_index"
+      ],
+      "doc": "install a hook on a function of hooks.json"
+    },
+    {
+      "name": "original",
+      "ret": "int64_t",
+      "params": [
+        "const uint32_t *args",
+        "uint32_t nargs"
+      ],
+      "doc": "inside a hook: call the next link with these arguments"
+    },
+    {
+      "name": "rd8",
+      "ret": "uint32_t",
+      "params": [
+        "uint32_t ds_addr"
+      ],
+      "doc": "read game memory"
+    },
+    {
+      "name": "rd16",
+      "ret": "uint32_t",
+      "params": [
+        "uint32_t ds_addr"
+      ],
+      "doc": "read game memory"
+    },
+    {
+      "name": "rd32",
+      "ret": "uint32_t",
+      "params": [
+        "uint32_t ds_addr"
+      ],
+      "doc": "read game memory"
+    },
+    {
+      "name": "wr8",
+      "ret": "void",
+      "params": [
+        "uint32_t ds_addr",
+        "uint32_t value"
+      ],
+      "doc": "write game memory"
+    },
+    {
+      "name": "wr16",
+      "ret": "void",
+      "params": [
+        "uint32_t ds_addr",
+        "uint32_t value"
+      ],
+      "doc": "write game memory"
+    },
+    {
+      "name": "wr32",
+      "ret": "void",
+      "params": [
+        "uint32_t ds_addr",
+        "uint32_t value"
+      ],
+      "doc": "write game memory"
+    },
+    {
+      "name": "read",
+      "ret": "int32_t",
+      "params": [
+        "uint32_t ds_addr",
+        "void *dst",
+        "uint32_t len"
+      ],
+      "doc": "copy game memory into the mod; 0, or non-zero out of bounds"
+    },
+    {
+      "name": "write",
+      "ret": "int32_t",
+      "params": [
+        "uint32_t ds_addr",
+        "const void *src",
+        "uint32_t len"
+      ],
+      "doc": "copy mod memory into the game; 0, or non-zero out of bounds"
+    }
+  ],
+  "exports": [
+    {
+      "name": "eidos_mod_start",
+      "ret": "int32_t",
+      "doc": "0 when the mod started"
+    },
+    {
+      "name": "eidos_mod_stop",
+      "ret": "void",
+      "doc": ""
+    },
+    {
+      "name": "memory",
+      "doc": "the linear memory"
+    },
+    {
+      "name": "__indirect_function_table",
+      "doc": "the function table the handler indices point into"
+    }
+  ]
+}

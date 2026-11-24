@@ -58,6 +58,7 @@ rule <name> on <event>
 | `give <item> <count>` | put `count` of `item` in the bag, all or nothing (version 4) |
 | `box <mon> <n>` | move a party Pokemon (or party position) to box `n` (0 first); applied at the next field step (version 4) |
 | `withdraw <box> <slot>` | move the Pokemon at (`box`, `slot`) to the party; applied at the next field step (version 4) |
+| `gift "<file>"` | put the Wonder Card of `<file>` in the Mystery Gift album, once per save (version 7, below) |
 
 ### Targets
 
@@ -233,6 +234,7 @@ names:
 | `play_seconds` | the play time in seconds (version 4) | read |
 | `battle_style` | the battle style option: shift or set | read |
 | `in_battle` | whether a battle is in progress | read |
+| `national_dex` | whether the Pokedex has its National mode; a rule can write 1 only (version 7) | read, write |
 
 `m` is a Pokemon reference, usually `event.mon`, or a party position (0 to
 5); `s` a species; `i` an item; `v` a move; `t` a type; `z` a zone. A name not
@@ -240,6 +242,35 @@ in the table is a load error.
 
 `battle_style` is read-only: the battle reads it once when it starts, so a
 write would not reach the battle in progress.
+
+`national_dex` takes the value 1 only: the game has a call that turns the
+National mode on and none that turns it off. A write of another value
+fails, as a write the port cannot make does.
+
+### The `gift` action (version 7)
+
+```
+language 1
+rule liberty_pass on save.load
+    when setting.liberty_pass == 1
+    do gift "cards/liberty_pass.pgf"
+```
+
+- The file is a Wonder Card as the game stores it: a `.pgf` file of 204
+  bytes. Its name is in quotes and is relative to the mod's folder (to the
+  rule file's folder for a rule bound with no mod folder). It cannot leave
+  that folder.
+- The port reads the file when the rule loads. A file that is missing, or
+  that is not a card (the size, the gift type, a card id past 2047), is a
+  load error.
+- The action does what `mystery_card_add` does (`docs/mod-services.md`,
+  "Version 7"): the card goes in the album dated today, and the delivery man
+  in a Pokemon Centre hands its gift over. It is once per save: when the
+  save received a card of that id before, or the album holds one, nothing
+  changes and the action does not fail. So a rule can run it at every
+  `save.load` and `game.new`.
+- The action fails (a report, once) when the album is full or no game is
+  loaded.
 
 ## 4. Execution
 

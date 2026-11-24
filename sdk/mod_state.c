@@ -86,6 +86,7 @@
 #include "mod_api.h"
 #include "mod_state.h"
 #include "mod_v6.h"
+#include "mod_v7.h"
 #include "bw_limits.h"
 #include "mod_context.h"
 #include "overlay.h"
@@ -2140,7 +2141,12 @@ const BwModState bw_mod_state = {
     bw_mod_v6_work_get,
     bw_mod_v6_work_set,
     bw_mod_v6_badge_set,
-    bw_mod_v6_game_code
+    bw_mod_v6_game_code,
+
+    /* version 7 (sdk/mod_v7.c) */
+    bw_mod_v7_national_dex,
+    bw_mod_v7_national_dex_set,
+    bw_mod_v7_mystery_card_add
 };
 
 int bw_mod_state_party_slot(const void *mon)

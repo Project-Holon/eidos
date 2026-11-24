@@ -868,7 +868,7 @@ int (*game_code)(char *out, u32 size);
   loaded. The script's own works (0x8000 to 0x80FF) only while a field
   script runs a command, so from a `flag.set` handler (the flag is set by a
   command of the script) or a script command handler; else -1. Rules read
-  and write them as `state.work[id]`.
+  and write them as `work[id]`.
 - `badge_set` gives a badge (0 to 7) through the game's own call, so
   `badge.get` fires as for a badge won in a gym.
 - `game_code` copies the cartridge's 4-letter game code (`IRBO` English
@@ -1012,6 +1012,53 @@ int (*townmap_marker_clear)(u32 id);
 - The Town Map markers are kept by the port (32, by id) for the drawing
   sides to read (`bw_mod_townmap_marker_at`). Drawing them on the game's
   Town Map (ov072) and on the one-screen Town Map is still to be built.
+
+## Version 7: the National Pokedex and Wonder Cards
+
+Three calls at the end of the state table. Nothing moved, so version 3 to
+6 mods load as before. Both are for content mods that give the player
+something the cartridge gave by an event or late in the story.
+
+```c
+s32 (*national_dex)(void);
+int (*national_dex_set)(void);
+s32 (*mystery_card_add)(const void *pgf, u32 size);
+```
+
+- `national_dex` answers 1 when the Pokedex has its National mode, 0 when
+  not, and a negative number with no game loaded.
+- `national_dex_set` turns the mode on through the game's own call
+  (`ZUKAN_SAVE_EnableNationalDex`, all that the game's script command
+  does). The game has no call that turns it off, so the port has none. 0,
+  or -1 with no game loaded. Rules read and write `national_dex`; a rule
+  can write 1 only.
+- `mystery_card_add` puts a Wonder Card in the Mystery Gift album. `pgf` is
+  the card as the game stores it, the 204 bytes of a `.pgf` file. The port
+  does what the game's Mystery Gift screen does when it receives a card:
+  it dates the card today, puts it in the first free album slot
+  (`MYSTERY_DATA_AddCard`) and sets the save's flag of the card's id
+  (`MYSTERY_DATA_SetEventFlag`). The delivery man in a Pokemon Centre then
+  hands the gift over, as for any card. The card's "gift handed over" bit
+  is cleared first, so a card file taken out of a save works.
+- The call is once per save, so a mod can make it each time a game loads
+  (`save.load`, `game.new`). It answers:
+
+  | Answer | Meaning |
+  |---|---|
+  | 0 to 11 | the album slot the card went to |
+  | -1 | not a card (the size is not 204, the gift type is not 1 to 3, the card id is past 2047), or no game is loaded |
+  | -2 | the save received a card of this id before (its flag is set), or the album holds one; nothing changes |
+  | -3 | the album is full (12 cards) |
+
+- The game itself refuses a second card only when the card says "once".
+  The port's call is stricter on purpose: a card the player deleted from
+  the album after its gift does not come back at the next load.
+- The save is not written by the call. The card is in the save the next
+  time the player saves.
+- Rule mods use the `gift` action (`docs/mod-rules-language.md`): it names
+  a card file of the mod.
+
+Code: `sdk/mod_v7.c`.
 
 ## Related documents
 

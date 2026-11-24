@@ -657,8 +657,9 @@ def generate():
     rule_docs = read_rule_field_docs()
     for f in rules['state_fields']:
         doc = rule_docs.get(f['name'], '')
-        f['since'] = 4 if doc.endswith('(version 4)') else 3
-        f['doc'] = to_wasm_names(re.sub(r'\s*\(version 4\)$', '', doc))
+        sm = re.search(r'\s*\(version (\d+)\)$', doc)
+        f['since'] = int(sm.group(1)) if sm else 3
+        f['doc'] = to_wasm_names(doc[:sm.start()] if sm else doc)
     rules_out = dict(rules)
     rules_out['events'] = [e['name'] for e in events]
 
@@ -717,7 +718,7 @@ def generate():
     def js(obj):
         # Version 4 is frozen: its surface does not change any more.  The
         # newest version is open until it is frozen in turn.
-        obj = dict({'status': 'frozen' if api <= 5 else 'open'}, **obj)
+        obj = dict({'status': 'frozen' if api <= 6 else 'open'}, **obj)
         return json.dumps(obj, indent=2) + '\n'
 
     d = 'sdk/api/v%d' % api

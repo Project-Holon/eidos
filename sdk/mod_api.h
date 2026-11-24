@@ -52,8 +52,12 @@ extern "C" {
  * input, a mod's own files, the metaxy world sessions and the Archipelago
  * link, and other players in the field; and the events script.done to
  * ap.  Nothing moved, so version 3 to 5 mods still load.
+ *
+ * Version 7 appended the state table's national_dex, national_dex_set
+ * and mystery_card_add (the Pokedex's National mode, a Wonder Card from
+ * a mod).  Nothing moved, so version 3 to 6 mods still load.
  */
-#define BW_MOD_API_VERSION 6
+#define BW_MOD_API_VERSION 7
 /* The oldest interface a mod may state: version 3 mods see the same table
  * without the entries version 4 appended. */
 #define BW_MOD_API_MIN 3
@@ -70,7 +74,7 @@ extern "C" {
  * and the hash follows it; the test carries the other width's number, so a
  * change fails on every width the port is built at.
  */
-#define BW_MOD_API_HASH 0xF8F177B7u
+#define BW_MOD_API_HASH 0x75B3AE08u
 
 /* ------------------------------------------------------------------ */
 /* The event header                                                    */

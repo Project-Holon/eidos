@@ -47,9 +47,11 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "mod_api.h"
 #include "mod_state.h"
+#include "mod_v7.h"
 #include "port_test.h"
 
 /*
@@ -279,8 +281,11 @@ int main(void)
     BW_CHECK_EQ("version 6's works, badge and game code follow",
                 (long)offsetof(BwModState, game_code)
                 - (long)offsetof(BwModState, whiteout), 4 * (long)sizeof(void *));
+    BW_CHECK_EQ("version 7's National Pokedex and Wonder Card follow",
+                (long)offsetof(BwModState, mystery_card_add)
+                - (long)offsetof(BwModState, game_code), 3 * (long)sizeof(void *));
     BW_CHECK_EQ("and nothing follows it",
-                (long)sizeof(BwModState) - (long)offsetof(BwModState, game_code),
+                (long)sizeof(BwModState) - (long)offsetof(BwModState, mystery_card_add),
                 (long)sizeof(void *));
 
     printf("the services table\n");
@@ -457,6 +462,39 @@ int main(void)
     /* A call with no place to answer into fails too. */
     BW_CHECK_EQ("a party reference with no room fails",
                 (long)(t->party_ref(0, NULL) != 0), 1);
+
+    printf("version 7 with no game bound\n");
+    {
+        u8 card[BW_MYSTERY_CARD_SIZE];
+
+        BW_CHECK_EQ("the National mode has no answer", (long)(t->national_dex() < 0), 1);
+        BW_CHECK_EQ("and cannot be turned on", (long)t->national_dex_set(), -1);
+        memset(card, 0, sizeof card);
+        card[BW_MYSTERY_CARD_TYPE] = 1;
+        card[BW_MYSTERY_CARD_ID] = 0x34;
+        card[BW_MYSTERY_CARD_ID + 1] = 0x02;
+        BW_CHECK_EQ("a card of 204 bytes, type 1, id 0x234 has a card's shape",
+                    (long)bw_mod_v7_mystery_card_ok(card, sizeof card), 1);
+        BW_CHECK_EQ("no game: the card is not added",
+                    (long)t->mystery_card_add(card, sizeof card), (long)BW_MYSTERY_ADD_INVALID);
+        BW_CHECK_EQ("a shorter block is not a card",
+                    (long)bw_mod_v7_mystery_card_ok(card, sizeof card - 1u), 0);
+        BW_CHECK_EQ("no block is not a card", (long)bw_mod_v7_mystery_card_ok(NULL, sizeof card), 0);
+        card[BW_MYSTERY_CARD_TYPE] = 0;
+        BW_CHECK_EQ("gift type 0 is not a card",
+                    (long)bw_mod_v7_mystery_card_ok(card, sizeof card), 0);
+        card[BW_MYSTERY_CARD_TYPE] = 4;
+        BW_CHECK_EQ("gift type 4 is not a card",
+                    (long)bw_mod_v7_mystery_card_ok(card, sizeof card), 0);
+        card[BW_MYSTERY_CARD_TYPE] = 3;
+        card[BW_MYSTERY_CARD_ID + 1] = 0x08;
+        BW_CHECK_EQ("an id past the save's flags (0x834) is not taken",
+                    (long)bw_mod_v7_mystery_card_ok(card, sizeof card), 0);
+        card[BW_MYSTERY_CARD_ID] = 0xFF;
+        card[BW_MYSTERY_CARD_ID + 1] = 0x07;
+        BW_CHECK_EQ("the last id (0x7FF) is",
+                    (long)bw_mod_v7_mystery_card_ok(card, sizeof card), 1);
+    }
 
     BW_REPORT("test_mod_state");
 }

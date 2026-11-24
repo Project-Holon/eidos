@@ -1,0 +1,35 @@
+{
+  "status": "open",
+  "api": 7,
+  "line": "option <key> <kind> \"<label>\" <value> [?key=value] [@mode,mode]",
+  "extra_lines": [
+    "heading \"<text>\"",
+    "help <key> \"<text>\"",
+    "yaml <key> <name> [<value>|<value>|...]"
+  ],
+  "kinds": [
+    {
+      "kind": "bool",
+      "value": "on | off",
+      "setting_get": "1 or 0"
+    },
+    {
+      "kind": "choice",
+      "value": "name|name|...",
+      "setting_get": "the chosen index; the first is the default"
+    },
+    {
+      "kind": "int",
+      "value": "<min> <max> <default>",
+      "setting_get": "the number"
+    },
+    {
+      "kind": "text",
+      "value": "<longest> \"<default>\"",
+      "setting_text": "the text (version 6)"
+    }
+  ],
+  "mode_line": "mode <id> \"<title>\" \"<line>\" [off] [joins] [in=<mode>] [export \"<game>\"]",
+  "mode_get": "the chosen mode's id during game.new, \"\" for a plain new game (version 6)",
+  "mode_code": "the world code typed in the Join box during game.new, \"\" for a new world (version 6)"
+}

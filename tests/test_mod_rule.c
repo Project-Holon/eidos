@@ -27,6 +27,7 @@
 #include "mod_api.h"
 #include "mod_rule.h"
 #include "mod_table.h"
+#include "mod_v7.h"
 #include "port_test.h"
 
 #ifdef _WIN32
@@ -106,6 +107,21 @@ static int write_budget_rule(const char *dir, const char *name)
         return -1;
     }
     return write_rule(dir, name, text);
+}
+
+/* Writes a block of bytes.  Returns 0, or -1. */
+static int write_bytes(const char *path, const u8 *data, u32 size)
+{
+    FILE *fp = fopen(path, "wb");
+
+    if (fp == NULL) {
+        return -1;
+    }
+    if (fwrite(data, 1u, size, fp) != size) {
+        fclose(fp);
+        return -1;
+    }
+    return fclose(fp) == 0 ? 0 : -1;
 }
 
 /* Takes the rule files away. */
@@ -346,6 +362,112 @@ int main(void)
     BW_CHECK_EQ("the rule does not refuse",
                 bw_mod_rule_run(kind, (BwEvent *)&payload), 0);
     BW_CHECK_EQ("and its action did not run", (long)payload.level, 2);
+
+    printf("version 7: the gift action\n");
+    {
+        u8 card[BW_MYSTERY_CARD_SIZE];
+
+        memset(card, 0, sizeof card);
+        card[BW_MYSTERY_CARD_TYPE] = 1;
+        card[BW_MYSTERY_CARD_ID] = 7;
+        BW_MKDIR(T_MOD_DIR "/rules");
+        BW_REQUIRE("the card is written beside the rule",
+                   write_bytes(T_DIR "/card.pgf", card, sizeof card) == 0);
+        BW_REQUIRE("and in the mod's folder",
+                   write_bytes(T_MOD_DIR "/modcard.pgf", card, sizeof card) == 0);
+        BW_REQUIRE("a file that is not a card is written",
+                   write_bytes(T_DIR "/short.pgf", card, 10) == 0);
+        BW_REQUIRE("the rules are written",
+                   write_rule(T_DIR, "gift.rule",
+                       "language 1\n"
+                       "rule card on encounter.wild\n"
+                       "    do gift \"card.pgf\"\n"
+                       "    do set event.level 9\n") == 0 &&
+                   write_rule(T_DIR, "gift_missing.rule",
+                       "language 1\n"
+                       "rule card on encounter.wild\n"
+                       "    do gift \"nothing.pgf\"\n") == 0 &&
+                   write_rule(T_DIR, "gift_short.rule",
+                       "language 1\n"
+                       "rule card on encounter.wild\n"
+                       "    do gift \"short.pgf\"\n") == 0 &&
+                   write_rule(T_DIR, "gift_outside.rule",
+                       "language 1\n"
+                       "rule card on encounter.wild\n"
+                       "    do gift \"../" T_DIR "/card.pgf\"\n") == 0 &&
+                   write_rule(T_DIR, "gift_number.rule",
+                       "language 1\n"
+                       "rule card on encounter.wild\n"
+                       "    do gift 5\n") == 0 &&
+                   write_rule(T_DIR, "gift_more.rule",
+                       "language 1\n"
+                       "rule card on encounter.wild\n"
+                       "    do gift \"card.pgf\" 1\n") == 0 &&
+                   write_rule(T_MOD_DIR "/rules", "gift.rule",
+                       "language 1\n"
+                       "rule card on encounter.wild\n"
+                       "    do gift \"modcard.pgf\"\n") == 0);
+        bw_mod_rule_reset();
+        BW_REQUIRE("a rule with a card beside it binds",
+                   bw_mod_rule_bind(kind, T_DIR "/gift.rule", T_NS, T_LABEL) == 0);
+        /* No game is loaded here, so the action fails: the rule stops
+         * for this firing and does not refuse. */
+        payload = make_payload(2);
+        BW_CHECK_EQ("the rule does not refuse",
+                    bw_mod_rule_run(kind, (BwEvent *)&payload), 0);
+        BW_CHECK_EQ("the action after the failed one did not run", (long)payload.level, 2);
+        BW_CHECK_EQ("a card file that is not there: the rule is refused",
+                    bw_mod_rule_bind(kind, T_DIR "/gift_missing.rule", T_NS, T_LABEL), -1);
+        BW_CHECK_EQ("a file that is not a card: refused",
+                    bw_mod_rule_bind(kind, T_DIR "/gift_short.rule", T_NS, T_LABEL), -1);
+        BW_CHECK_EQ("a file outside the folder: refused",
+                    bw_mod_rule_bind(kind, T_DIR "/gift_outside.rule", T_NS, T_LABEL), -1);
+        BW_CHECK_EQ("a number in place of the file's name: refused",
+                    bw_mod_rule_bind(kind, T_DIR "/gift_number.rule", T_NS, T_LABEL), -1);
+        BW_CHECK_EQ("something after the file's name: refused",
+                    bw_mod_rule_bind(kind, T_DIR "/gift_more.rule", T_NS, T_LABEL), -1);
+        /* From a manifest the card's name is relative to the mod's
+         * folder, not to the rule file's. */
+        bw_mod_rule_reset();
+        BW_CHECK_EQ("the manifest's rule finds the card in the mod's folder",
+                    bw_mod_rule_bind_manifest(T_MOD_DIR, "the-mod", "encounter.wild",
+                                              "rules/gift.rule", T_NS, T_LABEL), 0);
+        BW_CHECK_EQ("bound alone, the same rule looks beside itself and is refused",
+                    bw_mod_rule_bind(kind, T_MOD_DIR "/rules/gift.rule", T_NS, T_LABEL), -1);
+        remove(T_DIR "/card.pgf");
+        remove(T_DIR "/short.pgf");
+        remove(T_DIR "/gift.rule");
+        remove(T_DIR "/gift_missing.rule");
+        remove(T_DIR "/gift_short.rule");
+        remove(T_DIR "/gift_outside.rule");
+        remove(T_DIR "/gift_number.rule");
+        remove(T_DIR "/gift_more.rule");
+        remove(T_MOD_DIR "/rules/gift.rule");
+        remove(T_MOD_DIR "/modcard.pgf");
+        BW_RMDIR(T_MOD_DIR "/rules");
+    }
+
+    printf("version 7: the National Pokedex field\n");
+    BW_REQUIRE("the rules are written",
+               write_rule(T_DIR, "natdex.rule",
+                   "language 1\n"
+                   "rule natdex on encounter.wild\n"
+                   "    when national_dex == 0\n"
+                   "    do set national_dex 1\n") == 0 &&
+               write_rule(T_DIR, "natdex_sub.rule",
+                   "language 1\n"
+                   "rule natdex on encounter.wild\n"
+                   "    do set national_dex[1] 1\n") == 0);
+    bw_mod_rule_reset();
+    BW_REQUIRE("a rule that reads and writes national_dex binds",
+               bw_mod_rule_bind(kind, T_DIR "/natdex.rule", T_NS, T_LABEL) == 0);
+    payload = make_payload(2);
+    BW_CHECK_EQ("with no game the read fails and the rule does not refuse",
+                bw_mod_rule_run(kind, (BwEvent *)&payload), 0);
+    BW_CHECK_EQ("the field takes no subscript",
+                bw_mod_rule_bind(kind, T_DIR "/natdex_sub.rule", T_NS, T_LABEL), -1);
+    remove(T_DIR "/natdex.rule");
+    remove(T_DIR "/natdex_sub.rule");
 
     printf("the reset\n");
     bw_mod_rule_reset();

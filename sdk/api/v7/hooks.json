@@ -1,0 +1,3216 @@
+{
+  "status": "open",
+  "api": 7,
+  "hooks": [
+    {
+      "address": "0x02007150",
+      "name": "SAVE_CONTROL_StartSave",
+      "region": "arm9",
+      "events": [
+        "save.begin"
+      ],
+      "prototype": "int SAVE_CONTROL_StartSave(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "SAVE_CONTROL_StartSave",
+      "aliases": []
+    },
+    {
+      "address": "0x02007168",
+      "name": "SAVE_CONTROL_MainSave",
+      "region": "arm9",
+      "events": [
+        "save.done"
+      ],
+      "prototype": "unsigned int SAVE_CONTROL_MainSave(void *)",
+      "signature": "unsigned int (void *)",
+      "aletheia_name": "SAVE_CONTROL_MainSave",
+      "aliases": []
+    },
+    {
+      "address": "0x020071CC",
+      "name": "SAVE_CONTROL_GetBlock",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void * SAVE_CONTROL_GetBlock(void *, unsigned int)",
+      "signature": "void * (void *, unsigned int)",
+      "aletheia_name": "SAVE_CONTROL_GetBlock",
+      "aliases": []
+    },
+    {
+      "address": "0x020074D8",
+      "name": "BOX_SAVEDATA_AddPokemon",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int BOX_SAVEDATA_AddPokemon(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BOX_SAVEDATA_AddPokemon",
+      "aliases": []
+    },
+    {
+      "address": "0x02007E50",
+      "name": "MYITEM_SAVEDATA_AddItem",
+      "region": "arm9",
+      "events": [
+        "item.add"
+      ],
+      "prototype": "unsigned int MYITEM_SAVEDATA_AddItem(void *, unsigned short, unsigned short, unsigned short)",
+      "signature": "unsigned int (void *, unsigned short, unsigned short, unsigned short)",
+      "aletheia_name": "MYITEM_SAVEDATA_AddItem",
+      "aliases": []
+    },
+    {
+      "address": "0x02008A7C",
+      "name": "TRCARD_SIGN_SetBadgeDate",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void TRCARD_SIGN_SetBadgeDate(void *, unsigned int, unsigned int, unsigned int, unsigned int)",
+      "signature": "void (void *, unsigned int, unsigned int, unsigned int, unsigned int)",
+      "aletheia_name": "TRCARD_SIGN_SetBadgeDate",
+      "aliases": []
+    },
+    {
+      "address": "0x0200C248",
+      "name": "BEACON_SetFlag",
+      "region": "arm9",
+      "events": [
+        "badge.get"
+      ],
+      "prototype": "void MISC_SetBadge(void *, unsigned int)",
+      "signature": "void (void *, unsigned int)",
+      "aletheia_name": "MISC_SetBadge",
+      "aliases": [
+        "MISC_SetBadge"
+      ]
+    },
+    {
+      "address": "0x0200C278",
+      "name": "BEACON_AddPoints",
+      "region": "arm9",
+      "events": [
+        "money.change"
+      ],
+      "prototype": "unsigned int MISC_AddMoney(void *, unsigned int)",
+      "signature": "unsigned int (void *, unsigned int)",
+      "aletheia_name": "MISC_AddMoney",
+      "aliases": [
+        "MISC_AddMoney"
+      ]
+    },
+    {
+      "address": "0x0200C29C",
+      "name": "BEACON_SubPoints",
+      "region": "arm9",
+      "events": [
+        "money.change"
+      ],
+      "prototype": "unsigned int MISC_SubMoney(void *, unsigned int)",
+      "signature": "unsigned int (void *, unsigned int)",
+      "aletheia_name": "MISC_SubMoney",
+      "aliases": [
+        "MISC_SubMoney"
+      ]
+    },
+    {
+      "address": "0x0200CDE0",
+      "name": "ZUKAN_SAVE_RegisterCaught",
+      "region": "arm9",
+      "events": [
+        "dex.register"
+      ],
+      "prototype": "void ZUKAN_SAVE_RegisterCaught(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "ZUKAN_SAVE_RegisterCaught",
+      "aliases": []
+    },
+    {
+      "address": "0x0200CFA0",
+      "name": "ZUKAN_SAVE_RegisterSeen",
+      "region": "arm9",
+      "events": [
+        "dex.register"
+      ],
+      "prototype": "void ZUKAN_SAVE_RegisterSeen(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "ZUKAN_SAVE_RegisterSeen",
+      "aliases": []
+    },
+    {
+      "address": "0x0201104C",
+      "name": "GPOWER_UseHpRestore",
+      "region": "arm9",
+      "events": [
+        "heal",
+        "mon.revive",
+        "heal.hp",
+        "mon.cure"
+      ],
+      "prototype": "unsigned int GPOWER_UseHpRestore(void *)",
+      "signature": "unsigned int (void *)",
+      "aletheia_name": "GPOWER_UseHpRestore",
+      "aliases": []
+    },
+    {
+      "address": "0x02012BF8",
+      "name": "GAME_DATA_ContainsRecentId",
+      "region": "arm9",
+      "events": [],
+      "prototype": "unsigned int GAME_DATA_ContainsRecentId(void *, unsigned int)",
+      "signature": "unsigned int (void *, unsigned int)",
+      "aletheia_name": "GAME_DATA_ContainsRecentId",
+      "aliases": []
+    },
+    {
+      "address": "0x02012C18",
+      "name": "GAME_DATA_LoadFromSave",
+      "region": "arm9",
+      "events": [
+        "save.load"
+      ],
+      "prototype": "void GAME_DATA_LoadFromSave(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "GAME_DATA_LoadFromSave",
+      "aliases": []
+    },
+    {
+      "address": "0x02012F08",
+      "name": "GAME_DATA_GetMiscSave",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void * GAME_DATA_GetMiscSave(void *)",
+      "signature": "void * (void *)",
+      "aletheia_name": "GAME_DATA_GetMiscSave",
+      "aliases": []
+    },
+    {
+      "address": "0x02013090",
+      "name": "BTL_SETUP_Create",
+      "region": "arm9",
+      "events": [
+        "battle.start"
+      ],
+      "prototype": "void * BTL_SETUP_Create(unsigned int)",
+      "signature": "void * (unsigned int)",
+      "aletheia_name": "BTL_SETUP_Create",
+      "aliases": []
+    },
+    {
+      "address": "0x0201347C",
+      "name": "BTL_SETUP_SetupWild",
+      "region": "arm9",
+      "events": [
+        "encounter.wild"
+      ],
+      "prototype": "void BTL_SETUP_SetupWild(void *, void *, void *, void *, unsigned int, unsigned short)",
+      "signature": "void (void *, void *, void *, void *, unsigned int, unsigned short)",
+      "aletheia_name": "BTL_SETUP_SetupWild",
+      "aliases": []
+    },
+    {
+      "address": "0x02014314",
+      "name": "ZONEDATA_SetEventFlag",
+      "region": "arm9",
+      "events": [
+        "flag.set"
+      ],
+      "prototype": "void ZONEDATA_SetEventFlag(void *, int)",
+      "signature": "void (void *, int)",
+      "aletheia_name": "ZONEDATA_SetEventFlag",
+      "aliases": []
+    },
+    {
+      "address": "0x02017430",
+      "name": "POKE_TOOL_CreateEx",
+      "region": "arm9",
+      "events": [
+        "mon.create"
+      ],
+      "prototype": "void * POKE_TOOL_CreateEx(unsigned short, unsigned short, unsigned long long, unsigned int, unsigned long long, unsigned short)",
+      "signature": "void * (unsigned short, unsigned short, unsigned long long, unsigned int, unsigned long long, unsigned short)",
+      "aletheia_name": "POKE_TOOL_CreateEx",
+      "aliases": []
+    },
+    {
+      "address": "0x02017988",
+      "name": "POKE_TOOL_ChangeForm",
+      "region": "arm9",
+      "events": [
+        "mon.form"
+      ],
+      "prototype": "unsigned int POKE_TOOL_ChangeForm(void *, unsigned int)",
+      "signature": "unsigned int (void *, unsigned int)",
+      "aletheia_name": "POKE_TOOL_ChangeForm",
+      "aliases": []
+    },
+    {
+      "address": "0x02017ED8",
+      "name": "POKE_TOOL_IsShinyOtIdPersonality",
+      "region": "arm9",
+      "events": [
+        "mon.shiny"
+      ],
+      "prototype": "unsigned int POKE_TOOL_IsShinyOtIdPersonality(unsigned int, unsigned int)",
+      "signature": "unsigned int (unsigned int, unsigned int)",
+      "aletheia_name": "POKE_TOOL_IsShinyOtIdPersonality",
+      "aliases": []
+    },
+    {
+      "address": "0x020180F4",
+      "name": "POKE_TOOL_PushMove",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void POKE_TOOL_PushMove(void *, unsigned short)",
+      "signature": "void (void *, unsigned short)",
+      "aletheia_name": "POKE_TOOL_PushMove",
+      "aliases": []
+    },
+    {
+      "address": "0x02018198",
+      "name": "POKE_TOOL_RecoverAllPP",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void POKE_TOOL_RecoverAllPP(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "POKE_TOOL_RecoverAllPP",
+      "aliases": []
+    },
+    {
+      "address": "0x020181F4",
+      "name": "POKE_TOOL_SetMoveSlot",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void POKE_TOOL_SetMoveSlot(void *, unsigned short, unsigned int)",
+      "signature": "void (void *, unsigned short, unsigned int)",
+      "aletheia_name": "POKE_TOOL_SetMoveSlot",
+      "aliases": []
+    },
+    {
+      "address": "0x02018328",
+      "name": "POKE_TOOL_GetLevelUpMove",
+      "region": "arm9",
+      "events": [
+        "move.learn"
+      ],
+      "prototype": "unsigned short POKE_TOOL_LearnLevelUpMove(void *, void *, unsigned int)",
+      "signature": "unsigned short (void *, void *, unsigned int)",
+      "aletheia_name": "POKE_TOOL_LearnLevelUpMove",
+      "aliases": [
+        "POKE_TOOL_LearnLevelUpMove"
+      ]
+    },
+    {
+      "address": "0x020186C8",
+      "name": "POKE_TOOL_CreatePersonalRnd",
+      "region": "arm9",
+      "events": [
+        "mon.create"
+      ],
+      "prototype": "unsigned int POKE_TOOL_CreatePersonalRnd(unsigned int, int, unsigned short, int, int, int)",
+      "signature": "unsigned int (unsigned int, int, unsigned short, int, int, int)",
+      "aletheia_name": "POKE_TOOL_CreatePersonalRnd",
+      "aliases": []
+    },
+    {
+      "address": "0x0201A98C",
+      "name": "POKEPARTY_Add",
+      "region": "arm9",
+      "events": [],
+      "prototype": "unsigned int POKEPARTY_Add(void *, void *)",
+      "signature": "unsigned int (void *, void *)",
+      "aletheia_name": "POKEPARTY_Add",
+      "aliases": []
+    },
+    {
+      "address": "0x0201AB8C",
+      "name": "POKEPARTY_SwapMembers",
+      "region": "arm9",
+      "events": [
+        "party.swap"
+      ],
+      "prototype": "unsigned int POKEPARTY_SwapMembers(void *, unsigned int, unsigned int, unsigned int)",
+      "signature": "unsigned int (void *, unsigned int, unsigned int, unsigned int)",
+      "aletheia_name": "POKEPARTY_SwapMembers",
+      "aliases": []
+    },
+    {
+      "address": "0x0201B2B0",
+      "name": "SHINKA_CHECK_CheckEvolution",
+      "region": "arm9",
+      "events": [
+        "mon.evolve"
+      ],
+      "prototype": "unsigned int SHINKA_CHECK_CheckEvolution(void *, void *, unsigned int, unsigned int, unsigned char, void *, unsigned short)",
+      "signature": "unsigned int (void *, void *, unsigned int, unsigned int, unsigned char, void *, unsigned short)",
+      "aletheia_name": "SHINKA_CHECK_CheckEvolution",
+      "aliases": []
+    },
+    {
+      "address": "0x0201B970",
+      "name": "POKE_TOOL_RestorePP",
+      "region": "arm9",
+      "events": [
+        "mon.pp"
+      ],
+      "prototype": "unsigned int POKE_TOOL_RestorePP(void *, unsigned int, unsigned int)",
+      "signature": "unsigned int (void *, unsigned int, unsigned int)",
+      "aletheia_name": "POKE_TOOL_RestorePP",
+      "aliases": []
+    },
+    {
+      "address": "0x0201BA34",
+      "name": "POKE_TOOL_HealParty",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void POKE_TOOL_HealParty(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "POKE_TOOL_HealParty",
+      "aliases": []
+    },
+    {
+      "address": "0x020212E4",
+      "name": "FILE_UTIL_IsHmMove",
+      "region": "arm9",
+      "events": [
+        "move.forget"
+      ],
+      "prototype": "unsigned int FILE_UTIL_IsHmMove(unsigned short)",
+      "signature": "unsigned int (unsigned short)",
+      "aletheia_name": "FILE_UTIL_IsHmMove",
+      "aliases": []
+    },
+    {
+      "address": "0x0202627C",
+      "name": "GAME_COMM_Update",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void GAME_COMM_Update(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "GAME_COMM_Update",
+      "aliases": []
+    },
+    {
+      "address": "0x02026388",
+      "name": "GAME_COMM_CallHandler",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void GAME_COMM_CallHandler(void *, unsigned int)",
+      "signature": "void (void *, unsigned int)",
+      "aletheia_name": "GAME_COMM_CallHandler",
+      "aliases": []
+    },
+    {
+      "address": "0x020263B0",
+      "name": "GAME_COMM_CallKindNotify",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void GAME_COMM_CallKindNotify(void *, unsigned int)",
+      "signature": "void (void *, unsigned int)",
+      "aletheia_name": "GAME_COMM_CallKindNotify",
+      "aliases": []
+    },
+    {
+      "address": "0x0202E8CC",
+      "name": "COMM_PLAYER_SUPPORT_SetSeason",
+      "region": "arm9",
+      "events": [
+        "season.change"
+      ],
+      "prototype": "void COMM_PLAYER_SUPPORT_SetSeason(void *, int)",
+      "signature": "void (void *, int)",
+      "aletheia_name": "COMM_PLAYER_SUPPORT_SetSeason",
+      "aliases": []
+    },
+    {
+      "address": "0x02059F6C",
+      "name": "DWC_InitForProduction",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int DWC_InitForProduction(void *, unsigned int, void *, void *)",
+      "signature": "int (void *, unsigned int, void *, void *)",
+      "aletheia_name": "DWC_InitForProduction",
+      "aliases": []
+    },
+    {
+      "address": "0x02059FA8",
+      "name": "DWCi_Init",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int DWCi_Init(int, void *, unsigned int, void *, void *)",
+      "signature": "int (int, void *, unsigned int, void *, void *)",
+      "aletheia_name": "DWCi_Init",
+      "aliases": []
+    },
+    {
+      "address": "0x02078EB0",
+      "name": "FS_LoadOverlayImage",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int FS_LoadOverlayImage(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "FS_LoadOverlayImage",
+      "aliases": []
+    },
+    {
+      "address": "0x0207902C",
+      "name": "FS_StartOverlay",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void FS_StartOverlay(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "FS_StartOverlay",
+      "aliases": []
+    },
+    {
+      "address": "0x0208E010",
+      "name": "WM_Init",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int WM_Init(void *, unsigned short)",
+      "signature": "int (void *, unsigned short)",
+      "aletheia_name": "WM_Init",
+      "aliases": []
+    },
+    {
+      "address": "0x0208E5BC",
+      "name": "WmReceiveFifo",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void WmReceiveFifo(int, unsigned int, int)",
+      "signature": "void (int, unsigned int, int)",
+      "aletheia_name": "WmReceiveFifo",
+      "aliases": []
+    },
+    {
+      "address": "0x0208EB0C",
+      "name": "WM_SetPortCallback",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int WM_SetPortCallback(unsigned short, void *, void *)",
+      "signature": "int (unsigned short, void *, void *)",
+      "aletheia_name": "WM_SetPortCallback",
+      "aliases": []
+    },
+    {
+      "address": "0x0208F224",
+      "name": "WM_Enable",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int WM_Enable(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "WM_Enable",
+      "aliases": []
+    },
+    {
+      "address": "0x0208F84C",
+      "name": "WM_StartConnectEx",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int WM_StartConnectEx(void *, void *, void *, int, unsigned short)",
+      "signature": "int (void *, void *, void *, int, unsigned short)",
+      "aletheia_name": "WM_StartConnectEx",
+      "aliases": []
+    },
+    {
+      "address": "0x0208FC4C",
+      "name": "WM_StartMP",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int WM_StartMP(void *, void *, unsigned short, void *, unsigned short, unsigned short)",
+      "signature": "int (void *, void *, unsigned short, void *, unsigned short, unsigned short)",
+      "aletheia_name": "WM_StartMP",
+      "aliases": []
+    },
+    {
+      "address": "0x0208FCB4",
+      "name": "WM_SetMPDataToPortEx",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int WM_SetMPDataToPortEx(void *, void *, void *, unsigned short, unsigned short, unsigned short, unsigned short)",
+      "signature": "int (void *, void *, void *, unsigned short, unsigned short, unsigned short, unsigned short)",
+      "aletheia_name": "WM_SetMPDataToPortEx",
+      "aliases": []
+    },
+    {
+      "address": "0x0209004C",
+      "name": "WM_StartDataSharing",
+      "region": "arm9",
+      "events": [],
+      "prototype": "int WM_StartDataSharing(void *, unsigned short, unsigned short, unsigned short, int)",
+      "signature": "int (void *, unsigned short, unsigned short, unsigned short, int)",
+      "aletheia_name": "WM_StartDataSharing",
+      "aliases": []
+    },
+    {
+      "address": "0x020908F8",
+      "name": "WmDataSharingReceiveData",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void WmDataSharingReceiveData(void *, unsigned short, void *)",
+      "signature": "void (void *, unsigned short, void *)",
+      "aletheia_name": "WmDataSharingReceiveData",
+      "aliases": []
+    },
+    {
+      "address": "0x020909C8",
+      "name": "WmDataSharingSendDataSet",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void WmDataSharingSendDataSet(void *, int)",
+      "signature": "void (void *, int)",
+      "aletheia_name": "WmDataSharingSendDataSet",
+      "aliases": []
+    },
+    {
+      "address": "0x02090B18",
+      "name": "WM_GetSharedDataAddress",
+      "region": "arm9",
+      "events": [],
+      "prototype": "void * WM_GetSharedDataAddress(void *, void *, unsigned short)",
+      "signature": "void * (void *, void *, unsigned short)",
+      "aletheia_name": "WM_GetSharedDataAddress",
+      "aliases": []
+    },
+    {
+      "address": "0x0215CD24",
+      "name": "SOCL_LinkIsOn",
+      "region": "ov009",
+      "events": [],
+      "prototype": "int SOCL_LinkIsOn(void)",
+      "signature": "int (void)",
+      "aletheia_name": "SOCL_LinkIsOn",
+      "aliases": []
+    },
+    {
+      "address": "0x021666C8",
+      "name": "WCM_GetLinkLevel",
+      "region": "ov009",
+      "events": [],
+      "prototype": "int WCM_GetLinkLevel(void)",
+      "signature": "int (void)",
+      "aletheia_name": "WCM_GetLinkLevel",
+      "aliases": []
+    },
+    {
+      "address": "0x02166710",
+      "name": "WCM_CalcLinkLevel",
+      "region": "ov009",
+      "events": [],
+      "prototype": "int WCM_CalcLinkLevel(unsigned char)",
+      "signature": "int (unsigned char)",
+      "aletheia_name": "WCM_CalcLinkLevel",
+      "aliases": []
+    },
+    {
+      "address": "0x02158A20",
+      "name": "SCRIPT_SYS_RunRecoverScript",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void SCRIPT_SYS_RunRecoverScript(void *, int)",
+      "signature": "void (void *, int)",
+      "aletheia_name": "SCRIPT_SYS_RunRecoverScript",
+      "aliases": []
+    },
+    {
+      "address": "0x02158AD4",
+      "name": "SCRIPT_SYS_RunFieldRecoverScript",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void SCRIPT_SYS_RunFieldRecoverScript(void *, int)",
+      "signature": "void (void *, int)",
+      "aletheia_name": "SCRIPT_SYS_RunFieldRecoverScript",
+      "aliases": []
+    },
+    {
+      "address": "0x02159728",
+      "name": "SCRIPT_WORK_CmdSetEventFlag",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRIPT_WORK_CmdSetEventFlag(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRIPT_WORK_CmdSetEventFlag",
+      "aliases": []
+    },
+    {
+      "address": "0x02159750",
+      "name": "SCRIPT_WORK_CmdResetEventFlag",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRIPT_WORK_CmdResetEventFlag(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRIPT_WORK_CmdResetEventFlag",
+      "aliases": []
+    },
+    {
+      "address": "0x0215AC68",
+      "name": "SCRCMD_WORK_CmdSetMiscFlag",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdSetBadge(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdSetBadge",
+      "aliases": [
+        "SCRCMD_WORK_CmdSetBadge"
+      ]
+    },
+    {
+      "address": "0x0215ADCC",
+      "name": "SCRCMD_WORK_CmdSetSpecialLocation",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdSetSpecialLocation(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdSetSpecialLocation",
+      "aliases": []
+    },
+    {
+      "address": "0x0215AEE8",
+      "name": "SCRCMD_WORK_CmdRegisterZukanSeen",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdRegisterZukanSeen(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdRegisterZukanSeen",
+      "aliases": []
+    },
+    {
+      "address": "0x0215AFE0",
+      "name": "SCRCMD_WORK_CmdEnableNationalDex",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdEnableNationalDex(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdEnableNationalDex",
+      "aliases": []
+    },
+    {
+      "address": "0x0215B014",
+      "name": "SCRCMD_WORK_CmdSetZukanObtained",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdSetZukanObtained(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdSetZukanObtained",
+      "aliases": []
+    },
+    {
+      "address": "0x0215B068",
+      "name": "SCRCMD_WORK_CmdSetFixedEventFlag",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdSetFixedEventFlag(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdSetFixedEventFlag",
+      "aliases": []
+    },
+    {
+      "address": "0x0215B138",
+      "name": "SCRCMD_WORK_CmdSetMiscByte",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdSetMiscByte(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdSetMiscByte",
+      "aliases": []
+    },
+    {
+      "address": "0x0215B328",
+      "name": "SCRCMD_WORK_CmdSetEventFlagOffset",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdSetTrainerDefeatedFlag(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdSetTrainerDefeatedFlag",
+      "aliases": [
+        "SCRCMD_WORK_CmdSetTrainerDefeatedFlag"
+      ]
+    },
+    {
+      "address": "0x0215B350",
+      "name": "SCRCMD_WORK_CmdResetEventFlagOffset",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_WORK_CmdClearTrainerDefeatedFlag(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WORK_CmdClearTrainerDefeatedFlag",
+      "aliases": [
+        "SCRCMD_WORK_CmdClearTrainerDefeatedFlag"
+      ]
+    },
+    {
+      "address": "0x0215B5A8",
+      "name": "SCRCMD_PROC_HealParty",
+      "region": "ov010",
+      "events": [
+        "heal",
+        "mon.revive",
+        "heal.hp",
+        "mon.cure"
+      ],
+      "prototype": "int SCRCMD_PROC_HealParty(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_HealParty",
+      "aliases": []
+    },
+    {
+      "address": "0x0215BB50",
+      "name": "SCRCMD_PROC_AddMonToPartySimple",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_AddMonToPartySimple(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_AddMonToPartySimple",
+      "aliases": []
+    },
+    {
+      "address": "0x0215BBD0",
+      "name": "SCRCMD_PROC_AddMonToPartyDetailed",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_AddMonToPartyDetailed(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_AddMonToPartyDetailed",
+      "aliases": []
+    },
+    {
+      "address": "0x0215BD2C",
+      "name": "SCRCMD_PROC_SetMonMove",
+      "region": "ov010",
+      "events": [
+        "move.learn"
+      ],
+      "prototype": "int SCRCMD_PROC_SetMonMove(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_SetMonMove",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C180",
+      "name": "SCRCMD_PROC_AddMonToBoxSimple",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_AddMonToBoxSimple(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_AddMonToBoxSimple",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C200",
+      "name": "SCRCMD_PROC_AddMonToBoxDetailed",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_AddMonToBoxDetailed(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_AddMonToBoxDetailed",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C2D0",
+      "name": "SCRCMD_PROC_AddEggToParty",
+      "region": "ov010",
+      "events": [
+        "mon.receive"
+      ],
+      "prototype": "int SCRCMD_PROC_AddEggToParty(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_AddEggToParty",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C4C8",
+      "name": "SCRCMD_PROC_AddMonToBox",
+      "region": "ov010",
+      "events": [
+        "mon.receive"
+      ],
+      "prototype": "int SCRCMD_PROC_AddMonToBox(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_AddMonToBox",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C510",
+      "name": "SCRCMD_PROC_AddMonToParty",
+      "region": "ov010",
+      "events": [
+        "mon.receive"
+      ],
+      "prototype": "int SCRCMD_PROC_AddMonToParty(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_AddMonToParty",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C558",
+      "name": "SCRCMD_PROC_AddMiscPoints",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_AddMoney(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_AddMoney",
+      "aliases": [
+        "SCRCMD_PROC_AddMoney"
+      ]
+    },
+    {
+      "address": "0x0215C584",
+      "name": "SCRCMD_PROC_SubMiscPoints",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_SubMoney(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_SubMoney",
+      "aliases": [
+        "SCRCMD_PROC_SubMoney"
+      ]
+    },
+    {
+      "address": "0x0215C63C",
+      "name": "SCRCMD_PROC_StartOverlayProc",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void SCRCMD_PROC_StartOverlayProc(void *, void *, unsigned int, void *, void *, void *, void *)",
+      "signature": "void (void *, void *, unsigned int, void *, void *, void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_StartOverlayProc",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C69C",
+      "name": "SCRCMD_PROC_WaitOverlayProc",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_WaitOverlayProc(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_WaitOverlayProc",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C700",
+      "name": "SCRCMD_PROC_OnBagClosed",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void SCRCMD_PROC_OnBagClosed(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "SCRCMD_PROC_OnBagClosed",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C72C",
+      "name": "SCRCMD_PROC_CallBagScreen",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_CallBagScreen(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_CallBagScreen",
+      "aliases": []
+    },
+    {
+      "address": "0x0215C89C",
+      "name": "SCRCMD_PROC_CallMoveRelearn",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_CallMoveRelearn(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_CallMoveRelearn",
+      "aliases": []
+    },
+    {
+      "address": "0x0215EA6C",
+      "name": "MOVE_POKEMON_CreateCutEvent",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void * MOVE_POKEMON_CreateCutEvent(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "MOVE_POKEMON_CreateCutEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x0215EA94",
+      "name": "MOVE_POKEMON_CutEventMain",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int MOVE_POKEMON_CutEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "MOVE_POKEMON_CutEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x0215EBD0",
+      "name": "MOVE_POKEMON_CreateStrengthEvent",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void * MOVE_POKEMON_CreateStrengthEvent(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "MOVE_POKEMON_CreateStrengthEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x0215EBF8",
+      "name": "MOVE_POKEMON_StrengthEventMain",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int MOVE_POKEMON_StrengthEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "MOVE_POKEMON_StrengthEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x0215EC40",
+      "name": "MOVE_POKEMON_CreateDiveEvent",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void * MOVE_POKEMON_CreateDiveEvent(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "MOVE_POKEMON_CreateDiveEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x0215EC94",
+      "name": "MOVE_POKEMON_CreateFlashEvent",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void * MOVE_POKEMON_CreateFlashEvent(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "MOVE_POKEMON_CreateFlashEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x0215ECBC",
+      "name": "MOVE_POKEMON_FlashEventMain",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int MOVE_POKEMON_FlashEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "MOVE_POKEMON_FlashEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x0215F228",
+      "name": "SCRCMD_NETWORK_CmdStartAutoComm",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_NETWORK_CmdStartAutoComm(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_NETWORK_CmdStartAutoComm",
+      "aliases": []
+    },
+    {
+      "address": "0x0215F238",
+      "name": "SCRCMD_NETWORK_CmdRequestCommExit",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_NETWORK_CmdRequestCommExit(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_NETWORK_CmdRequestCommExit",
+      "aliases": []
+    },
+    {
+      "address": "0x0215F280",
+      "name": "SCRCMD_NETWORK_CmdRestartAutoComm",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_NETWORK_CmdRestartAutoComm(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_NETWORK_CmdRestartAutoComm",
+      "aliases": []
+    },
+    {
+      "address": "0x0215F6E8",
+      "name": "SCRCMD_NETWORK_CreateWhiteOutEvent",
+      "region": "ov010",
+      "events": [
+        "whiteout"
+      ],
+      "prototype": "void * SCRCMD_NETWORK_CreateWhiteOutEvent(void *)",
+      "signature": "void * (void *)",
+      "aletheia_name": "SCRCMD_NETWORK_CreateWhiteOutEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x0215F8A8",
+      "name": "EVENT_GAMECLEAR_Create",
+      "region": "ov010",
+      "events": [
+        "game.cleared"
+      ],
+      "prototype": "void * EVENT_GAMECLEAR_Create(void *, int)",
+      "signature": "void * (void *, int)",
+      "aletheia_name": "EVENT_GAMECLEAR_Create",
+      "aliases": []
+    },
+    {
+      "address": "0x0215FC40",
+      "name": "EVENT_FIELD_MENU_Create",
+      "region": "ov010",
+      "events": [
+        "menu.open"
+      ],
+      "prototype": "void * EVENT_FIELD_MENU_Create(void *, void *, unsigned short)",
+      "signature": "void * (void *, void *, unsigned short)",
+      "aletheia_name": "EVENT_FIELD_MENU_Create",
+      "aliases": []
+    },
+    {
+      "address": "0x0215FCE0",
+      "name": "EVENT_FIELD_MENU_CreateForZone",
+      "region": "ov010",
+      "events": [
+        "menu.open"
+      ],
+      "prototype": "void * EVENT_FIELD_MENU_CreateForZone(void *, void *, unsigned short)",
+      "signature": "void * (void *, void *, unsigned short)",
+      "aletheia_name": "EVENT_FIELD_MENU_CreateForZone",
+      "aliases": []
+    },
+    {
+      "address": "0x02162A54",
+      "name": "EVENTDATA_SYSTEM_SearchBgEventScriptIdTalk",
+      "region": "ov010",
+      "events": [],
+      "prototype": "unsigned short EVENTDATA_SYSTEM_SearchBgEventScriptIdTalk(void *, void *, void *, unsigned short)",
+      "signature": "unsigned short (void *, void *, void *, unsigned short)",
+      "aletheia_name": "EVENTDATA_SYSTEM_SearchBgEventScriptIdTalk",
+      "aliases": []
+    },
+    {
+      "address": "0x021643AC",
+      "name": "FIELD_MAP_CHANGE_ApplyZoneHeader",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void FIELD_MAP_CHANGE_ApplyZoneHeader(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "FIELD_MAP_CHANGE_ApplyZoneHeader",
+      "aliases": []
+    },
+    {
+      "address": "0x021643E8",
+      "name": "FIELD_MAP_CHANGE_SetupZone",
+      "region": "ov010",
+      "events": [
+        "route.change"
+      ],
+      "prototype": "void FIELD_MAP_CHANGE_SetupZone(void *, unsigned int)",
+      "signature": "void (void *, unsigned int)",
+      "aletheia_name": "FIELD_MAP_CHANGE_SetupZone",
+      "aliases": []
+    },
+    {
+      "address": "0x02164480",
+      "name": "FIELD_SKILL_CHECK_FillUseFlags",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void FIELD_SKILL_CHECK_FillUseFlags(void *, void *, void *)",
+      "signature": "void (void *, void *, void *)",
+      "aletheia_name": "FIELD_SKILL_CHECK_FillUseFlags",
+      "aliases": []
+    },
+    {
+      "address": "0x021644C4",
+      "name": "FIELD_SKILL_CHECK_CallHandler",
+      "region": "ov010",
+      "events": [
+        "field.move"
+      ],
+      "prototype": "int FIELD_SKILL_CHECK_CallHandler(int, void *, void *)",
+      "signature": "int (int, void *, void *)",
+      "aletheia_name": "FIELD_SKILL_CHECK_CallHandler",
+      "aliases": []
+    },
+    {
+      "address": "0x02164A2C",
+      "name": "BEACON_VIEW_EVENT_Sequence",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int BEACON_VIEW_EVENT_Sequence(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "BEACON_VIEW_EVENT_Sequence",
+      "aliases": []
+    },
+    {
+      "address": "0x0216B004",
+      "name": "SCRCMD_SYMBOL_ViewEventMain",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_SYMBOL_ViewEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "SCRCMD_SYMBOL_ViewEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x0216B538",
+      "name": "SCRCMD_RESEARCH_CmdRaiseResearchRank",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_RESEARCH_CmdRaiseResearchRank(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_RESEARCH_CmdRaiseResearchRank",
+      "aliases": []
+    },
+    {
+      "address": "0x0216B63C",
+      "name": "SCRCMD_RESEARCH_CmdStartMission",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_RESEARCH_CmdStartMission(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_RESEARCH_CmdStartMission",
+      "aliases": []
+    },
+    {
+      "address": "0x0216B6DC",
+      "name": "SCRCMD_RESEARCH_CmdClearMission",
+      "region": "ov010",
+      "events": [],
+      "prototype": "int SCRCMD_RESEARCH_CmdClearMission(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_RESEARCH_CmdClearMission",
+      "aliases": []
+    },
+    {
+      "address": "0x0216E7C8",
+      "name": "EVENT_BATTLE_CreateScriptedBattle",
+      "region": "ov010",
+      "events": [
+        "encounter.static"
+      ],
+      "prototype": "void * EVENT_BATTLE_CreateScriptedBattle(void *, void *, void *, int, int)",
+      "signature": "void * (void *, void *, void *, int, int)",
+      "aletheia_name": "EVENT_BATTLE_CreateScriptedBattle",
+      "aliases": []
+    },
+    {
+      "address": "0x0216EAB0",
+      "name": "EVENT_BATTLE_CreateEncounterTaskWithMon",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void * EVENT_BATTLE_CreateEncounterTaskWithMon(void *, void *, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+      "signature": "void * (void *, void *, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int, unsigned int)",
+      "aletheia_name": "EVENT_BATTLE_CreateEncounterTaskWithMon",
+      "aliases": []
+    },
+    {
+      "address": "0x0216EE20",
+      "name": "EVENT_BATTLE_DispatchBattleKindNotify",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void EVENT_BATTLE_DispatchBattleKindNotify(unsigned short, int)",
+      "signature": "void (unsigned short, int)",
+      "aletheia_name": "EVENT_BATTLE_DispatchBattleKindNotify",
+      "aliases": []
+    },
+    {
+      "address": "0x0216EE7C",
+      "name": "EVENT_BATTLE_NotifyBattleEnd",
+      "region": "ov010",
+      "events": [
+        "battle.end"
+      ],
+      "prototype": "void EVENT_BATTLE_NotifyBattleEnd(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "EVENT_BATTLE_NotifyBattleEnd",
+      "aliases": []
+    },
+    {
+      "address": "0x0216EF84",
+      "name": "EVENT_BATTLE_SetResultSound",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void EVENT_BATTLE_AddBattleRecord(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "EVENT_BATTLE_AddBattleRecord",
+      "aliases": [
+        "EVENT_BATTLE_AddBattleRecord"
+      ]
+    },
+    {
+      "address": "0x0216EFF0",
+      "name": "EVENT_BATTLE_FinishBattleTask",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void EVENT_BATTLE_FinishBattleTask(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "EVENT_BATTLE_FinishBattleTask",
+      "aliases": []
+    },
+    {
+      "address": "0x0216F948",
+      "name": "WAZA_OSHIE_CreateMoveList",
+      "region": "ov010",
+      "events": [],
+      "prototype": "void * WAZA_OSHIE_CreateMoveList(void *, unsigned int)",
+      "signature": "void * (void *, unsigned int)",
+      "aletheia_name": "WAZA_OSHIE_CreateMoveList",
+      "aliases": []
+    },
+    {
+      "address": "0x0217FB5C",
+      "name": "EVENT_COMM_COMMON_CreateTalkStartEvent",
+      "region": "ov018",
+      "events": [],
+      "prototype": "void * EVENT_COMM_COMMON_CreateTalkStartEvent(void *, void *, void *, void *, int, unsigned short)",
+      "signature": "void * (void *, void *, void *, void *, int, unsigned short)",
+      "aletheia_name": "EVENT_COMM_COMMON_CreateTalkStartEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x0217FC08",
+      "name": "EVENT_COMM_COMMON_CreateTalkEvent",
+      "region": "ov018",
+      "events": [],
+      "prototype": "void * EVENT_COMM_COMMON_CreateTalkEvent(void *, void *, void *, void *, int, unsigned short)",
+      "signature": "void * (void *, void *, void *, void *, int, unsigned short)",
+      "aletheia_name": "EVENT_COMM_COMMON_CreateTalkEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x0217FD34",
+      "name": "EVENT_COMM_COMMON_CreateTalkedEvent",
+      "region": "ov018",
+      "events": [],
+      "prototype": "void * EVENT_COMM_COMMON_CreateTalkedEvent(void *, void *, void *, void *, int, unsigned short)",
+      "signature": "void * (void *, void *, void *, void *, int, unsigned short)",
+      "aletheia_name": "EVENT_COMM_COMMON_CreateTalkedEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x0217FE6C",
+      "name": "EVENT_COMM_COMMON_TalkEventMain",
+      "region": "ov018",
+      "events": [],
+      "prototype": "int EVENT_COMM_COMMON_TalkEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_COMM_COMMON_TalkEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x02180538",
+      "name": "EVENT_COMM_COMMON_MissionResultEventMain",
+      "region": "ov018",
+      "events": [],
+      "prototype": "int EVENT_COMM_COMMON_MissionResultEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_COMM_COMMON_MissionResultEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x02181D8C",
+      "name": "EVENT_COMM_COMMON_CreateSupportMsgEvent",
+      "region": "ov018",
+      "events": [],
+      "prototype": "void * EVENT_COMM_COMMON_CreateSupportMsgEvent(void *, unsigned int)",
+      "signature": "void * (void *, unsigned int)",
+      "aletheia_name": "EVENT_COMM_COMMON_CreateSupportMsgEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x02182150",
+      "name": "EVENT_COMM_COMMON_OfferEventMain",
+      "region": "ov018",
+      "events": [],
+      "prototype": "int EVENT_COMM_COMMON_OfferEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_COMM_COMMON_OfferEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x021823A8",
+      "name": "EVENT_COMM_COMMON_ItemSaleEventMain",
+      "region": "ov018",
+      "events": [],
+      "prototype": "int EVENT_COMM_COMMON_ItemSaleEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_COMM_COMMON_ItemSaleEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x0218261C",
+      "name": "EVENT_COMM_COMMON_ItemPurchaseEventMain",
+      "region": "ov018",
+      "events": [],
+      "prototype": "int EVENT_COMM_COMMON_ItemPurchaseEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_COMM_COMMON_ItemPurchaseEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x02183B6C",
+      "name": "EVENT_MAPCHANGE_CreateByMode",
+      "region": "ov020",
+      "events": [
+        "game.new",
+        "save.load"
+      ],
+      "prototype": "void * EVENT_MAPCHANGE_CreateByMode(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "EVENT_MAPCHANGE_CreateByMode",
+      "aliases": []
+    },
+    {
+      "address": "0x02183C9C",
+      "name": "EVENT_MAPCHANGE_NewGameStartEvent",
+      "region": "ov020",
+      "events": [
+        "game.new"
+      ],
+      "prototype": "int EVENT_MAPCHANGE_NewGameStartEvent(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_MAPCHANGE_NewGameStartEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021841C0",
+      "name": "EVENT_MAPCHANGE_ChangeFieldEvent",
+      "region": "ov020",
+      "events": [
+        "map.warp"
+      ],
+      "prototype": "int EVENT_MAPCHANGE_ChangeFieldEvent(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_MAPCHANGE_ChangeFieldEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x02184C78",
+      "name": "EVENT_MAPCHANGE_RunFixedZoneEvent",
+      "region": "ov020",
+      "events": [],
+      "prototype": "int EVENT_MAPCHANGE_RunFixedZoneEvent(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_MAPCHANGE_RunFixedZoneEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x02185694",
+      "name": "EVENT_MAPCHANGE_RunSituationWarpArrivalEvent",
+      "region": "ov020",
+      "events": [],
+      "prototype": "int EVENT_MAPCHANGE_RunSituationWarpArrivalEvent(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "EVENT_MAPCHANGE_RunSituationWarpArrivalEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x02187098",
+      "name": "FIELD_WFBC_DATA_LOCAL_ScrCmdCallPersonTalkEvent",
+      "region": "ov020",
+      "events": [],
+      "prototype": "int FIELD_WFBC_DATA_LOCAL_ScrCmdCallPersonTalkEvent(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "FIELD_WFBC_DATA_LOCAL_ScrCmdCallPersonTalkEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021870C4",
+      "name": "FIELD_WFBC_DATA_LOCAL_CreatePersonTalkEvent",
+      "region": "ov020",
+      "events": [],
+      "prototype": "void * FIELD_WFBC_DATA_LOCAL_CreatePersonTalkEvent(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "FIELD_WFBC_DATA_LOCAL_CreatePersonTalkEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021871F8",
+      "name": "FIELD_WFBC_DATA_LOCAL_PersonTalkEventMain",
+      "region": "ov020",
+      "events": [],
+      "prototype": "int FIELD_WFBC_DATA_LOCAL_PersonTalkEventMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "FIELD_WFBC_DATA_LOCAL_PersonTalkEventMain",
+      "aliases": []
+    },
+    {
+      "address": "0x02188CE8",
+      "name": "FIELDMAP_GetEncount",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELDMAP_GetEncount(void *)",
+      "signature": "void * (void *)",
+      "aletheia_name": "FIELDMAP_GetEncount",
+      "aliases": []
+    },
+    {
+      "address": "0x021893C0",
+      "name": "FIELDMAP_ChangeZone",
+      "region": "ov021",
+      "events": [
+        "route.change"
+      ],
+      "prototype": "void FIELDMAP_ChangeZone(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "FIELDMAP_ChangeZone",
+      "aliases": []
+    },
+    {
+      "address": "0x021894E0",
+      "name": "FIELDMAP_AddZoneNpcs",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void FIELDMAP_AddZoneNpcs(void *, void *, void *, int)",
+      "signature": "void (void *, void *, void *, int)",
+      "aletheia_name": "FIELDMAP_AddZoneNpcs",
+      "aliases": []
+    },
+    {
+      "address": "0x02189BD0",
+      "name": "FIELD_EVENT_CHECK_CheckGridEvents",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELD_EVENT_CHECK_CheckGridEvents(void *, void *, void *, void *)",
+      "signature": "void * (void *, void *, void *, void *)",
+      "aletheia_name": "FIELD_EVENT_CHECK_CheckGridEvents",
+      "aliases": []
+    },
+    {
+      "address": "0x0218A278",
+      "name": "FIELD_EVENT_CHECK_CheckRailEvents",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELD_EVENT_CHECK_CheckRailEvents(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "FIELD_EVENT_CHECK_CheckRailEvents",
+      "aliases": []
+    },
+    {
+      "address": "0x0218A4BC",
+      "name": "FIELD_EVENT_CHECK_Run",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELD_EVENT_CHECK_Run(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "FIELD_EVENT_CHECK_Run",
+      "aliases": []
+    },
+    {
+      "address": "0x0218A9B0",
+      "name": "FIELD_EVENT_CHECK_CheckStepEvents",
+      "region": "ov021",
+      "events": [
+        "player.step"
+      ],
+      "prototype": "void * FIELD_EVENT_CHECK_CheckStepEvents(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "FIELD_EVENT_CHECK_CheckStepEvents",
+      "aliases": []
+    },
+    {
+      "address": "0x0218B32C",
+      "name": "FIELD_EVENT_CHECK_LedgeJumpTaskMain",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int FIELD_EVENT_CHECK_LedgeJumpTaskMain(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "FIELD_EVENT_CHECK_LedgeJumpTaskMain",
+      "aliases": []
+    },
+    {
+      "address": "0x0218B3DC",
+      "name": "FIELD_EVENT_CHECK_CreateLedgeJumpTask",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELD_EVENT_CHECK_CreateLedgeJumpTask(void *, void *, void *, int, int)",
+      "signature": "void * (void *, void *, void *, int, int)",
+      "aletheia_name": "FIELD_EVENT_CHECK_CreateLedgeJumpTask",
+      "aliases": []
+    },
+    {
+      "address": "0x0218B408",
+      "name": "FIELD_EVENT_CHECK_CheckLedgeJump",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELD_EVENT_CHECK_CheckLedgeJump(void *, void *, void *)",
+      "signature": "void * (void *, void *, void *)",
+      "aletheia_name": "FIELD_EVENT_CHECK_CheckLedgeJump",
+      "aliases": []
+    },
+    {
+      "address": "0x0218B4B0",
+      "name": "FIELD_EVENT_CHECK_SearchGridFrontMmdl",
+      "region": "ov021",
+      "events": [
+        "npc.talk"
+      ],
+      "prototype": "void * FIELD_EVENT_CHECK_SearchGridFrontMmdl(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "FIELD_EVENT_CHECK_SearchGridFrontMmdl",
+      "aliases": []
+    },
+    {
+      "address": "0x0218B53C",
+      "name": "FIELD_EVENT_CHECK_SearchRailFrontMmdl",
+      "region": "ov021",
+      "events": [
+        "npc.talk"
+      ],
+      "prototype": "void * FIELD_EVENT_CHECK_SearchRailFrontMmdl(void *, void *)",
+      "signature": "void * (void *, void *)",
+      "aletheia_name": "FIELD_EVENT_CHECK_SearchRailFrontMmdl",
+      "aliases": []
+    },
+    {
+      "address": "0x021A4ED8",
+      "name": "FIELD_PLAYER_GRID_StartLedgeJumpOnFoot",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void FIELD_PLAYER_GRID_StartLedgeJumpOnFoot(void *, void *, void *)",
+      "signature": "void (void *, void *, void *)",
+      "aletheia_name": "FIELD_PLAYER_GRID_StartLedgeJumpOnFoot",
+      "aliases": []
+    },
+    {
+      "address": "0x021A511C",
+      "name": "FIELD_PLAYER_GRID_StartLedgeJumpOnCycle",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void FIELD_PLAYER_GRID_StartLedgeJumpOnCycle(void *, void *, void *)",
+      "signature": "void (void *, void *, void *)",
+      "aletheia_name": "FIELD_PLAYER_GRID_StartLedgeJumpOnCycle",
+      "aliases": []
+    },
+    {
+      "address": "0x021A5F74",
+      "name": "FIELD_PLAYER_NOGRID_StartWalkLedgeJump",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void FIELD_PLAYER_NOGRID_StartWalkLedgeJump(void *, void *, int, int, unsigned short, int)",
+      "signature": "void (void *, void *, int, int, unsigned short, int)",
+      "aletheia_name": "FIELD_PLAYER_NOGRID_StartWalkLedgeJump",
+      "aliases": []
+    },
+    {
+      "address": "0x021A6338",
+      "name": "FIELD_PLAYER_NOGRID_StartSlowLedgeJump",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void FIELD_PLAYER_NOGRID_StartSlowLedgeJump(void *, void *, int, int, unsigned short, int)",
+      "signature": "void (void *, void *, int, int, unsigned short, int)",
+      "aletheia_name": "FIELD_PLAYER_NOGRID_StartSlowLedgeJump",
+      "aliases": []
+    },
+    {
+      "address": "0x021A836C",
+      "name": "FIELD_MENU_Create",
+      "region": "ov021",
+      "events": [
+        "menu.build"
+      ],
+      "prototype": "void * FIELD_MENU_Create(unsigned short, unsigned short, void *, void *, int)",
+      "signature": "void * (unsigned short, unsigned short, void *, void *, int)",
+      "aletheia_name": "FIELD_MENU_Create",
+      "aliases": []
+    },
+    {
+      "address": "0x021A954C",
+      "name": "FIELD_ENCOUNT_CreateZoneWildMons",
+      "region": "ov021",
+      "events": [
+        "encounter.wild"
+      ],
+      "prototype": "int FIELD_ENCOUNT_CreateZoneWildMons(void *, void *, unsigned short, void *)",
+      "signature": "int (void *, void *, unsigned short, void *)",
+      "aletheia_name": "FIELD_ENCOUNT_CreateZoneWildMons",
+      "aliases": []
+    },
+    {
+      "address": "0x021A957C",
+      "name": "FIELD_ENCOUNT_PickRoamer",
+      "region": "ov021",
+      "events": [
+        "encounter.wild"
+      ],
+      "prototype": "void * FIELD_ENCOUNT_PickRoamer(void *, void *, unsigned int)",
+      "signature": "void * (void *, void *, unsigned int)",
+      "aletheia_name": "FIELD_ENCOUNT_PickRoamer",
+      "aliases": []
+    },
+    {
+      "address": "0x021A9DC8",
+      "name": "FIELD_ENCOUNT_RandPercent",
+      "region": "ov021",
+      "events": [
+        "encounter.slot"
+      ],
+      "prototype": "unsigned int FIELD_ENCOUNT_RandPercent(void)",
+      "signature": "unsigned int (void)",
+      "aletheia_name": "FIELD_ENCOUNT_RandPercent",
+      "aliases": []
+    },
+    {
+      "address": "0x021A9DE0",
+      "name": "FIELD_ENCOUNT_PickGroundSlot",
+      "region": "ov021",
+      "events": [
+        "encounter.slot"
+      ],
+      "prototype": "unsigned int FIELD_ENCOUNT_PickGroundSlot(unsigned char)",
+      "signature": "unsigned int (unsigned char)",
+      "aletheia_name": "FIELD_ENCOUNT_PickGroundSlot",
+      "aliases": []
+    },
+    {
+      "address": "0x021A9E64",
+      "name": "FIELD_ENCOUNT_PickWaterSlot",
+      "region": "ov021",
+      "events": [
+        "encounter.slot"
+      ],
+      "prototype": "unsigned int FIELD_ENCOUNT_PickWaterSlot(unsigned char)",
+      "signature": "unsigned int (unsigned char)",
+      "aletheia_name": "FIELD_ENCOUNT_PickWaterSlot",
+      "aliases": []
+    },
+    {
+      "address": "0x021A9E98",
+      "name": "FIELD_ENCOUNT_PickFishingSlot",
+      "region": "ov021",
+      "events": [
+        "encounter.slot"
+      ],
+      "prototype": "unsigned int FIELD_ENCOUNT_PickFishingSlot(unsigned char)",
+      "signature": "unsigned int (unsigned char)",
+      "aletheia_name": "FIELD_ENCOUNT_PickFishingSlot",
+      "aliases": []
+    },
+    {
+      "address": "0x021A9F40",
+      "name": "FIELD_ENCOUNT_CheckWildEncount",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELD_ENCOUNT_CheckWildEncount(void *, int)",
+      "signature": "void * (void *, int)",
+      "aletheia_name": "FIELD_ENCOUNT_CheckWildEncount",
+      "aliases": []
+    },
+    {
+      "address": "0x021AA548",
+      "name": "FIELD_ENCOUNT_SetupRoamerBattle",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void FIELD_ENCOUNT_SetupRoamerBattle(void *, void *, void *, unsigned short, void *)",
+      "signature": "void (void *, void *, void *, unsigned short, void *)",
+      "aletheia_name": "FIELD_ENCOUNT_SetupRoamerBattle",
+      "aliases": []
+    },
+    {
+      "address": "0x021AA5CC",
+      "name": "FIELD_ENCOUNT_SetupTrainerBattle",
+      "region": "ov021",
+      "events": [
+        "encounter.trainer"
+      ],
+      "prototype": "void FIELD_ENCOUNT_SetupTrainerBattle(void *, void *, unsigned int, unsigned int, unsigned int, unsigned int, unsigned short)",
+      "signature": "void (void *, void *, unsigned int, unsigned int, unsigned int, unsigned int, unsigned short)",
+      "aletheia_name": "FIELD_ENCOUNT_SetupTrainerBattle",
+      "aliases": []
+    },
+    {
+      "address": "0x021AE0CC",
+      "name": "EVENT_TRAINER_EYE_Check",
+      "region": "ov021",
+      "events": [
+        "trainer.spotted"
+      ],
+      "prototype": "void * EVENT_TRAINER_EYE_Check(void *)",
+      "signature": "void * (void *)",
+      "aletheia_name": "EVENT_TRAINER_EYE_Check",
+      "aliases": []
+    },
+    {
+      "address": "0x021AEABC",
+      "name": "SCRCMD_StartTrainerBattle",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_StartTrainerBattle(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_StartTrainerBattle",
+      "aliases": []
+    },
+    {
+      "address": "0x021AEB3C",
+      "name": "SCRCMD_StartMultiTrainerBattle",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_StartMultiTrainerBattle(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_StartMultiTrainerBattle",
+      "aliases": []
+    },
+    {
+      "address": "0x021AED24",
+      "name": "SCRCMD_StartTrainerBattleWithMon",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_StartTrainerBattleWithMon(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_StartTrainerBattleWithMon",
+      "aliases": []
+    },
+    {
+      "address": "0x021AF544",
+      "name": "SCRCMD_AddItem",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_AddItem(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_AddItem",
+      "aliases": []
+    },
+    {
+      "address": "0x021AF594",
+      "name": "SCRCMD_RemoveItem",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_RemoveItem(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_RemoveItem",
+      "aliases": []
+    },
+    {
+      "address": "0x021AFCD8",
+      "name": "SCRCMD_WarpToPosition",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_WarpToPosition(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WarpToPosition",
+      "aliases": []
+    },
+    {
+      "address": "0x021AFD44",
+      "name": "SCRCMD_WarpToPositionPlain",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_WarpToPositionPlain(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WarpToPositionPlain",
+      "aliases": []
+    },
+    {
+      "address": "0x021AFDAC",
+      "name": "SCRCMD_WarpToPositionEvent",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_WarpToPositionEvent(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WarpToPositionEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021AFE64",
+      "name": "SCRCMD_WarpToPositionFixedExit",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_WarpToPositionFixedExit(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WarpToPositionFixedExit",
+      "aliases": []
+    },
+    {
+      "address": "0x021AFECC",
+      "name": "SCRCMD_WarpToFixedZone",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_WarpToFixedZone(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WarpToFixedZone",
+      "aliases": []
+    },
+    {
+      "address": "0x021AFEFC",
+      "name": "SCRCMD_WarpToPosition3D",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_WarpToPosition3D(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WarpToPosition3D",
+      "aliases": []
+    },
+    {
+      "address": "0x021AFF7C",
+      "name": "SCRCMD_WarpToRailLocation",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_WarpToRailLocation(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_WarpToRailLocation",
+      "aliases": []
+    },
+    {
+      "address": "0x021B0130",
+      "name": "SCRCMD_MSGWIN_CmdYesNoWin",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_MSGWIN_CmdYesNoWin(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_MSGWIN_CmdYesNoWin",
+      "aliases": []
+    },
+    {
+      "address": "0x021B04D8",
+      "name": "SCRCMD_MSGWIN_CmdInfoSysWinMsg",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_MSGWIN_CmdInfoSysWinMsg(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_MSGWIN_CmdInfoSysWinMsg",
+      "aliases": []
+    },
+    {
+      "address": "0x021B0ADC",
+      "name": "SCRCMD_MSGWIN_OpenTalkWin",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void SCRCMD_MSGWIN_OpenTalkWin(void *, void *, int, void *, void *, unsigned int, unsigned int)",
+      "signature": "void (void *, void *, int, void *, void *, unsigned int, unsigned int)",
+      "aletheia_name": "SCRCMD_MSGWIN_OpenTalkWin",
+      "aliases": []
+    },
+    {
+      "address": "0x021B10D0",
+      "name": "SCRCMD_MSGWIN_CmdPlainWinMsg",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_MSGWIN_CmdPlainWinMsg(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_MSGWIN_CmdPlainWinMsg",
+      "aliases": []
+    },
+    {
+      "address": "0x021B2FD8",
+      "name": "SCRCMD_SHOP_StartShop",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_SHOP_StartShop(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_SHOP_StartShop",
+      "aliases": []
+    },
+    {
+      "address": "0x021B3370",
+      "name": "SCRCMD_PROC_FLD_PickQuantityOutcome",
+      "region": "ov021",
+      "events": [
+        "shop.buy"
+      ],
+      "prototype": "void SCRCMD_PROC_FLD_PickQuantityOutcome(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "SCRCMD_PROC_FLD_PickQuantityOutcome",
+      "aliases": []
+    },
+    {
+      "address": "0x021B3568",
+      "name": "SCRCMD_PROC_FLD_PayPrice",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void SCRCMD_PROC_FLD_PayPrice(void *, unsigned int)",
+      "signature": "void (void *, unsigned int)",
+      "aletheia_name": "SCRCMD_PROC_FLD_PayPrice",
+      "aliases": []
+    },
+    {
+      "address": "0x021B35A4",
+      "name": "SCRCMD_PROC_FLD_StepShop",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_PROC_FLD_StepShop(void *, void *, unsigned int, unsigned char)",
+      "signature": "int (void *, void *, unsigned int, unsigned char)",
+      "aletheia_name": "SCRCMD_PROC_FLD_StepShop",
+      "aliases": []
+    },
+    {
+      "address": "0x021B4894",
+      "name": "SCRCMD_PROC_FLD_ShowMessage",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void SCRCMD_PROC_FLD_ShowMessage(void *, unsigned int)",
+      "signature": "void (void *, unsigned int)",
+      "aletheia_name": "SCRCMD_PROC_FLD_ShowMessage",
+      "aliases": []
+    },
+    {
+      "address": "0x021B4D60",
+      "name": "SCRCMD_PROC_FLD_CallOv170Event",
+      "region": "ov021",
+      "events": [
+        "pc.open"
+      ],
+      "prototype": "int SCRCMD_PROC_FLD_CallOv170Event(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_PROC_FLD_CallOv170Event",
+      "aliases": []
+    },
+    {
+      "address": "0x021B5B4C",
+      "name": "SCRCMD_POKEMON_FLD_SelectPartyMon",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_POKEMON_FLD_SelectPartyMon(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_SelectPartyMon",
+      "aliases": []
+    },
+    {
+      "address": "0x021B61E8",
+      "name": "SCRCMD_POKEMON_FLD_SelectTutorMon",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_POKEMON_FLD_SelectTutorMon(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_SelectTutorMon",
+      "aliases": []
+    },
+    {
+      "address": "0x021B631C",
+      "name": "SCRCMD_POKEMON_FLD_StartSelectEvent",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_POKEMON_FLD_StartSelectEvent(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_StartSelectEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021B63D4",
+      "name": "SCRCMD_POKEMON_FLD_StartEggHatch",
+      "region": "ov021",
+      "events": [
+        "egg.hatch"
+      ],
+      "prototype": "unsigned int SCRCMD_POKEMON_FLD_StartEggHatch(void *, void *)",
+      "signature": "unsigned int (void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_StartEggHatch",
+      "aliases": []
+    },
+    {
+      "address": "0x021B654C",
+      "name": "SCRCMD_POKEMON_FLD_StartTradeEvent",
+      "region": "ov021",
+      "events": [
+        "trade.ingame"
+      ],
+      "prototype": "unsigned int SCRCMD_POKEMON_FLD_StartTradeEvent(void *, void *)",
+      "signature": "unsigned int (void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_StartTradeEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021B6BDC",
+      "name": "SCRCMD_POKEMON_FLD_HandleMysteryGift",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_POKEMON_FLD_HandleMysteryGift(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_HandleMysteryGift",
+      "aliases": []
+    },
+    {
+      "address": "0x021B6F18",
+      "name": "SCRCMD_POKEMON_FLD_ReceiveGiftMon",
+      "region": "ov021",
+      "events": [
+        "mon.receive"
+      ],
+      "prototype": "void SCRCMD_POKEMON_FLD_ReceiveGiftMon(void *, void *, void *)",
+      "signature": "void (void *, void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_ReceiveGiftMon",
+      "aliases": []
+    },
+    {
+      "address": "0x021B6FF0",
+      "name": "SCRCMD_POKEMON_FLD_ReceiveGiftItem",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void SCRCMD_POKEMON_FLD_ReceiveGiftItem(void *, void *, void *)",
+      "signature": "void (void *, void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_ReceiveGiftItem",
+      "aliases": []
+    },
+    {
+      "address": "0x021B72CC",
+      "name": "SCRCMD_POKEMON_FLD_AddTableValueToPoints",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_POKEMON_FLD_AddTableValueToPoints(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_AddTableValueToPoints",
+      "aliases": []
+    },
+    {
+      "address": "0x021B7364",
+      "name": "SCRCMD_POKEMON_FLD_GetDailyGift",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_POKEMON_FLD_GetDailyGift(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_POKEMON_FLD_GetDailyGift",
+      "aliases": []
+    },
+    {
+      "address": "0x021B76B4",
+      "name": "PDW_POSTMAN_ReceiveItems",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void PDW_POSTMAN_ReceiveItems(void *, int, void *)",
+      "signature": "void (void *, int, void *)",
+      "aletheia_name": "PDW_POSTMAN_ReceiveItems",
+      "aliases": []
+    },
+    {
+      "address": "0x021C1024",
+      "name": "FIELD_PLAYER_GRID_EVENT_CreateHopTask",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELD_PLAYER_GRID_EVENT_CreateHopTask(void *, unsigned short, unsigned int, unsigned int)",
+      "signature": "void * (void *, unsigned short, unsigned int, unsigned int)",
+      "aletheia_name": "FIELD_PLAYER_GRID_EVENT_CreateHopTask",
+      "aliases": []
+    },
+    {
+      "address": "0x021C1228",
+      "name": "FIELD_PLAYER_GRID_EVENT_CreateJumpTask",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void * FIELD_PLAYER_GRID_EVENT_CreateJumpTask(void *, unsigned short, unsigned int, unsigned int)",
+      "signature": "void * (void *, unsigned short, unsigned int, unsigned int)",
+      "aletheia_name": "FIELD_PLAYER_GRID_EVENT_CreateJumpTask",
+      "aliases": []
+    },
+    {
+      "address": "0x021C32F4",
+      "name": "SODATEYA_ReceiveEgg",
+      "region": "ov021",
+      "events": [
+        "mon.receive"
+      ],
+      "prototype": "void SODATEYA_ReceiveEgg(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "SODATEYA_ReceiveEgg",
+      "aliases": []
+    },
+    {
+      "address": "0x021C3530",
+      "name": "SODATEYA_GrantExp",
+      "region": "ov021",
+      "events": [
+        "mon.exp"
+      ],
+      "prototype": "void SODATEYA_GrantExp(void *, unsigned int)",
+      "signature": "void (void *, unsigned int)",
+      "aletheia_name": "SODATEYA_GrantExp",
+      "aliases": []
+    },
+    {
+      "address": "0x021C360C",
+      "name": "SODATEYA_LearnMove",
+      "region": "ov021",
+      "events": [
+        "move.learn"
+      ],
+      "prototype": "void SODATEYA_LearnMove(void *, unsigned int)",
+      "signature": "void (void *, unsigned int)",
+      "aletheia_name": "SODATEYA_LearnMove",
+      "aliases": []
+    },
+    {
+      "address": "0x021C3C78",
+      "name": "SODATEYA_RollNature",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void SODATEYA_RollNature(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "SODATEYA_RollNature",
+      "aliases": []
+    },
+    {
+      "address": "0x021C3D1C",
+      "name": "SODATEYA_RollAbilitySlot",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void SODATEYA_RollAbilitySlot(void *, void *, unsigned int)",
+      "signature": "void (void *, void *, unsigned int)",
+      "aletheia_name": "SODATEYA_RollAbilitySlot",
+      "aliases": []
+    },
+    {
+      "address": "0x021C4030",
+      "name": "SODATEYA_ApplyMasudaMethod",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void SODATEYA_ApplyMasudaMethod(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "SODATEYA_ApplyMasudaMethod",
+      "aliases": []
+    },
+    {
+      "address": "0x021C4678",
+      "name": "SCRCMD_IAIGIRI_StartOnPlayer",
+      "region": "ov021",
+      "events": [],
+      "prototype": "int SCRCMD_IAIGIRI_StartOnPlayer(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "SCRCMD_IAIGIRI_StartOnPlayer",
+      "aliases": []
+    },
+    {
+      "address": "0x021C7E30",
+      "name": "FIELD_FLASH_Apply",
+      "region": "ov021",
+      "events": [],
+      "prototype": "void FIELD_FLASH_Apply(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "FIELD_FLASH_Apply",
+      "aliases": []
+    },
+    {
+      "address": "0x021CC500",
+      "name": "FLD_TRADE_CreateEvent",
+      "region": "ov021",
+      "events": [
+        "mon.receive"
+      ],
+      "prototype": "void * FLD_TRADE_CreateEvent(void *, unsigned int, unsigned int)",
+      "signature": "void * (void *, unsigned int, unsigned int)",
+      "aletheia_name": "FLD_TRADE_CreateEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021CD2A4",
+      "name": "EVENT_NAMEIN_Create",
+      "region": "ov021",
+      "events": [
+        "mon.nickname"
+      ],
+      "prototype": "void * EVENT_NAMEIN_Create(void *, void *, void *, unsigned int, void *)",
+      "signature": "void * (void *, void *, void *, unsigned int, void *)",
+      "aletheia_name": "EVENT_NAMEIN_Create",
+      "aliases": []
+    },
+    {
+      "address": "0x021B7B80",
+      "name": "ITEMMENU_TaskSellConfirmInput",
+      "region": "ov070",
+      "events": [],
+      "prototype": "void ITEMMENU_TaskSellConfirmInput(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "ITEMMENU_TaskSellConfirmInput",
+      "aliases": []
+    },
+    {
+      "address": "0x021BAFC4",
+      "name": "ITEMMENU_PrintMoney",
+      "region": "ov070",
+      "events": [],
+      "prototype": "void ITEMMENU_PrintMoney(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "ITEMMENU_PrintMoney",
+      "aliases": []
+    },
+    {
+      "address": "0x021BA5B4",
+      "name": "POKELIST_TryLearnMove",
+      "region": "ov091",
+      "events": [
+        "move.learn"
+      ],
+      "prototype": "unsigned int POKELIST_TryLearnMove(void *, void *)",
+      "signature": "unsigned int (void *, void *)",
+      "aletheia_name": "POKELIST_TryLearnMove",
+      "aliases": []
+    },
+    {
+      "address": "0x021BA5E0",
+      "name": "POKELIST_ReplaceMoveSlot",
+      "region": "ov091",
+      "events": [
+        "move.learn"
+      ],
+      "prototype": "void POKELIST_ReplaceMoveSlot(void *, void *, unsigned char)",
+      "signature": "void (void *, void *, unsigned char)",
+      "aletheia_name": "POKELIST_ReplaceMoveSlot",
+      "aliases": []
+    },
+    {
+      "address": "0x021BA624",
+      "name": "POKELIST_SetHeldItem",
+      "region": "ov091",
+      "events": [
+        "mon.helditem"
+      ],
+      "prototype": "void POKELIST_SetHeldItem(void *, void *, unsigned short)",
+      "signature": "void (void *, void *, unsigned short)",
+      "aletheia_name": "POKELIST_SetHeldItem",
+      "aliases": []
+    },
+    {
+      "address": "0x021BA688",
+      "name": "POKELIST_ReturnBagItem",
+      "region": "ov091",
+      "events": [],
+      "prototype": "unsigned int POKELIST_ReturnBagItem(void *, unsigned short)",
+      "signature": "unsigned int (void *, unsigned short)",
+      "aletheia_name": "POKELIST_ReturnBagItem",
+      "aliases": []
+    },
+    {
+      "address": "0x021BC2C8",
+      "name": "PLIST_MENU_ShowItemUsedThenClose",
+      "region": "ov091",
+      "events": [],
+      "prototype": "void PLIST_MENU_ShowItemUsedThenClose(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "PLIST_MENU_ShowItemUsedThenClose",
+      "aliases": []
+    },
+    {
+      "address": "0x021BC30C",
+      "name": "PLIST_MENU_ShowItemUsedThenContinue",
+      "region": "ov091",
+      "events": [],
+      "prototype": "void PLIST_MENU_ShowItemUsedThenContinue(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "PLIST_MENU_ShowItemUsedThenContinue",
+      "aliases": []
+    },
+    {
+      "address": "0x021BC350",
+      "name": "PLIST_MENU_StartItemUse",
+      "region": "ov091",
+      "events": [],
+      "prototype": "int PLIST_MENU_StartItemUse(void *, int)",
+      "signature": "int (void *, int)",
+      "aletheia_name": "PLIST_MENU_StartItemUse",
+      "aliases": []
+    },
+    {
+      "address": "0x021BDCC0",
+      "name": "PLIST_DEMO_CanUseGracidea",
+      "region": "ov091",
+      "events": [
+        "item.usable"
+      ],
+      "prototype": "int PLIST_DEMO_CanUseGracidea(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "PLIST_DEMO_CanUseGracidea",
+      "aliases": []
+    },
+    {
+      "address": "0x021BDD78",
+      "name": "PLIST_DEMO_CheckItemUsable",
+      "region": "ov091",
+      "events": [
+        "item.use",
+        "mon.revive",
+        "mon.cure"
+      ],
+      "prototype": "int PLIST_DEMO_CheckItemUsable(void *, unsigned int, int, unsigned int)",
+      "signature": "int (void *, unsigned int, int, unsigned int)",
+      "aletheia_name": "PLIST_DEMO_CheckItemUsable",
+      "aliases": []
+    },
+    {
+      "address": "0x021BE2B4",
+      "name": "PLIST_DEMO_UseItemOnMon",
+      "region": "ov091",
+      "events": [
+        "mon.levelup"
+      ],
+      "prototype": "int PLIST_DEMO_UseItemOnMon(void *, unsigned short, unsigned short, unsigned short, int)",
+      "signature": "int (void *, unsigned short, unsigned short, unsigned short, int)",
+      "aletheia_name": "PLIST_DEMO_UseItemOnMon",
+      "aliases": []
+    },
+    {
+      "address": "0x021BE914",
+      "name": "PLIST_DEMO_RestoreHp",
+      "region": "ov091",
+      "events": [
+        "heal.hp",
+        "mon.revive"
+      ],
+      "prototype": "void PLIST_DEMO_RestoreHp(void *, unsigned int, unsigned int, unsigned int)",
+      "signature": "void (void *, unsigned int, unsigned int, unsigned int)",
+      "aletheia_name": "PLIST_DEMO_RestoreHp",
+      "aliases": []
+    },
+    {
+      "address": "0x021B9614",
+      "name": "EVENT_BATTLE_RETURN_Main",
+      "region": "ov092",
+      "events": [
+        "mon.receive"
+      ],
+      "prototype": "int EVENT_BATTLE_RETURN_Main(void *, void *, void *, void *)",
+      "signature": "int (void *, void *, void *, void *)",
+      "aletheia_name": "EVENT_BATTLE_RETURN_Main",
+      "aliases": []
+    },
+    {
+      "address": "0x021B9090",
+      "name": "BTL_MAIN_RemoveItemFromBag",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_MAIN_RemoveItemFromBag(void *, unsigned int, unsigned int)",
+      "signature": "void (void *, unsigned int, unsigned int)",
+      "aletheia_name": "BTL_MAIN_RemoveItemFromBag",
+      "aliases": []
+    },
+    {
+      "address": "0x021B90BC",
+      "name": "BTL_MAIN_AddItemToBag",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_MAIN_AddItemToBag(void *, unsigned char, unsigned int)",
+      "signature": "void (void *, unsigned char, unsigned int)",
+      "aletheia_name": "BTL_MAIN_AddItemToBag",
+      "aliases": []
+    },
+    {
+      "address": "0x021BA238",
+      "name": "BTL_MAIN_NotifyLevelUp",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_MAIN_NotifyLevelUp(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "BTL_MAIN_NotifyLevelUp",
+      "aliases": []
+    },
+    {
+      "address": "0x021BB8BC",
+      "name": "BTL_SERVER_NotifyLevelUp",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_SERVER_NotifyLevelUp(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "BTL_SERVER_NotifyLevelUp",
+      "aliases": []
+    },
+    {
+      "address": "0x021BBC44",
+      "name": "BTL_SERVER_FLOW_StartTurn",
+      "region": "ov093",
+      "events": [
+        "battle.turn"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_StartTurn(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_StartTurn",
+      "aliases": []
+    },
+    {
+      "address": "0x021BD60C",
+      "name": "BTL_SERVER_FLOW_TryEscape",
+      "region": "ov093",
+      "events": [
+        "battle.escape"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_TryEscape(void *, void *, unsigned char)",
+      "signature": "int (void *, void *, unsigned char)",
+      "aletheia_name": "BTL_SERVER_FLOW_TryEscape",
+      "aliases": []
+    },
+    {
+      "address": "0x021BD9D4",
+      "name": "BTL_SERVER_FLOW_ProcMemberIn",
+      "region": "ov093",
+      "events": [
+        "battle.switch"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_ProcMemberIn(void *, unsigned char, unsigned char, unsigned char, int)",
+      "signature": "void (void *, unsigned char, unsigned char, unsigned char, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_ProcMemberIn",
+      "aliases": []
+    },
+    {
+      "address": "0x021BE95C",
+      "name": "BTL_SERVER_FLOW_DispatchMoveStartEvent",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_SERVER_FLOW_DispatchMoveStartEvent(void *, void *, unsigned int)",
+      "signature": "void (void *, void *, unsigned int)",
+      "aletheia_name": "BTL_SERVER_FLOW_DispatchMoveStartEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021BF2EC",
+      "name": "BTL_SERVER_FLOW_DispatchMoveResultEvent",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_SERVER_FLOW_DispatchMoveResultEvent(void *, unsigned int, unsigned int, int)",
+      "signature": "void (void *, unsigned int, unsigned int, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_DispatchMoveResultEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021C1910",
+      "name": "BTL_SERVER_FLOW_RunDamageDealtEvent",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_SERVER_FLOW_RunDamageDealtEvent(void *, void *, void *, unsigned int)",
+      "signature": "void (void *, void *, void *, unsigned int)",
+      "aletheia_name": "BTL_SERVER_FLOW_RunDamageDealtEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021C1A10",
+      "name": "BTL_SERVER_FLOW_RunMoveUsedEvent",
+      "region": "ov093",
+      "events": [
+        "battle.move"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_RunMoveUsedEvent(void *, void *, void *)",
+      "signature": "void (void *, void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_RunMoveUsedEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021C1E74",
+      "name": "BTL_SERVER_FLOW_CalcMoveDamage",
+      "region": "ov093",
+      "events": [
+        "battle.damage"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_CalcMoveDamage(void *, void *, void *, void *, unsigned int, unsigned int, unsigned int, int, void *)",
+      "signature": "int (void *, void *, void *, void *, unsigned int, unsigned int, unsigned int, int, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_CalcMoveDamage",
+      "aliases": []
+    },
+    {
+      "address": "0x021C2128",
+      "name": "BTL_SERVER_FLOW_ProcHeldItemActivate",
+      "region": "ov093",
+      "events": [
+        "battle.held_item"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_ProcHeldItemActivate(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_ProcHeldItemActivate",
+      "aliases": []
+    },
+    {
+      "address": "0x021C27A0",
+      "name": "BTL_SERVER_FLOW_TryApplySick",
+      "region": "ov093",
+      "events": [
+        "battle.status"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_TryApplySick(void *, void *, void *, int, unsigned int, unsigned char, unsigned int)",
+      "signature": "int (void *, void *, void *, int, unsigned int, unsigned char, unsigned int)",
+      "aletheia_name": "BTL_SERVER_FLOW_TryApplySick",
+      "aliases": []
+    },
+    {
+      "address": "0x021C33E8",
+      "name": "BTL_SERVER_FLOW_ApplyHpRecover",
+      "region": "ov093",
+      "events": [
+        "heal.hp"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_ApplyHpRecover(void *, void *, int)",
+      "signature": "void (void *, void *, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_ApplyHpRecover",
+      "aliases": []
+    },
+    {
+      "address": "0x021C4F64",
+      "name": "BTL_SERVER_FLOW_ProcFaintedPoke",
+      "region": "ov093",
+      "events": [
+        "battle.faint"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_ProcFaintedPoke(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_ProcFaintedPoke",
+      "aliases": []
+    },
+    {
+      "address": "0x021C5200",
+      "name": "BTL_SERVER_FLOW_ProcFaintRewards",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_ProcFaintRewards(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_ProcFaintRewards",
+      "aliases": []
+    },
+    {
+      "address": "0x021C5350",
+      "name": "BTL_SERVER_FLOW_ApplyPartyExp",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_ApplyPartyExp(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_ApplyPartyExp",
+      "aliases": []
+    },
+    {
+      "address": "0x021C557C",
+      "name": "BTL_SERVER_FLOW_CureMajorStatusWithMessage",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_SERVER_FLOW_CureMajorStatusWithMessage(void *, void *, int, int)",
+      "signature": "void (void *, void *, int, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_CureMajorStatusWithMessage",
+      "aliases": []
+    },
+    {
+      "address": "0x021C5620",
+      "name": "BTL_SERVER_FLOW_CureSick",
+      "region": "ov093",
+      "events": [
+        "mon.cure"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_CureSick(void *, void *, int, void *)",
+      "signature": "void (void *, void *, int, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_CureSick",
+      "aliases": []
+    },
+    {
+      "address": "0x021C5A1C",
+      "name": "BTL_SERVER_FLOW_PushAbilityPopupIn",
+      "region": "ov093",
+      "events": [
+        "battle.ability"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_PushAbilityPopupIn(void *, void *)",
+      "signature": "void (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_PushAbilityPopupIn",
+      "aliases": []
+    },
+    {
+      "address": "0x021C5A8C",
+      "name": "BTL_SERVER_FLOW_ChangeStatStage",
+      "region": "ov093",
+      "events": [
+        "battle.stat"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_ChangeStatStage(void *, void *, int, int, unsigned short, int)",
+      "signature": "void (void *, void *, int, int, unsigned short, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_ChangeStatStage",
+      "aliases": []
+    },
+    {
+      "address": "0x021C6080",
+      "name": "BTL_SERVER_FLOW_RestoreMovePp",
+      "region": "ov093",
+      "events": [
+        "mon.pp"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_RestoreMovePp(void *, void *, int, int, int)",
+      "signature": "void (void *, void *, int, int, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_RestoreMovePp",
+      "aliases": []
+    },
+    {
+      "address": "0x021C6564",
+      "name": "BTL_SERVER_FLOW_DispatchMoveDoneEvent",
+      "region": "ov093",
+      "events": [],
+      "prototype": "void BTL_SERVER_FLOW_DispatchMoveDoneEvent(void *, void *, unsigned int, unsigned int)",
+      "signature": "void (void *, void *, unsigned int, unsigned int)",
+      "aletheia_name": "BTL_SERVER_FLOW_DispatchMoveDoneEvent",
+      "aliases": []
+    },
+    {
+      "address": "0x021C84D8",
+      "name": "BTL_SERVER_FLOW_GetBattleResult",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_GetBattleResult(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_GetBattleResult",
+      "aliases": []
+    },
+    {
+      "address": "0x021CA270",
+      "name": "BTL_SERVER_FLOW_ProcHandExReviveAndSendIn",
+      "region": "ov093",
+      "events": [],
+      "prototype": "unsigned char BTL_SERVER_FLOW_ProcHandExReviveAndSendIn(void *, void *)",
+      "signature": "unsigned char (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_ProcHandExReviveAndSendIn",
+      "aliases": []
+    },
+    {
+      "address": "0x021CA748",
+      "name": "BTL_SERVER_FLOW_ProcHandExChangeForm",
+      "region": "ov093",
+      "events": [
+        "mon.form"
+      ],
+      "prototype": "unsigned char BTL_SERVER_FLOW_ProcHandExChangeForm(void *, void *)",
+      "signature": "unsigned char (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_ProcHandExChangeForm",
+      "aliases": []
+    },
+    {
+      "address": "0x021CB2D4",
+      "name": "BTL_SERVER_FLOW_CalcPartyExpShares",
+      "region": "ov093",
+      "events": [
+        "battle.exp",
+        "mon.exp"
+      ],
+      "prototype": "void BTL_SERVER_FLOW_CalcPartyExpShares(void *, void *, void *, void *)",
+      "signature": "void (void *, void *, void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_CalcPartyExpShares",
+      "aliases": []
+    },
+    {
+      "address": "0x021CB730",
+      "name": "BTL_SERVER_FLOW_ProcBagItemUse",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_ProcBagItemUse(void *, void *, unsigned short, unsigned char, unsigned char)",
+      "signature": "int (void *, void *, unsigned short, unsigned char, unsigned char)",
+      "aletheia_name": "BTL_SERVER_FLOW_ProcBagItemUse",
+      "aliases": []
+    },
+    {
+      "address": "0x021CBA40",
+      "name": "BTL_SERVER_FLOW_TryThrowBall",
+      "region": "ov093",
+      "events": [
+        "catch.attempt"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_TryThrowBall(void *, void *, unsigned short)",
+      "signature": "int (void *, void *, unsigned short)",
+      "aletheia_name": "BTL_SERVER_FLOW_TryThrowBall",
+      "aliases": []
+    },
+    {
+      "address": "0x021CBB34",
+      "name": "BTL_SERVER_FLOW_CalcCaptureShakes",
+      "region": "ov093",
+      "events": [
+        "catch.result"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_CalcCaptureShakes(void *, void *, void *, unsigned short, void *, void *)",
+      "signature": "int (void *, void *, void *, unsigned short, void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_CalcCaptureShakes",
+      "aliases": []
+    },
+    {
+      "address": "0x021CBD48",
+      "name": "BTL_SERVER_FLOW_GetBallCatchRate",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_GetBallCatchRate(void *, void *, void *, int)",
+      "signature": "int (void *, void *, void *, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_GetBallCatchRate",
+      "aliases": []
+    },
+    {
+      "address": "0x021CBEA8",
+      "name": "BTL_SERVER_FLOW_RollCriticalCapture",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_RollCriticalCapture(void *, int)",
+      "signature": "int (void *, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_RollCriticalCapture",
+      "aliases": []
+    },
+    {
+      "address": "0x021CBFA0",
+      "name": "BTL_SERVER_FLOW_ItemEffectCheckSlotMessage",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_ItemEffectCheckSlotMessage(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_ItemEffectCheckSlotMessage",
+      "aliases": []
+    },
+    {
+      "address": "0x021CC008",
+      "name": "BTL_SERVER_FLOW_ItemEffectRevive",
+      "region": "ov093",
+      "events": [
+        "mon.revive"
+      ],
+      "prototype": "int BTL_SERVER_FLOW_ItemEffectRevive(void *, void *, unsigned short)",
+      "signature": "int (void *, void *, unsigned short)",
+      "aletheia_name": "BTL_SERVER_FLOW_ItemEffectRevive",
+      "aliases": []
+    },
+    {
+      "address": "0x021CC2C0",
+      "name": "BTL_SERVER_FLOW_ItemEffectRecoverHp",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_ItemEffectRecoverHp(void *, void *, unsigned int)",
+      "signature": "int (void *, void *, unsigned int)",
+      "aletheia_name": "BTL_SERVER_FLOW_ItemEffectRecoverHp",
+      "aliases": []
+    },
+    {
+      "address": "0x021CC668",
+      "name": "BTL_SERVER_FLOW_CheckBattleOutcome",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_SERVER_FLOW_CheckBattleOutcome(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BTL_SERVER_FLOW_CheckBattleOutcome",
+      "aliases": []
+    },
+    {
+      "address": "0x021CE4D0",
+      "name": "BTL_CLIENT_StepSelectAction",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_StepSelectAction(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepSelectAction",
+      "aliases": []
+    },
+    {
+      "address": "0x021CEDC0",
+      "name": "BTL_CLIENT_StepSelectSwitchTarget",
+      "region": "ov093",
+      "events": [],
+      "prototype": "unsigned int BTL_CLIENT_StepSelectSwitchTarget(void *, void *)",
+      "signature": "unsigned int (void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepSelectSwitchTarget",
+      "aliases": []
+    },
+    {
+      "address": "0x021CEEB8",
+      "name": "BTL_CLIENT_StepSelectItem",
+      "region": "ov093",
+      "events": [],
+      "prototype": "unsigned int BTL_CLIENT_StepSelectItem(void *, void *)",
+      "signature": "unsigned int (void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepSelectItem",
+      "aliases": []
+    },
+    {
+      "address": "0x021CF078",
+      "name": "BTL_CLIENT_StepSelectRun",
+      "region": "ov093",
+      "events": [],
+      "prototype": "unsigned int BTL_CLIENT_StepSelectRun(void *, void *)",
+      "signature": "unsigned int (void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepSelectRun",
+      "aliases": []
+    },
+    {
+      "address": "0x021CF5B0",
+      "name": "BTL_CLIENT_IsMoveSelectionBlocked",
+      "region": "ov093",
+      "events": [
+        "battle.action"
+      ],
+      "prototype": "int BTL_CLIENT_IsMoveSelectionBlocked(void *, void *, unsigned int, void *)",
+      "signature": "int (void *, void *, unsigned int, void *)",
+      "aletheia_name": "BTL_CLIENT_IsMoveSelectionBlocked",
+      "aliases": []
+    },
+    {
+      "address": "0x021CF918",
+      "name": "BTL_CLIENT_GetEscapeBlockerForSide",
+      "region": "ov093",
+      "events": [
+        "battle.action"
+      ],
+      "prototype": "unsigned int BTL_CLIENT_GetEscapeBlockerForSide(void *, void *, void *)",
+      "signature": "unsigned int (void *, void *, void *)",
+      "aletheia_name": "BTL_CLIENT_GetEscapeBlockerForSide",
+      "aliases": []
+    },
+    {
+      "address": "0x021CFBF0",
+      "name": "BTL_CLIENT_ChooseAiSwitchTarget",
+      "region": "ov093",
+      "events": [
+        "battle.ai"
+      ],
+      "prototype": "int BTL_CLIENT_ChooseAiSwitchTarget(void *, void *, unsigned int, void *)",
+      "signature": "int (void *, void *, unsigned int, void *)",
+      "aletheia_name": "BTL_CLIENT_ChooseAiSwitchTarget",
+      "aliases": []
+    },
+    {
+      "address": "0x021D0770",
+      "name": "BTL_CLIENT_StepAutoChooseActions",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_StepAutoChooseActions(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepAutoChooseActions",
+      "aliases": []
+    },
+    {
+      "address": "0x021D09E0",
+      "name": "BTL_CLIENT_SortMonsByMovePower",
+      "region": "ov093",
+      "events": [
+        "battle.ai_replace"
+      ],
+      "prototype": "void BTL_CLIENT_SortMonsByMovePower(void *, void *, unsigned char, void *)",
+      "signature": "void (void *, void *, unsigned char, void *)",
+      "aletheia_name": "BTL_CLIENT_SortMonsByMovePower",
+      "aliases": []
+    },
+    {
+      "address": "0x021D0D50",
+      "name": "BTL_CLIENT_ChooseReplacementsAuto",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_ChooseReplacementsAuto(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BTL_CLIENT_ChooseReplacementsAuto",
+      "aliases": []
+    },
+    {
+      "address": "0x021D1290",
+      "name": "BTL_CLIENT_StepShowResultMessage",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_StepShowResultMessage(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepShowResultMessage",
+      "aliases": []
+    },
+    {
+      "address": "0x021D1960",
+      "name": "BTL_CLIENT_StepShowBlackoutMessages",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_StepShowBlackoutMessages(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepShowBlackoutMessages",
+      "aliases": []
+    },
+    {
+      "address": "0x021D2320",
+      "name": "BTL_CLIENT_StepFaintMon",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_StepFaintMon(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepFaintMon",
+      "aliases": []
+    },
+    {
+      "address": "0x021D2CA8",
+      "name": "BTL_CLIENT_StepLearnLevelUpMoves",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CLIENT_StepLearnLevelUpMoves(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "BTL_CLIENT_StepLearnLevelUpMoves",
+      "aliases": []
+    },
+    {
+      "address": "0x021D3DC4",
+      "name": "BTL_CLIENT_TakeTrainerItemToUse",
+      "region": "ov093",
+      "events": [
+        "battle.ai"
+      ],
+      "prototype": "unsigned int BTL_CLIENT_TakeTrainerItemToUse(void *, void *, void *)",
+      "signature": "unsigned int (void *, void *, void *)",
+      "aletheia_name": "BTL_CLIENT_TakeTrainerItemToUse",
+      "aliases": []
+    },
+    {
+      "address": "0x021D5B68",
+      "name": "BTL_POKEPARAM_IsFainted",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_POKEPARAM_IsFainted(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BTL_POKEPARAM_IsFainted",
+      "aliases": []
+    },
+    {
+      "address": "0x021D69B8",
+      "name": "BTL_POKEPARAM_AddExp",
+      "region": "ov093",
+      "events": [
+        "mon.levelup"
+      ],
+      "prototype": "int BTL_POKEPARAM_AddExp(void *, void *, void *)",
+      "signature": "int (void *, void *, void *)",
+      "aletheia_name": "BTL_POKEPARAM_AddExp",
+      "aliases": []
+    },
+    {
+      "address": "0x021D7930",
+      "name": "BTL_CALC_RollCriticalHit",
+      "region": "ov093",
+      "events": [],
+      "prototype": "int BTL_CALC_RollCriticalHit(int)",
+      "signature": "int (int)",
+      "aletheia_name": "BTL_CALC_RollCriticalHit",
+      "aliases": []
+    },
+    {
+      "address": "0x021D794C",
+      "name": "BTL_CALC_GetTypeAffinity",
+      "region": "ov093",
+      "events": [
+        "battle.type_effect"
+      ],
+      "prototype": "int BTL_CALC_GetTypeAffinity(int, int)",
+      "signature": "int (int, int)",
+      "aletheia_name": "BTL_CALC_GetTypeAffinity",
+      "aliases": []
+    },
+    {
+      "address": "0x021D7A44",
+      "name": "BTL_CALC_CalcBaseDamage",
+      "region": "ov093",
+      "events": [],
+      "prototype": "unsigned int BTL_CALC_CalcBaseDamage(unsigned int, unsigned int, unsigned int, unsigned int)",
+      "signature": "unsigned int (unsigned int, unsigned int, unsigned int, unsigned int)",
+      "aletheia_name": "BTL_CALC_CalcBaseDamage",
+      "aliases": []
+    },
+    {
+      "address": "0x021EA01C",
+      "name": "BTLV_CORE_GetSelectedItem",
+      "region": "ov093",
+      "events": [
+        "battle.item"
+      ],
+      "prototype": "unsigned short BTLV_CORE_GetSelectedItem(void *)",
+      "signature": "unsigned short (void *)",
+      "aletheia_name": "BTLV_CORE_GetSelectedItem",
+      "aliases": []
+    },
+    {
+      "address": "0x021F93F4",
+      "name": "BTLV_EFFVM_Create",
+      "region": "ov094",
+      "events": [],
+      "prototype": "void * BTLV_EFFVM_Create(void *, unsigned int)",
+      "signature": "void * (void *, unsigned int)",
+      "aletheia_name": "BTLV_EFFVM_Create",
+      "aliases": []
+    },
+    {
+      "address": "0x021FBD44",
+      "name": "BTLV_EFFVM_CmdJumpIf",
+      "region": "ov094",
+      "events": [],
+      "prototype": "int BTLV_EFFVM_CmdJumpIf(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTLV_EFFVM_CmdJumpIf",
+      "aliases": []
+    },
+    {
+      "address": "0x021FBD88",
+      "name": "BTLV_EFFVM_CmdJumpIfCondCompare",
+      "region": "ov094",
+      "events": [],
+      "prototype": "int BTLV_EFFVM_CmdJumpIfCondCompare(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTLV_EFFVM_CmdJumpIfCondCompare",
+      "aliases": []
+    },
+    {
+      "address": "0x021FBDD4",
+      "name": "BTLV_EFFVM_CompareAndJump",
+      "region": "ov094",
+      "events": [],
+      "prototype": "void BTLV_EFFVM_CompareAndJump(void *, int, int, int, int)",
+      "signature": "void (void *, int, int, int, int)",
+      "aletheia_name": "BTLV_EFFVM_CompareAndJump",
+      "aliases": []
+    },
+    {
+      "address": "0x021FC334",
+      "name": "BTLV_EFFVM_CmdJumpScript",
+      "region": "ov094",
+      "events": [],
+      "prototype": "int BTLV_EFFVM_CmdJumpScript(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTLV_EFFVM_CmdJumpScript",
+      "aliases": []
+    },
+    {
+      "address": "0x021FC374",
+      "name": "BTLV_EFFVM_CmdJumpToArchiveScript",
+      "region": "ov094",
+      "events": [],
+      "prototype": "int BTLV_EFFVM_CmdJumpToArchiveScript(void *, void *)",
+      "signature": "int (void *, void *)",
+      "aletheia_name": "BTLV_EFFVM_CmdJumpToArchiveScript",
+      "aliases": []
+    },
+    {
+      "address": "0x0689CB1C",
+      "name": "BTL_PICK_GetLast",
+      "region": "ov095",
+      "events": [
+        "battle.action"
+      ],
+      "prototype": "int BTL_PICK_GetLast(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BTL_PICK_GetLast",
+      "aliases": []
+    },
+    {
+      "address": "0x02187FB0",
+      "name": "TR_AI_Think",
+      "region": "ov096",
+      "events": [],
+      "prototype": "int TR_AI_Think(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "TR_AI_Think",
+      "aliases": []
+    },
+    {
+      "address": "0x021880BC",
+      "name": "TR_AI_Start",
+      "region": "ov096",
+      "events": [],
+      "prototype": "void TR_AI_Start(void *, void *, int)",
+      "signature": "void (void *, void *, int)",
+      "aletheia_name": "TR_AI_Start",
+      "aliases": []
+    },
+    {
+      "address": "0x02188134",
+      "name": "TR_AI_GetChosenMove",
+      "region": "ov096",
+      "events": [
+        "battle.ai"
+      ],
+      "prototype": "unsigned char TR_AI_GetChosenMove(void *)",
+      "signature": "unsigned char (void *)",
+      "aletheia_name": "TR_AI_GetChosenMove",
+      "aliases": []
+    },
+    {
+      "address": "0x02188140",
+      "name": "TR_AI_GetChosenTarget",
+      "region": "ov096",
+      "events": [],
+      "prototype": "unsigned char TR_AI_GetChosenTarget(void *)",
+      "signature": "unsigned char (void *)",
+      "aletheia_name": "TR_AI_GetChosenTarget",
+      "aliases": []
+    },
+    {
+      "address": "0x021D42D8",
+      "name": "GTSNEGO_DISP_StartTrade",
+      "region": "ov120",
+      "events": [],
+      "prototype": "int GTSNEGO_DISP_StartTrade(int, void *)",
+      "signature": "int (int, void *)",
+      "aletheia_name": "GTSNEGO_DISP_StartTrade",
+      "aliases": []
+    },
+    {
+      "address": "0x021DC860",
+      "name": "BOX2_MAIN_Init",
+      "region": "ov170",
+      "events": [],
+      "prototype": "int BOX2_MAIN_Init(void *, int, void *)",
+      "signature": "int (void *, int, void *)",
+      "aletheia_name": "BOX2_MAIN_Init",
+      "aliases": []
+    },
+    {
+      "address": "0x021DD314",
+      "name": "BOX2_MAIN_ClearSlot",
+      "region": "ov170",
+      "events": [
+        "mon.release"
+      ],
+      "prototype": "void BOX2_MAIN_ClearSlot(void *, int, unsigned int)",
+      "signature": "void (void *, int, unsigned int)",
+      "aletheia_name": "BOX2_MAIN_ClearSlot",
+      "aliases": []
+    },
+    {
+      "address": "0x021DD330",
+      "name": "BOX2_MAIN_MoveMonToParty",
+      "region": "ov170",
+      "events": [],
+      "prototype": "void BOX2_MAIN_SwapBoxAndPartyMon(void *, void *, void *)",
+      "signature": "void (void *, void *, void *)",
+      "aletheia_name": "BOX2_MAIN_SwapBoxAndPartyMon",
+      "aliases": [
+        "BOX2_MAIN_SwapBoxAndPartyMon"
+      ]
+    },
+    {
+      "address": "0x021DD530",
+      "name": "BOX2_MAIN_UpdateBoxSlots",
+      "region": "ov170",
+      "events": [
+        "box.deposit",
+        "box.withdraw"
+      ],
+      "prototype": "void BOX2_MAIN_UpdateBoxSlots(void *)",
+      "signature": "void (void *)",
+      "aletheia_name": "BOX2_MAIN_UpdateBoxSlots",
+      "aliases": []
+    },
+    {
+      "address": "0x021DD810",
+      "name": "BOX2_MAIN_MoveMonIntoBox",
+      "region": "ov170",
+      "events": [],
+      "prototype": "void BOX2_MAIN_ResetShayminFormInBox(void *, unsigned int, unsigned int, unsigned int)",
+      "signature": "void (void *, unsigned int, unsigned int, unsigned int)",
+      "aletheia_name": "BOX2_MAIN_ResetShayminFormInBox",
+      "aliases": [
+        "BOX2_MAIN_ResetShayminFormInBox"
+      ]
+    },
+    {
+      "address": "0x021E9010",
+      "name": "BOX2_SEQ_StateUseItem",
+      "region": "ov170",
+      "events": [],
+      "prototype": "int BOX2_SEQ_StateUseItem(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BOX2_SEQ_StateUseItem",
+      "aliases": []
+    },
+    {
+      "address": "0x021E91A0",
+      "name": "BOX2_SEQ_StateUseItemMenu",
+      "region": "ov170",
+      "events": [],
+      "prototype": "int BOX2_SEQ_StateUseItemMenu(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "BOX2_SEQ_StateUseItemMenu",
+      "aliases": []
+    },
+    {
+      "address": "0x021B6B0C",
+      "name": "POKE_SUMMARY_MAIN_ApplyMove",
+      "region": "ov173",
+      "events": [
+        "move.learn"
+      ],
+      "prototype": "int POKE_SUMMARY_MAIN_ApplyMove(void *)",
+      "signature": "int (void *)",
+      "aletheia_name": "POKE_SUMMARY_MAIN_ApplyMove",
+      "aliases": []
+    },
+    {
+      "address": "0x0220B55C",
+      "name": "ZUKAN_NICKNAME_Create",
+      "region": "ov207",
+      "events": [
+        "mon.nickname"
+      ],
+      "prototype": "void * ZUKAN_NICKNAME_Create(unsigned short, void *, void *, void *, unsigned int, void *, void *, void *, void *)",
+      "signature": "void * (unsigned short, void *, void *, void *, unsigned int, void *, void *, void *, void *)",
+      "aletheia_name": "ZUKAN_NICKNAME_Create",
+      "aliases": []
+    },
+    {
+      "address": "0x021B9608",
+      "name": "PSEL_Init",
+      "region": "ov223",
+      "events": [],
+      "prototype": "int PSEL_Init(void *, int, void *)",
+      "signature": "int (void *, int, void *)",
+      "aletheia_name": "PSEL_Init",
+      "aliases": []
+    }
+  ]
+}

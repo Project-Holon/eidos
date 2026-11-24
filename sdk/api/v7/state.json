@@ -1,0 +1,597 @@
+{
+  "status": "open",
+  "api": 7,
+  "table": "BwModState",
+  "calls": [
+    {
+      "name": "party_count",
+      "ret": "u32",
+      "params": []
+    },
+    {
+      "name": "party_ref",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "slot"
+        },
+        {
+          "type": "BwMonRef *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "party_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "party_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32",
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "name": "box_count",
+      "ret": "u32",
+      "params": []
+    },
+    {
+      "name": "box_ref",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "box"
+        },
+        {
+          "type": "u32",
+          "name": "slot"
+        },
+        {
+          "type": "BwMonRef *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "box_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "box_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32",
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "name": "battle_ref",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "side"
+        },
+        {
+          "type": "u32",
+          "name": "slot"
+        },
+        {
+          "type": "BwMonRef *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "battle_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "battle_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32",
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "name": "species_value",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u16",
+          "name": "species"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "species_shiny",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "personality"
+        },
+        {
+          "type": "u16",
+          "name": "species"
+        }
+      ]
+    },
+    {
+      "name": "dex_caught",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u16",
+          "name": "species"
+        }
+      ]
+    },
+    {
+      "name": "badge_count",
+      "ret": "u32",
+      "params": []
+    },
+    {
+      "name": "badge_has",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "badge"
+        }
+      ]
+    },
+    {
+      "name": "money",
+      "ret": "u32",
+      "params": []
+    },
+    {
+      "name": "money_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "amount"
+        }
+      ]
+    },
+    {
+      "name": "flag",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "flag"
+        },
+        {
+          "type": "u32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "flag_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "flag"
+        },
+        {
+          "type": "u32",
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "name": "zone",
+      "ret": "u16",
+      "params": []
+    },
+    {
+      "name": "player_pos",
+      "ret": "int",
+      "params": [
+        {
+          "type": "s16 *",
+          "name": "x"
+        },
+        {
+          "type": "s16 *",
+          "name": "y"
+        },
+        {
+          "type": "s16 *",
+          "name": "z"
+        }
+      ]
+    },
+    {
+      "name": "battle_style",
+      "ret": "u8",
+      "params": []
+    },
+    {
+      "name": "mon_to_box",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        }
+      ]
+    },
+    {
+      "name": "mon_take_item",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        }
+      ]
+    },
+    {
+      "name": "mon_release",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        }
+      ]
+    },
+    {
+      "name": "item_count",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "u16",
+          "name": "item"
+        }
+      ]
+    },
+    {
+      "name": "item_add",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u16",
+          "name": "item"
+        },
+        {
+          "type": "u16",
+          "name": "count"
+        }
+      ]
+    },
+    {
+      "name": "area_of",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "u16",
+          "name": "zone"
+        }
+      ]
+    },
+    {
+      "name": "battle_wild",
+      "ret": "s32",
+      "params": []
+    },
+    {
+      "name": "play_seconds",
+      "ret": "u32",
+      "params": []
+    },
+    {
+      "name": "item_value",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u16",
+          "name": "item"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "move_value",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u16",
+          "name": "move"
+        },
+        {
+          "type": "u32",
+          "name": "field"
+        },
+        {
+          "type": "u32 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "mon_to_box_n",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        },
+        {
+          "type": "u32",
+          "name": "box"
+        }
+      ]
+    },
+    {
+      "name": "mon_from_box",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "box"
+        },
+        {
+          "type": "u32",
+          "name": "slot"
+        }
+      ]
+    },
+    {
+      "name": "mon_recalc",
+      "ret": "int",
+      "params": [
+        {
+          "type": "BwMonRef",
+          "name": "mon"
+        }
+      ]
+    },
+    {
+      "name": "species_base",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "u16",
+          "name": "species"
+        }
+      ]
+    },
+    {
+      "name": "battle_trainer",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "u32",
+          "name": "n"
+        }
+      ]
+    },
+    {
+      "name": "type_effect",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "u32",
+          "name": "atk_type"
+        },
+        {
+          "type": "u32",
+          "name": "def_type1"
+        },
+        {
+          "type": "u32",
+          "name": "def_type2"
+        }
+      ]
+    },
+    {
+      "name": "battle_weather",
+      "ret": "s32",
+      "params": []
+    },
+    {
+      "name": "species_learns",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "u16",
+          "name": "species"
+        },
+        {
+          "type": "u16",
+          "name": "form"
+        },
+        {
+          "type": "u16",
+          "name": "move"
+        },
+        {
+          "type": "u8",
+          "name": "level"
+        }
+      ]
+    },
+    {
+      "name": "whiteout",
+      "ret": "int",
+      "params": []
+    },
+    {
+      "name": "work_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u16",
+          "name": "id"
+        },
+        {
+          "type": "u16 *",
+          "name": "out"
+        }
+      ]
+    },
+    {
+      "name": "work_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u16",
+          "name": "id"
+        },
+        {
+          "type": "u16",
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "name": "badge_set",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "bit"
+        }
+      ]
+    },
+    {
+      "name": "game_code",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "national_dex",
+      "ret": "s32",
+      "params": []
+    },
+    {
+      "name": "national_dex_set",
+      "ret": "int",
+      "params": []
+    },
+    {
+      "name": "mystery_card_add",
+      "ret": "s32",
+      "params": [
+        {
+          "type": "const void *",
+          "name": "pgf"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    }
+  ]
+}

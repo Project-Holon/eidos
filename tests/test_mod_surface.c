@@ -58,8 +58,8 @@
  * The hash of the frozen surface on each layout the port is built at.
  *
  *   pointers  hash
- *   4         0xF8F177B7u  the number in sdk/mod_api.h
- *   8         0x16ACAD54u
+ *   4         0x75B3AE08u  the number in sdk/mod_api.h
+ *   8         0x0FC83E7Cu
  *
  * The 32-bit one is the number the header carries.  The other is the same
  * surface on the other layout: the three tables hold host pointers, so
@@ -68,11 +68,11 @@
  */
 static unsigned int expected_hash(void)
 {
-    return (sizeof(void *) == 4) ? 0xF8F177B7u : 0x16ACAD54u;
+    return (sizeof(void *) == 4) ? 0x75B3AE08u : 0x0FC83E7Cu;
 }
 
 /* The number in sdk/mod_api.h: the frozen one, the 32-bit hash. */
-#define BW_SURFACE_HASH_FROZEN 0xF8F177B7u
+#define BW_SURFACE_HASH_FROZEN 0x75B3AE08u
 
 /* The running hash. */
 static unsigned int h;
@@ -434,6 +434,7 @@ int main(void)
     S(mon_to_box_n); S(mon_from_box); S(mon_recalc); S(species_base); S(battle_trainer);
     S(type_effect); S(battle_weather); S(species_learns); S(whiteout);
     S(work_get); S(work_set); S(badge_set); S(game_code);
+    S(national_dex); S(national_dex_set); S(mystery_card_add);
 #undef S
 
     /* The services table. */

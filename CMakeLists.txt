@@ -581,6 +581,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_vfs.c           # v6: members in memory, text entries
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_file.c          # v6: a mod's own files
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_v6.c            # v6: work, badges, scripts, type chart, text input
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_v7.c            # v7: the National Pokedex, a Wonder Card from a mod
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_world.c          # v6: metaxy world sessions, the Archipelago link
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_tracker.c        # v6: what a mod shows on the field's Tracker
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_export.c        # a Pokemon's export and import
@@ -2122,7 +2123,7 @@ add_executable(test_mod_world ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mod_world.c
 target_include_directories(test_mod_world PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(test_mod_world PRIVATE eidos)
 add_test(NAME test_mod_world COMMAND test_mod_world WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-# The language-neutral API description (sdk/api/v5, tools/apigen.py): its
+# The language-neutral API description (sdk/api/v7, tools/apigen.py): its
 # payload offsets compile against the headers, and the committed files are
 # the generator's current output.
 add_executable(test_api_layout ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_api_layout.c)

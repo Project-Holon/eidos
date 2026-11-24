@@ -102,6 +102,7 @@
 #include "mod_rule.h"
 #include "mod_state.h"
 #include "mod_table.h"
+#include "mod_v7.h"
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -269,7 +270,8 @@ enum {
     BW_RULE_ACT_RELEASE,    /* release <mon or party position> */
     BW_RULE_ACT_GIVE,       /* give <item> <count> */
     BW_RULE_ACT_BOX,        /* box <mon or party position> <box> */
-    BW_RULE_ACT_WITHDRAW    /* withdraw <box> <slot> */
+    BW_RULE_ACT_WITHDRAW,   /* withdraw <box> <slot> */
+    BW_RULE_ACT_GIFT        /* gift "<card file>" */
 };
 
 /* The kinds of a target. */
@@ -1238,6 +1240,11 @@ static const BwRuleStateField g_state_fields[] = {
       .readable = 1, .writable_ok = 0, .mon_field = 0 },
     { .name = "battle_style", .kind = BW_RULE_SK_PLAIN, .writable = 1,
       .readable = 1, .writable_ok = 0, .mon_field = 0 },
+    /* Version 7: the Pokedex's National mode (national_dex,
+     * national_dex_set).  Only 1 can be written: the game has no call
+     * that turns the mode off. */
+    { .name = "national_dex", .kind = BW_RULE_SK_PLAIN, .writable = 1,
+      .readable = 1, .writable_ok = 1, .mon_field = 0 },
     { .name = "in_battle", .kind = BW_RULE_SK_PLAIN, .writable = 0,
       .readable = 1, .writable_ok = 0, .mon_field = 0 }
 };
@@ -1271,6 +1278,7 @@ typedef struct BwRuleAction {
     u16         expr;    /* the expression */
     u16         sub;     /* the subscript, or BW_RULE_NO_NODE */
     const char *cell;    /* the cell's name */
+    const u8   *card;    /* gift: the card file's bytes, kept by the rule */
 } BwRuleAction;
 
 /* One bound rule. */
@@ -1281,6 +1289,8 @@ typedef struct BwRule {
     char          label[BW_RULE_NAME_MAX];
     char          ns[BW_RULE_NS_MAX + 1u];   /* the mod's namespace */
     char         *text;       /* the file's text: the names point into it */
+    const char   *base;       /* while the rule is compiled: the folder a
+                               * `gift` action's file is named from */
     char        **strings;    /* the copies the rule keeps */
     u32           string_count;
     u32           string_cap;
@@ -1448,6 +1458,33 @@ static const char *rule_string(BwRule *r, const char *text)
     r->strings[r->string_count++] = copy;
     return copy;
 }
+
+/* A block from malloc the rule keeps from now on (a `gift` action's card):
+ * it is freed with the rule's strings.  NULL, and the block freed, when
+ * there is no room. */
+static char *rule_keep_block(BwRule *r, char *block)
+{
+    char **grown;
+    u32 cap;
+
+    if (block == NULL) {
+        return NULL;
+    }
+    if (r->string_count >= r->string_cap) {
+        cap = r->string_cap == 0 ? 8u : r->string_cap * 2u;
+        grown = (char **)realloc(r->strings, (size_t)cap * sizeof(*grown));
+        if (grown == NULL) {
+            free(block);
+            return NULL;
+        }
+        r->strings = grown;
+        r->string_cap = cap;
+    }
+    r->strings[r->string_count++] = block;
+    return block;
+}
+
+static char *read_file(const char *path, u32 *out_len);
 
 /* ------------------------------------------------------------------ */
 /* The name lookups                                                   */
@@ -2827,6 +2864,63 @@ static int parse_action(BwRuleParse *p, const char *keyword)
         return 0;
     }
 
+    /* gift "<card file>": the file is read and checked now, so a rule
+     * with a missing or wrong file is refused when it loads. */
+    if (strcmp(keyword, "gift") == 0) {
+        char path[1024];
+        char *bytes;
+        u32 len = 0;
+        int n;
+
+        if (p->tok.kind != BW_RULE_TK_STRING || p->tok.text[0] == '\0') {
+            parse_error(p, p->err_line, "'gift' takes the card file's name "
+                        "in quotes");
+            return -1;
+        }
+        if (strstr(p->tok.text, "..") != NULL || p->tok.text[0] == '/' ||
+            p->tok.text[0] == '\\' || strchr(p->tok.text, ':') != NULL) {
+            parse_error(p, p->err_line, "the card file %s is not inside "
+                        "the mod's folder", p->tok.text);
+            return -1;
+        }
+        n = snprintf(path, sizeof path, "%s%s%s",
+                     r->base != NULL ? r->base : "",
+                     r->base != NULL && r->base[0] != '\0' ? "/" : "",
+                     p->tok.text);
+        if (n < 0 || (size_t)n >= sizeof path) {
+            parse_error(p, p->err_line, "the card file's path is too long");
+            return -1;
+        }
+        bytes = read_file(path, &len);
+        if (bytes == NULL) {
+            parse_error(p, p->err_line, "the card file %s could not be "
+                        "read", p->tok.text);
+            return -1;
+        }
+        if (!bw_mod_v7_mystery_card_ok(bytes, len)) {
+            free(bytes);
+            parse_error(p, p->err_line, "%s is not a Wonder Card (a .pgf "
+                        "file of %u bytes)", p->tok.text,
+                        (unsigned int)BW_MYSTERY_CARD_SIZE);
+            return -1;
+        }
+        a->card = (const u8 *)rule_keep_block(r, bytes);
+        if (a->card == NULL) {
+            parse_error(p, p->err_line, "no room for the card");
+            return -1;
+        }
+        if (p_advance(p) != 0) {
+            return -1;
+        }
+        if (p->tok.kind != BW_RULE_TK_END) {
+            parse_error(p, p->err_line, "the action has more than it needs");
+            return -1;
+        }
+        a->op = BW_RULE_ACT_GIFT;
+        r->action_count++;
+        return 0;
+    }
+
     parse_error(p, p->err_line, "'%s' is not an action of the language",
                 keyword);
     return -1;
@@ -3941,6 +4035,15 @@ static int state_read(const BwRuleStateField *f, const BwRuleValue *sub,
         *out = (s32)st->money();
         return 0;
     }
+    if (strcmp(f->name, "national_dex") == 0) {
+        s32 on;
+
+        if (st->national_dex == NULL || (on = st->national_dex()) < 0) {
+            return -1;
+        }
+        *out = on;
+        return 0;
+    }
     if (strcmp(f->name, "badges") == 0) {
         if (st->badge_count == NULL) {
             return -1;
@@ -4113,6 +4216,13 @@ static int state_write(const BwRuleStateField *f, const BwRuleValue *sub,
             return -1;
         }
         return st->money_set((u32)value);
+    }
+    if (strcmp(f->name, "national_dex") == 0) {
+        /* (only on: the game has no call that turns the mode off) */
+        if (st->national_dex_set == NULL || value != 1) {
+            return -1;
+        }
+        return st->national_dex_set();
     }
     if (strcmp(f->name, "work") == 0) {
         if (st->work_set == NULL || sub == NULL || sub->i < 0 || sub->i > 0xFFFF) {
@@ -4794,6 +4904,20 @@ static int do_action(BwRuleVm *vm, const BwRuleAction *a)
             return st->item_add((u16)item, (u16)count) == 0 ? 0 : -1;
         }
 
+    case BW_RULE_ACT_GIFT:
+        {
+            const BwModState *st = bw_mod_state_table();
+            s32 slot;
+
+            if (st == NULL || st->mystery_card_add == NULL || a->card == NULL) {
+                return -1;
+            }
+            /* A card the save has already is not a fault: the rule
+             * runs at every load. */
+            slot = st->mystery_card_add(a->card, BW_MYSTERY_CARD_SIZE);
+            return slot >= 0 || slot == BW_MYSTERY_ADD_KNOWN ? 0 : -1;
+        }
+
     case BW_RULE_ACT_BOX:
     case BW_RULE_ACT_WITHDRAW:
         {
@@ -4959,7 +5083,8 @@ static void rule_release(BwRule *r)
  * passes; the caller owns it.  NULL when it does not, with the reason in
  * the report.
  */
-static BwRule *rule_compile(const char *path, const BwRuleEvent *event,
+static BwRule *rule_compile(const char *path, const char *base,
+                             const BwRuleEvent *event,
                              const char *ns, const char *label)
 {
     BwRule *rule;
@@ -4989,10 +5114,12 @@ static BwRule *rule_compile(const char *path, const BwRuleEvent *event,
     rule->kind = event->kind;
     rule->event = event;
     rule->text = text;
+    rule->base = base;
     copy_str(rule->label, sizeof rule->label, label);
     copy_str(rule->ns, sizeof rule->ns, ns);
 
     rc = parse_rule_file(rule, text, len, event, &err_line, err, sizeof err);
+    rule->base = NULL;      /* the caller's text: not kept */
     if (rc != 0) {
         rule_report(label, rule->name[0] != '\0' ? rule->name : NULL,
                     err_line, "%s", err);
@@ -5024,11 +5151,14 @@ static int kind_register(u32 kind)
     return 0;
 }
 
-int bw_mod_rule_bind(u32 kind, const char *path, const char *ns,
-                     const char *label)
+/* Bind a rule file.  `base` is the folder a `gift` action names its card
+ * file from: the mod's folder, or NULL for the rule file's own folder. */
+static int rule_bind_in(u32 kind, const char *path, const char *base,
+                        const char *ns, const char *label)
 {
     const BwRuleEvent *event = event_by_kind(kind);
     BwRule *rule;
+    char own[1024];
 
     if (event == NULL) {
         rule_report(label, NULL, 0, "the event %u is not one of the port's "
@@ -5039,7 +5169,23 @@ int bw_mod_rule_bind(u32 kind, const char *path, const char *ns,
         rule_report(label, NULL, 0, "too many rules");
         return -1;
     }
-    rule = rule_compile(path, event, ns, label);
+    if (base == NULL && path != NULL) {
+        /* the rule file's own folder */
+        size_t n = strlen(path);
+
+        while (n > 0 && path[n - 1u] != '/' && path[n - 1u] != '\\') {
+            n--;
+        }
+        if (n > 0) {
+            n--;
+        }
+        if (n < sizeof own) {
+            memcpy(own, path, n);
+            own[n] = '\0';
+            base = own;
+        }
+    }
+    rule = rule_compile(path, base, event, ns, label);
     if (rule == NULL) {
         return -1;
     }
@@ -5058,6 +5204,12 @@ int bw_mod_rule_bind(u32 kind, const char *path, const char *ns,
     g_rule_count++;
     kind_register(kind);
     return 0;
+}
+
+int bw_mod_rule_bind(u32 kind, const char *path, const char *ns,
+                     const char *label)
+{
+    return rule_bind_in(kind, path, NULL, ns, label);
 }
 
 int bw_mod_rule_bind_manifest(const char *root, const char *dir_name,
@@ -5092,7 +5244,10 @@ int bw_mod_rule_bind_manifest(const char *root, const char *dir_name,
         rule_report(label, NULL, 0, "the rule's path is too long");
         return -1;
     }
-    return bw_mod_rule_bind(event->kind, path, ns, label);
+    return rule_bind_in(event->kind, path,
+                        root != NULL && *root != '\0' ? root :
+                        (dir_name != NULL && *dir_name != '\0' ? dir_name : ""),
+                        ns, label);
 }
 
 void bw_mod_rule_reset(void)

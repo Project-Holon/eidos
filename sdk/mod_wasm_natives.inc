@@ -497,6 +497,36 @@ static int32_t wn_game_code(wasm_exec_env_t env, void *out, int32_t size)
     return (int32_t)w->host->state->game_code((char *)out, (u32)size);
 }
 
+static int32_t wn_national_dex(wasm_exec_env_t env)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->national_dex == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->national_dex();
+}
+
+static int32_t wn_national_dex_set(wasm_exec_env_t env)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->national_dex_set == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->national_dex_set();
+}
+
+static int32_t wn_mystery_card_add(wasm_exec_env_t env, void *pgf, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->state == NULL ||
+        w->host->state->mystery_card_add == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->state->mystery_card_add((const void *)pgf, (u32)size);
+}
+
 static void wn_message(wasm_exec_env_t env, const char *text)
 {
     BwWasmMod *w = wasm_mod_of(env);
@@ -1256,6 +1286,9 @@ static NativeSymbol k_wasm_api_natives[] = {
     { "work_set", (void *)wn_work_set, "(ii)i", NULL },
     { "badge_set", (void *)wn_badge_set, "(i)i", NULL },
     { "game_code", (void *)wn_game_code, "(*~)i", NULL },
+    { "national_dex", (void *)wn_national_dex, "()i", NULL },
+    { "national_dex_set", (void *)wn_national_dex_set, "()i", NULL },
+    { "mystery_card_add", (void *)wn_mystery_card_add, "(*~)i", NULL },
     { "message", (void *)wn_message, "($)", NULL },
     { "confirm", (void *)wn_confirm, "($)i", NULL },
     { "session_host", (void *)wn_session_host, "(*~)i", NULL },
