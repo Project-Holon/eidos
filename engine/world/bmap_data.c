@@ -1119,7 +1119,14 @@ typedef struct { int ent; u8 flags; } TexRef;
 
 /* water: a see-through sheet; placed: a placed model's (a building, a gym's
  * platform), floor only where the player's height is known (bmap_set_ref) */
-typedef struct { float p[3][3]; u8 water, placed; } GTri;
+/* (made: a face a builder made in place of the map's own, a repaired counter's top: a placed model is set down
+ * onto it as onto the map's own (drop_to_floor, stack_down); it is not ground for the battle (build_ground)) */
+typedef struct { float p[3][3]; u8 water, placed, made; } GTri;
+
+#define GROUND_MESH        1    /* add_tri's `ground`: a triangle of the map's own mesh ... */
+#define GROUND_PLACED      2    /* ... of a placed model ...                             */
+#define GROUND_MESH_MADE   3    /* ... a builder's, in the map's mesh ...                */
+#define GROUND_PLACED_MADE 4    /* ... a builder's, in a placed model                    */
 
 /* One chunk's walk grid (bmap_tile): a class per tile, BMAP_TILE_*; and the height the game gives each tile's
  * middle in each of its (one or two) plane sections (bmap_tile_height), TILE_NO_Y where it has none. */
@@ -2226,7 +2233,8 @@ static int add_tri_raw(Ctx *c, const BmapVertex t[3], const TriTag *tag, const f
         c->gt = g;
         memcpy(g[c->ngt].p, pos, sizeof g[0].p);
         g[c->ngt].water = tag->translucent;
-        g[c->ngt].placed = (u8)(ground == 2);
+        g[c->ngt].placed = (u8)(ground == GROUND_PLACED || ground == GROUND_PLACED_MADE);
+        g[c->ngt].made = (u8)(ground == GROUND_MESH_MADE || ground == GROUND_PLACED_MADE);
         c->ngt++;
     }
     return 0;
@@ -2906,8 +2914,29 @@ static int add_model(Ctx *c, Model *md, const char *setkey, Buf set, const Aff *
                         bv[k].obj |= 0x40000000u;   /* a body that rests on the floor under it (rest_bodies) */
                     }
                 }
-                if (add_tri(c, bv, &xt, (const float (*)[3])wp, 0, 0) != 0) {
-                    return -1;
+                {
+                    /* A level face a builder made that looks up is a surface for the placed models over it, as the
+                     * map's own face it stands for was (a counter's top set down with its base: the cash register
+                     * placed on it found nothing under it and stayed in the air).  Looks up: by its corners' order,
+                     * or either way when it is drawn from both sides.  Not a piece that turns with the battle (kind
+                     * 1), a picture that faces the camera, or a cut-out picture, as for the map's own faces. */
+                    float e1[3], e2[3], ny, len;
+                    int surf;
+
+                    for (q = 0; q < 3; q++) {
+                        e1[q] = wp[1][q] - wp[0][q];
+                        e2[q] = wp[2][q] - wp[0][q];
+                    }
+                    ny = e1[2] * e2[0] - e1[0] * e2[2];
+                    len = sqrtf((e1[1] * e2[2] - e1[2] * e2[1]) * (e1[1] * e2[2] - e1[2] * e2[1]) + ny * ny +
+                                (e1[0] * e2[1] - e1[1] * e2[0]) * (e1[0] * e2[1] - e1[1] * e2[0]));
+                    surf = (ground == GROUND_MESH || ground == GROUND_PLACED) && x->kind != 1 && x->alpha == 0 && dc->bb == 0 && len > 0.0f &&
+                           (x->cull == 0 ? fabsf(ny) : ny) >= 0.5f * len &&
+                           !(ent >= 0 && c->ents[ent].cutout && !walked_grating(c->ents[ent].key));
+                    if (add_tri(c, bv, &xt, (const float (*)[3])wp,
+                                ground == GROUND_MESH ? GROUND_MESH_MADE : ground == GROUND_PLACED ? GROUND_PLACED_MADE : 0, surf) != 0) {
+                        return -1;
+                    }
                 }
             }
         }
@@ -3093,7 +3122,9 @@ static int add_sub_model(Ctx *c, const Area *ar, unsigned mi, const char *bkey, 
  * mesh often lays the room's floor 2 to 4 units lower (a plant, a stool, an office chair): the field's steep camera
  * hides the gap, a battle's low one shows the thing hovering over its shadow.  The model added from vertex v0 and
  * ground triangle g0 on is lowered onto the highest floor of the chunk's own mesh (ground triangles gm0..gm1) under
- * its middle, when that floor lies at most DROP_MAX under its foot.  Only placed models move; the room stays. */
+ * its middle, when that floor lies at most DROP_MAX under its foot.  Only placed models move; the room stays.
+ * The mesh's faces are the map's own and the ones a builder made in their place (a repaired counter's top, where
+ * the builder set it down). */
 #define DROP_MAX 6.0f
 
 static float drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
@@ -3101,6 +3132,7 @@ static float drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
     float foot = 1e30f, lx = 1e30f, hx = -1e30f, lz = 1e30f, hz = -1e30f, x, z, floor_y = -1e30f, gap;
     const char *e = getenv("BMAP_DROP");
     size_t i;
+    int on_made = 0;
 
     if ((e != NULL && e[0] == '0') || c->nv <= v0) {
         return 0.0f;
@@ -3133,6 +3165,7 @@ static float drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
         h = w0 * a[1] + w1 * b[1] + w2 * cc[1];
         if (h <= foot + 0.05f && h > floor_y) {
             floor_y = h;
+            on_made = t->made;
         }
     }
     gap = foot - floor_y;
@@ -3148,7 +3181,8 @@ static float drop_to_floor(Ctx *c, size_t v0, size_t g0, size_t gm0, size_t gm1)
         c->gt[i].p[2][1] -= gap;
     }
     if (getenv("BMAP_MODEL_LOG") != NULL) {
-        fprintf(stderr, "bmap: dropped %.1f onto the floor at %.0f %.0f\n", (double)gap, (double)x, (double)z);
+        fprintf(stderr, "bmap: dropped %.1f onto the floor at %.0f %.0f%s\n", (double)gap, (double)x, (double)z,
+                on_made ? " (a builder's face)" : "");
     }
     return gap;
 }
@@ -3178,6 +3212,7 @@ static void stack_down(Ctx *c, Placed *pl, unsigned n)
     for (j = 0; j < n; j++) {
         float best = -1e30f, bdrop = 0.0f, shift;
         const float foot0 = pl[j].foot;     /* (as placed: drop_to_floor's drop is already in pl[j].drop) */
+        int on_made = 0;
 
         for (k = 0; k < j; k++) {
             for (i = pl[k].g0; i < pl[k].g1 && i < c->ngt; i++) {
@@ -3199,6 +3234,7 @@ static void stack_down(Ctx *c, Placed *pl, unsigned n)
                 if (h <= foot0 + 0.05f && h > best) {
                     best = h;
                     bdrop = pl[k].drop;
+                    on_made = t->made;
                 }
             }
         }
@@ -3219,8 +3255,8 @@ static void stack_down(Ctx *c, Placed *pl, unsigned n)
         }
         pl[j].drop += shift;
         if (getenv("BMAP_MODEL_LOG") != NULL) {
-            fprintf(stderr, "bmap: stacked %.1f down onto the model under it at %.0f %.0f\n", (double)shift, (double)pl[j].x,
-                    (double)pl[j].z);
+            fprintf(stderr, "bmap: stacked %.1f down onto the model under it at %.0f %.0f%s\n", (double)shift, (double)pl[j].x,
+                    (double)pl[j].z, on_made ? " (a builder's face)" : "");
         }
     }
 }
@@ -4567,6 +4603,18 @@ static void build_ground(Ctx *c, BmapScene *s, float px, float pz)
         return;
     }
     s->priv = g;
+    {
+        /* (a builder's faces were surfaces for the placed models only: the battle's ground is the map's own, as it
+         * was before they were kept) */
+        size_t w = 0, r;
+
+        for (r = 0; r < c->ngt; r++) {
+            if (!c->gt[r].made) {
+                c->gt[w++] = c->gt[r];
+            }
+        }
+        c->ngt = w;
+    }
     g->tri = c->gt;                      /* ownership moves to the scene */
     g->ntri = (unsigned)c->ngt;
     c->gt = NULL;
