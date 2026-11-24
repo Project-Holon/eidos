@@ -640,18 +640,33 @@ static int party_match(void)
     /* The plain list, the use-an-item list and the give-an-item list; the
      * list that teaches a move, the battle order list and the like keep
      * the DS screens. */
-    if (v.mode != 0 && v.mode != 1 && v.mode != 5 && v.mode != 6 && v.mode != 8 && v.mode != 9 && v.mode != 16
-        && v.mode != 21 && v.mode != 22 && v.mode != 23 && rds32(v.work, PL_RESTORE18) == 0) {
+    if (v.mode != 0 && v.mode != 1 && v.mode != 5 && v.mode != 6 && v.mode != 7 && v.mode != 8 && v.mode != 9
+        && v.mode != 16
+        && v.mode != 21 && v.mode != 22 && v.mode != 23 && v.mode != 25 && rds32(v.work, PL_RESTORE18) == 0) {
+        /* a mode with no screen here (POKELIST_StartMode has 3, 10 to 12,
+         * 14 and 18 besides; giving an item from the party's menu and
+         * from the Bag was tried and showed none of them): named in the log
+         * once, the two screens show */
+        static u32 told;
+
+        if (v.mode >= 0 && v.mode < 32 && (told & (1u << v.mode)) == 0) {
+            told |= 1u << v.mode;
+            fprintf(stderr, "eidos: one screen: the party list's mode %d has no screen: the two screens show\n", v.mode);
+        }
         return 0;
     }
-    /* mode 8: the list back from the summary's "forget a move" after an
-     * item taught one (a Rare Candy's level), with the game's message
+    /* modes 7 and 8: the list back from the summary's "forget a move"
+     * after a TM (7; #50: it was not taken, so the list's messages after
+     * the move screen showed on the two screens) or another item (8: a
+     * Rare Candy's level) taught one, with the game's message
      * ("... did not learn ...", "... forgot ..."); PL_RESTORE18 the same
      * on the way through mode 3; modes 22 and 23: the Pokemon a battle
      * facility enters (the Battle Subway), with CONFIRM and CANCEL;
      * mode 1: the Pokemon a link battle enters (the Union Room's
      * Colosseum), with CONFIRM alone;
      * mode 21: the Egg the Spin Trade takes (no back button);
+     * mode 25: the Pokemon a script takes with CONFIRM, SUMMARY and QUIT
+     * (the Musical's dress-up; #50's log line named it);
      * mode 9: the Pokemon the Bag gives an item to (pokelist.c: the
      * prompt is message 0xC, "Give to which Pokemon?");
      * mode 6: the Pokemon a TM or a tutor teaches (message 0xE), each with
@@ -709,7 +724,7 @@ static void party_prompt(const PartyView *v, void *sel_mon, char *out, int cap)
         if (v->mode == 21) {
             idx = 0xA2;                 /* What will you do with the Egg? */
         } else if (first == 0 || first == 3 || first == 6 || (first >= 16 && first <= 19)
-            || v->mode == 1 || v->mode == 22 || v->mode == 23) {
+            || v->mode == 1 || v->mode == 22 || v->mode == 23 || v->mode == 25) {
             idx = 18;
         } else {
             idx = 19;
@@ -1183,10 +1198,18 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 eidos_ui_press(BW_KEY_A, 3);
             }
         }
-        if (stream_msg && bh >= 40) {
+        if (stream_msg && bh >= 30) {
+            /* the game's two lines need the 40 rows up from the place's
+             * foot.  A style's own message place may be lower (Plasma's
+             * band 38, Harmonia's box 32): the message's box then rises
+             * over its top, into the band's own margin and the gap under
+             * the plates (#50: at 40 rows and up only, so those two styles
+             * showed no message at all: an item's effect, a move's question
+             * had no words) */
+            int mh3 = 40;
             EidosUiRect rr;
 
-            rr.x = msx; rr.y = msb - 40; rr.w = msgw; rr.h = 40;
+            rr.x = msx; rr.y = msb - mh3; rr.w = msgw; rr.h = mh3;
             if (game_message(c, 0xFFFFFFFFu, rr.x, rr.y, rr.w, rr.h) && msg_open
                 && (eidos_ui_hit(rr) & EIDOS_UI_CLICK)) {
                 eidos_ui_press(BW_KEY_A, 3);

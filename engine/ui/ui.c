@@ -52,6 +52,7 @@ static int g_mx = -1, g_my = -1, g_down, g_pressed, g_released, g_wheel;
  * to the keys' cursor, so the two never show different things. */
 static int g_mouse_live, g_last_mx = -1, g_last_my = -1;
 static int g_down_x = -1, g_down_y = -1;     /* where the button went down */
+static int g_down_wx = -1, g_down_wy = -1;   /* ... in window pixels (read_mouse) */
 static int g_right;                          /* right button this frame    */
 static int g_want_text, g_text_wanted;       /* typing asked this frame    */
 static int g_want_objs, g_objs_wanted;       /* OBJ layers asked (bits)    */
@@ -118,7 +119,7 @@ void eidos_ui_reset(void)
     }
     g_last = NULL;
     g_scene = "fallback";
-    g_down_x = g_down_y = -1;
+    g_down_x = g_down_y = g_down_wx = g_down_wy = -1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -212,7 +213,10 @@ static int inside(EidosUiRect r, int x, int y)
 typedef struct ScrollBarSeen {
     EidosUiRect r;                  /* the track, canvas pixels             */
     int first, shown, total;
+    int k;                          /* the canvas's scale it was drawn at   */
 } ScrollBarSeen;
+
+static int g_wx = -1, g_wy = -1;    /* the pointer in window pixels (read_mouse) */
 
 static ScrollBarSeen g_sb_seen[2][SB_MAX];     /* [0] this frame's, [1] the last frame's */
 static int g_sb_n[2];
@@ -240,18 +244,25 @@ void eidos_ui_note_scrollbar(int x, int y, int w, int h, int first, int shown, i
     b->first = first;
     b->shown = shown;
     b->total = total;
+    b->k = g_k;
 }
 
-static int bar_under(int x, int y)
+/* The bar under the pointer, each in the pixels of the canvas it was drawn
+ * on: this runs before the scene chooses its scale, so the pointer's place
+ * in this frame's first canvas is not a bar's own (a scene at the DS's
+ * scale: a press beside its bar's place at the plain scale was taken for a
+ * press on the bar, and was no click). */
+static int bar_under(void)
 {
     int i;
 
     for (i = 0; i < g_sb_n[1]; i++) {
         EidosUiRect r = g_sb_seen[1][i].r;
+        int k = g_sb_seen[1][i].k > 0 ? g_sb_seen[1][i].k : 1;
 
         r.x -= SB_GRIP;
         r.w += 2 * SB_GRIP;
-        if (inside(r, x, y)) {
+        if (g_wx >= 0 && inside(r, g_wx / k, g_wy / k)) {
             return i;
         }
     }
@@ -277,7 +288,7 @@ static void touch_scroll_update(void)
         g_drag_y = g_my;
         g_drag_acc = 0;
         g_dragged = 0;
-        g_sb_press = bar_under(g_mx, g_my);
+        g_sb_press = bar_under();
         g_sb_to = g_sb_press >= 0 ? g_sb_seen[1][g_sb_press].first : -1;
         return;
     }
@@ -639,6 +650,41 @@ static void app_state(u32 *ov, u32 *seq, u32 *child_ov, u32 *child_seq)
     }
 }
 
+/* A screen with no one-screen version (the window shows the game's two
+ * screens): named in the log once a run, by the overlay of the process on
+ * top and of its child, so a player's log says which screen it was (#50:
+ * the party list in a mode no recipe took, found only by a report). */
+#define FALLBACK_NOTE_FRAMES 180    /* three seconds of the two screens: a screen, not a load between two */
+
+static u32 g_fallback_run;          /* frames in a row the two screens have shown */
+
+static void fallback_note(void)
+{
+    static u8 seen[2][64];          /* overlays 0..511, the top process's and its child's */
+    u32 ov, seq, cov, cseq;
+
+    if (!eidos_ui_enabled() || ++g_fallback_run != FALLBACK_NOTE_FRAMES) {
+        return;
+    }
+    app_state(&ov, &seq, &cov, &cseq);
+    if (ov >= 512u || (cov != 0xFFFFFFFFu && cov >= 512u)) {
+        return;
+    }
+    if ((seen[0][ov >> 3] & (1u << (ov & 7u))) != 0
+        && (cov == 0xFFFFFFFFu || (seen[1][cov >> 3] & (1u << (cov & 7u))) != 0)) {
+        return;
+    }
+    seen[0][ov >> 3] |= (u8)(1u << (ov & 7u));
+    if (cov != 0xFFFFFFFFu) {
+        seen[1][cov >> 3] |= (u8)(1u << (cov & 7u));
+        fprintf(stderr, "eidos: one screen: no screen for overlay %u (step %u) under overlay %u: the two screens show\n",
+                (unsigned)cov, (unsigned)cseq, (unsigned)ov);
+    } else {
+        fprintf(stderr, "eidos: one screen: no screen for overlay %u (step %u): the two screens show\n",
+                (unsigned)ov, (unsigned)seq);
+    }
+}
+
 /* An app closes with the game's wipe (WIPE_SYS_Start: a fade out of about
  * 18 frames) and its process ends only after it.  B, then a wipe running
  * within a few frames, is the app closing: the interface does not wait for
@@ -958,7 +1004,8 @@ static void debug_party(void)
     u32 n, i, id;
     u16 lv;
 
-    if (list == NULL && (getenv("EIDOS_DEBUG_ITEMS") != NULL || getenv("EIDOS_DEBUG_PARTY_COUNT") != NULL)) {
+    if (list == NULL && (getenv("EIDOS_DEBUG_ITEMS") != NULL || getenv("EIDOS_DEBUG_PARTY_COUNT") != NULL
+                         || getenv("EIDOS_DEBUG_PROPS") != NULL)) {
         list = "";                      /* items or the count alone */
     }
     if (done || list == NULL || &bw_dsref__GameSystemGlobal == NULL || GAME_DATA_GetMyParty == NULL
@@ -1037,6 +1084,22 @@ static void debug_party(void)
             m += used;
             if (*m != ',') break;
             m++;
+        }
+    }
+    /* EIDOS_DEBUG_PROPS=N: the first N Musical props owned (of 100) */
+    if (getenv("EIDOS_DEBUG_PROPS") != NULL) {
+        extern void *GAME_DATA_GetSaveControl(void *gd) __attribute__((weak));
+        extern void *MUSICAL_SAVE_GetFromSave(void *save) __attribute__((weak));
+        extern void MUSICAL_SAVE_AddProp(void *musical, u32 prop) __attribute__((weak));
+
+        if (GAME_DATA_GetSaveControl != NULL && MUSICAL_SAVE_GetFromSave != NULL && MUSICAL_SAVE_AddProp != NULL) {
+            void *ms = MUSICAL_SAVE_GetFromSave(GAME_DATA_GetSaveControl(gd));
+            int nprops = atoi(getenv("EIDOS_DEBUG_PROPS")), k;
+
+            for (k = 0; ms != NULL && k < nprops && k < 100; k++) {
+                MUSICAL_SAVE_AddProp(ms, (u32)k);
+            }
+            fprintf(stderr, "eidos: debug props: the first %d owned\n", nprops);
         }
     }
     /* EIDOS_DEBUG_FLAGS="hex,hex": event flags set (0x961 and 0x962 give
@@ -3019,6 +3082,21 @@ static void ui_script_step(void)
             g_us.need = 2;
             g_us.have = 0;
             g_us.waiting = 2;
+        } else if (strcmp(cmd, "drag") == 0) {
+            /* the stylus down at (X0, Y0), moved to (X1, Y1) and lifted (eidos_ui_drag: about 24 frames) */
+            char a4[16] = "";
+            const char *p = line;
+            int skip;
+
+            for (skip = 0; skip < 4 && *p != '\0'; skip++) {       /* the fourth argument */
+                while (*p != '\0' && *p != ' ') p++;
+                while (*p == ' ') p++;
+            }
+            snprintf(a4, sizeof a4, "%s", p);
+            eidos_ui_drag(atoi(a1), atoi(a2), atoi(a3), atoi(a4));
+            g_us.need = 26;
+            g_us.have = 0;
+            g_us.waiting = 2;
         } else if (strcmp(cmd, "cmouse") == 0 || strcmp(cmd, "cclick") == 0) {
             /* the same in the interface's own pixels, X from the canvas's middle */
             us_mouse((g_canvas.w / 2 + atoi(a1)) * g_canvas.k, atoi(a2) * g_canvas.k, cmd[1] == 'm' ? 1 : 0);
@@ -3489,8 +3567,10 @@ static void read_mouse(const EidosUiFrame *in)
         m = &scripted;
     }
     if (m->x < 0 || m->y < 0) {
-        g_mx = g_my = -1;
+        g_mx = g_my = g_wx = g_wy = -1;
     } else {
+        g_wx = m->x;
+        g_wy = m->y;
         g_mx = m->x / g_k;
         g_my = m->y / g_k;
     }
@@ -3499,16 +3579,38 @@ static void read_mouse(const EidosUiFrame *in)
     g_released = m->released;
     g_wheel = m->wheel;
     g_right = m->right_pressed;
+    /* Where the button went down is kept in window pixels and given in this
+     * canvas's pixels at every read: a scene at another scale (the DS's:
+     * eidos_ui_want_ds_scale) reads the pointer again after the canvas is
+     * rebuilt, and next frame's first read is at the plain scale again.
+     * The place was kept in the pixels of the last read, so the drag check
+     * (touch_scroll_update, at the plain scale) took the change of scale
+     * for a move: a press held for a frame, as every real click is, counted
+     * as a drag and was no click in any such scene (#50's work found it:
+     * the Musical's props; the same for a click on the field's text) */
     if (g_pressed) {
-        g_down_x = g_mx;
-        g_down_y = g_my;
+        g_down_wx = m->x;
+        g_down_wy = m->y;
     }
+    g_down_x = g_down_wx < 0 ? -1 : g_down_wx / g_k;
+    g_down_y = g_down_wy < 0 ? -1 : g_down_wy / g_k;
 }
 
 static const EidosUiFrame *g_in;
 
 /* Set by a recipe's match for this frame: the canvas takes the DS scale. */
-static int g_ds_scale_req, g_ds_scale_rows = 192;
+static int g_ds_scale_req, g_ds_scale_rows = 192, g_ds_scale_cols = 256;
+
+void eidos_ui_want_ds_scale_size(int rows, int cols)
+{
+    g_ds_scale_req = 1;
+    if (rows > g_ds_scale_rows) {
+        g_ds_scale_rows = rows;
+    }
+    if (cols > g_ds_scale_cols) {
+        g_ds_scale_cols = cols;
+    }
+}
 
 void eidos_ui_want_ds_scale(void)
 {
@@ -3655,7 +3757,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
          * wider than the window (the DS screen's 256 columns, the 360 of
          * eidos_ui_scale) */
         int k = g_ds_scale_req ? in->win_h / g_ds_scale_rows : (in->win_h + 135) / 270;
-        int kw = g_ds_scale_req ? in->win_w / 256 : (in->win_w + 180) / 360;
+        int kw = g_ds_scale_req ? in->win_w / g_ds_scale_cols : (in->win_w + 180) / 360;
 
         if (kw < k) {
             k = kw;
@@ -3672,6 +3774,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     }
     g_ds_scale_req = 0;
     g_ds_scale_rows = 192;
+    g_ds_scale_cols = 256;
     /* a recipe that draws the game's text windows itself leaves them out
      * of the screen again this frame (engine/ui/textbox.c) */
     if (g2d_hw_hide_main_bgs != NULL) {
@@ -3705,7 +3808,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             g_leaving = 0;      /* a gap keeps it: the app is still closing */
         }
         /* a new scene: a press that began in the old one is not a click */
-        g_down_x = g_down_y = -1;
+        g_down_x = g_down_y = g_down_wx = g_down_wy = -1;
         g_last = r;
         g_scene_frames = 0;
         if (r != NULL || !g_leaving) {
@@ -3779,6 +3882,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
         g_last_view = *view;
         g_last_view_ok = 1;
         g_gap = 0;
+        g_fallback_run = 0;
     } else {
         g_scene = "fallback";
         /* Between two scenes the game fades and loads (a menu closing, an
@@ -3819,6 +3923,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             }
         } else {
             g_last_view_ok = 0;
+            fallback_note();
         }
         if (getenv("EIDOS_UI_FORCE_WORLD") != NULL) {
             view->mode = EIDOS_VIEW_WORLD;
@@ -3855,15 +3960,17 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
         }
     }
     if (g_released) {
-        g_down_x = g_down_y = -1;
+        g_down_x = g_down_y = g_down_wx = g_down_wy = -1;
     }
     g_text_wanted = g_want_text;
     g_objs_wanted = g_want_objs;
     bw_input_set_host_mask(g_take);
     /* a phone's taller hint bar lies over the world, as on a computer: the
      * world keeps the whole window, so it does not move as bars come and
-     * go (view->bottom stays 0) */
-    view->bottom = 0;
+     * go (view->bottom stays 0, as the frame's start left it).  A recipe
+     * that shows the game's screen in its own box sets it (the Musical's
+     * dress-up, #50: it was zeroed here, so the stage's 3D was drawn at the
+     * window's size behind a stage-sized box and a click landed elsewhere) */
     try_frame(&g_ctx);
     ring_apply(&g_ctx);
     fade_apply(&g_canvas);

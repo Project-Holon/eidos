@@ -3010,6 +3010,14 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             return;
         }
     }
+    if (f.mode == 6 && GAMESYSTEM_GetEvent != NULL && GAMESYSTEM_GetEvent(f.gs) != NULL) {
+        /* the Dowsing Machine while the game runs an event (a talk, a
+         * cutscene, a found item's message): the card steps aside until
+         * the player walks again, as the Union Room's does during a talk.
+         * On the DS it is on the other screen; here it lay over the scene
+         * (#50: a cutscene played under it) */
+        return;
+    }
     own = plain_field() ? 0 : (f.mode == 2 && union_card(c, in, &f)) || (f.mode == 3 && entralink_card(c, in))
           || (f.mode == 9 && power_card(c, &f)) || (f.mode == 6 && dowsing_card(c, in));
     if (own && f.mode == 9) {
@@ -3054,26 +3062,39 @@ static void lower_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
  */
 static int dowsing_card(EidosUiCtx *c, const EidosUiFrame *in)
 {
-    const int sx = 17, sy = 30, w = 222, h = 130, head = 16;
+    /* (sx and the sizes even: the half-size picture takes whole 2 x 2
+     * blocks, and the grid's lines, every 8 pixels, stay in step) */
+    const int sx = 16, sy = 30, w = 224, h = 130;
     const int tab_x = 108, tab_y = 155, tab_w = 40, grid_x = 20, grid_y = 35;
-    int cw = c->canvas->w, x, y, bx;
+    static u8 *pic;                 /* the rods without the frame's tip, a whole screen's size */
+    int cw = c->canvas->w, x, y, yy;
+    EidosUiRect r;
 
-    if (in->screen_rgba[1] == NULL || cw < w + 16) {
+    if (in->screen_rgba[1] == NULL || cw < w / 2 + 16) {
         return 0;
     }
-    x = cw - w - 10;
-    y = 16 + 6;
-    ui_panel(c, x - 4, y - 2, w + 8, head + h + 6, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_EDGE, 240);
-    ui_text(c, x + 4, y + ui_text_y(head, UI_FONT_SMALL), "DOWSING MCHN", UI_WHITE, UI_EDGE,
-            UI_FONT_SMALL, 1);
-    bx = x + w;
-    if (small_button(c, &bx, y, "Close", head - 2, NULL) & EIDOS_UI_CLICK) {
+    if (pic == NULL && (pic = (u8 *)malloc((size_t)256 * 192 * 4)) == NULL) {
+        return 0;
+    }
+    memcpy(pic, in->screen_rgba[1], (size_t)256 * 192 * 4);
+    for (yy = tab_y; yy < sy + h; yy++) {
+        memcpy(pic + ((size_t)yy * 256 + tab_x) * 4,
+               in->screen_rgba[1] + ((size_t)(grid_y + (yy - tab_y)) * 256 + grid_x) * 4, (size_t)tab_w * 4);
+    }
+    /* small, at the top right under the bar: the rods at half size in a thin
+     * frame, no title and no button of its own (the bar's Close stays; a
+     * click on the card closes it too).  It was a 230 x 152 card with a
+     * title: 15 to 27 % of the window, and it covered the player in a
+     * narrow window (#50) */
+    x = cw - w / 2 - 6 - c->safe_r;
+    y = 16 + 28;                    /* under the fast-forward badge's place (ui.c speed_badge; its frame ends at 40) */
+    ui_fill(c, x - 2, y - 2, w / 2 + 4, h / 2 + 4, UI_EDGE, 255);
+    ui_fill(c, x - 1, y - 1, w / 2 + 2, h / 2 + 2, UI_INK, 255);
+    ui_blit_screen_half(c, x, y, pic, sx, sy, w, h);
+    r.x = x - 2; r.y = y - 2; r.w = w / 2 + 4; r.h = h / 2 + 4;
+    if (eidos_ui_hit(r) & EIDOS_UI_CLICK) {
         eidos_ui_tap(0xF0, 0xB0, 3);
     }
-    ui_fill(c, x - 1, y + head - 1, w + 2, h + 2, UI_INK, 255);
-    ui_blit_screen(c, x, y + head, in->screen_rgba[1], sx, sy, w, h, 1, 0);
-    ui_blit_screen(c, x + tab_x - sx, y + head + tab_y - sy, in->screen_rgba[1], grid_x, grid_y, tab_w,
-                   sy + h - tab_y, 1, 0);
     return 1;
 }
 

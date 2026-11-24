@@ -524,10 +524,35 @@ static int rows_3d(void)
 
 /* The world's part of the window: all of it, less the strip a phone's
  * hint bar keeps at the bottom (EidosUiView.bottom). */
+/* The box the interface asked the world to be drawn in
+ * (EidosUiView.box_*), when it is a real rectangle inside the window. */
+static int world_box(const EidosPlatform *p, SDL_Rect *box)
+{
+    const EidosUiView *v = &p->ui_view;
+    int ow, oh;
+
+    out_size(p, &ow, &oh);
+    if (p->layout != EIDOS_LAYOUT_ONE || v->box_w <= 0 || v->box_h <= 0 || v->box_x < 0 || v->box_y < 0
+        || v->box_x + v->box_w > ow || v->box_y + v->box_h > oh) {
+        return 0;
+    }
+    box->x = v->box_x;
+    box->y = v->box_y;
+    box->w = v->box_w;
+    box->h = v->box_h;
+    return 1;
+}
+
 static void world_size(const EidosPlatform *p, int *w, int *h)
 {
     int b = p->ui_view.bottom;
+    SDL_Rect box;
 
+    if (world_box(p, &box)) {
+        *w = box.w;
+        *h = box.h;
+        return;
+    }
     out_size(p, w, h);
     if (p->layout == EIDOS_LAYOUT_ONE && b > 0 && b < *h / 2) {
         *h -= b;
@@ -1335,13 +1360,22 @@ static void render(EidosPlatform *p)
             EidosWorldGeometry wg;
             SDL_Rect ds;
 
-            int wh = oh;
+            int wh = oh, ww = ow;
+            SDL_Rect box;
 
-            if (p->ui_view.bottom > 0 && p->ui_view.bottom < oh / 2) {
-                wh = oh - p->ui_view.bottom;    /* above a phone's hint bar */
+            if (world_box(p, &box)) {
+                /* the world in a box of the window (EidosUiView.box_*) */
+                ww = box.w;
+                wh = box.h;
+                eidos_gpu_one_box(p->gl, &box);
+            } else {
+                if (p->ui_view.bottom > 0 && p->ui_view.bottom < oh / 2) {
+                    wh = oh - p->ui_view.bottom;    /* above a phone's hint bar */
+                }
+                eidos_gpu_one_box(p->gl, NULL);
             }
-            eidos_world_geometry(ow, wh, p->ui_view.zoom, &wg);
-            eidos_gpu_one_bottom(p->gl, oh - wh);
+            eidos_world_geometry(ww, wh, p->ui_view.zoom, &wg);
+            eidos_gpu_one_bottom(p->gl, ww == ow ? oh - wh : 0);
             ds.x = wg.ds.x;
             ds.y = wg.ds.y;
             ds.w = wg.ds.w;
@@ -2279,6 +2313,11 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
 int eidos_platform_gpu3d(const EidosPlatform *p)
 {
     return p != NULL && p->gl != NULL && eidos_gpu_has3d(p->gl);
+}
+
+int eidos_platform_presents_ui(const EidosPlatform *p)
+{
+    return p != NULL && p->gl != NULL;
 }
 
 int eidos_platform_read3d_1x(EidosPlatform *p, const struct G3dSnapshot *snap,

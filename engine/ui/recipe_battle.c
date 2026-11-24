@@ -3788,6 +3788,13 @@ static void bag_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
             if (item == 0) {
                 ui_panel(c, px, py, colw, rowh, UI_CUT_TL | UI_CUT_BR, 4, 0x2A0814u, 0x5A1424u, 160);
+                /* the game's cursor rests on empty slots too (a page turned
+                 * from slot 4 keeps it there, B_BAG_MAIN_StateSelectItem):
+                 * shown as the DS shows it, so it is never nowhere (#50: a
+                 * last page with one item) */
+                if (hov < 0 && v.cursor == i) {
+                    ui_cursor_corners(c, px, py, colw, rowh, UI_WHITE);
+                }
                 continue;
             }
             item_name(item, name, sizeof(name));

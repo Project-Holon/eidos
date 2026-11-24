@@ -1647,9 +1647,171 @@ static int plasma_app_frame(EidosUiCtx *c, const char *app, EidosUiRect *frame)
 /* [title] */
 /* (Plasma's title menu is with its X menu, above.) */
 /* [/title] */
+
+/* ---------------------------------------------------------------- */
+/* The Musical's dress-up                                            */
+/* ---------------------------------------------------------------- */
+
+/*
+ * From the DS's dress-up (a ring of props round the Pokemon, its parts
+ * tapped to sort the ring), in Plasma's own arrangement, the one its party
+ * and its Bag have: the props a column of leaning plates at the left, each
+ * with its picture, its name and the part it looks nice on; the Pokemon
+ * standing at the right in its heart, on the game's own room; the body
+ * parts the chips of the band along the bottom, as the Bag's pockets are,
+ * and DONE the band's last chip with the gold cap of a thing that ends a
+ * screen.  A worn prop's cap is the room's pink.  The game's line for a
+ * prop has no box: the plate says its name and its part.
+ */
+#define DRESS_BAND_H 40
+#define DRESS_CHIP_H 28
+#define DRESS_ROW_H  24
+#define DRESS_PINK   0xF0608Cu
+
+static void plasma_dressup_layout(UiDressupLayout *l)
+{
+    int m = AT_LEAST(SX(12), 8), by = l->h - DRESS_BAND_H, top = 26, lean = LEAN(DRESS_ROW_H);
+    int rw = l->w * 42 / 100, avail = by - top - 6, rows = (avail + 2) / (DRESS_ROW_H + 2), left, done_w = 58;
+
+    /* the plates end where the heart begins (45 columns into the stage,
+     * which cannot stand further right than the window's edge) */
+    rw = rw > l->w - 245 - m ? l->w - 245 - m : rw;
+    rw = rw < 120 ? 120 : rw > 190 ? 190 : rw;
+    rows = rows < 1 ? 1 : rows;
+    l->kind = 0;
+    l->cols = 1;
+    l->rows = rows;
+    l->tile_w = rw;
+    l->tile_h = DRESS_ROW_H;
+    l->gap = 2;
+    l->grid.x = m;
+    l->grid.y = top + (avail - (rows * (DRESS_ROW_H + 2) - 2)) / 2;
+    l->grid.w = rw;
+    l->grid.h = rows * (DRESS_ROW_H + 2) - 2;
+    left = m + rw + lean + 18;                  /* (the chosen plate stands 8 to the right, the scroll bar past it) */
+    l->bar_x = m + rw + lean + 10;              /* (past the plates' leaning ends and the chosen plate's) */
+    l->stage_x = left + (l->w - l->safe_r - left) / 2 - 128;
+    l->stage_x = l->stage_x > l->w - 256 ? l->w - 256 : l->stage_x;
+    l->stage_x = l->stage_x < 0 ? 0 : l->stage_x;
+    l->show_x0 = left - l->stage_x < 26 ? 26 : left - l->stage_x;
+    l->show_x1 = 230;
+    l->stage_y = (top + by) / 2 - 85;           /* the heart's middle between the title and the band */
+    l->stage_y = l->stage_y < 0 ? 0 : l->stage_y;
+    l->show_y0 = top - l->stage_y > 0 ? top - l->stage_y : 0;      /* (from under the title: it fades with the room) */
+    l->show_y1 = by - l->stage_y < 158 ? by - l->stage_y : 158;
+    l->part_tabs = 1;
+    l->part.x = m + LEAN(DRESS_CHIP_H) / 2;
+    l->part.y = by + 7;
+    l->part.w = l->w - l->safe_r - 2 * m - LEAN(DRESS_CHIP_H) - done_w - 12;
+    l->part.h = DRESS_CHIP_H;
+    l->done.w = done_w;
+    l->done.h = DRESS_CHIP_H;
+    l->done.x = l->w - l->safe_r - m - done_w - LEAN(DRESS_CHIP_H) / 2;
+    l->done.y = by + 7;
+    l->info.w = 0;
+    if (l->asking) {
+        /* the game's question stands on the band, where the chips were
+         * (Plasma's messages are a band along the bottom) */
+        l->info.x = m;
+        l->info.y = by;
+        l->info.w = l->w - l->safe_r - 2 * m;
+        l->info.h = DRESS_BAND_H;
+    }
+}
+
+static void plasma_dressup_backdrop(EidosUiCtx *c, const UiDressupLayout *l, const char *part, const char *note)
+{
+    (void)part;
+    ui_header(c, 0, 3, l->w, ui_tr("MUSICAL"), note != NULL ? note : ui_tr("DRESS UP"), "", UI_PINK);
+    band(c, 0, l->h - DRESS_BAND_H, l->w, DRESS_BAND_H, 255);
+}
+
+/* A word in the middle of a chip's face. */
+static void dress_chip_word(EidosUiCtx *c, int x, int y, int w, int h, const char *label, int sel, int font)
+{
+    rx_label(c, chip_mid(x, w, h, sel) - ui_text_w(label, font) / 2, y + ui_text_y(h, font), label, sel, RX_TEXT, font);
+}
+
+static void plasma_dressup_part(EidosUiCtx *c, const EidosUiRect *r, const char *label, int sel, int hover)
+{
+    int x = r->x - LEAN(r->h) / 2, y = r->y - (sel ? CHIP_LIFT : 0);
+    /* one size for the whole row, from the chips' width (they are all the
+     * same width): the large font from 50 wide, where a five-letter part
+     * ("WAIST") has its room; under that, a Pokemon with six parts in a
+     * 1920 x 1080 window, the small one */
+    int font = r->w >= 50 ? UI_FONT_LARGE : UI_FONT_SMALL;
+
+    chip(c, x, y, r->w, r->h, sel ? DRESS_PINK : hover ? 0xC8C8C8u : 0x8A8A8Au, sel, 255);
+    dress_chip_word(c, x, y, r->w, r->h, label, sel, font);
+}
+
+static void plasma_dressup_done(EidosUiCtx *c, const EidosUiRect *r, const char *label, int lit)
+{
+    int x = r->x - LEAN(r->h) / 2, y = r->y - (lit ? CHIP_LIFT : 0);
+    int font = ui_text_w(label, UI_FONT_LARGE) <= r->w - 18 ? UI_FONT_LARGE : UI_FONT_SMALL;
+
+    chip(c, x, y, r->w, r->h, 0xF8BC28u, lit, 255);
+    dress_chip_word(c, x, y, r->w, r->h, label, lit, font);
+}
+
+static void plasma_dressup_tile(EidosUiCtx *c, const EidosUiRect *r, const char *name, const char *part, int state,
+                                EidosUiRect *pic)
+{
+    int x = r->x, y = r->y, w = r->w, h = r->h, sel = (state & UI_DRESSUP_LIT) != 0, lean = LEAN(h), pw = 0, font;
+    EidosUiRect saved;
+
+    pic->x = x;
+    pic->y = y;
+    pic->w = pic->h = 0;
+    if (state & UI_DRESSUP_EMPTY) {
+        return;                 /* (no plate where there is no prop) */
+    }
+    x += sel ? 8 : 0;
+    chip(c, x, y, w, h, (state & UI_DRESSUP_WORN) ? DRESS_PINK : 0x8A8A8Au, sel, 255);
+    pic->x = x + lean / 2 + 12;
+    pic->y = y + 1;
+    pic->w = 24;
+    pic->h = h - 2;
+    if (state & UI_DRESSUP_NEW) {
+        ui_fill(c, x + lean / 2 + 9, y + 4, 3, 3, R(0xF8BC28u), 255);
+    }
+    if (part != NULL && part[0] != '\0' && w >= 160) {
+        /* the part it looks nice on, at the plate's right end, as the
+         * party's "Lv." (a plate under 160 wide, a 1920 x 1080 window's,
+         * has the room for the name alone: the band's chips sort the
+         * props by part there) */
+        pw = ui_text_w(part, UI_FONT_SMALL);
+        rx_label(c, x + w + lean / 2 - 8 - pw, y + ui_text_y(h, UI_FONT_SMALL), part, sel,
+                 sel ? 0xC83264u : (state & UI_DRESSUP_WORN) ? 0xFF9CB8u : RX_MUTED, UI_FONT_SMALL);
+    }
+    if (name != NULL) {
+        /* (one size for the whole column on the narrow plates; on the wide
+         * ones only a name too long for the plate is smaller) */
+        font = w >= 160 && ui_text_w(name, UI_FONT_LARGE) <= w - 40 - pw - 12 ? UI_FONT_LARGE : UI_FONT_MEDIUM;
+        ui_push(c, 0, 0, &saved);
+        ui_clip(c, x + lean / 2 + 40, y, w - 40 - pw - 10, h);
+        rx_label(c, x + lean / 2 + 40, y + ui_text_y(h, font), name, sel, RX_TEXT, font);
+        ui_pop(c, 0, 0, &saved);
+    }
+}
+
+static void plasma_dressup_info(EidosUiCtx *c, const EidosUiRect *r, u32 *ink, s32 *shadow)
+{
+    (void)c;
+    (void)r;
+    *ink = R(RX_TEXT);          /* (Plasma's dress-up has no box for the line: l->info.w is 0) */
+    *shadow = (s32)R(RX_OUTLINE);
+}
+
 const UiThemeOps ui_theme_plasma = {
     .id = "plasma",
     .name = "Plasma",
+    .dressup_layout = plasma_dressup_layout,
+    .dressup_backdrop = plasma_dressup_backdrop,
+    .dressup_part = plasma_dressup_part,
+    .dressup_tile = plasma_dressup_tile,
+    .dressup_info = plasma_dressup_info,
+    .dressup_done = plasma_dressup_done,
     .message_band = 1,
     .mp_part = plasma_mp_part,
     .mp_pad = 14,                       /* past the chip's gold cap */

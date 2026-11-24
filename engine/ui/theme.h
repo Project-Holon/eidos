@@ -141,6 +141,55 @@ typedef struct UiBagLayout {
     EidosUiRect detail;         /* the item's picture, name and description  */
 } UiBagLayout;
 
+/*
+ * The Musical's dress-up (engine/ui/recipe_musical.c): the Pokemon on its
+ * stage (the game's lower screen, 256 x 192, drawn at the canvas's scale),
+ * the props the player owns, the body part they are listed for, the game's
+ * line for the prop under the cursor, and DONE.  A theme that sets
+ * dressup_layout places them all and draws them with the slots below.
+ */
+#define UI_DRESSUP_LIT   1      /* under the cursor                         */
+#define UI_DRESSUP_WORN  2
+#define UI_DRESSUP_NEW   4
+#define UI_DRESSUP_DIM   8      /* not to be taken now (this Pokemon has no
+                                   place for it; a place is being chosen)  */
+#define UI_DRESSUP_EMPTY 16     /* a place of the grid with no prop        */
+
+typedef struct UiDressupLayout {
+    int w, h;                   /* in: the canvas, the hint bar's top        */
+    int nparts;                 /* in: the body part pages, "ALL" the first  */
+    int safe_r;                 /* in: what the system covers at the right   */
+    int asking;                 /* in: the game's question shows ("Is this
+                                   look OK?") or the screen is closing: no
+                                   props, no body part, no DONE; `info` is
+                                   the question's place                      */
+    int at, total;              /* in, for the backdrop: the cursor's prop
+                                   of the page (from 1) and how many it has  */
+    int stage_x, stage_y;       /* the stage's top left corner               */
+    int show_x0, show_y0;       /* the part of the stage that shows (the     */
+    int show_x1, show_y1;       /* room's pattern covers the rest)           */
+    int kind;                   /* 0: a grid of tiles; 1: a ring of props
+                                   round the Pokemon, the cursor's in front
+                                   (a ring's tile is round: dressup_tile
+                                   draws within the ellipse of its
+                                   rectangle, which is how it fades)        */
+    EidosUiRect grid;           /* kind 0: the tiles from its corner, rows   */
+    int cols, rows;             /* that scroll                               */
+    int tile_w, tile_h, gap;
+    int bar_x;                  /* the scroll bar's column (0: 3 past the
+                                   tiles' right side)                        */
+    int ring_cx, ring_cy;       /* kind 1: the ring's middle, its radii, and */
+    int ring_rx, ring_ry;       /* how many props show on it (odd)           */
+    int ring_n;
+    EidosUiRect part;           /* the body part: one label, an arrow at
+                                   each end                                  */
+    int part_tabs;              /* non-zero: `part` holds a tab a page       */
+    EidosUiRect info;           /* the prop's line (w 0: none)               */
+    int white;                  /* `info` is white paper: the question's
+                                   answers are a white list too              */
+    EidosUiRect done;
+} UiDressupLayout;
+
 /* The chosen move, for battle_move_info. */
 typedef struct UiMoveInfo {
     const char *name;
@@ -227,6 +276,20 @@ typedef struct UiThemeOps {
     void (*bag_row)(EidosUiCtx *c, int x, int y, int w, int h, const UiImage *icon, const char *name, int count,
                     int sel, int hover);
     void (*bag_detail_frame)(EidosUiCtx *c, const EidosUiRect *r, int shown);
+    /* The Musical's dress-up (UiDressupLayout above): its places; what
+     * stands under them (the page's body part; `note`: a line in place of
+     * the screen's own name, NULL for none); the body part's label or one
+     * tab (sel: the page shown); one prop's ground and words (state:
+     * UI_DRESSUP_*; `pic`: where the screen then draws the prop's picture);
+     * the box of the prop's line (and the colours of its letters); DONE.
+     * NULL: Kosmos's. */
+    void (*dressup_layout)(UiDressupLayout *l);
+    void (*dressup_backdrop)(EidosUiCtx *c, const UiDressupLayout *l, const char *part, const char *note);
+    void (*dressup_part)(EidosUiCtx *c, const EidosUiRect *r, const char *label, int sel, int hover);
+    void (*dressup_tile)(EidosUiCtx *c, const EidosUiRect *r, const char *name, const char *part, int state,
+                         EidosUiRect *pic);
+    void (*dressup_info)(EidosUiCtx *c, const EidosUiRect *r, u32 *ink, s32 *shadow);
+    void (*dressup_done)(EidosUiCtx *c, const EidosUiRect *r, const char *label, int lit);
     /* A screen's window (app: "summary"): a theme that returns 1 drew its
      * own ground and set the frame the screen lays itself out in; 0 (or
      * NULL): Kosmos's window. */

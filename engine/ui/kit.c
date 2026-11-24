@@ -495,6 +495,26 @@ void ui_blit_screen(EidosUiCtx *c, int x, int y, const u8 *screen,
     }
 }
 
+void ui_blit_screen_half(EidosUiCtx *c, int x, int y, const u8 *screen,
+                         int sx, int sy, int w, int h)
+{
+    int xx, yy;
+
+    if (screen == NULL || w < 2 || h < 2 || sx < 0 || sy < 0 || sx + w > 256 || sy + h > 192) {
+        return;
+    }
+    for (yy = 0; yy + 1 < h; yy += 2) {
+        for (xx = 0; xx + 1 < w; xx += 2) {
+            const u8 *p = screen + ((size_t)(sy + yy) * 256 + (size_t)(sx + xx)) * 4;
+            u32 r = (u32)p[0] + p[4] + p[1024] + p[1028];
+            u32 g = (u32)p[1] + p[5] + p[1025] + p[1029];
+            u32 b = (u32)p[2] + p[6] + p[1026] + p[1030];
+
+            put(c, x + xx / 2, y + yy / 2, (((r + 2) / 4) << 16) | (((g + 2) / 4) << 8) | ((b + 2) / 4), 255);
+        }
+    }
+}
+
 void ui_image(EidosUiCtx *c, int x, int y, const UiImage *im, int k)
 {
     int xx, yy, dx, dy;

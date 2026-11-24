@@ -129,6 +129,12 @@ typedef struct EidosUiView {
                                (filled by eidos_ui_frame on a phone, where
                                the bar is taller than the home indicator;
                                0: the world fills the window)               */
+    int box_x, box_y;       /* WORLD in a box: the world is drawn in this   */
+    int box_w, box_h;       /* rectangle of the window (window pixels), not
+                               over the whole window; the interface draws
+                               what is round it.  box_w 0: no box.  For a
+                               scene whose picture is one part of a screen
+                               the interface lays out (the Musical's stage) */
     int cap_mix;            /* 0..16: how much of the game's screen capture
                                (the old picture a door blends out over the
                                new world) covers the world; the kept wide
@@ -200,6 +206,9 @@ void eidos_ui_want_ds_scale(void);
  * the game's lower screen as a sheet beside its text needs 216): the
  * largest whole scale that leaves them. */
 void eidos_ui_want_ds_scale_rows(int rows);
+/* The same with the columns the layout needs beside the screen: the scale
+ * is the largest whole one whose canvas is `rows` high and `cols` wide. */
+void eidos_ui_want_ds_scale_size(int rows, int cols);
 
 /* The style chooser's preview: the real game on a save kept in memory
  * (sdk/save_slots.h, bw_slots_try_begin).  State: 0 none, 1 going in, 2 in

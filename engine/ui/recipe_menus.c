@@ -490,8 +490,20 @@ static int put_utf8(char *out, int n, int max, u32 c)
 /* One string of a bank as UTF-8.  Line breaks stay '\n'; the control codes
  * are dropped, except the player's name tag (kind 0x0100), which `name`
  * replaces.  Returns out. */
+static const char *bank_text_slots(int arc, int member, u32 idx, const char *name, const char *const *slots,
+                                   int nslots, char *out, int max);
+
 static const char *bank_text(int arc, int member, u32 idx, const char *name,
                              char *out, int max)
+{
+    return bank_text_slots(arc, member, idx, name, NULL, 0, out, max);
+}
+
+/* The same, and with `slots` a word tag (a control code of the kinds
+ * 0x01xx, whose first argument is the word set's slot, as the game's
+ * WORDSET_CopyTaggedText fills them) is replaced by slots[that slot]. */
+static const char *bank_text_slots(int arc, int member, u32 idx, const char *name, const char *const *slots,
+                                   int nslots, char *out, int max)
 {
     const Bank *b = bank_get(arc, member);
     u32 count, off, key, pos, n = 0;
@@ -537,8 +549,13 @@ static const char *bank_text(int arc, int member, u32 idx, const char *name,
                 key = rotl16(key, 3);
                 pos += 2;
             }
-            (void)a0;
-            if (kind == 0x0100u && name != NULL) {
+            if (slots != NULL && (kind & 0xFF00u) == 0x0100u && argc >= 1u && a0 < (u32)nslots && slots[a0] != NULL) {
+                const char *s;
+
+                for (s = slots[a0]; *s != '\0' && (int)n < max - 4; s++) {
+                    out[n++] = *s;
+                }
+            } else if (kind == 0x0100u && name != NULL) {
                 const char *s;
 
                 for (s = name; *s != '\0' && (int)n < max - 4; s++) {
@@ -619,6 +636,12 @@ static const char *game_text(int arc, int member, u32 idx, const char *name)
 const char *ui_game_text(int arc, int member, u32 idx)
 {
     return game_text(arc, member, idx, NULL);
+}
+
+/* A text of the game's banks with its word tags filled (kit.h). */
+void ui_game_text_fill(int arc, int member, u32 idx, const char *const *slots, int nslots, char *out, int max)
+{
+    (void)bank_text_slots(arc, member, idx, NULL, slots, nslots, out, max);
 }
 
 /* Replace the line breaks of a text by spaces (the kit wraps by itself). */
@@ -4229,6 +4252,16 @@ static int catch_match(void)
     return tw != NULL && rdp(tw, 0x24) != NULL;
 }
 
+/* Whether the game is asking: ZukanNicknameWork.pauseFlag (+0x4C, ZUKAN_NICKNAME_UpdateInfoWindow) is 2
+ * from the frame it shows its YES / NO to the frame it takes an answer, and 3 after (it then puts the
+ * buttons away, BTLV_INPUT_ChangeScreen 0).  #50: the answers were drawn for as long as the input
+ * existed, so once NO was taken they stayed over the next message with YES lit, because the game's
+ * cursor goes back to the first entry when a choice is taken. */
+static int catch_asking(const u8 *nk)
+{
+    return rd32(nk, 0x4C) == 2u && rdp(nk, 0x54) != NULL;
+}
+
 /* The question's cursor, the battle input's (BtlvInput +0x68, bits 5..8: 0 YES, 1 NO), or -1 while the game
  * hides it (BtlvInput.cursorVisible, +0x274, ZukanNicknameWork's soundEnabled: after a touch).  #45: the
  * answers showed no cursor at all. */
@@ -4244,6 +4277,32 @@ static int catch_cursor(const u8 *nk)
         return -1;
     }
     return ((rd32(bi, 0x68) >> 5) & 15u) == 1u ? 1 : 0;
+}
+
+/* The answer to show lit.  The game takes A (the entry under its cursor), B (NO) or a touch, then puts
+ * its cursor back on the first entry and runs the button's own animation for about ten frames before it
+ * says it has the answer (BTLV_INPUT_ProcessTouchInput): through those frames the answer taken stays
+ * lit, not the cursor (#50: NO, taken, showed YES lit).  -1: no cursor to show. */
+static int g_catch_taken = -1;
+
+static int catch_lit(const u8 *nk)
+{
+    int cur = catch_cursor(nk);
+
+    if (!catch_asking(nk)) {
+        g_catch_taken = -1;
+        return -1;
+    }
+    if (g_catch_taken < 0) {
+        u32 k = eidos_ui_keys_pressed();
+
+        if (k & BW_KEY_B) {
+            g_catch_taken = 1;
+        } else if ((k & BW_KEY_A) && cur >= 0) {
+            g_catch_taken = cur;
+        }
+    }
+    return g_catch_taken >= 0 ? g_catch_taken : cur;
 }
 
 static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
@@ -4307,10 +4366,10 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             }
             /* the answers come with the question, not before it (the game makes its yes/no
              * input when the screen starts) */
-            if (bh > 0 && rdp(nk, 0x54) != NULL && ui_theme_active()->choice_row != NULL) {
+            if (bh > 0 && catch_asking(nk) && ui_theme_active()->choice_row != NULL) {
                 static const char *const yn2[2] = { "YES", "NO" };
                 static const int tap_y2[2] = { 56, 104 };
-                int lw = 84, lx = bx + bw - lw, ly = by - 6 - (2 * 18 + 8), hov = -1;
+                int lw = 84, lx = bx + bw - lw, ly = by - 6 - (2 * 18 + 8), hov = -1, lit = catch_lit(nk);
 
                 ui_textbox_frame(c, UI_TEXTBOX_NARRATION, lx, ly, lw, 2 * 18 + 8);
                 for (i = 0; i < 2; i++) {
@@ -4323,15 +4382,16 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 for (i = 0; i < 2; i++) {
                     EidosUiRect r = { lx + 3, ly + 4 + i * 18, lw - 6, 18 };
 
-                    /* lit: the pointer's, else the game's cursor */
+                    /* lit: the answer taken, else the pointer's, else the game's cursor */
                     ui_theme_active()->choice_row(c, UI_CHOICE_WHITE, r.x, r.y, r.w, r.h, ui_tr(yn2[i]),
-                                                  hov >= 0 ? hov == i : catch_cursor(nk) == i);
+                                                  g_catch_taken >= 0 ? g_catch_taken == i : hov >= 0 ? hov == i : lit == i);
                     if (eidos_ui_hit(r) & EIDOS_UI_CLICK) {
+                        g_catch_taken = i;
                         eidos_ui_tap(127, tap_y2[i], 3);
                     }
                 }
             }
-            if (bh > 0) {
+            if (bh > 0 && catch_asking(nk)) {
                 ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
             } else {
                 ui_hints(c, ch - ui_bar_h(c), cw, hints_next, 1, keys_next);
@@ -4369,18 +4429,34 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_panel(c, bx, by, bw, bh, UI_CUT_TL | UI_CUT_BR, 7, UI_BODY, UI_EDGE, 235);
         ui_letters(c, ui_bmpwin_bmp(rdp(nk, 0x24)), bx + 12, by + 7, UI_WHITE, UI_EDGE, NULL, NULL);
     }
-    if (bh > 0 && rdp(nk, 0x54) != NULL) {
+    if (bh > 0 && catch_asking(nk)) {
         static const char *const yn[2] = { "YES", "NO" };
         static const int tap_y[2] = { 56, 104 };
 
+        int lit = catch_lit(nk), hov = -1;
+
+        /* one answer lit at a time: the one taken, else the pointer's, else
+         * the game's cursor (the pointer on one and the cursor on the other
+         * lit both) */
         for (i = 0; i < 2; i++) {
-            if (sheet_tile_hit(c, bx + bw - 90, by - 4 - 2 * 26 + i * 26, 90, 23, yn[i], catch_cursor(nk) == i)
+            EidosUiRect r = { bx + bw - 90, by - 4 - 2 * 26 + i * 26, 90, 23 };
+
+            if (eidos_ui_hit(r) & EIDOS_UI_HOVER) {
+                hov = i;
+            }
+        }
+        if (g_catch_taken < 0 && hov >= 0) {
+            lit = -1;                   /* the tile lights itself under the pointer */
+        }
+        for (i = 0; i < 2; i++) {
+            if (sheet_tile_hit(c, bx + bw - 90, by - 4 - 2 * 26 + i * 26, 90, 23, yn[i], lit == i)
                 & EIDOS_UI_CLICK) {
+                g_catch_taken = i;
                 eidos_ui_tap(127, tap_y[i], 3);
             }
         }
     }
-    if (bh > 0) {
+    if (bh > 0 && catch_asking(nk)) {
         ui_hints(c, ch - ui_bar_h(c), cw, hints, 2, keys);
     } else {
         ui_hints(c, ch - ui_bar_h(c), cw, hints_next, 1, keys_next);
@@ -4389,6 +4465,7 @@ static void catch_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
 static void catch_reset(void)
 {
+    g_catch_taken = -1;
 }
 
 static const EidosUiRecipe recipe_catch = {

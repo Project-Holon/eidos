@@ -1204,7 +1204,9 @@ static void boot_ui_frame(BootRun *run)
     if (run->plat == NULL) {
         return;
     }
-    one = eidos_platform_layout(run->plat) == EIDOS_LAYOUT_ONE;
+    /* (with a presenter that cannot show the interface, the one-screen
+     * layout is the game's two screens and the game's own controls) */
+    one = eidos_platform_layout(run->plat) == EIDOS_LAYOUT_ONE && eidos_platform_presents_ui(run->plat);
     if (one != was_one) {
         was_one = one;
         eidos_ui_set_enabled(one);

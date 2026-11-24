@@ -308,14 +308,20 @@ static const char *k_fsw =
     "uniform sampler2D held;\n"
     "uniform int under;\n"
     "uniform float vpy;\n"
+    "uniform float vpx;\n"
     "in vec2 uv;\n"
     "out vec4 color;\n"
     SHARP_FN
     "void main() {\n"
-    "    vec2 f = vec2(gl_FragCoord.x, win.y - gl_FragCoord.y);\n"
+    /* the place in the world's own pixels: gl_FragCoord counts from the
+     * window's bottom left, the world's viewport starts vpx columns in and
+     * vpy rows up (#50: with vpy not 0 the whole world was drawn that many
+     * rows too low) */
+    "    vec2 fc = gl_FragCoord.xy - vec2(vpx, vpy);\n"
+    "    vec2 f = vec2(fc.x, win.y - fc.y);\n"
     "    vec2 duv = (f - dsr.xy) / dsr.zw;\n"
     /* a cropped world's 3D was rendered at the DS rectangle's size */
-    "    vec4 g = texture(g3d, crop != 0 ? vec2(duv.x, 1.0 - duv.y) : gl_FragCoord.xy / win);\n"
+    "    vec4 g = texture(g3d, crop != 0 ? vec2(duv.x, 1.0 - duv.y) : fc / win);\n"
     "    vec3 P = g.rgb;\n"
     "    float A = g.a;\n"
     "    if (bmode == 1) { P = (1.0 - bfac) * P + bfac * A; }\n"
@@ -365,7 +371,7 @@ static const char *k_fsw =
      * rectangle and does not leave it a square */
     "    vec3 B_held = vec3(0.0);\n"
     "    if (under != 0) {\n"
-    "        B_held = texture(held, (gl_FragCoord.xy - vec2(0.0, vpy)) / win).rgb * (under == 2 ? 1.0 : 0.5);\n"
+    "        B_held = texture(held, fc / win).rgb * (under == 2 ? 1.0 : 0.5);\n"
     "        if (bmode == 1) B_held = (1.0 - bfac) * B_held + bfac;\n"
     "        else if (bmode == 2) B_held = (1.0 - bfac) * B_held;\n"
     "    }\n"
@@ -443,7 +449,7 @@ static struct {
     SDL_Rect ds;                   /* the DS screen's rectangle in the window */
     GLuint progw, progb, progu;
     GLint w_tex, w_behind, w_g3d, w_zero, w_texsize, w_dsr, w_win, w_bmode,
-          w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect, w_bd, w_held, w_under, w_vpy;
+          w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect, w_bd, w_held, w_under, w_vpy, w_vpx;
     float bd[3];                   /* the backdrop colour beyond the DS screen */
     GLint b_src, b_win, b_dir, b_tint, b_rect;
     GLint u_ctex, u_rect;
@@ -461,11 +467,15 @@ static struct {
      * bar, taller than the system's home indicator): the world is drawn
      * above them, at the window's width and the rest of its height. */
     int bottom;
+    /* The world in a box of the window (eidos_gl_one_box; window pixels,
+     * y down): ds is then from the box's top-left corner. */
+    int has_box;
+    SDL_Rect box;
 } g_one;
 
-/* The world's viewport in the window: g_vp_y up from the bottom while the
- * world is drawn (0 into an off-screen target). */
-static int g_vp_y;
+/* The world's viewport in the window: g_vp_x from the left and g_vp_y up
+ * from the bottom while the world is drawn (0 into an off-screen target). */
+static int g_vp_x, g_vp_y;
 
 #if defined(__vita__)
 /*
@@ -902,6 +912,7 @@ EidosGl *eidos_gl_create(SDL_Window *window)
         g_one.w_held = g->glGetUniformLocation(g_one.progw, "held");
         g_one.w_under = g->glGetUniformLocation(g_one.progw, "under");
         g_one.w_vpy = g->glGetUniformLocation(g_one.progw, "vpy");
+        g_one.w_vpx = g->glGetUniformLocation(g_one.progw, "vpx");
         g_one.w_bfac = g->glGetUniformLocation(g_one.progw, "bfac");
         g_one.w_sent = g->glGetUniformLocation(g_one.progw, "sent");
     }
@@ -1321,7 +1332,7 @@ static void draw_frame(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
     if (g == NULL || out_w <= 0 || out_h <= 0) {
         return;
     }
-    glViewport(0, g_vp_y, out_w, out_h);
+    glViewport(g_vp_x, g_vp_y, out_w, out_h);
     glClearColor(g_frame_clear, g_frame_clear, g_frame_clear, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
     g->glBindVertexArray(g->vao);
@@ -1450,6 +1461,15 @@ void eidos_gl_one_bottom(EidosGl *g, int px)
     g_one.bottom = px > 0 ? px : 0;
 }
 
+void eidos_gl_one_box(EidosGl *g, const SDL_Rect *box)
+{
+    (void)g;
+    g_one.has_box = box != NULL && box->w > 0 && box->h > 0;
+    if (g_one.has_box) {
+        g_one.box = *box;
+    }
+}
+
 void eidos_gl_one_canvas(EidosGl *g, const unsigned char *rgba, int w, int h,
                          const SDL_Rect *rect)
 {
@@ -1558,7 +1578,7 @@ static void one_blur(EidosGl *g, int out_w, int out_h)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
     g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, g_vp_y, out_w, out_h);
+    glViewport(g_vp_x, g_vp_y, out_w, out_h);
     g->glUniform2f(g_one.b_dir, 0.f, step);
     g->glUniform1f(g_one.b_tint, 1.f - 0.55f * a);
     glBindTexture(GL_TEXTURE_2D, g_one.btex[1]);
@@ -1582,7 +1602,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         /* an app opening or closing over the world, the world not drawn:
          * the last picture of it stands */
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, g_vp_y, out_w, out_h);
+        glViewport(g_vp_x, g_vp_y, out_w, out_h);
         g->glBindVertexArray(g->vao);
         g->glUseProgram(g_one.progb);
         g->glUniform1i(g_one.b_src, 0);
@@ -1601,7 +1621,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
          * in between, an evolution after a Rare Candy): a plain dark
          * ground, not the app's own DS screen behind its modal */
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, g_vp_y, out_w, out_h);
+        glViewport(g_vp_x, g_vp_y, out_w, out_h);
         glClearColor(0.04f, 0.04f, 0.05f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
         return;
@@ -1633,8 +1653,14 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
     if (use_w) {
         static const GLfloat sent[3] = { 84.f / 255.f, 168.f / 255.f, 52.f / 255.f };
 
-        glViewport(0, blur ? 0 : g_vp_y, out_w, out_h);
-        glClearColor(0.f, 0.f, 0.f, 1.f);
+        glViewport(blur ? 0 : g_vp_x, blur ? 0 : g_vp_y, out_w, out_h);
+        if (g_one.has_box && !blur && !g_one.no_fade) {
+            /* round a boxed world, the window takes the screen's backdrop as
+             * the brightness has it (the clear is the whole window's) */
+            glClearColor(g_one.bd[0], g_one.bd[1], g_one.bd[2], 1.f);
+        } else {
+            glClearColor(0.f, 0.f, 0.f, 1.f);
+        }
         glClear(GL_COLOR_BUFFER_BIT);
         g->glBindVertexArray(g->vao);
         g->glUseProgram(g_one.progw);
@@ -1661,7 +1687,8 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         g->glUniform3fv(g_one.w_sent, 1, sent);
         g->glUniform1i(g_one.w_held, 4);
         g->glUniform1i(g_one.w_under, (g_one.under && frozen && g_one.frozen != 0) ? g_one.under : 0);
-        g->glUniform1f(g_one.w_vpy, (float)g_vp_y);
+        g->glUniform1f(g_one.w_vpy, (float)(blur ? 0 : g_vp_y));
+        g->glUniform1f(g_one.w_vpx, (float)(blur ? 0 : g_vp_x));
         g->glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D, g_one.frozen != 0 ? g_one.frozen : g->behind_tex);
         g->glActiveTexture(GL_TEXTURE3);
@@ -1720,7 +1747,7 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         if (1.f - (float)g_one.dark / 16.f < tint) {
             tint = 1.f - (float)g_one.dark / 16.f;
         }
-        glViewport(0, g_vp_y, out_w, out_h);
+        glViewport(g_vp_x, g_vp_y, out_w, out_h);
         g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
         g->glBindVertexArray(g->vao);
         g->glUseProgram(g_one.progb);
@@ -1806,9 +1833,17 @@ static void draw_scene(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
             glClearColor(0.f, 0.f, 0.f, 1.f);
             glClear(GL_COLOR_BUFFER_BIT);
         }
-        g_vp_y = b;
-        one_world(g, out_w, out_h - b, dst);
-        g_vp_y = 0;
+        if (g_one.has_box && !g_one.blur && g_one.box.x + g_one.box.w <= out_w && g_one.box.y + g_one.box.h <= out_h) {
+            /* the world in its box: GL's rows count from the bottom */
+            g_vp_x = g_one.box.x;
+            g_vp_y = out_h - g_one.box.y - g_one.box.h;
+            g_one.frozen_ok = 0;        /* (the kept picture is the whole window's) */
+            one_world(g, g_one.box.w, g_one.box.h, dst);
+        } else {
+            g_vp_y = b;
+            one_world(g, out_w, out_h - b, dst);
+        }
+        g_vp_x = g_vp_y = 0;
     } else {
         draw_frame(g, out_w, out_h, dst);
     }

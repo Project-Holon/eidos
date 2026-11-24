@@ -67,6 +67,8 @@ typedef struct SdlGpu {
     SDL_Rect ds;                /* the DS screen's rectangle             */
     SDL_Rect crect;             /* the canvas's rectangle, w 0: none     */
     int bottom;                 /* window pixels the world leaves free   */
+    int has_box;                /* the world in `box`, not the window    */
+    SDL_Rect box;               /* (window pixels; ds is from its corner) */
     float bd[3];                /* the backdrop beyond the DS screen     */
     SDL_Rect prect;             /* the panel's rectangle, w 0: none      */
 

@@ -1624,9 +1624,168 @@ static void harmonia_title_menu_backdrop(EidosUiCtx *c, const UiTitleMenuLayout 
     rx_tone(k_tone_title);
 }
 /* [/title] */
+
+/* ---------------------------------------------------------------- */
+/* The Musical's dress-up                                            */
+/* ---------------------------------------------------------------- */
+
+/*
+ * The DS's own dress-up, fitted to one screen: the Pokemon in the middle
+ * in its heart and the props on a ring round it, the one under the cursor
+ * in front and the largest, the others smaller toward the back (the DS
+ * turns the ring with the stylus; here LEFT and RIGHT turn it).  Each prop
+ * lies on a small doily, the form of the DS's "OK!" button: cream with a
+ * pink lace rim; the cursor's has the blue rim of the DS's return button,
+ * a worn prop's is pink.  Along the bottom, the DS's message window (white
+ * paper in a dark line, where the DS has it under its curtain) with the
+ * game's line for the prop; at its left the body part the ring is sorted
+ * for, at its right the "OK!" doily.
+ */
+static void doily(EidosUiCtx *c, int x, int y, int w, int h, u32 fill, u32 rim, int a)
+{
+    ui_ellipse(c, x, y, w, h, R(rim), R(rx_mix(rim, 0x000000u, 30, 100)), a);
+    ui_ellipse(c, x + 2, y + 2, w - 4, h - 4, R(0xFFFFFFu), R(0xFFFFFFu), a);
+    ui_ellipse(c, x + 3, y + 3, w - 6, h - 6, R(fill), R(fill), a);
+}
+
+static void harmonia_dressup_layout(UiDressupLayout *l)
+{
+    /* the ring's room: from under the head to over the message.  A prop's
+     * doily is 24 wide at the ring's back and 36 at its front, so the ring
+     * takes its two radii and 12 above, 18 below. */
+    int m = AT_LEAST(SX(12), 8), top = 26, mh = 30, msg_y = l->h - 6 - mh, room = msg_y - 3 - top, ry = (room - 30) / 2, slack;
+
+    ry = ry > 72 ? 72 : ry < 40 ? 40 : ry;
+    slack = room - (2 * ry + 30);
+    l->kind = 1;
+    l->ring_n = 9;
+    l->ring_rx = l->w / 2 - 30 > 150 ? 150 : l->w / 2 - 30;
+    l->ring_ry = ry;
+    l->ring_cx = l->w / 2;
+    l->stage_x = l->w / 2 - 128;
+    /* the Pokemon stands in the ring's middle (the heart's middle is 85
+     * rows into the stage), the ring in the middle of its room */
+    l->stage_y = top + 12 + ry + (slack > 0 ? slack / 2 : 0) - 85;
+    l->stage_y = l->stage_y < 0 ? 0 : l->stage_y;
+    l->ring_cy = l->stage_y + 85;
+    l->show_x0 = 26;
+    l->show_x1 = 230;
+    l->show_y0 = top - l->stage_y > 0 ? top - l->stage_y : 0;      /* (from under the head: it fades with the room) */
+    l->show_y1 = msg_y - 2 - l->stage_y < 158 ? msg_y - 2 - l->stage_y : 158;
+    l->part.x = m;
+    l->part.y = msg_y + (mh - 16) / 2;
+    l->part.w = 92;
+    l->part.h = 16;
+    l->done.w = 44;
+    l->done.h = mh;
+    l->done.x = l->w - l->safe_r - m - l->done.w;
+    l->done.y = msg_y;
+    l->info.x = m + l->part.w + 6;
+    l->info.y = msg_y;
+    l->info.w = l->done.x - 6 - l->info.x;
+    l->info.h = mh;
+    l->white = 1;
+    if (l->asking) {
+        /* the question has the message window alone, in the middle */
+        l->info.w = l->w - 2 * m - l->safe_r > 240 ? 240 : l->w - 2 * m - l->safe_r;
+        l->info.x = (l->w - l->info.w) / 2;
+    }
+}
+
+static void harmonia_dressup_backdrop(EidosUiCtx *c, const UiDressupLayout *l, const char *part, const char *note)
+{
+    char count[24];
+    int x;
+
+    (void)part;
+    /* the head: a band of the room's deeper pink, its edge a row of points
+     * (as the Bag's head on its red) */
+    ui_fill(c, 0, 0, l->w, 22, R(0xD84878u), 255);
+    for (x = 0; x < l->w; x += 8) {
+        ui_fill(c, x + 2, 22, 4, 1, R(0xD84878u), 255);
+        ui_fill(c, x + 3, 23, 2, 1, R(0xD84878u), 255);
+    }
+    /* at the head's right, which prop of the ring is in front and how many
+     * the ring holds (the ring shows nine of them at a time) */
+    count[0] = '\0';
+    if (!l->asking && l->total > 0) {
+        snprintf(count, sizeof count, "%d/%d", l->at, l->total);
+    }
+    (void)note;                 /* (the message window has it) */
+    ui_header(c, 0, 3, l->w, ui_tr("MUSICAL"), ui_tr("DRESS UP"), count, UI_PINK);
+}
+
+static void harmonia_dressup_part(EidosUiCtx *c, const EidosUiRect *r, const char *label, int sel, int hover)
+{
+    int font = ui_text_w(label, UI_FONT_LARGE) <= r->w - 30 ? UI_FONT_LARGE : UI_FONT_SMALL, yy, top = r->y + (r->h - 7) / 2;
+
+    (void)sel;
+    (void)hover;
+    /* the Bag's pocket label: white line, pink face */
+    point_box(c, r->x, r->y, r->w, r->h, 4, 0, 0xFFFFFFu, 0xFFFFFFu, 255);
+    point_box(c, r->x, r->y, r->w, r->h, 4, 1, 0xF87098u, 0xD83C68u, 255);
+    ui_text(c, r->x + (r->w - ui_text_w(label, font)) / 2, r->y + ui_text_y(r->h, font), label, R(0xFFFFFFu),
+            (s32)R(0x8B1029u), font, 1);
+    for (yy = 0; yy < 7; yy++) {
+        int span = yy < 4 ? yy + 1 : 7 - yy;
+
+        ui_fill(c, r->x + 12 - span, top + yy, span, 1, R(0xFFFFFFu), 255);
+        ui_fill(c, r->x + r->w - 12, top + yy, span, 1, R(0xFFFFFFu), 255);
+    }
+}
+
+static void harmonia_dressup_tile(EidosUiCtx *c, const EidosUiRect *r, const char *name, const char *part, int state,
+                                  EidosUiRect *pic)
+{
+    int lit = (state & UI_DRESSUP_LIT) != 0, dim = (state & UI_DRESSUP_DIM) != 0;
+    u32 fill = (state & UI_DRESSUP_WORN) ? 0xFFC4D6u : dim ? 0xD8CCC8u : 0xFFF4E4u;
+    u32 rim = lit ? 0x3090E8u : (state & UI_DRESSUP_WORN) ? 0xE83C74u : 0xF890B0u;
+
+    (void)name;
+    (void)part;
+    pic->x = r->x + 4;
+    pic->y = r->y + 4;
+    pic->w = r->w - 8;
+    pic->h = r->h - 8;
+    if (state & UI_DRESSUP_EMPTY) {
+        return;
+    }
+    if (lit) {
+        ui_ellipse(c, r->x - 2, r->y - 2, r->w + 4, r->h + 4, R(0xFFFFFFu), R(0xFFFFFFu), 200);
+    }
+    doily(c, r->x, r->y, r->w, r->h, fill, rim, 255);
+    if (state & UI_DRESSUP_NEW) {
+        ui_ellipse(c, r->x + 1, r->y + 1, 6, 6, R(0xF8BC28u), R(0x8A5C00u), 255);
+    }
+}
+
+static void harmonia_dressup_info(EidosUiCtx *c, const EidosUiRect *r, u32 *ink, s32 *shadow)
+{
+    u32 fill = 0, edge = 0, sh = 0;
+
+    rx_textbox(c, UI_TEXTBOX_NARRATION | 16, r->x, r->y, r->w, r->h, &fill, &edge, ink, &sh);
+    *shadow = (s32)sh;
+}
+
+static void harmonia_dressup_done(EidosUiCtx *c, const EidosUiRect *r, const char *label, int lit)
+{
+    static const char ok[] = "OK!";             /* the DS button's own word */
+
+    (void)label;
+    doily(c, r->x, r->y, r->w, r->h, 0xFFF4E4u, lit ? 0x3090E8u : 0xF06090u, 255);
+    ui_text(c, r->x + (r->w - ui_text_w(ok, UI_FONT_LARGE)) / 2, r->y + ui_text_y(r->h, UI_FONT_LARGE), ok, R(0xF05088u),
+            (s32)R(0xFFD0DCu), UI_FONT_LARGE, 1);
+}
+
 const UiThemeOps ui_theme_harmonia = {
     .id = "harmonia",
     .name = "Harmonia",
+    .dressup_layout = harmonia_dressup_layout,
+    .dressup_backdrop = harmonia_dressup_backdrop,
+    .dressup_part = harmonia_dressup_part,
+    .dressup_tile = harmonia_dressup_tile,
+    .dressup_info = harmonia_dressup_info,
+    .dressup_done = harmonia_dressup_done,
     .color = rx_color,
     .frame_begin = rx_frame_begin,
     .text = rx_text,

@@ -976,11 +976,35 @@ static void draw_dialog(EidosUiCtx *c, const BagView *v, int mx, int my, int mw,
         labels[1] = bag_msg(v->work, 133);
         if (labels[0][0] == '\0') labels[0] = "YES";
         if (labels[1][0] == '\0') labels[1] = "NO";
-        /* the game's rectangles are stacked; each button taps its own */
+        int cur = menu != NULL ? (int)(rd32(menu, TM_CURSOR) & 0xFFu) : -1, hover = -1;
+        int keys = UI_GetInputMode != NULL && UI_GetInputMode() == 0;
+
+        /* the game's list is stacked (UP and DOWN move its cursor); the two
+         * buttons stand side by side here, so LEFT and RIGHT move it too */
+        if (menu != NULL) {
+            u32 k = eidos_ui_keys_pressed();
+
+            eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT);
+            if ((k & BW_KEY_LEFT) && cur == 1) {
+                press_key(BW_KEY_UP);
+            } else if ((k & BW_KEY_RIGHT) && cur == 0) {
+                press_key(BW_KEY_DOWN);
+            }
+        }
+        for (i = 0; i < 2; i++) {
+            int bx = dx + dw - 12 - (2 - i) * bw - (1 - i) * 6;
+
+            if (eidos_ui_hit(rect(bx, by, bw, row_h)) & EIDOS_UI_HOVER) {
+                hover = i;
+            }
+        }
+        /* each button taps its own rectangle of the game's.  Lit: the
+         * pointer's, else the game's cursor (#50: only the pointer lit one,
+         * so with the keys neither answer showed as chosen) */
         for (i = 0; i < 2; i++) {
             int bx = dx + dw - 12 - (2 - i) * bw - (1 - i) * 6;
             int st = eidos_ui_hit(rect(bx, by, bw, row_h));
-            int lit = (st & EIDOS_UI_HOVER) != 0;
+            int lit = hover >= 0 ? hover == i : (keys && cur == i);
 
             ui_panel(c, bx, by, bw, row_h, UI_CUT_TL | UI_CUT_BR, 4, lit ? UI_PINK2 : ROW_FILL,
                      lit ? UI_WHITE : UI_RED, 255);
@@ -1426,7 +1450,8 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 h[n].key = "UP DOWN"; h[n].what = "Amount";
                 h[n].keymask = BW_KEY_UP; h[n].tap_x = -1; h[n].tap_y = 0; n++;
             } else if (v.yesno) {
-                h[n].key = "A"; h[n].what = "Yes"; h[n].keymask = BW_KEY_A;
+                /* (A takes the answer under the cursor, which may be NO) */
+                h[n].key = "A"; h[n].what = "Choose"; h[n].keymask = BW_KEY_A;
                 h[n].tap_x = -1; h[n].tap_y = 0; n++;
                 h[n].key = "B"; h[n].what = "No"; h[n].keymask = BW_KEY_B;
                 h[n].tap_x = -1; h[n].tap_y = 0; n++;

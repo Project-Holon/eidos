@@ -29,6 +29,7 @@ static void op_one_set(EidosGpu *g, int on, int world, int screen, const SDL_Rec
 static void op_one_canvas(EidosGpu *g, const unsigned char *rgba, int w, int h, const SDL_Rect *rect)
 { eidos_gl_one_canvas(gl(g), rgba, w, h, rect); }
 static void op_one_bottom(EidosGpu *g, int px) { eidos_gl_one_bottom(gl(g), px); }
+static void op_one_box(EidosGpu *g, const SDL_Rect *box) { eidos_gl_one_box(gl(g), box); }
 static int op_matches_3d(const EidosGpu *g, int screen, int out_w, int out_h)
 { return eidos_gl_3d_matches(glc(g), screen, out_w, out_h); }
 static int op_compose_2d(EidosGpu *g, const struct G2dGpuFrame *f, unsigned char *readback,
@@ -89,7 +90,7 @@ static const EidosGpuOps g_gl_ops = {
     "OpenGL",
     op_destroy,
     op_upload, op_present, op_grab, op_upload_panel, op_present_panel,
-    op_one_set, op_one_canvas, op_one_bottom, op_matches_3d,
+    op_one_set, op_one_canvas, op_one_bottom, op_one_box, op_matches_3d,
     op_compose_2d, op_ready_2d, op_pixels_2d,
     op_view_keep3d, op_view_upload, op_view_free, op_view_begin, op_view_draw, op_view_draw_fx,
     op_view_read, op_view_end,

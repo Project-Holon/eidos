@@ -432,6 +432,12 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
  */
 struct G3dSnapshot;
 int  eidos_platform_gpu3d(const EidosPlatform *p);
+/* Whether the presenter shows the one-screen interface (its canvas and the
+ * world view): the GPU presenters do; SDL's own renderer, the last resort
+ * (no OpenGL 3.3, EIDOS_RENDERER=sdl), shows the game's two screens only.
+ * The interface does not run then: its screens would take the keys and draw
+ * nothing. */
+int  eidos_platform_presents_ui(const EidosPlatform *p);
 
 /*
  * The one-screen layout (EIDOS_LAYOUT_ONE; engine/ui/ui.h).  Each frame,

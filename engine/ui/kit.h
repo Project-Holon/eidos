@@ -188,10 +188,19 @@ int  ui_keycap_w(const char *label);
  * (ui_mon_front_anim, ui_item_icon) or its OBJ layer (eidos_ui_want_objs). */
 void ui_blit_screen(EidosUiCtx *c, int x, int y, const u8 *screen,
                     int sx, int sy, int w, int h, int k, int key);
+/* The same rectangle at half size (w / 2 by h / 2 canvas pixels): each
+ * canvas pixel is the mean of its 2 x 2 screen pixels.  For a small
+ * picture of a whole pane (the Dowsing Machine's rods). */
+void ui_blit_screen_half(EidosUiCtx *c, int x, int y, const u8 *screen,
+                         int sx, int sy, int w, int h);
 
 /* A text of the game's banks (a/0/0/<arc>, member, entry) as UTF-8, read
  * through the file layer; "" when it cannot be read (recipe_menus.c). */
 const char *ui_game_text(int arc, int member, u32 idx);
+/* The same into `out`, with the text's word tags filled as the game's word
+ * set fills them: the tag of slot n becomes slots[n] (a name, an item's
+ * name the caller read from another bank). */
+void ui_game_text_fill(int arc, int member, u32 idx, const char *const *slots, int nslots, char *out, int max);
 
 /* The game's own images, decoded on first use; NULL when unavailable. */
 const UiImage *ui_item_icon(u16 item);

@@ -23,6 +23,8 @@
  *                   a/0/8/3 (the applications' common pieces: member 20
  *                   the touch bar's icons with palette 19, members 56 to 58
  *                   the move kinds' badges with palette 33)
+ *   Musical props   a/0/4/5 (a member a prop, a texture file; member 101
+ *                   the props' data table: engine/ui/recipe_musical.c)
  *   trainer card    a/0/4/0 (member 0x1F the figures' 8 bpp characters,
  *                   0x2B / 0x2C the hero's and heroine's screens, member 6
  *                   the palette: colours 64 to 127 are the figures')
@@ -65,7 +67,7 @@ void ui_sprites_reset(void);    /* assets_sprites.c: the same for the figures */
  * it).  The archives stay open between calls.  NULL when unavailable.  A
  * slot is an index into the kit's small table of open archives. */
 enum { UI_ARC_FONT, UI_ARC_ITEM, UI_ARC_MON, UI_ARC_PERSONAL, UI_ARC_WALK1, UI_ARC_WALK2,
-       UI_ARC_CARD, UI_ARC_FMENU, UI_ARC_APP, UI_ARC_TOWNMAP, UI_ARC_TOWNINFO, UI_ARC_COUNT };
+       UI_ARC_CARD, UI_ARC_FMENU, UI_ARC_APP, UI_ARC_TOWNMAP, UI_ARC_TOWNINFO, UI_ARC_PROPS, UI_ARC_COUNT };
 u8 *ui_arc_member(int slot, u32 member, u32 *size);
 
 /* Decode a 4 bpp OBJ-order image: `tiles_w` x `tiles_h` tiles in row-major

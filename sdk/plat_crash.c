@@ -80,8 +80,28 @@ static void bw_crash_print_addr(const char *what, uintptr_t addr)
         fprintf(stderr, "  %-6s 0x%08llX  (a DS address)\n", what,
                 (unsigned long long)addr);
     } else {
-        fprintf(stderr, "  %-6s 0x%08llX  (outside the executable)\n", what,
-                (unsigned long long)addr);
+        /* In a library (the system's, the graphics driver's, SDL's): its
+         * name and the offset in it, since a library's address changes
+         * from one run to the next. */
+        HMODULE mod = NULL;
+        char path[MAX_PATH];
+        const char *name = path, *s;
+
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               (LPCSTR)addr, &mod)
+            && mod != NULL && GetModuleFileNameA(mod, path, (DWORD)sizeof path) != 0) {
+            path[sizeof path - 1] = '\0';
+            for (s = path; *s != '\0'; s++) {
+                if (*s == '\\' || *s == '/') {
+                    name = s + 1;
+                }
+            }
+            fprintf(stderr, "  %-6s 0x%08llX  (%s+0x%llX)\n", what, (unsigned long long)addr, name,
+                    (unsigned long long)(addr - (uintptr_t)mod));
+        } else {
+            fprintf(stderr, "  %-6s 0x%08llX  (outside the executable)\n", what,
+                    (unsigned long long)addr);
+        }
     }
 }
 

@@ -473,21 +473,29 @@ static int matches_3d(const SdlGpu *s, int screen, int out_w, int out_h)
 static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
 {
     const int sc = s->which;
-    int wh = t.h - (s->bottom > 0 && s->bottom < t.h / 2 ? s->bottom : 0);
+    /* the world's rectangle: the window's top wh rows, or the box the
+     * interface asked for (op_one_box; ds is then from the box's corner,
+     * and the shader works in window pixels: the corner is added) */
+    const int boxed = s->has_box && !(s->blur_amount > 0) && s->box.x + s->box.w <= t.w && s->box.y + s->box.h <= t.h;
+    const int wx = boxed ? s->box.x : 0, wy = boxed ? s->box.y : 0, ww = boxed ? s->box.w : t.w;
+    int wh = boxed ? s->box.h : t.h - (s->bottom > 0 && s->bottom < t.h / 2 ? s->bottom : 0);
     int use_w = s->p_world != NULL && s->screen[sc].tex != NULL && sc != s->cap_screen &&
                 s->behind.tex != NULL && s->behind.w == s->screen[sc].w &&
                 s->behind.h == s->screen[sc].h &&
-                matches_3d(s, sc, s->crop ? s->ds.w : t.w, s->crop ? s->ds.h : wh);
+                matches_3d(s, sc, s->crop ? s->ds.w : ww, s->crop ? s->ds.h : wh);
     int blur = s->blur_amount > 0 && s->p_blur != NULL;
     int frozen = s->frozen_ok && s->frozen != NULL && s->frozen_w == t.w && s->frozen_h == wh;
     int dark = s->bmode != 0 && s->bfac > 0.f;
     SDL_Rect world;
     Target dst, b0;
 
-    world.x = 0;
-    world.y = 0;
-    world.w = t.w;
+    world.x = wx;
+    world.y = wy;
+    world.w = ww;
     world.h = wh;
+    if (boxed) {
+        frozen = 0;             /* (the kept picture is the whole window's) */
+    }
     if ((s->hold || (!use_w && s->no_fade)) && !blur && frozen) {
         /* an app opening or closing over the world: its last picture stands */
         blur_pass(s, cmd, s->frozen, t, world, 0.f, 0.f, 1.f, 1);
@@ -522,7 +530,11 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
             s->frozen_ok = 0;
         }
         if (use_w) {
-            SDL_GPURenderPass *pass = begin(cmd, dst, 1, 0, 0, 0);
+            /* (round a boxed world, the window takes the screen's backdrop
+             * as the brightness has it, white through a fade from white:
+             * the interface's picture of the room fades in over it) */
+            SDL_GPURenderPass *pass = boxed && !s->no_fade ? begin(cmd, dst, 1, s->bd[0], s->bd[1], s->bd[2])
+                                                           : begin(cmd, dst, 1, 0, 0, 0);
             SDL_GPUTextureSamplerBinding tb[5];
             float u[24];
             int *m = (int *)&u[8], *m2 = (int *)&u[12];
@@ -536,13 +548,13 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
             tb[4].texture = frozen ? s->frozen : s->behind.tex;
             tb[0].sampler = tb[1].sampler = tb[2].sampler = tb[3].sampler = tb[4].sampler = s->linear;
             m2[1] = (s->under && frozen) ? s->under : 0;
-            u[0] = (float)s->ds.x;
-            u[1] = (float)s->ds.y;
+            u[0] = (float)(s->ds.x + wx);
+            u[1] = (float)(s->ds.y + wy);
             u[2] = (float)s->ds.w;
             u[3] = (float)s->ds.h;
             u[4] = (float)s->screen[sc].w;
             u[5] = (float)s->screen[sc].h;
-            u[6] = (float)t.w;
+            u[6] = (float)ww;
             u[7] = (float)wh;
             m[0] = s->no_fade ? 0 : s->bmode;
             m[1] = s->dilate;
@@ -613,6 +625,8 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
 
             memset(d, 0, sizeof d);
             d[sc] = s->ds;
+            d[sc].x += wx;
+            d[sc].y += wy;
             draw_screens(s, cmd, dst, d, clear);
         }
     }
@@ -852,6 +866,16 @@ static void op_one_canvas(EidosGpu *g, const unsigned char *rgba, int w, int h,
 }
 
 static void op_one_bottom(EidosGpu *g, int px) { sg(g)->bottom = px > 0 ? px : 0; }
+
+static void op_one_box(EidosGpu *g, const SDL_Rect *box)
+{
+    SdlGpu *s = sg(g);
+
+    s->has_box = box != NULL && box->w > 0 && box->h > 0;
+    if (s->has_box) {
+        s->box = *box;
+    }
+}
 
 static int op_matches_3d(const EidosGpu *g, int screen, int out_w, int out_h)
 {
@@ -1133,7 +1157,7 @@ static const EidosGpuOps g_sdlgpu_ops = {
     "SDL3 GPU",
     op_destroy,
     op_upload, op_present, op_grab, op_upload_panel, op_present_panel,
-    op_one_set, op_one_canvas, op_one_bottom, op_matches_3d,
+    op_one_set, op_one_canvas, op_one_bottom, op_one_box, op_matches_3d,
     op_compose_2d, op_ready_2d, op_pixels_2d,
     op_view_keep3d, op_view_upload, op_view_free, op_view_begin, op_view_draw, op_view_draw_fx,
     op_view_read, op_view_end,

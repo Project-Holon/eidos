@@ -40,6 +40,10 @@ typedef struct EidosGpuOps {
     void (*one_canvas)(EidosGpu *g, const unsigned char *rgba, int w, int h,
                        const SDL_Rect *rect);
     void (*one_bottom)(EidosGpu *g, int px);
+    /* the world in this rectangle of the window (window pixels, y down),
+     * not over all of it; NULL: the whole window (less one_bottom's rows).
+     * one_set's ds is then inside the box, from the box's top-left corner */
+    void (*one_box)(EidosGpu *g, const SDL_Rect *box);
     int  (*matches_3d)(const EidosGpu *g, int screen, int out_w, int out_h);
 
     /* the 2D compositor */
@@ -122,6 +126,7 @@ static inline void eidos_gpu_one_canvas(EidosGpu *g, const unsigned char *rgba, 
                                         const SDL_Rect *rect)
 { g->ops->one_canvas(g, rgba, w, h, rect); }
 static inline void eidos_gpu_one_bottom(EidosGpu *g, int px) { g->ops->one_bottom(g, px); }
+static inline void eidos_gpu_one_box(EidosGpu *g, const SDL_Rect *box) { g->ops->one_box(g, box); }
 static inline int eidos_gpu_3d_matches(const EidosGpu *g, int screen, int out_w, int out_h)
 { return g->ops->matches_3d(g, screen, out_w, out_h); }
 static inline int eidos_gpu_2d_compose(EidosGpu *g, const struct G2dGpuFrame *f,
