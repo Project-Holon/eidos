@@ -573,7 +573,9 @@ static int leave_picture(EidosUiView *view)
     return 0;
 }
 static u32 g_dark_prev;
+static int g_fade_rising;        /* the game's fader is on its way to black (between two of its levels too) */
 static int g_holding;            /* an app's picture held through its fade */
+extern int FADE_IsActive(void) __attribute__((weak));
 
 static void fade_start(void);
 
@@ -756,8 +758,29 @@ static void leave_check(EidosUiView *view)
         }
     }
 
-    int fading_out = dark > g_dark_prev || dark >= 16u;
+    /* The game's fader (FADE_Start) can take several frames for one level of darkness (the nickname
+     * question's end: a level every third frame).  Between two levels the darkness stands still, yet the
+     * fade to black goes on: it counts as going out from its first rise until the fader stops or the
+     * darkness falls.  (Read by the rises alone, such a fade held the picture on each rise and let it go
+     * the frame after with a crossfade from the held one: a moving Pokemon showed as pale copies of
+     * itself for the length of the fade.) */
+    {
+        /* (the game's two faders: FADE_Start's, and the wipe system's, WIPE_SYS_Start: the Pokedex's pages) */
+        const int fading = (FADE_IsActive != NULL && FADE_IsActive()) || (WIPE_SYS_EndCheck != NULL && !WIPE_SYS_EndCheck());
 
+        if (dark > g_dark_prev) {
+            g_fade_rising = 1;
+        } else if (dark < g_dark_prev || !fading) {
+            g_fade_rising = 0;
+        }
+    }
+    int fading_out = dark > g_dark_prev || dark >= 16u || g_fade_rising;
+
+    if (getenv("EIDOS_UI_FADE_LOG") != NULL && (dark != 0u || g_dark_prev != 0u || g_holding || g_leaving || g_fade_left > 0)) {
+        fprintf(stderr, "eidos: ui fade: frame %u scene %s dark %u (before %u) holding %d leaving %d ending %d fade left %d\n",
+                (unsigned)bw_input_frame_number(), g_scene != NULL ? g_scene : "-", (unsigned)dark, (unsigned)g_dark_prev, g_holding,
+                g_leaving, app_ending(), g_fade_left);
+    }
     if (view->blur && !g_leaving && app_ending()) {
         g_leaving = 1;
         g_leave_frame = bw_input_frame_number();
@@ -3003,6 +3026,11 @@ static void ui_script_step(void)
             if (g_us.have < g_us.need) {
                 if (g_us.waiting == 4 && g_us.have == 0u && g_us.spent % g_us.mash_every == 0u) {
                     (void)bw_input_script_press(bw_input_frame_number() + 1u, g_us.mash_keys, 2);
+                    if (getenv("EIDOS_UI_KEY_LOG") != NULL) {
+                        fprintf(stderr, "eidos: ui key: %s down at input frame %u\n",
+                                g_us.mash_keys == BW_KEY_A ? "A" : g_us.mash_keys == BW_KEY_B ? "B" : "keys",
+                                (unsigned)(bw_input_frame_number() + 1u));
+                    }
                 }
                 if (++g_us.spent > 6000u) {
                     us_fail("the wait timed out");
@@ -3074,6 +3102,10 @@ static void ui_script_step(void)
                 return;
             }
             (void)bw_input_script_press(bw_input_frame_number() + 1u, mask, a2[0] != '\0' ? (u32)atoi(a2) : 2u);
+            if (getenv("EIDOS_UI_KEY_LOG") != NULL) {
+                /* (research: when a script's key goes down, for a recording's overlay) */
+                fprintf(stderr, "eidos: ui key: %s down at input frame %u\n", a1, (unsigned)(bw_input_frame_number() + 1u));
+            }
             g_us.need = 4;
             g_us.have = 0;
             g_us.waiting = 2;           /* the press is taken before the next step */

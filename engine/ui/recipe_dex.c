@@ -52,6 +52,7 @@
 /* The game system global (src/game/arm9/gamesystem.c): its first word is the
  * running GameSystem (sdk/mp.c reads it the same way). */
 extern void *bw_dsref__GameSystemGlobal DEX_WEAK;
+extern void *GAMESYSTEM_GetGameData(const void *gs) DEX_WEAK;
 
 /* The Pokedex save (src/game/arm9/zukan_save.c). */
 extern void *ZUKAN_SAVE_GetFromGameData(void *gameData) DEX_WEAK;
@@ -294,6 +295,11 @@ static int dex_probe(DexNow *v)
 
 static int dex_state(const DexNow *v, int species)
 {
+    const char *dbg = getenv("EIDOS_DEBUG_DEX_STATE");
+
+    if (dbg != NULL && species > 0) {
+        return atoi(dbg);       /* a test switch: every species drawn as unseen (0), seen (1) or caught (2) */
+    }
     if (v->save == NULL || ZUKAN_SAVE_IsCaught == NULL || ZUKAN_SAVE_IsSeen == NULL ||
         species <= 0) {
         return 0;
@@ -685,14 +691,28 @@ static void dex_picture(EidosUiCtx *c, int species, int form, int shiny, int x, 
     }
 }
 
+/* The facts of a caught species the screens show as known.  In the Pokedex itself: all of them.  The registration
+ * after a catch (ui_dex_registration) shows them one after the other: until its fact is in g_facts, a field keeps
+ * the look it has for a species that was only seen. */
+#define FACT_CATEGORY 1
+#define FACT_TYPE     2
+#define FACT_HEIGHT   4
+#define FACT_WEIGHT   8
+#define FACT_ENTRY    16
+#define FACT_ALL      31
+static int g_facts = FACT_ALL;
+static int g_reg;               /* the registration draws (not the Pokedex app): no keys to the game, no map */
+
 static void hw_strings(int species, int caught, char *ht, int htn, char *wt, int wtn)
 {
-    if (caught && msg_get(MSG_HEIGHT, (u32)species, ht, htn) > 0 &&
-        msg_get(MSG_WEIGHT, (u32)species, wt, wtn) > 0) {
-        return;
+    int both = caught && msg_get(MSG_HEIGHT, (u32)species, ht, htn) > 0 && msg_get(MSG_WEIGHT, (u32)species, wt, wtn) > 0;
+
+    if (!both || !(g_facts & FACT_HEIGHT)) {
+        snprintf(ht, (size_t)htn, "\?\?\?'\?\?\"");
     }
-    snprintf(ht, (size_t)htn, "\?\?\?'\?\?\"");
-    snprintf(wt, (size_t)wtn, "????.? lbs.");
+    if (!both || !(g_facts & FACT_WEIGHT)) {
+        snprintf(wt, (size_t)wtn, "????.? lbs.");
+    }
 }
 
 /* The species block: number, name, category, types, picture, height and
@@ -718,12 +738,12 @@ static void dex_species_panel(EidosUiCtx *c, const DexNow *v,
     } else {
         ui_text(c, x + 8 + 30, y + 5, "?????", UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
     }
-    if (state == 2 && msg_get(MSG_CATEGORY, (u32)species, cat, sizeof(cat)) > 0) {
+    if (state == 2 && (g_facts & FACT_CATEGORY) && msg_get(MSG_CATEGORY, (u32)species, cat, sizeof(cat)) > 0) {
         ui_text(c, x + 8, y + 21, cat, UI_LIGHT, UI_EDGE, UI_FONT_MEDIUM, 1);
     } else {
         ui_text(c, x + 8, y + 21, "????? Pok\xC3\xA9mon", UI_GREY, UI_EDGE, UI_FONT_MEDIUM, 1);
     }
-    if (state == 2) {
+    if (state == 2 && (g_facts & FACT_TYPE)) {
         species_types(species, &t1, &t2);
         tx = x + w - 8 - 48;
         if (t2 != t1) {
@@ -764,12 +784,12 @@ static void dex_face(EidosUiCtx *c, const EidosUiRect *r, int species, int numbe
     } else {
         ui_text(c, x + 8 + 30, y + 5, "?????", UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
     }
-    if (state == 2 && msg_get(MSG_CATEGORY, (u32)species, cat, sizeof(cat)) > 0) {
+    if (state == 2 && (g_facts & FACT_CATEGORY) && msg_get(MSG_CATEGORY, (u32)species, cat, sizeof(cat)) > 0) {
         ui_text(c, x + 8, y + 21, cat, UI_LIGHT, UI_EDGE, UI_FONT_MEDIUM, 1);
     } else {
         ui_text(c, x + 8, y + 21, "????? Pok\xC3\xA9mon", UI_GREY, UI_EDGE, UI_FONT_MEDIUM, 1);
     }
-    if (state == 2) {
+    if (state == 2 && (g_facts & FACT_TYPE)) {
         species_types(species, &t1, &t2);
         ui_type_tag(c, x + 8, y + 37, 48, t1);
         if (t2 != t1) {
@@ -1202,12 +1222,12 @@ static void run_entry_dev(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
 {
     DexVar vars[40];
     char text[600];
-    int state = dex_state(v, v->species), nv, nh = 0, i;
+    int state = g_reg ? 2 : dex_state(v, v->species), nv, nh = 0, i;
     int x = L->s2.x + 3, w = L->s2.w - 6, y0 = L->s2.y + 3, y1 = L->s2.y + L->s2.h - 3;
     int rowh, yrow, tw, th, ymap, infoh, cryw, cell, have_text, font = UI_FONT_MEDIUM, lh = 14;
     DexHint hints[7];
     BwInputState st;
-    u32 now, edge;
+    u32 now, edge = 0;
 
     dex_modal(c, L, NULL, NULL);
     nv = dex_variants(v, vars, 40);
@@ -1221,22 +1241,26 @@ static void run_entry_dev(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
     dex_face(c, &L->s1, v->species, v->number, state, vars[g_view].form, vars[g_view].shiny);
 
     /* the keys: the game's own page keys are not offered (its pages are one
-     * screen here); up and down step through the Pokemon as its arrows do */
-    bw_input_current(&st);
-    now = in->buttons | st.buttons;
-    edge = now & ~g_entry_prev;
-    g_entry_prev = now;
-    eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_UP | BW_KEY_DOWN | BW_KEY_L | BW_KEY_R | BW_KEY_Y);
-    if (edge & BW_KEY_UP) eidos_ui_tap(12, 180, 3);
-    if (edge & BW_KEY_DOWN) eidos_ui_tap(36, 180, 3);
-    if (edge & BW_KEY_R) view_set(v, vars, nv, g_view + 1);
-    if (edge & BW_KEY_L) view_set(v, vars, nv, g_view - 1);
-    /* the game stays on its AREA page: its lower screen is the map */
-    if (g_park_wait > 0) {
-        g_park_wait--;
-    } else if (v->page != 2) {
-        eidos_ui_tap(110, 180, 3);
-        g_park_wait = 24;
+     * screen here); up and down step through the Pokemon as its arrows do.
+     * (The registration is not the Pokedex app: the game has no such keys
+     * and no map there.) */
+    if (!g_reg) {
+        bw_input_current(&st);
+        now = in->buttons | st.buttons;
+        edge = now & ~g_entry_prev;
+        g_entry_prev = now;
+        eidos_ui_take_keys(BW_KEY_LEFT | BW_KEY_RIGHT | BW_KEY_UP | BW_KEY_DOWN | BW_KEY_L | BW_KEY_R | BW_KEY_Y);
+        if (edge & BW_KEY_UP) eidos_ui_tap(12, 180, 3);
+        if (edge & BW_KEY_DOWN) eidos_ui_tap(36, 180, 3);
+        if (edge & BW_KEY_R) view_set(v, vars, nv, g_view + 1);
+        if (edge & BW_KEY_L) view_set(v, vars, nv, g_view - 1);
+        /* the game stays on its AREA page: its lower screen is the map */
+        if (g_park_wait > 0) {
+            g_park_wait--;
+        } else if (v->page != 2) {
+            eidos_ui_tap(110, 180, 3);
+            g_park_wait = 24;
+        }
     }
 
     /* from the foot up: the cry and the forms, the map, the text above.
@@ -1247,8 +1271,8 @@ static void run_entry_dev(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
     yrow = y1 - rowh;
     tw = imin(w - 6, MAP_SW);
     th = tw * MAP_SH / MAP_SW;
-    have_text = state == 2 && msg_get(MSG_ENTRY, (u32)v->species, text, sizeof(text)) > 0;
-    {
+    have_text = state == 2 && (g_facts & FACT_ENTRY) && msg_get(MSG_ENTRY, (u32)v->species, text, sizeof(text)) > 0;
+    if (!g_reg) {
         WrapFit o;
         int room = yrow - 4 - (th + SECT_HEAD + 3) - 4 - y0, need;
 
@@ -1267,6 +1291,12 @@ static void run_entry_dev(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
         }
     }
     ymap = yrow - 4 - (th + SECT_HEAD + 3);
+    if (g_reg) {
+        /* no map: the text has the map's room too, in the large letters */
+        ymap = yrow;
+        font = UI_FONT_LARGE;
+        lh = 16;
+    }
     infoh = ymap - 4 - y0;
 
     dex_sect(c, "dex-sect-info", "INFO", x, y0, w, infoh);
@@ -1282,11 +1312,13 @@ static void run_entry_dev(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
         o.y = y0 + SECT_HEAD + 3;
         (void)ui_wrap(text, w - 12, font, wrap_fit, &o);
     } else {
-        ui_text(c, x + 6, y0 + SECT_HEAD + 3, "No data yet.", UI_GREY, UI_EDGE, UI_FONT_MEDIUM, 1);
+        ui_text(c, x + 6, y0 + SECT_HEAD + 3, "No data yet.", UI_GREY, UI_EDGE, g_reg ? UI_FONT_LARGE : UI_FONT_MEDIUM, 1);
     }
 
-    dex_sect(c, "dex-sect-area", "AREA", x, ymap, w, th + SECT_HEAD + 3);
-    {
+    if (!g_reg) {
+        dex_sect(c, "dex-sect-area", "AREA", x, ymap, w, th + SECT_HEAD + 3);
+    }
+    if (!g_reg) {
         int mx = x + (w - tw) / 2, my = ymap + SECT_HEAD + 1, px, py, pressed, released;
 
         if (v->page == 2 && in->screen_rgba[1] != NULL && tw >= 8 && th >= 8) {
@@ -1363,7 +1395,7 @@ static void run_entry_dev(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
                 ui_fill(c, r.x + 3, r.y + 5, 5, 1, UI_RAW(0xFFD838u), 255);
                 ui_fill(c, r.x + 4, r.y + 4, 3, 3, UI_RAW(0xFFF0A0u), 255);
             }
-            if (hit & EIDOS_UI_CLICK) {
+            if ((hit & EIDOS_UI_CLICK) && !g_reg) {
                 view_set(v, vars, nv, first + i);
             }
         }
@@ -1380,7 +1412,9 @@ static void run_entry_dev(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *
     if (nv > 1) {
         hints[nh++] = (DexHint){ "L R", "Form", BW_KEY_R, 0, 0 };
     }
-    dex_hints(c, hints, nh);
+    if (!g_reg) {
+        dex_hints(c, hints, nh);        /* (the registration has its own) */
+    }
     dex_view(view);
 }
 
@@ -1936,6 +1970,125 @@ static void dex_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     } else {
         g_doors = 0;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The registration after a catch                                      */
+/* ------------------------------------------------------------------ */
+
+/* The Pokedex's counts as its list has them, with no list: SEEN and OWN over the species of the view the player
+ * keeps (the Unova list by the game's own table, or every species), and the share owned by the game's completion
+ * rule.  `species` counts as owned or, with owned 0, as seen only (the Pokedex as it was before the catch),
+ * whatever the save says of it yet. */
+static void reg_counts(const DexNow *v, int species, int owned, int *seen, int *own, int *part, int *whole)
+{
+    int national = v->save != NULL && ZUKAN_SAVE_GetViewMode != NULL && ZUKAN_SAVE_GetViewMode(v->save) != 0;
+    int sp;
+
+    *seen = *own = *part = *whole = 0;
+    for (sp = 1; sp <= 649; sp++) {
+        int st, counted;
+
+        if (dex_number(v->save, sp, -1) < 0) {
+            continue;           /* not in the Unova Pokedex */
+        }
+        st = dex_state(v, sp);
+        if (sp == species) {
+            st = owned ? 2 : 1;         /* (the game marks the save after this screen, or before: either way) */
+        }
+        *seen += st != 0;
+        *own += st == 2;
+        counted = national
+            ? (ZUKAN_SAVE_IsCountedForNationalCompletion == NULL || ZUKAN_SAVE_IsCountedForNationalCompletion((u32)sp))
+            : (ZUKAN_SAVE_IsCountedForRegionalCompletion == NULL || ZUKAN_SAVE_IsCountedForRegionalCompletion((u32)sp));
+        if (counted) {
+            *whole += 1;
+            *part += st == 2;
+        }
+    }
+}
+
+/*
+ * kit.h.  The registration after a catch (recipe_menus.c, the scene "catch") is this screen: the Pokedex of the
+ * style, open on the caught species.  It is not the Pokedex app: the species, its number and the counts come from
+ * the save, the texts from the game's message files as in the app; the app's map (its own lower screen) and its
+ * keys do not exist here.  A style with a device shows its two screens (the species; INFO, CRY and FORMS); the
+ * others the entry's window with its INFO page.  The caller gives how far the Pokedex is open and which facts
+ * are known; the device slides and its screens come on as they do when the Pokedex opens from the menu, and a
+ * window opens with the Pokedex's doors.
+ */
+void ui_dex_registration(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, int species, int open, int facts,
+                         int owned, int next)
+{
+    static const DexHint hint = { "A", "Next", BW_KEY_A, 0, 0 };
+    DexNow v;
+    DexLayout L;
+    const void *gs = NULL;
+
+    memset(&v, 0, sizeof v);
+    v.kind = DEX_ENTRY;
+    v.species = species;
+    if (&bw_dsref__GameSystemGlobal != NULL && bw_dsref__GameSystemGlobal != NULL) {
+        gs = *(void *const *)bw_dsref__GameSystemGlobal;
+    }
+    if (gs != NULL && GAMESYSTEM_GetGameData != NULL && ZUKAN_SAVE_GetFromGameData != NULL) {
+        v.save = ZUKAN_SAVE_GetFromGameData(GAMESYSTEM_GetGameData(gs));
+    }
+    v.number = dex_number(v.save, species, species);
+    open = iclamp(open, 0, 256);
+    eidos_ui_no_hold();
+    dex_layout(c, &L);
+    g_facts = facts & FACT_ALL;
+    g_reg = 1;
+    if (L.dev) {
+        int keep = g_open, a = 0, b = 0, part = 0, whole = 0;
+
+        if (open >= 200) {
+            reg_counts(&v, species, owned, &a, &b, &part, &whole);        /* (the lid shows no counts) */
+        }
+        (void)ui_app_window(c, "dex-stats", &a, &b, &part, &whole);
+        g_open = open;
+        if (open < 256) {
+            dex_modal(c, &L, NULL, NULL);
+            dex_view(view);
+        } else {
+            run_entry_dev(c, view, in, &v, &L);
+        }
+        g_open = keep;
+    } else {
+        char right[40], text[600];
+
+        snprintf(right, sizeof(right), ui_trf("No. %03d"), v.number);
+        if (open < 200) {
+            /* the Pokedex's own first card */
+            dex_modal(c, &L, "", "");
+            ui_text(c, L.bx + (L.bw - ui_text_w("POK\xC3\x89" "DEX", UI_FONT_LARGE) * 3) / 2,
+                    L.by + L.bh / 2 - 22, "POK\xC3\x89" "DEX", UI_DEX, UI_DEX3, UI_FONT_LARGE, 3);
+        } else {
+            int lw = iclamp(L.bw * 2 / 5, 130, L.bw - 120), rx = L.bx + lw + 6, rw = L.bx + L.bw - rx, ty = L.by + 5;
+
+            dex_modal(c, &L, "ENTRY", right);
+            dex_species_panel(c, &v, L.bx, L.by, lw, L.bh, species, v.number, 2);
+            ui_panel(c, rx, L.by, rw, L.bh, UI_CUT_TL | UI_CUT_BR, 6, DEX_PANEL2, UI_DEX2, 255);
+            ui_tab(c, rx + 6, ty, "INFO", 1, UI_DEX, UI_DEX2);
+            ui_fill(c, rx + 4, ty + 18, rw - 8, 1, UI_DEX2, 255);
+            if ((g_facts & FACT_ENTRY) && msg_get(MSG_ENTRY, (u32)species, text, sizeof(text)) > 0) {
+                WrapOut o;
+
+                o.c = c; o.x = rx + 8; o.y = ty + 24; o.lh = 15; o.max_y = L.by + L.bh - 4;
+                ui_wrap(text, rw - 16, UI_FONT_MEDIUM, wrap_line, &o);
+            } else {
+                ui_text(c, rx + 8, ty + 24, "No data yet.", UI_GREY, UI_EDGE, UI_FONT_MEDIUM, 1);
+            }
+            if (open < 256) {
+                draw_doors(c, DOOR_FRAMES * (256 - open) / 56);      /* the first card opens onto the entry */
+            }
+        }
+        dex_view(view);
+    }
+    g_reg = 0;
+    g_facts = FACT_ALL;
+    dex_hints(c, &hint, next ? 1 : 0);
 }
 
 static void dex_reset(void)

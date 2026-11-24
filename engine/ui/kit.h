@@ -341,6 +341,13 @@ u32  ui_type_color(int type);
  * its two types (the same number twice for one type). */
 int  ui_species_name(int species, char *out, int cap);
 void ui_species_types(int species, int *t1, int *t2);
+/* recipe_dex.c: the style's Pokedex screen on one species, for the registration after a catch (recipe_menus.c, the
+ * scene "catch"), outside the Pokedex app.  open: how far the Pokedex is open, as the Pokedex itself counts it (0
+ * shut, 200 slid open, 256 its screens on).  facts: the species' facts shown as known (1 category, 2 type, 4
+ * height, 8 weight, 16 entry); the others keep the look of a species that was only seen.  owned: the Pokedex's
+ * counter counts the species (0: one less, as before the catch).  next: the hint bar offers A. */
+void ui_dex_registration(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, int species, int open, int facts,
+                         int owned, int next);
 
 /* Each returns the width it drew, where that depends on the text. */
 int  ui_keycap(EidosUiCtx *c, int x, int y, const char *label);

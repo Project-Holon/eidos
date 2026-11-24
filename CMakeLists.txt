@@ -606,6 +606,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_title.c     # title menu hook state (docs/hooks.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ui_text.c       # the one-screen text boxes and the talk balloons
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ui_dressup.c    # the one-screen Musical dress-up's flag (stubs/ov/patch_ov133_dup_fitting.c)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/ui_catch.c      # the one-screen catch card's flag (stubs/ov/patch_ov207_zukan_toroku_graphic.c)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_fixed.c  # the place's move for an effect script's fixed points
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_yesno.c  # the battle's yes / no answers kept for the one-screen interface
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/field_fade.c  # the door fade-in's step (stubs/ov/patch_ov021_event_fieldmap_control.c)
