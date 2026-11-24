@@ -588,6 +588,28 @@ static void rm_settle(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
             }
         }
     }
+    if (getenv("RM_SETTLE_LOG") != NULL) {
+        /* (a check, no rule: a piece whose foot lies at another's top in the map, its middle over that one, and that
+         * did not go down as far as it or went down farther.  The map draws a body without its top where something
+         * stands on it, so the body carries nothing here: a statue's cap stayed in the air over its base.  Such a
+         * thing needs a `join` box) */
+        for (j = 0; j < np; j++) {
+            const double cx = (pc[j].lo[0] + pc[j].hi[0]) * 0.5, cz = (pc[j].lo[2] + pc[j].hi[2]) * 0.5;
+
+            if (!pc[j].live || pc[j].big) {
+                continue;
+            }
+            for (k = 0; k < np; k++) {
+                if (k != j && pc[k].live && !pc[k].big && !pc[k].flat && fabs(pc[j].lo[1] - pc[k].hi[1]) <= 0.3 &&
+                    cx >= pc[k].lo[0] && cx <= pc[k].hi[0] && cz >= pc[k].lo[2] && cz <= pc[k].hi[2] &&
+                    fabs(pc[j].shift - pc[k].shift) > 0.3) {
+                    fprintf(stderr, "settle: apart: the piece x %.1f..%.1f y %.1f..%.1f z %.1f..%.1f (down %.2f) stood on the piece x %.1f..%.1f y %.1f..%.1f z %.1f..%.1f (down %.2f)\n",
+                            pc[j].lo[0], pc[j].hi[0], pc[j].lo[1], pc[j].hi[1], pc[j].lo[2], pc[j].hi[2], pc[j].shift,
+                            pc[k].lo[0], pc[k].hi[0], pc[k].lo[1], pc[k].hi[1], pc[k].lo[2], pc[k].hi[2], pc[k].shift);
+                }
+            }
+        }
+    }
     /* the moved pieces: their triangles again, lower; earlier builders' parts in their boxes go down with them */
     {
         const unsigned made = out->ntri;
