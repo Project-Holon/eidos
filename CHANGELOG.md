@@ -10,6 +10,10 @@ Each release's notes on GitHub start with its section here
 
 ### Modding
 - **Mod Return Values (64-bit)**: Fixed every game function a code mod calls returning 0 on the 64-bit build, which left randomizer and Archipelago mods without effect.
+- **Mods for One Version**: A mod whose manifest says `game = black` or `game = white` is not loaded in the other version; Settings and the launcher show it as Unavailable and name the version it needs.
+
+### Real-Map Battles & Spot Editor
+- **Objects on Furniture**: Objects standing on furniture that a room repairs now stand on its new top; Striaton Gym's counter is whole and its cash register sits on it.
 
 ### Fixes
 - **Nickname Question**: Fixed the screen flickering and showing pale copies of the Pokémon after a catch, a press during its fade-in being lost, a two-second wait with no change, and the message box vanishing for one frame after NO.

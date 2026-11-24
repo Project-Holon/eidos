@@ -104,7 +104,8 @@ holds the move steps (their frames then count from when it opens), and
 | `EIDOS_UI_KEY_LOG=1` | Logs the input frame at which each press of a UI script's `key` and `mash` steps goes down (`eidos: ui key: ...`), for a recording's overlay. |
 | `EIDOS_UI_SKIP=name,name` | One-screen interface: leaves those recipes out, so their screens show as the game's own two screens. For checking what a recipe changes. |
 | `EIDOS_CATCH_LOG=1` | One-screen interface, the Pokedex registration after a catch: logs the game's state, step and fade level as they change and each A or B (`eidos: catch: ...`, `engine/ui/recipe_menus.c`). A species the save owns starts at state 1: no registration. |
-| `EIDOS_MP_UI_LOG=1` | Logs the Play Together screens' steps (`eidos: mp ui: ...`, `engine/platform/settings_ui.c`). |
+| `EIDOS_MP_UI_LOG=1` | Logs the Play Together screens' steps (`eidos: mp ui: ...`, `engine/platform/settings_ui.c`) and when a game mode starts with a new game, is asked for by a mod, and ends (`eidos: mode: ...`, `sdk/mod_menu.c`). |
+| `BMAP_CLEAR_LOG=1` | Real-map battles: logs each frame what the camera's clearance goes by: the sprites reported, the nearest one's distance, the camera's place and the places kept (`clear: ...`, `sdk/battle_view.c`). |
 | `EIDOS_BATTLE_SPRITE_LOG=1` | Real-map battles: logs each battle sprite's place and size as the map's pass sees it (`sdk/battle_view.c`). |
 | `BMAP_LEAF_LOG=1` | Real-map battles: logs each frame how many hand-made grass leaves the leaf rule puts under a sprite (`engine/world/bmap_leaf.c`). A count that changes while nothing moves but the camera shows leaves changing sides. |
 | `RM_SETTLE_LOG=1` | Remade rooms: logs what `settle` moved down, and an `apart` line for each piece it moved away from a piece it stood on (`engine/world/remade/mesh.c`). |

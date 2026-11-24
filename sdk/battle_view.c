@@ -666,6 +666,12 @@ static void camera_clearance(G3dBackdrop *out)
         g_nclr = 0;                     /* (a cut: a new shot) */
     }
     memcpy(g_clr_eye, out->eye, sizeof g_clr_eye);
+    if (getenv("BMAP_CLEAR_LOG") != NULL) {
+        /* (research: what the clearance has to go by each frame) */
+        fprintf(stderr, "clear: frame %u sprites %u nearest %.2f eye %.2f %.2f %.2f places %u\n", (unsigned)bw_input_frame_number(),
+                (unsigned)out->n_poke, nearest > 1e29f ? -1.0 : (double)nearest, (double)out->eye[0], (double)out->eye[1],
+                (double)out->eye[2], g_nclr);
+    }
     if (nearest > 1e29f) {
         out->n_clear = 0;
         return;
