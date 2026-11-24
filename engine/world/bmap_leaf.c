@@ -5,6 +5,7 @@
 #include "bmap_leaf.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -162,6 +163,25 @@ const BmapLeafItem *bmap_leaf_plan(const BmapScene *sc, unsigned gen, const Bmap
             g_plan.it[g_plan.n].at = hi;
         }
         g_plan.n++;
+    }
+    if (getenv("BMAP_LEAF_LOG") != NULL) {
+        /* (research: this view's plan in a line: how many leaves the rule moves, how many of them under a sprite,
+         * and a sum that changes when a leaf changes sides; a line only when one of the three changes) */
+        static unsigned last_n = ~0u, last_under, last_sum;
+        unsigned under = 0, sum = 0, q;
+
+        for (q = 0; q < g_plan.n; q++) {
+            under += g_plan.it[q].under;
+            sum = sum * 31u + g_plan.it[q].leaf * 2u + g_plan.it[q].under;
+        }
+        if (g_plan.n != last_n || under != last_under || sum != last_sum) {
+            fprintf(stderr, "bmap_leaf: plan %u leaves, %u under a sprite, sum %08X; sprites %u, first at %.3f %.3f %.3f\n", g_plan.n,
+                    under, sum, v->np, v->np > 0u ? (double)v->poke[0][0] : 0.0, v->np > 0u ? (double)v->poke[0][1] : 0.0,
+                    v->np > 0u ? (double)v->poke[0][2] : 0.0);
+            last_n = g_plan.n;
+            last_under = under;
+            last_sum = sum;
+        }
     }
     g_plan.sc = sc;
     g_plan.leaf = sc->leaf;

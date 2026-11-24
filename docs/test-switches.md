@@ -40,6 +40,7 @@ game. The code is in `engine/ui/ui.c` unless noted.
 |---|---|
 | `EIDOS_DEBUG_MOVE="F:walk:down:N,F:face:up,F:tile:X:Z,F:a"` | Steps for the player. A direction is a word (up, down, left, right) or its letter (U, D, L, R). F is the input frame the step waits for; 0 starts it at once. The log gives each step's tile and facing, and "blocked" when the player did not get there. |
 | `EIDOS_DEBUG_BATTLE_SCENE=N` | Sets the game's own Battle Scene option before a debug battle (0: the move animations play; 1: off), whatever the save has. The value before is logged. |
+| `EIDOS_DEBUG_DEX_STATE=0\|1\|2` | The Pokedex screens draw every species as not seen (0), seen (1: its facts as question marks) or caught (2), whatever the save has. Display only (`engine/ui/recipe_dex.c`). |
 | `EIDOS_DEBUG_DEX_OWN=N` | The Pokedex device of the Plasma and Harmonia styles shows N owned (the number, the gauge's ring and the ball's kind), whatever the save has. Display only. |
 | `EIDOS_DEBUG_AUTO_PLAYER=1` | The trainer AI chooses for the player's side too (moves, switches, replacements), so a battle plays itself; the screen shows it as always, and in the one-screen layout a move it chose is picked in the menus (`2`: sent without the menus, for the two-screen layout). With an AI mod loaded the mod's choices apply to the side it handles. |
 | `EIDOS_SHOT_EVERY=N` | A screenshot every N frames from frame `EIDOS_SHOT_FROM` (default 0) on, into `--screenshot-dir`: the frames of a recording. |
@@ -99,6 +100,14 @@ holds the move steps (their frames then count from when it opens), and
 | `EIDOS_DEBUG_WHERE=1` | Logs the player's zone and position once the field runs, as an `EIDOS_DEBUG_WARP` value: a test can then start from that spot with any save. |
 | `EIDOS_FLASH_WATCH=1` | Turns on the flash watch (off by default since #38; made for #5): when one frame of the upper screen's picture differs strongly from the frames on both sides while those agree, the three frames' 2D state goes to `eidos_flash.log` in the saves folder and the first six events' pictures to `eidos_flash_<n>_<a,b,c>.png` beside it. Only three frames in a row count, so fast forward logs nothing. |
 | `EIDOS_FLASH_TEST=N` | Draws garbage tiles over the upper half of the first picture from frame N, to check the flash watch. |
+| `EIDOS_UI_FADE_LOG=1` | One-screen interface: while the game's screen is dark, or a picture is held or leaving, logs each frame's scene, the game's darkness (0 to 16), and whether the interface holds its picture or cross-fades (`eidos: ui fade: ...`, `engine/ui/ui.c`). A hold that comes and goes every few frames is a stepped fade read as many fades. |
+| `EIDOS_UI_KEY_LOG=1` | Logs the input frame at which each press of a UI script's `key` and `mash` steps goes down (`eidos: ui key: ...`), for a recording's overlay. |
+| `EIDOS_UI_SKIP=name,name` | One-screen interface: leaves those recipes out, so their screens show as the game's own two screens. For checking what a recipe changes. |
+| `EIDOS_CATCH_LOG=1` | One-screen interface, the Pokedex registration after a catch: logs the game's state, step and fade level as they change and each A or B (`eidos: catch: ...`, `engine/ui/recipe_menus.c`). A species the save owns starts at state 1: no registration. |
+| `EIDOS_MP_UI_LOG=1` | Logs the Play Together screens' steps (`eidos: mp ui: ...`, `engine/platform/settings_ui.c`). |
+| `EIDOS_BATTLE_SPRITE_LOG=1` | Real-map battles: logs each battle sprite's place and size as the map's pass sees it (`sdk/battle_view.c`). |
+| `BMAP_LEAF_LOG=1` | Real-map battles: logs each frame how many hand-made grass leaves the leaf rule puts under a sprite (`engine/world/bmap_leaf.c`). A count that changes while nothing moves but the camera shows leaves changing sides. |
+| `RM_SETTLE_LOG=1` | Remade rooms: logs what `settle` moved down, and an `apart` line for each piece it moved away from a piece it stood on (`engine/world/remade/mesh.c`). |
 | `EIDOS_AUDIO_WAV=FILE` | With `EIDOS_NO_AUDIO=1`, writes the game's sound to a WAV (16-bit stereo, 32768 Hz). Each frame writes its own share, so the sound lines up with `--screenshot` frames at any speed: frame N starts at N x 560190 / 33513982 s. |
 
 ## Pacing

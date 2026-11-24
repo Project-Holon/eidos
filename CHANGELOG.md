@@ -3,6 +3,18 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.7
+
+### One-Screen Mode & UI
+- **Pokédex Registration**: A first catch of a species now opens the style's own Pokédex on that species; its category, type, height, weight and entry go from unknown to known and the OWN counter counts it, in step with the game's own page. A species already owned goes straight to the nickname question.
+
+### Modding
+- **Mod Return Values (64-bit)**: Fixed every game function a code mod calls returning 0 on the 64-bit build, which left randomizer and Archipelago mods without effect.
+
+### Fixes
+- **Nickname Question**: Fixed the screen flickering and showing pale copies of the Pokémon after a catch, a press during its fade-in being lost, a two-second wait with no change, and the message box vanishing for one frame after NO.
+- **Pokédex**: Fixed the Kosmos Pokédex holding and releasing its picture on every step of a page change.
+
 ## 0.2.6
 
 Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago support, Mod API v6, and bug fixes.

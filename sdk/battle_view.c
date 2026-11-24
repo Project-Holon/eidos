@@ -1902,6 +1902,12 @@ static void capture(uintptr_t eff, int warp)
             for (k = 0; k < 3; k++) {
                 g_frame.poke[g_frame.n_poke][k] = rdfx(mc, MCSSW_POS + 4u * k);
             }
+            if (getenv("EIDOS_BATTLE_SPRITE_LOG") != NULL && pos <= 7u) {
+                /* (research: a Pokemon's sprite each frame: its place, its scale and its offset) */
+                fprintf(stderr, "battle_view: sprite %u at %.3f %.3f %.3f scale %.3f %.3f ofs %.3f %.3f %.3f\n", (unsigned)pos,
+                        (double)rdfx(mc, 0xE0u), (double)rdfx(mc, 0xE4u), (double)rdfx(mc, 0xE8u), (double)rdfx(mc, 0xECu),
+                        (double)rdfx(mc, 0xF0u), (double)rdfx(mc, 0x11Cu), (double)rdfx(mc, 0x120u), (double)rdfx(mc, 0x124u));
+            }
             /* how far around a sprite the map in front of it is drawn again:
              * only over the game's own pixels (plat_gl3d.c's stencil), so the
              * box may be loose: twice a Pokemon's size, a trainer taller */
