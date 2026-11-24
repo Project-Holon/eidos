@@ -68,6 +68,36 @@ include(${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 if(MSVC)
     list(FILTER WAMR_RUNTIME_LIB_SOURCE EXCLUDE REGEX "win_clock\\.c$")
 endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+    # A wasm function has no return register.  WAMR's portable call routine
+    # (invokeNative_general.c) returns nothing, and WAMR reads the native's
+    # result as what the routine "left in the register": in the module every
+    # call a mod made into the port came back 0.  The module takes the port's
+    # own routine (wasi/invoke_native.c), which returns the 64 bits the native
+    # returned, and a copy of wasm_runtime_common.c whose declaration of the
+    # routine says so (the copy is made here, checked: a WAMR whose text has
+    # moved stops the configuration).
+    set(_eidos_wrc "${WAMR_ROOT_DIR}/core/iwasm/common/wasm_runtime_common.c")
+    set(_eidos_wrc_copy "${CMAKE_CURRENT_BINARY_DIR}/wasm_runtime_common.c")
+    set(_eidos_decl "void\ninvokeNative(GenericFunctionPointer f, uint32 *args, uint32 sz);")
+    file(READ "${_eidos_wrc}" _eidos_wrc_text)
+    string(FIND "${_eidos_wrc_text}" "${_eidos_decl}" _eidos_at)
+    if(_eidos_at EQUAL -1)
+        message(FATAL_ERROR "cmake/wamr: wasm_runtime_common.c does not declare invokeNative where it did (WAMR 2.2.0)")
+    endif()
+    string(REPLACE "${_eidos_decl}" "uint64\ninvokeNative(GenericFunctionPointer f, uint32 *args, uint32 sz);"
+           _eidos_wrc_text "${_eidos_wrc_text}")
+    set(_eidos_old "")
+    if(EXISTS "${_eidos_wrc_copy}")
+        file(READ "${_eidos_wrc_copy}" _eidos_old)
+    endif()
+    if(NOT "${_eidos_old}" STREQUAL "${_eidos_wrc_text}")
+        file(WRITE "${_eidos_wrc_copy}" "${_eidos_wrc_text}")
+    endif()
+    list(FILTER WAMR_RUNTIME_LIB_SOURCE EXCLUDE REGEX "invokeNative_general\\.c$")
+    list(FILTER WAMR_RUNTIME_LIB_SOURCE EXCLUDE REGEX "common/wasm_runtime_common\\.c$")
+    list(APPEND WAMR_RUNTIME_LIB_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/wasi/invoke_native.c" "${_eidos_wrc_copy}")
+endif()
 add_library(eidos_wamr STATIC ${WAMR_RUNTIME_LIB_SOURCE})
 target_include_directories(eidos_wamr PUBLIC ${WAMR_ROOT_DIR}/core/iwasm/include)
 # A static library: under cl.exe wasm_export.h would mark the API dllimport
