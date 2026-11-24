@@ -432,6 +432,8 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
  */
 struct G3dSnapshot;
 int  eidos_platform_gpu3d(const EidosPlatform *p);
+/* 1 while each DS screen has a physical display of its own (plat_dual.h). */
+int  eidos_platform_dual(const EidosPlatform *p);
 
 /*
  * The one-screen layout (EIDOS_LAYOUT_ONE; engine/ui/ui.h).  Each frame,

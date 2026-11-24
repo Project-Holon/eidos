@@ -102,6 +102,79 @@ const char *eidos_ui_scene_name(void)
     return g_scene;
 }
 
+int ui_lower_sheet_drawn;
+static int g_lower_sheet_last;      /* the last frame's ui_lower_sheet_drawn */
+static int g_title_intro;           /* eidos_ui_title_intro_lower          */
+int eidos_ui_dual_display;
+
+/* The scenes the game's own touch screen plays better on a second display
+ * than the interface's version (eidos_ui_dual_display). */
+static int ds_touch_scene(const char *name)
+{
+    static const char *const names[] = { "name entry" };
+    u32 i;
+
+    for (i = 0; i < sizeof names / sizeof names[0]; i++) {
+        if (strcmp(name, names[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* The lower screen's edges (the top rows and the side columns, away from
+ * the logo in the middle and PRESS START below it) lit: the intro's
+ * checkerboard and dragon, not the logo on black. */
+static int edges_lit(const u8 *px)
+{
+    u32 sum = 0, n = 0;
+    int x, y;
+
+    if (px == NULL) {
+        return 0;
+    }
+    for (y = 0; y < 192; y++) {
+        for (x = 0; x < 256; x++) {
+            const u8 *q;
+
+            if (!(y < 32 || x < 24 || x >= 232)) {
+                continue;
+            }
+            q = px + ((size_t)y * 256u + (size_t)x) * 4u;
+            sum += (u32)q[0] + q[1] + q[2];
+            n++;
+        }
+    }
+    return n > 0 && sum / n > 90u;      /* of 765: more than a dim backdrop */
+}
+
+int eidos_ui_title_intro_lower(void)
+{
+    return g_title_intro;
+}
+
+int eidos_ui_lower_shown(void)
+{
+    /* the scenes that leave the game's lower screen alone: the world with
+     * the C-Gear bar, cutscenes, the title, the battle's plain messages.
+     * Every other scene redraws the lower screen's content its own way. */
+    static const char *const own_lower[] = {
+        "fallback", "field", "boot", "title", "demo3d", "ending",
+        "evolution", "egg_hatch", "whiteout", "battle_plain",
+    };
+    u32 i;
+
+    if (g_lower_sheet_last) {
+        return 1;
+    }
+    for (i = 0; i < sizeof own_lower / sizeof own_lower[0]; i++) {
+        if (strcmp(g_scene, own_lower[i]) == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 void eidos_ui_reset(void)
 {
     u32 i;
@@ -3642,6 +3715,9 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             if (skip != NULL && strstr(skip, g->recipes[j]->name) != NULL) {
                 continue;
             }
+            if (eidos_ui_dual_display && ds_touch_scene(g->recipes[j]->name)) {
+                continue;           /* the DS's keyboard on the second display */
+            }
             if (g->recipes[j]->match != NULL && g->recipes[j]->match()) {
                 r = g->recipes[j];
                 break;
@@ -3723,6 +3799,9 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             UI_SetInputMode(0);
         }
     }
+    g_lower_sheet_last = ui_lower_sheet_drawn;
+    ui_lower_sheet_drawn = 0;
+    g_title_intro = r != NULL && strcmp(r->name, "title") == 0 && edges_lit(in->screen_rgba[1]);
     if (r != NULL) {
         g_scene = r->name;
         EidosUiFrame f = *in;

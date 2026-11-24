@@ -83,6 +83,8 @@ def main():
     ap.add_argument("--relay", default=None, help="EIDOS_DEFAULT_RELAY")
     ap.add_argument("--host-opt", default="-O2", help="wasm-opt's level (EIDOS_HOST_OPT)")
     ap.add_argument("--fetch", action="store_true", help="fetch the toolchain first")
+    ap.add_argument("--module-only", action="store_true",
+                    help="stage one alone: the module, for the phone builds (android/build.py)")
     ap.add_argument("--fast", action="store_true",
                     help="a quick build for testing: the generated C at -O1, in "
                          "more, smaller files, more of them at once (releases "
@@ -101,7 +103,7 @@ def main():
     jobs = a.host_jobs if a.host_jobs is not None else (8 if a.fast else 4)
 
     t = tool_paths(a.fetch)
-    sdl = sdl3_prefix(a.sdl3_prefix)
+    sdl = None if a.module_only else sdl3_prefix(a.sdl3_prefix)
     build = os.path.abspath(a.build_dir)
     mod, host = os.path.join(build, "module"), os.path.join(build, "host")
     gen = ["-G", "Ninja"] if shutil.which("ninja") else []
@@ -137,6 +139,8 @@ def main():
         args.append("-DEIDOS_DEFAULT_RELAY=%s" % a.relay)
     run(args)
     run(["cmake", "--build", mod, "--target", "eidos_boot"])
+    if a.module_only:
+        return 0
 
     # stage two: the program
     args = ["cmake", "-S", os.path.join(ROOT, "host"), "-B", host] + gen + [

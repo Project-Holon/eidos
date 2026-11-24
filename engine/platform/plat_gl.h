@@ -39,6 +39,13 @@ void eidos_gl_upload(EidosGl *gl, int i, const unsigned char *rgba, int w,
  * y down) of an output out_w x out_h, then swap. */
 void eidos_gl_present(EidosGl *gl, int out_w, int out_h, const SDL_Rect dst[2]);
 
+/* Two physical displays (plat_dual.h): `dst` into the window as present
+ * does, and `dst2` into the second display's out2_w x out2_h, then both
+ * are shown.  A rectangle of no size leaves that screen off that display. */
+void eidos_gl_present_dual(EidosGl *gl, int out_w, int out_h, const SDL_Rect dst[2],
+                           int out2_w, int out2_h, const SDL_Rect dst2[2],
+                           const SDL_Rect *cover);
+
 /* Draw both screens as present does, but read the window's pixels instead of
  * swapping: rgb is out_w x out_h x 3 bytes, top-down.  0 on success. */
 int eidos_gl_grab(EidosGl *gl, int out_w, int out_h, const SDL_Rect dst[2],

@@ -240,6 +240,28 @@ const char *eidos_ui_scene_name(void);
 /* Forget every recipe's state (a restart, a new run). */
 void eidos_ui_reset(void);
 
+/*
+ * For a second physical display under the one-screen view (plat_dual.h):
+ * 1 when the last frame's scene already shows what the game draws on its
+ * lower screen (a full-screen app, the start menu, the battle controls,
+ * the lower screen as a sheet), so the second display need not show it
+ * again; 0 when the scene leaves the lower screen to it (the field, a
+ * cutscene).  ui_lower_sheet_drawn: set by a recipe that drew the game's
+ * lower screen as a sheet this frame.
+ */
+int eidos_ui_lower_shown(void);
+extern int ui_lower_sheet_drawn;
+/* 1 while the title's intro has the lower screen repeat the upper one's
+ * scene (Reshiram over the checkerboard, which the one-screen view
+ * already shows up top): its edges are lit.  0 once the lower screen is
+ * the game's logo on black, and outside the title. */
+int eidos_ui_title_intro_lower(void);
+/* Set by the platform layer each frame: the DS's lower screen has a
+ * physical display of its own (plat_dual.h).  Scenes played on the touch
+ * screen as on a DS (the name entry's keyboard) then give the interface
+ * up: the game's own screens show, the keyboard below to tap. */
+extern int eidos_ui_dual_display;
+
 /* ------------------------------------------------------------------ */
 /* For recipes: actions and hit regions                                */
 /* ------------------------------------------------------------------ */

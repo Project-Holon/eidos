@@ -22,6 +22,8 @@
 #include "input.h"
 #include "mod_panel_draw.h"
 #include "platform.h"
+#include "font.h"
+#include "plat_dual.h"
 #include "plat_embed.h"
 #include "plat_gpu.h"
 #include "plat_thread.h"
@@ -100,6 +102,8 @@ struct EidosPlatform {
     SDL_Gamepad *pads[MAX_PADS];
     int   pad_subsystem;            /* SDL_INIT_GAMEPAD is up                */
 
+    int dual_cover_ok;              /* the panel texture holds the second
+                                       display's card (dual_cover)          */
     int touch_down;                 /* the stylus, bottom-screen pixels      */
     int touch_x, touch_y;
 
@@ -534,14 +538,34 @@ static void world_size(const EidosPlatform *p, int *w, int *h)
     }
 }
 
+static int dual_active(const EidosPlatform *p, int *w2, int *h2);
+static void dual_fit(int w, int h, SDL_Rect *r);
+
 void eidos_platform_viewport(const EidosPlatform *p, EidosViewport *vp)
 {
     EidosScreenPlacement pl;
-    int w, h;
+    int w, h, w2, h2;
 
     place(p, &pl);
     out_size(p, &w, &h);
     viewport(p, &pl, w, h, vp);
+    if (p->layout != EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2)) {
+        /* two displays: each screen's size as drawn there, so the internal
+         * resolution's "auto" fits the larger pictures (plat_dual.h) */
+        SDL_Rect a, b;
+        int m = p->swap ? 1 : 0;
+
+        dual_fit(w, h, &a);
+        dual_fit(w2, h2, &b);
+        vp->screen[m].x = vp->content.x = a.x;
+        vp->screen[m].y = vp->content.y = a.y;
+        vp->screen[m].w = vp->content.w = a.w;
+        vp->screen[m].h = vp->content.h = a.h;
+        vp->screen[1 - m].x = b.x;
+        vp->screen[1 - m].y = b.y;
+        vp->screen[1 - m].w = b.w;
+        vp->screen[1 - m].h = b.h;
+    }
 }
 
 int eidos_platform_window_to_touch(const EidosPlatform *p, int win_w,
@@ -571,12 +595,230 @@ static int world_active(const EidosPlatform *p)
            eidos_gpu_has3d(p->gl) && p->ui_view.mode == EIDOS_VIEW_WORLD;
 }
 
+/* ------------------------------------------------------------------ */
+/* A second physical display (plat_dual.h)                            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * On a dual-screen handheld each DS screen gets a display of its own.  In
+ * the two-screen layouts the window shows the top screen (the bottom one
+ * with the screens swapped) and the second display the other, each as
+ * large as fits, centred.  In the one-screen layout the window keeps the
+ * one-screen view (the world, the port's own menus) and the second display
+ * shows the DS's bottom screen, the touch screen.
+ * The size of the second display in w2 x h2; 0 when there is none.
+ */
+static int dual_active(const EidosPlatform *p, int *w2, int *h2)
+{
+    *w2 = *h2 = 0;
+    return p != NULL && p->gl != NULL &&
+           eidos_gpu_can_dual(p->gl) && !eidos_embed_on() &&
+           eidos_dual_size(w2, h2) && *w2 > 0 && *h2 > 0;
+}
+
+/* One DS screen as large as fits in w x h, centred. */
+static void dual_fit(int w, int h, SDL_Rect *r)
+{
+    const int sw = (int)EIDOS_DS_SCREEN_WIDTH, sh = (int)EIDOS_DS_SCREEN_HEIGHT;
+
+    if ((s64)w * sh <= (s64)h * sw) {
+        r->w = w;
+        r->h = (int)((s64)w * sh / sw);
+    } else {
+        r->h = h;
+        r->w = (int)((s64)h * sw / sh);
+    }
+    r->x = (w - r->w) / 2;
+    r->y = (h - r->h) / 2;
+}
+
+/*
+ * The second display's card, for a one-screen scene that already shows the
+ * game's lower screen up top: a dark DS-sized panel, a thin frame, an
+ * arrow up and "See top screen", in the pixel font, drawn once and kept in
+ * the panel's texture (the one-screen layout has no run-status panel).
+ */
+#define COVER_W 256
+#define COVER_H 192
+
+static void cover_px(u8 *rgba, int x, int y, u32 rgb)
+{
+    u8 *d;
+
+    if (x < 0 || y < 0 || x >= COVER_W || y >= COVER_H) {
+        return;
+    }
+    d = rgba + ((size_t)y * COVER_W + (size_t)x) * 4u;
+    d[0] = (u8)(rgb >> 16);
+    d[1] = (u8)(rgb >> 8);
+    d[2] = (u8)rgb;
+    d[3] = 255;
+}
+
+static int cover_text_w(const char *text, int scale)
+{
+    int n = 0;
+
+    while (eidos_utf8_next(&text) != 0) {
+        n++;
+    }
+    return n > 0 ? (n * EIDOS_FONT_ADVANCE - 1) * scale : 0;
+}
+
+static void cover_text(u8 *rgba, int x, int y, int scale, const char *text, u32 rgb)
+{
+    u32 ch;
+
+    while ((ch = eidos_utf8_next(&text)) != 0) {
+        const u8 *g = eidos_font_glyph(ch);
+        int r, c, sx, sy;
+
+        for (r = 0; g != NULL && r < EIDOS_FONT_ROWS; r++) {
+            for (c = 0; c < EIDOS_FONT_COLS; c++) {
+                if (!(g[r] & (0x10 >> c))) {
+                    continue;
+                }
+                for (sy = 0; sy < scale; sy++) {
+                    for (sx = 0; sx < scale; sx++) {
+                        cover_px(rgba, x + c * scale + sx, y + r * scale + sy, rgb);
+                    }
+                }
+            }
+        }
+        x += EIDOS_FONT_ADVANCE * scale;
+    }
+}
+
+static void dual_cover(EidosPlatform *p)
+{
+    static u8 rgba[COVER_W * COVER_H * 4];
+    const char *line1 = "See top screen";
+    const int scale = 2;
+    int x, y, tw, ty, ax, ay;
+
+    for (y = 0; y < COVER_H; y++) {
+        /* the backdrop, with faint scanlines */
+        for (x = 0; x < COVER_W; x++) {
+            cover_px(rgba, x, y, (y & 1) ? 0x131318u : 0x101014u);
+        }
+    }
+    for (x = 8; x < COVER_W - 8; x++) {
+        /* a thin double frame */
+        cover_px(rgba, x, 8, 0x3a3a46u);
+        cover_px(rgba, x, COVER_H - 9, 0x3a3a46u);
+        cover_px(rgba, x, 11, 0x24242cu);
+        cover_px(rgba, x, COVER_H - 12, 0x24242cu);
+    }
+    for (y = 8; y < COVER_H - 8; y++) {
+        cover_px(rgba, 8, y, 0x3a3a46u);
+        cover_px(rgba, COVER_W - 9, y, 0x3a3a46u);
+        if (y >= 11 && y < COVER_H - 11) {
+            cover_px(rgba, 11, y, 0x24242cu);
+            cover_px(rgba, COVER_W - 12, y, 0x24242cu);
+        }
+    }
+    /* the arrow up: a triangle and its stem */
+    ax = COVER_W / 2;
+    ay = 58;
+    for (y = 0; y < 16; y++) {
+        for (x = -y; x <= y; x++) {
+            cover_px(rgba, ax + x, ay + y, 0xd0d0dcu);
+        }
+    }
+    for (y = ay + 16; y < ay + 30; y++) {
+        for (x = -4; x <= 4; x++) {
+            cover_px(rgba, ax + x, y, 0xd0d0dcu);
+        }
+    }
+    /* the words, with a drop shadow */
+    tw = cover_text_w(line1, scale);
+    ty = 112;
+    cover_text(rgba, (COVER_W - tw) / 2 + 1, ty + 1, scale, line1, 0x000000u);
+    cover_text(rgba, (COVER_W - tw) / 2, ty, scale, line1, 0xf0f0f5u);
+
+    eidos_gpu_upload_panel(p->gl, rgba, COVER_W, COVER_H);
+    p->panel_gen_ok = 0;                /* the run-status panel's is gone */
+    p->dual_cover_ok = 1;
+}
+
+/* A point of an output into the DS screen fitted there: 1 inside, and the
+ * point clamped to the screen either way. */
+static int dual_point(int w, int h, int px, int py, int *x, int *y)
+{
+    SDL_Rect r;
+    int tx, ty, inside;
+
+    dual_fit(w, h, &r);
+    if (r.w <= 0 || r.h <= 0) {
+        return 0;
+    }
+    tx = (int)((s64)(px - r.x) * (int)EIDOS_DS_SCREEN_WIDTH / r.w);
+    ty = (int)((s64)(py - r.y) * (int)EIDOS_DS_SCREEN_HEIGHT / r.h);
+    inside = tx >= 0 && ty >= 0 && tx < (int)EIDOS_DS_SCREEN_WIDTH &&
+             ty < (int)EIDOS_DS_SCREEN_HEIGHT;
+    *x = tx < 0 ? 0 : tx >= (int)EIDOS_DS_SCREEN_WIDTH ? (int)EIDOS_DS_SCREEN_WIDTH - 1 : tx;
+    *y = ty < 0 ? 0 : ty >= (int)EIDOS_DS_SCREEN_HEIGHT ? (int)EIDOS_DS_SCREEN_HEIGHT - 1 : ty;
+    return inside;
+}
+
+/*
+ * The stylus with two displays: the bottom screen is on the second display
+ * (a finger there), or with the screens swapped on the window (the mouse,
+ * which is SDL's touch).  1 when this answered for the stylus.
+ */
+static int read_stylus_dual(EidosPlatform *p)
+{
+    int w2, h2, x = 0, y = 0, inside;
+
+    if (!dual_active(p, &w2, &h2)) {
+        return 0;
+    }
+    if (!p->swap || p->layout == EIDOS_LAYOUT_ONE) {
+        /* the touch screen is on the second display */
+        int nx = 0, ny = 0;
+
+        if (!eidos_dual_touch(&nx, &ny)) {
+            p->touch_down = 0;
+            return 1;
+        }
+        inside = dual_point(w2, h2, (int)((s64)nx * w2 / 65536), (int)((s64)ny * h2 / 65536),
+                            &x, &y);
+    } else {
+        float fx = 0.0f, fy = 0.0f;
+        int ww = 0, wh = 0, ow = 0, oh = 0;
+
+        if (!(SDL_GetMouseState(&fx, &fy) & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) ||
+            p->window == NULL) {
+            p->touch_down = 0;
+            return 1;
+        }
+        SDL_GetWindowSize(p->window, &ww, &wh);
+        out_size(p, &ow, &oh);
+        if (ww <= 0 || wh <= 0 || ow <= 0 || oh <= 0) {
+            p->touch_down = 0;
+            return 1;
+        }
+        inside = dual_point(ow, oh, (int)((s64)fx * ow / ww), (int)((s64)fy * oh / wh), &x, &y);
+    }
+    if (!p->touch_down && !inside) {
+        return 1;                       /* a press off the screen           */
+    }
+    p->touch_down = 1;
+    p->touch_x = x;
+    p->touch_y = y;
+    return 1;
+}
+
 static void read_stylus(EidosPlatform *p)
 {
     float fx = 0.0f, fy = 0.0f;
     SDL_MouseButtonFlags buttons = eidos_embed_on() ? (SDL_MouseButtonFlags)eidos_embed_mouse(&fx, &fy)
                                                     : SDL_GetMouseState(&fx, &fy);
     int mx = (int)fx, my = (int)fy, ww = 0, wh = 0, x = 0, y = 0, inside;
+
+    if (read_stylus_dual(p)) {
+        return;                         /* two displays: plat_dual.h       */
+    }
 
     if (!(buttons & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) || p->window == NULL ||
         world_active(p)) {
@@ -1276,6 +1518,7 @@ static void upload_panel(EidosPlatform *p, const EidosModPanelView *view)
     }
     p->panel_gen = view->generation;
     p->panel_gen_ok = 1;
+    p->dual_cover_ok = 0;               /* the card is overwritten        */
     p->panel_w = view->w;
     p->panel_h = view->h;
     if (p->gl != NULL) {
@@ -1321,6 +1564,13 @@ static void render(EidosPlatform *p)
     place(p, &pl);
     out_size(p, &ow, &oh);
     viewport(p, &pl, ow, oh, &vp);
+    {
+        int w2, h2;
+
+        /* the interface's touch-screen scenes give way to the DS's own
+         * on a second display (ui.h) */
+        eidos_ui_dual_display = p->layout == EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2);
+    }
     have_panel = p->layout != EIDOS_LAYOUT_ONE && panel_view(&vp, &pl, &view) == 0;
     if (have_panel) {
         upload_panel(p, &view);
@@ -1328,6 +1578,21 @@ static void render(EidosPlatform *p)
     if (p->gl != NULL) {
         SDL_Rect rects[2];
         SDL_Rect prect;
+        int w2, h2;
+
+        if (p->layout != EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2)) {
+            /* each DS screen on a display of its own (plat_dual.h) */
+            SDL_Rect main_r[2], second_r[2];
+            int m = p->swap ? 1 : 0;
+
+            eidos_gpu_one_set(p->gl, 0, 0, 0, NULL, 0, 0, 0);
+            memset(main_r, 0, sizeof main_r);
+            memset(second_r, 0, sizeof second_r);
+            dual_fit(ow, oh, &main_r[m]);
+            dual_fit(w2, h2, &second_r[1 - m]);
+            eidos_gpu_present_dual(p->gl, ow, oh, main_r, w2, h2, second_r, NULL);
+            return;
+        }
 
         /* The one-screen layout's state for this frame: the world's
          * rectangle for the DS screen's 2D layers, or off. */
@@ -1372,6 +1637,33 @@ static void render(EidosPlatform *p)
             if (px != NULL && eidos_gpu_grab(p->gl, ow, oh, rects, px) == 0) {
                 eidos_embed_publish(ow, oh);
             }
+            return;
+        }
+        if (p->layout == EIDOS_LAYOUT_ONE && dual_active(p, &w2, &h2)) {
+            /* the one-screen view in the window, the DS's bottom screen
+             * on the second display (plat_dual.h); a scene that already
+             * shows the lower screen up there gets the card below */
+            SDL_Rect second_r[2], cover;
+            int covered = eidos_ui_lower_shown();
+
+            memset(second_r, 0, sizeof second_r);
+            if (!eidos_ui_title_intro_lower()) {
+                /* (the title's intro repeats the top's dragon below: the
+                 * second display stays dark until the game's logo) */
+                dual_fit(w2, h2, &second_r[1]);
+            }
+            if (strcmp(eidos_ui_scene_name(), "fallback") == 0) {
+                /* no scene of the port's own: the fallback's two screens
+                 * side by side would show the lower one twice */
+                memset(rects, 0, sizeof rects);
+                dual_fit(ow, oh, &rects[0]);
+            }
+            if (covered && !p->dual_cover_ok) {
+                dual_cover(p);
+            }
+            cover = second_r[1];
+            eidos_gpu_present_dual(p->gl, ow, oh, rects, w2, h2, second_r,
+                                   covered && p->dual_cover_ok ? &cover : NULL);
             return;
         }
         if (have_panel && view.dst.w > 0 && view.dst.h > 0) {
@@ -2274,6 +2566,13 @@ void eidos_platform_present_nn(EidosPlatform *p, const u8 *top, int n_top,
 
     p->presented = 1;
     render(p);
+}
+
+int eidos_platform_dual(const EidosPlatform *p)
+{
+    int w2, h2;
+
+    return dual_active(p, &w2, &h2);
 }
 
 int eidos_platform_gpu3d(const EidosPlatform *p)

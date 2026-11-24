@@ -11,6 +11,7 @@
 
 #include "plat_gl_int.h"
 #include "prof.h"
+#include "plat_dual.h"
 
 #if defined(__vita__)
 #include <stdint.h>
@@ -1937,6 +1938,76 @@ void eidos_gl_swap(EidosGl *g)
     }
     GL_SWAP(g);
 #undef GL_SWAP
+}
+
+/*
+ * Two physical displays: the second display's picture is drawn into a
+ * framebuffer of the presenter's own, the size of the second display, and
+ * handed to the host (plat_dual.h), which reads it back and copies it
+ * there; then the window's picture as ever.  GL never leaves the window's
+ * surface: switching one context between two surfaces each frame let the
+ * GPU's readbacks of the screens be cut off on an AYN Thor (static).
+ */
+static struct {
+    GLuint fbo, tex;
+    int w, h;
+} g_dual;
+
+static int dual_target(EidosGl *g, int w, int h)
+{
+    if (g_dual.fbo != 0 && g_dual.w == w && g_dual.h == h) {
+        return 0;
+    }
+    if (g_dual.fbo == 0) {
+        glGenTextures(1, &g_dual.tex);
+        g->glGenFramebuffers(1, &g_dual.fbo);
+    }
+    g->glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_dual.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    g->glBindFramebuffer(GL_FRAMEBUFFER, g_dual.fbo);
+    g->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_dual.tex, 0);
+    g_dual.w = w;
+    g_dual.h = h;
+    return 0;
+}
+
+void eidos_gl_present_dual(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2],
+                           int out2_w, int out2_h, const SDL_Rect dst2[2],
+                           const SDL_Rect *cover)
+{
+    if (g == NULL) {
+        return;
+    }
+    if (out2_w > 0 && out2_h > 0 && out2_w <= 4096 && out2_h <= 4096 &&
+        dual_target(g, out2_w, out2_h) == 0) {
+        g->glBindFramebuffer(GL_FRAMEBUFFER, g_dual.fbo);
+        /* the one-screen view's drawing may have left these on */
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_BLEND);
+        if (cover == NULL && dst2[0].w <= 0 && dst2[1].w <= 0) {
+            /* nothing to show there: dark */
+            glViewport(0, 0, out2_w, out2_h);
+            glClearColor(0.f, 0.f, 0.f, 1.f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        } else if (cover != NULL) {
+            /* the panel's picture (the platform layer put its card there:
+             * the one-screen view already shows the lower screen) on the
+             * card's own backdrop colour */
+            glViewport(0, 0, out2_w, out2_h);
+            glClearColor(16.f / 255.f, 16.f / 255.f, 20.f / 255.f, 1.f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            g->glBindVertexArray(g->vao);
+            draw_panel(g, out2_w, out2_h, cover);
+        } else {
+            draw_frame(g, out2_w, out2_h, dst2);
+        }
+        eidos_dual_post(g_dual.fbo, out2_w, out2_h);
+        g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    eidos_gl_present_panel(g, out_w, out_h, dst, NULL);
 }
 
 /* The two screens alone: the panel is the port's own, and a caller that

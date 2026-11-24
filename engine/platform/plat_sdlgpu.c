@@ -1141,6 +1141,7 @@ static const EidosGpuOps g_sdlgpu_ops = {
     op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
     op_read3d_1x,
     op_set_vsync,
+    NULL,                       /* present_dual: OpenGL only for now */
 };
 
 /*
