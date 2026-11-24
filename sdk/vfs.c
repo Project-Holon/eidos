@@ -88,6 +88,7 @@ typedef struct BwMod {
     char *root;
     char *name;
     int   order;
+    int   games;    /* BW_MOD_GAME_* bits: the games its manifest says it works on (0: its `game` line names none) */
 } BwMod;
 
 static BwMod *g_mods;
@@ -137,6 +138,103 @@ static void trim(const char **s, const char **e)
     while (*e > *s && is_space((*e)[-1])) {
         (*e)--;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The game a mod is made for                                           */
+/* ------------------------------------------------------------------ */
+
+static int lower(int c)
+{
+    return c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c;
+}
+
+/*
+ * A manifest's `game` value: `black` or `white` (any case), the mod works on
+ * that game only, in every language.  A game code is read as its game, by
+ * its third letter alone (IRBO, IRBF: Black; IRAO, IRAD: White): a mod made
+ * with an English cartridge works on a French one.  An empty value: both.
+ * 0 for anything else.
+ */
+int bw_mod_games_of(const char *value, size_t n)
+{
+    static const char black[] = "black", white[] = "white";
+    size_t i;
+    int b = n == 5, w = n == 5;
+
+    if (value == NULL || n == 0) {
+        return BW_MOD_GAME_BLACK | BW_MOD_GAME_WHITE;
+    }
+    for (i = 0; i < n && n == 5; i++) {
+        b = b && lower((unsigned char)value[i]) == black[i];
+        w = w && lower((unsigned char)value[i]) == white[i];
+    }
+    if (b || w) {
+        return b ? BW_MOD_GAME_BLACK : BW_MOD_GAME_WHITE;
+    }
+    if (n == 4 && lower((unsigned char)value[0]) == 'i' && lower((unsigned char)value[1]) == 'r') {
+        const int v = lower((unsigned char)value[2]);
+
+        return v == 'b' ? BW_MOD_GAME_BLACK : v == 'a' ? BW_MOD_GAME_WHITE : 0;
+    }
+    return 0;
+}
+
+/*
+ * The game the data root holds: the cartridge's code, at 0x0C of the
+ * header.bin beside the data folder (sdk/langmap.c reads the same four
+ * letters); its third letter is A on White.  The data root's own file, never
+ * a mod's.  0 when it cannot be read: nothing is refused then.
+ */
+int bw_mod_game_loaded(void)
+{
+    char path[1100];
+    char code[4];
+    size_t n = strlen(g_data_root);
+    FILE *fp;
+    int ok;
+
+    if (n == 0 || n + sizeof("header.bin") + 1 > sizeof(path)) {
+        return 0;
+    }
+    memcpy(path, g_data_root, n + 1);
+    while (n > 0 && (path[n - 1] == '/' || path[n - 1] == '\\')) {
+        n--;
+    }
+    while (n > 0 && path[n - 1] != '/' && path[n - 1] != '\\') {
+        n--;
+    }
+    strcpy(path + n, "header.bin");
+    fp = fopen(path, "rb");
+    if (fp == NULL) {
+        return 0;
+    }
+    ok = fseek(fp, 0x0CL, SEEK_SET) == 0 && fread(code, 1, 4, fp) == 4;
+    fclose(fp);
+    if (!ok) {
+        return 0;
+    }
+    return code[2] == 'A' ? BW_MOD_GAME_WHITE : BW_MOD_GAME_BLACK;
+}
+
+static void read_manifest(BwMod *m);
+
+/* The games the mod in the folder `root` says it works on (its manifest's
+ * `game` line; both when it has none, or no manifest). */
+int bw_mod_games_at(const char *root)
+{
+    BwMod m;
+
+    if (root == NULL || root[0] == '\0') {
+        return BW_MOD_GAME_BLACK | BW_MOD_GAME_WHITE;
+    }
+    m.root = (char *)root;
+    m.name = NULL;
+    m.order = 0;
+    m.games = BW_MOD_GAME_BLACK | BW_MOD_GAME_WHITE;
+    read_manifest(&m);
+    free(m.name);
+    return m.games;
 }
 
 /*
@@ -202,6 +300,8 @@ static void read_manifest(BwMod *m)
                 continue;
             }
             m->order = (int)v;
+        } else if ((size_t)(ke - ks) == 4 && memcmp(ks, "game", 4) == 0) {
+            m->games = bw_mod_games_of(vs, (size_t)(ve - vs));
         }
     }
     fclose(fp);
@@ -267,11 +367,30 @@ static int add_root_n(const char *path, size_t n)
     }
     m.name = base == NULL ? NULL : dup_n(base, strlen(base));
     m.order = 0;
+    m.games = BW_MOD_GAME_BLACK | BW_MOD_GAME_WHITE;
     if (m.root == NULL || m.name == NULL) {
         free_mod(&m);
         return -1;
     }
     read_manifest(&m);
+    {
+        /* A mod made for the other game is not loaded: its files and its
+         * code are that game's (a White mod's scripts over Black's maps).
+         * One line says so. */
+        const int have = bw_mod_game_loaded();
+
+        if (m.games == 0) {
+            fprintf(stderr, "eidos: mod %s: its game line names neither black nor white: not loaded\n", m.name);
+            free_mod(&m);
+            return -1;
+        }
+        if (have != 0 && (m.games & have) == 0) {
+            fprintf(stderr, "eidos: mod %s is made for Pokemon %s, this game is Pokemon %s: not loaded\n", m.name,
+                    m.games == BW_MOD_GAME_WHITE ? "White" : "Black", have == BW_MOD_GAME_WHITE ? "White" : "Black");
+            free_mod(&m);
+            return -1;
+        }
+    }
 
     if (g_mod_count == g_mod_cap) {
         u32 cap = g_mod_cap == 0 ? 4 : g_mod_cap * 2;

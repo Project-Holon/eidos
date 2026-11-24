@@ -178,6 +178,12 @@ int bw_mod_menu_running_at(u32 index);
  * whose folder is gone is still in the list, with its switch as it was. */
 int bw_mod_menu_present_at(u32 index);
 
+/* 0 when the mod works on the game that is loaded.  Else the game it is made
+ * for (BW_MOD_GAME_BLACK or BW_MOD_GAME_WHITE, sdk/vfs.h), or -1 when its
+ * `game` line names neither: the mod stays in the list and the port does not
+ * load it, whatever its switch says. */
+int bw_mod_menu_needs_game_at(u32 index);
+
 /* 1 when the mod ships code, so it has a library the loader opens and
  * unloads. */
 int bw_mod_menu_has_code_at(u32 index);

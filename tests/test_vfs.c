@@ -204,6 +204,62 @@ int main(void)
                 strcmp(bw_mod_root_at(0), T_B), 0);
     bw_set_mod_root("");
 
+    /* The game a mod is made for (the manifest's `game` line): a mod for the
+     * other game is not added.  The game loaded is the code in the header.bin
+     * beside the data folder; with none, nothing is refused. */
+    BW_CHECK_EQ("black names Black", bw_mod_games_of("black", 5), BW_MOD_GAME_BLACK);
+    BW_CHECK_EQ("White, in any case, names White", bw_mod_games_of("White", 5), BW_MOD_GAME_WHITE);
+    BW_CHECK_EQ("an empty value names both", bw_mod_games_of("", 0), BW_MOD_GAME_BLACK | BW_MOD_GAME_WHITE);
+    BW_CHECK_EQ("a Black code of another language names Black", bw_mod_games_of("IRBF", 4), BW_MOD_GAME_BLACK);
+    BW_CHECK_EQ("a White code names White", bw_mod_games_of("IRAO", 4), BW_MOD_GAME_WHITE);
+    BW_CHECK_EQ("another word names neither", bw_mod_games_of("banana", 6), 0);
+    BW_CHECK_EQ("nor does a code of another game", bw_mod_games_of("IREO", 4), 0);
+    write_file(T_A "/eidos_mod.txt", "name = A\ngame = white\n");
+    write_file(T_B "/eidos_mod.txt", "name = B\ngame = IRBF\n");
+    write_file(T_C "/eidos_mod.txt", "name = C\n");
+    BW_CHECK_EQ("with no header the game is not known", bw_mod_game_loaded(), 0);
+    BW_CHECK_EQ("and a White mod is added", bw_add_mod_root(T_A), 0);
+    bw_set_mod_root("");
+    {
+        static const char head[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'I', 'R', 'B', 'O' };
+        FILE *fp = fopen(T_ROOT "/header.bin", "wb");
+
+        BW_REQUIRE("the header is written", fp != NULL && fwrite(head, 1, sizeof head, fp) == sizeof head);
+        fclose(fp);
+    }
+    BW_CHECK_EQ("the header says Black", bw_mod_game_loaded(), BW_MOD_GAME_BLACK);
+    BW_CHECK_EQ("the manifest's games are read", bw_mod_games_at(T_A), BW_MOD_GAME_WHITE);
+    BW_CHECK_EQ("a mod with no game line works on both", bw_mod_games_at(T_C), BW_MOD_GAME_BLACK | BW_MOD_GAME_WHITE);
+    BW_CHECK_EQ("on Black a White mod is refused", bw_add_mod_root(T_A), -1);
+    BW_CHECK_EQ("and is not in the list", bw_mod_count(), 0);
+    BW_CHECK_EQ("a mod made with French Black is added", bw_add_mod_root(T_B), 0);
+    BW_CHECK_EQ("a mod with no game line is added", bw_add_mod_root(T_C), 0);
+    BW_CHECK_EQ("two mods are in the list", bw_mod_count(), 2);
+    bw_set_mod_root("");
+    write_file(T_C "/eidos_mod.txt", "name = C\ngame = banana\n");
+    BW_CHECK_EQ("a game line that names neither refuses the mod", bw_add_mod_root(T_C), -1);
+    {
+        const char *order[2];
+
+        order[0] = T_A;
+        order[1] = T_B;
+        BW_CHECK_EQ("the player's order with a White mod in it reports it", bw_mod_set_order(order, 2), -1);
+        BW_CHECK_EQ("and holds the other mod alone", bw_mod_count(), 1);
+    }
+    bw_set_mod_root("");
+    {
+        static const char head[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'I', 'R', 'A', 'D' };
+        FILE *fp = fopen(T_ROOT "/header.bin", "wb");
+
+        BW_REQUIRE("the header is written again", fp != NULL && fwrite(head, 1, sizeof head, fp) == sizeof head);
+        fclose(fp);
+    }
+    BW_CHECK_EQ("German White is White", bw_mod_game_loaded(), BW_MOD_GAME_WHITE);
+    BW_CHECK_EQ("on White the White mod is added", bw_add_mod_root(T_A), 0);
+    BW_CHECK_EQ("and the Black mod is refused", bw_add_mod_root(T_B), -1);
+    bw_set_mod_root("");
+    remove(T_ROOT "/header.bin");
+
     clean_tree();
     BW_REPORT("test_vfs");
 }

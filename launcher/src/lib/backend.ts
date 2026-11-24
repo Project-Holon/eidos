@@ -34,6 +34,8 @@ export type ModInfo = {
   catalogId: string | null;
   version: string | null;
   icon: ModIcon | null;
+  /** The games it works on ("black", "white"); empty when its game line names neither. */
+  games: string[];
 };
 
 /// A mod's icon: a game item's or a species' picture from the player's ROM,

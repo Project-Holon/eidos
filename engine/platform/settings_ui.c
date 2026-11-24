@@ -9,6 +9,7 @@
 
 #include "settings.h"
 #include "mod_menu.h"
+#include "vfs.h"                /* BW_MOD_GAME_*: the game a mod is made for */
 #include "mod_net.h"
 #include "mod_title.h"
 #include "mp.h"
@@ -159,6 +160,10 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
 /* The Mods section: the mods, their switches, their own settings, the
  * clear action and the folders no mod claims. */
 #define HELP_MOD_SWITCH1 "Turn the mod on or off."
+#define HELP_MOD_FOR_WHITE  "This mod is for Pokemon White."
+#define HELP_MOD_FOR_BLACK  "This mod is for Pokemon Black."
+#define HELP_MOD_FOR_NONE   "This mod names a game that is not Black or White."
+#define HELP_MOD_NOT_LOADED "It is not loaded in this game."
 #define HELP_MOD_SWITCH2 "X/Y: move"
 #define HELP_MOD_OPTION1 "A mod setting."
 #define HELP_MOD_OPTION2 ""
@@ -405,6 +410,7 @@ static const ValueName k_choice_names[] = {
 #define STR_INJECT      "Max press"
 #define STR_OFF         "Off"
 #define STR_ON          "On"
+#define STR_UNAVAILABLE "Unavailable"   /* a mod made for the other game */
 
 /* The step the injection's limit moves by: half a second at the DS's 60
  * fps.  The model clamps the value to the port's own ceiling (a minute),
@@ -789,7 +795,7 @@ static void build_session_rows(void)
         u32 i, k;
 
         for (i = 0; i < bw_mod_menu_count(); i++) {
-            if (!bw_mod_menu_enabled_at(i) || !bw_mod_menu_present_at(i)) {
+            if (!bw_mod_menu_enabled_at(i) || !bw_mod_menu_present_at(i) || bw_mod_menu_needs_game_at(i) != 0) {
                 continue;
             }
             for (k = 0; k < bw_mod_menu_mode_count(i); k++) {
@@ -2056,6 +2062,9 @@ static int toggle_mod(int mod)
 {
     int on = bw_mod_menu_enabled_at((u32)mod);
 
+    if (bw_mod_menu_needs_game_at((u32)mod) != 0) {
+        return 0;               /* (made for the other game: it cannot be switched on) */
+    }
     return bw_mod_menu_set_enabled((u32)mod, !on) == 0;
 }
 
@@ -3148,12 +3157,24 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
     case ROW_MOD_SWITCH:
         /* The mod's name and its switch; a mod whose folder is gone says
          * so, and stays off until it is back. */
-        if (bw_mod_menu_present_at((u32)r->arg)) {
-            put(label, nl, bw_mod_menu_name_at((u32)r->arg));
-        } else {
+        if (!bw_mod_menu_present_at((u32)r->arg)) {
             snprintf(buf, sizeof buf, ui_trf("%s (missing)"),
                      bw_mod_menu_name_at((u32)r->arg));
             put(label, nl, buf);
+        } else if (bw_mod_menu_needs_game_at((u32)r->arg) != 0) {
+            /* A mod made for the other game: the port does not load it.
+             * The row says which game it needs, and its switch does
+             * nothing. */
+            const int g = bw_mod_menu_needs_game_at((u32)r->arg);
+
+            snprintf(buf, sizeof buf, ui_trf(g == BW_MOD_GAME_WHITE ? "%s (White only)" : g == BW_MOD_GAME_BLACK ? "%s (Black only)"
+                                                                                                             : "%s (unknown game)"),
+                     bw_mod_menu_name_at((u32)r->arg));
+            put(label, nl, buf);
+            put(value, nv, STR_UNAVAILABLE);
+            break;
+        } else {
+            put(label, nl, bw_mod_menu_name_at((u32)r->arg));
         }
         put(value, nv, bw_mod_menu_enabled_at((u32)r->arg) ? STR_ON : STR_OFF);
         break;
@@ -3442,11 +3463,15 @@ int eidos_sui_row_choices(int row, int *active, char names[3][20])
         return 2;
     }
     if (r->type == ROW_MOD_SWITCH) {
-        /* The mod's switch: two choices, off and on. */
+        /* The mod's switch: two choices, off and on.  A mod made for the
+         * other game has none: its row says "Unavailable". */
+        if (bw_mod_menu_needs_game_at((u32)r->arg) != 0) {
+            return 0;
+        }
         put(names[0], 20, STR_OFF);
         put(names[1], 20, STR_ON);
         if (active != NULL) {
-            *active = bw_mod_menu_enabled_at((u32)r->arg) ? 1 : 0;
+            *active = bw_mod_menu_enabled_at((u32)r->arg) && bw_mod_menu_needs_game_at((u32)r->arg) == 0 ? 1 : 0;
         }
         return 2;
     }
@@ -3535,6 +3560,14 @@ void eidos_sui_help_line(int i, char *out, int n)
             l[1] = HELP_PANEL2;
             break;
         case ROW_MOD_SWITCH:
+            if (bw_mod_menu_needs_game_at((u32)r->arg) != 0) {
+                /* (made for the other game: why it has no switch) */
+                const int g_ = bw_mod_menu_needs_game_at((u32)r->arg);
+
+                l[0] = g_ == BW_MOD_GAME_WHITE ? HELP_MOD_FOR_WHITE : g_ == BW_MOD_GAME_BLACK ? HELP_MOD_FOR_BLACK : HELP_MOD_FOR_NONE;
+                l[1] = HELP_MOD_NOT_LOADED;
+                break;
+            }
             l[0] = HELP_MOD_SWITCH1;
             l[1] = HELP_MOD_SWITCH2;
             break;
@@ -3755,7 +3788,7 @@ static int mode_at_flat(int k, u32 *mod, u32 *mode)
     u32 i, m;
 
     for (i = 0; i < bw_mod_menu_count(); i++) {
-        if (!bw_mod_menu_enabled_at(i) || !bw_mod_menu_present_at(i)) {
+        if (!bw_mod_menu_enabled_at(i) || !bw_mod_menu_present_at(i) || bw_mod_menu_needs_game_at(i) != 0) {
             continue;
         }
         for (m = 0; m < bw_mod_menu_mode_count(i); m++) {
@@ -3931,7 +3964,7 @@ static void games_read(void)
         if (bw_mod_menu_find_mode(g.mode, &mod, &mode)) {
             put(out->title, (int)sizeof out->title, bw_mod_menu_mode_title(mod, mode));
             put(out->owner, (int)sizeof out->owner, bw_mod_menu_name_at(mod));
-            found = bw_mod_menu_enabled_at(mod) && bw_mod_menu_present_at(mod);
+            found = bw_mod_menu_enabled_at(mod) && bw_mod_menu_present_at(mod) && bw_mod_menu_needs_game_at(mod) == 0;
         } else {
             put(out->title, (int)sizeof out->title, g.mode);
             put(out->owner, (int)sizeof out->owner, g.ns);

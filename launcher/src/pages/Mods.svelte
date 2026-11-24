@@ -36,6 +36,14 @@
   // The game species icons are drawn from: the profile's.
   const game = $derived(ov.profiles.find((p) => p.name === selected)?.game || "black");
 
+  // A mod made for the other game: eidos does not load it in this profile.
+  // "" when it fits; else what the hover says, the game it needs.
+  function needs(games: string[]): string {
+    if (games.includes(game)) return "";
+    if (games.length === 0) return "Made for another game";
+    return `Needs Pokémon ${games[0] === "white" ? "White" : "Black"}`;
+  }
+
   let mods = $state<ModInfo[]>(untrack(() => cachedMods.get(selected)) ?? []);
   let indexUrl = $state("");
   let removing = $state<ModInfo | null>(null);
@@ -179,12 +187,13 @@
     <h2 class="section-label">{mods.length} {mods.length === 1 ? "mod" : "mods"} · {enabled} on</h2>
     <ul class="rows window">
       {#each mods as m (m.folder)}
-        <li class:off={!m.enabled}>
-          <label class="switch" title={m.enabled ? "On" : "Off"}>
+        {@const need = needs(m.games)}
+        <li class:off={!m.enabled || need !== ""}>
+          <label class="switch" title={need !== "" ? need : m.enabled ? "On" : "Off"}>
             <input
               type="checkbox"
-              checked={m.enabled}
-              disabled={running}
+              checked={m.enabled && need === ""}
+              disabled={running || need !== ""}
               onchange={(e) => run(() => modsSetEnabled(selected, m.folder, e.currentTarget.checked))} />
             <span class="track" aria-hidden="true"></span>
           </label>
@@ -194,6 +203,7 @@
             {#if m.name !== m.folder}<span class="sub">{m.folder}</span>{/if}
           </div>
           {#if !m.hasManifest}<span class="badge">No manifest</span>{/if}
+          {#if need !== ""}<span class="badge" title={need}>Unavailable</span>{/if}
           <div class="actions">
             <button class="quiet danger" disabled={running} title="Remove" onclick={() => askRemove(m)}><Icon name="trash" size={15} /></button>
           </div>
@@ -217,6 +227,7 @@
       {#if catalog}
         {#each catalog.mods as c (c.id)}
           {@const st = modState(c)}
+          {@const need = needs(c.games)}
           <li class="catalog">
             <ModIcon icon={c.icon} {game} />
             <div class="main">
@@ -232,6 +243,8 @@
             <div class="actions">
               {#if st === "installed"}
                 <span class="badge"><Icon name="check" size={13} />Installed</span>
+              {:else if need !== ""}
+                <span class="unavailable" title={need}><button disabled>Unavailable</button></span>
               {:else}
                 <button class={st === "update" ? "primary" : ""} disabled={running || installing !== null} onclick={() => install(c)}>
                   <Icon name="download" size={15} />{installing === c.id ? "Installing" : st === "update" ? "Update" : "Install"}
@@ -294,6 +307,13 @@
     align-items: center;
     gap: 0.4rem;
     flex-wrap: wrap;
+  }
+  /* The hover is the wrapper's: a disabled button shows no title of its own. */
+  .unavailable {
+    display: inline-flex;
+  }
+  .unavailable button {
+    pointer-events: none;
   }
   .desc {
     color: var(--muted);

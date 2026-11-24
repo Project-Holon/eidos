@@ -28,9 +28,9 @@ const remote = [
 ];
 
 const mods = [
-  { folder: "Nuzlocke", name: "Nuzlocke", order: 0, enabled: true, hasManifest: true, catalogId: "katalogos/nuzlocke", version: "0.9.0", icon: { item: 4 } },
-  { folder: "fast-bike", name: "Fast Bike", order: 1, enabled: false, hasManifest: true, catalogId: null, version: null, icon: { species: 506 } },
-  { folder: "my-test", name: "my-test", order: 2, enabled: true, hasManifest: false, catalogId: null, version: null, icon: null },
+  { folder: "Nuzlocke", name: "Nuzlocke", order: 0, enabled: true, hasManifest: true, catalogId: "katalogos/nuzlocke", version: "0.9.0", icon: { item: 4 }, games: ["black", "white"] },
+  { folder: "fast-bike", name: "Fast Bike", order: 1, enabled: false, hasManifest: true, catalogId: null, version: null, icon: { species: 506 }, games: ["white"] },
+  { folder: "my-test", name: "my-test", order: 2, enabled: true, hasManifest: false, catalogId: null, version: null, icon: null, games: ["black", "white"] },
 ];
 
 const catalog = {
@@ -39,7 +39,7 @@ const catalog = {
     { id: "katalogos/soul-link", name: "Soul Link", version: "1.0.0", author: "Project Holon", description: "A Nuzlocke for two or more players in one multiplayer game. The Pokemon you catch in the same area are linked.", official: true, multiplayer: true, hasCode: true, games: ["black", "white"], tags: ["challenge", "multiplayer"], size: 9100, icon: { item: 280 }, index: 1 },
     { id: "katalogos/exp-share", name: "Exp. Share", version: "1.0.0", author: "Project Holon", description: "The whole party gains experience in every battle. Can be switched off in the settings.", official: true, multiplayer: false, hasCode: false, games: ["black", "white"], tags: ["quality of life"], size: 700, icon: { item: 216 }, index: 2 },
     { id: "katalogos/smart-trainers", name: "Smart Trainers", version: "0.2.0", author: "Project Holon", description: "Trainers battle like a thinking player.", official: true, multiplayer: false, hasCode: true, games: ["black", "white"], tags: ["difficulty"], size: 72000, icon: { item: 267 }, index: 3 },
-    { id: "someone/fairy-type", name: "Fairy type", version: "0.3.0", author: "someone", description: "Adds the Fairy type.", official: false, multiplayer: false, hasCode: false, games: ["black"], tags: ["types"], size: 512000, icon: null, index: 4 },
+    { id: "someone/fairy-type", name: "Fairy type", version: "0.3.0", author: "someone", description: "Adds the Fairy type.", official: false, multiplayer: false, hasCode: false, games: ["white"], tags: ["types"], size: 512000, icon: null, index: 4 },
   ],
   errors: [],
 };
