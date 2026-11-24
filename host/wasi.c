@@ -537,6 +537,26 @@ u32 w2c_wasi__snapshot__preview1_fd_fdstat_set_flags(struct w2c_wasi__snapshot__
 u32 w2c_wasi__snapshot__preview1_fd_renumber(struct w2c_wasi__snapshot__preview1 *w, u32 from, u32 to)
 {
     (void)w;
+#if !defined(__SWITCH__)    /* (a console has no command line to give the option on) */
+    if ((to == 1u || to == 2u) && from >= 4u && from < FDS_MAX && g_fd[from].used && !g_fd[from].is_dir) {
+        /* The game reopens its output or its error stream on a file (freopen: the --mod-log option).  The host
+         * writes those two streams itself (io_rw_here), so the host's own stream goes to the file, and what the
+         * host logs lands there too. */
+        FILE *s = to == 1u ? stdout : stderr;
+        int rc;
+
+        fflush(s);
+#if defined(_WIN32)
+        rc = _dup2(g_fd[from].native, _fileno(s));
+#else
+        rc = dup2(g_fd[from].native, fileno(s));
+#endif
+        if (rc < 0) {
+            return W_EIO;
+        }
+        return w2c_wasi__snapshot__preview1_fd_close(w, from);
+    }
+#endif
     if (from >= FDS_MAX || to >= FDS_MAX || !g_fd[from].used || to < 4) {
         return W_EBADF;
     }
