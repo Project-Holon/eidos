@@ -327,6 +327,10 @@ them in the scene as the field drew them and leaves out the same objects from th
 mechanism for every kind of object. A model made for the field's camera alone (Chargestone Cave's floating
 stones) is stood where that camera shows it. Texture and material animations of such objects are not played.
 
+One kind is left out: the marks the field draws over a character's head ("!", "?", the note, "...": the four
+models of `fldeff_gyoe.c`, `live_character_mark` in `engine/world/bmap_data.c`). The battle's map shows no
+characters, so a mark drawn for one (the rival's "!" in the cutscene before a battle) would hang in the air.
+
 The moment is the one the game's battle task is first seen among the running events (`enc_objects`): the last
 time the player saw the field plainly. The objects go on moving for the two seconds of the encounter's effect
 (Route 4's trucks drive on, Chargestone Cave's stones bob, the spray on Route 13's rocks plays); the battle

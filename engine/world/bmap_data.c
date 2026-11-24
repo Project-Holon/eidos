@@ -4109,6 +4109,21 @@ static int live_field_camera_model(const char *name)
     return strcmp(name, "d6_ishi_big01") == 0;
 }
 
+/* The marks the field draws over a character's head (aletheia ov021 fldeff_gyoe.c: the effect takes the character
+ * and follows it), by name: the four models of that effect in the field effect archive (a/0/7/5, members 50 to 53).
+ * The battle's map shows no characters, so it does not show a mark drawn for one: the "!" of the cutscene before a
+ * battle (the rival in the player's bedroom, a trainer who has seen the player) hung in the room's air, as large as
+ * a window.
+ *   sisen_ef    "!"
+ *   mark_hate   "?"
+ *   mark_onpu   the note
+ *   mark_ten    "..." */
+static int live_character_mark(const char *name)
+{
+    return strcmp(name, "sisen_ef") == 0 || strcmp(name, "mark_hate") == 0 || strcmp(name, "mark_onpu") == 0 ||
+           strcmp(name, "mark_ten") == 0;
+}
+
 /* They stand in the battle's map where the field drew them. */
 static int add_live(Ctx *c, unsigned zone, float px, float pz)
 {
@@ -4130,6 +4145,12 @@ static int add_live(Ctx *c, unsigned zone, float px, float pz)
             continue;
         }
         live_model_name(mb, name);
+        if (live_character_mark(name)) {
+            if (getenv("BMAP_PLACE_LOG") != NULL) {
+                fprintf(stderr, "bmap: live %s is a character's mark: not shown\n", name);
+            }
+            continue;
+        }
         fieldcam = live_field_camera_model(name) && live[i].field_tan > 0.0f;
         if (fieldcam && c->bob_n == 0u && live[i].nanim > 0u && live[i].anim[0].n >= 4u && memcmp(live[i].anim[0].p, "BCA0", 4) == 0) {
             /* its first animation's rise, a value a frame: the model is posed at each frame and built aside;

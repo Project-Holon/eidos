@@ -3024,6 +3024,7 @@ static void rest_bodies(BmapScene *s)
                 b[nb].obj = v->obj;
                 b[nb].lo = b[nb].x0 = b[nb].z0 = 1e30f;
                 b[nb].hi = b[nb].x1 = b[nb].z1 = b[nb].best = -1e30f;
+                b[nb].sheet = 0;        /* (it was left as the memory held it: a body lifted a hair over the floor or not, by chance) */
                 nb++;
             }
             last = j;

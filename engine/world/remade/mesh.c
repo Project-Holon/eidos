@@ -10,7 +10,8 @@
  *
  *     NAME[@X0:X1:Y0:Y1:Z0:Z1][|SETTINGS];NAME...
  *
- * NAME is tower, cushion, box, lower (the box's triangles moved down: `by`) or settle (every piece set down
+ * NAME is tower, cushion, box, lower (the box's triangles moved down: `by`), fold (a sheet's folded corner laid
+ * on it and given sides) or settle (every piece set down
  * onto what is under it; last); the box (the mesh's own space) takes the
  * triangles wholly inside it (no box: the whole room); SETTINGS are that
  * builder's own, as it takes them for a standing model.  Each builder sees
@@ -72,15 +73,19 @@ static void rm_lower(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned n
 }
 
 /* `settle|max=M`: every piece in the box (triangles joined at their corners: a cabinet, a pillow, a box on a shelf)
- * set down onto what is under it.  The room's own floor and walls (pieces wider than 100 units) stay; the others, the
- * lowest first, go down onto the highest upward face under their foot (the floor, or a piece already set down: a
- * pillow onto its bed, a toy onto its cabinet) when that face lies at most M units (default 6) under them: furniture
- * drawn for the field's steep camera a few units over the floor.  A flat piece (a shadow sheet, a rug) keeps 0.15
- * over what it lies on.  Things hung higher (a picture, a ceiling pipe's joint) stay.  Runs last: the parts the earlier
- * builders made inside a moved piece's box go down with it. */
+ * set down onto what is under it.  The room's own floor and walls (pieces wider than 100 units that are not flat)
+ * stay; the others, the lowest first, go down onto the highest upward face under their foot (the floor, or a piece
+ * already set down: a pillow onto its bed, a toy onto its cabinet) when that face lies at most M units (default 6)
+ * under them: furniture drawn for the field's steep camera a few units over the floor.  A flat piece (a shadow sheet,
+ * a rug) keeps 0.15 over what it lies on, and so does a sheet that is not flat (a piece with no steep face and a
+ * level upward face at its lowest height: a rug with a corner turned up): set down exactly, that face and the floor's
+ * lie in one plane and the two flicker through each other.  A flat piece is set down however wide it is: a shadow sheet over 100 units
+ * wide is not the room's shell (a flat floor has nothing under it and stays by that).  Things hung higher (a picture,
+ * a ceiling pipe's joint) stay.  Runs last: the parts the earlier builders made inside a moved piece's box go down
+ * with it, each body whole (a body that lies only partly in the box goes with the piece it stands on). */
 typedef struct {
     double lo[3], hi[3], shift;
-    int big, flat, done, live;
+    int big, flat, sheet, steep, foot, done, live;
 } StPiece;
 
 static unsigned st_find(unsigned *par, unsigned a)
@@ -120,6 +125,236 @@ static double st_up_at(const RmTri *t, double sh, double x, double z)
     return w0 * t->p[0][1] + w1 * t->p[1][1] + w2 * t->p[2][1] - sh;
 }
 
+/* `fold|rise=R,shade=S`: a sheet with a corner folded over itself (a rug knocked about).  The map draws the folded
+ * corner as a sheet without thickness that hangs over the sheet (2 units up, joined to it at one end of the fold
+ * line only): a picture for the field's steep camera, a sheet in the air for a battle's low one.  In the box:
+ *   - a folded sheet is a piece (triangles of one draw joined at their corners) with a level upward face at the
+ *     box's lowest height and corners higher than it: the faces at that height are the sheet, the others its folded
+ *     corner (a shadow sheet in the box, a thing that stands on the sheet are pieces of their own and stay);
+ *   - the folded corner is laid on the sheet: the height of each of its corners over the sheet is scaled so that
+ *     the highest lies R over it (0, the default: the heights stay the map's);
+ *   - every edge of the folded corner's upward faces that no other of them shares (the fold line, the free edges)
+ *     gets a side down to the sheet, looking out, in the pixels along that edge stretched downward, S darker
+ *     (default 0.8): a plate's rim (plate.c) under a face that is not level.
+ * What it makes is its source triangle's: `settle` after it takes it down with the sheet. */
+typedef struct {
+    const RmTri *t;
+    unsigned bat;
+    double y[3];                /* its corners' heights as laid */
+    int up, raised;
+} FdTri;
+
+static void rm_fold(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
+{
+    const double rise = rm_optf(opt, "rise", 0.0), shade = rm_optf(opt, "shade", 0.8);
+    double ymin = 1e30;
+    unsigned total = 0, n = 0, i, j, k, *par;
+    unsigned char *foot, *high;
+    double *top;
+    FdTri *f;
+
+    (void)tex;
+    (void)ntex;
+    for (i = 0; i < nb; i++) {
+        total += b[i].n;
+    }
+    if (total == 0) {
+        return;
+    }
+    f = (FdTri *)calloc(total, sizeof *f);
+    par = (unsigned *)calloc(total, sizeof *par);
+    foot = (unsigned char *)calloc(total, 1);
+    high = (unsigned char *)calloc(total, 1);
+    top = (double *)calloc(total, sizeof *top);
+    if (f == NULL || par == NULL || foot == NULL || high == NULL || top == NULL) {
+        out->fail = 1;
+        goto done;
+    }
+    for (i = 0; i < nb; i++) {
+        for (j = 0; j < b[i].n; j++) {
+            const RmTri *t = &b[i].tri[j];
+            double e1[3], e2[3], nn[3], l;
+
+            for (k = 0; k < 3; k++) {
+                e1[k] = t->p[1][k] - t->p[0][k];
+                e2[k] = t->p[2][k] - t->p[0][k];
+                if (t->p[k][1] < ymin) {
+                    ymin = t->p[k][1];
+                }
+            }
+            rm_cross(e1, e2, nn);
+            l = sqrt(rm_dot(nn, nn));
+            f[n].t = t;
+            f[n].bat = i;
+            f[n].up = l > 1e-9 && nn[1] / l > 0.7;
+            par[n] = n;
+            n++;
+        }
+    }
+    /* the pieces: triangles of one draw that share a corner */
+    for (i = 0; i < n; i++) {
+        for (j = i + 1; j < n; j++) {
+            int same = 0, a, c;
+
+            if (f[i].bat != f[j].bat) {
+                continue;
+            }
+            for (a = 0; a < 3 && !same; a++) {
+                for (c = 0; c < 3 && !same; c++) {
+                    same = fabs(f[i].t->p[a][0] - f[j].t->p[c][0]) < 0.05 && fabs(f[i].t->p[a][1] - f[j].t->p[c][1]) < 0.05 &&
+                           fabs(f[i].t->p[a][2] - f[j].t->p[c][2]) < 0.05;
+                }
+            }
+            if (same) {
+                const unsigned ra = st_find(par, i), rb = st_find(par, j);
+
+                if (ra != rb) {
+                    par[ra] = rb;
+                }
+            }
+        }
+    }
+    for (i = 0; i < n; i++) {
+        const RmTri *t = f[i].t;
+        const unsigned r = st_find(par, i);
+        const double hi = t->p[0][1] > t->p[1][1] ? (t->p[0][1] > t->p[2][1] ? t->p[0][1] : t->p[2][1])
+                                                  : (t->p[1][1] > t->p[2][1] ? t->p[1][1] : t->p[2][1]);
+
+        f[i].raised = hi > ymin + 0.05;
+        if (f[i].up && !f[i].raised) {
+            foot[r] = 1;
+        }
+        if (f[i].raised) {
+            high[r] = 1;
+            if (hi - ymin > top[r]) {
+                top[r] = hi - ymin;
+            }
+        }
+    }
+    /* the folded corner laid on the sheet */
+    for (i = 0; i < n; i++) {
+        const RmTri *t = f[i].t;
+        const unsigned r = st_find(par, i);
+        const double s = rise > 0.0 && top[r] > 0.0 ? rise / top[r] : 1.0;
+
+        f[i].raised = f[i].raised && foot[r] && high[r];
+        for (k = 0; k < 3; k++) {
+            f[i].y[k] = f[i].raised ? ymin + (t->p[k][1] - ymin) * s : t->p[k][1];
+        }
+        if (f[i].raised && s != 1.0) {
+            double q[3][3], uv[3][2];
+            const unsigned first = out->ntri;
+            int cull = b[f[i].bat].cull, a;
+
+            for (k = 0; k < out->ntwo; k++) {
+                if (out->two[k] == t->id) {
+                    cull = 0;
+                }
+            }
+            for (a = 0; a < 3; a++) {
+                q[a][0] = t->p[a][0];
+                q[a][1] = f[i].y[a];
+                q[a][2] = t->p[a][2];
+                uv[a][0] = t->uv[a][0];
+                uv[a][1] = t->uv[a][1];
+            }
+            rm_tri(out, t->id, -1, cull, t->rgb, q[0], q[1], q[2], uv[0], uv[1], uv[2], 0, 0);
+            for (k = first; k < out->ntri; k++) {
+                out->tri[k].lit = 1;
+            }
+            rm_drop(out, t->id);
+        }
+    }
+    /* its sides: each edge of its upward faces that no other of them shares, down to the sheet */
+    for (i = 0; i < n; i++) {
+        const RmTri *t = f[i].t;
+        int a;
+
+        if (!f[i].raised || !f[i].up) {
+            continue;
+        }
+        for (a = 0; a < 3; a++) {
+            const int a1 = (a + 1) % 3;
+            const float *p0 = t->p[a], *p1 = t->p[a1];
+            double q[4][3], uv[4][2], out_n[3], c[3] = { 0, 0, 0 };
+            unsigned char rgb[3];
+            int shared = 0, m;
+
+            if (f[i].y[a] <= ymin + 0.01 && f[i].y[a1] <= ymin + 0.01) {
+                continue;               /* (on the sheet: no side) */
+            }
+            for (j = 0; j < n && !shared; j++) {
+                int s0 = 0, s1 = 0;
+
+                if (j == i || !f[j].raised || !f[j].up || st_find(par, j) != st_find(par, i)) {
+                    continue;
+                }
+                for (m = 0; m < 3; m++) {
+                    const float *o = f[j].t->p[m];
+
+                    s0 |= fabs(o[0] - p0[0]) < 0.05 && fabs(o[1] - p0[1]) < 0.05 && fabs(o[2] - p0[2]) < 0.05;
+                    s1 |= fabs(o[0] - p1[0]) < 0.05 && fabs(o[1] - p1[1]) < 0.05 && fabs(o[2] - p1[2]) < 0.05;
+                }
+                shared = s0 && s1;
+            }
+            if (shared) {
+                continue;
+            }
+            for (k = 0; k < 3; k++) {
+                c[k] = ((double)t->p[0][k] + t->p[1][k] + t->p[2][k]) / 3.0;
+                q[0][k] = p0[k];
+                q[1][k] = p1[k];
+                q[2][k] = p1[k];
+                q[3][k] = p0[k];
+                rgb[k] = (unsigned char)(t->rgb[k] * shade);
+            }
+            q[0][1] = f[i].y[a];
+            q[1][1] = f[i].y[a1];
+            q[2][1] = q[3][1] = ymin;
+            uv[0][0] = uv[3][0] = t->uv[a][0];
+            uv[0][1] = uv[3][1] = t->uv[a][1];
+            uv[1][0] = uv[2][0] = t->uv[a1][0];
+            uv[1][1] = uv[2][1] = t->uv[a1][1];
+            /* (looking out of the face: across the edge, away from its middle) */
+            out_n[0] = -((double)p1[2] - p0[2]);
+            out_n[1] = 0.0;
+            out_n[2] = (double)p1[0] - p0[0];
+            if (((double)p0[0] - c[0]) * out_n[0] + ((double)p0[2] - c[2]) * out_n[2] < 0.0) {
+                out_n[0] = -out_n[0];
+                out_n[2] = -out_n[2];
+            }
+            /* (the corner of the quad that the side turns about: one whose edge end stands over the sheet, so
+             * that an edge end on the sheet leaves one triangle and no empty one) */
+            m = q[0][1] - ymin > 0.01 ? 0 : 1;
+            for (k = 1; k <= 2; k++) {
+                const int v1 = (m + k) % 4, v2 = (m + k + 1) % 4;
+                double g1[3], g2[3], gn[3];
+                int w;
+
+                for (w = 0; w < 3; w++) {
+                    g1[w] = q[v1][w] - q[m][w];
+                    g2[w] = q[v2][w] - q[m][w];
+                }
+                rm_cross(g1, g2, gn);
+                if (rm_dot(gn, gn) < 1e-10) {
+                    continue;           /* (an edge end on the sheet: this half is empty) */
+                }
+                if (rm_dot(gn, out_n) >= 0.0) {
+                    rm_tri(out, t->id, -1, 1, rgb, q[m], q[v1], q[v2], uv[m], uv[v1], uv[v2], 0, 0);
+                } else {
+                    rm_tri(out, t->id, -1, 1, rgb, q[m], q[v2], q[v1], uv[m], uv[v2], uv[v1], 0, 0);
+                }
+            }
+        }
+    }
+done:
+    free(f);
+    free(par);
+    free(foot);
+    free(high);
+    free(top);
+}
+
 static void rm_settle(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned ntex, const char *opt, RmOut *out)
 {
     const double maxd = rm_optf(opt, "max", 6.0);
@@ -129,8 +364,9 @@ static void rm_settle(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
     const RmTri **tr;
     unsigned char *upf, *gone;
     unsigned *bat;
-    StKey *keys;
+    StKey *keys, *gkey = NULL;
     StPiece *pc;
+    unsigned *gpick = NULL;
 
     (void)tex;
     (void)ntex;
@@ -255,9 +491,35 @@ static void rm_settle(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
         }
     }
     for (j = 0; j < np; j++) {
-        pc[j].big = pc[j].hi[0] - pc[j].lo[0] > 100.0 || pc[j].hi[2] - pc[j].lo[2] > 100.0;
         pc[j].flat = pc[j].hi[1] - pc[j].lo[1] < 0.2;
+        pc[j].big = !pc[j].flat && (pc[j].hi[0] - pc[j].lo[0] > 100.0 || pc[j].hi[2] - pc[j].lo[2] > 100.0);
         pc[j].done = pc[j].big || !pc[j].live;
+    }
+    for (i = 0; i < n; i++) {
+        /* (a sheet that is not flat: a piece with no steep face (a body has sides) and a level upward face at its
+         * lowest height, which would lie in the plane of what the piece is set down on) */
+        const RmTri *t = tr[i];
+        const double foot = pc[lab[i]].lo[1] + 0.05;
+        double e1[3], e2[3], nn[3], l;
+
+        if (gone[i]) {
+            continue;
+        }
+        for (k = 0; k < 3; k++) {
+            e1[k] = t->p[1][k] - t->p[0][k];
+            e2[k] = t->p[2][k] - t->p[0][k];
+        }
+        rm_cross(e1, e2, nn);
+        l = sqrt(rm_dot(nn, nn));
+        if (l > 1e-9 && fabs(nn[1] / l) <= 0.7) {
+            pc[lab[i]].steep = 1;
+        }
+        if (upf[i] && t->p[0][1] <= foot && t->p[1][1] <= foot && t->p[2][1] <= foot) {
+            pc[lab[i]].foot = 1;
+        }
+    }
+    for (j = 0; j < np; j++) {
+        pc[j].sheet = pc[j].foot && !pc[j].steep;
     }
     /* the lowest first: each onto the floor and the pieces set down before it */
     for (;;) {
@@ -306,7 +568,7 @@ static void rm_settle(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
             sup = ymin;         /* (the model's own foot: the floor it stands on) */
         }
         if (sup > -1e29) {
-            const double target = pc[best].flat ? sup + 0.15 : sup, gap = pc[best].lo[1] - target;
+            const double target = pc[best].flat || pc[best].sheet ? sup + 0.15 : sup, gap = pc[best].lo[1] - target;
 
             if (gap > 0.3 && gap <= maxd) {
                 pc[best].shift = gap;
@@ -380,49 +642,129 @@ static void rm_settle(const RmBatch *b, unsigned nb, const RmTex *tex, unsigned 
             }
             rm_drop(out, t->id);
         }
+        /* (what a builder made from one triangle of the model is one body: a pouffe, a console.  Each of its
+         * triangles finds the piece it goes down with as before; the body goes down with it when all of them found the
+         * same piece, and with the piece it stands on otherwise.  Taken triangle by triangle, a body that reaches
+         * out of the moved piece's box was torn: its top down with the piece, its foot left behind) */
+        if (made > 0u) {
+            gkey = (StKey *)calloc(made, sizeof *gkey);
+            gpick = (unsigned *)calloc(made, sizeof *gpick);
+            if (gkey == NULL || gpick == NULL) {
+                out->fail = 1;
+                goto done;
+            }
+        }
         for (i = 0; i < made; i++) {
             RmNew *t = &out->tri[i];
             double c[3] = { 0, 0, 0 };
+            unsigned pick = np, w;
+            double vol = 1e30;
 
             for (k = 0; k < 3; k++) {
                 for (j = 0; j < 3; j++) {
                     c[j] += t->p[k][j] / 3.0;
                 }
             }
-            {
-                unsigned pick = np, w;
-                double vol = 1e30;
-
-                /* (made from a triangle of the model: with that triangle's piece) */
-                for (w = 0; w < n; w++) {
-                    if (tr[w]->id == t->src) {
-                        break;
-                    }
+            gkey[i].k = (long long)t->src;
+            gkey[i].t = i;
+            /* (made from a triangle of the model: with that triangle's piece) */
+            for (w = 0; w < n; w++) {
+                if (tr[w]->id == t->src) {
+                    break;
                 }
-                if (w < n && pc[lab[w]].live) {
-                    if (pc[lab[w]].shift != 0.0) {
-                        for (k = 0; k < 3; k++) {
-                            t->p[k][1] = (float)(t->p[k][1] - pc[lab[w]].shift);
-                        }
-                    }
-                    continue;
-                }
-                for (j = 0; j < np; j++) {
-                    if (pc[j].shift != 0.0 && !pc[j].flat && c[0] >= pc[j].lo[0] - 0.5 && c[0] <= pc[j].hi[0] + 0.5 &&
-                        c[1] >= pc[j].lo[1] - 0.5 && c[1] <= pc[j].hi[1] + 0.5 && c[2] >= pc[j].lo[2] - 0.5 &&
-                        c[2] <= pc[j].hi[2] + 0.5) {
-                        const double v = (pc[j].hi[0] - pc[j].lo[0] + 1) * (pc[j].hi[1] - pc[j].lo[1] + 1) * (pc[j].hi[2] - pc[j].lo[2] + 1);
-
-                        if (v < vol) {
-                            vol = v;
-                            pick = j;
-                        }
-                    }
-                }
-                if (pick < np) {
+            }
+            if (w < n && pc[lab[w]].live) {
+                if (pc[lab[w]].shift != 0.0) {
                     for (k = 0; k < 3; k++) {
-                        t->p[k][1] = (float)(t->p[k][1] - pc[pick].shift);
+                        t->p[k][1] = (float)(t->p[k][1] - pc[lab[w]].shift);
                     }
+                }
+                gpick[i] = np + 1u;     /* (done) */
+                continue;
+            }
+            for (j = 0; j < np; j++) {
+                if (pc[j].shift != 0.0 && !pc[j].flat && c[0] >= pc[j].lo[0] - 0.5 && c[0] <= pc[j].hi[0] + 0.5 &&
+                    c[1] >= pc[j].lo[1] - 0.5 && c[1] <= pc[j].hi[1] + 0.5 && c[2] >= pc[j].lo[2] - 0.5 &&
+                    c[2] <= pc[j].hi[2] + 0.5) {
+                    const double v = (pc[j].hi[0] - pc[j].lo[0] + 1) * (pc[j].hi[1] - pc[j].lo[1] + 1) * (pc[j].hi[2] - pc[j].lo[2] + 1);
+
+                    if (v < vol) {
+                        vol = v;
+                        pick = j;
+                    }
+                }
+            }
+            gpick[i] = pick;
+        }
+        if (made > 0u) {
+            qsort(gkey, made, sizeof *gkey, st_key_cmp);
+        }
+        for (i = 0; i < made; i = j) {
+            const unsigned first = gpick[gkey[i].t];
+            int same = 1;
+            unsigned w;
+
+            for (j = i; j < made && gkey[j].k == gkey[i].k; j++) {
+                same = same && gpick[gkey[j].t] == first;
+            }
+            if (first > np) {
+                continue;               /* (with its source's piece: done above) */
+            }
+            if (!same) {
+                /* (a body that lies only partly in a moved piece's box: it goes with what it stands on, the piece
+                 * whose upward face is the highest under the body's middle at its foot's height or under it (a cup
+                 * on a table that is set down goes down with the table; a pouffe on the room's floor stays)) */
+                double lo[3] = { 1e30, 1e30, 1e30 }, hi[3] = { -1e30, -1e30, -1e30 }, sup = -1e30, cx, cz;
+                unsigned sp = np, q;
+
+                for (w = i; w < j; w++) {
+                    const RmNew *t = &out->tri[gkey[w].t];
+
+                    for (k = 0; k < 9; k++) {
+                        const double v = t->p[k / 3][k % 3];
+
+                        lo[k % 3] = v < lo[k % 3] ? v : lo[k % 3];
+                        hi[k % 3] = v > hi[k % 3] ? v : hi[k % 3];
+                    }
+                }
+                cx = (lo[0] + hi[0]) * 0.5;
+                cz = (lo[2] + hi[2]) * 0.5;
+                for (q = 0; q < n; q++) {
+                    double h;
+
+                    if (!upf[q] || gone[q]) {
+                        continue;
+                    }
+                    h = st_up_at(tr[q], 0.0, cx, cz);
+                    if (h <= lo[1] + 0.3 && h > sup) {
+                        sup = h;
+                        sp = lab[q];
+                    }
+                }
+                if (getenv("RM_SETTLE_LOG") != NULL) {
+                    fprintf(stderr, "settle: a body of %u triangles (x %.1f..%.1f y %.2f..%.2f z %.1f..%.1f) lies partly in a moved "
+                                    "piece's box: it stands on %.2f (-1000: nothing) and goes down %.2f whole\n",
+                            j - i, lo[0], hi[0], lo[1], hi[1], lo[2], hi[2], sp < np ? sup : -1000.0, sp < np ? pc[sp].shift : 0.0);
+                }
+                if (sp < np && pc[sp].shift != 0.0) {
+                    for (w = i; w < j; w++) {
+                        RmNew *t = &out->tri[gkey[w].t];
+
+                        for (k = 0; k < 3; k++) {
+                            t->p[k][1] = (float)(t->p[k][1] - pc[sp].shift);
+                        }
+                    }
+                }
+                continue;
+            }
+            if (first == np) {
+                continue;
+            }
+            for (w = i; w < j; w++) {
+                RmNew *t = &out->tri[gkey[w].t];
+
+                for (k = 0; k < 3; k++) {
+                    t->p[k][1] = (float)(t->p[k][1] - pc[first].shift);
                 }
             }
         }
@@ -445,6 +787,8 @@ done:
     free(pidx);
     free(keys);
     free(pc);
+    free(gkey);
+    free(gpick);
 }
 
 static RmBuild *mesh_builder(const char *name)
@@ -463,6 +807,9 @@ static RmBuild *mesh_builder(const char *name)
     }
     if (strcmp(name, "settle") == 0) {
         return rm_settle;
+    }
+    if (strcmp(name, "fold") == 0) {
+        return rm_fold;
     }
     if (strcmp(name, "turned") == 0) {
         return rm_turned;
