@@ -1000,7 +1000,7 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
         checks[0].what = "Everyone is here";          checks[0].ok = here == n;
         checks[1].what = "Same eidos version";        checks[1].ok = same_ver == n;
         checks[2].what = "Multiplayer mods match";    checks[2].ok = mods_ok == n;
-        checks[3].what = "Each save's game";          checks[3].ok = block == NULL || strstr(block, "game") == NULL;
+        checks[3].what = "Each save's game";          checks[3].ok = !host || bw_mp_start_blocker_kind() != BW_MP_BLOCK_SAVE_GAME;
 
         ui_panel(c, ax, py, cw3, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
         label(c, ax + 8, py + 6, "BEFORE THE START");
@@ -1086,7 +1086,8 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
             ui_text(c, cx + 8 + (46 - ui_text_w("Copy", UI_FONT_SMALL)) / 2, cy + 30 + ui_text_y(16, UI_FONT_SMALL),
                     "Copy", UI_WHITE, -1, UI_FONT_SMALL, 1);
             if (host) {
-                int ok = block == NULL;
+                /* (the model's reason is a text, "" when the lobby is ready: never NULL) */
+                int ok = block == NULL || block[0] == '\0';
 
                 f = target(c, cx + 8, sy, cwl - 16, bh, EIDOS_SUI_MP_ACT_START, 0, ok, &hov);
                 if (ui_theme_active() != NULL && ui_theme_active()->mp_part != NULL) {

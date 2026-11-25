@@ -1376,6 +1376,8 @@ static void host_send_word(const char *word)
 
 /* Whether every player the start needs is there and ready; the reason goes
  * to g_mp.blocker when not. */
+static int g_blocker_kind;           /* BW_MP_BLOCK_*: g_mp.blocker's reason */
+
 static int host_ready(void)
 {
     u32 i;
@@ -1383,6 +1385,7 @@ static int host_ready(void)
     int someone = 0;
 
     g_mp.blocker[0] = '\0';
+    g_blocker_kind = BW_MP_BLOCK_NONE;
     for (i = 1; i < BW_MP_PLAYERS_MAX; i++) {
         BwMpPlayer *p = &g_mp.players[i];
         char why[96];
@@ -1397,6 +1400,7 @@ static int host_ready(void)
             if (g_mp.roster_set) {
                 snprintf(g_mp.blocker, sizeof(g_mp.blocker),
                          TRF("waiting for %s"), p->name);
+                g_blocker_kind = BW_MP_BLOCK_WAITING;
                 return 0;
             }
             continue;
@@ -1405,12 +1409,14 @@ static int host_ready(void)
         if (p->game == 0) {
             snprintf(g_mp.blocker, sizeof(g_mp.blocker),
                      TRF("no answer from %s"), p->name);
+            g_blocker_kind = BW_MP_BLOCK_NO_ANSWER;
             return 0;
         }
         if (strcmp(p->version, EIDOS_VERSION) != 0) {
             /* every player runs the same eidos (docs/distribution.md) */
             snprintf(g_mp.blocker, sizeof(g_mp.blocker),
                      TRF("%s: eidos %s (you %s)"), p->name, p->version, EIDOS_VERSION);
+            g_blocker_kind = BW_MP_BLOCK_VERSION;
             return 0;
         }
         if (p->fp[0] != '\0') {
@@ -1429,16 +1435,19 @@ static int host_ready(void)
                 snprintf(g_mp.blocker, sizeof(g_mp.blocker),
                          TRF("%s's save is %s"), p->name,
                          c == 'W' ? TRF("White") : TRF("Black"));
+                g_blocker_kind = BW_MP_BLOCK_SAVE_GAME;
                 return 0;
             }
         }
         if (!mods_match(mine, p->mods, why, sizeof(why))) {
             snprintf(g_mp.blocker, sizeof(g_mp.blocker), "%s: %s", p->name, why);
+            g_blocker_kind = BW_MP_BLOCK_MODS;
             return 0;
         }
     }
     if (!someone) {
         snprintf(g_mp.blocker, sizeof(g_mp.blocker), "%s", TRF("nobody has joined"));
+        g_blocker_kind = BW_MP_BLOCK_NOBODY;
         return 0;
     }
     return 1;
@@ -2914,6 +2923,7 @@ int bw_mp_start(void)
     if (!g_mp.host || (g_mp.state != BW_MP_LOBBY && g_mp.state != BW_MP_PAUSED)) {
         snprintf(g_mp.blocker, sizeof(g_mp.blocker), "%s",
                  TRF("only the host starts, from the lobby or a pause"));
+        g_blocker_kind = BW_MP_BLOCK_NOT_HOST;
         return -1;
     }
     if (!host_ready()) {
@@ -2951,6 +2961,12 @@ const char *bw_mp_start_blocker(void)
         (void)host_ready();
     }
     return g_mp.blocker;
+}
+
+int bw_mp_start_blocker_kind(void)
+{
+    (void)bw_mp_start_blocker();        /* (the reason as it stands now) */
+    return g_mp.blocker[0] != '\0' ? g_blocker_kind : BW_MP_BLOCK_NONE;
 }
 
 BwMpState bw_mp_state(void)

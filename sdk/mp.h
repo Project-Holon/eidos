@@ -108,6 +108,22 @@ int  bw_mp_start(void);
 /* Why the host cannot start now ("" when it can). */
 const char *bw_mp_start_blocker(void);
 
+/* The same as a kind, for a screen that marks its own checks: nobody has
+ * joined; a player of the game has not come back; a player's game has not
+ * answered yet; another eidos version; a save of the other game (Black,
+ * White); other multiplayer mods. */
+enum {
+    BW_MP_BLOCK_NONE = 0,
+    BW_MP_BLOCK_NOBODY,
+    BW_MP_BLOCK_WAITING,
+    BW_MP_BLOCK_NO_ANSWER,
+    BW_MP_BLOCK_VERSION,
+    BW_MP_BLOCK_SAVE_GAME,
+    BW_MP_BLOCK_MODS,
+    BW_MP_BLOCK_NOT_HOST            /* only the host starts, from the lobby or a pause */
+};
+int bw_mp_start_blocker_kind(void);
+
 BwMpState bw_mp_state(void);
 int  bw_mp_is_host(void);
 
