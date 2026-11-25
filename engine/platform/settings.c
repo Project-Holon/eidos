@@ -30,6 +30,9 @@
 #include "setup.h"
 #include "settings.h"
 #include "ui_lang.h"
+#if defined(__wasm__)
+#include "wasm_host.h"          /* the clipboard's text (bw_host_clipboard_get) */
+#endif
 
 #define NBTN 12
 #define PATH_MAX_LEN BW_SETUP_PATH_MAX
@@ -1333,6 +1336,30 @@ const char *eidos_settings_net_relay_in_use(void)
 int eidos_settings_clipboard_set(const char *text)
 {
     return SDL_SetClipboardText(text != NULL ? text : "") ? 0 : -1;
+}
+
+int eidos_settings_clipboard_get(char *out, int n)
+{
+    if (out == NULL || n <= 0) {
+        return -1;
+    }
+    out[0] = '\0';
+#if defined(__wasm__)
+    /* SDL's own answer is the host's memory: the host copies it over */
+    return bw_host_clipboard_get(out, (unsigned)n);
+#else
+    {
+        char *text = SDL_GetClipboardText();
+        int rc = -1;
+
+        if (text != NULL && text[0] != '\0') {
+            snprintf(out, (size_t)n, "%s", text);
+            rc = 0;
+        }
+        SDL_free(text);
+        return rc;
+    }
+#endif
 }
 
 /* The relay and the name the port's own settings hold. */

@@ -479,9 +479,19 @@ static void hub(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
     /* Join: every code goes here, a friend's co-op game or a world */
     ui_panel(c, rx, y, rw, 56, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
     label(c, rx + 8, y + 6, "JOIN");
-    f = target(c, rx + 8, y + 18, rw - 16, 18, EIDOS_SUI_MP_ACT_JOIN, 0, 1, &hov);
-    ui_panel(c, rx + 8, y + 18, rw - 16, 18, UI_CUT_TL | UI_CUT_BR, 4,
-             lit(f) ? 0x0A283Cu : 0x05080Du, lit(f) || hov ? UI_CYAN : UI_EDGE, 255);
+    {
+        /* the code's field, and beside it Paste: the clipboard's code, joined with at once */
+        int pw = ui_text_w("Paste", UI_FONT_MEDIUM) + 16, fw = rw - 16 - pw - 4, phov = 0;
+        int pf = target(c, rx + 8 + fw + 4, y + 18, pw, 18, EIDOS_SUI_MP_ACT_PASTE, 0, 1, &phov);
+
+        ui_panel(c, rx + 8 + fw + 4, y + 18, pw, 18, UI_CUT_TL | UI_CUT_BR, 4,
+                 lit(pf) ? 0x0A283Cu : 0x05080Du, lit(pf) || phov ? UI_CYAN : UI_EDGE, 255);
+        ui_text(c, rx + 8 + fw + 4 + 8, y + 18 + ui_text_y(18, UI_FONT_MEDIUM), "Paste",
+                lit(pf) || phov ? UI_WHITE : UI_GREY, -1, UI_FONT_MEDIUM, 1);
+        f = target(c, rx + 8, y + 18, fw, 18, EIDOS_SUI_MP_ACT_JOIN, 0, 1, &hov);
+        ui_panel(c, rx + 8, y + 18, fw, 18, UI_CUT_TL | UI_CUT_BR, 4,
+                 lit(f) ? 0x0A283Cu : 0x05080Du, lit(f) || hov ? UI_CYAN : UI_EDGE, 255);
+    }
     ui_text(c, rx + 14, y + 18 + ui_text_y(18, UI_FONT_MEDIUM), "Type a code",
             lit(f) || hov ? UI_WHITE : UI_GREY, -1, UI_FONT_MEDIUM, 1);
     para(c, rx + 8, y + 40, rw - 16, "A co-op game, a world, or a room's port.", UI_GREY, UI_FONT_SMALL, 1);

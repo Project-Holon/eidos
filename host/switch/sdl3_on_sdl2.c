@@ -440,6 +440,7 @@ bool SDL_GetDisplayUsableBounds(SDL_DisplayID id, SDL_Rect *rect)
 }
 
 bool SDL_SetClipboardText(const char *text) { (void)text; return fail("no clipboard"); }
+char *SDL_GetClipboardText(void) { return SDL_strdup(""); }
 bool SDL_StartTextInput(SDL_Window *win) { (void)win; return true; }
 bool SDL_StopTextInput(SDL_Window *win) { (void)win; return true; }
 

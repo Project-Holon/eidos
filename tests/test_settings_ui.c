@@ -299,6 +299,29 @@ int main(void)
     BW_CHECK_EQ("B leaves", r & EIDOS_SUI_EXIT, EIDOS_SUI_EXIT);
     eidos_sui_leave();
 
+    /* the code in a pasted text (the Multiplayer hub's Paste) */
+    {
+        char code[16];
+
+        BW_CHECK_EQ("a relay code", eidos_sui_code_from_text("KCUHEM", code, sizeof code) && strcmp(code, "KCUHEM") == 0, 1);
+        BW_CHECK_EQ("small letters and spaces around",
+                    eidos_sui_code_from_text("  q8jqk9\r\n", code, sizeof code) && strcmp(code, "Q8JQK9") == 0, 1);
+        BW_CHECK_EQ("an invite link",
+                    eidos_sui_code_from_text("eidos://join/gredhe", code, sizeof code) && strcmp(code, "GREDHE") == 0, 1);
+        BW_CHECK_EQ("a room's port", eidos_sui_code_from_text("38281", code, sizeof code) && strcmp(code, "38281") == 0, 1);
+        BW_CHECK_EQ("a letter no code has", eidos_sui_code_from_text("ABCDE0", code, sizeof code), 0);
+        BW_CHECK_EQ("the letter O", eidos_sui_code_from_text("ABCDEO", code, sizeof code), 0);
+        BW_CHECK_EQ("five letters", eidos_sui_code_from_text("ABCDE", code, sizeof code), 0);
+        BW_CHECK_EQ("seven characters", eidos_sui_code_from_text("ABCDEFG", code, sizeof code), 0);
+        BW_CHECK_EQ("six digits", eidos_sui_code_from_text("123456", code, sizeof code), 0);
+        BW_CHECK_EQ("one digit", eidos_sui_code_from_text("7", code, sizeof code), 0);
+        BW_CHECK_EQ("a sentence", eidos_sui_code_from_text("join KCUHEM now", code, sizeof code), 0);
+        BW_CHECK_EQ("nothing", eidos_sui_code_from_text("", code, sizeof code), 0);
+        BW_CHECK_EQ("no text", eidos_sui_code_from_text(NULL, code, sizeof code), 0);
+        BW_CHECK_EQ("a web address", eidos_sui_code_from_text("https://example.org/KCUHEM", code, sizeof code), 0);
+        BW_CHECK_EQ("no room for it", eidos_sui_code_from_text("KCUHEM", code, 6), 0);
+    }
+
     remove(INI);
     BW_REPORT("test_settings_ui");
 }

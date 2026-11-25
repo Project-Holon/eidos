@@ -203,6 +203,31 @@ u32 w2c_env_SDL_SetClipboardText(struct w2c_env *e, u32 text)
     return SDL_SetClipboardText((const char *)M(text));
 }
 
+/* sdk/wasm_host.h's clipboard_get. */
+u32 w2c_eidos_clipboard_get(struct w2c_eidos *e, u32 out, u32 n)
+{
+    char *text = SDL_GetClipboardText();
+    size_t len;
+
+    (void)e;
+    if (text == NULL || n == 0) {
+        SDL_free(text);
+        return (u32)-1;
+    }
+    len = strlen(text);
+    if (len == 0) {
+        SDL_free(text);
+        return (u32)-1;
+    }
+    if (len > n - 1) {
+        len = n - 1;
+    }
+    memcpy(host_ptr(out, n), text, len);
+    ((char *)host_ptr(out, n))[len] = '\0';
+    SDL_free(text);
+    return 0;
+}
+
 u32 w2c_env_SDL_GetCurrentVideoDriver(struct w2c_env *e)
 {
     (void)e;

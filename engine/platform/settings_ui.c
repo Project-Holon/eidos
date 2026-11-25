@@ -367,6 +367,8 @@ static const ValueName k_choice_names[] = {
 #define STR_MP_CHECKING      "Checking the code..."
 #define STR_MP_NO_CODE       "No game or world has that code"
 #define STR_MP_NO_ANSWER     "The relay did not answer"
+#define STR_MP_HOST_BUSY     "A connection is still being made. Try again in a moment."
+#define STR_MP_NO_PASTE      "The clipboard holds no game code"
 #define STR_MP_WORLD_JOIN    "Join the world"
 #define STR_MP_WORLD_WAITING "Its maker has not opened it yet"
 #define STR_MP_WORLD_CLOSED  "Its maker closed it"
@@ -634,6 +636,10 @@ static struct {
  * for from the hub (done at the screen's next step). */
 static int g_req_continue = -1;
 static int g_req_coop_new;
+static int g_req_paste;                /* (hub) join with the clipboard's code, at the next step */
+/* The hosting under way was asked for on the hub (a game of Your games):
+ * if it fails the player is put back on the hub, with the reason. */
+static int g_host_from_hub;
 /* Your games' list as last read, and the screen's steps (defined with the
  * list, below) */
 static int g_gl_n;
@@ -1470,11 +1476,27 @@ static int poll_session(void)
             g.cursor = 0;
             g.scroll = 0;
         }
+        if (st.host && g_host_from_hub) {
+            g_host_from_hub = 0;
+            if (st.rc != BW_MOD_NET_OK && g_mp_view == MP_VIEW_HOST && g.tab == TAB_SESSION) {
+                /* a game of Your games that could not be hosted: back on the hub, saying why */
+                put(g_look.said, (int)sizeof g_look.said,
+                    st.rc == BW_MOD_NET_E_IO || st.rc == BW_MOD_NET_E_NO_RELAY ? STR_MP_NO_ANSWER
+                                                                             : session_answer_text(st.rc));
+                g_mp_view = MP_VIEW_CHOOSE;
+                build_rows();
+                g.cursor = 0;
+                g.scroll = 0;
+            }
+        }
         if (st.rc == BW_MOD_NET_OK && st.code[0] != '\0') {
             /* The code in force: the one the relay handed out, or the one
              * the player joined with.  The code the player types is a
              * setting of its own and is not touched here. */
             eidos_settings_session_set_code(st.code);
+            if (getenv("EIDOS_MP_UI_LOG") != NULL) {
+                fprintf(stderr, "eidos: mp ui: session code %s (%s)\n", st.code, st.host ? "hosting" : "joined");
+            }
         }
         redraw = 1;
     }
@@ -2316,6 +2338,25 @@ int eidos_sui_input(unsigned pressed, unsigned held)
         g_req_coop_new = 0;
         return EIDOS_SUI_REDRAW | keyboard_open(KB_NEW_GAME);
     }
+    if (g_req_paste) {
+        /* the clipboard's code: joined with as a typed one is (eidos_sui_keyboard_done) */
+        char text[160], code[16];
+
+        g_req_paste = 0;
+        g_look.said[0] = '\0';
+        if (eidos_settings_clipboard_get(text, (int)sizeof text) != 0 ||
+            !eidos_sui_code_from_text(text, code, (int)sizeof code)) {
+            put(g_look.said, (int)sizeof g_look.said, STR_MP_NO_PASTE);
+            return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
+        }
+        g_mp_view = MP_VIEW_JOIN;
+        g_sess.have = 0;
+        build_rows();
+        g.cursor = 0;
+        g.scroll = 0;
+        eidos_settings_session_set_join_code(code);
+        return EIDOS_SUI_REDRAW | session_action(ROW_MP_JOIN_GO);
+    }
     if (g_req_continue >= 0) {
         int want = g_req_continue;
         EidosSuiGame gm;
@@ -2325,8 +2366,23 @@ int eidos_sui_input(unsigned pressed, unsigned held)
             return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
         }
         if (gm.kind == EIDOS_SUI_GAME_COOP) {
+            int res;
+
             g_req_host_game = gm.kept;      /* hosted again: a new code */
-            return mp_take_host_game();
+            g_look.said[0] = '\0';
+            res = mp_take_host_game();
+            if (g_sess.busy) {
+                g_host_from_hub = 1;        /* (poll_session takes its answer) */
+            } else if (g_mp_view == MP_VIEW_HOST && !mp_in_game()) {
+                /* it did not start: the hub again, saying why, not the Host view's list */
+                put(g_look.said, (int)sizeof g_look.said, STR_MP_HOST_BUSY);
+                g_mp_view = MP_VIEW_CHOOSE;
+                build_rows();
+                g.cursor = 0;
+                g.scroll = 0;
+                res = EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
+            }
+            return res;
         }
         /* a mode's save: the game goes on from it; the mod reads its own
          * saved data (no mode is told) */
@@ -3986,6 +4042,71 @@ static void games_read(void)
     }
 }
 
+int eidos_sui_code_from_text(const char *text, char *out, int n)
+{
+    static const char link[] = "eidos://join/";
+    static const char letters[] = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+    char code[8];
+    int len = 0, digits = 0, i;
+
+    if (out == NULL || n <= 0) {
+        return 0;
+    }
+    out[0] = '\0';
+    if (text == NULL) {
+        return 0;
+    }
+    while (*text == ' ' || *text == '\t' || *text == '\r' || *text == '\n') {
+        text++;
+    }
+    for (i = 0; link[i] != '\0'; i++) {
+        char ch = text[i];
+
+        if (ch >= 'A' && ch <= 'Z') {
+            ch = (char)(ch - 'A' + 'a');
+        }
+        if (ch != link[i]) {
+            break;
+        }
+    }
+    if (link[i] == '\0') {
+        text += i;
+    }
+    for (; *text != '\0' && *text != ' ' && *text != '\t' && *text != '\r' && *text != '\n'; text++) {
+        char ch = *text;
+
+        if (len >= 6) {
+            return 0;                   /* longer than any code */
+        }
+        if (ch >= 'a' && ch <= 'z') {
+            ch = (char)(ch - 'a' + 'A');
+        }
+        digits += ch >= '0' && ch <= '9';
+        code[len++] = ch;
+    }
+    while (*text == ' ' || *text == '\t' || *text == '\r' || *text == '\n') {
+        text++;
+    }
+    if (*text != '\0') {
+        return 0;                       /* more words after it */
+    }
+    code[len] = '\0';
+    if (len == 6) {
+        for (i = 0; i < 6; i++) {
+            if (strchr(letters, code[i]) == NULL) {
+                return 0;
+            }
+        }
+    } else if (len < 2 || len > 5 || digits != len) {
+        return 0;                       /* not a room's port either */
+    }
+    if (len + 1 > n) {
+        return 0;
+    }
+    memcpy(out, code, (size_t)len + 1);
+    return 1;
+}
+
 int eidos_sui_mp_games(void)
 {
     games_read();
@@ -4096,13 +4217,16 @@ int eidos_sui_mp_act(int action, int arg)
         g_req_host_game = arg;
         return 1;
     }
-    if (action == EIDOS_SUI_MP_ACT_CONTINUE || action == EIDOS_SUI_MP_ACT_COOP_NEW) {
+    if (action == EIDOS_SUI_MP_ACT_CONTINUE || action == EIDOS_SUI_MP_ACT_COOP_NEW ||
+        action == EIDOS_SUI_MP_ACT_PASTE) {
         /* from the hub only, done at the screen's next step */
         if (g_mp_view != MP_VIEW_CHOOSE || mp_in_game() || g_sess.busy || g_look.busy) {
             return 0;
         }
         if (action == EIDOS_SUI_MP_ACT_COOP_NEW) {
             g_req_coop_new = 1;
+        } else if (action == EIDOS_SUI_MP_ACT_PASTE) {
+            g_req_paste = 1;
         } else {
             g_req_continue = arg;
         }

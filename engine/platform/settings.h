@@ -187,6 +187,9 @@ void        eidos_settings_avatar_set(const int v[5]);
 const char *eidos_settings_net_relay_in_use(void);
 /* Text onto the system clipboard (the lobby's code).  0, or -1. */
 int         eidos_settings_clipboard_set(const char *text);
+/* The system clipboard's text into `out`, cut to fit.  0, or -1 when it
+ * holds no text. */
+int         eidos_settings_clipboard_get(char *out, int n);
 
 /* The two text settings are edited a character at a time: the screen calls
  * the begin, then a key for every stroke, and either keeps the value

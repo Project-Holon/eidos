@@ -48,6 +48,10 @@ BW_WASM_IMPORT(pick_rom) int bw_host_pick_rom(const char *title, char *out, unsi
 #define BW_HOST_PATH_EXE_DIR  1         /* bw_os_exe_dir               */
 #define BW_HOST_PATH_SAVE_DIR 2         /* bw_plat_default_save_dir    */
 BW_WASM_IMPORT(os_path) int bw_host_os_path(int kind, char *out, unsigned n);
+/* The system clipboard's text, cut to fit `out`: 0, or -1 when it holds
+ * no text (SDL hands the text back in memory of its own, which the module
+ * cannot read). */
+BW_WASM_IMPORT(clipboard_get) int bw_host_clipboard_get(char *out, unsigned n);
 /* The player's time zone: local time minus UTC at time `t`, in seconds
  * (daylight saving time included). */
 BW_WASM_IMPORT(tz_offset) long long bw_host_tz_offset(long long t);

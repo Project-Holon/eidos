@@ -116,6 +116,15 @@ void eidos_sui_help_line(int i, char *out, int n);
  * row; 0 when the screen has no such row now.  eidos_sui_mp_status: the
  * screen's status line (connecting, code not found, the session ended).
  */
+/*
+ * The code in a text the player pasted: spaces around it go, an
+ * `eidos://join/` in front of it goes, letters become capitals.  1 and the
+ * code in `out` when what is left is a relay's code (6 characters of
+ * 23456789ABCDEFGHJKMNPQRSTUVWXYZ) or an Archipelago room's port (2 to 5
+ * digits); 0 for anything else.
+ */
+int eidos_sui_code_from_text(const char *text, char *out, int n);
+
 #define EIDOS_SUI_MP_CHOOSE 0
 #define EIDOS_SUI_MP_JOIN   1
 #define EIDOS_SUI_MP_HOST   2
@@ -137,6 +146,7 @@ void eidos_sui_help_line(int i, char *out, int n);
 #define EIDOS_SUI_MP_ACT_MODE_START 10  /* (Mode view) the mode's new game    */
 #define EIDOS_SUI_MP_ACT_CONTINUE  11   /* (hub) go on with Your games arg    */
 #define EIDOS_SUI_MP_ACT_COOP_NEW  12   /* (hub) a new co-op game: name, host */
+#define EIDOS_SUI_MP_ACT_PASTE     13   /* (hub) join with the code on the clipboard */
 
 /* Your games: the co-op games this player hosts and the saves the cards
  * made (sdk/save_games.h), the latter first, newest first.  ok: it can go
