@@ -8,34 +8,42 @@ Each release's notes on GitHub start with its section here
 Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration.
 
 ### One-Screen Mode & UI
-- **New On-Screen Keyboard**: Text that Settings and the Multiplayer screens ask for (names, codes, mod options, passwords) now opens a keyboard in the game's keyboard style with up to 64 characters, upper and lower case, symbols and QWERTY pages, a movable cursor, and passwords hidden as dots until `SHOW`.
+- **Redesigned On-Screen Keyboard**: Text prompts across Settings and Multiplayer (names, room codes, mod options, and passwords) now open a themed on-screen keyboard supporting up to 64 characters, uppercase/lowercase, symbol and QWERTY layouts, a movable cursor, and masked password input with a `SHOW` toggle.
 - **Consistent UI Scaling**: Normalized one-screen UI scaling across all window resolutions to match the proportions at 1280×720 (using 3× scale at 1920×1080 and 4× at 2560×1440 instead of overscaling by 25–33%).
-- **In-Game Mod Manager**: Added a standalone Mod Manager accessible via the top-left `MODS` button on the title menu (enabled by default on mobile and consoles, and on desktop whenever the game is started without the launcher). Styled to match the active UI theme, it lets you toggle installed compatible mods and browse, install, update, or uninstall mods from the official index with full download verification.
+- **In-Game Mod Manager**: Added a standalone Mod Manager accessible via the top-left `MODS` button on the title menu (enabled by default on mobile, consoles, and standalone desktop runs). Styled to match the active UI theme, it lets you toggle installed compatible mods and browse, install, update, or uninstall mods from the official index with full download verification.
+- **In-Game Version Switcher**: Added a `VERSION` button to the title menu (between `MODS` and the style chooser) to switch between Pokémon Black and Pokémon White without restarting; if the other version's data is not yet installed, you are prompted to select its ROM and extract it in place.
 - **Pokédex Registration Screen**: Catching a new species for the first time now opens the active UI style's native Pokédex view, animating the reveal of its category, type, height, weight, and Pokédex entry while incrementing the `OWN` counter in sync with the game. Previously caught species proceed directly to the nickname prompt.
-- **Version Switch**: Added a `VERSION` button to the title menu, between `MODS` and the style picker, that switches between Pokémon Black and Pokémon White without closing the game; when the other version is missing, it asks for its ROM and builds its data on the spot.
-- **White Title Menu**: The one-screen title menu now uses Pokémon White's own light checkered backdrop when playing White, instead of Black's dark one.
+- **Pokémon Musical Dress-Up**: Added full keyboard/controller and pointer navigation across all three UI styles for the Nimbasa City Musical dress-up screen (#44).
+- **Dowsing Machine Auto-Hide**: The Dowsing Machine HUD card now slides out of view during dialogue and cutscenes and positions itself below the fast-forward badge (#50).
+- **Screen Pillarboxing**: Viewport borders beside 4:3 2D screens and after soft resets now render pure black rather than retaining the grey tint of the last screen fade.
+- **Pokémon White Title Backdrop**: The one-screen title menu now uses Pokémon White's light checkered background when playing White instead of defaulting to Black's dark backdrop.
 
 ### Standalone & Launch Options
-- **Standalone by Default**: Starting `eidos` without the launcher now runs in standalone mode, with the in-game Mod Manager and version switching available (`--standalone` forces it for third-party front ends; it replaces `--mods`).
-- **Game Selection**: Added `--game black` and `--game white` to choose which version starts; without it, the version played last starts.
-- **Both Versions Side by Side**: Each version now keeps its own game data, so adding a second ROM (`--rom`, or the in-game `VERSION` button) no longer replaces the first one's data.
-- **Shared Profiles**: Standalone now plays from the launcher's `Black` and `White` profiles, so saves, mods, and settings are the same with and without the launcher. Settings are shared between both versions, while each version keeps its own saves and mods. Saves from older standalone installs are imported automatically, into free save slots when the profile already has saves of its own.
-- **Options Without `--window`**: Fixed display and layout options (such as `--fullscreen` or `--layout one`) starting the game with no window unless `--window` was also passed.
-- **Release File Names**: Launcher downloads are now `eidos-setup-windows.exe`, `eidos-macos.dmg`, and `eidos-linux-x86_64.AppImage`; standalone builds are `eidos-standalone-<version>-<platform>`; console builds are `eidos-nintendo-switch.zip` and `eidos-psvita.vpk`.
+- **Standalone Mode by Default**: Launching `eidos` directly without the desktop launcher now enables standalone mode automatically, exposing the in-game Mod Manager and version switcher (`--standalone`, replacing `--mods`, forces this mode for third-party frontends).
+- **CLI Version Selection**: Added `--game black` and `--game white` flags to boot directly into a specific version, defaulting to whichever version was played last.
+- **Side-by-Side Game Data**: Pokémon Black and Pokémon White now store their extracted game data separately, so adding a second ROM (via `--rom` or the in-game `VERSION` button) no longer overwrites the first version's data.
+- **Unified Launcher & Standalone Profiles**: Standalone runs now share the launcher's `Black` and `White` profiles—settings are shared across both versions, while each version maintains its own save slots and mod loadouts, staying in sync whether you launch directly or through the launcher. Existing saves from older standalone installs are imported automatically into available save slots (#29).
+- **Display Flags Without `--window`**: Fixed display and layout flags (such as `--fullscreen` or `--layout one`) failing to create a window unless `--window` was also passed.
+- **Standardized Release Asset Names**: Renamed launcher installers to `eidos-setup-windows.exe`, `eidos-macos.dmg`, and `eidos-linux-x86_64.AppImage`; standalone archives to `eidos-standalone-<version>-<platform>`; and console packages to `eidos-nintendo-switch.zip` and `eidos-psvita.vpk`.
 
 ### Multiplayer
 - **Lobby Start Button**: Fixed the host's `Start` button remaining disabled in the one-screen lobby even after all players readied up.
 - **Clipboard Code Paste**: Added a `Paste` button to the Join box on the Play Together screen that immediately joins using a room code, server `host:port`, or invite link from your clipboard.
 
 ### Modding
-- **Mod Settings Tabs**: Mods can now add whole tabs to Settings, with password fields that are never saved, buttons, and rows the mod fills in while the game runs (mod API v7); the RetroAchievements mod uses one for its sign-in.
-- **Online Mod Services**: Mods can now make web requests, read the clock and the game's RetroAchievements hash, and show pop-ups in the active UI style (mod API v7).
-- **Wider Web Trust**: Mod web requests and downloads now accept any site with a certificate a browser trusts (Mozilla's root list), instead of only GitHub's servers.
-- **64-Bit Mod Return Values**: Fixed native engine calls from WAMR code mods always returning `0` on 64-bit builds, restoring full functionality for randomizer and Archipelago mods.
+- **Mod API v7**:
+  - **Custom Settings Tabs**: Mods can register dedicated tabs in the Settings menu featuring non-persisted password fields, action buttons, and dynamically updated status rows (used by the RetroAchievements mod for account sign-in).
+  - **Network, Clock, Hash & Toast Services**: Mods can perform HTTPS requests, query the system clock and active ROM's RetroAchievements hash, and display theme-styled toast notifications.
+  - **National Pokédex & Wonder Cards**: Added APIs to unlock the National Pokédex and inject one-time Wonder Cards into the player's save.
+- **DS Extended Heap Mapping**: Mapped the DS extended heap to its exact hardware memory addresses so memory-inspection mods and RetroAchievements runtime checks resolve pointers at expected offsets.
+- **TLS Root Store**: Expanded HTTPS certificate verification for mod downloads and web requests to trust the full Mozilla CA bundle rather than only GitHub endpoints.
+- **64-Bit Mod Return Values & Logging**: Fixed native engine calls from WAMR code mods always returning `0` on 64-bit builds (restoring randomizer and Archipelago mods), and fixed `--mod-log` producing empty log files on 64-bit targets.
 - **Version-Specific Mods**: Mods declaring `game = black` or `game = white` in their manifest are now prevented from loading in the opposite version and appear as `Unavailable` (with the required version noted) in both the in-game Settings and the launcher.
 - **Launcher Mod Updates**: Fixed the launcher caching initial metadata indefinitely for index mods published without an explicit version number, allowing new releases to be detected.
 
 ### Real-Map Battles & Spot Editor
+- **Gym Statue Pedestals**: Grounded statue pedestals in Striaton and Nacrene Gyms so their top surfaces no longer float detached from their bases.
+- **Nuvema Bedroom Battles**: Removed the rival's floating `!` emote icon above the player's bedroom and resolved z-fighting on the ruined bedroom rug during the opening battles.
 - **Props on Rebuilt Furniture**: Props placed atop reconstructed indoor furniture now rest properly on the rebuilt surface; restored Striaton Gym's counter geometry with the cash register seated on top.
 
 ### Fixes
@@ -43,11 +51,11 @@ Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration
 - **Kosmos Pokédex Transitions**: Fixed multi-step fade transitions repeatedly capturing and releasing frame snapshots when flipping pages in the Kosmos Pokédex.
 - **Relay Connection Errors**: Fixed failed hosting attempts from **Your Games** (when the relay is unreachable) dropping into a duplicate games list without explanation; the menu now stays on the Play Together screen and displays an error message.
 - **Plasma C-Gear Notice**: Fixed the C-Gear warning text before the Continue screen being truncated and overlapping below its confirmation prompt in the Plasma style.
-- **HM Move Notice**: Fixed the `HM moves can't be forgotten now.` message not appearing on the one-screen forget-a-move page, which left the screen looking unresponsive (#54).
-- **Game Data Replacement (64-bit)**: Fixed replacing game data leaving a half-deleted `extract.old` folder behind, which made the next replacement fail.
-- **ROM Setup Messages**: Fixed setup messages naming Pokémon Black when a Pokémon White ROM was refused.
-- **C-Gear Start-Up**: In one-screen mode, the C-Gear's first start-up at Fennel's lab now unfolds the top bar's C-Gear sheet and lights up its channels, instead of a silent pause while the animation played on the hidden lower screen, and the conversation continues as soon as the sheet folds away (#13).
-- **Mod Options in Settings**: Mods' on/off options now show `Off`/`On` buttons like the game's own options, text options no longer show step arrows, and the cursor stays on the option just edited instead of jumping to the mod's first one.
+- **HM Move Deletion Warning**: Restored the `"HM moves can't be forgotten now."` prompt on the one-screen move-forget screen so attempting to overwrite an HM no longer appears unresponsive (#54).
+- **C-Gear First Boot Cutscene**: In one-screen mode, receiving and activating the C-Gear at Fennel's lab now expands the top-bar C-Gear drawer to play its channel-activation sequence and resumes dialogue immediately once it closes, replacing the previous silent pause while the animation ran on the hidden bottom screen (#13).
+- **Mod Settings Controls**: Styled boolean mod settings with standard `Off`/`On` toggle buttons, removed step arrows from text input rows, and preserved cursor focus on the edited option after closing a prompt instead of jumping back to the first row.
+- **ROM Replacement Cleanup (64-Bit)**: Fixed ROM re-extraction leaving behind a partially deleted `extract.old` directory that caused subsequent extractions to fail.
+- **ROM Verification Errors**: Fixed ROM validation error messages referencing Pokémon Black when rejecting an invalid Pokémon White ROM.
 - **Bottom-Bar Key Hints**: Fixed clicks and taps on bottom-bar key hints passing through to the underlying screen (such as clicking `Back` in the style chooser inadvertently returning the title menu to the title screen).
 
 ## 0.2.6
