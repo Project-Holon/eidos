@@ -4264,6 +4264,37 @@ static void pl_draw(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, u8
 
     if (v.mode >= 2 && v.mode <= 7) {
         pl_summary(c, &v, ix, iy, iw, ih, sig, in);
+        /* The game's own sentence over a page, while the game shows it and
+         * waits for a key (the list's print stream, states 23 and 24, and
+         * its flag at 0x2193): "HM moves can't be forgotten now." on a
+         * forget page (B_PLIST_MAIN_EnterState1A, issue 54).  The page
+         * draws its own panels where the game's message window is, so the
+         * sentence never showed and the page seemed not to answer.  It is
+         * read from the list's string buffer, as the list's own reasons
+         * are below. */
+        if (plist[0x2193] == 1 || (rd32(plist, 0x2178) >= 23 && rd32(plist, 0x2178) <= 24)) {
+            char why[96];
+
+            if (strbuf_text(rdp(plist, 0x1EA8), why, (int)sizeof(why)) && why[0] != '\0') {
+                int bw = iw - 24, lines = ui_wrap(why, bw - 20, UI_FONT_LARGE, NULL, NULL);
+                int bh = 12 + 15 * (lines > 0 ? lines : 1);
+                int bx = ix + 12, by = iy + ih - 22 - bh - 6;
+                EidosUiRect all;
+
+                ui_fill(c, ix, iy, iw, ih, UI_INK, 110);
+                ui_panel(c, bx, by, bw, bh, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, UI_PINK, 255);
+                draw_wrapped(c, bx + 10, by + 6, bw - 20, why, UI_FONT_LARGE, 15, lines > 0 ? lines : 1,
+                             UI_WHITE, (s32)UI_EDGE);
+                /* a click anywhere is the key the game waits for */
+                all.x = 0;
+                all.y = 0;
+                all.w = m.w;
+                all.h = m.h;
+                if (eidos_ui_hit(all) & EIDOS_UI_CLICK) {
+                    eidos_ui_press(BW_KEY_A, 2);
+                }
+            }
+        }
     } else {
         int colw = (iw - 6) / 2, rowh = 30, gap = 4;
         int msg_y = iy + 3 * (rowh + gap) + 2;

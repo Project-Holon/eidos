@@ -152,6 +152,27 @@ u32 bw_ui_item_last(u32 *count, u32 *serial)
 }
 
 /* ------------------------------------------------------------------ */
+/* The move the summary would not forget (stubs/ov/patch_ov131_p_sta_skill.c) */
+/* ------------------------------------------------------------------ */
+
+static volatile u32 g_forget_result, g_forget_serial;
+
+void bw_ui_forget_refused(int result)
+{
+    g_forget_result = (u32)result;
+    g_forget_serial++;
+}
+
+/* What the game's last refusal was (1: an HM move, with the game's text 156
+ * of the summary's bank) and a number that changes with every new one (0
+ * when none yet). */
+u32 bw_ui_forget_refusal(u32 *serial)
+{
+    if (serial != NULL) *serial = g_forget_serial;
+    return g_forget_result;
+}
+
+/* ------------------------------------------------------------------ */
 /* The key item a cut-in shows (stubs/ov/patch_ov021_fld_wipe_3dobj.c)  */
 /* ------------------------------------------------------------------ */
 

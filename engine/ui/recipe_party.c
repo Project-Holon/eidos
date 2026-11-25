@@ -2089,8 +2089,20 @@ static void draw_ribbon_page(EidosUiCtx *c, const SummaryView *s, int x, int y, 
  * move is picked, B gives the new move up, as on the DS. */
 #define SK_PICKING     0x18
 #define SK_CONFIRMED   0x20
+/* The game would not let a move go (P_STA_SKILL_ShowCantForgetMsg: the move
+ * under the cursor is an HM move) and put its text 156 of the summary's
+ * bank, "HM moves can't be forgotten now.", in the place of the move's
+ * description; it prints the description again when the cursor moves.  The
+ * game's function tells the port each time it runs
+ * (stubs/ov/patch_ov131_p_sta_skill.c, sdk/ui_text.c): its own sign,
+ * PStaSkillWork.msgPrintPending, is gone a frame or two later, before this
+ * page is sure to have drawn. */
+#define MSG_CANT_FORGET 156
+extern u32 bw_ui_forget_refusal(u32 *serial) BW_WEAK;
 
 static int g_forget_next = -1;  /* a move to pick once the picked one is put back */
+static int g_forget_refused = -1;   /* the slot whose refusal shows in the description's place; -1 none */
+static u32 g_forget_refusal_seen;   /* the refusals counted so far */
 static int g_forget_steps;      /* cursor steps still to press: + down, - up */
 static u32 g_forget_step_frame;
 
@@ -2127,6 +2139,21 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
 
     if (held > 3) {
         picking = 0;
+    }
+    /* the game refused the move under its cursor: its sentence shows where
+     * the description is, until another move is looked at */
+    if (bw_ui_forget_refusal != NULL) {
+        u32 serial = 0;
+        u32 result = bw_ui_forget_refusal(&serial);
+
+        if (serial != g_forget_refusal_seen) {
+            g_forget_refusal_seen = serial;
+            /* (the game prints its text for result 1 only) */
+            g_forget_refused = result == 1 && s->cursor < 4 ? s->cursor : -1;
+        }
+    }
+    if (picking || busy) {
+        g_forget_refused = -1;
     }
     if (!picking && !busy) {
         u32 keys;
@@ -2223,6 +2250,9 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
     /* the details: the move under the pointer, else the picked one, else
      * the one under the game's cursor */
     shown = hov >= 0 ? hov : picking ? held : (s->cursor < 5 ? s->cursor : 4);
+    if (shown != g_forget_refused) {
+        g_forget_refused = -1;
+    }
     {
         u32 mv = shown < 4 ? pv(s->mon, P_MOVE1 + (u32)shown) : newmove;
         int dy = iy + 34 + 3 * 26, dh = nav_y - 4 - 4 - dy;
@@ -2249,9 +2279,15 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
             }
             ui_text(c, ix + iw - 14 - ui_text_w(info, UI_FONT_SMALL), dy + 3 + ui_text_y(11, UI_FONT_SMALL),
                     info, UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
-            (void)msg_text(BANK_MOVE_DESC, mv, d, (int)sizeof d, 0);
-            draw_wrapped(c, ix + 13, dy + 16, iw - 26, 10, (dh - 17) / 10, d, UI_FONT_SMALL, UI_LIGHT,
-                         UI_EDGE);
+            if (g_forget_refused == shown && msg_text(BANK_SUMMARY, MSG_CANT_FORGET, d, (int)sizeof d, 0) != NULL
+                && d[0] != '\0') {
+                draw_wrapped(c, ix + 13, dy + 16, iw - 26, 10, (dh - 17) / 10, d, UI_FONT_SMALL, UI_WHITE,
+                             UI_EDGE);
+            } else {
+                (void)msg_text(BANK_MOVE_DESC, mv, d, (int)sizeof d, 0);
+                draw_wrapped(c, ix + 13, dy + 16, iw - 26, 10, (dh - 17) / 10, d, UI_FONT_SMALL, UI_LIGHT,
+                             UI_EDGE);
+            }
         }
     }
     /* FORGET while a move is picked; BACK puts it back, or GIVE UP gives
@@ -2485,6 +2521,10 @@ static void summary_reset(void)
     g_move_hover = -1;
     g_forget_next = -1;
     g_forget_steps = 0;
+    g_forget_refused = -1;
+    if (bw_ui_forget_refusal != NULL) {
+        (void)bw_ui_forget_refusal(&g_forget_refusal_seen);     /* a refusal of an earlier visit is not this one's */
+    }
 }
 
 static const EidosUiRecipe recipe_summary = {
