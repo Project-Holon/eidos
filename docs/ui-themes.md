@@ -117,6 +117,8 @@ A mod can add a theme the same way.
 ## Tests
 
 `EIDOS_UI_THEME=<id>` with the switches in `docs/test-switches.md` opens each
-screen in a scripted run. Check a theme at 1280x720, 1920x1080 and 2560x1440:
-the canvas is 640x360, 480x270 and 512x288 at these sizes, so a layout must
-fit 480x270.
+screen in a scripted run. The canvas is the window divided by the whole scale
+nearest to its height / 360 (`eidos_ui_scale`), and never has fewer than 270
+rows: 640x360 at 1280x720, 1920x1080 and 2560x1440 (scales 2, 3 and 4), but
+533x300 at 1600x900 and 480x270 at 960x540. Check a theme at the three first
+sizes and at 1600x900: a layout must fit 480x270.

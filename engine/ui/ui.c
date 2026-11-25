@@ -85,13 +85,22 @@ void eidos_ui_set_enabled(int on)
 
 int eidos_ui_scale(int win_w, int win_h)
 {
-    /* the layouts need about 270 canvas rows (the menu's six buttons, the
-     * battle's plates and sheets) and about 360 columns (a 4:3 window's
-     * width at that height): the largest whole scale that keeps both, so a
-     * window narrower than 4:3 (a tablet held upright) gets a smaller scale
-     * instead of panels cut off at its sides */
-    int k = win_h / 270;
+    /* The layouts are made on a canvas of 360 rows (a 1280x720 window at
+     * scale 2): the whole scale nearest to the window's height / 360, so a
+     * 1920x1080 window (scale 3) and a 2560x1440 one (scale 4) show what
+     * 1280x720 shows.  (The largest scale that kept 270 rows drew them a
+     * third and a quarter larger than 720p: scales 4 and 5.)
+     *
+     * The layouts need at least 270 canvas rows (the menu's six buttons,
+     * the battle's plates and sheets) and about 360 columns (a 4:3 window's
+     * width at that height): a scale that leaves fewer rows is one lower,
+     * and a window narrower than 4:3 (a tablet held upright) gets a smaller
+     * scale instead of panels cut off at its sides. */
+    int k = (2 * win_h + 360) / 720;
 
+    if (k > 1 && win_h / k < 270) {
+        k--;
+    }
     if (win_w / 360 < k) {
         k = win_w / 360;
     }
