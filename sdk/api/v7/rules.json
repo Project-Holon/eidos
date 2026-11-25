@@ -712,6 +712,7 @@
     "world",
     "ap",
     "move.known",
-    "web"
+    "web",
+    "setting.button"
   ]
 }

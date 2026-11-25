@@ -43,6 +43,7 @@
 
 #include "port.h"
 #include "md5.h"
+#include "mod_menu.h"
 #include "mod_v7.h"
 #include "plat_thread.h"
 
@@ -330,4 +331,60 @@ int bw_mod_v7_game_hash(u32 kind, char *out, u32 size)
     }
     memcpy(out, hash, 33);
     return 32;
+}
+
+/* ------------------------------------------------------------------ */
+/* RetroAchievements' hardcore                                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The test switches that change the game (docs/test-switches.md): a
+ * battle, a warp, the party, items, moves, the clock, scripted keys, a mod
+ * named on the command line, a save written by a test.  The ones that only
+ * log or show something (EIDOS_DEBUG_WHERE, _POPUP, _TRACKER, _AVATAR, the
+ * logs) are not here: they change nothing of the game.
+ */
+static const char *const k_game_switches[] = {
+    "EIDOS_DEBUG_A_FROM", "EIDOS_DEBUG_A_UNTIL", "EIDOS_DEBUG_AUTO_PLAYER", "EIDOS_DEBUG_BATTLE",
+    "EIDOS_DEBUG_BATTLE_AGAIN", "EIDOS_DEBUG_BATTLE_SCENE", "EIDOS_DEBUG_CUTIN", "EIDOS_DEBUG_DEX_OWN",
+    "EIDOS_DEBUG_DEX_STATE", "EIDOS_DEBUG_DRESSUP_DEMO", "EIDOS_DEBUG_DRESSUP_STYLUS", "EIDOS_DEBUG_HELD",
+    "EIDOS_DEBUG_ITEMS", "EIDOS_DEBUG_LEVEL", "EIDOS_DEBUG_MOVE", "EIDOS_DEBUG_MOVES", "EIDOS_DEBUG_MOVE_KNOWN",
+    "EIDOS_DEBUG_OPEN", "EIDOS_DEBUG_PARTY", "EIDOS_DEBUG_PARTY_COUNT", "EIDOS_DEBUG_PROPS", "EIDOS_DEBUG_WARP",
+    "EIDOS_DEBUG_WARP_SEASON", "EIDOS_DEBUG_WEATHER", "EIDOS_RTC", "EIDOS_UI_SCRIPT", "EIDOS_MOD_CODE",
+    "EIDOS_MOD_MODE", "EIDOS_MP_TEST", "EIDOS_FLASH_TEST", "EIDOS_SAVE_TEST_AT", "EIDOS_GAME_SWITCH_AT",
+    "EIDOS_GAME_ADD_ROM",
+};
+
+/* the namespace of the mod that is calling (sdk/mod_savedata.c) */
+#if defined(__GNUC__) || defined(__clang__)
+extern const char *bw_mod_savedata_namespace(void) __attribute__((weak));
+#else
+extern const char *bw_mod_savedata_namespace(void);
+#endif
+
+int bw_mod_v7_hardcore_allowed(char *why, u32 size)
+{
+    const char *self = bw_mod_savedata_namespace != NULL ? bw_mod_savedata_namespace() : NULL;
+    char reason[96];
+    u32 i;
+
+    reason[0] = '\0';
+    for (i = 0; i < sizeof k_game_switches / sizeof k_game_switches[0] && reason[0] == '\0'; i++) {
+        const char *v = getenv(k_game_switches[i]);
+
+        if (v != NULL && v[0] != '\0') {
+            snprintf(reason, sizeof reason, "A test switch is set (%s)", k_game_switches[i]);
+        }
+    }
+    for (i = 0; i < bw_mod_menu_count() && reason[0] == '\0'; i++) {
+        const char *ns = bw_mod_menu_namespace_at(i);
+
+        if (bw_mod_menu_running_at(i) && (self == NULL || ns == NULL || strcmp(ns, self) != 0)) {
+            snprintf(reason, sizeof reason, "Another mod is on: %s", bw_mod_menu_name_at(i));
+        }
+    }
+    if (why != NULL && size > 0) {
+        snprintf(why, size, "%s", reason);
+    }
+    return reason[0] == '\0';
 }

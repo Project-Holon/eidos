@@ -238,7 +238,8 @@ enum {
     BW_EVENT_WORLD              = 124,
     BW_EVENT_AP                 = 125,
     BW_EVENT_MOVE_KNOWN         = 126,
-    BW_EVENT_WEB                = 127
+    BW_EVENT_WEB                = 127,
+    BW_EVENT_SETTING_BUTTON     = 128
 };
 
 /* Version 6: where the game asks whether a Pokemon knows a move
@@ -1506,6 +1507,16 @@ typedef struct BwWeb {
 enum {
     BW_WEB_FAILED = -1              /* web: no answer came */
 };
+
+/*
+ * setting.button (version 7): the player chose a `button` row of a mod's
+ * settings (docs/mod-services.md, "Mod settings").  Every mod with a
+ * handler sees it; `key` is the button's key, so a mod acts on its own.
+ */
+typedef struct BwSettingButton {
+    BwEvent h;
+    u8  key[64];    /* the button's key, NUL-terminated */
+} BwSettingButton;
 
 /* game_hash (version 7): the hashes the port gives of the game in force. */
 enum {

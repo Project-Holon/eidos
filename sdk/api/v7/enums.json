@@ -428,6 +428,11 @@
       "value": 127
     },
     {
+      "name": "EIDOS_EVENT_SETTING_BUTTON",
+      "c_name": "BW_EVENT_SETTING_BUTTON",
+      "value": 128
+    },
+    {
       "name": "EIDOS_MOVE_SITE_FRONT_TILE",
       "c_name": "BW_MOVE_SITE_FRONT_TILE",
       "value": 0

@@ -1,11 +1,14 @@
 {
   "status": "open",
   "api": 7,
-  "line": "option <key> <kind> \"<label>\" <value> [?key=value] [@mode,mode]",
+  "line": "option <key> <kind> \"<label>\" <value> [?key=value | ?key!=value] [@mode,mode]",
   "extra_lines": [
     "heading \"<text>\"",
     "help <key> \"<text>\"",
-    "yaml <key> <name> [<value>|<value>|...]"
+    "yaml <key> <name> [<value>|<value>|...]",
+    "tab \"<title>\" (version 7: the lines after it are a Settings tab of their own)",
+    "button <key> \"<label>\" [?key=value] [@mode,mode] (version 7: the event setting.button)",
+    "show <key> \"<label>\" [?key=value] [@mode,mode] (version 7: setting_show sets its text; hidden while \"\")"
   ],
   "kinds": [
     {
@@ -25,8 +28,13 @@
     },
     {
       "kind": "text",
-      "value": "<longest> \"<default>\"",
-      "setting_text": "the text (version 6)"
+      "value": "<longest> \"<default>\" [word]",
+      "setting_text": "the text (version 6; `word`: one word, version 7)"
+    },
+    {
+      "kind": "secret",
+      "value": "<longest>",
+      "setting_text": "the password: never written to a file, forgotten when Settings closes, never @lobby (version 7)"
     }
   ],
   "mode_line": "mode <id> \"<title>\" \"<line>\" [off] [joins] [in=<mode>] [export \"<game>\"]",

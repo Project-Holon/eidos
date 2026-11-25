@@ -4729,6 +4729,34 @@
           "c_type": "u32"
         }
       ]
+    },
+    {
+      "id": 128,
+      "name": "setting.button",
+      "category": "progress",
+      "since": 7,
+      "refusable": false,
+      "struct": "EidosSettingButton",
+      "c_struct": "BwSettingButton",
+      "size": 72,
+      "doc": "The player chose a `button` row of a mod's settings (docs/mod-services.md, \"Mod settings\").",
+      "details": "Every mod with a handler sees it; `key` is the button's key, so a mod acts on its own.",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "key",
+          "type": "uint8_t",
+          "offset": 8,
+          "size": 64,
+          "count": 64,
+          "writable": false,
+          "rule_name": "key",
+          "doc": "the button's key, NUL-terminated",
+          "c_type": "u8"
+        }
+      ]
     }
   ]
 }

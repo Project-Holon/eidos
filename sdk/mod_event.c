@@ -55,7 +55,7 @@
 /* ------------------------------------------------------------------ */
 
 /* The event ids of sdk/mod_api.h go up to BW_EVENT_BATTLE_TURN (113). */
-#define BW_MOD_EVENT_KINDS_MAX    128
+#define BW_MOD_EVENT_KINDS_MAX    160
 
 /* How many handlers the table holds over every event kind together. */
 #define BW_MOD_EVENT_HANDLERS_MAX 256
@@ -263,6 +263,7 @@ static u32 payload_size(u32 kind)
     case BW_EVENT_WORLD:        return (u32)sizeof(BwWorld);
     case BW_EVENT_AP:           return (u32)sizeof(BwAp);
     case BW_EVENT_WEB:          return (u32)sizeof(BwWeb);
+    case BW_EVENT_SETTING_BUTTON: return (u32)sizeof(BwSettingButton);
     case BW_EVENT_MOVE_KNOWN:   return (u32)sizeof(BwMoveKnown);
 
     default:                     return (u32)sizeof(BwEvent);

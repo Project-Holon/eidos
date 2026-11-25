@@ -8,6 +8,7 @@ Each release's notes on GitHub start with its section here
 Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration.
 
 ### One-Screen Mode & UI
+- **New On-Screen Keyboard**: Text that Settings and the Multiplayer screens ask for (names, codes, mod options, passwords) now opens a keyboard in the game's keyboard style with up to 64 characters, upper and lower case, symbols and QWERTY pages, a movable cursor, and passwords hidden as dots until `SHOW`.
 - **Consistent UI Scaling**: Normalized one-screen UI scaling across all window resolutions to match the proportions at 1280×720 (using 3× scale at 1920×1080 and 4× at 2560×1440 instead of overscaling by 25–33%).
 - **In-Game Mod Manager**: Added a standalone Mod Manager accessible via the top-left `MODS` button on the title menu (enabled by default on mobile and consoles, and on desktop whenever the game is started without the launcher). Styled to match the active UI theme, it lets you toggle installed compatible mods and browse, install, update, or uninstall mods from the official index with full download verification.
 - **Pokédex Registration Screen**: Catching a new species for the first time now opens the active UI style's native Pokédex view, animating the reveal of its category, type, height, weight, and Pokédex entry while incrementing the `OWN` counter in sync with the game. Previously caught species proceed directly to the nickname prompt.
@@ -27,6 +28,9 @@ Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration
 - **Clipboard Code Paste**: Added a `Paste` button to the Join box on the Play Together screen that immediately joins using a room code, server `host:port`, or invite link from your clipboard.
 
 ### Modding
+- **Mod Settings Tabs**: Mods can now add whole tabs to Settings, with password fields that are never saved, buttons, and rows the mod fills in while the game runs (mod API v7); the RetroAchievements mod uses one for its sign-in.
+- **Online Mod Services**: Mods can now make web requests, read the clock and the game's RetroAchievements hash, and show pop-ups in the active UI style (mod API v7).
+- **Wider Web Trust**: Mod web requests and downloads now accept any site with a certificate a browser trusts (Mozilla's root list), instead of only GitHub's servers.
 - **64-Bit Mod Return Values**: Fixed native engine calls from WAMR code mods always returning `0` on 64-bit builds, restoring full functionality for randomizer and Archipelago mods.
 - **Version-Specific Mods**: Mods declaring `game = black` or `game = white` in their manifest are now prevented from loading in the opposite version and appear as `Unavailable` (with the required version noted) in both the in-game Settings and the launcher.
 - **Launcher Mod Updates**: Fixed the launcher caching initial metadata indefinitely for index mods published without an explicit version number, allowing new releases to be detected.
@@ -43,6 +47,7 @@ Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration
 - **Game Data Replacement (64-bit)**: Fixed replacing game data leaving a half-deleted `extract.old` folder behind, which made the next replacement fail.
 - **ROM Setup Messages**: Fixed setup messages naming Pokémon Black when a Pokémon White ROM was refused.
 - **C-Gear Start-Up**: In one-screen mode, the C-Gear's first start-up at Fennel's lab now unfolds the top bar's C-Gear sheet and lights up its channels, instead of a silent pause while the animation played on the hidden lower screen, and the conversation continues as soon as the sheet folds away (#13).
+- **Mod Options in Settings**: Mods' on/off options now show `Off`/`On` buttons like the game's own options, text options no longer show step arrows, and the cursor stays on the option just edited instead of jumping to the mod's first one.
 - **Bottom-Bar Key Hints**: Fixed clicks and taps on bottom-bar key hints passing through to the underlying screen (such as clicking `Back` in the style chooser inadvertently returning the title menu to the title screen).
 
 ## 0.2.6

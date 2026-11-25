@@ -53,6 +53,10 @@ int bw_mod_v7_game_hash(u32 kind, char *out, u32 size);
 /* The same from one extraction folder: 0, or -1. */
 int bw_mod_v7_ra_hash_dir(const char *extract_dir, char out[33]);
 
+/* The services table's hardcore_allowed: 1 when nothing in force changes
+ * the game but the calling mod, else 0 and the reason in `why`. */
+int bw_mod_v7_hardcore_allowed(char *why, u32 size);
+
 #ifdef __cplusplus
 }
 #endif

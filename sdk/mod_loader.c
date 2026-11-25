@@ -1238,6 +1238,9 @@ static int loader_load(u32 index)
     m->services.ticks_ms         = bw_mod_v7_ticks_ms;
     m->services.game_hash        = bw_mod_v7_game_hash;
     m->services.popup            = bw_mod_popup;
+    m->services.setting_show     = bw_mod_menu_setting_show;
+    m->services.setting_set_text = bw_mod_menu_setting_set_text;
+    m->services.hardcore_allowed = bw_mod_v7_hardcore_allowed;
     /* The rules' cells: the mod's own file under its namespace. */
     bw_mod_rule_set_cells_io(loader_cells_load, loader_cells_store);
 

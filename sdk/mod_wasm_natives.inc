@@ -1299,6 +1299,36 @@ static int32_t wn_popup(wasm_exec_env_t env, const char *title, const char *text
     return (int32_t)w->host->services->popup(title, text, (u32)icon);
 }
 
+static int32_t wn_setting_show(wasm_exec_env_t env, const char *key, const char *text)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->setting_show == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->setting_show(key, text);
+}
+
+static int32_t wn_setting_set_text(wasm_exec_env_t env, const char *key, const char *text)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->setting_set_text == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->setting_set_text(key, text);
+}
+
+static int32_t wn_hardcore_allowed(wasm_exec_env_t env, void *why, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->hardcore_allowed == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->hardcore_allowed((char *)why, (u32)size);
+}
+
 /* The state calls and the services, as imports of module "eidos". */
 static NativeSymbol k_wasm_api_natives[] = {
     { "party_count", (void *)wn_party_count, "()i", NULL },
@@ -1427,4 +1457,7 @@ static NativeSymbol k_wasm_api_natives[] = {
     { "ticks_ms", (void *)wn_ticks_ms, "()I", NULL },
     { "game_hash", (void *)wn_game_hash, "(i*~)i", NULL },
     { "popup", (void *)wn_popup, "($$i)i", NULL },
+    { "setting_show", (void *)wn_setting_show, "($$)i", NULL },
+    { "setting_set_text", (void *)wn_setting_set_text, "($$)i", NULL },
+    { "hardcore_allowed", (void *)wn_hardcore_allowed, "(*~)i", NULL },
 };

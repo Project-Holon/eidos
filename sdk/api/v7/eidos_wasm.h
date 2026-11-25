@@ -111,6 +111,7 @@ enum {
     EIDOS_EVENT_AP = 125,
     EIDOS_EVENT_MOVE_KNOWN = 126,
     EIDOS_EVENT_WEB = 127,
+    EIDOS_EVENT_SETTING_BUTTON = 128,
     EIDOS_MOVE_SITE_FRONT_TILE = 0,
     EIDOS_MOVE_SITE_SCRIPT = 1,
     EIDOS_MOVE_SITE_PARTY_MENU = 2,
@@ -943,6 +944,11 @@ typedef struct EidosWeb {
     uint32_t pad;
 } EidosWeb;  /* 24 bytes */
 
+typedef struct EidosSettingButton {
+    EidosEvent h;
+    uint8_t key[64];  /* the button's key, NUL-terminated */
+} EidosSettingButton;  /* 72 bytes */
+
 /* A handler: return EIDOS_EVENT_CONTINUE or EIDOS_EVENT_REFUSE. */
 typedef int32_t (*EidosHandler)(EidosEvent *event);
 
@@ -1090,6 +1096,9 @@ EIDOS_IMPORT("time_utc") int64_t eidos_time_utc(void);
 EIDOS_IMPORT("ticks_ms") uint64_t eidos_ticks_ms(void);
 EIDOS_IMPORT("game_hash") int32_t eidos_game_hash(uint32_t kind, char *out, uint32_t size);
 EIDOS_IMPORT("popup") int32_t eidos_popup(const char *title, const char *text, uint32_t icon);
+EIDOS_IMPORT("setting_show") int32_t eidos_setting_show(const char *key, const char *text);
+EIDOS_IMPORT("setting_set_text") int32_t eidos_setting_set_text(const char *key, const char *text);
+EIDOS_IMPORT("hardcore_allowed") int32_t eidos_hardcore_allowed(char *why, uint32_t size);
 
 /* What the module must export. */
 EIDOS_EXPORT("eidos_mod_start") int32_t eidos_mod_start(void);

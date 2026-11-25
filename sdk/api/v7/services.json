@@ -1047,6 +1047,48 @@
           "name": "icon"
         }
       ]
+    },
+    {
+      "name": "setting_show",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        },
+        {
+          "type": "const char *",
+          "name": "text"
+        }
+      ]
+    },
+    {
+      "name": "setting_set_text",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        },
+        {
+          "type": "const char *",
+          "name": "text"
+        }
+      ]
+    },
+    {
+      "name": "hardcore_allowed",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "why"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
     }
   ]
 }

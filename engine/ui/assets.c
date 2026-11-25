@@ -59,6 +59,8 @@ typedef struct UiFontData {
     int  ok;
     u8   ugrave[64];        /* the small font's u-grave, made (small_fix)  */
     int  has_ugrave;
+    u8   extra[3][64];      /* the port's own marks, made (port_marks)     */
+    int  has_extra[3];
 } UiFontData;
 
 static UiFontData g_font[3];
@@ -206,6 +208,189 @@ static void small_fix(UiFontData *f)
     }
 }
 
+/*
+ * Three marks the game's fonts lack, which the port's keyboard needs (a
+ * password and its symbols), made from the font's own marks so they have
+ * its strokes and its shadow:
+ *
+ *   U+FF07  a straight apostrophe: the font's ' (a curly one) with its top
+ *           stroke run straight down to where the mark ends;
+ *   U+FF02  a straight double quote: two of those, side by side, as the
+ *           font's own " stands to its ';
+ *   U+2022  a password's dot: a round dot one or two pixels larger than the
+ *           font's full stop, at the middle of the small letters (x).
+ *
+ * The font's ASCII ' and " are its curly ones, and $ is the Pokedollar
+ * sign (its U+FF04 is a dollar), so the keyboard labels those keys with
+ * these codes.  The fonts draw a shadow below and right of a letter
+ * (members 0 and 1) or all round it (member 2); a made mark follows the
+ * font's full stop.
+ */
+#define MARK_APOS   0
+#define MARK_QUOTE  1
+#define MARK_DOT    2
+
+static int px_get(const UiFontData *f, const u8 *bm, int x, int y)
+{
+    int i = y * f->cell_w + x;
+
+    if (x < 0 || y < 0 || x >= f->cell_w || y >= f->cell_h) {
+        return 0;
+    }
+    return (bm[i * 2 >> 3] >> (6 - ((i & 3) * 2))) & 3;
+}
+
+static void px_set(const UiFontData *f, u8 *bm, int x, int y, int v)
+{
+    int i = y * f->cell_w + x, sh = 6 - ((i & 3) * 2);
+
+    if (x < 0 || y < 0 || x >= f->cell_w || y >= f->cell_h) {
+        return;
+    }
+    bm[i * 2 >> 3] = (u8)((bm[i * 2 >> 3] & ~(3 << sh)) | (v << sh));
+}
+
+static const u8 *glyph_rec(const UiFontData *f, u32 code)
+{
+    u32 g = f->map[code];
+
+    return g != 0xFFFF && g < f->glyph_count ? f->data + f->glyph_off + g * (u32)f->cell_size : NULL;
+}
+
+/* The rows holding the letter (value 1) in a record: first and last, -1
+ * when none. */
+static void ink_rows(const UiFontData *f, const u8 *bm, int *y0, int *y1)
+{
+    int x, y;
+
+    *y0 = *y1 = -1;
+    for (y = 0; y < f->cell_h; y++) {
+        for (x = 0; x < f->cell_w; x++) {
+            if (px_get(f, bm, x, y) == 1) {
+                if (*y0 < 0) {
+                    *y0 = y;
+                }
+                *y1 = y;
+            }
+        }
+    }
+}
+
+static void port_marks(UiFontData *f)
+{
+    const u8 *apos = glyph_rec(f, '\''), *stop = glyph_rec(f, '.'), *ex = glyph_rec(f, 'x');
+    int x, y, y0, y1;
+
+    if ((u32)f->cell_size > sizeof f->extra[0] || f->map == NULL) {
+        return;
+    }
+    /* the straight apostrophe: rows above the mark as they are, its first
+     * row of letter repeated down to its last, then the shadow under it */
+    if (apos != NULL && f->map[0xFF07] == 0xFFFF) {
+        u8 *r = f->extra[MARK_APOS], *bm = r + 3;
+
+        memcpy(r, apos, (size_t)f->cell_size);
+        ink_rows(f, apos + 3, &y0, &y1);
+        if (y0 >= 0) {
+            for (y = y0; y < f->cell_h; y++) {
+                for (x = 0; x < f->cell_w; x++) {
+                    int top = px_get(f, apos + 3, x, y0);
+
+                    px_set(f, bm, x, y, y <= y1 ? top : (y == y1 + 1 && top != 0 ? 2 : 0));
+                }
+            }
+            f->has_extra[MARK_APOS] = 1;
+        }
+    }
+    /* the straight double quote: the apostrophe twice, the second one the
+     * letter's width and a pixel to the right (a letter wins over a shadow) */
+    if (f->has_extra[MARK_APOS] && f->map[0xFF02] == 0xFFFF) {
+        const u8 *a = f->extra[MARK_APOS];
+        u8 *r = f->extra[MARK_QUOTE], *bm = r + 3;
+        int cx0 = -1, cx1 = -1, off;
+
+        ink_rows(f, a + 3, &y0, &y1);
+        for (x = 0; x < f->cell_w; x++) {
+            if (px_get(f, a + 3, x, y0) == 1) {
+                if (cx0 < 0) {
+                    cx0 = x;
+                }
+                cx1 = x;
+            }
+        }
+        off = cx1 - cx0 + 2;
+        if (cx0 >= 0 && a[1] + off <= f->cell_w) {
+            memcpy(r, a, (size_t)f->cell_size);
+            for (y = 0; y < f->cell_h; y++) {
+                for (x = 0; x < f->cell_w; x++) {
+                    int p = px_get(f, a + 3, x, y), q = px_get(f, a + 3, x - off, y);
+
+                    px_set(f, bm, x, y, p == 1 || q == 1 ? 1 : (p != 0 ? p : q));
+                }
+            }
+            r[1] = (u8)(a[1] + off);
+            r[2] = (u8)(a[2] + off);
+            f->has_extra[MARK_QUOTE] = 1;
+        }
+    }
+    /* the dot: a disc (4 pixels across in the two larger fonts, 3 in the
+     * small one), set where the full stop is across and at the middle of x
+     * down; its shadow as the full stop's */
+    if (stop != NULL && ex != NULL && f->map[0x2022] == 0xFFFF) {
+        static const char *const disc4[4] = { ".##.", "####", "####", ".##." };
+        static const char *const disc3[3] = { ".#.", "###", ".#." };
+        u8 *r = f->extra[MARK_DOT], *bm = r + 3;
+        int d = f->cell_h >= 13 ? 4 : 3, sx = f->cell_w, sy0, sy1, xy0, xy1, top, round;
+
+        ink_rows(f, stop + 3, &sy0, &sy1);
+        ink_rows(f, ex + 3, &xy0, &xy1);
+        for (y = 0; y < f->cell_h; y++) {
+            for (x = 0; x < f->cell_w; x++) {
+                if (px_get(f, stop + 3, x, y) == 1 && x < sx) {
+                    sx = x;
+                }
+            }
+        }
+        if (sy0 >= 0 && xy0 >= 0 && sx < f->cell_w) {
+            /* a shadow above the full stop: the font draws it all round */
+            round = sy0 > 0 && px_get(f, stop + 3, sx, sy0 - 1) == 2;
+            top = (xy0 + xy1 + 1) / 2 - d / 2;
+            memcpy(r, stop, 3);
+            memset(bm, 0, (size_t)f->cell_size - 3);
+            for (y = 0; y < d; y++) {
+                for (x = 0; x < d; x++) {
+                    if ((d == 4 ? disc4[y][x] : disc3[y][x]) == '#') {
+                        px_set(f, bm, sx + x, top + y, 1);
+                    }
+                }
+            }
+            for (y = 0; y < f->cell_h; y++) {
+                for (x = 0; x < f->cell_w; x++) {
+                    int n = 0, dx, dy;
+
+                    if (px_get(f, bm, x, y) != 0) {
+                        continue;
+                    }
+                    for (dy = -1; dy <= 1; dy++) {
+                        for (dx = -1; dx <= 1; dx++) {
+                            if ((round || (dx <= 0 && dy <= 0)) && px_get(f, bm, x + dx, y + dy) == 1) {
+                                n = 1;
+                            }
+                        }
+                    }
+                    if (n) {
+                        px_set(f, bm, x, y, 2);
+                    }
+                }
+            }
+            /* the advance: the full stop's, wider by the disc's extra width */
+            r[1] = (u8)(stop[1] + d - 2);
+            r[2] = (u8)(stop[2] + d - 2);
+            f->has_extra[MARK_DOT] = 1;
+        }
+    }
+}
+
 int ui_font_load_nftr(int font, const u8 *data, u32 size)
 {
     UiFontData *f;
@@ -235,6 +420,7 @@ int ui_font_load_nftr(int font, const u8 *data, u32 size)
     if (font == 1) {
         small_fix(f);
     }
+    port_marks(f);
     return 0;
 }
 
@@ -259,6 +445,7 @@ static void font_ensure(int font)
         if (font == 1) {
             small_fix(f);
         }
+        port_marks(f);
     } else {
         free(m);
     }
@@ -279,6 +466,20 @@ int ui_font_glyph(int font, u32 code, UiGlyph *out)
         return 0;
     }
     g = code < 0x10000u ? f->map[code] : 0xFFFFu;
+    if (g == 0xFFFFu) {
+        /* the port's own marks (port_marks) */
+        int k = code == 0xFF07u ? MARK_APOS : code == 0xFF02u ? MARK_QUOTE : code == 0x2022u ? MARK_DOT : -1;
+
+        if (k >= 0 && f->has_extra[k]) {
+            rec = f->extra[k];
+            out->bearing = (int)(signed char)rec[0];
+            out->adv = rec[2];
+            out->cell_w = f->cell_w;
+            out->cell_h = f->cell_h;
+            out->bitmap = rec + 3;
+            return 1;
+        }
+    }
     if (g == 0xFFFFu || g >= f->glyph_count) {
         g = f->map['?'];
         if (g == 0xFFFFu || g >= f->glyph_count) {

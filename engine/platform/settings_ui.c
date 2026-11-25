@@ -17,6 +17,16 @@
 #include "save_games.h"         /* the saves the Multiplayer screen made: Your games */
 #include "mod_v6.h"             /* the player's multiplayer name (bw_mod_v6_player_name) */
 #include "ui_lang.h"            /* labels joined with a value are translated in parts */
+#include <ctype.h>
+#include "port_keyboard.h"      /* the port's own keyboard (the one-screen interface) */
+
+/* engine/ui/ui.c: the one-screen interface is drawing (then the port's own
+ * keyboard takes the texts; the classic layout keeps the game's) */
+#if defined(__GNUC__) || defined(__clang__)
+extern int eidos_ui_enabled(void) __attribute__((weak));
+#else
+extern int eidos_ui_enabled(void);
+#endif
 
 /*
  * The port's own network settings (engine/platform/settings.c): the
@@ -88,6 +98,60 @@ static const char *const k_tab_names[] = {
 static const int k_tab_order[] = { 0, 1, 2, 3, 4, 5, 6 };
 #define TAB_STRIP 7
 
+/* The mods' own tabs (`tab` lines, version 7) come after the port's: a
+ * section number from TAB_MOD_BASE up, one per tab of a mod that is
+ * running, in the mods' order. */
+#define TAB_MOD_BASE 16
+#define MODTAB_MAX   16
+static struct { int mod, tab; } g_modtab[MODTAB_MAX];
+static int g_modtab_n;
+
+static void modtabs_build(void)
+{
+    u32 i, k;
+
+    g_modtab_n = 0;
+    for (i = 0; i < bw_mod_menu_count(); i++) {
+        if (!bw_mod_menu_running_at(i)) {
+            continue;
+        }
+        for (k = 0; k < bw_mod_menu_tab_count(i) && g_modtab_n < MODTAB_MAX; k++) {
+            g_modtab[g_modtab_n].mod = (int)i;
+            g_modtab[g_modtab_n].tab = (int)k;
+            g_modtab_n++;
+        }
+    }
+}
+
+static int strip_count(void)
+{
+    return TAB_STRIP + g_modtab_n;
+}
+
+/* The section at place `pos` of the strip, and the place of section `t`. */
+static int strip_tab(int pos)
+{
+    return pos < TAB_STRIP ? k_tab_order[pos] : TAB_MOD_BASE + (pos - TAB_STRIP);
+}
+
+static int strip_pos(int t)
+{
+    int i;
+
+    if (t >= TAB_MOD_BASE) {
+        return TAB_STRIP + (t - TAB_MOD_BASE);
+    }
+    for (i = 0; i < TAB_STRIP; i++) {
+        if (k_tab_order[i] == t) {
+            return i;
+        }
+    }
+    return t;                   /* a section off the strip (Multiplayer): its own number */
+}
+
+/* forward: the section's name (the port's own, or a mod tab's title) */
+static const char *tab_title(int t);
+
 /* Short button names for the Controls rows (the backend labels are long). */
 static const char *const k_button_short[] = {
     "A", "B", "X", "Y", "L", "R", "Start", "Select", "Up", "Down", "Left", "Right"
@@ -151,6 +215,7 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
 #define HELP_SECTION_MODS     "Installed mods."
 #define HELP_SECTION_NETWORK  "Relay and name."
 #define HELP_SECTION_SESSION  "Host or join a game."
+#define HELP_SECTION_MOD_TAB  "A mod's own settings."
 #define HELP_SECTION_EXTRAS   "Extra options."
 #define HELP_KEYS_L0   "A: open"
 #define HELP_KEYS_L0B  "B: back"
@@ -544,7 +609,9 @@ static void build_mods_rows(void)
     for (i = 0; i < count; i++) {
         add_row(ROW_MOD_SWITCH, (int)i, 0);
         for (o = 0; o < bw_mod_menu_option_count(i); o++) {
-            add_row(ROW_MOD_OPTION, (int)i, (int)o);
+            if (bw_mod_menu_option_tab(i, o) < 0) {
+                add_row(ROW_MOD_OPTION, (int)i, (int)o);
+            }
         }
         if (bw_mod_menu_namespace_at(i)[0] != '\0') {
             add_row(ROW_MOD_CLEAR, (int)i, 0);
@@ -667,7 +734,7 @@ static struct {
     int  kind;      /* the name entry's kind: 0 a player, 4 a plain text */
     int  max;
     int  mod, opt;  /* KB_MOD_TEXT: the option */
-    char text[32];
+    char text[EIDOS_PKB_MAX + 8];
 } g_kb;
 
 #define STATUS_CONNECTING 0
@@ -863,28 +930,80 @@ static int keyboard_open(int target)
         start = eidos_settings_session_join_code();
         break;
     case KB_MOD_TEXT: {
-        static char now[64];
+        static char now[128];
 
         g_kb.mod = g_kb_mod_next;
         g_kb.opt = g_kb_opt_next;
-        g_kb.max =bw_mod_menu_option_max((u32)g_kb.mod, (u32)g_kb.opt);
-        if (g_kb.max > KB_LIMIT) {
-            g_kb.max = KB_LIMIT;
-        }
+        g_kb.max = bw_mod_menu_option_max((u32)g_kb.mod, (u32)g_kb.opt);
         start = bw_mod_menu_option_text((u32)g_kb.mod, (u32)g_kb.opt, now, sizeof now);
         break;
     }
     case KB_AP_SLOT:
-        g_kb.max = KB_LIMIT;
+        g_kb.max = (int)sizeof g_room.slot - 1;
         start = g_room.slot;
         break;
     case KB_AP_PASS:
-        g_kb.max = KB_LIMIT;
+        g_kb.max = (int)sizeof g_room.pass - 1;
         start = g_room.pass;
         break;
     default:
         g_kb.max = 10;
         break;
+    }
+    if (eidos_ui_enabled != NULL && eidos_ui_enabled()) {
+        /* the one-screen interface: the port's own keyboard, as long as the
+         * text may be (up to EIDOS_PKB_MAX) */
+        const char *title = "NAME", *sub = "", *prompt = eidos_sui_keyboard_prompt();
+        int flags = 0;
+
+        if (target == KB_MOD_TEXT) {
+            const char *head = bw_mod_menu_option_heading((u32)g_kb.mod, (u32)g_kb.opt);
+            const char *help = bw_mod_menu_option_help((u32)g_kb.mod, (u32)g_kb.opt);
+
+            title = head != NULL && head[0] != '\0' ? head : tab_title(g.tab);
+            sub = bw_mod_menu_option_label((u32)g_kb.mod, (u32)g_kb.opt);
+            if (help != NULL && help[0] != '\0') {
+                prompt = help;
+            }
+            if (bw_mod_menu_option_kind((u32)g_kb.mod, (u32)g_kb.opt) == BW_MOD_SETTING_SECRET) {
+                flags |= EIDOS_PKB_SECRET;
+            }
+            if (bw_mod_menu_option_word((u32)g_kb.mod, (u32)g_kb.opt)) {
+                flags |= EIDOS_PKB_NO_SPACE;
+            }
+        } else if (target == KB_AP_PASS) {
+            title = "ROOM";
+            sub = "PASSWORD";
+            flags |= EIDOS_PKB_SECRET;
+        } else if (target == KB_AP_SLOT) {
+            title = "ROOM";
+            sub = "SLOT";
+            flags |= EIDOS_PKB_NO_SPACE;
+        } else if (target == KB_CODE) {
+            title = "JOIN";
+            sub = "CODE";
+            flags |= EIDOS_PKB_NO_SPACE;
+        } else if (target == KB_NEW_GAME) {
+            title = "NEW GAME";
+            sub = "NAME";
+        } else {
+            sub = "MULTIPLAYER";
+        }
+        {
+            char t2[32], s2[32];
+            int j;
+
+            /* the header's words in capitals, as the game's keyboard has them */
+            put(t2, (int)sizeof t2, title);
+            put(s2, (int)sizeof s2, sub);
+            for (j = 0; t2[j] != '\0'; j++) t2[j] = (char)toupper((unsigned char)t2[j]);
+            for (j = 0; s2[j] != '\0'; j++) s2[j] = (char)toupper((unsigned char)s2[j]);
+            eidos_pkb_open(t2, s2, prompt, start, g_kb.max, flags);
+        }
+        return EIDOS_SUI_SFX_SELECT;
+    }
+    if (g_kb.max > KB_LIMIT) {
+        g_kb.max = KB_LIMIT;            /* the game's keyboard: its own limit */
     }
     put(g_kb.text, (int)sizeof g_kb.text, start != NULL ? start : "");
     return EIDOS_SUI_KEYBOARD | EIDOS_SUI_SFX_SELECT;
@@ -892,7 +1011,9 @@ static int keyboard_open(int target)
 
 int eidos_sui_keyboard(int *kind, int *max, char *text, int n)
 {
-    if (g_kb.target == KB_NONE) {
+    if (g_kb.target == KB_NONE || eidos_pkb() != NULL) {
+        /* (none, or the port's own keyboard has it: the game's is not
+         * opened under it) */
         return 0;
     }
     *kind = g_kb.kind;
@@ -920,7 +1041,7 @@ static int session_action(int type);
 void eidos_sui_keyboard_done(const char *text, int ok)
 {
     int target = g_kb.target;
-    char buf[32];
+    char buf[EIDOS_PKB_MAX + 8];
     int i;
 
     g_kb.target = KB_NONE;
@@ -977,15 +1098,57 @@ void eidos_sui_keyboard_done(const char *text, int ok)
     }
 }
 
+/* A mod's own tab: its options, buttons and rows of that tab that show
+ * now (their `?key=value` holds; a `show` row has a text). */
+static void build_modtab_rows(int k)
+{
+    u32 m, o;
+
+    if (k < 0 || k >= g_modtab_n) {
+        return;
+    }
+    m = (u32)g_modtab[k].mod;
+    for (o = 0; o < bw_mod_menu_option_count(m); o++) {
+        if (bw_mod_menu_option_tab(m, o) == g_modtab[k].tab && bw_mod_menu_option_shown(m, o)) {
+            add_row(ROW_MOD_OPTION, (int)m, (int)o);
+        }
+    }
+}
+
+/* What a mod tab shows: changes when the mod sets a row's text or an
+ * answer changes a condition; the rows are built again then. */
+static u32 g_modtab_sig;
+
+static u32 modtab_sig(void)
+{
+    u32 m, o, h = 2166136261u;
+    int k = g.tab - TAB_MOD_BASE;
+
+    if (g.level != 1 || k < 0 || k >= g_modtab_n) {
+        return 0;
+    }
+    m = (u32)g_modtab[k].mod;
+    for (o = 0; o < bw_mod_menu_option_count(m); o++) {
+        if (bw_mod_menu_option_tab(m, o) == g_modtab[k].tab && bw_mod_menu_option_shown(m, o)) {
+            h = (h ^ (o + 1u)) * 16777619u;
+        }
+    }
+    return h;
+}
+
 static void build_rows(void)
 {
     int i;
 
     g.nrows = 0;
     if (g.level == 0) {
-        for (i = 0; i < TAB_STRIP; i++) {
-            add_row(ROW_SECTION, k_tab_order[i], 0);
+        for (i = 0; i < strip_count(); i++) {
+            add_row(ROW_SECTION, strip_tab(i), 0);
         }
+        return;
+    }
+    if (g.tab >= TAB_MOD_BASE) {
+        build_modtab_rows(g.tab - TAB_MOD_BASE);
         return;
     }
     switch (g.tab) {
@@ -1055,16 +1218,26 @@ static void clamp_scroll(void);
 static void build_rows_keep_cursor(void)
 {
     int type = -1;
-    int arg = 0;
+    int arg = 0, arg2 = 0;
     int i;
 
     if (g.nrows > 0 && g.cursor >= 0 && g.cursor < g.nrows) {
         type = g.rows[g.cursor].type;
         arg = g.rows[g.cursor].arg;
+        arg2 = g.rows[g.cursor].arg2;
     }
     build_rows();
     if (type < 0) {
         return;
+    }
+    /* the same row (a mod's options share its index: the option too), or
+     * else the first of its kind */
+    for (i = 0; i < g.nrows; i++) {
+        if (g.rows[i].type == type && g.rows[i].arg == arg && g.rows[i].arg2 == arg2) {
+            g.cursor = i;
+            clamp_scroll();
+            return;
+        }
     }
     for (i = 0; i < g.nrows; i++) {
         if (g.rows[i].type == type && g.rows[i].arg == arg) {
@@ -1217,6 +1390,7 @@ void eidos_sui_enter(void)
     g_req_continue = -1;
     g_req_coop_new = 0;
     g_gl_n = -1;                    /* Your games read again */
+    modtabs_build();                /* the running mods' own tabs */
     g_mp_only = bw_mod_title_take_multiplayer();
     if (g_mp_only) {
         const char *join = bw_mod_title_take_join();
@@ -1244,6 +1418,8 @@ void eidos_sui_enter(void)
 
 void eidos_sui_leave(void)
 {
+    eidos_pkb_close();
+    bw_mod_menu_clear_secrets();
     if (g_q.restart) {
         g_q.restart = 0;
         bw_mod_restart(0);
@@ -1309,12 +1485,8 @@ static void leave_section(void)
 
     g.level = 0;
     /* the cursor goes back to the section's own place on the list */
-    g.cursor = 0;
-    for (i = 0; i < TAB_STRIP; i++) {
-        if (k_tab_order[i] == g.tab) {
-            g.cursor = i;
-        }
-    }
+    g.cursor = strip_pos(g.tab);
+    (void)i;
     g.scroll = 0;
     build_rows();
     clamp_scroll();
@@ -1410,6 +1582,14 @@ static int mod_text_edit(int mod, int option)
     g_kb_mod_next = mod;
     g_kb_opt_next = option;
     return EIDOS_SUI_REDRAW | keyboard_open(KB_MOD_TEXT);
+}
+
+/* A mod's button: the mod hears setting.button with its key; what it does
+ * (a sign-in) shows in its rows when it sets them. */
+static int mod_button(int mod, int option)
+{
+    return bw_mod_menu_press((u32)mod, (u32)option) == 0 ? EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_SELECT
+                                                          : EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
 }
 
 /* The port's own port number: the relay's or the control's. */
@@ -2320,13 +2500,44 @@ int eidos_sui_input(unsigned pressed, unsigned held)
     int res;
 
     g_mp_tick++;
+    if (eidos_pkb() != NULL) {
+        /* the port's own keyboard has the keys until it closes (its OK or
+         * Back, from a key, the pointer or the PC's keyboard) */
+        char text[EIDOS_PKB_MAX + 8];
+        int changed = eidos_pkb_input(pressed), r = eidos_pkb_result(text, (int)sizeof text);
+
+        (void)held;
+        if (r != 0) {
+            eidos_sui_keyboard_done(text, r > 0);
+            build_rows_keep_cursor();
+            return EIDOS_SUI_REDRAW | (r > 0 ? EIDOS_SUI_SFX_SELECT : EIDOS_SUI_SFX_BACK);
+        }
+        return changed ? EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_MOVE : 0;
+    }
+    if (g.tab >= TAB_MOD_BASE && g.level == 1) {
+        u32 sig;
+
+        if (g.tab - TAB_MOD_BASE >= g_modtab_n) {
+            enter_section(TAB_MODS);            /* its mod went off */
+            return EIDOS_SUI_REDRAW;
+        }
+        sig = modtab_sig();
+        if (sig != g_modtab_sig) {
+            g_modtab_sig = sig;
+            build_rows_keep_cursor();
+            res = EIDOS_SUI_REDRAW;
+            if (pressed == 0) {
+                return res;
+            }
+        }
+    }
     if (g_req_tab >= 0) {
         int t = g_req_tab;
 
         g_req_tab = -1;
-        if (g.level == 1 && !g_mp_only && t != g.tab && t >= 0 && t < TAB_STRIP
+        if (g.level == 1 && !g_mp_only && t >= 0 && t < strip_count() && strip_tab(t) != g.tab
             && !question_up() && !g.capturing && !g.editing) {
-            enter_section(t);
+            enter_section(strip_tab(t));
             return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_MOVE;
         }
     }
@@ -2504,9 +2715,9 @@ static int sui_input(unsigned pressed, unsigned held)
     }
     if ((pressed & 0x300u) && !g_mp_only) {
         /* L and R: the tab before or after */
-        int d = (pressed & 0x100u) ? 1 : -1;
+        int d = (pressed & 0x100u) ? 1 : -1, n = strip_count();
 
-        enter_section((g.tab + d + TAB_STRIP) % TAB_STRIP);
+        enter_section(strip_tab((strip_pos(g.tab) + d + n) % n));
         return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_MOVE;
     }
     if (act & 0x40u) {
@@ -2584,8 +2795,16 @@ static int sui_input(unsigned pressed, unsigned held)
     }
     if (r->type == ROW_MOD_OPTION) {
         int d = (act & 0x10u) ? 1 : (act & 0x20u) ? -1 : 0;
-        if (bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_TEXT) {
+        int kind = bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2);
+
+        if (kind == BW_MOD_SETTING_TEXT || kind == BW_MOD_SETTING_SECRET) {
             return (pressed & 1u) ? mod_text_edit(r->arg, r->arg2) : 0;
+        }
+        if (kind == BW_MOD_SETTING_BUTTON) {
+            return (pressed & 1u) ? mod_button(r->arg, r->arg2) : 0;
+        }
+        if (kind == BW_MOD_SETTING_SHOW) {
+            return 0;                   /* a line to read */
         }
         if (d == 0 && (pressed & 1u)) {
             d = 1;
@@ -2724,10 +2943,10 @@ int eidos_sui_row_count(void)
 
 const char *eidos_sui_tab_name(int i)
 {
-    if (i < 0 || i >= TAB_STRIP) {
+    if (i < 0 || i >= strip_count()) {
         return "";
     }
-    return k_tab_names[k_tab_order[i]];
+    return tab_title(strip_tab(i));
 }
 
 int eidos_sui_scroll(int *first, int *shown, int *total)
@@ -2818,8 +3037,11 @@ int eidos_sui_row_adjustable(int row)
     }
     r = &g.rows[g.scroll + row - 1];
     switch (r->type) {
-    case ROW_OPTION:
     case ROW_MOD_OPTION:
+        /* (a text, a password, a button and a mod's line have no value to
+         * step: A opens the keyboard or presses it) */
+        return bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) < BW_MOD_SETTING_TEXT;
+    case ROW_OPTION:
     case ROW_PANEL:
     case ROW_INJECT_MAX:
     case ROW_NET_RELAY_PORT:
@@ -2943,13 +3165,33 @@ int eidos_sui_touch(int row, int zone)
             res = EIDOS_SUI_REDRAW;
         }
         break;
-    case ROW_MOD_OPTION:
-        if (bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_TEXT) {
+    case ROW_MOD_OPTION: {
+        int kind = bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2);
+
+        if (kind == BW_MOD_SETTING_TEXT || kind == BW_MOD_SETTING_SECRET) {
             if (was) {
                 res = mod_text_edit(r->arg, r->arg2);
             }
             break;
         }
+        if (kind == BW_MOD_SETTING_BUTTON) {
+            if (was) {
+                res = mod_button(r->arg, r->arg2);
+            }
+            break;
+        }
+        if (kind == BW_MOD_SETTING_SHOW) {
+            break;
+        }
+        if (kind == BW_MOD_SETTING_BOOL && zone >= 0 && zone <= 1) {
+            /* drawn as two choices, off and on: the one touched */
+            if ((bw_mod_menu_option_value((u32)r->arg, (u32)r->arg2) != 0) != zone
+                && change_mod_option(r->arg, r->arg2, 1)) {
+                res = EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_SELECT;
+            }
+            break;
+        }
+    }
         if (was && (zone == EIDOS_SUI_ZONE_DEC || zone == EIDOS_SUI_ZONE_INC)) {
             if (change_mod_option(r->arg, r->arg2,
                                   zone == EIDOS_SUI_ZONE_INC ? 1 : -1)) {
@@ -3057,7 +3299,8 @@ int eidos_sui_capturing(void)
 
 int eidos_sui_tab(void)
 {
-    return g.level == 0 ? -1 : g.tab;
+    /* its place on the strip (eidos_sui_tab_name's index) */
+    return g.level == 0 ? -1 : strip_pos(g.tab);
 }
 
 int eidos_sui_level(void)
@@ -3068,7 +3311,17 @@ int eidos_sui_level(void)
 int eidos_sui_tab_count(void)
 {
     /* the Multiplayer screen has no tabs */
-    return g_mp_only ? 0 : TAB_STRIP;
+    return g_mp_only ? 0 : strip_count();
+}
+
+static const char *tab_title(int t)
+{
+    if (t >= TAB_MOD_BASE) {
+        int k = t - TAB_MOD_BASE;
+
+        return k < g_modtab_n ? bw_mod_menu_tab_title((u32)g_modtab[k].mod, (u32)g_modtab[k].tab) : "";
+    }
+    return t >= 0 && t < TAB_COUNT ? k_tab_names[t] : "";
 }
 
 static void option_value_of(int id, int v, char *out, int n)
@@ -3175,7 +3428,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
 
         (void)above;
         (void)below;
-        put(label, nl, k_tab_names[g.tab]);
+        put(label, nl, tab_title(g.tab));
         return;
     }
     if (has_back() && row == eidos_sui_row_count() - 1) {
@@ -3188,7 +3441,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
     r = &g.rows[g.scroll + row - 1];
     switch (r->type) {
     case ROW_SECTION:
-        put(label, nl, k_tab_names[r->arg]);
+        put(label, nl, tab_title(r->arg));
         break;
     case ROW_OPTION:
         put(label, nl, k_option_labels[r->arg] != NULL ? k_option_labels[r->arg] : "");
@@ -3237,10 +3490,24 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
     case ROW_MOD_OPTION:
         /* The mod's own setting, under the mod's name (in a mode's view
          * there is no name above it). */
-        snprintf(buf, sizeof buf, g.tab == TAB_SESSION ? "%s" : "  %s",
+        snprintf(buf, sizeof buf, g.tab == TAB_SESSION || g.tab >= TAB_MOD_BASE ? "%s" : "  %s",
                  bw_mod_menu_option_label((u32)r->arg, (u32)r->arg2));
         put(label, nl, buf);
         bw_mod_menu_option_text((u32)r->arg, (u32)r->arg2, buf, sizeof buf);
+        if (bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_SECRET) {
+            /* a password: a dot a letter (U+2022, engine/ui/assets.c) */
+            int j, len = (int)strlen(buf), o2 = 0;
+
+            for (j = 0; j < len && o2 + 4 < (int)sizeof buf; j++) {
+                o2 += 3;
+            }
+            for (j = 0; j < o2; j += 3) {
+                buf[j] = '\xE2';
+                buf[j + 1] = '\x80';
+                buf[j + 2] = '\xA2';
+            }
+            buf[o2] = '\0';
+        }
         put(value, nv, buf);
         break;
     case ROW_MOD_CLEAR:
@@ -3518,6 +3785,16 @@ int eidos_sui_row_choices(int row, int *active, char names[3][20])
         }
         return 2;
     }
+    if (r->type == ROW_MOD_OPTION && bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_BOOL) {
+        /* A mod's on/off option: the two choices, as the port's own and the
+         * mod's switch have them (not "on" between arrows) */
+        put(names[0], 20, STR_OFF);
+        put(names[1], 20, STR_ON);
+        if (active != NULL) {
+            *active = bw_mod_menu_option_value((u32)r->arg, (u32)r->arg2) ? 1 : 0;
+        }
+        return 2;
+    }
     if (r->type == ROW_MOD_SWITCH) {
         /* The mod's switch: two choices, off and on.  A mod made for the
          * other game has none: its row says "Unavailable". */
@@ -3598,7 +3875,7 @@ void eidos_sui_help_line(int i, char *out, int n)
             HELP_SECTION_DISPLAY, HELP_SECTION_LAYOUT, HELP_SECTION_CONTROLS,
             HELP_SECTION_SOUND, HELP_SECTION_MODS, HELP_SECTION_NETWORK,
             HELP_SECTION_EXTRAS, HELP_SECTION_SESSION };
-        l[0] = sec[r->arg];
+        l[0] = r->arg >= TAB_MOD_BASE ? HELP_SECTION_MOD_TAB : sec[r->arg];
         l[2] = HELP_KEYS_L0;
         l[3] = HELP_KEYS_L0B;
     } else if (r != NULL) {
@@ -3628,6 +3905,29 @@ void eidos_sui_help_line(int i, char *out, int n)
             l[1] = HELP_MOD_SWITCH2;
             break;
         case ROW_MOD_OPTION:
+            if (g.tab >= TAB_MOD_BASE) {
+                /* a mod tab: the mod's own `help` line, split in two where a
+                 * word ends nearest its middle */
+                static char half[2][160];
+                const char *h = bw_mod_menu_option_help((u32)r->arg, (u32)r->arg2);
+                int len = h != NULL ? (int)strlen(h) : 0, cut = -1, j;
+
+                for (j = 0; j < len; j++) {
+                    if (h[j] == ' ' && (cut < 0 || abs(j - len / 2) < abs(cut - len / 2))) {
+                        cut = j;
+                    }
+                }
+                if (len <= 44 || cut < 0) {
+                    put(half[0], (int)sizeof half[0], h != NULL ? h : "");
+                    half[1][0] = '\0';
+                } else {
+                    snprintf(half[0], sizeof half[0], "%.*s", cut, h);
+                    put(half[1], (int)sizeof half[1], h + cut + 1);
+                }
+                l[0] = half[0];
+                l[1] = half[1];
+                break;
+            }
             l[0] = HELP_MOD_OPTION1;
             l[1] = HELP_MOD_OPTION2;
             break;
@@ -3918,8 +4218,11 @@ int eidos_sui_mp_row(int i, char *label, int nl, char *value, int nv)
     g.scroll = keep;
     r = &g.rows[i];
     if (r->type == ROW_MOD_OPTION) {
-        kind = bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_TEXT
-               ? EIDOS_SUI_MP_ROW_TEXT : EIDOS_SUI_MP_ROW_VALUE;
+        int k2 = bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2);
+
+        kind = k2 == BW_MOD_SETTING_TEXT || k2 == BW_MOD_SETTING_SECRET ? EIDOS_SUI_MP_ROW_TEXT
+               : k2 == BW_MOD_SETTING_BUTTON ? EIDOS_SUI_MP_ROW_START
+               : k2 == BW_MOD_SETTING_SHOW ? EIDOS_SUI_MP_ROW_INFO : EIDOS_SUI_MP_ROW_VALUE;
     } else if (r->type == ROW_MP_MODE_TYPE) {
         kind = EIDOS_SUI_MP_ROW_VALUE;
     } else if (r->type == ROW_MP_MODE_START || r->type == ROW_MP_WORLD_JOIN || r->type == ROW_MP_ROOM_JOIN) {
@@ -4155,8 +4458,16 @@ static int mp_take_row(void)
     clamp_scroll();
     r = &g.rows[i];
     if (r->type == ROW_MOD_OPTION) {
-        if (bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_TEXT) {
+        int k2 = bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2);
+
+        if (k2 == BW_MOD_SETTING_TEXT || k2 == BW_MOD_SETTING_SECRET) {
             return mod_text_edit(r->arg, r->arg2);
+        }
+        if (k2 == BW_MOD_SETTING_BUTTON) {
+            return mod_button(r->arg, r->arg2);
+        }
+        if (k2 == BW_MOD_SETTING_SHOW) {
+            return EIDOS_SUI_REDRAW;
         }
         return change_mod_option(r->arg, r->arg2, zone == EIDOS_SUI_ZONE_DEC ? -1 : 1)
                ? EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_SELECT : EIDOS_SUI_REDRAW;

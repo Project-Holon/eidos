@@ -2951,6 +2951,7 @@ static struct {
     u32 rec_left, rec_n;
     int quit;
 } g_us;
+static char g_us_type[128];         /* a `type` step's text for the next frame */
 
 static u32 us_button(const char *s, int n)
 {
@@ -3150,6 +3151,21 @@ static void ui_script_step(void)
             g_us.need = 4;
             g_us.have = 0;
             g_us.waiting = 2;           /* the press is taken before the next step */
+        } else if (strcmp(cmd, "type") == 0) {
+            /* `type TEXT` (one word), or `type $NAME`: the text of the
+             * environment variable NAME, so a test's password is never in
+             * the script's file.  Typed on the next frame, as if from the
+             * PC's keyboard. */
+            const char *t = a1[0] == '$' ? getenv(a1 + 1) : a1;
+
+            if (t == NULL) {
+                us_fail("type: no such variable");
+                return;
+            }
+            snprintf(g_us_type, sizeof g_us_type, "%s", t);
+            g_us.need = 2;
+            g_us.have = 0;
+            g_us.waiting = 2;
         } else if (strcmp(cmd, "tap") == 0) {
             (void)bw_input_script_touch(bw_input_frame_number() + 1u, atoi(a1), atoi(a2), a3[0] != '\0' ? (u32)atoi(a3) : 3u);
             g_us.need = 2;
@@ -3924,6 +3940,15 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
             }
             buf[o] = '\0';
             f.text = buf;
+        }
+        if (g_us_type[0] != '\0') {
+            /* a script's `type` step (the text then goes: a password is
+             * not kept) */
+            static char tbuf[sizeof g_us_type];
+
+            memcpy(tbuf, g_us_type, sizeof tbuf);
+            memset(g_us_type, 0, sizeof g_us_type);
+            f.text = tbuf;
         }
         if (getenv("EIDOS_UI_TRACE") != NULL) {
             fprintf(stderr, "eidos: ui trace %u run %s\n", (unsigned)in->frame, r->name);

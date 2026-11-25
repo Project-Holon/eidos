@@ -256,6 +256,28 @@ static int build_tree(void)
         != 0) {
         return -1;
     }
+    /* The third mod's declaration: version 7's lines (a tab of its own, a
+     * one-word text, a password, buttons and the mod's own rows). */
+    n = snprintf(path, sizeof path, "%s/gamma.ini", T_MOD_C);
+    if (n < 0 || (size_t)n >= sizeof path) {
+        return -1;
+    }
+    if (write_file(path,
+                   "option g.under bool \"Under the mod\" on\n"
+                   "tab \"Gamma Online\"\n"
+                   "heading \"Sign in\"\n"
+                   "option g.user text \"User name\" 20 \"\" word ?g.who=\n"
+                   "option g.pass secret \"Password\" 64 ?g.who= @lobby\n"
+                   "button g.signin \"Sign in\" ?g.who=\n"
+                   "show g.who \"Signed in as\"\n"
+                   "button g.signout \"Sign out\" ?g.who!=\n"
+                   "help g.user \"Your user name.\"\n"
+                   "tab \"Gamma Two\"\n"
+                   "option g.two bool \"Second tab\" off\n"
+                   "option g.bad secret \"Bad\" 8 \"default\"\n")
+        != 0) {
+        return -1;
+    }
     /* A file in the mods folder is not a folder, so it is no orphan. */
     n = snprintf(path, sizeof path, "%s/loose.txt", T_MODS);
     if (n < 0 || (size_t)n >= sizeof path) {
@@ -890,6 +912,80 @@ int main(void)
         }
         remove(T_ROOT "/mods/notamod.txt");
         (void)BW_RMDIR(T_ROOT "/mods");
+    }
+
+    printf("version 7: a mod's own tabs, passwords, buttons and rows\n");
+    {
+        u32 g, o, user = 99, pass = 99, signin = 99, who = 99, out = 99, two = 99;
+        char buf[160];
+
+        bw_clear_mods();
+        BW_REQUIRE("the third mod is added again", bw_add_mod_root(T_MOD_C) == 0);
+        bw_mod_menu_open();
+        g = (u32)index_of_ns("gamma");
+        BW_REQUIRE("the third mod is listed", g < bw_mod_menu_count());
+        BW_CHECK_EQ("it has two tabs", (long)bw_mod_menu_tab_count(g), 2);
+        BW_CHECK_EQ("the first tab's title", strcmp(bw_mod_menu_tab_title(g, 0), "Gamma Online"), 0);
+        BW_CHECK_EQ("the second tab's title", strcmp(bw_mod_menu_tab_title(g, 1), "Gamma Two"), 0);
+        BW_CHECK_EQ("the bad password (a default) is refused", (long)bw_mod_menu_option_count(g), 7);
+        for (o = 0; o < bw_mod_menu_option_count(g); o++) {
+            const char *k = bw_mod_menu_option_key(g, o);
+
+            if (strcmp(k, "g.user") == 0) user = o;
+            if (strcmp(k, "g.pass") == 0) pass = o;
+            if (strcmp(k, "g.signin") == 0) signin = o;
+            if (strcmp(k, "g.who") == 0) who = o;
+            if (strcmp(k, "g.signout") == 0) out = o;
+            if (strcmp(k, "g.two") == 0) two = o;
+        }
+        BW_REQUIRE("every row is declared", user < 99 && pass < 99 && signin < 99 && who < 99 && out < 99 && two < 99);
+        BW_CHECK_EQ("a line before any tab stays under the mod", (long)bw_mod_menu_option_tab(g, 0), -1);
+        BW_CHECK_EQ("the user name is on the first tab", (long)bw_mod_menu_option_tab(g, user), 0);
+        BW_CHECK_EQ("the second tab's option is on it", (long)bw_mod_menu_option_tab(g, two), 1);
+        BW_CHECK_EQ("the password is a secret", (long)bw_mod_menu_option_kind(g, pass), BW_MOD_SETTING_SECRET);
+        BW_CHECK_EQ("and never a lobby rule", (long)bw_mod_menu_option_in_lobby(g, pass), 0);
+        BW_CHECK_EQ("the button's kind", (long)bw_mod_menu_option_kind(g, signin), BW_MOD_SETTING_BUTTON);
+        BW_CHECK_EQ("the mod's row's kind", (long)bw_mod_menu_option_kind(g, who), BW_MOD_SETTING_SHOW);
+        BW_CHECK_EQ("the user name is one word", (long)bw_mod_menu_option_word(g, user), 1);
+        BW_CHECK_EQ("the heading is its own", strcmp(bw_mod_menu_option_heading(g, user), "Sign in"), 0);
+        BW_CHECK_EQ("signed out: the user name shows", (long)bw_mod_menu_option_shown(g, user), 1);
+        BW_CHECK_EQ("and Sign in", (long)bw_mod_menu_option_shown(g, signin), 1);
+        BW_CHECK_EQ("the empty row is hidden", (long)bw_mod_menu_option_shown(g, who), 0);
+        BW_CHECK_EQ("and Sign out", (long)bw_mod_menu_option_shown(g, out), 0);
+
+        BW_CHECK_EQ("a password may hold a quote",
+                    (long)bw_mod_menu_option_set_text(g, pass, "p\"ss word!"), 0);
+        BW_CHECK_EQ("a text may not", (long)bw_mod_menu_option_set_text(g, user, "a\"b"), -1);
+        BW_CHECK_EQ("the user name is set", (long)bw_mod_menu_option_set_text(g, user, "Player"), 0);
+        bw_mod_menu_set_namespace("gamma");
+        BW_CHECK_EQ("the mod reads its password", (long)bw_mod_menu_setting_text("g.pass", buf, sizeof buf), 10);
+        BW_CHECK_EQ("as typed", strcmp(buf, "p\"ss word!"), 0);
+        BW_CHECK_EQ("the mod clears it", (long)bw_mod_menu_setting_set_text("g.pass", ""), 0);
+        BW_CHECK_EQ("it reads empty", (long)bw_mod_menu_setting_text("g.pass", buf, sizeof buf), 0);
+        BW_CHECK_EQ("the mod sets its row", (long)bw_mod_menu_setting_show("g.who", "Player"), 0);
+        BW_CHECK_EQ("a row it does not declare", (long)bw_mod_menu_setting_show("g.nope", "x"), -1);
+        BW_CHECK_EQ("a line end is refused", (long)bw_mod_menu_setting_show("g.who", "a\nb"), -1);
+        bw_mod_menu_set_namespace("alpha");
+        BW_CHECK_EQ("another mod cannot set it", (long)bw_mod_menu_setting_show("g.who", "x"), -1);
+        bw_mod_menu_set_namespace(NULL);
+        BW_CHECK_EQ("signed in: the row shows", (long)bw_mod_menu_option_shown(g, who), 1);
+        BW_CHECK_EQ("Sign out shows (!=)", (long)bw_mod_menu_option_shown(g, out), 1);
+        BW_CHECK_EQ("the user name hides", (long)bw_mod_menu_option_shown(g, user), 0);
+        BW_CHECK_EQ("the row's text", strcmp(bw_mod_menu_option_text(g, who, buf, sizeof buf), "Player"), 0);
+        BW_CHECK_EQ("a button can be pressed", (long)bw_mod_menu_press(g, signin), 0);
+        BW_CHECK_EQ("a row that is no button cannot", (long)bw_mod_menu_press(g, who), -1);
+
+        BW_CHECK_EQ("the password is set once more",
+                    (long)bw_mod_menu_option_set_text(g, pass, "secret1"), 0);
+        BW_REQUIRE("the choices' path", choices_path(path, sizeof path, "gamma") == 0);
+        BW_REQUIRE("the choices are written", read_file(path, text, sizeof text) != NULL);
+        BW_CHECK_EQ("they keep the user name", strstr(text, "g.user = \"Player\"") != NULL, 1);
+        BW_CHECK_EQ("never the password", strstr(text, "secret1") == NULL && strstr(text, "g.pass") == NULL, 1);
+        BW_CHECK_EQ("nor a button or a mod's row",
+                    strstr(text, "g.signin") == NULL && strstr(text, "g.who") == NULL, 1);
+        bw_mod_menu_clear_secrets();
+        BW_CHECK_EQ("the settings close: the password is forgotten",
+                    bw_mod_menu_option_text(g, pass, buf, sizeof buf)[0], 0);
     }
 
     bw_mod_menu_reset();

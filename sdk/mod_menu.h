@@ -320,6 +320,12 @@ const char *bw_mod_menu_orphan_at(u32 index);
 #define BW_MOD_SETTING_CHOICE 1   /* one of a list of names */
 #define BW_MOD_SETTING_INT    2   /* a number between a low and a high bound */
 #define BW_MOD_SETTING_TEXT   3   /* a short text (a world's code, a room) */
+#define BW_MOD_SETTING_SECRET 4   /* a password: never written, cleared when the
+                                   * settings close (version 7)  */
+#define BW_MOD_SETTING_BUTTON 5   /* a row with no value: the mod's event
+                                   * setting.button (version 7) */
+#define BW_MOD_SETTING_SHOW   6   /* a row whose value the mod sets
+                                   * (setting_show), hidden while "" (version 7) */
 
 /* How many options the mod at `index` declares. */
 u32 bw_mod_menu_option_count(u32 index);
@@ -368,6 +374,29 @@ int bw_mod_menu_option_set_text(u32 index, u32 option, const char *text);
 
 /* Whether the option is shown in the mod's mode `mode` (its `@id` word). */
 int bw_mod_menu_option_in_mode(u32 index, u32 option, u32 mode);
+
+/*
+ * Version 7: a mod's own tabs of the settings screen (`tab "<title>"`
+ * lines; docs/mod-services.md, "Mod settings").  tab_count/tab_title: its
+ * tabs; option_tab: the tab an option is on, -1 for one under the mod's row
+ * in the Mods section.  option_shown: its `?key=value` (or `!=`) holds and,
+ * for a `show` row, the mod gave it a text.  option_word: a text of one
+ * word (its keyboard has no SPACE).  press: a `button` row was chosen (the
+ * event setting.button).  clear_secrets: every password is forgotten (the
+ * settings closed).
+ */
+u32  bw_mod_menu_tab_count(u32 index);
+const char *bw_mod_menu_tab_title(u32 index, u32 tab);
+int  bw_mod_menu_option_tab(u32 index, u32 option);
+int  bw_mod_menu_option_shown(u32 index, u32 option);
+int  bw_mod_menu_option_word(u32 index, u32 option);
+int  bw_mod_menu_press(u32 index, u32 option);
+void bw_mod_menu_clear_secrets(void);
+/* The calling mod's services (the namespace in force): a `show` row's text
+ * (at most 63 bytes, no line end; "" hides it), and a text or secret
+ * option's new value.  0, or -1. */
+int  bw_mod_menu_setting_show(const char *key, const char *text);
+int  bw_mod_menu_setting_set_text(const char *key, const char *text);
 
 /*
  * The co-op lobby's rules: options tagged `@lobby` (bool, choice or int).

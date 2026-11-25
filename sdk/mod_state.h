@@ -591,6 +591,19 @@ typedef struct BwModServices {
      * several wait their turn.  `icon` is BW_POPUP_*.  0, or -1 when
      * eight already wait. */
     int  (*popup)(const char *title, const char *text, u32 icon);
+    /* Version 7, the mod's settings (docs/mod-services.md, "Mod settings"):
+     * setting_show sets a `show` row's text (at most 63 bytes, no line
+     * end; "" hides the row); setting_set_text sets a text or secret
+     * option (the password, cleared at once after reading it).  0, or -1
+     * when the mod declares no such row.  The choice of a `button` row is
+     * the event setting.button. */
+    int  (*setting_show)(const char *key, const char *text);
+    int  (*setting_set_text)(const char *key, const char *text);
+    /* RetroAchievements' hardcore: 1 when nothing in force changes the
+     * game but the calling mod; 0 with the reason in `why` (a short line,
+     * cut to `size`) while another mod is on or a test switch that changes
+     * the game is set. */
+    int  (*hardcore_allowed)(char *why, u32 size);
 } BwModServices;
 
 /* ------------------------------------------------------------------ */

@@ -593,6 +593,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mp.c               # multiplayer: the lobby, the start and the pause
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/link.c             # Link sessions: the radio over the relay
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tls_roots.c        # the roots a TLS relay is checked against
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tls_mozilla_roots.c # Mozilla's roots, for downloads (tools/ca_roots.py)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/net_https.c        # a file from an https address (the mods index, packages)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/json_read.c        # a small JSON reader (the mods index)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/sha256.c           # SHA-256, for a downloaded package's check
@@ -1195,6 +1196,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/font.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/settings.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/settings_ui.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/port_keyboard.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/mod_options_proc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/mod_panel_draw.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/plat_replace.c
@@ -1225,6 +1227,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_menus.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_pc.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_input.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_keyboard.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_field.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/item_show.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/choice_list.c
@@ -2997,6 +3000,15 @@ if(EIDOS_SDL_FOUND)
     endif()
     add_test(NAME test_ui_trf COMMAND test_ui_trf)
 
+    # The port's own keyboard's model (engine/platform/port_keyboard.c).
+    add_executable(test_port_keyboard
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_port_keyboard.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/port_keyboard.c)
+    target_include_directories(test_port_keyboard PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform
+        ${CMAKE_CURRENT_SOURCE_DIR}/sdk)
+    add_test(NAME test_port_keyboard COMMAND test_port_keyboard)
+
     # The settings screen's model: tabs, rows, navigation, revert, commit.
     add_executable(test_settings_ui
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings_ui.c)
@@ -3370,6 +3382,7 @@ if(NOT _eidos_ovls STREQUAL "")
         list(APPEND _ovl_link ${EIDOS_BOOT_MATCHED} ${EIDOS_BOOT_PORT_SOURCES}
             ${EIDOS_BOOT_ASM_SUBST}
             ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/settings_ui.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/port_keyboard.c
             ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/settings.c
             ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/mod_options_proc.c)
     endif()

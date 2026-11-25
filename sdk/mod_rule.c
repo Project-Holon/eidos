@@ -1065,7 +1065,10 @@ static const BwRuleEvent g_events[] = {
     { .kind = BW_EVENT_MOVE_KNOWN, .name = "move.known", .refusable = 0,
       .fields = g_f_move_known, .field_count = 5 },
     { .kind = BW_EVENT_WEB, .name = "web", .refusable = 0,
-      .fields = g_f_web, .field_count = 3 }
+      .fields = g_f_web, .field_count = 3 },
+    /* (its key is a text: rules see that it fired, a code mod reads it) */
+    { .kind = BW_EVENT_SETTING_BUTTON, .name = "setting.button", .refusable = 0,
+      .fields = g_f_game_new, .field_count = 0 }
 };
 
 #define BW_RULE_EVENT_COUNT \

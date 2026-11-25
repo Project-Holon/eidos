@@ -598,8 +598,9 @@ yaml arkh.dex dexsanity 0|25|50
 option nuz.lives    int    "Lives"   0 10 3                        @lobby
 ```
 
-- `text`: a short text, `<longest> "<default>"` (the game's keyboard takes
-  at most 10 characters). It holds no `"`. The mod reads it with
+- `text`: a short text, `<longest> "<default>"` (the one-screen
+  interface's keyboard takes up to 64 characters, the classic layout's,
+  the game's own, at most 10). It holds no `"`. The mod reads it with
   `setting_text(key, out, size)` (its length, or -1).
 - `mode <id> "<title>" "<line>" [off] [joins] [in=<mode>] [export "<game>"]`:
   a way to play the mod offers. The Multiplayer screen shows it as a card
@@ -1090,7 +1091,8 @@ int  (*popup)(const char *title, const char *text, u32 icon);
   waiting (all mods together).
 - The request runs beside the game on the HTTPS client the mod manager
   uses (`sdk/net_https.c`): TLS 1.2 or newer, the server's certificate
-  checked against the port's roots, redirects followed (a 301, 302 or 303
+  checked against Mozilla's root list (the roots a browser trusts,
+  `sdk/tls_mozilla_roots.c`) and the port's own, redirects followed (a 301, 302 or 303
   goes on as a GET, a 307 or 308 sends the body again). The answer is
   kept up to 4 MiB.
 - The answer comes on a later frame as the event `web` (`BwWeb`):
@@ -1143,6 +1145,83 @@ port now puts that heap where a DS has it (`sdk/os_alloc.c`), so 0x02000034
 Code: `sdk/mod_web.c`, `sdk/mod_popup.c`, `engine/ui/popup.c`,
 `sdk/mod_v7.c` (the clock and the hash), `sdk/md5.c`. Tests:
 `tests/test_mod_v7_host.c`, `tests/test_https.c`.
+
+## Version 7: a mod's own Settings tabs, passwords and buttons
+
+A mod's settings file (section "Mod settings") takes four more lines, so a
+mod can have whole tabs of its own on the Settings screen, ask for a
+password and offer buttons:
+
+```
+tab "RetroAchievements"
+heading "Sign in"
+option ra.user     text   "User name" 20 "" word   ?ra.who=
+option ra.pass     secret "Password"  64           ?ra.who=
+button ra.signin          "Sign in"                ?ra.who=
+show   ra.who             "Signed in as"
+button ra.signout         "Sign out"               ?ra.who!=
+option ra.hardcore bool   "Hardcore mode" on
+help ra.user "Your RetroAchievements user name."
+```
+
+- `tab "<title>"`: the lines after it, up to the next `tab` line, are a
+  tab of their own on the Settings screen, after the port's own tabs, in
+  the mods' order. The title holds at most 31 characters; a mod has at
+  most 8 tabs. Lines before any `tab` stay under the mod's row in the
+  Mods section, as before. A tab shows while its mod is running.
+- `option <key> secret "<label>" <longest>`: a password. The row shows a
+  dot for each letter. It is kept in memory only: never written to a
+  file, and forgotten when the Settings screen closes. It may hold any
+  printable character, `"` too. It cannot be `@lobby`. The mod reads it
+  with `setting_text`.
+- `button <key> "<label>"`: a row with no value. Choosing it sends the
+  event `setting.button` (`BwSettingButton`: `key`, the button's key).
+  Every mod with a handler sees it, so a mod acts on its own keys only.
+  Rules see the event fire but cannot read the key.
+- `show <key> "<label>"`: a row whose value the mod sets with
+  `setting_show`. It is hidden while its text is "".
+- `text` takes a last word `word`: one word, and the keyboard has no
+  SPACE key.
+- `?key!=value`: a condition that holds while the named option, or show
+  row, does not have that value. `?key=` (nothing after `=`) holds while
+  it is empty, `?key!=` while it is not. `button` and `show` lines take
+  `?` and `@` words as option lines do.
+
+On a mod's tab, the help box shows the option's `help` line. A text or a
+password opens the port's own keyboard in the one-screen interface: the
+game keyboard's look, with up to 64 letters, the UPPER, lower, Symbols and
+qwerty pages, a caret that L and R move, the password as dots until SHOW
+(or Y), and BACK. The header names the option's `heading` (or the tab)
+and the label; the question over the field is its `help` line. In the
+classic two-screen layout the game's own keyboard stays, and it takes at
+most 10 letters.
+
+Three calls at the end of the services table:
+
+```c
+int  (*setting_show)(const char *key, const char *text);
+int  (*setting_set_text)(const char *key, const char *text);
+int  (*hardcore_allowed)(char *why, u32 size);
+```
+
+- `setting_show` sets a `show` row's text: at most 63 bytes, no line
+  break; "" hides the row. 0, or -1 when the calling mod declares no such
+  row.
+- `setting_set_text` sets one of the calling mod's text or secret options.
+  A mod clears a password as soon as it has read it:
+  `setting_set_text("ra.pass", "")`.
+- `hardcore_allowed` answers 1 when nothing in force changes the game but
+  the calling mod. It answers 0, with the reason in `why` (cut to `size`),
+  while another mod is running or a test switch that changes the game is
+  set (`sdk/mod_v7.c` lists them: debug battles, warps, the party, items,
+  moves, the clock, scripted keys, a mod named on the command line). The
+  RetroAchievements mod asks when the game loads; hardcore takes effect
+  at the next game start.
+
+Code: `sdk/mod_menu.c` (the lines, the calls), `engine/platform/settings_ui.c`
+(the tabs and rows), `engine/platform/port_keyboard.c` and
+`engine/ui/recipe_keyboard.c` (the keyboard), `engine/ui/assets.c` (the
+straight quotes and the dot the game's fonts lack).
 
 ## Related documents
 

@@ -42,8 +42,13 @@ extern const u32 ui_recipes_lower_count;
 
 extern const EidosUiRecipe *const ui_recipes_multiplayer[];
 extern const u32 ui_recipes_multiplayer_count;
+extern const EidosUiRecipe *const ui_recipes_keyboard[];
+extern const u32 ui_recipes_keyboard_count;
 
 const EidosUiRecipeGroup eidos_ui_groups[] = {
+    /* the port's own keyboard: over the settings and the Multiplayer
+     * screens that opened it */
+    { ui_recipes_keyboard, &ui_recipes_keyboard_count },
     /* the Multiplayer screen alone: its own hub and lobby, before the
      * settings recipe that draws the same model as rows */
     { ui_recipes_multiplayer, &ui_recipes_multiplayer_count },

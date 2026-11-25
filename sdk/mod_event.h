@@ -149,6 +149,7 @@ typedef union BwEventPayload {
     BwAp          ap;
     BwMoveKnown   move_known;
     BwWeb         web;
+    BwSettingButton setting_button;
 
     u8 bytes[BW_EVENT_PAYLOAD_MAX];
 } BwEventPayload;

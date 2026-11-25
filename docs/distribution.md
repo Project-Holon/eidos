@@ -166,10 +166,11 @@ screen is the title menu's MODS window (`engine/ui/recipe_title.c`).
   (`mods-disabled/`) is replaced and the mod is on. A folder of the same
   name that the player made by hand is never touched: the install stops.
 - The downloads are https (`sdk/net_https.c`), TLS 1.2 or newer with Mbed
-  TLS, the server's certificate checked against a fixed list of roots
-  (`sdk/tls_roots.c`: the ones GitHub's servers answer with). A server
-  that moves to another root is refused until the list is updated;
-  `EIDOS_TLS_CA=<pem file>` adds a root.
+  TLS, the server's certificate checked against Mozilla's root list (the
+  roots a browser trusts, `sdk/tls_mozilla_roots.c`, made by
+  `tools/ca_roots.py` from curl's copy) and the port's own few
+  (`sdk/tls_roots.c`). `EIDOS_TLS_CA=<pem file>` adds a root. The relay is
+  checked against its own two roots only.
 - One connection to each server is kept open while a list is read:
   github.com drops some of the connections one address makes in quick
   succession. A failed connect is tried three times.

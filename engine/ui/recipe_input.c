@@ -392,6 +392,19 @@ static int pick_cols(int n, int aw, int ah, int gap)
     return best;
 }
 
+/* The keys' look and their columns, for the port's own keyboard too
+ * (engine/ui/recipe_keyboard.c): one keyboard look in the interface. */
+void ui_kb_key(EidosUiCtx *c, int x, int y, int w, int h, const char *label, int cursor, int hover, int down,
+               u32 accent)
+{
+    draw_key(c, x, y, w, h, label, cursor, hover, down, accent);
+}
+
+int ui_kb_cols(int n, int aw, int ah, int gap)
+{
+    return pick_cols(n, aw, ah, gap);
+}
+
 static const char *kind_sub(int kind)
 {
     switch (kind) {

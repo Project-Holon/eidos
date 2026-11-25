@@ -71,8 +71,9 @@ const char bw_tls_roots_pem[] = ISRG_ROOTS;
  * itself answers with or did before (it sends Sectigo's chain, signed by
  * USERTrust ECC; DigiCert until 2023).  Each is the copy in Mozilla's root
  * list as Git for Windows ships it, and has the same SHA-256 as the root of
- * that name in Windows' own store.  A server that moves to another root is
- * refused until the list is updated; EIDOS_TLS_CA names one more root file.
+ * that name in Windows' own store.  Downloads also trust Mozilla's whole
+ * list (sdk/tls_mozilla_roots.c), so a mod's web request reaches any site
+ * a browser trusts; EIDOS_TLS_CA names one more root file.
  */
 const char bw_tls_web_roots_pem[] =
     ISRG_ROOTS

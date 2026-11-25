@@ -690,13 +690,20 @@ def generate():
                         h[key] = k[key]
 
     settings = {
-        'line': 'option <key> <kind> "<label>" <value> [?key=value] [@mode,mode]',
-        'extra_lines': ['heading "<text>"', 'help <key> "<text>"', 'yaml <key> <name> [<value>|<value>|...]'],
+        'line': 'option <key> <kind> "<label>" <value> [?key=value | ?key!=value] [@mode,mode]',
+        'extra_lines': ['heading "<text>"', 'help <key> "<text>"', 'yaml <key> <name> [<value>|<value>|...]',
+                        'tab "<title>" (version 7: the lines after it are a Settings tab of their own)',
+                        'button <key> "<label>" [?key=value] [@mode,mode] (version 7: the event setting.button)',
+                        'show <key> "<label>" [?key=value] [@mode,mode] (version 7: setting_show sets its text; '
+                        'hidden while "")'],
         'kinds': [
             {'kind': 'bool', 'value': 'on | off', 'setting_get': '1 or 0'},
             {'kind': 'choice', 'value': 'name|name|...', 'setting_get': 'the chosen index; the first is the default'},
             {'kind': 'int', 'value': '<min> <max> <default>', 'setting_get': 'the number'},
-            {'kind': 'text', 'value': '<longest> "<default>"', 'setting_text': 'the text (version 6)'},
+            {'kind': 'text', 'value': '<longest> "<default>" [word]', 'setting_text': 'the text (version 6; '
+             '`word`: one word, version 7)'},
+            {'kind': 'secret', 'value': '<longest>', 'setting_text': 'the password: never written to a file, '
+             'forgotten when Settings closes, never @lobby (version 7)'},
         ],
         'mode_line': 'mode <id> "<title>" "<line>" [off] [joins] [in=<mode>] [export "<game>"]',
         'mode_get': 'the chosen mode\'s id during game.new, "" for a plain new game (version 6)',

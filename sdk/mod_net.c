@@ -1711,6 +1711,18 @@ static int tls_setup(BwTls *t, BwSock *s, const char *host, const char *roots)
         tls_say(t, "the built-in roots", rc);
         return -1;
     }
+    if (roots == bw_tls_web_roots_pem) {
+        /* a download (a mod's web request, the mods index): Mozilla's
+         * roots too, so any site a browser trusts can be reached.  The
+         * relay keeps only its own two.  A root that does not parse (an
+         * algorithm this build lacks) is passed over, not fatal. */
+        unsigned i;
+
+        for (i = 0; i < bw_tls_mozilla_root_count; i++) {
+            (void)mbedtls_x509_crt_parse(&t->ca, (const unsigned char *)bw_tls_mozilla_roots[i],
+                                         strlen(bw_tls_mozilla_roots[i]) + 1);
+        }
+    }
     if (extra != NULL && extra[0] != '\0' &&
         (rc = mbedtls_x509_crt_parse_file(&t->ca, extra)) != 0) {
         tls_say(t, "EIDOS_TLS_CA", rc);
