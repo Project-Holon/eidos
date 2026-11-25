@@ -135,6 +135,15 @@ typedef struct BwRomInfo {
  * English Black's (sdk/langmap.h). */
 int bw_rom_known_sha1(const char *sha1_hex);
 
+/* The game codes of those cartridges, one by one: index 0 is English
+ * Black's; NULL past the last. */
+const char *bw_rom_known_code(int index);
+
+/* The game code in a ROM file's header (0x00C), without hashing the file:
+ * 0 with `code` filled, -1 when the file cannot be read that far or the
+ * four bytes are not letters and digits. */
+int bw_rom_peek_code(const char *rom_path, char code[5]);
+
 /* The largest image identify and extract will open: twice the largest DS
  * or DSi cartridge (4 Gbit).  Anything bigger is not a cartridge dump. */
 #define BW_ROM_MAX_SIZE 0x40000000u
@@ -276,6 +285,16 @@ int   bw_rename_utf8(const char *from, const char *to);
 /* rm -r.  0 if `path` is gone afterwards (or never existed).  Links and
  * junctions are removed, never followed. */
 int   bw_remove_tree_utf8(const char *path);
+/* `fn(ctx, name, kind)` for every entry of the folder (BW_PATH_FILE or
+ * BW_PATH_DIR; a link or a junction is not reported), in the order the
+ * system gives them.  A non-zero return from `fn` stops the walk and is
+ * returned; 0 after a full walk; -1 when the folder cannot be read. */
+int   bw_list_dir_utf8(const char *path,
+                       int (*fn)(void *ctx, const char *name, int kind), void *ctx);
+/* Copy the folder `from` into `to` with everything in it.  A file that is
+ * already at the destination is kept as it is, never replaced; links are
+ * not followed.  0 when every file is at the destination afterwards. */
+int   bw_copy_tree_utf8(const char *from, const char *to);
 /* The size of an open file, past 2 GiB where the platform allows. */
 int   bw_file_size(FILE *fp, u64 *size);
 /* The bytes free for an unprivileged user on the volume that holds

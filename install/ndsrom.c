@@ -295,6 +295,40 @@ int bw_rom_known_sha1(const char *sha1_hex)
     return 0;
 }
 
+const char *bw_rom_known_code(int index)
+{
+    if (index < 0 || (size_t)index >= sizeof(KNOWN_DUMPS) / sizeof(KNOWN_DUMPS[0])) {
+        return NULL;
+    }
+    return KNOWN_DUMPS[index].gamecode;
+}
+
+int bw_rom_peek_code(const char *rom_path, char code[5])
+{
+    FILE *fp = bw_fopen_utf8(rom_path, "rb");
+    size_t got;
+    int i;
+
+    code[0] = '\0';
+    if (fp == NULL) {
+        return -1;
+    }
+    got = fseek(fp, 0x0C, SEEK_SET) == 0 ? fread(code, 1, 4, fp) : 0;
+    fclose(fp);
+    code[4] = '\0';
+    if (got != 4) {
+        code[0] = '\0';
+        return -1;
+    }
+    for (i = 0; i < 4; i++) {
+        if (!((code[i] >= 'A' && code[i] <= 'Z') || (code[i] >= '0' && code[i] <= '9'))) {
+            code[0] = '\0';
+            return -1;
+        }
+    }
+    return 0;
+}
+
 /* Hash the open image from the start; for a trimmed one also the padded
  * form (`padded` NULL to skip).  0 or -1 with `err` filled. */
 static int hash_image(Rom *r, const char *path, u32 pad_to, BwSha1 *sha,
@@ -419,6 +453,16 @@ static const char *region_name(char c)
 
 BwRomVerdict bw_rom_verdict(const BwRomInfo *info, char *msg, size_t msg_len)
 {
+    const char *title = info->game == BW_GAME_WHITE ? "White" : "Black";
+    const char *known = BW_BLACK_SHA1;
+    size_t i;
+
+    /* (the known good dump of this cartridge, for the last message) */
+    for (i = 0; i < sizeof(KNOWN_DUMPS) / sizeof(KNOWN_DUMPS[0]); i++) {
+        if (strcmp(info->gamecode, KNOWN_DUMPS[i].gamecode) == 0) {
+            known = KNOWN_DUMPS[i].sha1;
+        }
+    }
     if (info->verified) {
         const char *game = info->gamecode[2] == 'A' ? "Pokemon White" : "Pokemon Black";
         const char *lang = info->gamecode[3] == 'O' ? "" : region_name(info->gamecode[3]);
@@ -433,12 +477,12 @@ BwRomVerdict bw_rom_verdict(const BwRomInfo *info, char *msg, size_t msg_len)
         if (!info->header_crc_ok) {
             say(msg, msg_len, "This file is not a Nintendo DS cartridge image "
                 "(its header checksum does not match). Choose the .nds file "
-                "of your Pokemon Black dump.");
+                "of your Pokemon Black or White dump.");
             return BW_VERDICT_NOT_DS;
         }
-        say(msg, msg_len, "This is a DS game, but not Pokemon Black: its title "
-            "is \"%s\" and its game code %s. eidos needs Pokemon Black "
-            "(game code IRBO).", info->title, info->gamecode);
+        say(msg, msg_len, "This is a DS game, but not Pokemon Black or White: its "
+            "title is \"%s\" and its game code %s. eidos needs Pokemon Black "
+            "or White (game codes IRB and IRA).", info->title, info->gamecode);
         return BW_VERDICT_OTHER_GAME;
     }
     if (strchr("OFDIS", info->gamecode[3]) == NULL) {
@@ -449,23 +493,23 @@ BwRomVerdict bw_rom_verdict(const BwRomInfo *info, char *msg, size_t msg_len)
         return BW_VERDICT_UNSUPPORTED;
     }
     if (!info->header_crc_ok) {
-        say(msg, msg_len, "This looks like Pokemon Black, but its header is "
+        say(msg, msg_len, "This looks like Pokemon %s, but its header is "
             "damaged (the header checksum does not match). Dump the "
-            "cartridge again.");
+            "cartridge again.", title);
         return BW_VERDICT_DAMAGED;
     }
     if (info->trimmed) {
-        say(msg, msg_len, "This dump of Pokemon Black is shorter than the "
+        say(msg, msg_len, "This dump of Pokemon %s is shorter than the "
             "cartridge (%u of %u bytes) and does not match the known good "
             "dump even when padded back, so more than padding is missing. "
-            "Dump the cartridge again, without trimming.",
+            "Dump the cartridge again, without trimming.", title,
             (unsigned)info->rom_size, (unsigned)info->capacity);
         return BW_VERDICT_DAMAGED;
     }
-    say(msg, msg_len, "This is Pokemon Black, but not the known good dump "
+    say(msg, msg_len, "This is Pokemon %s, but not the known good dump "
         "(SHA-1 %s, expected %s%s). It is damaged, patched (a ROM hack or a "
         "translation) or a different revision. eidos needs an unmodified "
-        "dump.", info->sha1_hex, BW_BLACK_SHA1,
+        "dump.", title, info->sha1_hex, known,
         info->rom_size > info->capacity ? "; it is also larger than the "
         "cartridge" : "");
     return BW_VERDICT_MODIFIED;

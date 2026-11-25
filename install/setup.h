@@ -96,9 +96,26 @@ int   bw_os_abspath(const char *path, char *out, size_t n);
  * was made from.  The ROM is never copied; its path is kept so a later
  * installer version that changes the layout can re-extract without asking.
  */
+#define BW_SETUP_ROMS_MAX 16
+
 typedef struct BwSetupConfig {
     char data_root[BW_SETUP_PATH_MAX];  /* the extraction folder, "" unset */
     char rom[BW_SETUP_PATH_MAX];        /* the ROM it came from, "" unset */
+    /* An install that holds both games (below, "The two games"): the
+     * folder played last ("played="), the folder each game was last played
+     * from ("game.black=", "game.white="), and the ROM of each cartridge
+     * ("rom.IRAO=").  A version of eidos from before them keeps its two
+     * lines and drops these, which only costs their memory.  `data_root`
+     * and `rom` keep their first meaning whatever is played: a start that
+     * names no folder and does not ask for the game played last (the
+     * launcher's Black profile) finds its data by them. */
+    char played[BW_SETUP_PATH_MAX];
+    char game_root[2][BW_SETUP_PATH_MAX];       /* [0] Black, [1] White */
+    struct {
+        char code[5];
+        char path[BW_SETUP_PATH_MAX];
+    } roms[BW_SETUP_ROMS_MAX];
+    int nroms;
 } BwSetupConfig;
 
 /* 0 read, 1 no config file yet (`c` cleared), -1 unreadable. */
@@ -117,7 +134,10 @@ typedef enum BwRootState {
     BW_ROOT_OLD,            /* made by another installer version */
     BW_ROOT_OTHER_IMAGE,    /* made from an image that is not a known good
                                dump (a hack, a translation, --any) */
-    BW_ROOT_DAMAGED         /* the manifest is fine, files are missing */
+    BW_ROOT_DAMAGED,        /* the manifest is fine, files are missing */
+    BW_ROOT_OTHER_GAME      /* a folder named for this run (--data-root,
+                               BW_DATA_ROOT) holds the game --game did not
+                               ask for */
 } BwRootState;
 
 /*
@@ -140,6 +160,53 @@ void bw_setup_split(const char *path, char *extract_dir, size_t ne,
                     char *data_dir, size_t nd);
 
 /* ------------------------------------------------------------------ */
+/* The two games                                                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * One install can hold the data of both games.  English Black's extraction
+ * is <home>/extract, as it always was; any other cartridge's is
+ * <home>/extract-<game code> (extract-IRAO: English White), the names the
+ * launcher gives them.  A folder that already holds a game stays where it
+ * is, whatever its name: the game a folder holds is read from the
+ * header.bin the extractor wrote there, never from the folder's name.
+ */
+
+/* "black" or "white" (any case) as a game; BW_GAME_UNKNOWN otherwise. */
+BwGame bw_setup_game_named(const char *name);
+/* "Black" or "White", for a sentence; "" for BW_GAME_UNKNOWN. */
+const char *bw_setup_game_title(BwGame game);
+/* The game of a cartridge's game code: IRB? Black, IRA? White. */
+BwGame bw_setup_game_of_code(const char *gamecode);
+/* The game an extraction folder holds, and its game code (`code` may be
+ * NULL).  BW_GAME_UNKNOWN when the folder has no readable header.bin. */
+BwGame bw_setup_game_of(const char *extract_dir, char code[5]);
+/*
+ * The playable extraction of `game` in this install: the folder that game
+ * was last played from, else the config file's folder when it holds that
+ * game, else <home>/extract, else <home>/extract-<code> for each cartridge
+ * the port plays, in the order of the known dumps.  0 with `out` filled,
+ * -1 when the install has none.
+ */
+int bw_setup_find_game(BwGame game, char *out, size_t n);
+/*
+ * Where the data of a cartridge with this game code is made: the folder
+ * that already holds that cartridge, else <home>/extract for English Black
+ * and <home>/extract-<code> for the others (and for English Black when
+ * <home>/extract holds another cartridge).  Never a folder that holds
+ * another cartridge's data.
+ */
+int bw_setup_place_for(const char *gamecode, char *out, size_t n);
+/* The folder (an extraction of this install) is the one played last: the
+ * next start that follows the game played last (BwSetupRequest.follow_last)
+ * plays it.  0 on success. */
+int bw_setup_set_current(const char *extract_dir);
+/* What the install made in the folder of a cartridge: the folder is the
+ * one played last, its game's folder, and `rom` the ROM its cartridge
+ * came from.  `data_root=` is left as it is. */
+int bw_setup_remember_game(const char *extract_dir, const char *rom);
+
+/* ------------------------------------------------------------------ */
 /* The first-run decision                                              */
 /* ------------------------------------------------------------------ */
 
@@ -149,13 +216,19 @@ typedef struct BwSetupRequest {
     const char *move_to;    /* --move-data PATH */
     int no_window;          /* --no-window: never open the wizard */
     int reset;              /* --reset-data */
+    int game;               /* --game black|white: BW_GAME_*, 0 not given */
+    int follow_last;        /* with no folder and no game named: the game
+                               played last (a standalone game sets it; not
+                               an option of the command line) */
 } BwSetupRequest;
 
 enum {
     BW_SOURCE_FLAG = 0,     /* --data-root */
     BW_SOURCE_ENV,          /* BW_DATA_ROOT */
     BW_SOURCE_CONFIG,       /* the config file */
-    BW_SOURCE_DEFAULT       /* the platform default */
+    BW_SOURCE_DEFAULT,      /* the platform default */
+    BW_SOURCE_GAME,         /* --game: that game's folder in this install */
+    BW_SOURCE_LAST          /* the game played last (follow_last) */
 };
 
 typedef struct BwSetupResolved {
@@ -213,6 +286,9 @@ typedef struct BwSetupOutcome {
     BwRomVerdict verdict;   /* from BW_STAGE_VERDICT on */
     BwRomInfo info;         /* from BW_STAGE_VERDICT on */
     int already;            /* the folder already held this extraction */
+    int other_game;         /* bw_setup_install_game: the ROM is the game
+                               that was not asked for; nothing was read
+                               past its header */
 } BwSetupOutcome;
 
 /*
@@ -228,6 +304,19 @@ int bw_setup_install(const char *rom, const char *extract_dir,
                      int allow_unverified, int remember,
                      BwProgressFn progress, void *ctx,
                      BwSetupOutcome *outcome, char *msg, size_t msg_len);
+
+/*
+ * The same into the install's own folder for the ROM's cartridge
+ * (bw_setup_place_for), so the data of one game never replaces the
+ * other's.  `want` refuses a ROM of the other game before anything is
+ * read past its header (BW_GAME_UNKNOWN: either game).  `dir_out` gets the
+ * folder.
+ */
+int bw_setup_install_game(const char *rom, BwGame want,
+                          int allow_unverified, int remember,
+                          BwProgressFn progress, void *ctx,
+                          BwSetupOutcome *outcome, char *dir_out, size_t dir_len,
+                          char *msg, size_t msg_len);
 
 /* The hash an extraction of an identified image records: for a dump
  * trimmed of its padding, the hash of the whole dump it was cut from, so

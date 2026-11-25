@@ -286,6 +286,48 @@ int bw_remove_tree_utf8(const char *path)
     return remove_tree_w(buf, n);
 }
 
+int bw_list_dir_utf8(const char *path,
+                     int (*fn)(void *ctx, const char *name, int kind), void *ctx)
+{
+    wchar_t buf[WPATH_MAX];
+    WIN32_FIND_DATAW fd;
+    HANDLE h;
+    size_t len;
+    int rc = 0;
+
+    if (widen(path, buf, WPATH_MAX) != 0) {
+        return -1;
+    }
+    len = wcslen(buf);
+    while (len > 0 && (buf[len - 1] == L'\\' || buf[len - 1] == L'/')) {
+        buf[--len] = 0;
+    }
+    if (len + 3 >= WPATH_MAX) {
+        return -1;
+    }
+    wcscpy(buf + len, L"\\*");
+    h = FindFirstFileW(buf, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        return -1;
+    }
+    do {
+        char name[1024];
+
+        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0
+            || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+            continue;
+        }
+        if (WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, name, (int)sizeof(name),
+                                NULL, NULL) == 0) {
+            continue;
+        }
+        rc = fn(ctx, name, (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? BW_PATH_DIR
+                                                                             : BW_PATH_FILE);
+    } while (rc == 0 && FindNextFileW(h, &fd));
+    FindClose(h);
+    return rc;
+}
+
 int bw_file_size(FILE *fp, u64 *size)
 {
     struct _stati64 st;
@@ -373,7 +415,9 @@ int bw_remove_tree_utf8(const char *path)
     struct stat st;
     DIR *d;
     struct dirent *e;
-    int rc = 0;
+    char *names = NULL;
+    size_t used = 0, cap = 0, at;
+    int rc = 0, failed = 0;
 
     if (lstat(path, &st) != 0) {
         return errno == ENOENT ? 0 : -1;
@@ -385,7 +429,72 @@ int bw_remove_tree_utf8(const char *path)
     if (d == NULL) {
         return -1;
     }
+    /* The names first, the removals after: a folder that changes while it
+     * is read can skip entries.  The wasm host lists a folder again for
+     * each part of a long listing and counts on from where it was, so
+     * entries removed in between moved the rest forward and half of a
+     * large folder was left (the overlays of a replaced extraction). */
     while ((e = readdir(d)) != NULL) {
+        size_t n = strlen(e->d_name) + 1;
+
+        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) {
+            continue;
+        }
+        if (used + n > cap) {
+            size_t want = cap != 0 ? cap * 2 : 4096;
+            char *grown;
+
+            while (want < used + n) {
+                want *= 2;
+            }
+            grown = (char *)realloc(names, want);
+            if (grown == NULL) {
+                rc = -1;
+                break;
+            }
+            names = grown;
+            cap = want;
+        }
+        memcpy(names + used, e->d_name, n);
+        used += n;
+    }
+    closedir(d);
+    for (at = 0; rc == 0 && at < used; at += strlen(names + at) + 1) {
+        size_t n = strlen(path) + 1 + strlen(names + at) + 1;
+        char *child = (char *)malloc(n);
+
+        if (child == NULL) {
+            rc = -1;
+            break;
+        }
+        snprintf(child, n, "%s/%s", path, names + at);
+        if (bw_remove_tree_utf8(child) != 0) {
+            failed = -1;
+        }
+        free(child);
+    }
+    free(names);
+    if (rc == 0) {
+        rc = failed;
+    }
+    if (rmdir(path) != 0) {
+        rc = -1;
+    }
+    return rc;
+}
+
+int bw_list_dir_utf8(const char *path,
+                     int (*fn)(void *ctx, const char *name, int kind), void *ctx)
+{
+    DIR *d = opendir(path);
+    struct dirent *e;
+    int rc = 0;
+
+    if (d == NULL) {
+        return -1;
+    }
+    while (rc == 0 && (e = readdir(d)) != NULL) {
+        struct stat st;
         size_t n;
         char *child;
 
@@ -399,15 +508,12 @@ int bw_remove_tree_utf8(const char *path)
             break;
         }
         snprintf(child, n, "%s/%s", path, e->d_name);
-        if (bw_remove_tree_utf8(child) != 0) {
-            rc = -1;
+        if (lstat(child, &st) == 0 && (S_ISDIR(st.st_mode) || S_ISREG(st.st_mode))) {
+            rc = fn(ctx, e->d_name, S_ISDIR(st.st_mode) ? BW_PATH_DIR : BW_PATH_FILE);
         }
         free(child);
     }
     closedir(d);
-    if (rmdir(path) != 0) {
-        rc = -1;
-    }
     return rc;
 }
 
@@ -470,6 +576,93 @@ int bw_mkdirs_utf8(const char *path)
     rc = mkdir_one(buf);
     free(buf);
     return rc;
+}
+
+/* One file; the destination must not exist. */
+static int copy_file(const char *from, const char *to)
+{
+    enum { CHUNK = 1 << 16 };
+    char *buf = (char *)malloc(CHUNK);
+    FILE *in = bw_fopen_utf8(from, "rb");
+    FILE *out;
+    size_t got;
+    int bad = 0;
+
+    if (in == NULL || buf == NULL) {
+        if (in != NULL) {
+            fclose(in);
+        }
+        free(buf);
+        return -1;
+    }
+    out = bw_fopen_utf8(to, "wb");
+    if (out == NULL) {
+        fclose(in);
+        free(buf);
+        return -1;
+    }
+    while ((got = fread(buf, 1, CHUNK, in)) > 0) {
+        if (fwrite(buf, 1, got, out) != got) {
+            bad = 1;
+            break;
+        }
+    }
+    bad |= ferror(in);
+    fclose(in);
+    free(buf);
+    if (fclose(out) != 0 || bad) {
+        (void)bw_remove_tree_utf8(to);      /* never a part of a file */
+        return -1;
+    }
+    return 0;
+}
+
+typedef struct CopyWalk {
+    const char *from;
+    const char *to;
+    int failed;
+} CopyWalk;
+
+static int copy_entry(void *ctx, const char *name, int kind)
+{
+    CopyWalk *w = (CopyWalk *)ctx;
+    size_t nf = strlen(w->from) + 1 + strlen(name) + 1;
+    size_t nt = strlen(w->to) + 1 + strlen(name) + 1;
+    char *src = (char *)malloc(nf);
+    char *dst = (char *)malloc(nt);
+
+    if (src == NULL || dst == NULL) {
+        w->failed = 1;
+    } else {
+        snprintf(src, nf, "%s/%s", w->from, name);
+        snprintf(dst, nt, "%s/%s", w->to, name);
+        if (kind == BW_PATH_DIR) {
+            if (bw_copy_tree_utf8(src, dst) != 0) {
+                w->failed = 1;
+            }
+        } else if (bw_path_kind_utf8(dst) == BW_PATH_NONE && copy_file(src, dst) != 0) {
+            w->failed = 1;
+        }
+    }
+    free(src);
+    free(dst);
+    return 0;       /* the other entries are still copied */
+}
+
+int bw_copy_tree_utf8(const char *from, const char *to)
+{
+    CopyWalk w;
+
+    if (bw_path_kind_utf8(from) != BW_PATH_DIR || bw_mkdirs_utf8(to) != 0) {
+        return -1;
+    }
+    w.from = from;
+    w.to = to;
+    w.failed = 0;
+    if (bw_list_dir_utf8(from, copy_entry, &w) != 0 || w.failed) {
+        return -1;
+    }
+    return 0;
 }
 
 int bw_free_space_utf8(const char *path, u64 *bytes)

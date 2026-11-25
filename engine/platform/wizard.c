@@ -64,6 +64,8 @@ typedef struct Job {
     char rom[BW_SETUP_PATH_MAX];
     char dest[BW_SETUP_PATH_MAX];
     int allow_unverified;
+    int by_cartridge;            /* into the folder of the ROM's cartridge */
+    int game;                    /* BW_GAME_*: the game asked for, 0 either */
     SDL_AtomicInt hashing;       /* 1 while hashing, 0 while writing */
     SDL_AtomicInt done;
     SDL_AtomicInt total;
@@ -105,8 +107,14 @@ static void job_main(void *arg)
 {
     Job *j = (Job *)arg;
 
-    j->rc = bw_setup_install(j->rom, j->dest, j->allow_unverified, 0,
-                             job_progress, j, &j->outcome, j->msg, sizeof(j->msg));
+    if (j->by_cartridge) {
+        /* (the folder is the one start_job worked out: `dest`) */
+        j->rc = bw_setup_install_game(j->rom, (BwGame)j->game, j->allow_unverified, 0,
+                                      job_progress, j, &j->outcome, NULL, 0, j->msg, sizeof(j->msg));
+    } else {
+        j->rc = bw_setup_install(j->rom, j->dest, j->allow_unverified, 0,
+                                 job_progress, j, &j->outcome, j->msg, sizeof(j->msg));
+    }
     SDL_SetAtomicInt(&j->finished, 1);
 }
 
@@ -141,6 +149,7 @@ typedef struct Wiz {
 
     Job *job;
     BwThread *thread;
+    char dest[BW_SETUP_PATH_MAX];   /* where this ROM's data goes */
 
     u32 frame;
     u32 shots;                  /* screens already written, one bit each */
@@ -475,6 +484,19 @@ static void start_job(Wiz *z, const char *rom)
     snprintf(j->rom, sizeof(j->rom), "%s", rom);
     snprintf(j->dest, sizeof(j->dest), "%s", z->cfg->extract_dir);
     j->allow_unverified = z->cfg->allow_unverified;
+    if (z->cfg->by_cartridge) {
+        char code[5];
+
+        /* the folder this ROM's cartridge has in the install (a file that
+         * is no cartridge is refused before anything is written) */
+        j->by_cartridge = 1;
+        j->game = z->cfg->game;
+        if (bw_rom_peek_code(rom, code) != 0
+            || bw_setup_place_for(code, j->dest, sizeof(j->dest)) != 0) {
+            snprintf(j->dest, sizeof(j->dest), "%s", z->cfg->extract_dir);
+        }
+    }
+    snprintf(z->dest, sizeof(z->dest), "%s", j->dest);
     SDL_SetAtomicInt(&j->hashing, 1);
     z->job = j;
     z->thread = bw_thread_start(job_main, j);
@@ -492,7 +514,7 @@ static void show_writing(Wiz *z)
     snprintf(z->heading, sizeof(z->heading), "Writing the game data");
     snprintf(z->body, sizeof(z->body), "Your ROM is the right one. The game "
              "data is being written to\n>%s\nCancelling leaves nothing behind.",
-             z->cfg->extract_dir);
+             z->dest);
 }
 
 static const char *refusal_heading(const Job *j)
@@ -504,6 +526,9 @@ static const char *refusal_heading(const Job *j)
     case BW_STAGE_IDENTIFY:
         return "This file cannot be used";
     case BW_STAGE_VERDICT:
+        if (j->outcome.other_game) {
+            return "This is the other game";
+        }
         switch (j->outcome.verdict) {
         case BW_VERDICT_NOT_DS:      return "This is not a DS game";
         case BW_VERDICT_OTHER_GAME:  return "This is a different game";
@@ -545,7 +570,7 @@ static void finish_job(Wiz *z)
                  "later version of eidos asks for it.",
                  j->outcome.already ? "This ROM's game data was already in"
                                     : "The game data is in",
-                 z->cfg->extract_dir, z->rom);
+                 z->dest, z->rom);
         snprintf(z->foot, sizeof(z->foot), "Enter: start");
         buttons(z, "Start", ACT_START, NULL, ACT_NONE);
     } else {
@@ -867,6 +892,9 @@ int eidos_wizard_run(const EidosWizardConfig *cfg, char *rom_out, size_t n)
         }
         free(z.job);
     }
+    if (z.result == EIDOS_WIZARD_INSTALLED && cfg->dir_out != NULL && cfg->dir_len > 0) {
+        snprintf(cfg->dir_out, cfg->dir_len, "%s", z.dest[0] != '\0' ? z.dest : cfg->extract_dir);
+    }
     if (z.result == EIDOS_WIZARD_INSTALLED && rom_out != NULL && n > 0) {
         snprintf(rom_out, n, "%s", z.rom);
     }
@@ -895,6 +923,7 @@ int eidos_firstrun(const BwSetupRequest *req, char *data_dir, size_t n,
     BwSetupRequest none;
     EidosWizardConfig cfg;
     char rom[BW_SETUP_PATH_MAX];
+    char made_in[BW_SETUP_PATH_MAX];
     int rc;
 
     if (req == NULL) {
@@ -915,6 +944,12 @@ int eidos_firstrun(const BwSetupRequest *req, char *data_dir, size_t n,
     *exit_status = 1;
     switch (bw_setup_prepare(req, &r)) {
     case BW_PREPARE_READY:
+        /* a standalone game on the install's own data: this folder's game
+         * is the one its next start plays (--game chose it, or it was
+         * already).  A start with a profile of its own leaves that alone. */
+        if (req->follow_last && r.source != BW_SOURCE_FLAG && r.source != BW_SOURCE_ENV) {
+            (void)bw_setup_set_current(r.extract_dir);
+        }
         snprintf(data_dir, n, "%s", r.data_dir);
         return 1;
     case BW_PREPARE_EXIT_OK:
@@ -928,7 +963,13 @@ int eidos_firstrun(const BwSetupRequest *req, char *data_dir, size_t n,
 
     memset(&cfg, 0, sizeof(cfg));
     cfg.extract_dir = r.extract_dir;
-    cfg.reason = r.state != BW_ROOT_MISSING ? r.why : NULL;
+    cfg.reason = (r.state != BW_ROOT_MISSING || r.source == BW_SOURCE_GAME) ? r.why : NULL;
+    /* no folder was named for this run: each cartridge's data in its own */
+    cfg.by_cartridge = r.source != BW_SOURCE_FLAG && r.source != BW_SOURCE_ENV;
+    cfg.game = req->game;
+    cfg.dir_out = made_in;
+    cfg.dir_len = sizeof(made_in);
+    snprintf(made_in, sizeof(made_in), "%s", r.extract_dir);
     /* A remembered ROM (the game's own, or the one chosen in the launcher):
      * make the data from it, with progress, instead of asking. */
     if ((r.state == BW_ROOT_OLD || r.state == BW_ROOT_MISSING || r.state == BW_ROOT_DAMAGED)
@@ -949,9 +990,25 @@ int eidos_firstrun(const BwSetupRequest *req, char *data_dir, size_t n,
     /* A folder named on the command line is that run's own (the launcher
      * passes one per profile): the ROM is remembered, the folder is not. */
     if (r.source != BW_SOURCE_ENV
-        && bw_setup_remember(r.source == BW_SOURCE_FLAG ? NULL : r.extract_dir, rom) != 0) {
+        && (cfg.by_cartridge ? bw_setup_remember_game(made_in, rom)
+                             : bw_setup_remember(r.source == BW_SOURCE_FLAG ? NULL : made_in, rom)) != 0) {
         fprintf(stderr, "eidos: the settings file could not be written; next "
-                        "time pass --data-root \"%s\"\n", r.extract_dir);
+                        "time pass --data-root \"%s\"\n", made_in);
+    }
+    if (cfg.by_cartridge) {
+        /* this start plays what the window made, whatever the request
+         * would resolve to (a start that does not follow the game played
+         * last, given another game's ROM) */
+        BwSetupRequest that = *req;
+
+        that.data_root = made_in;
+        that.game = BW_GAME_UNKNOWN;
+        if (bw_setup_resolve(&that, &r) != 0 || r.state != BW_ROOT_OK) {
+            fprintf(stderr, "eidos: %s\n", r.why);
+            return 0;
+        }
+        snprintf(data_dir, n, "%s", r.data_dir);
+        return 1;
     }
     if (bw_setup_resolve(req, &r) != 0 || r.state != BW_ROOT_OK) {
         fprintf(stderr, "eidos: %s\n", r.why);

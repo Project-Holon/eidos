@@ -71,6 +71,15 @@ typedef struct EidosWizardConfig {
                                    open again), or NULL */
     const char *rom;            /* start checking this ROM at once, or NULL */
     int scale;                  /* 0: the largest that fits, at most 3 */
+    /* The install's own data (no folder was named for this run): the data
+     * is made in the folder of the ROM's own cartridge
+     * (bw_setup_install_game), which `extract_dir` only stands for until
+     * the ROM is known; `dir_out` (may be NULL) gets the folder. */
+    int by_cartridge;
+    int game;                   /* BW_GAME_*: only this game's ROM is taken
+                                   (with by_cartridge); 0: either */
+    char *dir_out;
+    size_t dir_len;
 
     /* Tests only.  The player has no override: only the known good dump
      * is installed (docs/installer.md). */

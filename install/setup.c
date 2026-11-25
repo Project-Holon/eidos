@@ -182,6 +182,18 @@ int bw_setup_config_load(BwSetupConfig *c)
             (void)copy(c->data_root, sizeof(c->data_root), eq + 1);
         } else if (strcmp(line, "rom") == 0) {
             (void)copy(c->rom, sizeof(c->rom), eq + 1);
+        } else if (strcmp(line, "played") == 0) {
+            (void)copy(c->played, sizeof(c->played), eq + 1);
+        } else if (strcmp(line, "game.black") == 0) {
+            (void)copy(c->game_root[0], sizeof(c->game_root[0]), eq + 1);
+        } else if (strcmp(line, "game.white") == 0) {
+            (void)copy(c->game_root[1], sizeof(c->game_root[1]), eq + 1);
+        } else if (strncmp(line, "rom.", 4) == 0 && strlen(line) == 8
+                   && c->nroms < BW_SETUP_ROMS_MAX) {
+            memcpy(c->roms[c->nroms].code, line + 4, 5);
+            if (copy(c->roms[c->nroms].path, sizeof(c->roms[c->nroms].path), eq + 1) == 0) {
+                c->nroms++;
+            }
         }
     }
     fclose(fp);
@@ -194,7 +206,7 @@ int bw_setup_config_save(const BwSetupConfig *c)
     char path[BW_SETUP_PATH_MAX];
     char tmp[BW_SETUP_PATH_MAX + 8];
     FILE *fp;
-    int bad;
+    int bad, i;
 
     if (bw_setup_home(home, sizeof(home)) != 0
         || join(path, sizeof(path), home, CONFIG_NAME) != 0
@@ -214,6 +226,18 @@ int bw_setup_config_save(const BwSetupConfig *c)
     if (c->rom[0] != '\0') {
         fprintf(fp, "rom=%s\n", c->rom);
     }
+    if (c->played[0] != '\0') {
+        fprintf(fp, "played=%s\n", c->played);
+    }
+    if (c->game_root[0][0] != '\0') {
+        fprintf(fp, "game.black=%s\n", c->game_root[0]);
+    }
+    if (c->game_root[1][0] != '\0') {
+        fprintf(fp, "game.white=%s\n", c->game_root[1]);
+    }
+    for (i = 0; i < c->nroms; i++) {
+        fprintf(fp, "rom.%s=%s\n", c->roms[i].code, c->roms[i].path);
+    }
     bad = ferror(fp);
     if (fclose(fp) != 0 || bad) {
         (void)bw_remove_tree_utf8(tmp);
@@ -226,9 +250,36 @@ int bw_setup_config_save(const BwSetupConfig *c)
     return 0;
 }
 
+/* The config's lines of one game and one cartridge: the folder `game` was
+ * last played from, and the ROM the cartridge `code` came from (NULL: left
+ * as it is). */
+static void config_note(BwSetupConfig *c, BwGame game, const char *dir,
+                        const char *code, const char *rom)
+{
+    int i;
+
+    if (dir != NULL && (game == BW_GAME_BLACK || game == BW_GAME_WHITE)) {
+        (void)copy(c->game_root[game == BW_GAME_WHITE], BW_SETUP_PATH_MAX, dir);
+    }
+    if (rom == NULL || code == NULL || strlen(code) != 4) {
+        return;
+    }
+    for (i = 0; i < c->nroms && strcmp(c->roms[i].code, code) != 0; i++) {
+    }
+    if (i == c->nroms) {
+        if (c->nroms == BW_SETUP_ROMS_MAX) {
+            return;
+        }
+        memcpy(c->roms[c->nroms++].code, code, 5);
+    }
+    (void)copy(c->roms[i].path, sizeof(c->roms[i].path), rom);
+}
+
 int bw_setup_remember(const char *extract_dir, const char *rom)
 {
     BwSetupConfig c;
+    char code[5];
+    BwGame game;
 
     if (bw_setup_config_load(&c) < 0) {
         memset(&c, 0, sizeof(c));
@@ -241,6 +292,268 @@ int bw_setup_remember(const char *extract_dir, const char *rom)
         (void)copy(c.rom, sizeof(c.rom), rom);
     }
     trim_seps(c.data_root);
+    /* the same for the game the folder holds (a folder named for one run,
+     * `extract_dir` NULL, is that run's: only its ROM is remembered) */
+    if (extract_dir != NULL) {
+        game = bw_setup_game_of(c.data_root, code);
+        config_note(&c, game, c.data_root, code, rom != NULL ? c.rom : NULL);
+    } else if (rom != NULL && bw_rom_peek_code(c.rom, code) == 0) {
+        config_note(&c, BW_GAME_UNKNOWN, NULL, code, c.rom);
+    }
+    return bw_setup_config_save(&c);
+}
+
+/* ------------------------------------------------------------------ */
+/* The two games                                                       */
+/* ------------------------------------------------------------------ */
+
+BwGame bw_setup_game_named(const char *name)
+{
+    static const char *const names[2] = { "black", "white" };
+    int g, i;
+
+    if (name == NULL) {
+        return BW_GAME_UNKNOWN;
+    }
+    for (g = 0; g < 2; g++) {
+        for (i = 0; names[g][i] != '\0'; i++) {
+            char ch = name[i];
+
+            if (ch >= 'A' && ch <= 'Z') {
+                ch = (char)(ch - 'A' + 'a');
+            }
+            if (ch != names[g][i]) {
+                break;
+            }
+        }
+        if (names[g][i] == '\0' && name[i] == '\0') {
+            return g == 0 ? BW_GAME_BLACK : BW_GAME_WHITE;
+        }
+    }
+    return BW_GAME_UNKNOWN;
+}
+
+const char *bw_setup_game_title(BwGame game)
+{
+    return game == BW_GAME_BLACK ? "Black" : game == BW_GAME_WHITE ? "White" : "";
+}
+
+BwGame bw_setup_game_of_code(const char *gamecode)
+{
+    if (gamecode == NULL || strlen(gamecode) != 4) {
+        return BW_GAME_UNKNOWN;
+    }
+    if (memcmp(gamecode, "IRB", 3) == 0) {
+        return BW_GAME_BLACK;
+    }
+    if (memcmp(gamecode, "IRA", 3) == 0) {
+        return BW_GAME_WHITE;
+    }
+    return BW_GAME_UNKNOWN;
+}
+
+BwGame bw_setup_game_of(const char *extract_dir, char code[5])
+{
+    char ex[BW_SETUP_PATH_MAX], data[BW_SETUP_PATH_MAX], path[BW_SETUP_PATH_MAX];
+    char local[5];
+
+    if (code == NULL) {
+        code = local;
+    }
+    code[0] = '\0';
+    if (extract_dir == NULL || extract_dir[0] == '\0') {
+        return BW_GAME_UNKNOWN;
+    }
+    /* (header.bin is the ROM's first bytes, so its game code is read as a
+     * ROM file's is) */
+    bw_setup_split(extract_dir, ex, sizeof(ex), data, sizeof(data));
+    if (join(path, sizeof(path), ex, "header.bin") != 0
+        || bw_rom_peek_code(path, code) != 0) {
+        code[0] = '\0';
+        return BW_GAME_UNKNOWN;
+    }
+    return bw_setup_game_of_code(code);
+}
+
+/* Whether `dir` is an extraction of `game` the install made (not a
+ * trusted folder); `playable`: and it can be played as it is. */
+static int holds(const char *dir, BwGame game, int playable)
+{
+    if (dir == NULL || dir[0] == '\0' || bw_setup_game_of(dir, NULL) != game) {
+        return 0;
+    }
+    return !playable || bw_setup_check(dir, 0, NULL, 0) == BW_ROOT_OK;
+}
+
+/* <home>/extract (index -1), or <home>/extract-<code> of known dump
+ * `index`; -1 past the last. */
+static int home_folder(int index, char *out, size_t n)
+{
+    char home[BW_SETUP_PATH_MAX], name[32];
+    const char *code;
+
+    if (bw_setup_home(home, sizeof(home)) != 0) {
+        return -1;
+    }
+    if (index < 0) {
+        return join(out, n, home, "extract");
+    }
+    code = bw_rom_known_code(index);
+    if (code == NULL) {
+        return -1;
+    }
+    snprintf(name, sizeof(name), "extract-%s", code);
+    return join(out, n, home, name);
+}
+
+/* The install's folder of `game`, in bw_setup_find_game's order. */
+static int game_folder(BwGame game, int playable, char *out, size_t n)
+{
+    BwSetupConfig c;
+    char dir[BW_SETUP_PATH_MAX];
+    int i;
+
+    if (game != BW_GAME_BLACK && game != BW_GAME_WHITE) {
+        return -1;
+    }
+    if (bw_setup_config_load(&c) < 0) {
+        memset(&c, 0, sizeof(c));
+    }
+    if (holds(c.game_root[game == BW_GAME_WHITE], game, playable)) {
+        return copy(out, n, c.game_root[game == BW_GAME_WHITE]);
+    }
+    if (holds(c.played, game, playable)) {
+        return copy(out, n, c.played);
+    }
+    if (holds(c.data_root, game, playable)) {
+        return copy(out, n, c.data_root);
+    }
+    for (i = -1; home_folder(i, dir, sizeof(dir)) == 0; i++) {
+        if (holds(dir, game, playable)) {
+            return copy(out, n, dir);
+        }
+    }
+    return -1;
+}
+
+int bw_setup_find_game(BwGame game, char *out, size_t n)
+{
+    return game_folder(game, 1, out, n);
+}
+
+int bw_setup_place_for(const char *gamecode, char *out, size_t n)
+{
+    BwSetupConfig c;
+    char dir[BW_SETUP_PATH_MAX], have[5];
+    int i;
+
+    if (gamecode == NULL || strlen(gamecode) != 4) {
+        return -1;
+    }
+    if (bw_setup_config_load(&c) < 0) {
+        memset(&c, 0, sizeof(c));
+    }
+    /* the folder that holds this cartridge already (whatever state it is
+     * in: it is made again in place) */
+    if (c.data_root[0] != '\0' && bw_setup_game_of(c.data_root, have) != BW_GAME_UNKNOWN
+        && strcmp(have, gamecode) == 0) {
+        return copy(out, n, c.data_root);
+    }
+    for (i = -1; home_folder(i, dir, sizeof(dir)) == 0; i++) {
+        if (bw_setup_game_of(dir, have) != BW_GAME_UNKNOWN && strcmp(have, gamecode) == 0) {
+            return copy(out, n, dir);
+        }
+    }
+    /* a new one: English Black's is <home>/extract unless another
+     * cartridge has that folder */
+    if (strcmp(gamecode, "IRBO") == 0 && home_folder(-1, dir, sizeof(dir)) == 0) {
+        int kind = bw_path_kind_utf8(dir);
+
+        if (kind == BW_PATH_NONE || (kind == BW_PATH_DIR && bw_dir_is_empty_utf8(dir) == 1)
+            || (kind == BW_PATH_DIR && bw_setup_game_of(dir, have) == BW_GAME_UNKNOWN
+                && bw_setup_check(dir, 0, NULL, 0) != BW_ROOT_OK)) {
+            return copy(out, n, dir);
+        }
+    }
+    {
+        char home[BW_SETUP_PATH_MAX], name[32];
+
+        if (bw_setup_home(home, sizeof(home)) != 0) {
+            return -1;
+        }
+        snprintf(name, sizeof(name), "extract-%s", gamecode);
+        return join(out, n, home, name);
+    }
+}
+
+int bw_setup_set_current(const char *extract_dir)
+{
+    BwSetupConfig c;
+    char dir[BW_SETUP_PATH_MAX];
+    BwGame game;
+
+    if (extract_dir == NULL || extract_dir[0] == '\0') {
+        return -1;
+    }
+    if (bw_setup_config_load(&c) < 0) {
+        memset(&c, 0, sizeof(c));
+    }
+    if (bw_os_abspath(extract_dir, dir, sizeof(dir)) != 0) {
+        (void)copy(dir, sizeof(dir), extract_dir);
+    }
+    trim_seps(dir);
+    game = bw_setup_game_of(dir, NULL);
+    if (strcmp(c.played, dir) == 0
+        && (game == BW_GAME_UNKNOWN || strcmp(c.game_root[game == BW_GAME_WHITE], dir) == 0)) {
+        return 0;       /* nothing to write */
+    }
+    (void)copy(c.played, sizeof(c.played), dir);
+    config_note(&c, game, dir, NULL, NULL);
+    return bw_setup_config_save(&c);
+}
+
+int bw_setup_remember_game(const char *extract_dir, const char *rom)
+{
+    BwSetupConfig c;
+    char dir[BW_SETUP_PATH_MAX], file[BW_SETUP_PATH_MAX], def[BW_SETUP_PATH_MAX];
+    char code[5];
+    BwGame game;
+
+    if (extract_dir == NULL || extract_dir[0] == '\0') {
+        return -1;
+    }
+    if (bw_setup_config_load(&c) < 0) {
+        memset(&c, 0, sizeof(c));
+    }
+    if (bw_os_abspath(extract_dir, dir, sizeof(dir)) != 0) {
+        (void)copy(dir, sizeof(dir), extract_dir);
+    }
+    trim_seps(dir);
+    file[0] = '\0';
+    if (rom != NULL && bw_os_abspath(rom, file, sizeof(file)) != 0) {
+        (void)copy(file, sizeof(file), rom);
+    }
+    game = bw_setup_game_of(dir, code);
+    (void)copy(c.played, sizeof(c.played), dir);
+    config_note(&c, game, dir, code, file[0] != '\0' ? file : NULL);
+    /* the folder the first two lines mean (the one named there, else the
+     * default one): its ROM line follows, as it always did */
+    if (c.data_root[0] != '\0') {
+        (void)copy(def, sizeof(def), c.data_root);
+    } else if (bw_setup_default_extract(def, sizeof(def)) != 0) {
+        def[0] = '\0';
+    }
+    if (def[0] != '\0') {
+        char full[BW_SETUP_PATH_MAX];
+
+        if (bw_os_abspath(def, full, sizeof(full)) == 0) {
+            (void)copy(def, sizeof(def), full);     /* (the same spelling as `dir`) */
+        }
+        trim_seps(def);
+    }
+    if (file[0] != '\0' && def[0] != '\0' && strcmp(def, dir) == 0) {
+        (void)copy(c.rom, sizeof(c.rom), file);
+    }
     return bw_setup_config_save(&c);
 }
 
@@ -369,6 +682,11 @@ int bw_setup_parse_arg(BwSetupRequest *req, int argc, char **argv, int *i)
         slot = &req->data_root;
     } else if (strcmp(a, "--rom") == 0) {
         slot = &req->rom;
+    } else if (strncmp(a, "--rom=", 6) == 0 && a[6] != '\0') {
+        /* --rom=PATH in one argument, for a front end that drops a whole
+         * argument when it has no file for it */
+        req->rom = a + 6;
+        return 1;
     } else if (strcmp(a, "--move-data") == 0) {
         slot = &req->move_to;
     } else if (strcmp(a, "--no-window") == 0) {
@@ -377,6 +695,12 @@ int bw_setup_parse_arg(BwSetupRequest *req, int argc, char **argv, int *i)
     } else if (strcmp(a, "--reset-data") == 0) {
         req->reset = 1;
         return 1;
+    } else if (strcmp(a, "--game") == 0 || strncmp(a, "--game=", 7) == 0) {
+        /* --game black, --game=black: the game to start */
+        const char *name = a[6] == '=' ? a + 7 : (*i + 1 < argc ? argv[++*i] : NULL);
+
+        req->game = bw_setup_game_named(name);
+        return req->game != BW_GAME_UNKNOWN ? 1 : -1;
     } else {
         return 0;
     }
@@ -392,7 +716,11 @@ const char *bw_setup_usage(void)
     return "  --data-root PATH   the game data (an extraction folder, or its data\n"
            "                     folder); default: the saved one, else the\n"
            "                     platform's (see docs/installer.md)\n"
-           "  --rom PATH         make the game data from this ROM, no window\n"
+           "  --game NAME        the game to start: black or white; without it the\n"
+           "                     one played last\n"
+           "  --rom PATH         (or --rom=PATH) make the game data from this ROM,\n"
+           "                     no window; each game has its own data, neither\n"
+           "                     replaces the other\n"
            "  --no-window        never open the setup window; say what is missing\n"
            "  --reset-data       delete the game data eidos made, then exit\n"
            "  --move-data PATH   move the game data to PATH, then exit\n";
@@ -420,6 +748,35 @@ int bw_setup_resolve(const BwSetupRequest *req, BwSetupResolved *out)
         path = env;
         out->source = BW_SOURCE_ENV;
         trusted = 1;
+    } else if (req != NULL && req->game != BW_GAME_UNKNOWN) {
+        /* --game: that game's folder in this install.  None yet: the
+         * install decides the folder when it knows the ROM's cartridge
+         * (bw_setup_install_game), and until then the place English
+         * White or Black would get stands for it in the messages. */
+        out->source = BW_SOURCE_GAME;
+        if (game_folder((BwGame)req->game, 1, def, sizeof(def)) != 0
+            /* (none to play: one whose data has to be made again, which
+             * the check below words, and whose ROM may be remembered) */
+            && game_folder((BwGame)req->game, 0, def, sizeof(def)) != 0) {
+            if (bw_setup_place_for(req->game == BW_GAME_WHITE ? "IRAO" : "IRBO", def, sizeof(def)) != 0) {
+                def[0] = '\0';
+            }
+            bw_setup_split(def, out->extract_dir, sizeof(out->extract_dir),
+                           out->data_dir, sizeof(out->data_dir));
+            out->state = BW_ROOT_MISSING;
+            say(out->why, sizeof(out->why), "There is no game data of Pokemon %s yet.",
+                bw_setup_game_title((BwGame)req->game));
+            out->rom[0] = '\0';
+            return 0;
+        }
+        path = def;
+    } else if (req != NULL && req->follow_last && c.played[0] != '\0'
+               && bw_setup_game_of(c.played, NULL) != BW_GAME_UNKNOWN) {
+        /* a standalone game: the game played last, in whatever state its
+         * folder is (the check below words it) */
+        (void)copy(def, sizeof(def), c.played);
+        path = def;
+        out->source = BW_SOURCE_LAST;
     } else if (c.data_root[0] != '\0') {
         path = c.data_root;
         out->source = BW_SOURCE_CONFIG;
@@ -436,6 +793,35 @@ int bw_setup_resolve(const BwSetupRequest *req, BwSetupResolved *out)
     bw_setup_split(path, out->extract_dir, sizeof(out->extract_dir),
                    out->data_dir, sizeof(out->data_dir));
     out->state = bw_setup_check(path, trusted, out->why, sizeof(out->why));
+    if (out->state == BW_ROOT_OK && trusted && req != NULL && req->game != BW_GAME_UNKNOWN) {
+        /* a folder named for this run, and --game: they have to agree */
+        BwGame have = bw_setup_game_of(out->extract_dir, NULL);
+
+        if (have != BW_GAME_UNKNOWN && have != (BwGame)req->game) {
+            out->state = BW_ROOT_OTHER_GAME;
+            say(out->why, sizeof(out->why), "%s holds Pokemon %s, and --game asks for Pokemon %s.",
+                out->extract_dir, bw_setup_game_title(have), bw_setup_game_title((BwGame)req->game));
+        }
+    }
+    if (out->source == BW_SOURCE_GAME || out->source == BW_SOURCE_LAST
+        || ((out->source == BW_SOURCE_CONFIG || out->source == BW_SOURCE_DEFAULT) && out->rom[0] == '\0')) {
+        /* the ROM this folder's cartridge came from, for a later
+         * re-extraction (the first two lines' ROM stands for their folder
+         * when it is there) */
+        char code[5];
+        int i;
+
+        if (out->source == BW_SOURCE_GAME || out->source == BW_SOURCE_LAST) {
+            out->rom[0] = '\0';
+        }
+        if (bw_setup_game_of(out->extract_dir, code) != BW_GAME_UNKNOWN) {
+            for (i = 0; i < c.nroms; i++) {
+                if (strcmp(c.roms[i].code, code) == 0) {
+                    (void)copy(out->rom, sizeof(out->rom), c.roms[i].path);
+                }
+            }
+        }
+    }
     return 0;
 }
 
@@ -526,6 +912,53 @@ int bw_setup_install(const char *rom, const char *extract_dir,
     return 0;
 }
 
+int bw_setup_install_game(const char *rom, BwGame want,
+                          int allow_unverified, int remember,
+                          BwProgressFn progress, void *ctx,
+                          BwSetupOutcome *outcome, char *dir_out, size_t dir_len,
+                          char *msg, size_t msg_len)
+{
+    char code[5], dir[BW_SETUP_PATH_MAX];
+    BwGame game;
+
+    if (dir_out != NULL && dir_len > 0) {
+        dir_out[0] = '\0';
+    }
+    if (bw_rom_peek_code(rom, code) != 0) {
+        /* not readable as a cartridge: the install says why, in its own
+         * words, and writes nothing */
+        code[0] = '\0';
+    }
+    game = bw_setup_game_of_code(code);
+    if (want != BW_GAME_UNKNOWN && game != BW_GAME_UNKNOWN && game != want) {
+        if (outcome != NULL) {
+            memset(outcome, 0, sizeof(*outcome));
+            outcome->stage = BW_STAGE_VERDICT;
+            outcome->other_game = 1;
+        }
+        say(msg, msg_len, "This ROM is Pokemon %s. Choose your Pokemon %s ROM.",
+            bw_setup_game_title(game), bw_setup_game_title(want));
+        return -1;
+    }
+    if (bw_setup_place_for(code[0] != '\0' ? code : "IRBO", dir, sizeof(dir)) != 0) {
+        say(msg, msg_len, "This platform has no default place for the game data; "
+                          "pass --data-root.");
+        return -1;
+    }
+    if (dir_out != NULL && copy(dir_out, dir_len, dir) != 0) {
+        dir_out[0] = '\0';
+    }
+    {
+        int rc = bw_setup_install(rom, dir, allow_unverified, 0, progress, ctx, outcome, msg, msg_len);
+
+        if (rc == 0 && remember && bw_setup_remember_game(dir, rom) != 0) {
+            say(msg, msg_len, "The game data is ready, but the settings file could "
+                "not be written.");
+        }
+        return rc;
+    }
+}
+
 static int stderr_bar(void *ctx, u32 done, u32 total, const char *what)
 {
     static int last = -1;
@@ -545,9 +978,28 @@ static int stderr_bar(void *ctx, u32 done, u32 total, const char *what)
             fputc('\n', stderr);
         }
         fflush(stderr);
+        if (getenv("RECOMPLAUNCHER") != NULL) {
+            /* RecompLauncher's setup step reads whole lines from the
+             * output: "progress <0 to 1> <text>".  The check is the first
+             * half of the bar, the writing the second. */
+            printf("progress %.2f %s\n", (hashing ? 0.0 : 0.5) + pct / 200.0,
+                   hashing ? "Checking your ROM" : "Writing the game data");
+            fflush(stdout);
+        }
         last = pct;
     }
     return 0;
+}
+
+/* The setup step is done.  A folder that held this ROM's data already has
+ * nothing written, so the bar stopped at the end of the check: its last
+ * line says the whole of it. */
+static void bar_end(void)
+{
+    if (getenv("RECOMPLAUNCHER") != NULL) {
+        printf("progress 1.00 The game data is ready\n");
+        fflush(stdout);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -672,15 +1124,19 @@ static const char *source_name(int s)
     case BW_SOURCE_FLAG:   return "--data-root";
     case BW_SOURCE_ENV:    return "BW_DATA_ROOT";
     case BW_SOURCE_CONFIG: return "the saved settings";
+    case BW_SOURCE_GAME:   return "--game";
+    case BW_SOURCE_LAST:   return "the game played last";
     default:               return "the default place";
     }
 }
 
 int bw_setup_prepare(const BwSetupRequest *req, BwSetupResolved *out)
 {
+    char made[BW_SETUP_PATH_MAX];       /* the folder --rom made here */
     char msg[1024];
     BwSetupRequest none;
 
+    made[0] = '\0';
     if (req == NULL) {
         memset(&none, 0, sizeof(none));
         req = &none;
@@ -699,7 +1155,38 @@ int bw_setup_prepare(const BwSetupRequest *req, BwSetupResolved *out)
         fprintf(rc == 0 ? stdout : stderr, "eidos: %s\n", msg);
         return rc == 0 ? BW_PREPARE_EXIT_OK : BW_PREPARE_FAILED;
     }
-    if (req->rom != NULL) {
+    if (out->state == BW_ROOT_OTHER_GAME) {
+        fprintf(stderr, "eidos: %s\n", out->why);
+        return BW_PREPARE_FAILED;
+    }
+    if (req->rom != NULL && out->source != BW_SOURCE_FLAG && out->source != BW_SOURCE_ENV) {
+        /* the install's own data: each cartridge in its own folder, so a
+         * second game's ROM never replaces the first game's data */
+        char dir[BW_SETUP_PATH_MAX];
+
+        printf("eidos: making the game data from %s\n", req->rom);
+        fflush(stdout);
+        if (bw_setup_install_game(req->rom, (BwGame)req->game, 0, 1, stderr_bar, NULL,
+                                  NULL, dir, sizeof(dir), msg, sizeof(msg)) != 0) {
+            fprintf(stderr, "eidos: %s\n", msg);
+            return BW_PREPARE_FAILED;
+        }
+        printf("eidos: the game data is in %s\n", dir);
+        fflush(stdout);
+        bar_end();
+        (void)copy(made, sizeof(made), dir);
+    } else if (req->rom != NULL) {
+        char code[5];
+
+        /* a folder named for this run: the ROM's data goes there, as asked */
+        if (req->game != BW_GAME_UNKNOWN && bw_rom_peek_code(req->rom, code) == 0
+            && bw_setup_game_of_code(code) != BW_GAME_UNKNOWN
+            && bw_setup_game_of_code(code) != (BwGame)req->game) {
+            fprintf(stderr, "eidos: this ROM is Pokemon %s, and --game asks for Pokemon %s.\n",
+                    bw_setup_game_title(bw_setup_game_of_code(code)),
+                    bw_setup_game_title((BwGame)req->game));
+            return BW_PREPARE_FAILED;
+        }
         printf("eidos: making the game data in %s from %s\n",
                out->extract_dir, req->rom);
         fflush(stdout);
@@ -709,6 +1196,7 @@ int bw_setup_prepare(const BwSetupRequest *req, BwSetupResolved *out)
             fprintf(stderr, "eidos: %s\n", msg);
             return BW_PREPARE_FAILED;
         }
+        bar_end();
     } else if (out->state == BW_ROOT_OLD && out->rom[0] != '\0'
                && bw_path_kind_utf8(out->rom) == BW_PATH_FILE && req->no_window) {
         printf("eidos: %s\neidos: making it again from %s\n", out->why, out->rom);
@@ -719,10 +1207,14 @@ int bw_setup_prepare(const BwSetupRequest *req, BwSetupResolved *out)
             fprintf(stderr, "eidos: %s\n", msg);
             return BW_PREPARE_FAILED;
         }
+        bar_end();
     }
     if (req->rom != NULL || out->state != BW_ROOT_OK) {
         BwSetupRequest again = *req;
         again.rom = NULL;
+        if (made[0] != '\0') {
+            again.data_root = made;     /* this start plays what it made */
+        }
         if (bw_setup_resolve(&again, out) != 0) {
             return BW_PREPARE_FAILED;
         }
@@ -733,11 +1225,18 @@ int bw_setup_prepare(const BwSetupRequest *req, BwSetupResolved *out)
     if (!req->no_window) {
         return BW_PREPARE_WIZARD;
     }
+    if (out->source == BW_SOURCE_GAME) {
+        fprintf(stderr,
+                "eidos: %s\n"
+                "eidos: start eidos with --rom <your Pokemon %s ROM> to make it.\n",
+                out->why, bw_setup_game_title((BwGame)req->game));
+        return BW_PREPARE_FAILED;
+    }
     fprintf(stderr,
             "eidos: no playable game data (looked in %s, from %s).\n"
             "eidos: %s\n"
-            "eidos: start eidos with --rom <your Pokemon Black ROM> to make it, or run\n"
-            "         eidos_extract <your Pokemon Black ROM> \"%s\"\n",
+            "eidos: start eidos with --rom <your Pokemon Black or White ROM> to make it, or run\n"
+            "         eidos_extract <your Pokemon Black or White ROM> \"%s\"\n",
             out->extract_dir, source_name(out->source), out->why, out->extract_dir);
     return BW_PREPARE_FAILED;
 }
