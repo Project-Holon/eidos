@@ -865,6 +865,34 @@ static void boot_gpu3d(BootRun *run, int behind_done)
     static const char *last_why;
     const char *why = "";
 
+    if (run->plat != NULL) {
+        /* Around a DS screen shown as a rectangle: black under that screen's
+         * own master brightness (MASTER_BRIGHT, 0x0400006C the main engine's,
+         * 0x0400106C the sub engine's; POWCNT1 bit 15 puts the main engine
+         * on the upper screen), every frame: a fade to white whitens the
+         * whole window, and black stays black whatever the last 3D frame
+         * was. */
+        int main_top = (bw_io_read16(0x04000304u) & 0x8000u) != 0, sc;
+        u32 main_level = 0;
+
+        for (sc = 0; sc < 2; sc++) {
+            u32 bright = bw_io_read16((sc == 0) == main_top ? 0x0400006Cu : 0x0400106Cu);
+            u32 f = bright & 0x1Fu, level;
+
+            f = f > 16u ? 16u : f;
+            level = ((bright >> 14) & 3u) == 1u ? 255u * f / 16u : 0u;
+            eidos_platform_set_screen_fill(run->plat, sc, level);
+            if ((sc == 0) == main_top) {
+                main_level = level;
+            }
+        }
+        /* The world beyond the DS screen the same way, until this frame's
+         * 3D sets its own backdrop (boot_world_backdrop, below): a frame
+         * with no 3D (the logos after a restart, shown for a moment in the
+         * view held from before it) has no world, and kept the colour of
+         * the last frame that had one. */
+        eidos_platform_set_world_backdrop(run->plat, main_level * 0x010101u);
+    }
     boot_gpu3d_do(run, behind_done, &why);
     if (run->plat != NULL && eidos_platform_gpu3d(run->plat) && (run->gpu3d_ok != last || (!run->gpu3d_ok && why != last_why))) {
         const G3dSnapshot *snap = g3d_hw_snapshot();

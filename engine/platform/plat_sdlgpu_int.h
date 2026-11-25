@@ -70,6 +70,7 @@ typedef struct SdlGpu {
     int has_box;                /* the world in `box`, not the window    */
     SDL_Rect box;               /* (window pixels; ds is from its corner) */
     float bd[3];                /* the backdrop beyond the DS screen     */
+    float fill[2];              /* around a DS rectangle, by screen      */
     SDL_Rect prect;             /* the panel's rectangle, w 0: none      */
 
     /* the 3D layer over a screen (plat_gl.c's s3d and its pictures) */

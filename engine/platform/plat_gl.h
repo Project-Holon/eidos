@@ -148,6 +148,7 @@ void eidos_gl_set_3d2d_shown(EidosGl *gl, int w, int h);
 /* The one-screen world's colour beyond the DS screen where no 3D is: the
  * screen's backdrop with its master brightness, 0xRRGGBB. */
 void eidos_gl_set_world_backdrop(EidosGl *gl, unsigned rgb);
+void eidos_gl_set_screen_fill(EidosGl *gl, int screen, unsigned level);
 /* The same screen composed with an opaque black 3D layer (w x h RGBA), so
  * the presenter can tell what a 2D layer adds over the 3D and how much of
  * the 3D shows through a blend; NULL for none.  Call before eidos_gl_set_3d. */

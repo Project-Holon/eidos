@@ -451,6 +451,7 @@ static struct {
     GLint w_tex, w_behind, w_g3d, w_zero, w_texsize, w_dsr, w_win, w_bmode,
           w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect, w_bd, w_held, w_under, w_vpy, w_vpx;
     float bd[3];                   /* the backdrop colour beyond the DS screen */
+    float fill[2];                 /* around a DS rectangle, by screen (eidos_gl_set_screen_fill) */
     GLint b_src, b_win, b_dir, b_tint, b_rect;
     GLint u_ctex, u_rect;
     GLuint ctex;                   /* the canvas */
@@ -1134,6 +1135,14 @@ void eidos_gl_set_world_backdrop(EidosGl *g, unsigned rgb)
     g_one.bd[2] = (float)(rgb & 255u) / 255.f;
 }
 
+void eidos_gl_set_screen_fill(EidosGl *g, int screen, unsigned level)
+{
+    (void)g;
+    if (screen == 0 || screen == 1) {
+        g_one.fill[screen] = (float)(level > 255u ? 255u : level) / 255.f;
+    }
+}
+
 void eidos_gl_set_3d2d_shown(EidosGl *g, int w, int h)
 {
     if (g != NULL) {
@@ -1769,8 +1778,9 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         memset(d, 0, sizeof(d));
         d[s] = g_one.ds;
         /* around it, black as the game's brightness has it: a fade to
-         * white whitens the whole window, not only the DS rectangle */
-        g_frame_clear = g_one.no_fade ? 0.f : (g_one.bd[0] + g_one.bd[1] + g_one.bd[2]) / 3.f;
+         * white whitens the whole window, not only the DS rectangle (the
+         * shown screen's own brightness, set every frame) */
+        g_frame_clear = g_one.no_fade ? 0.f : g_one.fill[s & 1];
         {
             int vy = g_vp_y;
 

@@ -621,7 +621,7 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
             /* no window-size 3D this frame: the screen as it is, at the DS
              * rectangle, around it the backdrop as the brightness has it */
             SDL_Rect d[2];
-            float clear = s->no_fade ? 0.f : (s->bd[0] + s->bd[1] + s->bd[2]) / 3.f;
+            float clear = s->no_fade ? 0.f : s->fill[sc & 1];
 
             memset(d, 0, sizeof d);
             d[sc] = s->ds;
@@ -889,6 +889,15 @@ static void op_set_world_backdrop(EidosGpu *g, unsigned rgb)
     s->bd[0] = (float)((rgb >> 16) & 0xFFu) / 255.f;
     s->bd[1] = (float)((rgb >> 8) & 0xFFu) / 255.f;
     s->bd[2] = (float)(rgb & 0xFFu) / 255.f;
+}
+
+static void op_set_screen_fill(EidosGpu *g, int screen, unsigned level)
+{
+    SdlGpu *s = sg(g);
+
+    if (screen == 0 || screen == 1) {
+        s->fill[screen] = (float)(level > 255u ? 255u : level) / 255.f;
+    }
 }
 
 static void op_set_3d_zero(EidosGpu *g, const unsigned char *zero, int w, int h)
@@ -1165,6 +1174,7 @@ static const EidosGpuOps g_sdlgpu_ops = {
     op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
     op_read3d_1x,
     op_set_vsync,
+    op_set_screen_fill,
 };
 
 /*

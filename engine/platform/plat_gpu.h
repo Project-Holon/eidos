@@ -86,6 +86,12 @@ typedef struct EidosGpuOps {
     /* The present waits for the display's vblank (on), at most one frame
      * queued, or shows at once (off: the game's pacer alone times it). */
     void (*set_vsync)(EidosGpu *g, int on);
+
+    /* The grey level (0 black .. 255 white) around DS screen `screen` (0
+     * the upper, 1 the lower) when the one-screen layout shows that screen
+     * as a DS rectangle: black under that screen's master brightness, so a
+     * fade to white whitens the whole window and black stays black. */
+    void (*set_screen_fill)(EidosGpu *g, int screen, unsigned level);
 } EidosGpuOps;
 
 /* The head of every backend's state. */
@@ -173,6 +179,8 @@ static inline void eidos_gpu_set_3d2d_shown(EidosGpu *g, int w, int h)
 { g->ops->set_3d2d_shown(g, w, h); }
 static inline void eidos_gpu_set_world_backdrop(EidosGpu *g, unsigned rgb)
 { g->ops->set_world_backdrop(g, rgb); }
+static inline void eidos_gpu_set_screen_fill(EidosGpu *g, int screen, unsigned level)
+{ g->ops->set_screen_fill(g, screen, level); }
 static inline void eidos_gpu_set_3d_zero(EidosGpu *g, const unsigned char *zero, int w, int h)
 { g->ops->set_3d_zero(g, zero, w, h); }
 static inline int eidos_gpu_read3d(EidosGpu *g, unsigned char *out, int w, int h)

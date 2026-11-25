@@ -86,6 +86,9 @@ static void op_set_vsync(EidosGpu *g, int on)
     eidos_gl_set_vsync(gl(g), on);
 }
 
+static void op_set_screen_fill(EidosGpu *g, int screen, unsigned level)
+{ eidos_gl_set_screen_fill(gl(g), screen, level); }
+
 static const EidosGpuOps g_gl_ops = {
     "OpenGL",
     op_destroy,
@@ -98,6 +101,7 @@ static const EidosGpuOps g_gl_ops = {
     op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
     op_read3d_1x,
     op_set_vsync,
+    op_set_screen_fill,
 };
 
 EidosGpu *eidos_gpu_create_gl(SDL_Window *window)

@@ -556,6 +556,9 @@ int  eidos_platform_set_3d2d(EidosPlatform *p, int screen, const struct G3dSnaps
 /* The one-screen world's colour beyond the DS screen where no 3D is (the
  * screen's backdrop under its master brightness), 0xRRGGBB. */
 void eidos_platform_set_world_backdrop(EidosPlatform *p, u32 rgb);
+/* The grey level around DS screen `screen` (0 upper, 1 lower) when it shows
+ * as a DS rectangle in the one-screen layout (plat_gpu.h, set_screen_fill). */
+void eidos_platform_set_screen_fill(EidosPlatform *p, int screen, u32 level);
 /* The same for the one-screen world: its own composite (the 3D at the
  * window's shape), with the screen, the screen with the 3D off and the one
  * over black made by the 2D shader at the next present instead of the CPU.
