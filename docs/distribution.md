@@ -22,7 +22,7 @@ Nothing here is built yet unless it says so. The launcher is described in `docs/
 | eidos versions in the launcher | Downloaded from GitHub Releases into the user folder; any older version can be installed and launched. |
 | Invite links | `eidos://join/<code>`. The launcher registers them at install; a plain eidos asks once on first run. |
 | Joining a game with other versions or mods | The launcher offers to match: it gets that version and those mods into a profile for the session, then joins. |
-| Mods without the launcher | The game has its own mod manager for a game no launcher starts: a phone, a console (always on), or a plain eidos started with `--mods` (a third-party launcher's start options). A MODS button at the title menu's top left opens it. A game the launcher starts does not show it: the launcher manages the mods of its profiles. |
+| Mods without the launcher | The game has its own mod manager for a game no launcher starts: a phone, a console (always on), or a plain eidos started with `--mods` (a third-party launcher's start options). A MODS button at the title menu's top left opens it: the installed mods with a switch each, and the mods of the official index that work with this game, to get, update and remove. It reads the index and downloads over https by itself (`sdk/mod_catalog.h`), with the launcher's own checks (size, SHA-256, the package limits) and the launcher's own folders, so the two agree on what is installed. A game the launcher starts does not show it: the launcher manages the mods of its profiles. |
 | Where mods come from | The official mods index: a public repository of mod entries. Authors add a mod or a new version by pull request; the maintainers merge it. |
 | kenon | Optional, for people who make mods. It is not needed to play. |
 
@@ -104,6 +104,36 @@ mods/<mod id>/
 - The maintainers merge it. The launcher reads the index (a generated
   `index.json` on the repository's pages) and downloads from the URLs it
   lists, checking every SHA-256.
+
+## The game's own mod manager (built)
+
+For a game that no launcher starts. The model is `sdk/mod_catalog.c`; the
+screen is the title menu's MODS window (`engine/ui/recipe_title.c`).
+
+- It reads the same index and the same release files as the launcher, and
+  lists a mod only when the mod works with this game: the loaded game
+  (Black or White), the mod interface this eidos speaks, and code mods only
+  where the build runs them.
+- An install downloads `mod.json` and `mod.bw`, refuses the package when
+  its size or SHA-256 differ from `mod.json`, unpacks it beside the
+  installed mods and moves it into `mods/` with the launcher's own
+  `katalogos.json`. A copy the launcher holds switched off
+  (`mods-disabled/`) is replaced and the mod is on. A folder of the same
+  name that the player made by hand is never touched: the install stops.
+- The downloads are https (`sdk/net_https.c`), TLS 1.2 or newer with Mbed
+  TLS, the server's certificate checked against a fixed list of roots
+  (`sdk/tls_roots.c`: the ones GitHub's servers answer with). A server
+  that moves to another root is refused until the list is updated;
+  `EIDOS_TLS_CA=<pem file>` adds a root.
+- One connection to each server is kept open while a list is read:
+  github.com drops some of the connections one address makes in quick
+  succession. A failed connect is tried three times.
+- The network work runs on a worker thread and the unpacking on the thread
+  beside the game, so the game goes on meanwhile.
+- A removal switches the mod off and unloads its code, then deletes its
+  folder. What the mod saved for the player's games stays.
+- Not done here: the launcher's way round a failing GitHub download service
+  (the same file through GitHub's API), and a mod's own icon.
 
 ## Release pipeline
 

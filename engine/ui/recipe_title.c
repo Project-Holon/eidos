@@ -1826,15 +1826,71 @@ extern int         bw_mod_menu_set_enabled(u32 index, int on) TT_WEAK;
 extern int         bw_mod_menu_dirty(void) TT_WEAK;
 extern int         bw_mod_menu_apply(void) TT_WEAK;
 
+/* The mods index (sdk/mod_catalog.h): the mods the player can get.  The
+ * numbers are that header's states. */
+extern const char *bw_mod_menu_root_at(u32 index) TT_WEAK;
+extern void        bw_mod_catalog_read(unsigned fresh_s) TT_WEAK;
+extern int         bw_mod_catalog_poll(void) TT_WEAK;
+extern const char *bw_mod_catalog_error(void) TT_WEAK;
+extern u32         bw_mod_catalog_count(void) TT_WEAK;
+extern const char *bw_mod_catalog_id_at(u32 index) TT_WEAK;
+extern const char *bw_mod_catalog_name_at(u32 index) TT_WEAK;
+extern const char *bw_mod_catalog_author_at(u32 index) TT_WEAK;
+extern const char *bw_mod_catalog_version_at(u32 index) TT_WEAK;
+extern const char *bw_mod_catalog_about_at(u32 index) TT_WEAK;
+extern unsigned long long bw_mod_catalog_size_at(u32 index) TT_WEAK;
+extern int         bw_mod_catalog_installed_at(u32 index) TT_WEAK;
+extern const char *bw_mod_catalog_root_at(u32 index) TT_WEAK;
+extern int         bw_mod_catalog_install(u32 index) TT_WEAK;
+extern int         bw_mod_catalog_job(int *index, unsigned long long *got, unsigned long long *total) TT_WEAK;
+extern const char *bw_mod_catalog_job_error(void) TT_WEAK;
+extern int         bw_mod_catalog_finish(void) TT_WEAK;
+extern void        bw_mod_catalog_stop(void) TT_WEAK;
+extern int         bw_mod_catalog_can_remove(const char *root) TT_WEAK;
+extern int         bw_mod_catalog_remove(const char *root) TT_WEAK;
+
+enum { CAT_NONE, CAT_READING, CAT_READY, CAT_FAILED };
+enum { JOB_NONE, JOB_DOWNLOADING, JOB_UNPACKING, JOB_DONE, JOB_FAILED };
+
 #define MODS_MAX 64
 #define MODS_ROW 36
 #define MODS_GAP 4
+#define MODS_ROWS_MAX (2 * MODS_MAX + 8)
+
+/* What a line of the list is. */
+enum {
+    MROW_MOD,                   /* an installed mod: ref its place in the mod list   */
+    MROW_GET,                   /* a mod of the index: ref its place in the index    */
+    MROW_NOTE                   /* a line of text: ref 0 reading, 1 failed, 2 none there, 3 none installed */
+};
+
+typedef struct ModsLine {
+    int kind, ref;
+    int y, h;                   /* its place in the list, from the list's top */
+} ModsLine;
 
 static int g_mods_open, g_mods_cur, g_mods_first, g_mods_cool;
+static int g_mods_tab;                  /* the tab shown: 0 installed, 1 available       */
+static int g_mods_ask;                  /* the remove question is up; its choice in g_mods_ask_cur */
+static int g_mods_ask_cur;
+static char g_mods_ask_root[1024];      /* the folder the question is about              */
+static char g_mods_ask_name[64];
+static int g_mods_job_sent;             /* the job's end was handed to the game's thread */
+static int g_mods_wait;                 /* 1: an install was asked of the game's thread; 2: it runs */
+static int g_mods_stopped;              /* the player stopped the download: its end is no error */
+static char g_mods_follow[112];         /* the index id of the mod just installed: the list's choice goes to it */
+static char g_mods_note[200];           /* what went wrong last, and the index id it is about */
+static char g_mods_note_id[112];
 
 static int mods_on(void)
 {
     return bw_mod_menu_manager != NULL && bw_mod_menu_count != NULL && bw_mod_menu_manager();
+}
+
+/* The index is in this build (the tests link the screen without it). */
+static int mods_cat(void)
+{
+    return bw_mod_catalog_read != NULL && bw_mod_catalog_poll != NULL;
 }
 
 /* The mods the window lists, as indices of the mod list: those whose files
@@ -1896,6 +1952,14 @@ static void mods_show(void)
     g_mods_open = 1;
     g_mods_cur = 0;
     g_mods_first = 0;
+    g_mods_tab = mods_cat() ? 1 : 0;    /* it opens on the mods to get */
+    g_mods_ask = 0;
+    g_mods_note[0] = '\0';
+    g_mods_follow[0] = '\0';
+    g_mods_wait = 0;
+    if (mods_cat()) {
+        bw_mod_catalog_read(600);       /* the index, unless read in the last ten minutes */
+    }
     eidos_ui_sound(0x54C);
     eidos_ui_crossfade();
 }
@@ -1907,10 +1971,44 @@ static void mods_apply(void *arg)
     (void)bw_mod_menu_apply();
 }
 
+/* On the game's thread: the index's work that changes the mod list. */
+static void mods_install_call(void *arg)
+{
+    if (bw_mod_menu_dirty()) {
+        (void)bw_mod_menu_apply();      /* (the install's end reads the list again: the switches first) */
+    }
+    if (bw_mod_catalog_install((u32)(uintptr_t)arg) != 0) {
+        snprintf(g_mods_note, sizeof g_mods_note, "%s", ui_tr("The download could not start."));
+        g_mods_wait = 0;
+    }
+}
+
+static void mods_finish_call(void *arg)
+{
+    (void)arg;
+    (void)bw_mod_catalog_finish();
+    g_mods_job_sent = 0;
+}
+
+static void mods_remove_call(void *arg)
+{
+    (void)arg;
+    if (bw_mod_menu_dirty()) {
+        (void)bw_mod_menu_apply();
+    }
+    if (bw_mod_catalog_remove(g_mods_ask_root) != 0) {
+        snprintf(g_mods_note, sizeof g_mods_note, "%s", bw_mod_catalog_job_error());
+        g_mods_note_id[0] = '\0';
+    }
+}
+
 static void mods_close(void)
 {
     if (bw_mod_menu_dirty()) {
         (void)eidos_ui_game_call(mods_apply, NULL);
+    }
+    if (mods_cat()) {
+        bw_mod_catalog_stop();          /* (a list still being read) */
     }
     g_mods_open = 0;
     g_mods_cool = 15;
@@ -1924,34 +2022,165 @@ static void mods_turn(u32 index)
     eidos_ui_sound(0x54C);
 }
 
-typedef struct ModsWrap { EidosUiCtx *c; int x, y, max_y; } ModsWrap;
+typedef struct ModsWrap { EidosUiCtx *c; int x, y, w, max_y; u32 ink; } ModsWrap;
 
 static void mods_wrap_line(void *user, const char *start, int len)
 {
     ModsWrap *o = (ModsWrap *)user;
     char buf[160];
 
-    if (len >= (int)sizeof(buf)) {
-        len = (int)sizeof(buf) - 1;
+    if (len >= (int)sizeof(buf) - 3) {
+        len = (int)sizeof(buf) - 4;
     }
     memcpy(buf, start, (size_t)len);
     buf[len] = '\0';
+    if (o->y + 32 > o->max_y && start[len] != '\0') {
+        /* the last line there is room for, and the text goes on: it says so */
+        size_t n = (size_t)len;
+
+        for (;;) {
+            while (n > 0 && buf[n - 1] == ' ') {
+                n--;
+            }
+            memcpy(buf + n, "...", 4);
+            if (n == 0 || ui_text_w(buf, UI_FONT_LARGE) <= o->w) {
+                break;
+            }
+            do {
+                n--;
+            } while (n > 0 && ((unsigned char)buf[n] & 0xC0) == 0x80);
+        }
+    }
     if (o->y + 16 <= o->max_y) {
-        ui_text(o->c, o->x, o->y, buf, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(o->c, o->x, o->y, buf, o->ink, UI_EDGE, UI_FONT_LARGE, 1);
     }
     o->y += 16;
+}
+
+/* The text, or its start with "..." when it is wider than `width` (cut at
+ * a whole character, into `buf`). */
+static const char *mods_fit(const char *text, int width, int font, char *buf, size_t size)
+{
+    size_t n, most = (size_t)(width / 2 + 8);   /* (no letter is narrower than two rows) */
+
+    if (ui_text_w(text, font) <= width) {
+        return text;
+    }
+    if (most > size - 4) {
+        most = size - 4;
+    }
+    snprintf(buf, most + 1, "%s", text);
+    n = strlen(buf);
+    while (n > 0) {
+        do {
+            n--;
+        } while (n > 0 && ((unsigned char)buf[n] & 0xC0) == 0x80);
+        while (n > 0 && buf[n - 1] == ' ') {
+            n--;
+        }
+        memcpy(buf + n, "...", 4);
+        if (ui_text_w(buf, font) <= width) {
+            break;
+        }
+    }
+    return buf;
+}
+
+/* A size for a person: "827 KB", "24.0 MB". */
+static void mods_size_text(unsigned long long bytes, char *out, size_t size)
+{
+    if (bytes >= 1024ull * 1024ull) {
+        unsigned long long tenths = bytes * 10ull / (1024ull * 1024ull);
+
+        snprintf(out, size, "%llu.%llu MB", tenths / 10ull, tenths % 10ull);
+    } else {
+        snprintf(out, size, "%llu KB", (bytes + 1023ull) / 1024ull);
+    }
+}
+
+/* The index's mod that is installed in `root`, or -1. */
+static int mods_cat_of(const char *root)
+{
+    u32 i, n;
+
+    if (!mods_cat() || root[0] == '\0') {
+        return -1;
+    }
+    n = bw_mod_catalog_count();
+    for (i = 0; i < n; i++) {
+        if (bw_mod_catalog_installed_at(i) != 0 && strcmp(bw_mod_catalog_root_at(i), root) == 0) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+/*
+ * The list's lines for this frame, and how many.  `tab`: 0 the installed
+ * mods, 1 the index's.  `counts`: how many installed mods and how many of
+ * the index are listed.
+ */
+static int mods_lines(ModsLine *line, int tab, const u32 *idx, int n_inst, int cat_state, int counts[2])
+{
+    int n = 0, y = 0, i;
+    u32 total = mods_cat() ? bw_mod_catalog_count() : 0, k;
+
+#define MODS_ADD(k_, ref_, h_, gap_) do { line[n].kind = (k_); line[n].ref = (int)(ref_); line[n].y = y; \
+                                          line[n].h = (h_); n++; y += (h_) + (gap_); } while (0)
+    counts[0] = n_inst;
+    counts[1] = 0;
+    for (k = 0; k < total; k++) {
+        counts[1] += bw_mod_catalog_installed_at(k) == 0;
+    }
+    if (tab != 1) {
+        for (i = 0; i < n_inst; i++) {
+            MODS_ADD(MROW_MOD, idx[i], MODS_ROW, MODS_GAP);
+        }
+        if (n_inst == 0) {
+            MODS_ADD(MROW_NOTE, 3, 20, MODS_GAP);
+        }
+    }
+    if (tab != 0 && mods_cat()) {
+        for (k = 0; k < total && n < MODS_ROWS_MAX - 2; k++) {
+            if (bw_mod_catalog_installed_at(k) == 0) {
+                MODS_ADD(MROW_GET, k, MODS_ROW, MODS_GAP);
+            }
+        }
+        if (cat_state == CAT_READING || cat_state == CAT_NONE) {
+            MODS_ADD(MROW_NOTE, 0, 20, MODS_GAP);
+        } else if (cat_state == CAT_FAILED) {
+            MODS_ADD(MROW_NOTE, 1, MODS_ROW, MODS_GAP);
+        } else if (counts[1] == 0) {
+            MODS_ADD(MROW_NOTE, 2, 20, MODS_GAP);
+        }
+    }
+#undef MODS_ADD
+    return n;
+}
+
+/* Can the pad's choice stand on this line? */
+static int mods_can_choose(const ModsLine *l)
+{
+    return l->kind == MROW_MOD || l->kind == MROW_GET || (l->kind == MROW_NOTE && l->ref == 1);
 }
 
 /* The window in the title menu's place.  1 while it is up: the menu is not
  * drawn and takes no key. */
 static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, int W, int H, int ready)
 {
-    static const char *const hints[] = { "A", "On / Off", "\xE2\x86\x91\xE2\x86\x93", "Mod", "B", "Back" };
-    static const u32 hint_keys[] = { BW_KEY_A, BW_KEY_DOWN, BW_KEY_B };
+    static ModsLine line[MODS_ROWS_MAX];
+    const char *hints[12];
+    u32 hint_keys[6];
     u32 k = eidos_ui_keys_pressed(), idx[MODS_MAX];
-    int bar = ui_bar_h(c), n, on, i, x0, y0, ww, wh, top, foot, lx, lw, vis, px, pw, turn = -1;
+    int bar = ui_bar_h(c), n_inst, on, i, x0, y0, ww, wh, top, foot, lx, lw, px, pw, nl, counts[2];
+    int cat_state = CAT_NONE, job = JOB_NONE, job_cat = -1, busy, tabs = mods_cat();
+    int list_h, all_h, cur_y = 0, cur_h = 0, nh = 0, act = 0, act_line = -1, follow_now = 0;
+    /* a row is the style's own card where it has one, its text past the card's cap */
+    const int chip = ui_theme_active() != NULL && ui_theme_active()->mp_part != NULL;
+    const int tpad = chip ? 5 + (ui_theme_active()->mp_pad > 0 ? ui_theme_active()->mp_pad : 8) + 4 : 10;
+    unsigned long long job_got = 0, job_total = 0;
     EidosUiRect list;
-    char right[32];
+    char right[48];
 
     (void)view;
     if (!mods_on()) {
@@ -1971,16 +2200,78 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
         k = 0;
     }
     eidos_ui_take_keys(BW_KEY_GAME);
-    n = mods_listed(idx, &on);
-    if (g_mods_cur >= n) {
-        g_mods_cur = n > 0 ? n - 1 : 0;
+
+    /* the index's state, and an install's end handed to the game's thread */
+    if (mods_cat()) {
+        cat_state = bw_mod_catalog_poll();
+        job = bw_mod_catalog_job(&job_cat, &job_got, &job_total);
+        if ((job == JOB_DONE || job == JOB_FAILED) && !g_mods_job_sent) {
+            if (job == JOB_FAILED) {
+                snprintf(g_mods_note, sizeof g_mods_note, "%s", g_mods_stopped ? "" : bw_mod_catalog_job_error());
+            } else {
+                g_mods_note[0] = '\0';
+                g_mods_tab = 0;         /* the new mod is among the installed ones */
+            }
+            g_mods_job_sent = eidos_ui_game_call(mods_finish_call, NULL);
+        }
     }
-    if ((k & BW_KEY_DOWN) && g_mods_cur + 1 < n) {
-        g_mods_cur++;
+    if (g_mods_wait == 1 && job != JOB_NONE) {
+        g_mods_wait = 2;
+    } else if (g_mods_wait == 2 && job == JOB_NONE && !g_mods_job_sent) {
+        g_mods_wait = 0;                /* it ended, and the mod list was read again */
+        follow_now = 1;
+    }
+    busy = job != JOB_NONE || g_mods_wait != 0;
+    if (tabs && !busy && !g_mods_ask && (k & (BW_KEY_L | BW_KEY_R | BW_KEY_LEFT | BW_KEY_RIGHT))) {
+        g_mods_tab = (k & (BW_KEY_R | BW_KEY_RIGHT)) ? 1 : 0;
+        g_mods_cur = 0;
+        g_mods_first = 0;
         eidos_ui_sound(0x548);
-    } else if ((k & BW_KEY_UP) && g_mods_cur > 0) {
-        g_mods_cur--;
-        eidos_ui_sound(0x548);
+    }
+
+    n_inst = mods_listed(idx, &on);
+    nl = mods_lines(line, tabs ? g_mods_tab : 0, idx, n_inst, cat_state, counts);
+
+    /* the list's choice goes to the mod that was just installed */
+    if (follow_now && g_mods_follow[0] != '\0') {
+        for (i = 0; i < nl; i++) {
+            if (line[i].kind == MROW_MOD) {
+                int ci = mods_cat_of(bw_mod_menu_root_at((u32)line[i].ref));
+
+                if (ci >= 0 && strcmp(bw_mod_catalog_id_at((u32)ci), g_mods_follow) == 0) {
+                    g_mods_cur = i;
+                    g_mods_follow[0] = '\0';
+                    break;
+                }
+            }
+        }
+        g_mods_follow[0] = '\0';        /* (it failed: the choice stays) */
+    }
+    /* the choice on a line it can stand on */
+    if (g_mods_cur >= nl) {
+        g_mods_cur = nl - 1;
+    }
+    if (g_mods_cur < 0) {
+        g_mods_cur = 0;
+    }
+    for (i = g_mods_cur; i < nl && !mods_can_choose(&line[i]); i++) {
+    }
+    if (i >= nl) {
+        for (i = g_mods_cur; i >= 0 && !mods_can_choose(&line[i]); i--) {
+        }
+    }
+    g_mods_cur = i;                     /* (-1: nothing to choose) */
+
+    if (!g_mods_ask && !busy) {
+        int step = (k & BW_KEY_DOWN) ? 1 : (k & BW_KEY_UP) ? -1 : 0;
+
+        for (i = g_mods_cur + step; step != 0 && i >= 0 && i < nl; i += step) {
+            if (mods_can_choose(&line[i])) {
+                g_mods_cur = i;
+                eidos_ui_sound(0x548);
+                break;
+            }
+        }
     }
 
     /* on the title's own floor, dimmed, as the style chooser is */
@@ -1997,85 +2288,222 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
     foot = y0 + wh - 8;
     lx = x0 + 8;
     lw = (ww - 16) * 44 / 100;
-    vis = (foot - top + MODS_GAP) / (MODS_ROW + MODS_GAP);
-    vis = vis < 1 ? 1 : vis;
+
+    /* the two tabs over the list */
+    if (tabs) {
+        int tx = lx, t;
+
+        for (t = 0; t < 2; t++) {
+            EidosUiRect tr;
+            char label[40];
+            int st;
+
+            if (t == 1 && cat_state != CAT_READY) {
+                /* (no count yet: the label says what the index does) */
+                snprintf(label, sizeof label, "%s %s", ui_tr("AVAILABLE"), cat_state == CAT_FAILED ? "!" : "...");
+            } else {
+                snprintf(label, sizeof label, t == 0 ? ui_trf("INSTALLED %d") : ui_trf("AVAILABLE %d"), counts[t]);
+            }
+            tr.x = tx;
+            tr.y = top;
+            tr.w = ui_text_w(label, UI_FONT_SMALL) + 16;
+            tr.h = 14;
+            st = eidos_ui_hit(tr);
+            tx += ui_tab(c, tx, top, label, t == g_mods_tab || (st & EIDOS_UI_HOVER) != 0,
+                         t == g_mods_tab ? UI_CYAN : UI_EDGE2, t == g_mods_tab ? UI_CYAN2 : UI_BODY2) + 3;
+            if ((st & EIDOS_UI_CLICK) && t != g_mods_tab && !busy && !g_mods_ask) {
+                g_mods_tab = t;
+                g_mods_cur = 0;
+                g_mods_first = 0;
+                eidos_ui_sound(0x548);
+            }
+        }
+        top += 14 + 5;
+    }
+
+    /* the list, scrolled by canvas rows */
+    list_h = foot - top;
+    all_h = nl > 0 ? line[nl - 1].y + line[nl - 1].h : 0;
     list.x = lx;
     list.y = top;
     list.w = lw + 8;
-    list.h = foot - top;
-    g_mods_first += eidos_ui_wheel(list);
-    if (k & (BW_KEY_UP | BW_KEY_DOWN)) {
-        /* the pad's choice stays in view */
-        if (g_mods_cur < g_mods_first) {
-            g_mods_first = g_mods_cur;
-        } else if (g_mods_cur >= g_mods_first + vis) {
-            g_mods_first = g_mods_cur - vis + 1;
+    list.h = list_h;
+    g_mods_first += eidos_ui_wheel(list) * (MODS_ROW + MODS_GAP);
+    if (g_mods_cur >= 0) {
+        cur_y = line[g_mods_cur].y;
+        cur_h = line[g_mods_cur].h;
+        if ((k & (BW_KEY_UP | BW_KEY_DOWN)) || busy) {
+            /* the pad's choice stays in view */
+            if (cur_y < g_mods_first) {
+                g_mods_first = cur_y;
+            } else if (cur_y + cur_h > g_mods_first + list_h) {
+                g_mods_first = cur_y + cur_h - list_h;
+            }
         }
     }
-    if (g_mods_first > n - vis) {
-        g_mods_first = n - vis;
+    if (g_mods_first > all_h - list_h) {
+        g_mods_first = all_h - list_h;
     }
     if (g_mods_first < 0) {
         g_mods_first = 0;
     }
-    if (n == 0) {
-        ui_text(c, lx + 4, top + 4, ui_tr("No mods are installed."), UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
-    }
-    for (i = g_mods_first; i < n && i < g_mods_first + vis; i++) {
-        EidosUiRect r, sw;
+    {
         EidosUiRect saved;
-        const char *line = bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(idx[i], 0) : "";
-        int st, st_sw, sel = i == g_mods_cur, is_on = bw_mod_menu_enabled_at(idx[i]) != 0;
 
-        r.x = lx;
-        r.y = top + (i - g_mods_first) * (MODS_ROW + MODS_GAP);
-        r.w = lw;
-        r.h = MODS_ROW;
-        sw.x = lx + lw - 34;
-        sw.y = r.y;
-        sw.w = 34;
-        sw.h = MODS_ROW;
-        st = eidos_ui_hit(r);
-        st_sw = eidos_ui_hit(sw);
-        ui_row(c, r.x, r.y, r.w, r.h, sel, (st & EIDOS_UI_HOVER) != 0, &UI_THEME_MENU);
         ui_push(c, 0, 0, &saved);
-        ui_clip(c, r.x + 6, r.y, r.w - 44, r.h);
-        /* (a mod with no description: its name alone, in the row's middle) */
-        ui_text(c, r.x + 10, line[0] != '\0' ? r.y + 3 : r.y + ui_text_y(MODS_ROW, UI_FONT_LARGE), bw_mod_menu_name_at(idx[i]),
-                UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
-        ui_text(c, r.x + 10, r.y + 19, line, UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
-        ui_pop(c, 0, 0, &saved);
-        ui_toggle(c, sw.x + 4, r.y + (MODS_ROW - 10) / 2, is_on, UI_CYAN);
-        if (st & EIDOS_UI_CLICK) {
-            if (sel || (st_sw & EIDOS_UI_CLICK)) {
-                turn = i;
-            } else {
-                eidos_ui_sound(0x548);
+        ui_clip(c, lx, top, lw, list_h);
+        for (i = 0; i < nl; i++) {
+            const ModsLine *l = &line[i];
+            EidosUiRect r, sw;
+            EidosUiRect saved2;
+            int st, sel = i == g_mods_cur;
+
+            r.x = lx;
+            r.y = top + l->y - g_mods_first;
+            r.w = lw;
+            r.h = l->h;
+            if (r.y + r.h <= top || r.y >= foot) {
+                continue;
             }
-            g_mods_cur = i;
+            if (l->kind == MROW_NOTE && l->ref != 1) {
+                const char *text = l->ref == 0 ? ui_tr("Reading the list of mods...")
+                                 : l->ref == 2 ? ui_tr("Every mod of the list is installed.")
+                                               : ui_tr("No mods are installed.");
+
+                if (l->ref == 0) {
+                    ui_spinner(c, r.x + 4, r.y + 4, (int)(in->frame / 6u), UI_CYAN);
+                }
+                ui_text(c, r.x + (l->ref == 0 ? 22 : 4), r.y + 3, text, UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+                continue;
+            }
+            {
+                EidosUiRect shown = r;
+
+                if (shown.y < top) {
+                    shown.h -= top - shown.y;
+                    shown.y = top;
+                }
+                if (shown.y + shown.h > foot) {
+                    shown.h = foot - shown.y;
+                }
+                st = (g_mods_ask || busy) ? 0 : eidos_ui_hit(shown);
+            }
+            if (chip) {
+                /* the style's own card (Plasma's leaning chip, its cap leaning with it), drawn a
+                 * little inside the row so its leaning ends stay in the list */
+                ui_theme_active()->mp_part(c, 0, r.x + 5, r.y, r.w - 10, r.h, sel, (st & EIDOS_UI_HOVER) != 0, 1);
+            } else {
+                ui_row(c, r.x, r.y, r.w, r.h, sel, (st & EIDOS_UI_HOVER) != 0, &UI_THEME_MENU);
+            }
+            ui_push(c, 0, 0, &saved2);
+            {
+                /* (the row's text, inside the part of the row the list shows) */
+                int cy0 = r.y < top ? top : r.y, cy1 = r.y + r.h > foot ? foot : r.y + r.h;
+
+                ui_clip(c, r.x + 6, cy0, r.w - 50, cy1 - cy0);
+            }
+            if (l->kind == MROW_NOTE) {
+                ui_text(c, r.x + tpad, r.y + 3, ui_tr("The list of mods could not be read."), UI_WHITE, UI_EDGE,
+                        UI_FONT_LARGE, 1);
+                {
+                    char why[200], fit[200];
+
+                    /* (the reason is written to follow a colon: here it stands alone) */
+                    snprintf(why, sizeof why, "%s", bw_mod_catalog_error());
+                    if (why[0] >= 'a' && why[0] <= 'z') {
+                        why[0] = (char)(why[0] - 'a' + 'A');
+                    }
+                    ui_text(c, r.x + tpad, r.y + 19, mods_fit(why, r.w - 10 - tpad, UI_FONT_LARGE, fit, sizeof fit),
+                            UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+                }
+                ui_pop(c, 0, 0, &saved2);
+                if (st & EIDOS_UI_CLICK) {
+                    act = sel ? 'A' : 0;
+                    act_line = i;
+                    g_mods_cur = i;
+                }
+                continue;
+            }
+            {
+                const char *name = l->kind == MROW_MOD ? bw_mod_menu_name_at((u32)l->ref)
+                                                       : bw_mod_catalog_name_at((u32)l->ref);
+                const char *about = l->kind == MROW_MOD
+                                    ? (bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at((u32)l->ref, 0) : "")
+                                    : bw_mod_catalog_about_at((u32)l->ref);
+                char fit[200];
+                int room = r.w - 48 - tpad;     /* up to the switch, or the word at the right */
+
+                /* (a mod with no description: its name alone, in the row's middle) */
+                ui_text(c, r.x + tpad, about[0] != '\0' ? r.y + 3 : r.y + ui_text_y(MODS_ROW, UI_FONT_LARGE),
+                        mods_fit(name, room - (l->kind == MROW_MOD ? 44 : 0), UI_FONT_LARGE, fit, sizeof fit),
+                        UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+                ui_text(c, r.x + tpad, r.y + 19, mods_fit(about, room, UI_FONT_LARGE, fit, sizeof fit), UI_GREY,
+                        UI_EDGE, UI_FONT_LARGE, 1);
+            }
+            ui_pop(c, 0, 0, &saved2);
+            sw.x = lx + lw - 40;
+            sw.y = r.y;
+            sw.w = 40;
+            sw.h = MODS_ROW;
+            if (l->kind == MROW_MOD) {
+                int ci = mods_cat_of(bw_mod_menu_root_at((u32)l->ref));
+
+                ui_toggle(c, sw.x + 10, r.y + (MODS_ROW - 10) / 2, bw_mod_menu_enabled_at((u32)l->ref) != 0, UI_CYAN);
+                if (ci >= 0 && bw_mod_catalog_installed_at((u32)ci) == 2) {
+                    /* a newer version is in the index */
+                    ui_text(c, sw.x - 4 - ui_text_w(ui_tr("UPDATE"), UI_FONT_SMALL), r.y + 4, ui_tr("UPDATE"),
+                            sel ? UI_WHITE : UI_CYAN, UI_EDGE, UI_FONT_SMALL, 1);
+                }
+            } else if (job_cat == l->ref && busy) {
+                char pct[12];
+
+                snprintf(pct, sizeof pct, "%d%%", job_total != 0 ? (int)(job_got * 100ull / job_total) : 0);
+                ui_text(c, lx + lw - 8 - ui_text_w(pct, UI_FONT_SMALL), r.y + (MODS_ROW - 8) / 2, pct,
+                        sel ? UI_WHITE : UI_CYAN, UI_EDGE, UI_FONT_SMALL, 1);
+            } else {
+                ui_text(c, lx + lw - 8 - ui_text_w(ui_tr("GET"), UI_FONT_SMALL), r.y + (MODS_ROW - 8) / 2,
+                        ui_tr("GET"), sel ? UI_WHITE : UI_CYAN, UI_EDGE, UI_FONT_SMALL, 1);
+            }
+            if (st & EIDOS_UI_CLICK) {
+                if (sel || (l->kind == MROW_MOD && (eidos_ui_hit(sw) & EIDOS_UI_CLICK))) {
+                    act = 'A';
+                    act_line = i;
+                } else {
+                    eidos_ui_sound(0x548);
+                }
+                g_mods_cur = i;
+            }
         }
+        ui_pop(c, 0, 0, &saved);
     }
-    if (n > vis) {
-        ui_scrollbar(c, lx + lw + 3, top, foot - top, g_mods_first, vis, n, UI_CYAN);
+    if (all_h > list_h) {
+        ui_scrollbar(c, lx + lw + 3, top, list_h, g_mods_first, list_h, all_h, UI_CYAN);
     }
 
     /* the chosen mod */
     px = lx + lw + 12;
     pw = x0 + ww - 8 - px;
-    ui_panel(c, px, top, pw, foot - top, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 255);
-    if (n > 0) {
-        u32 m = idx[g_mods_cur];
-        const char *by = bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 1) : "";
-        const char *ver = bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 2) : "";
-        const char *text = bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 0) : "";
-        int is_on = bw_mod_menu_enabled_at(m) != 0, tx = px + 12, ty = top + 10, tw = pw - 24, bw2, st;
+    ui_panel(c, px, y0 + 4 + 22 + 6, pw, foot - (y0 + 4 + 22 + 6), UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 255);
+    if (g_mods_cur >= 0 && line[g_mods_cur].kind != MROW_NOTE) {
+        const ModsLine *l = &line[g_mods_cur];
+        int inst = l->kind == MROW_MOD;
+        u32 m = (u32)l->ref;
+        int ci = inst ? mods_cat_of(bw_mod_menu_root_at(m)) : l->ref;
+        const char *name = inst ? bw_mod_menu_name_at(m) : bw_mod_catalog_name_at(m);
+        const char *by = inst ? (bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 1) : "") : bw_mod_catalog_author_at(m);
+        const char *ver = inst ? (bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 2) : "") : bw_mod_catalog_version_at(m);
+        const char *text = inst ? (bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 0) : "") : bw_mod_catalog_about_at(m);
+        int update = inst && ci >= 0 && bw_mod_catalog_installed_at((u32)ci) == 2;
+        int removable = inst && bw_mod_catalog_can_remove != NULL && bw_mod_catalog_can_remove(bw_mod_menu_root_at(m));
+        int mine = busy && ci >= 0 && ci == job_cat;    /* the install is this mod's */
+        int ptop = y0 + 4 + 22 + 6, tx = px + 12, ty = ptop + 10, tw = pw - 24, by_y = foot - 34;
         char buf[160];
-        EidosUiRect saved, b;
+        EidosUiRect saved;
         ModsWrap o;
 
         ui_push(c, 0, 0, &saved);
-        ui_clip(c, tx, top + 2, tw, foot - top - 4);
-        ui_text(c, tx, ty, bw_mod_menu_name_at(m), UI_WHITE, UI_EDGE, UI_FONT_LARGE, 2);
+        ui_clip(c, tx, ptop + 2, tw, foot - ptop - 4);
+        ui_text(c, tx, ty, name, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 2);
         ty += 34;
         if (by[0] != '\0') {
             snprintf(buf, sizeof buf, ui_trf("by %s"), by);
@@ -2090,30 +2518,256 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
         o.c = c;
         o.x = tx;
         o.y = ty + 8;
-        o.max_y = foot - 40;
+        o.w = tw;
+        o.max_y = by_y - 40;
+        o.ink = UI_WHITE;
         if (text[0] != '\0') {
             (void)ui_wrap(text, tw, UI_FONT_LARGE, mods_wrap_line, &o);
         }
         ui_pop(c, 0, 0, &saved);
-        /* the one action: its switch */
-        bw2 = tw < 150 ? tw : 150;
-        b.x = tx;
-        b.y = foot - 34;
-        b.w = bw2;
-        b.h = 24;
-        st = eidos_ui_hit(b);
-        ui_key(c, b.x, b.y, b.w, is_on ? ui_tr("TURN OFF") : ui_tr("TURN ON"), (st & EIDOS_UI_HOVER) != 0, UI_CYAN);
-        if (st & EIDOS_UI_CLICK) {
-            turn = g_mods_cur;
+
+        /* the line over the actions: what an install does now, what went
+         * wrong, a newer version, or the download's size */
+        if (mine) {
+            char a[24], b[24];
+
+            mods_size_text(job_got, a, sizeof a);
+            mods_size_text(job_total, b, sizeof b);
+            if (job == JOB_DOWNLOADING) {
+                snprintf(buf, sizeof buf, ui_trf("Downloading: %s of %s"), a, b);
+            } else {
+                snprintf(buf, sizeof buf, "%s", ui_tr("Installing..."));
+            }
+            ui_text(c, tx, by_y - 22, buf, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+            ui_progress(c, tx, by_y + 4, tw, job == JOB_DOWNLOADING ? (int)(job_got >> 10) : 1,
+                        job == JOB_DOWNLOADING ? (int)(job_total >> 10) : 1, UI_CYAN);
+        } else {
+            if (g_mods_note[0] != '\0' && (g_mods_note_id[0] == '\0' ||
+                                           (ci >= 0 && strcmp(g_mods_note_id, bw_mod_catalog_id_at((u32)ci)) == 0))) {
+                o.y = by_y - 38;
+                o.max_y = by_y - 2;
+                o.ink = UI_PINK;
+                (void)ui_wrap(g_mods_note, tw, UI_FONT_LARGE, mods_wrap_line, &o);
+            } else if (update) {
+                snprintf(buf, sizeof buf, ui_trf("Version %s is available."), bw_mod_catalog_version_at((u32)ci));
+                ui_text(c, tx, by_y - 22, buf, UI_CYAN, UI_EDGE, UI_FONT_LARGE, 1);
+            } else if (!inst) {
+                char a[24];
+
+                mods_size_text(bw_mod_catalog_size_at(m), a, sizeof a);
+                snprintf(buf, sizeof buf, ui_trf("Download: %s"), a);
+                ui_text(c, tx, by_y - 22, buf, UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+            }
+            /* the actions, each with the key the hint bar names for it */
+            if (!busy && !g_mods_ask) {
+                const char *label[3];
+                int key[3], nb = 0, b, bw2, gap = 8;
+
+                if (inst) {
+                    label[nb] = bw_mod_menu_enabled_at(m) ? ui_tr("TURN OFF") : ui_tr("TURN ON");
+                    key[nb++] = 'A';
+                    if (update) {
+                        label[nb] = ui_tr("UPDATE");
+                        key[nb++] = 'X';
+                    }
+                    if (removable) {
+                        label[nb] = ui_tr("REMOVE");
+                        key[nb++] = 'Y';
+                    }
+                } else {
+                    label[nb] = ui_tr("GET");
+                    key[nb++] = 'A';
+                }
+                bw2 = (tw - gap * (nb - 1)) / nb;
+                if (bw2 > 150) {
+                    bw2 = 150;
+                }
+                for (b = 0; b < nb; b++) {
+                    EidosUiRect br;
+                    int st;
+
+                    br.x = tx + b * (bw2 + gap);
+                    br.y = by_y;
+                    br.w = bw2;
+                    br.h = 24;
+                    st = eidos_ui_hit(br);
+                    ui_key(c, br.x, br.y, br.w, label[b], (st & EIDOS_UI_HOVER) != 0, UI_CYAN);
+                    if (st & EIDOS_UI_CLICK) {
+                        act = key[b];
+                        act_line = g_mods_cur;
+                    }
+                }
+                /* the pad's keys for the same */
+                if (act == 0) {
+                    if (k & BW_KEY_A) {
+                        act = 'A';
+                    } else if ((k & BW_KEY_X) && update) {
+                        act = 'X';
+                    } else if ((k & BW_KEY_Y) && removable) {
+                        act = 'Y';
+                    }
+                    act_line = act != 0 ? g_mods_cur : act_line;
+                }
+                hints[nh] = "A";
+                hints[nh + 1] = inst ? "On / Off" : "Get";
+                hint_keys[nh / 2] = BW_KEY_A;
+                nh += 2;
+                if (update) {
+                    hints[nh] = "X";
+                    hints[nh + 1] = "Update";
+                    hint_keys[nh / 2] = BW_KEY_X;
+                    nh += 2;
+                }
+                if (removable) {
+                    hints[nh] = "Y";
+                    hints[nh + 1] = "Remove";
+                    hint_keys[nh / 2] = BW_KEY_Y;
+                    nh += 2;
+                }
+            }
+        }
+    } else if (g_mods_cur >= 0 && !busy && !g_mods_ask) {
+        /* the line that says the list could not be read: A asks again */
+        if (k & BW_KEY_A) {
+            act = 'A';
+            act_line = g_mods_cur;
+        }
+        hints[nh] = "A";
+        hints[nh + 1] = "Try again";
+        hint_keys[nh / 2] = BW_KEY_A;
+        nh += 2;
+    }
+
+    /* what was asked for */
+    if (act != 0 && act_line >= 0 && !busy && !g_mods_ask) {
+        const ModsLine *l = &line[act_line];
+
+        if (l->kind == MROW_NOTE) {
+            bw_mod_catalog_read(0);
+            eidos_ui_sound(0x54C);
+        } else if (l->kind == MROW_GET || act == 'X') {
+            int ci = l->kind == MROW_GET ? l->ref : mods_cat_of(bw_mod_menu_root_at((u32)l->ref));
+
+            if (ci >= 0 && cat_state == CAT_READING) {
+                /* (the list on screen is the one before: its mods are asked for when the new one is in) */
+                snprintf(g_mods_note, sizeof g_mods_note, "%s", ui_tr("The list of mods is being read. Try again in a moment."));
+                snprintf(g_mods_note_id, sizeof g_mods_note_id, "%s", bw_mod_catalog_id_at((u32)ci));
+            } else if (ci >= 0) {
+                snprintf(g_mods_follow, sizeof g_mods_follow, "%s", bw_mod_catalog_id_at((u32)ci));
+                snprintf(g_mods_note_id, sizeof g_mods_note_id, "%s", g_mods_follow);
+                g_mods_note[0] = '\0';
+                g_mods_stopped = 0;
+                g_mods_wait = eidos_ui_game_call(mods_install_call, (void *)(uintptr_t)(u32)ci) ? 1 : 0;
+                eidos_ui_sound(0x54C);
+            }
+        } else if (act == 'Y') {
+            snprintf(g_mods_ask_root, sizeof g_mods_ask_root, "%s", bw_mod_menu_root_at((u32)l->ref));
+            snprintf(g_mods_ask_name, sizeof g_mods_ask_name, "%s", bw_mod_menu_name_at((u32)l->ref));
+            g_mods_ask = 1;
+            g_mods_ask_cur = 1;         /* on "keep" */
+            eidos_ui_sound(0x54C);
+            k = 0;
+        } else {
+            mods_turn((u32)l->ref);
         }
     }
-    if (turn < 0 && (k & BW_KEY_A) && n > 0) {
-        turn = g_mods_cur;
+
+    /* the remove question, over the window */
+    if (g_mods_ask) {
+        const char *ch[2];
+        char q[160];
+        int dw = ww - 80 < 300 ? ww - 80 : 300, dh, dx, dy, ans, chosen = -1;
+
+        ch[0] = ui_tr("REMOVE");
+        ch[1] = ui_tr("KEEP");
+        snprintf(q, sizeof q, ui_trf("Remove %s? What it saved for your games stays."), g_mods_ask_name);
+        dh = 14 + 15 * ui_wrap(q, dw - 20, UI_FONT_LARGE, NULL, NULL) + 26;
+        dx = x0 + (ww - dw) / 2;
+        dy = y0 + (wh - dh) / 2;
+        ui_fill(c, x0, y0, ww, wh, UI_INK, 120);
+        if (k & (BW_KEY_LEFT | BW_KEY_RIGHT)) {
+            g_mods_ask_cur = (k & BW_KEY_LEFT) ? 0 : 1;
+            eidos_ui_sound(0x548);
+        }
+        ui_dialog(c, dx, dy, dw, q, ch, 2, g_mods_ask_cur, UI_CYAN);
+        /* the two buttons ui_dialog draws: 56 wide, right aligned */
+        for (ans = 0; ans < 2; ans++) {
+            EidosUiRect br;
+            int st;
+
+            br.x = dx + dw - 10 - 62 * (2 - ans) + 6;
+            br.y = dy + dh - 24;
+            br.w = 56;
+            br.h = 18;
+            st = eidos_ui_hit(br);
+            if (st & EIDOS_UI_HOVER) {
+                ui_fill(c, br.x, br.y, br.w, br.h, UI_CYAN2, 90);
+            }
+            if (st & EIDOS_UI_CLICK) {
+                chosen = ans;
+            }
+        }
+        if (k & BW_KEY_A) {
+            chosen = g_mods_ask_cur;
+        }
+        if ((k & BW_KEY_B) || eidos_ui_right_click()) {
+            chosen = 1;
+        }
+        if (chosen == 0) {
+            g_mods_note[0] = '\0';
+            (void)eidos_ui_game_call(mods_remove_call, NULL);
+            eidos_ui_sound(0x54C);
+        } else if (chosen == 1) {
+            eidos_ui_sound(0x551);
+        }
+        if (chosen >= 0) {
+            g_mods_ask = 0;
+        }
+        hints[0] = "A";
+        hints[1] = "Confirm";
+        hints[2] = "\xE2\x86\x90\xE2\x86\x92";
+        hints[3] = "Choose";
+        hints[4] = "B";
+        hints[5] = "Keep";
+        hint_keys[0] = BW_KEY_A;
+        hint_keys[1] = BW_KEY_RIGHT;
+        hint_keys[2] = BW_KEY_B;
+        ui_hints(c, H - bar, W, hints, 3, hint_keys);
+        return 1;
     }
-    if (turn >= 0) {
-        mods_turn(idx[turn]);
+
+    if (busy) {
+        /* an install: the download can be stopped, the unpacking not */
+        nh = 0;
+        if (job == JOB_DOWNLOADING) {
+            hints[0] = "B";
+            hints[1] = "Stop";
+            hint_keys[0] = BW_KEY_B;
+            nh = 2;
+            if ((k & BW_KEY_B) || eidos_ui_right_click()) {
+                bw_mod_catalog_stop();
+                g_mods_stopped = 1;
+                eidos_ui_sound(0x551);
+            }
+        }
+        ui_hints(c, H - bar, W, hints, nh / 2, hint_keys);
+        return 1;
     }
-    ui_hints(c, H - bar, W, hints, n > 0 ? 3 : 0, hint_keys);
+    hints[nh] = "\xE2\x86\x91\xE2\x86\x93";
+    hints[nh + 1] = "Mod";
+    hint_keys[nh / 2] = BW_KEY_DOWN;
+    nh += 2;
+    if (tabs) {
+        hints[nh] = "\xE2\x86\x90\xE2\x86\x92";
+        hints[nh + 1] = "Tab";
+        hint_keys[nh / 2] = BW_KEY_RIGHT;
+        nh += 2;
+    }
+    hints[nh] = "B";
+    hints[nh + 1] = "Back";
+    hint_keys[nh / 2] = BW_KEY_B;
+    nh += 2;
+    ui_hints(c, H - bar, W, hints, nh / 2, hint_keys);
     if ((k & BW_KEY_B) || eidos_ui_right_click()) {
         mods_close();
     }

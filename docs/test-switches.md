@@ -142,6 +142,27 @@ A multiplayer game does not fast forward, so a two-game test plays at the
 game's own speed. Make a long scene (the opening, the starter) once, save
 both games, and start each test from those saves.
 
+## The mods index
+
+The game's own mod manager (`--mods`, `docs/distribution.md`) reads the mods
+index and installs from it (`sdk/mod_catalog.h`).
+
+| Switch | What it does |
+|---|---|
+| `EIDOS_MODCAT_TEST=list` | Reads the index at frame `EIDOS_MODCAT_TEST_AT` (default 300), with no screen, and prints the mods that fit this game: one line each, then how long it took and the longest frame meanwhile (`eidos_boot: mod catalog test: ...`). |
+| `EIDOS_MODCAT_TEST=get:ID` | The same, then installs the mod ID (`katalogos/nuzlocke`, `owner/name` in lower case), or updates it, and prints the mod menu's rows and how many code mods are loaded. |
+| `EIDOS_MODCAT_TEST=remove:ID` | Removes the installed mod ID and prints how many code mods were loaded before and after. |
+| `EIDOS_MODCAT_TEST=idle:MS` | Asks for nothing and prints the longest frame of MS milliseconds: the number to compare the others' longest frames with. |
+| `EIDOS_MOD_INDEX=URL` | The index to read in place of katalogos's (https only). |
+| `EIDOS_MOD_RELEASES=URL` | The server the release files are asked of, in place of `https://github.com`: `URL/OWNER/REPO/releases/download/TAG/FILE`. |
+| `EIDOS_TLS_CA=FILE` | One more certificate root (a PEM file), for a test server with a certificate of its own. It also counts for a TLS relay. |
+
+A test of this part needs a server that answers as GitHub does (the index, a
+redirect to each release file) and can answer wrongly on purpose: a package
+with another hash, a longer one, a connection that breaks off or goes
+silent, a 404, a 503. The tests of `sdk/net_https.c` and of the index's
+rules need no network (`test_https`, `test_mod_catalog`).
+
 ## The style chooser
 
 The title menu asks for the interface style the first time it is up with no

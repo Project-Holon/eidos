@@ -35,6 +35,17 @@ int bw_plat_path_kind(const char *path);
 int bw_plat_list_dir(const char *path, int (*fn)(void *ctx, const char *name),
                      void *ctx);
 
+/*
+ * Remove `path` with everything in it: a file, or a folder and all it
+ * holds.  A link inside (a symbolic link, a Windows junction) is removed as
+ * an entry and never entered, so nothing outside the folder is touched.  0
+ * when nothing is left at `path` (also when nothing was there), -1 when an
+ * entry could not be removed (a file another program holds open); what
+ * could be removed is then gone.  The caller names the right folder: this
+ * call checks nothing about where it is.
+ */
+int bw_plat_remove_tree(const char *path);
+
 #ifdef __cplusplus
 }
 #endif

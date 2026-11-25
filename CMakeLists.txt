@@ -589,6 +589,10 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mp.c               # multiplayer: the lobby, the start and the pause
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/link.c             # Link sessions: the radio over the relay
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tls_roots.c        # the roots a TLS relay is checked against
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/net_https.c        # a file from an https address (the mods index, packages)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/json_read.c        # a small JSON reader (the mods index)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/sha256.c           # SHA-256, for a downloaded package's check
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_catalog.c      # the mods index: the list, the install, the removal
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_slots.c       # several single-player saves
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_games.c       # the saves the Multiplayer screen made
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/preview_save.c     # the style chooser's preview save, packed (tools/preview_save.py)
@@ -1937,11 +1941,13 @@ add_test(NAME test_native_port_tools COMMAND ${Python3_EXECUTABLE}
 # port's own handler); test_mod_avatar checks the field avatars (the pool's
 # headroom, the walk and the reset); test_mod_net checks the peer sessions
 # and the external control (the relay protocol, the session, the frame and
-# the control's endpoint).
+# the control's endpoint); test_https checks the https download with canned
+# answers and the JSON reader; test_mod_catalog checks the mods index's
+# rules, SHA-256 and the folder removal.
 foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_mod_messages
           test_mod_text test_mod_script test_mod_rule test_mod_timer test_mod_export
           test_mod_menu test_mod_input test_mod_handoff test_mod_restart
-          test_mod_avatar test_mod_net test_save_games)
+          test_mod_avatar test_mod_net test_save_games test_https test_mod_catalog)
     add_executable(${t} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${t}.c)
     target_include_directories(${t} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests)

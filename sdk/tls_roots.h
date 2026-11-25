@@ -12,6 +12,10 @@ extern "C" {
 
 extern const char bw_tls_roots_pem[];
 
+/* The roots a download's server is checked against: the relay's, and the
+ * ones GitHub's servers answer with. */
+extern const char bw_tls_web_roots_pem[];
+
 #ifdef __cplusplus
 }
 #endif

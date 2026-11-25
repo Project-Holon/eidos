@@ -83,6 +83,7 @@
 #include "mod_hooks.h"
 #include "mod_loader.h"
 #include "bw_limits.h"
+#include "mod_catalog.h"
 #include "mod_menu.h"
 #include "avatar.h"              /* the other players' figures, each in its look */
 #include "mod_net.h"
@@ -2553,6 +2554,120 @@ static void boot_frame(void *user)
                    wi.parents_heard, wi.sent, wi.heard);
             fflush(stdout);
             link_log_at = n + 60u;
+        }
+    }
+
+    /* The mods index without the screen (sdk/mod_catalog.h), for the port's
+     * own checks: EIDOS_MODCAT_TEST=list reads the index at frame
+     * EIDOS_MODCAT_TEST_AT (default 300) and prints the mods that fit this
+     * game; get:<id> then installs that mod (or updates it) and prints the
+     * mod menu's rows; remove:<id> removes it.  Each step prints how long it
+     * took and the longest frame while it ran; idle:<ms> asks for nothing
+     * and prints the longest frame of that time, to compare with. */
+    {
+        static int step;                /* 0 wait, 1 reading, 2 installing, 3 done */
+        static unsigned long long began, last, longest;
+        const char *t = getenv("EIDOS_MODCAT_TEST");
+        const char *at = getenv("EIDOS_MODCAT_TEST_AT");
+        u64 n = eidos_frame_count(&run->loop);
+
+        if (t != NULL && step != 3) {
+            unsigned long long now = bw_clock_ns();
+
+            if (step != 0 && now - last > longest) {
+                longest = now - last;
+            }
+            last = now;
+            if (step == 0 && n >= (at != NULL ? (u64)strtoul(at, NULL, 10) : 300u)) {
+                began = now;
+                longest = 0;
+                if (strncmp(t, "idle:", 5) == 0) {
+                    step = 4;           /* (nothing asked: the frames' own lengths, to compare with) */
+                } else {
+                    bw_mod_menu_open();
+                    bw_mod_catalog_read(0);
+                    step = 1;
+                }
+            } else if (step == 4) {
+                if (now - began >= (unsigned long long)strtoul(t + 5, NULL, 10) * 1000000ull) {
+                    printf("eidos_boot: mod catalog test: idle, %llu ms, longest frame %llu ms\n",
+                           (now - began) / 1000000ull, longest / 1000000ull);
+                    fflush(stdout);
+                    step = 3;
+                }
+            } else if (step == 1 && bw_mod_catalog_poll() != BW_MOD_CATALOG_READING) {
+                const char *id = strchr(t, ':') != NULL ? strchr(t, ':') + 1 : "";
+                u32 i, count = bw_mod_catalog_count();
+                int found = -1;
+
+                printf("eidos_boot: mod catalog test: list %s, %u mods, %u unfit, %u unread, %llu ms, "
+                       "longest frame %llu ms%s%s\n",
+                       bw_mod_catalog_state() == BW_MOD_CATALOG_READY ? "ready" : "failed",
+                       (unsigned)count, (unsigned)bw_mod_catalog_unfit(), (unsigned)bw_mod_catalog_unread(),
+                       (now - began) / 1000000ull, longest / 1000000ull,
+                       bw_mod_catalog_error()[0] != '\0' ? ": " : "", bw_mod_catalog_error());
+                for (i = 0; i < count; i++) {
+                    printf("eidos_boot: mod catalog test:   %s | %s | %s | %s | %llu bytes | installed %d\n",
+                           bw_mod_catalog_id_at(i), bw_mod_catalog_name_at(i), bw_mod_catalog_version_at(i),
+                           bw_mod_catalog_author_at(i), bw_mod_catalog_size_at(i),
+                           bw_mod_catalog_installed_at(i));
+                    if (strcmp(bw_mod_catalog_id_at(i), id) == 0) {
+                        found = (int)i;
+                    }
+                }
+                step = 3;
+                if (strncmp(t, "get:", 4) == 0 && found >= 0 && bw_mod_catalog_install((u32)found) == 0) {
+                    began = now;
+                    longest = 0;
+                    step = 2;
+                } else if (strncmp(t, "remove:", 7) == 0) {
+                    u32 rows = bw_mod_menu_count(), loaded = bw_mod_loader_count();
+                    int rc = -2;
+
+                    for (i = 0; i < rows; i++) {
+                        char rid[108], rver[24];
+
+                        if (bw_mod_catalog_installed_as(bw_mod_menu_root_at(i), rid, sizeof rid, rver, sizeof rver) &&
+                            strcmp(rid, id) == 0) {
+                            rc = bw_mod_catalog_remove(bw_mod_menu_root_at(i));
+                            break;
+                        }
+                    }
+                    printf("eidos_boot: mod catalog test: remove %s: %s%s (code mods loaded: %u before, %u after)\n",
+                           id, rc == 0 ? "removed" : rc == -2 ? "not installed" : "failed: ",
+                           rc == -1 ? bw_mod_catalog_job_error() : "", (unsigned)loaded,
+                           (unsigned)bw_mod_loader_count());
+                } else if (strncmp(t, "list", 4) != 0) {
+                    printf("eidos_boot: mod catalog test: %s: not in the list, or busy\n", id);
+                }
+                fflush(stdout);
+            } else if (step == 2) {
+                unsigned long long got = 0, total = 0;
+                int job;
+
+                (void)bw_mod_catalog_poll();
+                job = bw_mod_catalog_job(NULL, &got, &total);
+                if (job == BW_MOD_CATALOG_JOB_DONE || job == BW_MOD_CATALOG_JOB_FAILED) {
+                    u32 i;
+                    int rc;
+
+                    printf("eidos_boot: mod catalog test: install %s%s, %llu of %llu bytes, %llu ms, "
+                           "longest frame %llu ms\n",
+                           job == BW_MOD_CATALOG_JOB_DONE ? "done" : "failed: ",
+                           job == BW_MOD_CATALOG_JOB_DONE ? "" : bw_mod_catalog_job_error(), got, total,
+                           (now - began) / 1000000ull, longest / 1000000ull);
+                    rc = bw_mod_catalog_finish();
+                    printf("eidos_boot: mod catalog test: finish %d (code mods loaded: %u)\n", rc,
+                           (unsigned)bw_mod_loader_count());
+                    for (i = 0; i < bw_mod_menu_count(); i++) {
+                        printf("eidos_boot: mod catalog test:   row %u | %s | on %d | runs %d | %s\n", (unsigned)i,
+                               bw_mod_menu_name_at(i), bw_mod_menu_enabled_at(i), bw_mod_menu_running_at(i),
+                               bw_mod_menu_root_at(i));
+                    }
+                    fflush(stdout);
+                    step = 3;
+                }
+            }
         }
     }
 

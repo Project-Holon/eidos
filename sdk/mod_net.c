@@ -122,6 +122,7 @@
 
 #include "types.h"
 #include "mod_net.h"
+#include "net_https.h"
 #include "plat_thread.h"
 
 /* ------------------------------------------------------------------ */
@@ -1010,6 +1011,11 @@ static void net_sleep_ms(unsigned ms)
 #endif
 }
 
+void bw_net_sleep_ms(unsigned ms)
+{
+    net_sleep_ms(ms);
+}
+
 /* ------------------------------------------------------------------ */
 /* The state                                                           */
 /* ------------------------------------------------------------------ */
@@ -1073,6 +1079,7 @@ static BwModNetQueue    g_q_in;
 static BwModNetQueue    g_q_out;
 
 static BwMutex  *g_lock;
+static BwMutex  *g_tls_lock;       /* around Mbed TLS (below, "TLS") */
 static BwThread *g_net_thread;
 static int       g_net_stop;
 
@@ -1211,6 +1218,9 @@ static void net_init(void)
 {
     if (g_lock == NULL) {
         g_lock = bw_mutex_create();
+    }
+    if (g_tls_lock == NULL) {
+        g_tls_lock = bw_mutex_create();
     }
     if (g_q_in.mem == NULL) {
         g_q_in.mem = (u8 *)malloc(BW_MOD_NET_QUEUE_BYTES);
@@ -1593,9 +1603,35 @@ typedef struct BwTls {
     mbedtls_x509_crt         ca;
     mbedtls_entropy_context  entropy;
     mbedtls_ctr_drbg_context drbg;
+    const char              *who;       /* whose connection, for the log */
 } BwTls;
 
+/* The relay's connection.  A download has one of its own (below, "The
+ * stream for https downloads"). */
 static BwTls g_tls;
+
+/*
+ * Mbed TLS is built without its own locking (MBEDTLS_THREADING_C is off),
+ * and TLS 1.3 keeps its keys in one table for the whole program.  The
+ * relay's connection and a download's run on different threads, so every
+ * call into the library is made with this lock held.  No call waits on the
+ * network with it (the reads are polls), except a send on a full socket.
+ * Made by net_init, on the game's thread (g_tls_lock, with the state).
+ */
+
+static void tls_lock(void)
+{
+    if (g_tls_lock != NULL) {
+        bw_mutex_lock(g_tls_lock);
+    }
+}
+
+static void tls_unlock(void)
+{
+    if (g_tls_lock != NULL) {
+        bw_mutex_unlock(g_tls_lock);
+    }
+}
 
 static int tls_bio_send(void *ctx, const unsigned char *buf, size_t len)
 {
@@ -1625,116 +1661,154 @@ static int tls_bio_recv(void *ctx, unsigned char *buf, size_t len)
     return rc;                          /* 0: the other end closed it */
 }
 
-static void tls_free(void)
+static void tls_free(BwTls *t)
 {
-    if (g_tls.made) {
-        mbedtls_ssl_free(&g_tls.ssl);
-        mbedtls_ssl_config_free(&g_tls.conf);
-        mbedtls_x509_crt_free(&g_tls.ca);
-        mbedtls_ctr_drbg_free(&g_tls.drbg);
-        mbedtls_entropy_free(&g_tls.entropy);
+    tls_lock();
+    if (t->made) {
+        mbedtls_ssl_free(&t->ssl);
+        mbedtls_ssl_config_free(&t->conf);
+        mbedtls_x509_crt_free(&t->ca);
+        mbedtls_ctr_drbg_free(&t->drbg);
+        mbedtls_entropy_free(&t->entropy);
     }
-    memset(&g_tls, 0, sizeof(g_tls));
+    memset(t, 0, sizeof(*t));
+    tls_unlock();
 }
 
-static void tls_say(const char *what, int rc)
+static void tls_say(const BwTls *t, const char *what, int rc)
 {
     char why[128];
 
     mbedtls_strerror(rc, why, sizeof(why));
-    fprintf(stderr, "eidos: the relay's TLS: %s: %s (-0x%04X)\n", what, why,
+    fprintf(stderr, "eidos: %s: %s: %s (-0x%04X)\n", t->who, what, why,
             (unsigned)-rc);
 }
 
-/* The handshake over the connected socket `*s`, with the relay `host`. */
-static int tls_open(BwSock *s, const char *host)
+/* The structures of `t` set up for a client that checks `host` against
+ * the roots in `roots` (PEM).  Called with the lock held. */
+static int tls_setup(BwTls *t, BwSock *s, const char *host, const char *roots)
 {
     const char *extra = getenv("EIDOS_TLS_CA");
-    unsigned long long until = bw_clock_ns() + (unsigned long long)BW_MOD_NET_TIMEOUT_MS * 3000000ull;
     int rc;
 
-    tls_free();
     if (psa_crypto_init() != PSA_SUCCESS) {
-        fprintf(stderr, "eidos: the relay's TLS: the crypto library did not start\n");
+        fprintf(stderr, "eidos: %s: the crypto library did not start\n", t->who);
         return -1;
     }
-    mbedtls_ssl_init(&g_tls.ssl);
-    mbedtls_ssl_config_init(&g_tls.conf);
-    mbedtls_x509_crt_init(&g_tls.ca);
-    mbedtls_entropy_init(&g_tls.entropy);
-    mbedtls_ctr_drbg_init(&g_tls.drbg);
-    g_tls.made = 1;
-    if ((rc = mbedtls_ctr_drbg_seed(&g_tls.drbg, mbedtls_entropy_func,
-                                    &g_tls.entropy, (const unsigned char *)"eidos", 5)) != 0) {
-        tls_say("no random source", rc);
+    mbedtls_ssl_init(&t->ssl);
+    mbedtls_ssl_config_init(&t->conf);
+    mbedtls_x509_crt_init(&t->ca);
+    mbedtls_entropy_init(&t->entropy);
+    mbedtls_ctr_drbg_init(&t->drbg);
+    t->made = 1;
+    if ((rc = mbedtls_ctr_drbg_seed(&t->drbg, mbedtls_entropy_func,
+                                    &t->entropy, (const unsigned char *)"eidos", 5)) != 0) {
+        tls_say(t, "no random source", rc);
         return -1;
     }
-    if ((rc = mbedtls_x509_crt_parse(&g_tls.ca, (const unsigned char *)bw_tls_roots_pem,
-                                     strlen(bw_tls_roots_pem) + 1)) != 0) {
-        tls_say("the built-in roots", rc);
+    if ((rc = mbedtls_x509_crt_parse(&t->ca, (const unsigned char *)roots,
+                                     strlen(roots) + 1)) != 0) {
+        tls_say(t, "the built-in roots", rc);
         return -1;
     }
     if (extra != NULL && extra[0] != '\0' &&
-        (rc = mbedtls_x509_crt_parse_file(&g_tls.ca, extra)) != 0) {
-        tls_say("EIDOS_TLS_CA", rc);
+        (rc = mbedtls_x509_crt_parse_file(&t->ca, extra)) != 0) {
+        tls_say(t, "EIDOS_TLS_CA", rc);
         return -1;
     }
-    if ((rc = mbedtls_ssl_config_defaults(&g_tls.conf, MBEDTLS_SSL_IS_CLIENT,
+    if ((rc = mbedtls_ssl_config_defaults(&t->conf, MBEDTLS_SSL_IS_CLIENT,
                                           MBEDTLS_SSL_TRANSPORT_STREAM,
                                           MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
-        tls_say("the settings", rc);
+        tls_say(t, "the settings", rc);
         return -1;
     }
-    mbedtls_ssl_conf_authmode(&g_tls.conf, MBEDTLS_SSL_VERIFY_REQUIRED);
-    mbedtls_ssl_conf_ca_chain(&g_tls.conf, &g_tls.ca, NULL);
-    mbedtls_ssl_conf_rng(&g_tls.conf, mbedtls_ctr_drbg_random, &g_tls.drbg);
-    mbedtls_ssl_conf_min_tls_version(&g_tls.conf, MBEDTLS_SSL_VERSION_TLS1_2);
-    if ((rc = mbedtls_ssl_setup(&g_tls.ssl, &g_tls.conf)) != 0 ||
-        (rc = mbedtls_ssl_set_hostname(&g_tls.ssl, host)) != 0) {
-        tls_say("the session", rc);
+    mbedtls_ssl_conf_authmode(&t->conf, MBEDTLS_SSL_VERIFY_REQUIRED);
+    mbedtls_ssl_conf_ca_chain(&t->conf, &t->ca, NULL);
+    mbedtls_ssl_conf_rng(&t->conf, mbedtls_ctr_drbg_random, &t->drbg);
+    mbedtls_ssl_conf_min_tls_version(&t->conf, MBEDTLS_SSL_VERSION_TLS1_2);
+    if ((rc = mbedtls_ssl_setup(&t->ssl, &t->conf)) != 0 ||
+        (rc = mbedtls_ssl_set_hostname(&t->ssl, host)) != 0) {
+        tls_say(t, "the session", rc);
         return -1;
     }
-    mbedtls_ssl_set_bio(&g_tls.ssl, s, tls_bio_send, tls_bio_recv, NULL);
-    while ((rc = mbedtls_ssl_handshake(&g_tls.ssl)) != 0) {
+    mbedtls_ssl_set_bio(&t->ssl, s, tls_bio_send, tls_bio_recv, NULL);
+    return 0;
+}
+
+/*
+ * The handshake over the connected socket `*s`, with the server `host`,
+ * its certificate checked against `roots`; `who` names the connection in
+ * the log.  0, or -1 with `refused` (when not NULL) set to 1 if the
+ * server's certificate was the reason.
+ */
+static int tls_open(BwTls *t, BwSock *s, const char *host, const char *roots,
+                    const char *who, unsigned timeout_ms, int *refused)
+{
+    unsigned long long until = bw_clock_ns() + (unsigned long long)timeout_ms * 1000000ull;
+    int rc;
+
+    if (refused != NULL) {
+        *refused = 0;
+    }
+    tls_free(t);
+    tls_lock();
+    t->who = who;
+    rc = tls_setup(t, s, host, roots);
+    tls_unlock();
+    if (rc != 0) {
+        return -1;
+    }
+    for (;;) {
+        tls_lock();
+        rc = mbedtls_ssl_handshake(&t->ssl);
+        tls_unlock();
+        if (rc == 0) {
+            break;
+        }
         if (rc != MBEDTLS_ERR_SSL_WANT_READ && rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
-            u32 flags = mbedtls_ssl_get_verify_result(&g_tls.ssl);
+            u32 flags = mbedtls_ssl_get_verify_result(&t->ssl);
 
             if (flags != 0 && flags != (u32)-1) {
                 char why[256];
 
                 mbedtls_x509_crt_verify_info(why, sizeof(why), "", flags);
-                fprintf(stderr, "eidos: the relay's TLS: its certificate is "
-                        "refused: %s", why);
+                fprintf(stderr, "eidos: %s: its certificate is refused: %s", who, why);
+                if (refused != NULL) {
+                    *refused = 1;
+                }
             }
-            tls_say("the handshake", rc);
+            tls_say(t, "the handshake", rc);
             return -1;
         }
         if (bw_clock_ns() > until) {
-            fprintf(stderr, "eidos: the relay's TLS: the handshake took too long\n");
+            fprintf(stderr, "eidos: %s: the handshake took too long\n", who);
             return -1;
         }
         (void)sock_wait(*s, 50, rc == MBEDTLS_ERR_SSL_WANT_WRITE);
     }
-    g_tls.up = 1;
-    fprintf(stderr, "eidos: the relay's TLS: %s, %s\n",
-            mbedtls_ssl_get_version(&g_tls.ssl),
-            mbedtls_ssl_get_ciphersuite(&g_tls.ssl));
+    t->up = 1;
+    fprintf(stderr, "eidos: %s: %s, %s\n", who,
+            mbedtls_ssl_get_version(&t->ssl),
+            mbedtls_ssl_get_ciphersuite(&t->ssl));
     return 0;
 }
 
-static int tls_send_all(const void *buf, u32 size)
+static int tls_send_all(BwTls *t, const void *buf, u32 size)
 {
     const unsigned char *p = (const unsigned char *)buf;
     u32 left = size;
 
     while (left > 0) {
-        int rc = mbedtls_ssl_write(&g_tls.ssl, p, left);
+        int rc;
 
+        tls_lock();
+        rc = mbedtls_ssl_write(&t->ssl, p, left);
+        tls_unlock();
         if (rc == MBEDTLS_ERR_SSL_WANT_WRITE || rc == MBEDTLS_ERR_SSL_WANT_READ) {
             continue;
         }
         if (rc <= 0) {
-            tls_say("a send", rc);
+            tls_say(t, "a send", rc);
             return -1;
         }
         p += rc;
@@ -1743,12 +1817,19 @@ static int tls_send_all(const void *buf, u32 size)
     return 0;
 }
 
-/* 1 when bytes were read, 0 when there is nothing now, -1 when closed. */
-static int tls_recv_some(void *buf, u32 size, u32 *out)
+/* 1 when bytes were read, 0 when there is nothing now, -1 when closed
+ * (`*closed`, when not NULL: 1 if the other end closed it in order). */
+static int tls_recv_some(BwTls *t, void *buf, u32 size, u32 *out, int *closed)
 {
-    int rc = mbedtls_ssl_read(&g_tls.ssl, (unsigned char *)buf, size);
+    int rc;
 
+    tls_lock();
+    rc = mbedtls_ssl_read(&t->ssl, (unsigned char *)buf, size);
+    tls_unlock();
     *out = 0;
+    if (closed != NULL) {
+        *closed = rc == 0 || rc == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY;
+    }
     if (rc > 0) {
         *out = (u32)rc;
         return 1;
@@ -1758,9 +1839,252 @@ static int tls_recv_some(void *buf, u32 size, u32 *out)
         return 0;
     }
     if (rc != 0 && rc != MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
-        tls_say("a read", rc);
+        tls_say(t, "a read", rc);
     }
     return -1;
+}
+
+static void tls_close(BwTls *t)
+{
+    if (t->up) {
+        tls_lock();
+        (void)mbedtls_ssl_close_notify(&t->ssl);
+        tls_unlock();
+    }
+    tls_free(t);
+}
+
+/* ------------------------------------------------------------------ */
+/* The stream for https downloads                                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The game's own BwNetStream (sdk/net_https.h): a TLS connection of its
+ * own, beside the relay's, checked against the web roots
+ * (bw_tls_web_roots_pem: the relay's two and the ones GitHub's servers
+ * answer with).  One download runs at a time (sdk/mod_catalog.c), so one
+ * connection is in use at a time; a few more wait, kept open for the next
+ * request to their server.  Each is on the heap while it is open.
+ */
+typedef struct WebConn {
+    BwSock s;
+    BwTls  tls;
+    unsigned long long turn;            /* when the other threads last had a turn */
+    char   host[256];
+    u16    port;
+} WebConn;
+
+/* The connection in use, and the ones kept. */
+#define WEB_KEPT_MAX 3
+static WebConn *g_web;
+static WebConn *g_web_kept[WEB_KEPT_MAX];
+
+/* How long a handshake with a web server may take. */
+#define WEB_HANDSHAKE_MS 15000u
+
+/* How many times a connect is tried: github.com drops some of the
+ * connections one address makes in quick succession (measured 2026-11-25:
+ * 4 of 12 one after the other never got an answer; the next try did). */
+#define WEB_CONNECT_TRIES 3
+
+static void web_end(WebConn *w)
+{
+    if (w != NULL) {
+        tls_close(&w->tls);
+        sock_shutdown(w->s);
+        free(w);
+    }
+}
+
+static void web_close(void *user, int keep)
+{
+    WebConn *w = g_web;
+    int i;
+
+    (void)user;
+    g_web = NULL;
+    if (w == NULL) {
+        return;
+    }
+    if (keep) {
+        for (i = 0; i < WEB_KEPT_MAX; i++) {
+            if (g_web_kept[i] == NULL) {
+                g_web_kept[i] = w;
+                return;
+            }
+        }
+        /* no room: the oldest goes */
+        web_end(g_web_kept[0]);
+        for (i = 1; i < WEB_KEPT_MAX; i++) {
+            g_web_kept[i - 1] = g_web_kept[i];
+        }
+        g_web_kept[WEB_KEPT_MAX - 1] = w;
+        return;
+    }
+    web_end(w);
+}
+
+static void web_idle(void *user)
+{
+    int i;
+
+    web_close(user, 0);
+    for (i = 0; i < WEB_KEPT_MAX; i++) {
+        web_end(g_web_kept[i]);
+        g_web_kept[i] = NULL;
+    }
+}
+
+static int web_open(void *user, const char *host, u16 port, int fresh, char *err, size_t err_size)
+{
+    WebConn *w;
+    int refused = 0, i, tries;
+
+    web_close(user, 0);
+    for (i = 0; i < WEB_KEPT_MAX; i++) {
+        w = g_web_kept[i];
+        if (w != NULL && w->port == port && strcmp(w->host, host) == 0) {
+            g_web_kept[i] = NULL;
+            if (fresh) {
+                web_end(w);             /* (the caller found it closed) */
+                continue;
+            }
+            g_web = w;
+            w->turn = bw_clock_ns();
+            return 1;
+        }
+    }
+    if (strlen(host) >= sizeof(w->host)) {
+        snprintf(err, err_size, "the address is too long");
+        return -1;
+    }
+    w = (WebConn *)calloc(1, sizeof(*w));
+    if (w == NULL) {
+        snprintf(err, err_size, "out of memory");
+        return -1;
+    }
+    strcpy(w->host, host);
+    w->port = port;
+    w->s = BW_SOCK_INVALID;
+    for (tries = 0; tries < WEB_CONNECT_TRIES; tries++) {
+        w->s = sock_new();
+        if (w->s != BW_SOCK_INVALID && sock_connect_to(w->s, host, port) == 0) {
+            break;
+        }
+        fprintf(stderr, "eidos: a download: no connection to %s (try %d of %d)\n", host, tries + 1,
+                WEB_CONNECT_TRIES);
+        sock_shutdown(w->s);
+        w->s = BW_SOCK_INVALID;
+    }
+    if (w->s == BW_SOCK_INVALID) {
+        snprintf(err, err_size, "no connection to %.150s", host);
+        free(w);
+        return -1;
+    }
+    g_web = w;
+    if (tls_open(&w->tls, &w->s, host, bw_tls_web_roots_pem, "a download's TLS",
+                 WEB_HANDSHAKE_MS, &refused) != 0) {
+        snprintf(err, err_size, refused ? "the certificate of %.150s is refused"
+                                        : "no secure connection to %.150s", host);
+        web_close(user, 0);
+        return -1;
+    }
+    w->turn = bw_clock_ns();
+    return 0;
+}
+
+static int web_send(void *user, const void *buf, u32 size)
+{
+    (void)user;
+    return g_web != NULL ? tls_send_all(&g_web->tls, buf, size) : -1;
+}
+
+static int web_recv(void *user, void *buf, u32 size, int timeout_ms)
+{
+    WebConn *w = g_web;
+    unsigned long long until = bw_clock_ns() + (unsigned long long)timeout_ms * 1000000ull;
+
+    (void)user;
+    if (w == NULL) {
+        return -1;
+    }
+    for (;;) {
+        u32 got = 0;
+        int closed = 0;
+        int rc = tls_recv_some(&w->tls, buf, size, &got, &closed);
+
+        if (rc > 0) {
+#if defined(__wasm__)
+            /* A fast download never finds the socket empty, and the fibers
+             * take turns only when one waits: give the game its turn every
+             * few milliseconds, or it stands still for the whole file. */
+            if (bw_clock_ns() - w->turn > 4000000ull) {
+                wsock_yield();
+                w->turn = bw_clock_ns();
+            }
+#endif
+            return (int)got;
+        }
+        if (rc < 0) {
+            return closed ? 0 : -1;
+        }
+        if (bw_clock_ns() >= until) {
+            return -2;
+        }
+        (void)sock_wait(w->s, 20, 0);
+        w->turn = bw_clock_ns();
+    }
+}
+
+static const BwNetStream g_web_stream = { NULL, web_open, web_send, web_recv, web_close, web_idle };
+
+const BwNetStream *bw_net_tls_stream(void)
+{
+    net_init();                         /* (the lock; a first call on the game's thread) */
+    return &g_web_stream;
+}
+#else /* no TLS in this build */
+
+static int web_none_open(void *user, const char *host, u16 port, int fresh, char *err, size_t err_size)
+{
+    (void)user;
+    (void)host;
+    (void)port;
+    (void)fresh;
+    snprintf(err, err_size, "this build has no secure connections");
+    return -1;
+}
+
+static int web_none_send(void *user, const void *buf, u32 size)
+{
+    (void)user;
+    (void)buf;
+    (void)size;
+    return -1;
+}
+
+static int web_none_recv(void *user, void *buf, u32 size, int timeout_ms)
+{
+    (void)user;
+    (void)buf;
+    (void)size;
+    (void)timeout_ms;
+    return -1;
+}
+
+static void web_none_close(void *user, int keep)
+{
+    (void)user;
+    (void)keep;
+}
+
+static const BwNetStream g_web_stream = {
+    NULL, web_none_open, web_none_send, web_none_recv, web_none_close, NULL
+};
+
+const BwNetStream *bw_net_tls_stream(void)
+{
+    return &g_web_stream;
 }
 #endif /* EIDOS_HAVE_TLS */
 
@@ -1783,7 +2107,8 @@ static int tcp_connect(void *user, const char *host, u16 port)
     }
     if (g_relay_tls) {
 #ifdef EIDOS_HAVE_TLS
-        if (tls_open(s, host) != 0) {
+        if (tls_open(&g_tls, s, host, bw_tls_roots_pem, "the relay's TLS",
+                     BW_MOD_NET_TIMEOUT_MS * 3u, NULL) != 0) {
             sock_shutdown(*s);
             *s = BW_SOCK_INVALID;
             return -1;
@@ -1808,7 +2133,7 @@ static int tcp_send(void *user, const void *buf, u32 size)
     }
 #ifdef EIDOS_HAVE_TLS
     if (g_tls.up) {
-        return tls_send_all(buf, size);
+        return tls_send_all(&g_tls, buf, size);
     }
 #endif
     return sock_send_all(*s, buf, size);
@@ -1826,7 +2151,7 @@ static int tcp_recv(void *user, void *buf, u32 size, u32 *out_size)
     }
 #ifdef EIDOS_HAVE_TLS
     if (g_tls.up) {
-        return tls_recv_some(buf, size, out_size);
+        return tls_recv_some(&g_tls, buf, size, out_size, NULL);
     }
 #endif
     return sock_recv_some(*s, buf, size, out_size);
@@ -1838,10 +2163,7 @@ static void tcp_close(void *user)
 
     if (s != NULL && *s != BW_SOCK_INVALID) {
 #ifdef EIDOS_HAVE_TLS
-        if (g_tls.up) {
-            (void)mbedtls_ssl_close_notify(&g_tls.ssl);
-        }
-        tls_free();
+        tls_close(&g_tls);
 #endif
         sock_shutdown(*s);
         *s = BW_SOCK_INVALID;
