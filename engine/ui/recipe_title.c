@@ -32,6 +32,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "theme.h"
 #include "input.h"
 #include "choice_list.h"
@@ -707,8 +708,12 @@ static int slot_count(void)
 #define ACT_RIGHT 2
 static int g_target = -1, g_act, g_wait, g_age;
 
+static int g_mods_open, g_mods_cool;    /* (the mod manager, below) */
+
 static void menu_reset(void)
 {
+    g_mods_open = 0;
+    g_mods_cool = 0;
     g_target = -1;
     g_wait = 0;
     g_age = 0;
@@ -1788,6 +1793,333 @@ static int style_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
     return 1;
 }
 
+/* ------------------------------------------------------------------ */
+/* The mod manager                                                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The game's own mod manager, for a game no launcher starts (a phone, a
+ * console, a download run by itself): offered when the game was started with
+ * --mods (bw_mod_menu_manager).  A flag at the menu's top left, the style
+ * flag's twin, opens a window in the menu's place: at the left the mods
+ * installed that work with this game (a mod made for the other version is
+ * not listed), each with its switch; at the right the chosen mod: its name,
+ * who made it, its version and what it does.  The switches apply when the
+ * window closes (bw_mod_menu_apply, on the game's thread), before any game
+ * starts.
+ *
+ * The pad: up and down choose a mod, A turns it on or off, B closes.  The
+ * pointer: a click chooses a mod, a click on the chosen mod or on its switch
+ * turns it, the wheel or a drag moves the list, the button at the window's
+ * foot turns the chosen mod, a right click closes.  Y opens the window from
+ * the menu.
+ */
+extern int         bw_mod_menu_manager(void) TT_WEAK;
+extern void        bw_mod_menu_open(void) TT_WEAK;
+extern u32         bw_mod_menu_count(void) TT_WEAK;
+extern const char *bw_mod_menu_name_at(u32 index) TT_WEAK;
+extern const char *bw_mod_menu_about_at(u32 index, int what) TT_WEAK;
+extern int         bw_mod_menu_enabled_at(u32 index) TT_WEAK;
+extern int         bw_mod_menu_present_at(u32 index) TT_WEAK;
+extern int         bw_mod_menu_needs_game_at(u32 index) TT_WEAK;
+extern int         bw_mod_menu_set_enabled(u32 index, int on) TT_WEAK;
+extern int         bw_mod_menu_dirty(void) TT_WEAK;
+extern int         bw_mod_menu_apply(void) TT_WEAK;
+
+#define MODS_MAX 64
+#define MODS_ROW 36
+#define MODS_GAP 4
+
+static int g_mods_open, g_mods_cur, g_mods_first, g_mods_cool;
+
+static int mods_on(void)
+{
+    return bw_mod_menu_manager != NULL && bw_mod_menu_count != NULL && bw_mod_menu_manager();
+}
+
+/* The mods the window lists, as indices of the mod list: those whose files
+ * are there and that work with the game loaded.  How many. */
+static int mods_listed(u32 *idx, int *on)
+{
+    u32 n = bw_mod_menu_count(), i;
+    int k = 0;
+
+    *on = 0;
+    for (i = 0; i < n && k < MODS_MAX; i++) {
+        if (bw_mod_menu_present_at(i) && bw_mod_menu_needs_game_at(i) == 0) {
+            *on += bw_mod_menu_enabled_at(i) != 0;
+            idx[k++] = i;
+        }
+    }
+    return k;
+}
+
+/* The flag at the menu's top left: MODS over how many are on.  The style
+ * flag's own box (the same panel, or the style's own "style-flag" plate).
+ * Returns its box for the pointer. */
+static EidosUiRect mods_flag(EidosUiCtx *c, int hot, int on)
+{
+    EidosUiRect r;
+    int fx, fy, fw, fh, lean = 0, left, cwid;
+    char line[24];
+
+    r.w = STYLE_FLAG_W;
+    r.h = STYLE_FLAG_H;
+    r.x = 24 + c->safe_l;
+    r.y = 0;
+    fx = r.x;
+    fy = r.y;
+    fw = r.w;
+    fh = hot ? -r.h : r.h;
+    if (ui_app_window(c, "style-flag", &fx, &fy, &fw, &fh)) {
+        left = fx;
+        lean = fw;
+        cwid = r.w - 22;
+    } else {
+        ui_panel(c, r.x, r.y - 8, r.w, r.h + 8, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY, hot ? UI_CYAN : UI_EDGE, 240);
+        left = r.x + 8;
+        cwid = r.w - 16;
+    }
+#define FLAG_X(row) (left + lean * (r.h - (row)) / r.h)
+    ui_text(c, FLAG_X(6) + (cwid - ui_text_w("MODS", UI_FONT_SMALL)) / 2, r.y + 3, "MODS", UI_RAW(0xF8F8F8u),
+            (s32)UI_RAW(0x101014u), UI_FONT_SMALL, 1);
+    snprintf(line, sizeof line, ui_trf("%d ON"), on);
+    ui_text(c, FLAG_X(19) + (cwid - ui_text_w(line, UI_FONT_SMALL)) / 2, r.y + 15, line, UI_RAW(0xBEC4D0u),
+            (s32)UI_RAW(0x101014u), UI_FONT_SMALL, 1);
+#undef FLAG_X
+    return r;
+}
+
+static void mods_show(void)
+{
+    bw_mod_menu_open();         /* the list as it stands on disk and in the player's record */
+    g_mods_open = 1;
+    g_mods_cur = 0;
+    g_mods_first = 0;
+    eidos_ui_sound(0x54C);
+    eidos_ui_crossfade();
+}
+
+/* On the game's thread: the switches take effect (mods stop and load). */
+static void mods_apply(void *arg)
+{
+    (void)arg;
+    (void)bw_mod_menu_apply();
+}
+
+static void mods_close(void)
+{
+    if (bw_mod_menu_dirty()) {
+        (void)eidos_ui_game_call(mods_apply, NULL);
+    }
+    g_mods_open = 0;
+    g_mods_cool = 15;
+    eidos_ui_sound(0x551);
+    eidos_ui_crossfade();
+}
+
+static void mods_turn(u32 index)
+{
+    (void)bw_mod_menu_set_enabled(index, !bw_mod_menu_enabled_at(index));
+    eidos_ui_sound(0x54C);
+}
+
+typedef struct ModsWrap { EidosUiCtx *c; int x, y, max_y; } ModsWrap;
+
+static void mods_wrap_line(void *user, const char *start, int len)
+{
+    ModsWrap *o = (ModsWrap *)user;
+    char buf[160];
+
+    if (len >= (int)sizeof(buf)) {
+        len = (int)sizeof(buf) - 1;
+    }
+    memcpy(buf, start, (size_t)len);
+    buf[len] = '\0';
+    if (o->y + 16 <= o->max_y) {
+        ui_text(o->c, o->x, o->y, buf, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+    }
+    o->y += 16;
+}
+
+/* The window in the title menu's place.  1 while it is up: the menu is not
+ * drawn and takes no key. */
+static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, int W, int H, int ready)
+{
+    static const char *const hints[] = { "A", "On / Off", "\xE2\x86\x91\xE2\x86\x93", "Mod", "B", "Back" };
+    static const u32 hint_keys[] = { BW_KEY_A, BW_KEY_DOWN, BW_KEY_B };
+    u32 k = eidos_ui_keys_pressed(), idx[MODS_MAX];
+    int bar = ui_bar_h(c), n, on, i, x0, y0, ww, wh, top, foot, lx, lw, vis, px, pw, turn = -1;
+    EidosUiRect list;
+    char right[32];
+
+    (void)view;
+    if (!mods_on()) {
+        return 0;
+    }
+    eidos_ui_take_keys(BW_KEY_Y);
+    if (g_mods_cool > 0) {
+        g_mods_cool--;                  /* the key that closed it is not the menu's */
+        eidos_ui_take_keys(BW_KEY_GAME);
+    }
+    if (!g_mods_open) {
+        if (ready && g_mods_cool == 0 && (k & BW_KEY_Y)) {
+            mods_show();
+        } else {
+            return 0;
+        }
+        k = 0;
+    }
+    eidos_ui_take_keys(BW_KEY_GAME);
+    n = mods_listed(idx, &on);
+    if (g_mods_cur >= n) {
+        g_mods_cur = n > 0 ? n - 1 : 0;
+    }
+    if ((k & BW_KEY_DOWN) && g_mods_cur + 1 < n) {
+        g_mods_cur++;
+        eidos_ui_sound(0x548);
+    } else if ((k & BW_KEY_UP) && g_mods_cur > 0) {
+        g_mods_cur--;
+        eidos_ui_sound(0x548);
+    }
+
+    /* on the title's own floor, dimmed, as the style chooser is */
+    backdrop(c, W, H, (int)in->frame);
+    ui_fill(c, 0, 0, W, H, UI_RAW(0x000000u), 150);
+    x0 = 10 + c->safe_l;
+    y0 = 8;
+    ww = W - 20 - c->safe_l - c->safe_r;
+    wh = H - bar - 16;
+    ui_panel(c, x0, y0, ww, wh, UI_CUT_TL | UI_CUT_BR, 9, UI_BODY, UI_EDGE, 246);
+    snprintf(right, sizeof right, ui_trf("%d ON"), on);
+    ui_header(c, x0 + 4, y0 + 4, ww - 8, "MODS", "", right, UI_CYAN);
+    top = y0 + 4 + 22 + 6;
+    foot = y0 + wh - 8;
+    lx = x0 + 8;
+    lw = (ww - 16) * 44 / 100;
+    vis = (foot - top + MODS_GAP) / (MODS_ROW + MODS_GAP);
+    vis = vis < 1 ? 1 : vis;
+    list.x = lx;
+    list.y = top;
+    list.w = lw + 8;
+    list.h = foot - top;
+    g_mods_first += eidos_ui_wheel(list);
+    if (k & (BW_KEY_UP | BW_KEY_DOWN)) {
+        /* the pad's choice stays in view */
+        if (g_mods_cur < g_mods_first) {
+            g_mods_first = g_mods_cur;
+        } else if (g_mods_cur >= g_mods_first + vis) {
+            g_mods_first = g_mods_cur - vis + 1;
+        }
+    }
+    if (g_mods_first > n - vis) {
+        g_mods_first = n - vis;
+    }
+    if (g_mods_first < 0) {
+        g_mods_first = 0;
+    }
+    if (n == 0) {
+        ui_text(c, lx + 4, top + 4, ui_tr("No mods are installed."), UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+    }
+    for (i = g_mods_first; i < n && i < g_mods_first + vis; i++) {
+        EidosUiRect r, sw;
+        EidosUiRect saved;
+        const char *line = bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(idx[i], 0) : "";
+        int st, st_sw, sel = i == g_mods_cur, is_on = bw_mod_menu_enabled_at(idx[i]) != 0;
+
+        r.x = lx;
+        r.y = top + (i - g_mods_first) * (MODS_ROW + MODS_GAP);
+        r.w = lw;
+        r.h = MODS_ROW;
+        sw.x = lx + lw - 34;
+        sw.y = r.y;
+        sw.w = 34;
+        sw.h = MODS_ROW;
+        st = eidos_ui_hit(r);
+        st_sw = eidos_ui_hit(sw);
+        ui_row(c, r.x, r.y, r.w, r.h, sel, (st & EIDOS_UI_HOVER) != 0, &UI_THEME_MENU);
+        ui_push(c, 0, 0, &saved);
+        ui_clip(c, r.x + 6, r.y, r.w - 44, r.h);
+        /* (a mod with no description: its name alone, in the row's middle) */
+        ui_text(c, r.x + 10, line[0] != '\0' ? r.y + 3 : r.y + ui_text_y(MODS_ROW, UI_FONT_LARGE), bw_mod_menu_name_at(idx[i]),
+                UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, r.x + 10, r.y + 19, line, UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_pop(c, 0, 0, &saved);
+        ui_toggle(c, sw.x + 4, r.y + (MODS_ROW - 10) / 2, is_on, UI_CYAN);
+        if (st & EIDOS_UI_CLICK) {
+            if (sel || (st_sw & EIDOS_UI_CLICK)) {
+                turn = i;
+            } else {
+                eidos_ui_sound(0x548);
+            }
+            g_mods_cur = i;
+        }
+    }
+    if (n > vis) {
+        ui_scrollbar(c, lx + lw + 3, top, foot - top, g_mods_first, vis, n, UI_CYAN);
+    }
+
+    /* the chosen mod */
+    px = lx + lw + 12;
+    pw = x0 + ww - 8 - px;
+    ui_panel(c, px, top, pw, foot - top, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 255);
+    if (n > 0) {
+        u32 m = idx[g_mods_cur];
+        const char *by = bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 1) : "";
+        const char *ver = bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 2) : "";
+        const char *text = bw_mod_menu_about_at != NULL ? bw_mod_menu_about_at(m, 0) : "";
+        int is_on = bw_mod_menu_enabled_at(m) != 0, tx = px + 12, ty = top + 10, tw = pw - 24, bw2, st;
+        char buf[160];
+        EidosUiRect saved, b;
+        ModsWrap o;
+
+        ui_push(c, 0, 0, &saved);
+        ui_clip(c, tx, top + 2, tw, foot - top - 4);
+        ui_text(c, tx, ty, bw_mod_menu_name_at(m), UI_WHITE, UI_EDGE, UI_FONT_LARGE, 2);
+        ty += 34;
+        if (by[0] != '\0') {
+            snprintf(buf, sizeof buf, ui_trf("by %s"), by);
+            ui_text(c, tx, ty, buf, UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+        }
+        if (ver[0] != '\0') {
+            snprintf(buf, sizeof buf, ui_trf("Version %s"), ver);
+            ui_text(c, tx + tw - ui_text_w(buf, UI_FONT_LARGE), ty, buf, UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+        }
+        ty += 20;
+        ui_fill(c, tx, ty, tw, 1, UI_EDGE, 255);
+        o.c = c;
+        o.x = tx;
+        o.y = ty + 8;
+        o.max_y = foot - 40;
+        if (text[0] != '\0') {
+            (void)ui_wrap(text, tw, UI_FONT_LARGE, mods_wrap_line, &o);
+        }
+        ui_pop(c, 0, 0, &saved);
+        /* the one action: its switch */
+        bw2 = tw < 150 ? tw : 150;
+        b.x = tx;
+        b.y = foot - 34;
+        b.w = bw2;
+        b.h = 24;
+        st = eidos_ui_hit(b);
+        ui_key(c, b.x, b.y, b.w, is_on ? ui_tr("TURN OFF") : ui_tr("TURN ON"), (st & EIDOS_UI_HOVER) != 0, UI_CYAN);
+        if (st & EIDOS_UI_CLICK) {
+            turn = g_mods_cur;
+        }
+    }
+    if (turn < 0 && (k & BW_KEY_A) && n > 0) {
+        turn = g_mods_cur;
+    }
+    if (turn >= 0) {
+        mods_turn(idx[turn]);
+    }
+    ui_hints(c, H - bar, W, hints, n > 0 ? 3 : 0, hint_keys);
+    if ((k & BW_KEY_B) || eidos_ui_right_click()) {
+        mods_close();
+    }
+    return 1;
+}
+
 static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     TtProc *p = NULL;
@@ -1829,7 +2161,10 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     all.y = 0;
     all.w = W;
     all.h = H - ui_bar_h(c);
-    if (style_screen(c, view, in, W, H, state == SM_STATE_SELECT)) {
+    if (!g_mods_open && style_screen(c, view, in, W, H, state == SM_STATE_SELECT)) {
+        return;
+    }
+    if (!g_style_open && eidos_ui_try_state() == 0 && mods_screen(c, view, in, W, H, state == SM_STATE_SELECT)) {
         return;
     }
 
@@ -2236,8 +2571,8 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                                                           : hints_one;
         const u32 *bk = slots > 1 && card >= 0 ? keys_slots : keys_one;
         int bn = slots > 1 && card >= 0 ? 3 : 2, j;
-        const char *hp[8];
-        u32 hk[4];
+        const char *hp[10];
+        u32 hk[5];
         EidosUiRect fr;
 
         fr.w = STYLE_FLAG_W;
@@ -2260,7 +2595,29 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         hp[2 * bn] = "SELECT";
         hp[2 * bn + 1] = "Style";
         hk[bn] = BW_KEY_SELECT;
-        ui_hints(c, H - ui_bar_h(c), W, hp, bn + 1, hk);
+        if (mods_on()) {
+            /* the mod manager's flag, at the other corner, and its key */
+            u32 mi[MODS_MAX];
+            int on = 0;
+            EidosUiRect mr;
+
+            (void)mods_listed(mi, &on);
+            mr.w = STYLE_FLAG_W;
+            mr.h = STYLE_FLAG_H;
+            mr.x = 24 + c->safe_l;
+            mr.y = 0;
+            j = eidos_ui_hit(mr);
+            (void)mods_flag(c, (j & EIDOS_UI_HOVER) != 0, on);
+            if ((j & EIDOS_UI_CLICK) && state == SM_STATE_SELECT && g_mods_cool == 0 && eidos_ui_try_state() == 0) {
+                mods_show();
+            }
+            hp[2 * (bn + 1)] = "Y";
+            hp[2 * (bn + 1) + 1] = "Mods";
+            hk[bn + 1] = BW_KEY_Y;
+            ui_hints(c, H - ui_bar_h(c), W, hp, bn + 2, hk);
+        } else {
+            ui_hints(c, H - ui_bar_h(c), W, hp, bn + 1, hk);
+        }
     }
     dbg = getenv("EIDOS_TITLE_DEBUG");
     if (dbg != NULL && (in->frame % 30) == 0) {

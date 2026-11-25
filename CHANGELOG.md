@@ -7,6 +7,7 @@ Each release's notes on GitHub start with its section here
 
 ### One-Screen Mode & UI
 - **Interface Scale**: The interface now keeps the size it has at 1280x720 at every window size (scale 3 at 1920x1080 and 4 at 2560x1440, where it was a third and a quarter larger).
+- **Mod Manager**: Started with `--mods`, the game shows a MODS button at the title menu's top left that opens its own mod manager in the chosen style, with the installed mods that work with this game and a switch for each; phones and consoles always have it.
 - **Pokédex Registration**: A first catch of a species now opens the style's own Pokédex on that species; its category, type, height, weight and entry go from unknown to known and the OWN counter counts it, in step with the game's own page. A species already owned goes straight to the nickname question.
 
 ### Modding

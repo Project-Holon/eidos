@@ -94,6 +94,11 @@ typedef struct BwModManifest {
     int            multiplayer;    /* `multiplayer = <n>`: the mod's multiplayer
                                     * compatibility number, 0 when it states
                                     * none (docs/multiplayer.md) */
+    char          *description;    /* `description = <a line>`: what the mod
+                                    * does, for a mod list; or NULL */
+    char          *author;         /* `author = <who made it>`, or NULL */
+    char          *version;        /* `version = <the mod's own version>`, or
+                                    * NULL */
 } BwModManifest;
 
 #ifdef __cplusplus

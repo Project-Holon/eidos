@@ -401,6 +401,7 @@ static char **mobile_args(int *argc)
     argv[n++] = "--layout";
     argv[n++] = "one";
     argv[n++] = "--window";
+    argv[n++] = "--mods";      /* no launcher here: the game's own mod manager */
     /* A phone draws with OpenGL ES and is played by touch: the hints show the DS's own button
      * letters (a connected pad still shows its own).  Android's curved
      * screens also get a margin of 2% a side inside the safe area. */

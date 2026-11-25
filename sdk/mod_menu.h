@@ -184,6 +184,17 @@ int bw_mod_menu_present_at(u32 index);
  * load it, whatever its switch says. */
 int bw_mod_menu_needs_game_at(u32 index);
 
+/* A line of the mod's manifest for a mod list: what 0 its `description`, 1
+ * its `author`, 2 its `version`.  "" when the manifest has no such line. */
+const char *bw_mod_menu_about_at(u32 index, int what);
+
+/* The game's own mod manager (the MODS button of the title menu,
+ * engine/ui/recipe_title.c) is offered: the start option --mods.  A game
+ * the desktop launcher starts does not pass it (the launcher manages the
+ * mods there); a phone or a console always does (host/main.c). */
+void bw_mod_menu_set_manager(int on);
+int  bw_mod_menu_manager(void);
+
 /* 1 when the mod ships code, so it has a library the loader opens and
  * unloads. */
 int bw_mod_menu_has_code_at(u32 index);

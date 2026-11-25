@@ -131,6 +131,7 @@ extern void        bw_mod_manifest_delete(void *manifest);
 extern int         bw_mod_manifest_parse_dir(void *manifest, const char *root,
                                               const char *dir_name);
 extern const char *bw_mod_manifest_name(const void *manifest);
+extern const char *bw_mod_manifest_about(const void *manifest, int what);
 extern const char *bw_mod_manifest_code(const void *manifest);
 extern const char *bw_mod_manifest_state(const void *manifest);
 extern const char *bw_mod_manifest_settings(const void *manifest);
@@ -159,6 +160,7 @@ extern u32  bw_mod_savedata_save_check(void);
 #define BW_MOD_MENU_PATH_MAX 1024
 #define BW_MOD_MENU_ROOT_MAX 512
 #define BW_MOD_MENU_NAME_MAX 96
+#define BW_MOD_MENU_ABOUT_MAX 400
 #define BW_MOD_MENU_NS_MAX 96
 #define BW_MOD_MENU_SET_MAX 256
 #define BW_MOD_MENU_KEY_MAX 64
@@ -245,6 +247,9 @@ typedef struct BwModMenuMode {
 typedef struct BwModMenuMod {
     char root[BW_MOD_MENU_ROOT_MAX];    /* the mod's own folder          */
     char name[BW_MOD_MENU_NAME_MAX];    /* the name the manifest gives   */
+    char about[BW_MOD_MENU_ABOUT_MAX];  /* its `description` line, "" for none */
+    char author[64];                    /* its `author` line             */
+    char version[24];                   /* its `version` line            */
     char ns[BW_MOD_MENU_NS_MAX];        /* the state namespace           */
     char settings[BW_MOD_MENU_SET_MAX]; /* the settings declaration      */
     int  order;                         /* the manifest's order key      */
@@ -629,6 +634,16 @@ static void read_manifest(BwModMenuMod *m)
         return;
     }
     copy_str(m->name, sizeof m->name, bw_mod_manifest_name(record));
+    {
+        const char *t;
+
+        t = bw_mod_manifest_about(record, 0);
+        copy_str(m->about, sizeof m->about, t != NULL ? t : "");
+        t = bw_mod_manifest_about(record, 1);
+        copy_str(m->author, sizeof m->author, t != NULL ? t : "");
+        t = bw_mod_manifest_about(record, 2);
+        copy_str(m->version, sizeof m->version, t != NULL ? t : "");
+    }
     ns = bw_mod_manifest_state(record);
     if (ns != NULL && ns[0] != '\0' && bw_mod_manifest_namespace_valid(ns)) {
         copy_str(m->ns, sizeof m->ns, ns);
@@ -2126,6 +2141,27 @@ int bw_mod_menu_needs_game_at(u32 index)
 {
     model_ready();
     return index < g_count ? g_mods[index].needs_game : 0;
+}
+
+const char *bw_mod_menu_about_at(u32 index, int what)
+{
+    model_ready();
+    if (index >= g_count) {
+        return "";
+    }
+    return what == 0 ? g_mods[index].about : what == 1 ? g_mods[index].author : what == 2 ? g_mods[index].version : "";
+}
+
+static int g_manager;
+
+void bw_mod_menu_set_manager(int on)
+{
+    g_manager = on != 0;
+}
+
+int bw_mod_menu_manager(void)
+{
+    return g_manager;
 }
 
 int bw_mod_menu_present_at(u32 index)

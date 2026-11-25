@@ -181,6 +181,10 @@ later versions can add keys (`sdk/vfs.c`, `read_manifest`).
 | `settings` | relative path | none | the mod's settings declaration (`docs/mod-services.md`) |
 | `ui_text` | relative path | none | the one-screen interface's words in the mod's language (`docs/mod-ui-text.md`) |
 | `multiplayer` | integer from 1 | none | the mod's multiplayer compatibility number; only it has to match between players (`docs/multiplayer.md`) |
+| `game` | `black` or `white` | both | the game version the mod is made for; the port does not load it in the other one, and the mod lists show it as unavailable or leave it out (`sdk/vfs.c`) |
+| `description` | text, one line | none | what the mod does, for a mod list (the game's own mod manager shows it under the name and on the mod's side) |
+| `author` | text | none | who made it |
+| `version` | text | none | the mod's own version, as its maker counts it |
 
 `name` and `order` are read by the data layer, which builds the mod list and
 the load order (`sdk/vfs.c`, `read_manifest`); the whole schema above is read

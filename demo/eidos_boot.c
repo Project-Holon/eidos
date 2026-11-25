@@ -123,7 +123,9 @@ static const char *g_shot_dir = ".";
 /* --mod FOLDER: run with that one mod only (the player's mod list is not
  * read); --mod-log FILE: everything the port writes to stderr, the mod
  * loader's reports and the mods' own log lines with it, goes to FILE.
- * Both are for a mod tool's "run in eidos" (kenon). */
+ * Both are for a mod tool's "run in eidos" (kenon).  --mods: the title menu
+ * offers the game's own mod manager (sdk/mod_menu.h, bw_mod_menu_manager),
+ * for a game no launcher starts. */
 static const char *g_only_mod;
 static const char *g_mod_log;
 /* --g3d-trace N: the 3D command trace of frame N (hw3d.c g3d_hw_trace). */
@@ -3231,7 +3233,7 @@ static void usage(void)
                     "[--input SCRIPT] [--fullscreen|--borderless|--windowed] "
                     "[--resolution N|auto] [--pixel-scale N|auto] "
                     "[--layout vertical|horizontal|one] [--two-screens] [--swap-screens] "
-                    "[--gap N] [--volume N] [--mod FOLDER] [--mod-log FILE]\n");
+                    "[--gap N] [--volume N] [--mod FOLDER] [--mod-log FILE] [--mods]\n");
 #if EIDOS_BOOT_SDL
     fputs(bw_setup_usage(), stderr);
 #endif
@@ -3483,6 +3485,8 @@ int main(int argc, char **argv)
             data_root = argv[++i];
         } else if (strcmp(argv[i], "--mod") == 0 && i + 1 < argc) {
             g_only_mod = argv[++i];
+        } else if (strcmp(argv[i], "--mods") == 0) {
+            bw_mod_menu_set_manager(1);     /* the title menu offers the game's own mod manager */
         } else if (strcmp(argv[i], "--mod-log") == 0 && i + 1 < argc) {
             g_mod_log = argv[++i];
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {

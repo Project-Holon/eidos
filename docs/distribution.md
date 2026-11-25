@@ -22,6 +22,7 @@ Nothing here is built yet unless it says so. The launcher is described in `docs/
 | eidos versions in the launcher | Downloaded from GitHub Releases into the user folder; any older version can be installed and launched. |
 | Invite links | `eidos://join/<code>`. The launcher registers them at install; a plain eidos asks once on first run. |
 | Joining a game with other versions or mods | The launcher offers to match: it gets that version and those mods into a profile for the session, then joins. |
+| Mods without the launcher | The game has its own mod manager for a game no launcher starts: a phone, a console (always on), or a plain eidos started with `--mods` (a third-party launcher's start options). A MODS button at the title menu's top left opens it. A game the launcher starts does not show it: the launcher manages the mods of its profiles. |
 | Where mods come from | The official mods index: a public repository of mod entries. Authors add a mod or a new version by pull request; the maintainers merge it. |
 | kenon | Optional, for people who make mods. It is not needed to play. |
 

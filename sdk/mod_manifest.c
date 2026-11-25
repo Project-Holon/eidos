@@ -859,6 +859,9 @@ void bw_mod_manifest_free(void *manifest)
         free(m->state);
         free(m->settings);
         free(m->ui_text);
+        free(m->description);
+        free(m->author);
+        free(m->version);
         free(m->overrides);
         free(m->rules);
     }
@@ -1547,6 +1550,19 @@ int bw_mod_manifest_parse(void *manifest, const char *text, const char *dir_name
             } else if (set_str_n(&m->name, vs, (size_t)(ve - vs)) != 0) {
                 return -1;
             }
+        } else if (key_len == 11 && memcmp(ks, "description", 11) == 0) {
+            /* (the three lines a mod list shows; an empty one is as none) */
+            if (ve != vs && set_str_n(&m->description, vs, (size_t)(ve - vs)) != 0) {
+                return -1;
+            }
+        } else if (key_len == 6 && memcmp(ks, "author", 6) == 0) {
+            if (ve != vs && set_str_n(&m->author, vs, (size_t)(ve - vs)) != 0) {
+                return -1;
+            }
+        } else if (key_len == 7 && memcmp(ks, "version", 7) == 0) {
+            if (ve != vs && set_str_n(&m->version, vs, (size_t)(ve - vs)) != 0) {
+                return -1;
+            }
         } else if (key_len == 5 && memcmp(ks, "order", 5) == 0) {
             long v;
 
@@ -2014,6 +2030,18 @@ const char *bw_mod_manifest_name(const void *manifest)
     const BwModManifest *m = (const BwModManifest *)manifest;
 
     return m != NULL ? m->name : NULL;
+}
+
+/* The lines a mod list shows: 0 the description, 1 the author, 2 the mod's
+ * own version.  NULL when the manifest has no such line. */
+const char *bw_mod_manifest_about(const void *manifest, int what)
+{
+    const BwModManifest *m = (const BwModManifest *)manifest;
+
+    if (m == NULL) {
+        return NULL;
+    }
+    return what == 0 ? m->description : what == 1 ? m->author : what == 2 ? m->version : NULL;
 }
 
 const char *bw_mod_manifest_code(const void *manifest)
