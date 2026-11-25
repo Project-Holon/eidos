@@ -94,6 +94,9 @@ void SDL_Delay(Uint32 ms) { sw2_delay(ms); }
 
 void *SDL_malloc(size_t size) { return malloc(size); }
 char *SDL_strdup(const char *s) { return strdup(s); }
+/* what SDL_strdup and SDL_GetClipboardText give back (the host's clipboard
+ * read frees it with SDL_free) */
+void SDL_free(void *p) { free(p); }
 
 /* ------------------------------------------------------------------ */
 /* Files                                                               */
