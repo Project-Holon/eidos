@@ -414,6 +414,24 @@ static void test_bindings(EidosPlatform *p)
     BW_CHECK_EQ("escape does not quit", eidos_platform_pump(p), 1);
 }
 
+/* Whether two small files hold the same bytes (both there). */
+static int same_file(const char *a, const char *b)
+{
+    static char ta[16384], tb[16384];
+    FILE *fa = fopen(a, "rb"), *fb = fopen(b, "rb");
+    size_t na = 0, nb = 0;
+
+    if (fa != NULL) {
+        na = fread(ta, 1, sizeof ta, fa);
+        fclose(fa);
+    }
+    if (fb != NULL) {
+        nb = fread(tb, 1, sizeof tb, fb);
+        fclose(fb);
+    }
+    return fa != NULL && fb != NULL && na == nb && na < sizeof ta && memcmp(ta, tb, na) == 0;
+}
+
 static void snapshot(int *o, int *k, int *pk, int *pi)
 {
     int i, b, s, n = 0;
@@ -489,6 +507,25 @@ static void test_file(void)
     BW_CHECK_EQ("reset bindings clears pad custom", eidos_settings_pad_custom(), 0);
     BW_CHECK_EQ("reload", eidos_settings_load(), 0);
     BW_CHECK_EQ("pad custom back from the file", eidos_settings_pad_custom(), 1);
+
+    /* A second file kept the same (a standalone game's other game profile):
+     * every save writes it too; a place that is gone neither fails the save
+     * nor is made; with none named, only the settings' own file changes. */
+    remove(INI ".other");
+    eidos_settings_share_with(INI ".other");
+    eidos_settings_set(EIDOS_OPT_SOUND_VOLUME, 20);
+    BW_CHECK_EQ("commit with a shared file", eidos_settings_commit(), 0);
+    BW_CHECK_EQ("the shared file holds the same", same_file(INI, INI ".other"), 1);
+    BW_CHECK_EQ("no tmp left beside it", bw_path_kind_utf8(INI ".other.tmp"), BW_PATH_NONE);
+    eidos_settings_share_with("test_settings_no_such_folder/settings.ini");
+    eidos_settings_set(EIDOS_OPT_SOUND_VOLUME, 21);
+    BW_CHECK_EQ("a shared place that is gone does not fail the save", eidos_settings_commit(), 0);
+    BW_CHECK_EQ("and its folder is not made", bw_path_kind_utf8("test_settings_no_such_folder"), BW_PATH_NONE);
+    eidos_settings_share_with(NULL);
+    eidos_settings_set(EIDOS_OPT_SOUND_VOLUME, 22);
+    BW_CHECK_EQ("commit with none", eidos_settings_commit(), 0);
+    BW_CHECK_EQ("the other file stays as it was", same_file(INI, INI ".other"), 0);
+    remove(INI ".other");
 
     /* Hand edits: unknown keys and bad values are ignored with a warning. */
     fp = fopen(INI, "wb");

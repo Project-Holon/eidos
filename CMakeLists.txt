@@ -383,6 +383,7 @@ else()
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_dataroot.c
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_extract.c
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_picker.c
+             ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_profiles.c
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings.c
              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_wizard.c)
         if(_eidos_pack4)
@@ -1686,6 +1687,7 @@ endif()
 # wizard on top of it is with the platform layer below (eidos_wizard).
 add_library(eidos_setup STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/install/setup.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/install/profiles.c  # the two game profiles of a start without the launcher
     ${CMAKE_CURRENT_SOURCE_DIR}/install/location.c
     ${CMAKE_CURRENT_SOURCE_DIR}/install/picker.c
 )
@@ -2545,6 +2547,17 @@ add_dependencies(test_dataroot bw_synth)
 add_test(NAME test_dataroot
          COMMAND test_dataroot ${BW_SYNTH_DIR} ${CMAKE_CURRENT_BINARY_DIR}/setup_work)
 set_tests_properties(test_dataroot PROPERTIES ENVIRONMENT "BW_DATA_ROOT=;EIDOS_HOME=")
+
+# One install with both games (install/setup.c) and the two game profiles
+# of a start without the launcher, with a plain start's old saves taken
+# into them (install/profiles.c).  Its own home and user folders under the
+# work folder.
+add_executable(test_profiles ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_profiles.c)
+target_include_directories(test_profiles PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(test_profiles PRIVATE eidos_setup)
+add_test(NAME test_profiles
+         COMMAND test_profiles ${CMAKE_CURRENT_BINARY_DIR}/profiles_work)
+set_tests_properties(test_profiles PROPERTIES ENVIRONMENT "BW_DATA_ROOT=;EIDOS_HOME=")
 
 # The native file dialog opened for real and answered by a helper thread
 # (Windows).  It shows a window on the desktop, so it runs only with

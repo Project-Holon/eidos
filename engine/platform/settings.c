@@ -202,6 +202,7 @@ static int g_ovr[EIDOS_OPT_COUNT];       /* set from the command line         */
 static int g_ovr_val[EIDOS_OPT_COUNT];
 static EidosPlatform *g_plat;
 static char g_path[PATH_MAX_LEN + 16];
+static char g_shared[PATH_MAX_LEN + 16];    /* a second file kept the same, "" none */
 static int g_have_path;
 static int g_inited;
 static int g_size_pending;   /* a window resize not yet in the file */
@@ -1851,6 +1852,14 @@ void eidos_settings_set_path(const char *path)
     }
 }
 
+void eidos_settings_share_with(const char *path)
+{
+    g_shared[0] = '\0';
+    if (path != NULL && snprintf(g_shared, sizeof(g_shared), "%s", path) >= (int)sizeof(g_shared)) {
+        g_shared[0] = '\0';
+    }
+}
+
 /* A key's file token: SDL's name when it is plain ASCII and reads back to the
  * same scancode, else "sc:N". */
 static void key_token(int sc, char *buf, size_t n)
@@ -2428,6 +2437,33 @@ int eidos_settings_load(void)
     return 0;
 }
 
+/* The second file that keeps the same settings (eidos_settings_share_with),
+ * written after the settings' own.  Its folder is never made here, and a
+ * write that fails says nothing: the settings' own file is the one that
+ * counts, and the other is brought in step at the next save. */
+static void save_shared(const Model *out)
+{
+    char tmp[sizeof(g_shared) + 8];
+    FILE *fp;
+
+    if (g_shared[0] == '\0' || snprintf(tmp, sizeof(tmp), "%s.tmp", g_shared) >= (int)sizeof(tmp)) {
+        return;
+    }
+    fp = bw_fopen_utf8(tmp, "wb");
+    if (fp == NULL) {
+        return;
+    }
+    if (write_file(fp, out) != 0 || fflush(fp) != 0) {
+        fclose(fp);
+        remove(tmp);
+        return;
+    }
+    fclose(fp);
+    if (eidos_replace_file(tmp, g_shared) != 0) {
+        remove(tmp);
+    }
+}
+
 static int save_model(const Model *out)
 {
     const char *path = eidos_settings_path();
@@ -2473,6 +2509,7 @@ static int save_model(const Model *out)
         fprintf(stderr, "eidos: cannot replace %s\n", path);
         return -1;
     }
+    save_shared(out);
     return 0;
 }
 

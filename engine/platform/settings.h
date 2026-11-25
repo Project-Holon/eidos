@@ -320,6 +320,12 @@ u32  eidos_settings_host_buttons(void);
  * different file, for tests and for a launcher; NULL restores the default. */
 const char *eidos_settings_path(void);
 void eidos_settings_set_path(const char *path);
+/* A second file that every save of the settings also writes, so two places
+ * keep the same settings: a standalone game's two game profiles (Pokemon
+ * Black's and Pokemon White's, demo/eidos_boot.c), whose player has one set
+ * of settings whichever version is played.  Its folder is not made here.
+ * NULL: none. */
+void eidos_settings_share_with(const char *path);
 
 /* Defaults, then the file.  0 loaded, 1 no file (defaults), -1 unreadable
  * (defaults; the file is left alone).  Resets the committed state too. */
