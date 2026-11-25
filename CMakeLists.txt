@@ -3099,6 +3099,13 @@ if(VITA)
     # the Vita's package: the signed program (eboot.bin) and the .vpk the
     # system (or Vita3K) installs (docs/consoles.md)
     include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
+    # vita-elf-create adds the module's SCE tables (a few KB) at the end of
+    # the code segment, and the data segment starts at the next 64 KB
+    # boundary: code that ends just short of it left no room ("Cannot
+    # allocate N bytes for SCE data at end of segment 0; segment 1
+    # overlaps").  __sce_headroom is VitaSDK's supported way to keep room
+    # there (vitasdk/vita-toolchain issue 303).
+    target_link_options(eidos_boot PRIVATE "-Wl,--defsym=__sce_headroom=0x10000")
     vita_create_self(eidos_boot.self eidos_boot UNSAFE)
     vita_create_vpk(eidos.vpk EIDS00001 eidos_boot.self VERSION 01.00 NAME "eidos")
 endif()
