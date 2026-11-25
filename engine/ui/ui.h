@@ -262,6 +262,11 @@ void eidos_ui_drag(int x0, int y0, int x1, int y1);
 /* A button press (BW_KEY_* mask), held `frames` frames from the next game
  * frame; the player's own buttons are not disturbed. */
 void eidos_ui_press(u32 keys, u32 frames);
+/* A key hint was tapped: the player's press of that key.  A key the screen
+ * took from the game (eidos_ui_take_keys, this frame or the last) goes to
+ * the screen, in eidos_ui_keys_pressed on the next frame, and not to the
+ * game, as the key itself would; any other key is pressed for the game. */
+void eidos_ui_hint_press(u32 keys);
 /* The input frame of the last B (the player's, a hint's or a right
  * click's). */
 u32  eidos_ui_b_frame(void);

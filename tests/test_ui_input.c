@@ -91,6 +91,11 @@ void eidos_ui_press(u32 keys, u32 frames)
     g_press |= keys;
 }
 
+void eidos_ui_hint_press(u32 keys)
+{
+    eidos_ui_press(keys, 2);
+}
+
 /* no sounds and no B held here */
 void eidos_ui_sound(u32 seq)
 {

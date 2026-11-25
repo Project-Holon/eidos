@@ -1078,7 +1078,7 @@ int ui_def_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n,
             ui_fill(c, x - 2, top + 1, r.w, bh - 2, UI_EDGE, 255);
         }
         if ((state & EIDOS_UI_CLICK) && keys != NULL && keys[i] != 0) {
-            eidos_ui_press(keys[i], 2);
+            eidos_ui_hint_press(keys[i]);
         }
         ui_keycap(c, x, y + 2, key);
         x += kw + 4;

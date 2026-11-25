@@ -115,6 +115,11 @@ void eidos_ui_press(u32 keys, u32 frames)
     g_press_n++;
 }
 
+void eidos_ui_hint_press(u32 keys)
+{
+    eidos_ui_press(keys, 2);
+}
+
 static u32 g_sounds[64];
 static int g_sound_n;
 

@@ -703,7 +703,7 @@ static void draw_hint_strip_h(EidosUiCtx *c, int x, int w, const char *const *pa
             ui_fill(c, at - 2, y + 1, kw + 4 + aw + 4, bh - 2, UI_EDGE, 255);
         }
         if ((st & EIDOS_UI_CLICK) && keys != NULL && keys[i] != 0) {
-            eidos_ui_press(keys[i], 2);
+            eidos_ui_hint_press(keys[i]);
         }
         ui_keycap(c, at, y + (bh - 13) / 2, key);
         at += kw + 4;

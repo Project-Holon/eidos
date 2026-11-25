@@ -329,6 +329,11 @@ void eidos_ui_press(u32 keys, u32 frames)
     (void)frames;
 }
 
+void eidos_ui_hint_press(u32 keys)
+{
+    (void)keys;
+}
+
 static float clampf(float v, float lo, float hi)
 {
     return v < lo ? lo : v > hi ? hi : v;

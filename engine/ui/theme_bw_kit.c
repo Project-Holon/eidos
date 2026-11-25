@@ -879,7 +879,7 @@ int rx_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n, const
             ui_fill(c, x - 2, top + 3, r.w, bh - 4, R(0x3A3A3Au), 255);
         }
         if ((state & EIDOS_UI_CLICK) && keys != NULL && keys[i] != 0) {
-            eidos_ui_press(keys[i], 2);
+            eidos_ui_hint_press(keys[i]);
         }
         ui_keycap(c, x, y + 2, key);
         x += kw + 4;

@@ -57,6 +57,8 @@ static int g_right;                          /* right button this frame    */
 static int g_want_text, g_text_wanted;       /* typing asked this frame    */
 static int g_want_objs, g_objs_wanted;       /* OBJ layers asked (bits)    */
 static u32 g_keys_prev, g_keys_now, g_keys_edge, g_take;   /* the player's keys    */
+static u32 g_take_last;             /* the keys the screen took on the frame before */
+static u32 g_tap_keys;              /* tapped hints of taken keys: presses of the next frame */
 static int g_k = 2;
 
 int eidos_ui_enabled(void)
@@ -195,6 +197,16 @@ void eidos_ui_press(u32 keys, u32 frames)
         g_b_frame = bw_input_frame_number();
     }
     (void)bw_input_inject(keys & BW_KEY_GAME, frames == 0 ? 1 : frames);
+}
+
+void eidos_ui_hint_press(u32 keys)
+{
+    u32 mine = keys & (g_take | g_take_last) & BW_KEY_GAME;
+
+    g_tap_keys |= mine;
+    if ((keys & ~mine) != 0) {
+        eidos_ui_press(keys & ~mine, 2);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -3732,7 +3744,8 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     g_want_text = 0;
     g_want_objs = 0;
     g_keys_now = bw_input_player_buttons();
-    g_keys_edge = g_keys_now & ~g_keys_prev;
+    g_keys_edge = (g_keys_now & ~g_keys_prev) | g_tap_keys;     /* (with the hints tapped last frame) */
+    g_tap_keys = 0;
     if (g_keys_edge & BW_KEY_B) {
         g_b_frame = bw_input_frame_number();
     }
@@ -3767,6 +3780,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
         }
     }
     g_keys_prev = g_keys_now;
+    g_take_last = g_take;
     g_take = 0;
 
     memset(view, 0, sizeof(*view));
