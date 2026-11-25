@@ -2049,6 +2049,10 @@ add_executable(test_mod_wasm ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mod_wasm.c)
 target_include_directories(test_mod_wasm PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(test_mod_wasm PRIVATE eidos)
+# (its last case loads tests/data/mod_libc/libc_test.wasm, the mod C
+# library's own checks)
+target_compile_definitions(test_mod_wasm PRIVATE
+    EIDOS_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 # test_mp drives multiplayer's lobby, start and pause (sdk/mp.c) with a
 # network of its own, as the host's game and then as a joiner's.
 add_executable(test_mp ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mp.c)

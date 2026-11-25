@@ -31,6 +31,10 @@ int bw_mod_wasm_available(void);
 /* 1 when the file at `path` starts with the wasm magic ("\0asm"). */
 int bw_mod_wasm_is_module(const char *path);
 
+/* A second receiver of the modules' log lines (eidos_log), beside the error
+ * output: the mod's label, the text and its length.  For tests; NULL: none. */
+void bw_mod_wasm_set_log_tap(void (*tap)(const char *label, const char *text, int len));
+
 /*
  * Read, check and instantiate the module at `path`.  The handle, or NULL
  * with a one-line reason in `err`.  `label` names the mod in messages.

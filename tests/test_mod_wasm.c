@@ -81,6 +81,29 @@
 #define T_NESTED T_ROOT "/nested"
 #define T_SESSION T_ROOT "/session"
 #define T_REF T_ROOT "/reftypes"
+#define T_LIBC T_ROOT "/libc"
+
+/* The mod C library's module logs its failures and then its count. */
+static char g_log_last[160];
+static int g_log_n, g_log_fail;
+
+static void log_tap(const char *label, const char *text, int len)
+{
+    (void)label;
+    if (len < 0) {
+        len = 0;
+    }
+    if ((size_t)len >= sizeof g_log_last) {
+        len = (int)sizeof g_log_last - 1;
+    }
+    memcpy(g_log_last, text, (size_t)len);
+    g_log_last[len] = '\0';
+    g_log_n++;
+    if (strncmp(g_log_last, "FAIL", 4) == 0) {
+        g_log_fail++;
+        printf("  %s\n", g_log_last);
+    }
+}
 #define T_FLAG 0x123u
 
 static const unsigned char k_module[] = {
@@ -457,7 +480,7 @@ static int write_mod(const char *dir, const char *title, const char *ns,
 
 static void clean_tree(void)
 {
-    static const char *const dirs[] = { T_GOOD, T_BAD, T_IMPORT, T_NOGROW, T_NESTED, T_SESSION, T_REF };
+    static const char *const dirs[] = { T_GOOD, T_BAD, T_IMPORT, T_NOGROW, T_NESTED, T_SESSION, T_REF, T_LIBC };
     char path[512];
     size_t i;
 
@@ -475,6 +498,7 @@ static void clean_tree(void)
     BW_RMDIR(T_ROOT "/save/mods/wasmnested");
     BW_RMDIR(T_ROOT "/save/mods/wasmsession");
     BW_RMDIR(T_ROOT "/save/mods/wasmref");
+    BW_RMDIR(T_ROOT "/save/mods/wasmlibc");
     BW_RMDIR(T_ROOT "/save/mods");
     BW_RMDIR(T_ROOT "/save");
     BW_RMDIR(T_ROOT);
@@ -672,6 +696,38 @@ int main(void)
                 (long)bw_mod_loader_load_all(), 1);
     bw_mod_loader_stop_all();
     bw_clear_mods();
+
+    printf("the mod C library\n");
+    {
+        /* tests/data/mod_libc: a module built with morphe's modsdk/v7/libc
+         * that runs its own checks in its start and logs the count last */
+        static unsigned char code[256 * 1024];
+        FILE *fp = fopen(EIDOS_TEST_DATA "/mod_libc/libc_test.wasm", "rb");
+        size_t size = fp != NULL ? fread(code, 1, sizeof code, fp) : 0;
+
+        if (fp != NULL) {
+            fclose(fp);
+        }
+        BW_REQUIRE("the test module is read", size > 8 && size < sizeof code);
+        BW_MKDIR(T_LIBC);
+        BW_REQUIRE("the module is written", write_mod(T_LIBC, "Libc Test", "wasmlibc", code, size) == 0);
+        bw_clear_mods();
+        BW_REQUIRE("the module is added", bw_add_mod_root(T_LIBC) == 0);
+        g_log_n = 0;
+        g_log_fail = 0;
+        bw_mod_wasm_set_log_tap(log_tap);
+        BW_CHECK_EQ("its start runs every check with no failure, so it loads",
+                    (long)bw_mod_loader_load_all(), 1);
+        bw_mod_wasm_set_log_tap(NULL);
+        BW_CHECK_EQ("no check failed", (long)g_log_fail, 0);
+        BW_CHECK_EQ("its last line counts all 94 checks",
+                    strcmp(g_log_last, "94 checks, 0 failures"), 0);
+        if (strcmp(g_log_last, "94 checks, 0 failures") != 0) {
+            printf("  last line: %s\n", g_log_last);
+        }
+        bw_mod_loader_stop_all();
+        bw_clear_mods();
+    }
 
     clean_tree();
     BW_REPORT("test_mod_wasm");

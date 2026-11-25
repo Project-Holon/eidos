@@ -433,11 +433,16 @@ static void wasm_bind_on_save_received(BwWasmMod *w, int32_t index)
 /* The core imports (sdk/api/v5/core.json)                              */
 /* ------------------------------------------------------------------ */
 
+static void (*g_log_tap)(const char *label, const char *text, int len);
+
 static void wc_log(wasm_exec_env_t env, const char *text, int32_t len)
 {
     BwWasmMod *w = wasm_mod_of(env);
 
     fprintf(stderr, "mod %s: %.*s\n", w != NULL ? w->label : "?", (int)len, text);
+    if (g_log_tap != NULL) {
+        g_log_tap(w != NULL ? w->label : "?", text, (int)len);
+    }
 }
 
 static int32_t wc_on(wasm_exec_env_t env, int32_t kind, int32_t index)
@@ -891,6 +896,11 @@ void bw_mod_wasm_close(void *wasm)
     free(w);
 }
 
+void bw_mod_wasm_set_log_tap(void (*tap)(const char *label, const char *text, int len))
+{
+    g_log_tap = tap;
+}
+
 #else  /* !EIDOS_HAVE_WAMR */
 
 int bw_mod_wasm_available(void)
@@ -939,6 +949,11 @@ void bw_mod_wasm_stop(void *wasm)
 void bw_mod_wasm_close(void *wasm)
 {
     (void)wasm;
+}
+
+void bw_mod_wasm_set_log_tap(void (*tap)(const char *label, const char *text, int len))
+{
+    (void)tap;
 }
 
 #endif /* EIDOS_HAVE_WAMR */
