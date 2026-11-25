@@ -110,6 +110,7 @@ enum {
     EIDOS_EVENT_WORLD = 124,
     EIDOS_EVENT_AP = 125,
     EIDOS_EVENT_MOVE_KNOWN = 126,
+    EIDOS_EVENT_WEB = 127,
     EIDOS_MOVE_SITE_FRONT_TILE = 0,
     EIDOS_MOVE_SITE_SCRIPT = 1,
     EIDOS_MOVE_SITE_PARTY_MENU = 2,
@@ -223,6 +224,12 @@ enum {
     EIDOS_AI_ITEM = 0,
     EIDOS_AI_SWITCH = 1,
     EIDOS_AI_MOVE = 2,
+    EIDOS_WEB_FAILED = -1,
+    EIDOS_GAME_HASH_RA = 1,
+    EIDOS_POPUP_NONE = 0,
+    EIDOS_POPUP_TROPHY = 1,
+    EIDOS_POPUP_INFO = 2,
+    EIDOS_POPUP_WARNING = 3,
     EIDOS_SCRIPT_VM_FIELD = 0,
     EIDOS_SCRIPT_VM_BATTLE = 1,
     EIDOS_SCRIPT_CONTINUE = 0,
@@ -928,6 +935,14 @@ typedef struct EidosMoveKnown {
     uint8_t pad;
 } EidosMoveKnown;  /* 16 bytes */
 
+typedef struct EidosWeb {
+    EidosEvent h;
+    uint32_t ticket;  /* the request it answers (web_request's *ticket) */
+    int32_t status;  /* the HTTP status, or EIDOS_WEB_FAILED */
+    uint32_t size;  /* the bytes web_read gives: the body, or a short reason */
+    uint32_t pad;
+} EidosWeb;  /* 24 bytes */
+
 /* A handler: return EIDOS_EVENT_CONTINUE or EIDOS_EVENT_REFUSE. */
 typedef int32_t (*EidosHandler)(EidosEvent *event);
 
@@ -1069,6 +1084,12 @@ EIDOS_IMPORT("setting_text") int32_t eidos_setting_text(const char *key, char *o
 EIDOS_IMPORT("player_name") int32_t eidos_player_name(char *out, uint32_t size);
 EIDOS_IMPORT("mode_code") int32_t eidos_mode_code(char *out, uint32_t size);
 EIDOS_IMPORT("tracker_set") int32_t eidos_tracker_set(const char *text, uint32_t size);
+EIDOS_IMPORT("web_request") int32_t eidos_web_request(const char *url, const void *body, uint32_t body_size, const char *content_type, uint32_t *ticket);
+EIDOS_IMPORT("web_read") int32_t eidos_web_read(void *out, uint32_t size);
+EIDOS_IMPORT("time_utc") int64_t eidos_time_utc(void);
+EIDOS_IMPORT("ticks_ms") uint64_t eidos_ticks_ms(void);
+EIDOS_IMPORT("game_hash") int32_t eidos_game_hash(uint32_t kind, char *out, uint32_t size);
+EIDOS_IMPORT("popup") int32_t eidos_popup(const char *title, const char *text, uint32_t icon);
 
 /* What the module must export. */
 EIDOS_EXPORT("eidos_mod_start") int32_t eidos_mod_start(void);

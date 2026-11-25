@@ -1349,6 +1349,37 @@ void ui_def_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *
             UI_FONT_LARGE, 1);
 }
 
+/* The pop-up's box: the two lines' widths and the sides (a style whose
+ * box leans adds its lean: popup_w), one row per line that has text. */
+int ui_def_popup_w(const char *title, const char *text)
+{
+    int a = title != NULL && title[0] != '\0' ? ui_text_w(title, UI_FONT_LARGE) : 0;
+    int b = text != NULL && text[0] != '\0' ? ui_text_w(text, UI_FONT_LARGE) : 0;
+
+    return (a > b ? a : b) + 28;
+}
+
+int ui_popup_h(const char *title, const char *text)
+{
+    int rows = (title != NULL && title[0] != '\0') + (text != NULL && text[0] != '\0');
+
+    return 8 + 15 * (rows > 0 ? rows : 1);
+}
+
+void ui_def_popup(EidosUiCtx *c, int x, int y, int w, const char *title, const char *text)
+{
+    int h = ui_popup_h(title, text), ty = y + 4;
+
+    ui_panel(c, x, y, w, h, UI_CUT_TL, 5, UI_BODY, UI_CYAN, 240);
+    if (title != NULL && title[0] != '\0') {
+        ui_text(c, x + 12, ty, title, UI_CYAN, UI_EDGE, UI_FONT_LARGE, 1);
+        ty += 15;
+    }
+    if (text != NULL && text[0] != '\0') {
+        ui_text(c, x + 12, ty, text, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+    }
+}
+
 void ui_def_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color)
 {
     const int arm = 5;

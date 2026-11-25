@@ -165,6 +165,8 @@ extern int rx_clock_x0, rx_clock_x1;
 extern int rx_bar_alpha, rx_bar_gap_x0, rx_bar_gap_x1, rx_bar_gap_ttl;
 void rx_scrollbar(EidosUiCtx *c, int x, int y, int h, int first, int shown, int total, u32 accent);
 void rx_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon);
+void rx_popup(EidosUiCtx *c, int x, int y, int w, const char *title, const char *text);
+int rx_popup_w(const char *title, const char *text);
 void rx_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
 int rx_keycap(EidosUiCtx *c, int x, int y, const char *label);
 void rx_speed_badge(EidosUiCtx *c, int x, int y, int centred, int factor);

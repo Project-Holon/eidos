@@ -71,7 +71,7 @@ def parse_enums(text):
     out = []
     body = strip_comments(text)
     for m in re.finditer(r'enum\s*\{(.*?)\}', body, flags=re.S):
-        for name, value in re.findall(r'(\w+)\s*=\s*([0-9xXa-fA-F]+)', m.group(1)):
+        for name, value in re.findall(r'(\w+)\s*=\s*(-?[0-9xXa-fA-F]+)', m.group(1)):
             out.append((name, int(value, 0)))
     return out
 

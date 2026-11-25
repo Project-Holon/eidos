@@ -141,6 +141,9 @@
 #include "mp.h"
 #include "mod_timer.h"
 #include "mod_v6.h"
+#include "mod_v7.h"
+#include "mod_web.h"
+#include "mod_popup.h"
 #include "mod_wasm.h"
 #include "overlay_image.h"
 #include "vfs.h"
@@ -1228,6 +1231,13 @@ static int loader_load(u32 index)
     m->services.mod_file_read    = bw_mod_file_read;
     m->services.mod_file_list    = bw_mod_file_list;
     m->services.mod_file_delete  = bw_mod_file_delete;
+    /* version 7: the web, the clock, the game's hash, the pop-up */
+    m->services.web_request      = bw_mod_web_request;
+    m->services.web_read         = bw_mod_web_read;
+    m->services.time_utc         = bw_mod_v7_time_utc;
+    m->services.ticks_ms         = bw_mod_v7_ticks_ms;
+    m->services.game_hash        = bw_mod_v7_game_hash;
+    m->services.popup            = bw_mod_popup;
     /* The rules' cells: the mod's own file under its namespace. */
     bw_mod_rule_set_cells_io(loader_cells_load, loader_cells_store);
 

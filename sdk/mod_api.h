@@ -237,7 +237,8 @@ enum {
     BW_EVENT_TEXT_INPUT_DONE    = 123,
     BW_EVENT_WORLD              = 124,
     BW_EVENT_AP                 = 125,
-    BW_EVENT_MOVE_KNOWN         = 126
+    BW_EVENT_MOVE_KNOWN         = 126,
+    BW_EVENT_WEB                = 127
 };
 
 /* Version 6: where the game asks whether a Pokemon knows a move
@@ -1485,6 +1486,39 @@ typedef struct BwMoveKnown {
     u8  known;      /* *mod */
     u8  pad;
 } BwMoveKnown;
+
+/*
+ * web (version 7): the answer to a web request a mod made (services table,
+ * web_request).  Every mod with a handler sees it; only the mod that made
+ * the request reads its bytes (web_read, inside the handler), so another
+ * mod never sees what a server answered it.  `status` is the server's HTTP
+ * status, or BW_WEB_FAILED when no answer came (no connection, the
+ * certificate, a timeout, too large).
+ */
+typedef struct BwWeb {
+    BwEvent h;
+    u32 ticket;     /* the request it answers (web_request's *ticket) */
+    s32 status;     /* the HTTP status, or BW_WEB_FAILED */
+    u32 size;       /* the bytes web_read gives: the body, or a short reason */
+    u32 pad;
+} BwWeb;
+
+enum {
+    BW_WEB_FAILED = -1              /* web: no answer came */
+};
+
+/* game_hash (version 7): the hashes the port gives of the game in force. */
+enum {
+    BW_GAME_HASH_RA = 1             /* RetroAchievements' hash of the cartridge */
+};
+
+/* popup (version 7): the small picture beside a pop-up's text. */
+enum {
+    BW_POPUP_NONE    = 0,
+    BW_POPUP_TROPHY  = 1,           /* an achievement, a goal reached */
+    BW_POPUP_INFO    = 2,
+    BW_POPUP_WARNING = 3            /* something did not work (offline, a refusal) */
+};
 
 /* ------------------------------------------------------------------ */
 /* The script commands                                                 */

@@ -1060,6 +1060,90 @@ s32 (*mystery_card_add)(const void *pgf, u32 size);
 
 Code: `sdk/mod_v7.c`.
 
+## Version 7: the web, the clock, the game's hash and the pop-up
+
+Six calls at the end of the services table and one event, for online mods
+(the RetroAchievements mod is the first). Nothing moved, so version 3 to 6
+mods load as before.
+
+```c
+int  (*web_request)(const char *url, const void *body, u32 body_size,
+                    const char *content_type, u32 *ticket);
+int  (*web_read)(void *out, u32 size);
+s64  (*time_utc)(void);
+u64  (*ticks_ms)(void);
+int  (*game_hash)(u32 kind, char *out, u32 size);
+int  (*popup)(const char *title, const char *text, u32 icon);
+```
+
+### Web requests
+
+- `web_request` takes an `https://` address only, with no space or line
+  break, up to 2048 characters. It is a POST when there is a body or a
+  type: `body_size` bytes of `body` with that `Content-Type` (none given:
+  `application/x-www-form-urlencoded`), up to 64 KiB. With `body_size` 0
+  and the type `""` or NULL it is a GET. A wasm mod's null pointer reaches
+  the port as the start of its memory, so the size and the type decide,
+  not the pointer.
+- It answers 0 and sets `*ticket`, or -1 when it refuses: a bad address,
+  a type with a line break, a body too large, or four requests already
+  waiting (all mods together).
+- The request runs beside the game on the HTTPS client the mod manager
+  uses (`sdk/net_https.c`): TLS 1.2 or newer, the server's certificate
+  checked against the port's roots, redirects followed (a 301, 302 or 303
+  goes on as a GET, a 307 or 308 sends the body again). The answer is
+  kept up to 4 MiB.
+- The answer comes on a later frame as the event `web` (`BwWeb`):
+  `ticket`, `status` (the HTTP status, or `BW_WEB_FAILED` (-1) when no
+  answer came) and `size`. A server's error answers come with their body
+  like any other.
+- `web_read` works inside the `web` handler of the mod that made the
+  request: it copies up to `size` bytes (the body, or for a failed request
+  a short reason) and answers the whole size. Every other mod's handler
+  sees the event but `web_read` answers -1 there, so an answer (a sign-in
+  token) stays with the mod that asked. After the handlers the bytes are
+  freed.
+
+### The clock
+
+`time_utc` is the seconds since 1970 in UTC; `ticks_ms` a millisecond
+count that only goes up, for timing (it is not a date).
+
+### The game's hash
+
+`game_hash(BW_GAME_HASH_RA, out, size)` writes the RetroAchievements hash
+of the game in force, 32 lower-case hex characters and a 0 (`size` at
+least 33), and answers 32; -1 for an unknown kind or when the game's files
+do not read. It is rcheevos' `rc_hash_nintendo_ds`: an MD5 of the
+header's first 0x160 bytes, the ARM9 and ARM7 code at the sizes the header
+gives and 0xA00 bytes of icon and titles. The port keeps no ROM, but the
+extraction folder keeps those files (`header.bin`, `arm9.bin`, `arm7.bin`,
+`banner.bin`), which give the same hash as the ROM. The hash is made again
+when the run goes to the other version of the game.
+
+### The pop-up
+
+`popup` puts a pop-up in a queue of eight (-1 when eight wait, or when
+both texts are empty). The interface shows the first at the top right
+over every one-screen scene, the title and the text as the style's own
+toast on two lines; it slides in, stays four seconds and slides out, then
+the next comes. Texts are UTF-8, cut at 63 and 159 bytes on a whole
+character. `icon` is `BW_POPUP_NONE`, `_TROPHY`, `_INFO` or `_WARNING`
+(kept for the pictures; none is drawn yet). The two-screen layout shows
+no pop-ups.
+
+### Reading the game's memory
+
+`eidos_read` and the rd/wr calls of the wasm core reach the DS's main RAM
+from 0x02000000. Its first 16 KiB are the DS's extra heap: the game makes
+GFL heap 9 there (and heap 5 inside it while the game system runs), and the
+port now puts that heap where a DS has it (`sdk/os_alloc.c`), so 0x02000034
+(heap 9's child count) reads as on a DS. The data TCM is at 0x02FE0000.
+
+Code: `sdk/mod_web.c`, `sdk/mod_popup.c`, `engine/ui/popup.c`,
+`sdk/mod_v7.c` (the clock and the hash), `sdk/md5.c`. Tests:
+`tests/test_mod_v7_host.c`, `tests/test_https.c`.
+
 ## Related documents
 
 - `docs/mod-modes.md`: which runs use which service.

@@ -493,6 +493,102 @@ static void test_json(void)
                                          bw_json_u64(root, &n) == -1, 1);
 }
 
+/* Whether any request sent on the connections holds `text`. */
+static int sent_has(const char *text)
+{
+    int i;
+
+    for (i = 0; i < g_fake.opened && i < 8; i++) {
+        if (strstr(g_fake.sent[i], text) != NULL) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* A request with a body: a POST with its type and length, the body after
+ * the head; a 303 goes on as a GET, a 307 sends the body again; with
+ * any_status an error answer's body reaches the sink. */
+static void test_post(void)
+{
+    static const Answer ok[] = {
+        { HEAD_OK "Content-Length: 7\r\n\r\n{\"a\":1}", 5, 0 },
+    };
+    static const Answer see_other[] = {
+        { "HTTP/1.1 303 See Other\r\nLocation: /done\r\nContent-Length: 0\r\n\r\n", 9, 0 },
+        { HEAD_OK "Content-Length: 2\r\n\r\nok", 3, 0 },
+    };
+    static const Answer temporary[] = {
+        { "HTTP/1.1 307 Temporary Redirect\r\nLocation: /again\r\nContent-Length: 0\r\n\r\n", 9, 0 },
+        { HEAD_OK "Content-Length: 2\r\n\r\nok", 3, 0 },
+    };
+    static const Answer refused[] = {
+        { "HTTP/1.1 401 Unauthorized\r\nContent-Length: 13\r\n\r\n{\"Error\":\"x\"}", 4, 0 },
+    };
+    static const char body[] = "u=player&t=token";
+
+    memset(&g_fake, 0, sizeof(g_fake));
+    g_fake.list = ok;
+    g_fake.count = 1;
+    g_body_n = 0;
+    memset(&g_get, 0, sizeof(g_get));
+    g_get.stream = &g_stream;
+    g_get.max = 1000;
+    g_get.sink = sink;
+    g_get.body = body;
+    g_get.body_size = (u32)strlen(body);
+    g_get.content_type = "application/x-www-form-urlencoded";
+    BW_CHECK_EQ("a POST", (long)bw_https_get("https://retroachievements.org/dorequest.php", &g_get), 0);
+    BW_CHECK_EQ("is a POST of the path", strncmp(g_fake.sent[0], "POST /dorequest.php HTTP/1.1\r\n", 30), 0);
+    BW_CHECK_EQ("with its type", strstr(g_fake.sent[0], "\r\nContent-Type: application/x-www-form-urlencoded\r\n") != NULL, 1);
+    BW_CHECK_EQ("and its length", strstr(g_fake.sent[0], "\r\nContent-Length: 16\r\n") != NULL, 1);
+    BW_CHECK_EQ("the body after the head", strstr(g_fake.sent[0], "\r\n\r\nu=player&t=token") != NULL, 1);
+    BW_CHECK_EQ("the answer reached the sink", strcmp(g_body, "{\"a\":1}"), 0);
+
+    memset(&g_fake, 0, sizeof(g_fake));
+    g_fake.list = see_other;
+    g_fake.count = 2;
+    g_body_n = 0;
+    BW_CHECK_EQ("a POST answered 303", (long)bw_https_get("https://h.test/p", &g_get), 0);
+    BW_CHECK_EQ("goes on as a GET", sent_has("GET /done HTTP/1.1\r\n"), 1);
+    {
+        const char *get = NULL;
+        int i;
+
+        for (i = 0; i < g_fake.opened && i < 8 && get == NULL; i++) {
+            get = strstr(g_fake.sent[i], "GET /done HTTP/1.1\r\n");
+        }
+        BW_CHECK_EQ("with no body", get != NULL && strstr(get, "Content-") == NULL
+                                    && strstr(get, "u=player") == NULL, 1);
+    }
+
+    memset(&g_fake, 0, sizeof(g_fake));
+    g_fake.list = temporary;
+    g_fake.count = 2;
+    g_body_n = 0;
+    BW_CHECK_EQ("a POST answered 307", (long)bw_https_get("https://h.test/p", &g_get), 0);
+    BW_CHECK_EQ("is sent again as a POST", sent_has("POST /again HTTP/1.1\r\n"), 1);
+    BW_CHECK_EQ("with its body", sent_has("\r\n\r\nu=player&t=token"), 1);
+
+    memset(&g_fake, 0, sizeof(g_fake));
+    g_fake.list = refused;
+    g_fake.count = 1;
+    g_body_n = 0;
+    BW_CHECK_EQ("a 401 fails without any_status", (long)bw_https_get("https://h.test/p", &g_get), -1);
+    memset(&g_fake, 0, sizeof(g_fake));
+    g_fake.list = refused;
+    g_fake.count = 1;
+    g_body_n = 0;
+    g_body[0] = '\0';
+    g_get.any_status = 1;
+    BW_CHECK_EQ("with any_status it answers", (long)bw_https_get("https://h.test/p", &g_get), 0);
+    BW_CHECK_EQ("with the status", (long)g_get.status, 401);
+    BW_CHECK_EQ("and the body", strcmp(g_body, "{\"Error\":\"x\"}"), 0);
+
+    g_get.content_type = "text/plain\r\nX-Evil: 1";
+    BW_CHECK_EQ("a type of two lines is refused", (long)bw_https_get("https://h.test/p", &g_get), -1);
+}
+
 int main(void)
 {
     test_split();
@@ -501,6 +597,7 @@ int main(void)
     test_kept();
     test_limits();
     test_failures();
+    test_post();
     test_json();
     BW_REPORT("test_https");
 }

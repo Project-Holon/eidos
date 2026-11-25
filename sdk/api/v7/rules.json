@@ -711,6 +711,7 @@
     "text_input.done",
     "world",
     "ap",
-    "move.known"
+    "move.known",
+    "web"
   ]
 }

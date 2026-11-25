@@ -8,6 +8,7 @@
 #define BW_PORT_MOD_V7_H
 
 #include "types.h"
+#include "mod_api.h"       /* (BW_GAME_HASH_*) */
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +37,21 @@ s32 bw_mod_v7_mystery_card_add(const void *pgf, u32 size);
  * type, the id's range): 1 or 0.  The rule language checks a `gift`
  * action's file with it when the rule loads. */
 int bw_mod_v7_mystery_card_ok(const void *pgf, u32 size);
+
+/* The services table's clock: the seconds since 1970 (UTC) and a
+ * millisecond count that only goes up (not a date). */
+s64 bw_mod_v7_time_utc(void);
+u64 bw_mod_v7_ticks_ms(void);
+
+/* The game in force's hash of `kind` into `out` (32 lower-case hex
+ * characters and a 0, so `size` at least 33): 32, or -1 when the kind is
+ * unknown or the game's files do not read.  The RetroAchievements hash is
+ * rcheevos' rc_hash_nintendo_ds over the files the extraction keeps
+ * (header.bin, arm9.bin, arm7.bin, banner.bin), the same bytes it reads in
+ * the ROM. */
+int bw_mod_v7_game_hash(u32 kind, char *out, u32 size);
+/* The same from one extraction folder: 0, or -1. */
+int bw_mod_v7_ra_hash_dir(const char *extract_dir, char out[33]);
 
 #ifdef __cplusplus
 }

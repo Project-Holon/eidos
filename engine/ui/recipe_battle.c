@@ -1620,6 +1620,15 @@ static void own_exp(u8 *poke, int *num, int *den)
 #define PLATE_H   32
 #define PLATE_GAP 3
 
+/* The canvas row under the foes' plates when they stand at the right of
+ * the screen (Harmonia), 0 when they stand at the left. */
+static int g_foe_right_bottom;
+
+int eidos_ui_battle_right_free_y(void)
+{
+    return g_foe_right_bottom;
+}
+
 static void shell_layout(EidosUiCtx *c, const Bt *b, Shell *s)
 {
     int w = c->canvas->w, h = c->canvas->h;
@@ -1911,6 +1920,9 @@ static void shell_draw(EidosUiCtx *c, const Bt *b, const Shell *s, const char *p
         ui_plate_status(c, l.foe_x, y, l.foe_w, m.level, gauge_badge(b, vp));
         y += l.foe_step;
     }
+    /* (a mod's pop-up goes under the foes' plates when they stand at the
+     * right: engine/ui/popup.c) */
+    g_foe_right_bottom = l.foe_x + l.foe_w > l.w * 2 / 3 && y != l.foe_y ? y - l.foe_step + PLATE_H : 0;
     /* the foe's balls come with its plate, as yours do */
     if (y != l.foe_y) {
         ballbar_draw(c, b, 1, l.foe_balls_x, l.foe_balls_y >= 0 ? l.foe_balls_y : y + 2, 0);

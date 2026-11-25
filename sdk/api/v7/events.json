@@ -4668,6 +4668,67 @@
           "c_type": "u8"
         }
       ]
+    },
+    {
+      "id": 127,
+      "name": "web",
+      "category": "progress",
+      "since": 7,
+      "refusable": false,
+      "struct": "EidosWeb",
+      "c_struct": "BwWeb",
+      "size": 24,
+      "doc": "The answer to a web request a mod made (services table, web_request).",
+      "details": "Every mod with a handler sees it; only the mod that made the request reads its bytes (web_read, inside the handler), so another mod never sees what a server answered it.  `status` is the server's HTTP status, or EIDOS_WEB_FAILED when no answer came (no connection, the certificate, a timeout, too large).",
+      "where": null,
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "ticket",
+          "type": "uint32_t",
+          "offset": 8,
+          "size": 4,
+          "count": null,
+          "writable": false,
+          "rule_name": "ticket",
+          "doc": "the request it answers (web_request's *ticket)",
+          "c_type": "u32"
+        },
+        {
+          "name": "status",
+          "type": "int32_t",
+          "offset": 12,
+          "size": 4,
+          "count": null,
+          "writable": false,
+          "rule_name": "status",
+          "doc": "the HTTP status, or EIDOS_WEB_FAILED",
+          "c_type": "s32"
+        },
+        {
+          "name": "size",
+          "type": "uint32_t",
+          "offset": 16,
+          "size": 4,
+          "count": null,
+          "writable": false,
+          "rule_name": "size",
+          "doc": "the bytes web_read gives: the body, or a short reason",
+          "c_type": "u32"
+        },
+        {
+          "name": "pad",
+          "type": "uint32_t",
+          "offset": 20,
+          "size": 4,
+          "count": null,
+          "writable": false,
+          "rule_name": "pad",
+          "doc": "",
+          "c_type": "u32"
+        }
+      ]
     }
   ]
 }

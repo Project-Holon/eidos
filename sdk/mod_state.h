@@ -567,6 +567,30 @@ typedef struct BwModServices {
      * bar shows a Tracker button while a mod has one.  0, or -1 when it is
      * longer than 128 KB. */
     int  (*tracker_set)(const char *text, u32 size);
+    /* Version 7 (docs/mod-services.md, "Version 7: the web, the clock, the
+     * game's hash and the pop-up").  web_request: an https address; a POST
+     * of `body_size` bytes with that Content-Type when there is a body or a
+     * type, a GET when `body_size` is 0 and the type is "" or NULL (the
+     * type of a POST with none: application/x-www-form-urlencoded).  0 with
+     * *ticket set, the answer
+     * comes as the event `web`; -1 when refused (not https, too long, four
+     * requests already waiting).  web_read: inside the `web` handler of the
+     * mod that made the request, copies up to `size` bytes of the answer
+     * and answers its whole size; -1 elsewhere. */
+    int  (*web_request)(const char *url, const void *body, u32 body_size, const char *content_type,
+                        u32 *ticket);
+    int  (*web_read)(void *out, u32 size);
+    /* The clock: the seconds since 1970 (UTC), and a millisecond count
+     * that only goes up. */
+    s64  (*time_utc)(void);
+    u64  (*ticks_ms)(void);
+    /* The game in force's hash of `kind` (BW_GAME_HASH_*) as 32 hex
+     * characters and a 0 (`size` at least 33): 32, or -1. */
+    int  (*game_hash)(u32 kind, char *out, u32 size);
+    /* A pop-up in the interface's style, over the game for a few seconds;
+     * several wait their turn.  `icon` is BW_POPUP_*.  0, or -1 when
+     * eight already wait. */
+    int  (*popup)(const char *title, const char *text, u32 icon);
 } BwModServices;
 
 /* ------------------------------------------------------------------ */

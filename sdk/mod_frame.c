@@ -90,6 +90,7 @@ extern void        bw_mod_timer_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_avatar_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_handoff_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_v6_frame(void) BW_PORT_WEAK;
+extern void        bw_mod_web_frame(void) BW_PORT_WEAK;
 
 /* ------------------------------------------------------------------ */
 /* The limits                                                          */
@@ -272,6 +273,11 @@ void bw_mod_frame_tick(void)
      * scripts the mods queued (sdk/mod_v6.c). */
     if (bw_mod_v6_frame != NULL) {
         bw_mod_v6_frame();
+    }
+
+    /* Version 7: the answers to the mods' web requests (sdk/mod_web.c). */
+    if (bw_mod_web_frame != NULL) {
+        bw_mod_web_frame();
     }
 }
 

@@ -36,10 +36,15 @@
  *   MYSTERY_DATA_SetEventFlag         0x0200A1E4  thumb  arm9
  */
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "port.h"
+#include "md5.h"
 #include "mod_v7.h"
+#include "plat_thread.h"
 
 extern void *bw_mod_state_game_data(void);
 
@@ -208,4 +213,121 @@ s32 bw_mod_v7_mystery_card_add(const void *pgf, u32 size)
     }
     MYSTERY_DATA_Unload(data);
     return result;
+}
+
+/* ------------------------------------------------------------------ */
+/* The clock                                                           */
+/* ------------------------------------------------------------------ */
+
+s64 bw_mod_v7_time_utc(void)
+{
+    return (s64)time(NULL);
+}
+
+u64 bw_mod_v7_ticks_ms(void)
+{
+    return (u64)(bw_clock_ns() / 1000000ull);
+}
+
+/* ------------------------------------------------------------------ */
+/* The game's hash                                                     */
+/* ------------------------------------------------------------------ */
+
+/* The whole file `name` in `dir`, malloc'd; NULL when it cannot be read. */
+static u8 *read_whole(const char *dir, const char *name, u32 *size)
+{
+    char path[1200];
+    FILE *fp;
+    long n;
+    u8 *buf = NULL;
+
+    *size = 0;
+    if (snprintf(path, sizeof path, "%s/%s", dir, name) >= (int)sizeof path
+        || (fp = fopen(path, "rb")) == NULL) {      /* (as the file layer opens the game's files) */
+        return NULL;
+    }
+    if (fseek(fp, 0, SEEK_END) == 0 && (n = ftell(fp)) >= 0 && fseek(fp, 0, SEEK_SET) == 0
+        && (buf = (u8 *)malloc((size_t)n + 1u)) != NULL) {
+        if (fread(buf, 1, (size_t)n, fp) == (size_t)n) {
+            *size = (u32)n;
+        } else {
+            free(buf);
+            buf = NULL;
+        }
+    }
+    fclose(fp);
+    return buf;
+}
+
+static u32 le32(const u8 *p)
+{
+    return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
+}
+
+int bw_mod_v7_ra_hash_dir(const char *extract_dir, char out[33])
+{
+    u8 *header, *arm9, *arm7, *banner, icon[0xA00];
+    u32 nh, n9, n7, nb, s9, s7;
+    int rc = -1;
+
+    header = read_whole(extract_dir, "header.bin", &nh);
+    arm9 = read_whole(extract_dir, "arm9.bin", &n9);
+    arm7 = read_whole(extract_dir, "arm7.bin", &n7);
+    banner = read_whole(extract_dir, "banner.bin", &nb);
+    if (header != NULL && arm9 != NULL && arm7 != NULL && banner != NULL && nh >= 0x160u) {
+        s9 = le32(header + 0x2C);
+        s7 = le32(header + 0x3C);
+        if (s9 <= n9 && s7 <= n7 && (u64)s9 + s7 <= 16u * 1024u * 1024u) {
+            BwMd5 m;
+            u8 digest[16];
+
+            /* rcheevos' rc_hash_nintendo_ds: the header's first 0x160
+             * bytes, the ARM9 and the ARM7 code at the sizes the header
+             * gives, and 0xA00 bytes of the icon and titles, zero-padded */
+            memset(icon, 0, sizeof icon);
+            memcpy(icon, banner, nb < sizeof icon ? nb : sizeof icon);
+            bw_md5_init(&m);
+            bw_md5_append(&m, header, 0x160u);
+            bw_md5_append(&m, arm9, s9);
+            bw_md5_append(&m, arm7, s7);
+            bw_md5_append(&m, icon, sizeof icon);
+            bw_md5_final(&m, digest);
+            bw_md5_hex(digest, out);
+            rc = 0;
+        }
+    }
+    free(header);
+    free(arm9);
+    free(arm7);
+    free(banner);
+    return rc;
+}
+
+int bw_mod_v7_game_hash(u32 kind, char *out, u32 size)
+{
+    static char hash[33];
+    static u32 seen;
+    static int known;
+    char dir[1100];
+    size_t n;
+
+    if (kind != BW_GAME_HASH_RA || out == NULL || size < 33u) {
+        return -1;
+    }
+    if (!known || seen != bw_data_generation()) {
+        /* the extraction folder is the data root's parent */
+        seen = bw_data_generation();
+        snprintf(dir, sizeof dir, "%s", bw_data_root());
+        n = strlen(dir);
+        while (n > 0 && dir[n - 1] != '/' && dir[n - 1] != '\\') {
+            n--;
+        }
+        dir[n > 0 ? n - 1 : 0] = '\0';
+        known = n > 1 && bw_mod_v7_ra_hash_dir(dir, hash) == 0;
+    }
+    if (!known) {
+        return -1;
+    }
+    memcpy(out, hash, 33);
+    return 32;
 }

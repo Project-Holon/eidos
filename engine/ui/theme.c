@@ -154,6 +154,16 @@ void ui_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon
     (g_active->toast != NULL ? g_active->toast : ui_def_toast)(c, x, y, utf8, icon);
 }
 
+void ui_popup(EidosUiCtx *c, int x, int y, int w, const char *title, const char *text)
+{
+    (g_active->popup != NULL ? g_active->popup : ui_def_popup)(c, x, y, w, title, text);
+}
+
+int ui_popup_w(const char *title, const char *text)
+{
+    return (g_active->popup_w != NULL ? g_active->popup_w : ui_def_popup_w)(title, text);
+}
+
 void ui_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color)
 {
     (g_active->cursor_corners != NULL ? g_active->cursor_corners : ui_def_cursor_corners)(c, x, y, w, h, color);

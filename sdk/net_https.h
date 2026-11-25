@@ -95,6 +95,19 @@ typedef struct BwHttpsGet {
      * when the server gave none).  May be NULL. */
     void (*progress)(void *user, unsigned long long got, unsigned long long total);
 
+    /* A request body: with `body` not NULL the request is a POST of
+     * `body_size` bytes with this Content-Type (no CR or LF in it).  A
+     * 301, 302 or 303 redirect goes on as a GET with no body, as browsers
+     * do; 307 and 308 send the body again. */
+    const void *body;
+    u32 body_size;
+    const char *content_type;
+
+    /* Non-zero: the body of an answer other than 200 (and other than a
+     * redirect) reaches the sink too, and the call answers 0 with the
+     * status in `status` (a web service answers its errors with a body). */
+    int any_status;
+
     /* Out: the last answer's HTTP status (0: none came), and one line that
      * says what went wrong. */
     int  status;
@@ -102,8 +115,8 @@ typedef struct BwHttpsGet {
 } BwHttpsGet;
 
 /*
- * Get `url` (https only).  0 when the whole body reached the sink; -1
- * otherwise, with the reason in g->err.
+ * Get `url` (https only), or post to it (g->body).  0 when the whole body
+ * reached the sink; -1 otherwise, with the reason in g->err.
  */
 int bw_https_get(const char *url, BwHttpsGet *g);
 

@@ -31,6 +31,7 @@ typedef struct Conn {
     u32  pos;                           /* bytes of them already used      */
     unsigned long long got;             /* body bytes given to the sink    */
     unsigned long long total;           /* the stated length, 0: none      */
+    int  post;                          /* this request sends g->body      */
 } Conn;
 
 static void say(BwHttpsGet *g, const char *text)
@@ -453,7 +454,7 @@ static int one_get(Conn *c, const char *url, char *next, size_t next_size, int *
 
     *keep = 0;
     path = (char *)malloc(BW_HTTPS_URL_MAX + 1);
-    req = (char *)malloc(BW_HTTPS_URL_MAX + 512);
+    req = (char *)malloc(BW_HTTPS_URL_MAX + 768);
     if (path == NULL || req == NULL) {
         free(path);
         free(req);
@@ -466,13 +467,27 @@ static int one_get(Conn *c, const char *url, char *next, size_t next_size, int *
         say(g, "the address is not an https address");
         return -1;
     }
-    n = snprintf(req, BW_HTTPS_URL_MAX + 512,
-                 "GET %s HTTP/1.1\r\n"
-                 "Host: %s\r\n"
-                 "User-Agent: eidos\r\n"
-                 "Accept: */*\r\n"
-                 "Accept-Encoding: identity\r\n"
-                 "\r\n", path, host);
+    if (c->post) {
+        n = snprintf(req, BW_HTTPS_URL_MAX + 768,
+                     "POST %s HTTP/1.1\r\n"
+                     "Host: %s\r\n"
+                     "User-Agent: eidos\r\n"
+                     "Accept: */*\r\n"
+                     "Accept-Encoding: identity\r\n"
+                     "Content-Type: %.200s\r\n"
+                     "Content-Length: %u\r\n"
+                     "\r\n", path, host,
+                     g->content_type != NULL ? g->content_type : "application/octet-stream",
+                     (unsigned)g->body_size);
+    } else {
+        n = snprintf(req, BW_HTTPS_URL_MAX + 768,
+                     "GET %s HTTP/1.1\r\n"
+                     "Host: %s\r\n"
+                     "User-Agent: eidos\r\n"
+                     "Accept: */*\r\n"
+                     "Accept-Encoding: identity\r\n"
+                     "\r\n", path, host);
+    }
     free(path);
     c->got = c->total = 0;
     for (attempt = 0; ; attempt++) {
@@ -492,7 +507,9 @@ static int one_get(Conn *c, const char *url, char *next, size_t next_size, int *
             }
             return -1;
         }
-        rc = c->st->send(c->st->user, req, (u32)n) == 0 ? read_head(c, &end) : RD_BROKEN;
+        rc = c->st->send(c->st->user, req, (u32)n) == 0
+             && (!c->post || g->body_size == 0 || c->st->send(c->st->user, g->body, g->body_size) == 0)
+             ? read_head(c, &end) : RD_BROKEN;
         if (rc == 1) {
             break;
         }
@@ -538,6 +555,9 @@ static int one_get(Conn *c, const char *url, char *next, size_t next_size, int *
         if (loc != NULL && header(head, "location", loc, BW_HTTPS_URL_MAX + 1) &&
             redirect_to(host, port, loc, next, next_size) == 0) {
             rc = 1;
+            if (g->status != 307 && g->status != 308) {
+                c->post = 0;            /* (the next request is a GET) */
+            }
             /* (its body is not read: only an empty one leaves the connection clean) */
             *keep = lasting && header(head, "content-length", value, sizeof(value)) &&
                     strcmp(value, "0") == 0 && c->pos == c->n;
@@ -548,7 +568,7 @@ static int one_get(Conn *c, const char *url, char *next, size_t next_size, int *
         free(head);
         return rc;
     }
-    if (g->status != 200) {
+    if (g->status != 200 && !g->any_status) {
         snprintf(g->err, sizeof(g->err), "the server answered %d", g->status);
         free(head);
         return -1;
@@ -611,6 +631,11 @@ int bw_https_get(const char *url, BwHttpsGet *g)
     g->err[0] = '\0';
     memset(&c, 0, sizeof(c));
     c.g = g;
+    c.post = g->body != NULL;
+    if (c.post && g->content_type != NULL && strpbrk(g->content_type, "\r\n") != NULL) {
+        say(g, "the content type is not one header line");
+        return -1;
+    }
     c.st = g->stream != NULL ? g->stream : bw_net_tls_stream();
     c.buf = (u8 *)malloc(BUF_SIZE);
     cur = (char *)malloc(BW_HTTPS_URL_MAX + 1);

@@ -582,7 +582,10 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_vfs.c           # v6: members in memory, text entries
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_file.c          # v6: a mod's own files
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_v6.c            # v6: work, badges, scripts, type chart, text input
-    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_v7.c            # v7: the National Pokedex, a Wonder Card from a mod
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_v7.c            # v7: the National Pokedex, a Wonder Card from a mod, the clock, the game's hash
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_web.c           # v7: a mod's web requests
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_popup.c         # v7: a mod's pop-ups
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/md5.c               # the RetroAchievements hash
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_world.c          # v6: metaxy world sessions, the Archipelago link
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_tracker.c        # v6: what a mod shows on the field's Tracker
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_export.c        # a Pokemon's export and import
@@ -1209,6 +1212,7 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_settings.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_multiplayer.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/tracker.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/popup.c         # a mod's pop-up (mod API 7)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_title.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_mystery.c
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/ui/recipe_battle.c
@@ -2137,6 +2141,14 @@ add_executable(test_mod_world ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mod_world.c
 target_include_directories(test_mod_world PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(test_mod_world PRIVATE eidos)
 add_test(NAME test_mod_world COMMAND test_mod_world WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+# test_mod_v7_host: the version 7 services for online mods (sdk/mod_web.c,
+# sdk/mod_popup.c, sdk/md5.c and the clock and game hash in sdk/mod_v7.c),
+# web requests over a made-up server.
+add_executable(test_mod_v7_host ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mod_v7_host.c)
+target_include_directories(test_mod_v7_host PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(test_mod_v7_host PRIVATE eidos)
+add_test(NAME test_mod_v7_host COMMAND test_mod_v7_host WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 # The language-neutral API description (sdk/api/v7, tools/apigen.py): its
 # payload offsets compile against the headers, and the committed files are
 # the generator's current output.

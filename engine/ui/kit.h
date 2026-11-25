@@ -308,6 +308,11 @@ void ui_row(EidosUiCtx *c, int x, int y, int w, int h, int selected,
             int hover, const UiTheme *t);
 void ui_message(EidosUiCtx *c, int x, int y, int w, const char *utf8);
 void ui_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon);
+/* A mod's pop-up in the style in force: its width (the style's) and height
+ * for these texts, and the box itself. */
+int  ui_popup_w(const char *title, const char *text);
+int  ui_popup_h(const char *title, const char *text);
+void ui_popup(EidosUiCtx *c, int x, int y, int w, const char *title, const char *text);
 /* Fast forward's badge (the style's), x its right edge or, `centred`, its
  * middle; factor 0: as fast as the host can.  ui_ff_glyph: the fast-forward sign, two triangles
  * pointing right, h high (odd), at x; returns its width.  ui_speed_label:

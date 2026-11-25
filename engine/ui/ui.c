@@ -28,6 +28,9 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "popup.h"
+
+int eidos_ui_battle_right_free_y(void);     /* recipe_battle.c */
 #include "theme.h"
 #include "dsmem.h"
 #include "input.h"
@@ -3930,6 +3933,23 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
         try_overlay(&g_ctx);
         save_failing_notice(&g_ctx);
         speed_badge(&g_ctx, r->name);
+        /* a mod's pop-up, under the speed badge (engine/ui/popup.c) */
+        /* (not over the title screens, whose cards reach the top right in
+         * some styles: the pop-ups wait for the game) */
+        if (strncmp(r->name, "title", 5) != 0 && strcmp(r->name, "boot") != 0) {
+            const int battle = strncmp(r->name, "battle", 6) == 0;
+
+            int top = g_speed > 1 ? 44 : 22;
+
+            if (battle) {
+                /* the top right, or under the foes' plates when they stand
+                 * there (Harmonia); the speed badge is at the top's middle */
+                const int under = eidos_ui_battle_right_free_y();
+
+                top = under > 0 ? under + 4 : 6;
+            }
+            eidos_ui_popup_draw(&g_ctx, in->frame, top, 0);
+        }
         if (getenv("EIDOS_UI_TRACE") != NULL) {
             fprintf(stderr, "eidos: ui trace %u done\n", (unsigned)in->frame);
             fflush(stderr);

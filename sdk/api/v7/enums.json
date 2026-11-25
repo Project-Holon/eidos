@@ -423,6 +423,11 @@
       "value": 126
     },
     {
+      "name": "EIDOS_EVENT_WEB",
+      "c_name": "BW_EVENT_WEB",
+      "value": 127
+    },
+    {
       "name": "EIDOS_MOVE_SITE_FRONT_TILE",
       "c_name": "BW_MOVE_SITE_FRONT_TILE",
       "value": 0
@@ -986,6 +991,36 @@
       "name": "EIDOS_AI_MOVE",
       "c_name": "BW_AI_MOVE",
       "value": 2
+    },
+    {
+      "name": "EIDOS_WEB_FAILED",
+      "c_name": "BW_WEB_FAILED",
+      "value": -1
+    },
+    {
+      "name": "EIDOS_GAME_HASH_RA",
+      "c_name": "BW_GAME_HASH_RA",
+      "value": 1
+    },
+    {
+      "name": "EIDOS_POPUP_NONE",
+      "c_name": "BW_POPUP_NONE",
+      "value": 0
+    },
+    {
+      "name": "EIDOS_POPUP_TROPHY",
+      "c_name": "BW_POPUP_TROPHY",
+      "value": 1
+    },
+    {
+      "name": "EIDOS_POPUP_INFO",
+      "c_name": "BW_POPUP_INFO",
+      "value": 2
+    },
+    {
+      "name": "EIDOS_POPUP_WARNING",
+      "c_name": "BW_POPUP_WARNING",
+      "value": 3
     },
     {
       "name": "EIDOS_SCRIPT_VM_FIELD",

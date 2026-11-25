@@ -327,9 +327,12 @@ int main(void)
     BW_CHECK_EQ("version 6's calls follow them",
                 (long)offsetof(BwModServices, tracker_set)
                 - (long)offsetof(BwModServices, shared_cas), 31 * (long)sizeof(void *));
+    BW_CHECK_EQ("version 7's six follow them (the web, the clock, the hash, the pop-up)",
+                (long)offsetof(BwModServices, popup)
+                - (long)offsetof(BwModServices, tracker_set), 6 * (long)sizeof(void *));
     BW_CHECK_EQ("and nothing follows them",
                 (long)sizeof(BwModServices)
-                - (long)offsetof(BwModServices, tracker_set),
+                - (long)offsetof(BwModServices, popup),
                 (long)sizeof(void *));
 
     printf("the in-step call\n");

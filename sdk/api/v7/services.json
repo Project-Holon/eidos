@@ -961,6 +961,92 @@
           "name": "size"
         }
       ]
+    },
+    {
+      "name": "web_request",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "url"
+        },
+        {
+          "type": "const void *",
+          "name": "body"
+        },
+        {
+          "type": "u32",
+          "name": "body_size"
+        },
+        {
+          "type": "const char *",
+          "name": "content_type"
+        },
+        {
+          "type": "u32 *",
+          "name": "ticket"
+        }
+      ]
+    },
+    {
+      "name": "web_read",
+      "ret": "int",
+      "params": [
+        {
+          "type": "void *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "time_utc",
+      "ret": "s64",
+      "params": []
+    },
+    {
+      "name": "ticks_ms",
+      "ret": "u64",
+      "params": []
+    },
+    {
+      "name": "game_hash",
+      "ret": "int",
+      "params": [
+        {
+          "type": "u32",
+          "name": "kind"
+        },
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "popup",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "title"
+        },
+        {
+          "type": "const char *",
+          "name": "text"
+        },
+        {
+          "type": "u32",
+          "name": "icon"
+        }
+      ]
     }
   ]
 }

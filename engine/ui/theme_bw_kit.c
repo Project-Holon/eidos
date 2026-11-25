@@ -963,6 +963,46 @@ void rx_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon
     rx_label(c, x + tx, y + ui_text_y(h, UI_FONT_LARGE), utf8, 0, RX_TEXT, UI_FONT_LARGE);
 }
 
+/* A mod's pop-up's width: Plasma's box leans, so it is wider by its lean
+ * and the text keeps its margin from the straight right side. */
+int rx_popup_w(const char *title, const char *text)
+{
+    return ui_def_popup_w(title, text) + (style() ? 0 : LEAN(ui_popup_h(title, text)));
+}
+
+/* A mod's pop-up: the toast's surface and accent cap, the title in the
+ * accent over the text. */
+void rx_popup(EidosUiCtx *c, int x, int y, int w, const char *title, const char *text)
+{
+    int h = ui_popup_h(title, text), ty = y + 4, tx = x + 14;
+
+    if (style()) {
+        /* Harmonia: the toast's square tile and its straight cap */
+        surface_as(c, x, y, w, h, UI_CUT_TL, 5, ROLE_DARK, 0, plain_line(), 240);
+        cap(c, x, y, h, RX_ACCENT, 255);
+    } else {
+        /* Plasma: the card title bar's shape, its left leaning like "/"
+         * and its right side straight; the stripe leans with the left
+         * side, so it never stands outside the box */
+        const int lean = LEAN(h);
+
+        rx_slab(c, y, h, (x + lean) * FP, x * FP, (x + w) * FP, (x + w) * FP, 0, h, 0, 0, RX_OUTLINE,
+                RX_OUTLINE, 240);
+        rx_slab(c, y, h, (x + lean) * FP, x * FP, (x + w) * FP, (x + w) * FP, 1, h - 1, FP, FP, 0x363636u,
+                0x1C1C1Cu, 240);
+        rx_slab(c, y, h, (x + 2 + lean) * FP, (x + 2) * FP, (x + 9 + lean) * FP, (x + 9) * FP, 1, h - 1, 0, 0,
+                rx_mix(RX_ACCENT, 0xFFFFFFu, 40, 100), RX_ACCENT, 255);
+        tx = x + 9 + lean + 5;
+    }
+    if (title != NULL && title[0] != '\0') {
+        rx_label(c, tx, ty, title, 0, RX_ACCENT, UI_FONT_LARGE);
+        ty += 15;
+    }
+    if (text != NULL && text[0] != '\0') {
+        rx_label(c, tx, ty, text, 0, RX_TEXT, UI_FONT_LARGE);
+    }
+}
+
 /* The cursor's four corners: Plasma's in the plates' gold, Harmonia's in
  * the DS's own cursor colour, a light line inside each. */
 void rx_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color)

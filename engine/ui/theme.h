@@ -332,6 +332,12 @@ typedef struct UiThemeOps {
     void (*row)(EidosUiCtx *c, int x, int y, int w, int h, int selected, int hover, const UiTheme *t);
     void (*message)(EidosUiCtx *c, int x, int y, int w, const char *utf8);
     void (*toast)(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon);
+    /* A mod's pop-up (engine/ui/popup.c): one box `w` wide (ui_popup_w),
+     * the title over the text; either may be "".  It stands on the
+     * screen's right edge, so its right side has no corner cut.  popup_w:
+     * the box's width for these texts. */
+    void (*popup)(EidosUiCtx *c, int x, int y, int w, const char *title, const char *text);
+    int (*popup_w)(const char *title, const char *text);
     void (*cursor_corners)(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
     int (*keycap)(EidosUiCtx *c, int x, int y, const char *label);
     /* Fast forward's badge: the game runs `factor` times its speed (0: as
@@ -378,6 +384,8 @@ void ui_def_scrollbar(EidosUiCtx *c, int x, int y, int h, int first, int shown, 
 void ui_def_row(EidosUiCtx *c, int x, int y, int w, int h, int selected, int hover, const UiTheme *t);
 void ui_def_message(EidosUiCtx *c, int x, int y, int w, const char *utf8);
 void ui_def_toast(EidosUiCtx *c, int x, int y, const char *utf8, const UiImage *icon);
+void ui_def_popup(EidosUiCtx *c, int x, int y, int w, const char *title, const char *text);
+int ui_def_popup_w(const char *title, const char *text);
 void ui_def_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
 int ui_def_keycap(EidosUiCtx *c, int x, int y, const char *label);
 void ui_def_speed_badge(EidosUiCtx *c, int x, int y, int centred, int factor);

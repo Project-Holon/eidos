@@ -873,6 +873,12 @@ static const BwRuleField g_f_ap[] = {
     BW_RULE_FIELD(BwAp, ticket, BW_RULE_FK_INT, 0)
 };
 
+static const BwRuleField g_f_web[] = {
+    BW_RULE_FIELD(BwWeb, ticket, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwWeb, status, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwWeb, size, BW_RULE_FK_INT, 0)
+};
+
 static const BwRuleField g_f_move_known[] = {
     BW_RULE_FIELD(BwMoveKnown, slot, BW_RULE_FK_INT, 0),
     BW_RULE_FIELD(BwMoveKnown, site, BW_RULE_FK_INT, 0),
@@ -1057,7 +1063,9 @@ static const BwRuleEvent g_events[] = {
     { .kind = BW_EVENT_AP, .name = "ap", .refusable = 0,
       .fields = g_f_ap, .field_count = 3 },
     { .kind = BW_EVENT_MOVE_KNOWN, .name = "move.known", .refusable = 0,
-      .fields = g_f_move_known, .field_count = 5 }
+      .fields = g_f_move_known, .field_count = 5 },
+    { .kind = BW_EVENT_WEB, .name = "web", .refusable = 0,
+      .fields = g_f_web, .field_count = 3 }
 };
 
 #define BW_RULE_EVENT_COUNT \

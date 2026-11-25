@@ -283,8 +283,12 @@ The version moves when the surface moves.
   `mystery_card_add` (`docs/mod-services.md`, "Version 7: the National
   Pokedex and Wonder Cards"). The rule language gains the state field
   `national_dex` and the action `gift` (`docs/mod-rules-language.md`).
-  No event, payload or enum changes. Version 7 is open: `sdk/api/v7` is
-  the current description.
+  For online mods the services table gains `web_request`, `web_read`,
+  `time_utc`, `ticks_ms`, `game_hash` and `popup`, with the event `web`
+  (127, payload `BwWeb`) and the enums `BW_GAME_HASH_*` and `BW_POPUP_*`
+  (`docs/mod-services.md`, "Version 7: the web, the clock, the game's hash
+  and the pop-up"). Version 7 is open: `sdk/api/v7` is the current
+  description.
 
 The number cannot be forgotten. A test recomputes the hash of the surface out
 of the headers themselves and compares it with the number the header carries,

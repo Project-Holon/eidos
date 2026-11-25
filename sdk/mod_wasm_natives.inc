@@ -1238,6 +1238,67 @@ static int32_t wn_tracker_set(wasm_exec_env_t env, const char *text, int32_t siz
     return (int32_t)w->host->services->tracker_set(text, (u32)size);
 }
 
+static int32_t wn_web_request(wasm_exec_env_t env, const char *url, void *body, int32_t body_size, const char *content_type, void *ticket)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->web_request == NULL ||
+        !wasm_object_ok(env, ticket, sizeof(u32))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->web_request(url, (const void *)body, (u32)body_size, content_type, (u32 *)ticket);
+}
+
+static int32_t wn_web_read(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->web_read == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->web_read((void *)out, (u32)size);
+}
+
+static int64_t wn_time_utc(wasm_exec_env_t env)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->time_utc == NULL) {
+        return -1;
+    }
+    return (int64_t)w->host->services->time_utc();
+}
+
+static int64_t wn_ticks_ms(wasm_exec_env_t env)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->ticks_ms == NULL) {
+        return -1;
+    }
+    return (int64_t)w->host->services->ticks_ms();
+}
+
+static int32_t wn_game_hash(wasm_exec_env_t env, int32_t kind, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->game_hash == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->game_hash((u32)kind, (char *)out, (u32)size);
+}
+
+static int32_t wn_popup(wasm_exec_env_t env, const char *title, const char *text, int32_t icon)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->popup == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->popup(title, text, (u32)icon);
+}
+
 /* The state calls and the services, as imports of module "eidos". */
 static NativeSymbol k_wasm_api_natives[] = {
     { "party_count", (void *)wn_party_count, "()i", NULL },
@@ -1360,4 +1421,10 @@ static NativeSymbol k_wasm_api_natives[] = {
     { "player_name", (void *)wn_player_name, "(*~)i", NULL },
     { "mode_code", (void *)wn_mode_code, "(*~)i", NULL },
     { "tracker_set", (void *)wn_tracker_set, "($i)i", NULL },
+    { "web_request", (void *)wn_web_request, "($*~$*)i", NULL },
+    { "web_read", (void *)wn_web_read, "(*~)i", NULL },
+    { "time_utc", (void *)wn_time_utc, "()I", NULL },
+    { "ticks_ms", (void *)wn_ticks_ms, "()I", NULL },
+    { "game_hash", (void *)wn_game_hash, "(i*~)i", NULL },
+    { "popup", (void *)wn_popup, "($$i)i", NULL },
 };

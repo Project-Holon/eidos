@@ -148,6 +148,7 @@ typedef union BwEventPayload {
     BwWorld       world;
     BwAp          ap;
     BwMoveKnown   move_known;
+    BwWeb         web;
 
     u8 bytes[BW_EVENT_PAYLOAD_MAX];
 } BwEventPayload;

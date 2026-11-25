@@ -262,6 +262,7 @@ static u32 payload_size(u32 kind)
     case BW_EVENT_TEXT_INPUT_DONE: return (u32)sizeof(BwTextInputDone);
     case BW_EVENT_WORLD:        return (u32)sizeof(BwWorld);
     case BW_EVENT_AP:           return (u32)sizeof(BwAp);
+    case BW_EVENT_WEB:          return (u32)sizeof(BwWeb);
     case BW_EVENT_MOVE_KNOWN:   return (u32)sizeof(BwMoveKnown);
 
     default:                     return (u32)sizeof(BwEvent);
