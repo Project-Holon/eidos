@@ -216,6 +216,19 @@ mod tests {
             asset_pattern("linux"),
             "eidos-0.2.0-linux-x86_64.AppImage"
         ));
+        // from 0.2.7: the game's files are named "standalone" and still fit;
+        // the launcher's own files do not, on any system (the old Linux
+        // launcher file, eidos-launcher-linux-x86_64.AppImage, did)
+        assert!(releases::matches(asset_pattern("windows"), "eidos-standalone-0.2.7-windows.zip"));
+        assert!(releases::matches(asset_pattern("macos"), "eidos-standalone-0.2.7-macos.zip"));
+        assert!(releases::matches(
+            asset_pattern("linux"),
+            "eidos-standalone-0.2.7-linux-x86_64.AppImage"
+        ));
+        assert!(!releases::matches(asset_pattern("linux"), "eidos-linux-x86_64.AppImage"));
+        assert!(!releases::matches(asset_pattern("windows"), "eidos-setup-windows.exe"));
+        assert!(!releases::matches(asset_pattern("macos"), "eidos-macos.dmg"));
+        assert!(!releases::matches(asset_pattern("macos"), "eidos-macos.app.tar.gz"));
     }
 
     #[test]

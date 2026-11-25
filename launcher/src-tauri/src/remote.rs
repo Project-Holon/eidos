@@ -130,6 +130,17 @@ pub fn list(layout: &Layout, repo: &str, token: Option<&str>) -> Result<Vec<Rele
     Err(api_error)
 }
 
+/// Whether a version's game files carry the name "standalone" (0.2.7 and
+/// later).  A version that cannot be read as three numbers is taken as a
+/// later one.
+fn standalone_names(ver: &str) -> bool {
+    let mut parts = ver.split('.').map(|p| p.parse::<u32>());
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(Ok(a)), Some(Ok(b)), Some(Ok(c))) => (a, b, c) >= (0, 2, 7),
+        _ => true,
+    }
+}
+
 /// A release from the feed: the files the release workflow uploads for
 /// every version, at their download addresses.
 fn guessed(repo: &str, tag: &str, title: String, updated: String) -> Release {
@@ -138,10 +149,17 @@ fn guessed(repo: &str, tag: &str, title: String, updated: String) -> Release {
     // not say so, the tag does; its files carry the version alone
     let prerelease = ver.contains('-');
     let ver = ver.split('-').next().unwrap_or(ver);
+    // from 0.2.7 the game's own downloads are named "standalone" (the
+    // launchers' files took the plain names); older releases keep theirs
+    let stem = if standalone_names(ver) {
+        format!("eidos-standalone-{ver}")
+    } else {
+        format!("eidos-{ver}")
+    };
     let names = [
-        format!("eidos-{ver}-windows.zip"),
-        format!("eidos-{ver}-macos.zip"),
-        format!("eidos-{ver}-linux-x86_64.AppImage"),
+        format!("{stem}-windows.zip"),
+        format!("{stem}-macos.zip"),
+        format!("{stem}-linux-x86_64.AppImage"),
         "SHA256SUMS".to_string(),
     ];
     Release {
@@ -304,5 +322,26 @@ mod tests {
             "https://github.com/o/r/releases/download/v0.1.2/eidos-0.1.2-windows.zip"
         );
         assert!(releases::pick_asset(&r, "SHA256SUMS").is_some());
+    }
+
+    #[test]
+    fn guessed_assets_from_0_2_7() {
+        // the game's own downloads are named "standalone" from 0.2.7 on
+        let r = guessed("o/r", "v0.2.7", "t".into(), "u".into());
+        let a = releases::pick_asset(&r, "eidos-*-windows.zip").unwrap();
+        assert_eq!(
+            a.browser_download_url,
+            "https://github.com/o/r/releases/download/v0.2.7/eidos-standalone-0.2.7-windows.zip"
+        );
+        let l = releases::pick_asset(&r, "eidos-*-linux-x86_64.AppImage").unwrap();
+        assert_eq!(l.name, "eidos-standalone-0.2.7-linux-x86_64.AppImage");
+        assert!(standalone_names("0.2.7") && standalone_names("0.3.0") && standalone_names("1.0.0"));
+        assert!(!standalone_names("0.2.6") && !standalone_names("0.1.9"));
+        // a pre-release of 0.2.7 has its files under the version alone
+        let p = guessed("o/r", "v0.2.7-pre.1", "t".into(), "u".into());
+        assert!(releases::pick_asset(&p, "eidos-*-macos.zip")
+            .unwrap()
+            .name
+            .ends_with("eidos-standalone-0.2.7-macos.zip"));
     }
 }

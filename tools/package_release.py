@@ -12,14 +12,14 @@ same steps; docs/release.md says how.
 
 What each platform makes (names are fixed; the launcher downloads by them):
 
-  windows  eidos-<version>-windows.zip
+  windows  eidos-standalone-<version>-windows.zip
            eidos.exe (the build's eidos_boot.exe), SDL3.dll, LICENSE,
            LEGAL.md, README.txt.  The files sit at the top of the zip.
-  macos    eidos-<version>-macos.zip
+  macos    eidos-standalone-<version>-macos.zip
            eidos (the build's eidos_boot), libSDL3 beside it with the load
            path rewritten to @executable_path, LICENSE, LEGAL.md,
            README.txt.  Unsigned.
-  linux    eidos-<version>-linux-x86_64.AppImage
+  linux    eidos-standalone-<version>-linux-x86_64.AppImage
            An AppDir (eidos, desktop file, icon, AppRun) turned into an
            AppImage by linuxdeploy (--linuxdeploy PATH), which also bundles
            the shared libraries.  Without --linuxdeploy the AppDir is left in
@@ -210,7 +210,7 @@ def package_windows(args, scratch):
                           % args.build_dir)
         pkg.add("SDL3.dll", sdl)
     common(pkg, args.version, "eidos.exe", "%APPDATA%\\eidos", scratch)
-    out = os.path.join(args.out, "eidos-%s-windows.zip" % args.version)
+    out = os.path.join(args.out, "eidos-standalone-%s-windows.zip" % args.version)
     pkg.write_zip(out)
     return out
 
@@ -254,7 +254,7 @@ def package_macos(args, scratch):
                 subprocess.call(["codesign", "--force", "--sign", "-", src])
     common(pkg, args.version, "eidos", "~/Library/Application Support/eidos",
            scratch, MAC_NOTE)
-    out = os.path.join(args.out, "eidos-%s-macos.zip" % args.version)
+    out = os.path.join(args.out, "eidos-standalone-%s-macos.zip" % args.version)
     pkg.write_zip(out)
     return out
 
@@ -305,7 +305,7 @@ def package_linux(args, scratch):
         if os.path.isfile(lib):
             shutil.copy2(lib, os.path.join(appdir, "usr/lib"))
     check_tree(appdir)
-    out = os.path.join(args.out, "eidos-%s-linux-x86_64.AppImage" % args.version)
+    out = os.path.join(args.out, "eidos-standalone-%s-linux-x86_64.AppImage" % args.version)
     if not args.linuxdeploy:
         print("package_release: AppDir written to %s; pass --linuxdeploy PATH "
               "to make the AppImage" % appdir)

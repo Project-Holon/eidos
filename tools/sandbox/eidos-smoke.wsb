@@ -1,7 +1,7 @@
 <!--
   Windows Sandbox config: a clean Windows runs the release zip once.
 
-  1. Put eidos-<version>-windows.zip in C:\eidos-sandbox\in
+  1. Put eidos-standalone-<version>-windows.zip in C:\eidos-sandbox\in
      (read-only inside the sandbox) and copy tools\sandbox\smoke.ps1 there.
   2. Make the empty folder C:\eidos-sandbox\out (the log goes there).
   3. Double-click this file.

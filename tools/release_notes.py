@@ -24,13 +24,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # it, as installed launchers look for eidos-*-<platform>
 # (launcher/src-tauri/src/versions.rs).
 DOWNLOADS = [
-    ("eidos-launcher-windows-setup.exe",
+    ("eidos-setup-windows.exe",
      "Windows: the launcher. It installs and updates eidos and keeps your "
      "profiles and mods. Start here."),
-    ("eidos-launcher-macos.dmg",
+    ("eidos-macos.dmg",
      "macOS (Apple silicon): the launcher. Not signed by Apple: open "
      "`READ ME FIRST.txt` inside it for the one Terminal line it needs."),
-    ("eidos-launcher-linux-x86_64.AppImage",
+    ("eidos-linux-x86_64.AppImage",
      "Linux: the launcher. Make it executable and run it."),
     ("eidos-android.apk",
      "Android (64-bit ARM, Android 8 or later): install it from the file "
@@ -43,20 +43,20 @@ DOWNLOADS = [
 # The desktop games on their own, without the launcher: folded away under
 # the main table, as most players want the launcher.
 STANDALONE = [
-    ("eidos-{ver}-windows.zip",
+    ("eidos-standalone-{ver}-windows.zip",
      "Windows: eidos on its own. Unzip it anywhere and run `eidos.exe`."),
-    ("eidos-{ver}-macos.zip",
+    ("eidos-standalone-{ver}-macos.zip",
      "macOS (Apple silicon): eidos on its own. Not signed by Apple: "
      "`README.txt` inside it has the one Terminal line it needs."),
-    ("eidos-{ver}-linux-x86_64.AppImage",
+    ("eidos-standalone-{ver}-linux-x86_64.AppImage",
      "Linux: eidos on its own. Make it executable and run it."),
-    ("eidos-{ver}-switch.zip",
+    ("eidos-nintendo-switch.zip",
      "Nintendo Switch (homebrew, custom firmware): unzip it to the SD card's "
      "root, copy the `extract` folder eidos made on a PC from your ROM to "
      "`switch/eidos/extract/`, and start it from the Homebrew Menu over a "
      "game (hold R) for the full memory. Extracting a `.nds` on the console "
      "itself does not work yet. Early: tested in an emulator only."),
-    ("eidos-{ver}-vita.vpk",
+    ("eidos-psvita.vpk",
      "PlayStation Vita (homebrew, HENkaku/Ensō): install it with VitaShell "
      "and copy the `extract` folder eidos made on a PC from your ROM to "
      "`ux0:data/eidos/extract/`. The fast "

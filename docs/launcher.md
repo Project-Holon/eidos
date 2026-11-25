@@ -95,9 +95,15 @@ asks for the ROM on its first run and keeps the extracted data in its own folder
 The program looked for in a version folder (or one folder below it):
 `eidos.exe`, `eidos`, `eidos.AppImage`, `eidos_boot.exe`, `eidos_boot`.
 
-The release file names are `eidos-<version>-windows.zip`,
-`eidos-<version>-macos.zip` and `eidos-<version>-linux-x86_64.AppImage`, with a
-`SHA256SUMS` file.
+The release file names are `eidos-standalone-<version>-windows.zip`,
+`eidos-standalone-<version>-macos.zip` and
+`eidos-standalone-<version>-linux-x86_64.AppImage`, with a `SHA256SUMS`
+file (up to 0.2.6: `eidos-<version>-windows.zip` and so on). The launcher
+finds them by the patterns `eidos-*-windows.zip`, `eidos-*-macos.zip` and
+`eidos-*-linux-x86_64.AppImage`, first match in name order, so no file of
+the launcher itself may fit one of them: the launcher's files are
+`eidos-setup-windows.exe`, `eidos-macos.dmg` and
+`eidos-linux-x86_64.AppImage`.
 
 ## Local build
 

@@ -520,14 +520,14 @@ jobs:
           # a launcher's name has no version: the README's download button
           # points at .../releases/latest/download/<this>, the newest release
           cp launcher/src-tauri/target/release/bundle/nsis/*-setup.exe \
-             out/eidos-launcher-windows-setup.exe
+             out/eidos-setup-windows.exe
           # this platform's part of latest.json, what a running launcher
           # reads to update itself (the release job joins the parts)
           sig=$(ls launcher/src-tauri/target/release/bundle/nsis/*-setup.exe.sig 2>/dev/null | head -1)
           if [ -n "$sig" ]; then
             python tools/launcher_update_json.py part --platform windows-x86_64 \
               --signature "$sig" \
-              --url "https://github.com/${REPO}/releases/download/${TAG}/eidos-launcher-windows-setup.exe" \
+              --url "https://github.com/${REPO}/releases/download/${TAG}/eidos-setup-windows.exe" \
               > out/updater-windows.json
             cat out/updater-windows.json
           fi
@@ -646,7 +646,7 @@ jobs:
           b=launcher/src-tauri/target/release/bundle
           dl="https://github.com/${REPO}/releases/download/${TAG}"
           if [ "${{ matrix.os }}" = linux ]; then
-            name="eidos-launcher-linux-x86_64.AppImage"
+            name="eidos-linux-x86_64.AppImage"
             cp $b/appimage/*.AppImage "out/$name"
             sig=$(ls $b/appimage/*.AppImage.sig 2>/dev/null | head -1)
             platform=linux-x86_64
@@ -658,9 +658,9 @@ jobs:
             ln -s /Applications "$stage/Applications"
             cp "launcher/dmg/READ ME FIRST.txt" "$stage/"
             hdiutil create -volname "eidos launcher" -srcfolder "$stage" \
-              -fs HFS+ -format UDZO -ov out/eidos-launcher-macos.dmg
+              -fs HFS+ -format UDZO -ov out/eidos-macos.dmg
             # what a running launcher updates itself from (latest.json)
-            name="eidos-launcher-macos.app.tar.gz"
+            name="eidos-macos.app.tar.gz"
             sig=$(ls $b/macos/*.app.tar.gz.sig 2>/dev/null | head -1)
             [ -n "$sig" ] && cp $b/macos/*.app.tar.gz "out/$name"
             platform=darwin-aarch64
@@ -916,7 +916,7 @@ jobs:
         run: |
           mkdir -p dist stage/switch/eidos
           cp out/eidos.nro stage/switch/eidos/
-          (cd stage && zip -qr "../dist/eidos-${{ needs.meta.outputs.version }}-switch.zip" switch)
+          (cd stage && zip -qr "../dist/eidos-nintendo-switch.zip" switch)
           ls -l dist
       # keep the package for a later run with the same inputs
       - name: Keep the package for a run that builds the same inputs
@@ -980,7 +980,7 @@ jobs:
         if: steps.reuse.outputs.cache-hit != 'true'
         run: |
           mkdir -p dist
-          cp build-vita/eidos.vpk "dist/eidos-${{ needs.meta.outputs.version }}-vita.vpk"
+          cp build-vita/eidos.vpk "dist/eidos-psvita.vpk"
           ls -l dist
       # keep the package for a later run with the same inputs
       - name: Keep the package for a run that builds the same inputs

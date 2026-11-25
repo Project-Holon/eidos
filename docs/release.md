@@ -88,14 +88,14 @@ the games keep the version, which installed launchers look for
 
 | File | Contents |
 |---|---|
-| `eidos-launcher-windows-setup.exe` | The launcher's installer for Windows. |
-| `eidos-launcher-macos.dmg` | The launcher for macOS (Apple silicon): the app, an Applications shortcut and `READ ME FIRST.txt` (`launcher/dmg`), whose `xattr` line lets macOS open the unsigned app. Made with `hdiutil` in the workflow. |
-| `eidos-launcher-linux-x86_64.AppImage` | The launcher for Linux. |
-| `eidos-launcher-macos.app.tar.gz` | The macOS launcher packed for its own updates (`latest.json` points at it); players do not open it. |
+| `eidos-setup-windows.exe` | The launcher's installer for Windows. |
+| `eidos-macos.dmg` | The launcher for macOS (Apple silicon): the app, an Applications shortcut and `READ ME FIRST.txt` (`launcher/dmg`), whose `xattr` line lets macOS open the unsigned app. Made with `hdiutil` in the workflow. |
+| `eidos-linux-x86_64.AppImage` | The launcher for Linux. |
+| `eidos-macos.app.tar.gz` | The macOS launcher packed for its own updates (`latest.json` points at it); players do not open it. |
 | `latest.json` | What a running launcher reads to update itself: the version and, per platform, the file and its signature. |
-| `eidos-<version>-windows.zip` | `eidos.exe` (`tools/build64.py`'s program), `SDL3.dll`, `LICENSE`, `LEGAL.md`, `README.txt`. Files sit at the top of the zip. |
-| `eidos-<version>-macos.zip` | `eidos`, `libSDL3.0.dylib` (its load path points at the executable's folder), `LICENSE`, `LEGAL.md`, `README.txt`. Not signed by Apple: `README.txt` tells the player to run `xattr -dr com.apple.quarantine .` in the folder. |
-| `eidos-<version>-linux-x86_64.AppImage` | One file: `eidos`, the shared libraries linuxdeploy found, a desktop file and the icon. License files are under `usr/share/doc/eidos`. |
+| `eidos-standalone-<version>-windows.zip` | `eidos.exe` (`tools/build64.py`'s program), `SDL3.dll`, `LICENSE`, `LEGAL.md`, `README.txt`. Files sit at the top of the zip. |
+| `eidos-standalone-<version>-macos.zip` | `eidos`, `libSDL3.0.dylib` (its load path points at the executable's folder), `LICENSE`, `LEGAL.md`, `README.txt`. Not signed by Apple: `README.txt` tells the player to run `xattr -dr com.apple.quarantine .` in the folder. |
+| `eidos-standalone-<version>-linux-x86_64.AppImage` | One file: `eidos`, the shared libraries linuxdeploy found, a desktop file and the icon. License files are under `usr/share/doc/eidos`. |
 | `SHA256SUMS` | The SHA-256 of each `eidos-*` file. The launcher checks each game it installs against it. |
 
 The Windows program needs nothing else at run time: its other imports are
@@ -174,7 +174,7 @@ Use it for private repositories only.
 a clean Windows with no network.
 
 1. Make `C:\eidos-sandbox\in` and `C:\eidos-sandbox\out`.
-2. Copy `eidos-<version>-windows.zip` and `tools/sandbox/smoke.ps1` into
+2. Copy `eidos-standalone-<version>-windows.zip` and `tools/sandbox/smoke.ps1` into
    `in`.
 3. Double-click `tools/sandbox/eidos-smoke.wsb`. The sandbox window opens;
    close it when `out\smoke-result.txt` exists.

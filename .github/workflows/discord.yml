@@ -48,8 +48,8 @@ jobs:
           [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = "false" ] \
             || { echo "$TAG is a draft: nothing posted"; exit 1; }
           have=$(gh release view "$TAG" --json assets --jq '.assets[].name')
-          for f in eidos-launcher-windows-setup.exe eidos-launcher-macos.dmg \
-                   eidos-launcher-linux-x86_64.AppImage eidos-android.apk eidos-ios.ipa; do
+          for f in eidos-setup-windows.exe eidos-macos.dmg \
+                   eidos-linux-x86_64.AppImage eidos-android.apk eidos-ios.ipa; do
             echo "$have" | grep -qx "$f" || { echo "$TAG has no $f: nothing posted"; exit 1; }
           done
           url=$(gh release view "$TAG" --json url --jq .url)
