@@ -41,7 +41,9 @@ Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration
 - **Plasma C-Gear Notice**: Fixed the C-Gear warning text before the Continue screen being truncated and overlapping below its confirmation prompt in the Plasma style.
 - **HM Move Notice**: Fixed the `HM moves can't be forgotten now.` message not appearing on the one-screen forget-a-move page, which left the screen looking unresponsive (#54).
 - **Game Data Replacement (64-bit)**: Fixed replacing game data leaving a half-deleted `extract.old` folder behind, which made the next replacement fail.
-- **ROM Setup Messages**: Fixed setup messages naming Pokémon Black when a Pokémon White ROM was refused.- **Bottom-Bar Key Hints**: Fixed clicks and taps on bottom-bar key hints passing through to the underlying screen (such as clicking `Back` in the style chooser inadvertently returning the title menu to the title screen).
+- **ROM Setup Messages**: Fixed setup messages naming Pokémon Black when a Pokémon White ROM was refused.
+- **C-Gear Start-Up**: In one-screen mode, the C-Gear's first start-up at Fennel's lab now unfolds the top bar's C-Gear sheet and lights up its channels, instead of a silent pause while the animation played on the hidden lower screen, and the conversation continues as soon as the sheet folds away (#13).
+- **Bottom-Bar Key Hints**: Fixed clicks and taps on bottom-bar key hints passing through to the underlying screen (such as clicking `Back` in the style chooser inadvertently returning the title menu to the title screen).
 
 ## 0.2.6
 
