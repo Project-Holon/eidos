@@ -9,8 +9,18 @@ Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration
 
 ### One-Screen Mode & UI
 - **Consistent UI Scaling**: Normalized one-screen UI scaling across all window resolutions to match the proportions at 1280×720 (using 3× scale at 1920×1080 and 4× at 2560×1440 instead of overscaling by 25–33%).
-- **In-Game Mod Manager**: Added a standalone Mod Manager accessible via the top-left `MODS` button on the title menu (enabled by default on mobile and consoles, or with `--mods` on desktop). Styled to match the active UI theme, it lets you toggle installed compatible mods and browse, install, update, or uninstall mods from the official index with full download verification.
+- **In-Game Mod Manager**: Added a standalone Mod Manager accessible via the top-left `MODS` button on the title menu (enabled by default on mobile and consoles, and on desktop whenever the game is started without the launcher). Styled to match the active UI theme, it lets you toggle installed compatible mods and browse, install, update, or uninstall mods from the official index with full download verification.
 - **Pokédex Registration Screen**: Catching a new species for the first time now opens the active UI style's native Pokédex view, animating the reveal of its category, type, height, weight, and Pokédex entry while incrementing the `OWN` counter in sync with the game. Previously caught species proceed directly to the nickname prompt.
+- **Version Switch**: Added a `VERSION` button to the title menu, between `MODS` and the style picker, that switches between Pokémon Black and Pokémon White without closing the game; when the other version is missing, it asks for its ROM and builds its data on the spot.
+- **White Title Menu**: The one-screen title menu now uses Pokémon White's own light checkered backdrop when playing White, instead of Black's dark one.
+
+### Standalone & Launch Options
+- **Standalone by Default**: Starting `eidos` without the launcher now runs in standalone mode, with the in-game Mod Manager and version switching available (`--standalone` forces it for third-party front ends; it replaces `--mods`).
+- **Game Selection**: Added `--game black` and `--game white` to choose which version starts; without it, the version played last starts.
+- **Both Versions Side by Side**: Each version now keeps its own game data, so adding a second ROM (`--rom`, or the in-game `VERSION` button) no longer replaces the first one's data.
+- **Shared Profiles**: Standalone now plays from the launcher's `Black` and `White` profiles, so saves, mods, and settings are the same with and without the launcher. Settings are shared between both versions, while each version keeps its own saves and mods. Saves from older standalone installs are imported automatically, into free save slots when the profile already has saves of its own.
+- **Options Without `--window`**: Fixed display and layout options (such as `--fullscreen` or `--layout one`) starting the game with no window unless `--window` was also passed.
+- **Release File Names**: Launcher downloads are now `eidos-setup-windows.exe`, `eidos-macos.dmg`, and `eidos-linux-x86_64.AppImage`; standalone builds are `eidos-standalone-<version>-<platform>`; console builds are `eidos-nintendo-switch.zip` and `eidos-psvita.vpk`.
 
 ### Multiplayer
 - **Lobby Start Button**: Fixed the host's `Start` button remaining disabled in the one-screen lobby even after all players readied up.
@@ -29,7 +39,9 @@ Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration
 - **Kosmos Pokédex Transitions**: Fixed multi-step fade transitions repeatedly capturing and releasing frame snapshots when flipping pages in the Kosmos Pokédex.
 - **Relay Connection Errors**: Fixed failed hosting attempts from **Your Games** (when the relay is unreachable) dropping into a duplicate games list without explanation; the menu now stays on the Play Together screen and displays an error message.
 - **Plasma C-Gear Notice**: Fixed the C-Gear warning text before the Continue screen being truncated and overlapping below its confirmation prompt in the Plasma style.
-- **Bottom-Bar Key Hints**: Fixed clicks and taps on bottom-bar key hints passing through to the underlying screen (such as clicking `Back` in the style chooser inadvertently returning the title menu to the title screen).
+- **HM Move Notice**: Fixed the `HM moves can't be forgotten now.` message not appearing on the one-screen forget-a-move page, which left the screen looking unresponsive (#54).
+- **Game Data Replacement (64-bit)**: Fixed replacing game data leaving a half-deleted `extract.old` folder behind, which made the next replacement fail.
+- **ROM Setup Messages**: Fixed setup messages naming Pokémon Black when a Pokémon White ROM was refused.- **Bottom-Bar Key Hints**: Fixed clicks and taps on bottom-bar key hints passing through to the underlying screen (such as clicking `Back` in the style chooser inadvertently returning the title menu to the title screen).
 
 ## 0.2.6
 
