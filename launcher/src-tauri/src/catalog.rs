@@ -137,28 +137,51 @@ fn read_index(agent: &ureq::Agent, url: &str) -> Result<Index, String> {
     Ok(idx)
 }
 
-/// A release file of a mod, kept on disk by its address.  A release's
-/// files never change once its tag is out (a new version is a new tag, so
-/// a new address), so a kept copy is the file: it is read from disk and
-/// GitHub is not asked again until the index names another release.  That
-/// is also what keeps the list showing while GitHub's downloads fail.
-fn get_kept(agent: &ureq::Agent, cache: &Path, url: &str, max: u64) -> Result<Vec<u8>, String> {
+/// Where a release file's copy is kept: a name made from its address.
+fn kept_path(cache: &Path, url: &str) -> std::path::PathBuf {
     use sha2::Digest;
     let key: String = sha2::Sha256::digest(url.as_bytes()).iter().take(16).map(|b| format!("{b:02x}")).collect();
-    let path = cache.join(key);
-    if let Ok(bytes) = fs::read(&path) {
-        if bytes.len() as u64 <= max {
+    cache.join(key)
+}
+
+fn keep(cache: &Path, path: &Path, bytes: &[u8]) {
+    if fs::create_dir_all(cache).is_ok() {
+        let tmp = path.with_extension("part");
+        if fs::write(&tmp, bytes).is_ok() {
+            let _ = fs::rename(&tmp, path);
+        }
+    }
+}
+
+/// A release file of a mod, kept on disk by its address.
+///
+/// `pinned`: the address names its release (the index gives the mod's
+/// version).  A release's files never change once its tag is out (a new
+/// version is a new tag, so a new address), so a kept copy is the file: it
+/// is read from disk and GitHub is not asked again until the index names
+/// another release.
+///
+/// Not pinned: the address is the mod's newest release
+/// (`releases/latest/download`), which names another file after the mod's
+/// next release.  GitHub is asked every time, and the kept copy is only
+/// what the list shows when GitHub does not answer.
+///
+/// Either way the list keeps showing while GitHub's downloads fail.
+fn get_kept(agent: &ureq::Agent, cache: &Path, url: &str, max: u64, pinned: bool) -> Result<Vec<u8>, String> {
+    let path = kept_path(cache, url);
+    let kept = || fs::read(&path).ok().filter(|b| b.len() as u64 <= max);
+    if pinned {
+        if let Some(bytes) = kept() {
             return Ok(bytes);
         }
     }
-    let bytes = get(agent, url, max)?;
-    if fs::create_dir_all(cache).is_ok() {
-        let tmp = path.with_extension("part");
-        if fs::write(&tmp, &bytes).is_ok() {
-            let _ = fs::rename(&tmp, &path);
+    match get(agent, url, max) {
+        Ok(bytes) => {
+            keep(cache, &path, &bytes);
+            Ok(bytes)
         }
+        Err(e) => kept().ok_or(e),
     }
-    Ok(bytes)
 }
 
 /// The mods of the index, with their mod.json read (`cache`: where release
@@ -170,10 +193,11 @@ pub fn list(index_setting: &str, cache: &Path) -> Result<Catalog, String> {
     let mut out = Catalog { mods: Vec::new(), errors: Vec::new() };
     for (i, e) in idx.mods.iter().enumerate() {
         let url = release_url(e, "mod.json");
+        let pinned = e.version.is_some();
         let r = if url.is_empty() {
             Err("the entry names no mod".to_string())
         } else {
-            get_kept(&agent, cache, &url, MAX_JSON).and_then(|b| {
+            get_kept(&agent, cache, &url, MAX_JSON, pinned).and_then(|b| {
                 serde_json::from_slice::<ModJson>(&b).map_err(|err| format!("mod.json: {err}"))
             })
         };
@@ -183,7 +207,7 @@ pub fn list(index_setting: &str, cache: &Path) -> Result<Catalog, String> {
                     Some(IconRef::Item(n)) => Some(UiIcon { item: Some(*n), ..Default::default() }),
                     Some(IconRef::Species(n)) => Some(UiIcon { species: Some(*n), ..Default::default() }),
                     // a mod's own picture comes beside its mod.json
-                    Some(IconRef::File(_)) => get_kept(&agent, cache, &release_url(e, ICON_FILE), MAX_ICON)
+                    Some(IconRef::File(_)) => get_kept(&agent, cache, &release_url(e, ICON_FILE), MAX_ICON, pinned)
                         .ok()
                         .filter(|b| eidos_mod::manifest::check_icon_png(b).is_ok())
                         .map(|b| UiIcon { png: Some(b), ..Default::default() }),
@@ -264,6 +288,25 @@ mod tests {
     fn default_index() {
         assert_eq!(index_url(""), DEFAULT_INDEX);
         assert_eq!(index_url("  https://x/i.json "), "https://x/i.json");
+    }
+
+    /// A kept copy is the file for a pinned address; for the newest
+    /// release it is only what shows when the server does not answer.
+    #[test]
+    fn kept_copies() {
+        let t = tempfile::tempdir().unwrap();
+        let agent = ureq::AgentBuilder::new().timeout(Duration::from_millis(300)).build();
+        // (nothing listens on this port: every request fails at once)
+        let url = "http://127.0.0.1:9/owner/mod/releases/latest/download/mod.json";
+        assert!(get_kept(&agent, t.path(), url, 100, true).is_err());
+        assert!(get_kept(&agent, t.path(), url, 100, false).is_err());
+        keep(t.path(), &kept_path(t.path(), url), b"kept");
+        // pinned: the copy, with no request; not pinned: the copy, after the request failed
+        assert_eq!(get_kept(&agent, t.path(), url, 100, true).unwrap(), b"kept");
+        assert_eq!(get_kept(&agent, t.path(), url, 100, false).unwrap(), b"kept");
+        // a copy past the limit is not the file
+        assert!(get_kept(&agent, t.path(), url, 3, true).is_err());
+        assert!(get_kept(&agent, t.path(), url, 3, false).is_err());
     }
 
     #[test]
