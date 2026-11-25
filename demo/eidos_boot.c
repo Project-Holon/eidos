@@ -4281,7 +4281,9 @@ int main(int argc, char **argv)
         int status = 0;
 
         setup.data_root = data_root[0] != '\0' ? data_root : NULL;
-        setup.no_window = !window;
+        /* a hidden run (EIDOS_WINDOW_HIDDEN: a test) never shows the setup
+         * window either: it says what is missing, as --no-window does */
+        setup.no_window = !window || getenv("EIDOS_WINDOW_HIDDEN") != NULL;
         setup.follow_last = g_profiles;     /* a standalone game: the game played last */
         if (!eidos_firstrun(&setup, setup_data, sizeof setup_data, &status)) {
             return status;

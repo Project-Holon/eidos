@@ -147,6 +147,7 @@ both games, and start each test from those saves.
 
 | Switch | What it does |
 |---|---|
+| `EIDOS_WINDOW_HIDDEN=1` | The game's window never shows (a test run). It also keeps the setup window from opening: a run that finds no game data says what is missing and stops, as `--no-window` does. |
 | `EIDOS_USER_DIR=<folder>` | The user folder a standalone game uses: `profiles/Black`, `profiles/White` and a plain start's old `saves/` and `mods/` are looked for there, not in the player's own folder. With `EIDOS_HOME` (the game data and `config.txt`) a test touches nothing of the player's. |
 | `EIDOS_NO_BUILT_DATA=1` | A development build leaves out the data root compiled into it, as a release build has none: the install's own folders are used. |
 | `EIDOS_GAME_SWITCH_AT=<frame>[,<frame>...]` | The other version of the game at those frames (the frame count starts again at each switch). |
