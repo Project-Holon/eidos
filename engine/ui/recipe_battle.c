@@ -150,10 +150,23 @@ static int g_msg_arc_state;
 
 static const u8 *bank_get(int member, u32 *size)
 {
+    static u32 gen;
     int i, free_slot = -1;
     long n;
     u8 *buf;
 
+    if (gen != eidos_ui_data_generation()) {
+        /* another game's data: its own text, from its own archive */
+        gen = eidos_ui_data_generation();
+        for (i = 0; i < BANK_SLOTS; i++) {
+            free(g_bank[i].data);
+        }
+        memset(g_bank, 0, sizeof g_bank);
+        if (g_msg_arc_state == 1) {
+            bw_arc_close(&g_msg_arc);
+        }
+        g_msg_arc_state = 0;
+    }
     for (i = 0; i < BANK_SLOTS; i++) {
         if (g_bank[i].member == member) {
             *size = g_bank[i].size;
@@ -821,8 +834,13 @@ extern int bw_battle_yesno_is_kept(const void *record) __attribute__((weak));
 
 static void mv_names_load(void)
 {
+    static u32 gen;
     int id, n = 0;
 
+    if (gen != eidos_ui_data_generation()) {
+        gen = eidos_ui_data_generation();       /* the other version's data: its own move names */
+        g_mv_ready = 0;
+    }
     if (g_mv_ready) {
         return;
     }

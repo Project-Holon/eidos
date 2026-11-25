@@ -436,6 +436,18 @@ static int rig_use(u16 species, int shiny)
     rig_drop();
     g_rig_species = species;
     g_rig_shiny = shiny;
+    {
+        static u32 gen;
+
+        if (gen != eidos_ui_data_generation()) {
+            /* another game's data: its own archive */
+            gen = eidos_ui_data_generation();
+            if (g_rig_arc_state == 1) {
+                bw_arc_close(&g_rig_arc);
+            }
+            g_rig_arc_state = 0;
+        }
+    }
     if (g_rig_arc_state == 0) {
         g_rig_arc_state = bw_arc_open(&g_rig_arc, RIG_ARCHIVE) == 0 ? 1 : -1;
     }

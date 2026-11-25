@@ -1801,6 +1801,7 @@ const UiThemeOps ui_theme_harmonia = {
     .hints = rx_hints,
     .party_row = harmonia_party_row,
     .title_menu_backdrop = harmonia_title_menu_backdrop,
+    .title_version_flag_low = 1,        /* the logo is at the top's middle */
     .app_frame = harmonia_app_frame,
     .mp_part = harmonia_mp_part,
     .bag_detail_frame = harmonia_bag_detail_frame,

@@ -426,12 +426,21 @@ static int g_nbank;
 
 static const Bank *bank_get(int arc, int member)
 {
+    static u32 gen;
     int i;
     char path[16];
     BwArcFile f;
     long n;
     Bank *b;
 
+    if (gen != eidos_ui_data_generation()) {
+        /* another game's data: its own text */
+        gen = eidos_ui_data_generation();
+        for (i = 0; i < g_nbank; i++) {
+            free(g_bank[i].data);
+        }
+        g_nbank = 0;
+    }
     for (i = 0; i < g_nbank; i++) {
         if (g_bank[i].arc == arc && g_bank[i].member == member) {
             return g_bank[i].data != NULL ? &g_bank[i] : NULL;
@@ -1372,6 +1381,7 @@ static void event_message(const SaveInfo *s, char *out, int max)
 
 /* The trainer's picture (the Trainer Card's, below). */
 static int g_pic_ok, g_pic_sex;
+static u32 g_pic_gen;           /* the game data the picture was read from (eidos_ui_data_generation) */
 static UiImage g_pic_im;
 static void pic_load(int sex);
 extern u32 MYSTATUS_GetSex(const void *mystatus) __attribute__((weak));
@@ -1421,7 +1431,7 @@ static void save_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             void *me = gd != NULL && GAME_DATA_GetMyStatus != NULL ? GAME_DATA_GetMyStatus(gd) : NULL;
             int sex = me != NULL && MYSTATUS_GetSex != NULL && MYSTATUS_GetSex(me) == 1;
 
-            if (g_pic_ok < 0 || g_pic_sex != sex) {
+            if (g_pic_ok < 0 || g_pic_sex != sex || g_pic_gen != eidos_ui_data_generation()) {
                 pic_load(sex);
             }
             if (g_pic_ok == 1) {
@@ -2047,6 +2057,7 @@ static void pic_load(int sex)
 
     g_pic_ok = 0;
     g_pic_sex = sex;
+    g_pic_gen = eidos_ui_data_generation();
     if (chr != NULL && scr != NULL && pal != NULL && cb > 0x18 && sb > 0x0C && pb > 0x10) {
         u32 csize = rd32(chr, 0x10), ntiles, sw, x, y;
         const u8 *tiles = chr + 0x18;
@@ -2498,6 +2509,21 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         card_reset();
         g_card_work = ci.work;
     }
+    {
+        static u32 gen;
+
+        if (gen != eidos_ui_data_generation()) {
+            /* another game's data: the case's picture is read again */
+            int q;
+
+            gen = eidos_ui_data_generation();
+            for (q = 0; q < 8; q++) {
+                free(g_sil[q].mask);
+                g_sil[q].mask = NULL;
+            }
+            g_sil_n = -1;
+        }
+    }
     if (g_sil_n < 0) {
         sil_load();
     }
@@ -2527,6 +2553,14 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
     compact = c->canvas->h - ui_bar_h(c) - 6 < 190;
     m = modal_rect(c, 72, 300, 380, 80, compact ? 146 : 190, 220, compact ? 146 : 190);
+    {
+        static u32 gen;
+
+        if (gen != eidos_ui_data_generation()) {
+            gen = eidos_ui_data_generation();   /* the other version's data: its own badges */
+            g_badge_ok = -1;
+        }
+    }
     if (g_badge_ok < 0) {
         badge_load();
     }
@@ -2643,7 +2677,7 @@ static void card_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                                                                   : NULL;
             int sex = me != NULL && MYSTATUS_GetSex != NULL && MYSTATUS_GetSex(me) == 1;
 
-            if (g_pic_ok < 0 || g_pic_sex != sex) {
+            if (g_pic_ok < 0 || g_pic_sex != sex || g_pic_gen != eidos_ui_data_generation()) {
                 pic_load(sex);
             }
             if (g_pic_ok == 1) {
@@ -5950,6 +5984,14 @@ static void ut_grab_feelings(const EidosUiFrame *in)
     const u8 *o = in->objs_rgba[1];
     int i, x, y, n;
 
+    {
+        static u32 gen;
+
+        if (gen != eidos_ui_data_generation()) {
+            gen = eidos_ui_data_generation();   /* the other version's data: taken from its screen again */
+            memset(g_ut_feel, 0, sizeof g_ut_feel);
+        }
+    }
     eidos_ui_want_objs(1);
     if (o == NULL) {
         return;

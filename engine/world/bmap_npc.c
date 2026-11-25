@@ -218,6 +218,7 @@ static void class_codes_build(void)
     unsigned file, i, k;
 
     g_class_built = 1;
+    memset(vote, 0, sizeof vote);       /* (built again for the other version's event files) */
     for (i = 0; i < CLASS_MAX; i++) {
         g_class_code[i] = -1;
     }
@@ -277,8 +278,14 @@ int bmap_npc_trainer_code(int trainer_id)
     u8 *tr;
     int cls;
 
+    static u32 seen;
+
     if (trainer_id <= 0 || trainer_id >= 100000) {
         return -1;
+    }
+    if (seen != bw_data_generation()) {
+        seen = bw_data_generation();    /* the other version's data: its own trainers and events */
+        g_class_built = 0;
     }
     if (!g_class_built) {
         class_codes_build();

@@ -585,6 +585,22 @@ static const UiImage *prop_pic(u32 id)
     if (id >= MU_PROPS) {
         return NULL;
     }
+    {
+        static u32 gen;
+
+        if (gen != eidos_ui_data_generation()) {
+            u32 k;
+
+            gen = eidos_ui_data_generation();   /* the other version's data: its own props */
+            for (k = 0; k < MU_PROPS; k++) {
+                if (g_pic_state[k] == 1) {
+                    free((void *)g_pic[k].rgba);
+                }
+                g_pic[k].rgba = NULL;
+                g_pic_state[k] = 0;
+            }
+        }
+    }
     if (g_pic_state[id] != 0) {
         return g_pic_state[id] == 1 ? &g_pic[id] : NULL;
     }

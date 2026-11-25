@@ -148,6 +148,12 @@ static int dex_number(void *save, int species, int fallback)
 {
     static u16 tab[650];
     static int state;           /* 0 not tried, 1 read, -1 failed */
+    static u32 gen;
+
+    if (gen != eidos_ui_data_generation()) {
+        gen = eidos_ui_data_generation();   /* another game's data: its own table */
+        state = 0;
+    }
 
     if (save == NULL || ZUKAN_SAVE_GetViewMode == NULL || species <= 0) {
         return fallback;
@@ -332,10 +338,23 @@ static int       g_msg_n;
 
 static const MsgCache *msg_file(u32 id)
 {
+    static u32 gen;
     int i;
     long n;
     u8 *buf;
 
+    if (gen != eidos_ui_data_generation()) {
+        /* another game's data: its own text, from its own archive */
+        gen = eidos_ui_data_generation();
+        for (i = 0; i < g_msg_n; i++) {
+            free(g_msgs[i].data);
+        }
+        g_msg_n = 0;
+        if (g_msg_state == 1) {
+            bw_arc_close(&g_msg_arc);
+        }
+        g_msg_state = 0;
+    }
     for (i = 0; i < g_msg_n; i++) {
         if (g_msgs[i].id == id) {
             return g_msgs[i].data != NULL ? &g_msgs[i] : NULL;

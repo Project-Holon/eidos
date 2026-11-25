@@ -125,6 +125,14 @@ static void load_arm9(void)
     }
 }
 
+void bw_arm9_forget(void)
+{
+    free(g_arm9);
+    g_arm9 = NULL;
+    g_arm9_size = 0;
+    g_arm9_tried = 0;
+}
+
 void bw_arm9_set_image(const void *image, u32 size)
 {
     free(g_arm9);

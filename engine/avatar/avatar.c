@@ -204,9 +204,14 @@ static int nclr_palette0(const u8 *d, u32 n, u16 out[16])
 
 int avatar_init(void)
 {
+    static u32 seen;
     BwArcFile arc;
     int s;
 
+    if (seen != bw_data_generation()) {
+        seen = bw_data_generation();    /* the other version's data: its own palettes */
+        g_init = 0;
+    }
     if (g_init != 0) {
         return g_init > 0 ? 0 : -1;
     }

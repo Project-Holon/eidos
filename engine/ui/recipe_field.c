@@ -192,10 +192,23 @@ static int g_msg_arc_state;
 
 static const MsgCache *msg_file(u32 member)
 {
+    static u32 gen;
     int i, free_slot = -1;
     long n;
     u8 *buf;
 
+    if (gen != eidos_ui_data_generation()) {
+        /* another game's data: its own text, from its own archive */
+        gen = eidos_ui_data_generation();
+        for (i = 0; i < MSG_FILES; i++) {
+            free(g_msgs[i].raw);
+        }
+        memset(g_msgs, 0, sizeof g_msgs);
+        if (g_msg_arc_state == 1) {
+            bw_arc_close(&g_msg_arc);
+        }
+        g_msg_arc_state = 0;
+    }
     for (i = 0; i < MSG_FILES; i++) {
         if (g_msgs[i].tried && g_msgs[i].member == member) {
             return g_msgs[i].raw != NULL ? &g_msgs[i] : NULL;

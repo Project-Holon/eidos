@@ -181,6 +181,8 @@ static void *rdp(const void *base, u32 off)
 /* Shared drawing                                                      */
 /* ------------------------------------------------------------------ */
 
+static int tt_white(void);      /* the game is Pokemon White (below, with the backdrop) */
+
 static int clampi(int v, int lo, int hi)
 {
     return v < lo ? lo : v > hi ? hi : v;
@@ -209,7 +211,12 @@ static void logo_load(void)
     G2dPalette colors = { NULL, 0 };
     int have_ncgr = 0, have_nscr = 0;
     u32 tx, ty;
+    static u32 gen;
 
+    if (gen != eidos_ui_data_generation()) {
+        gen = eidos_ui_data_generation();   /* the other version's logo */
+        g_logo_have = 0;
+    }
     if (g_logo_have != 0) {
         return;
     }
@@ -328,6 +335,7 @@ static int logo_draw(EidosUiCtx *c, int x, int y, int w, int alpha)
      * it is scaled again only when its place in the source, its size or its
      * alpha changes */
     static int c_bx0 = -1, c_by0, c_sw, c_sh, c_dw, c_dh, c_alpha;
+    static u32 c_gen;       /* (or the game's data: the two versions' logos have the same box) */
     UiImage im;
     int bx0, by0, bx1, by1, sw, sh, dw, dh, ox, oy;
 
@@ -342,7 +350,8 @@ static int logo_draw(EidosUiCtx *c, int x, int y, int w, int alpha)
         dh = 260;
     }
     if (c_bx0 != bx0 || c_by0 != by0 || c_sw != sw || c_sh != sh
-        || c_dw != dw || c_dh != dh || c_alpha != alpha) {
+        || c_dw != dw || c_dh != dh || c_alpha != alpha || c_gen != eidos_ui_data_generation()) {
+        c_gen = eidos_ui_data_generation();
         for (oy = 0; oy < dh; oy++) {
             for (ox = 0; ox < dw; ox++) {
                 int sx0 = bx0 + ox * sw / dw, sx1 = bx0 + (ox + 1) * sw / dw;
@@ -531,9 +540,14 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                     UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         }
     }
-    /* the credit, bottom left */
-    ui_text(c, 6, H - ui_bar_h(c) - 11, "Developed by GAME FREAK inc.", UI_LIGHT, 0x202020u,
-            UI_FONT_SMALL, 1);
+    /* the credit, bottom left (dark ink on White's light floor) */
+    if (tt_white()) {
+        ui_text(c, 6, H - ui_bar_h(c) - 11, "Developed by GAME FREAK inc.", UI_RAW(0x303038u),
+                (s32)UI_RAW(0xF4F4F4u), UI_FONT_SMALL, 1);
+    } else {
+        ui_text(c, 6, H - ui_bar_h(c) - 11, "Developed by GAME FREAK inc.", UI_LIGHT, 0x202020u,
+                UI_FONT_SMALL, 1);
+    }
 
     /* click anywhere is START */
     all.x = 0;
@@ -709,11 +723,14 @@ static int slot_count(void)
 static int g_target = -1, g_act, g_wait, g_age;
 
 static int g_mods_open, g_mods_cool;    /* (the mod manager, below) */
+static int g_ver_open, g_ver_cool;      /* (the other version's window, below) */
 
 static void menu_reset(void)
 {
     g_mods_open = 0;
     g_mods_cool = 0;
+    g_ver_open = 0;
+    g_ver_cool = 0;
     g_target = -1;
     g_wait = 0;
     g_age = 0;
@@ -754,13 +771,52 @@ static u32 rgb3(int r, int g, int b)
     return ((u32)r << 16) | ((u32)g << 8) | (u32)b;
 }
 
+extern const char *bw_lang_gamecode(void) TT_WEAK;
+
+/* Whether the game is Pokemon White (the cartridge's game code, IRA?). */
+static int tt_white(void)
+{
+    const char *code = bw_lang_gamecode != NULL ? bw_lang_gamecode() : NULL;
+
+    return code != NULL && code[0] != '\0' && code[1] != '\0' && code[2] == 'A';
+}
+
 /* A dark floor of two greys that drifts toward the viewer, a cool light
- * behind the middle and a dark rim (the title's own colours). */
+ * behind the middle and a dark rim (the title's own colours).  Pokemon
+ * White's title has the same floor in its own colours: a white sky and two
+ * light greys (C3 and 96 at the near edge on its DS screen) that fade to
+ * white at the horizon, a little darker toward the corners. */
 static void backdrop(EidosUiCtx *c, int W, int H, int frame)
 {
     int x, y, hy = H * 30 / 100;
     float scroll = (float)frame * 0.010f;
 
+    if (tt_white()) {
+        for (y = 0; y < H; y += 2) {
+            float t = y < hy ? 0.0f : (float)(y - hy + 1) / (float)(H - hy);
+            float z = 1.0f / (t + 0.07f);
+
+            for (x = 0; x < W; x += 2) {
+                float dx = ((float)x - (float)W * 0.5f) / ((float)W * 0.5f);
+                float dy = ((float)y - (float)H * 0.46f) / ((float)H * 0.5f);
+                float rr = dx * dx * 0.7f + dy * dy;
+                float rim = 1.0f - 0.22f * (rr > 1.0f ? 1.0f : rr);
+                int v = 255;
+
+                if (y >= hy) {
+                    float u = dx * (float)W * 0.5f * z / 52.0f;
+                    float w = z * 1.15f + scroll;
+                    int chk = (ifloor(u) + ifloor(w)) & 1;
+                    float fade = t < 0.45f ? t / 0.45f : 1.0f;
+
+                    v = 255 - (int)((chk ? 60.0f : 105.0f) * fade);
+                }
+                v = (int)((float)v * rim);
+                ui_fill(c, x, y, 2, 2, rgb3(v, v, v), 255);
+            }
+        }
+        return;
+    }
     for (y = 0; y < H; y += 2) {
         float t = y < hy ? 0.0f : (float)(y - hy + 1) / (float)(H - hy);
         float z = 1.0f / (t + 0.07f);
@@ -2774,6 +2830,287 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
     return 1;
 }
 
+/* ------------------------------------------------------------------ */
+/* The other version of the game                                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A standalone game that plays from the two game profiles can go to its
+ * other version without leaving the program (demo/eidos_boot.c,
+ * eidos_boot_game_switch).  A third flag, between the mod manager's and
+ * the style's, names the two versions, the one played marked as the style
+ * in use is on the style's flag.  A click, or X, goes to the other version
+ * when its data is in the install.  When it is not, a window asks for that
+ * version's ROM, shows the check and the writing of its game data, and the
+ * game goes to it when the data is made.
+ */
+extern int  eidos_boot_game(void) TT_WEAK;
+extern int  eidos_boot_other_game(void) TT_WEAK;
+extern int  eidos_boot_game_switch(void) TT_WEAK;
+extern int  eidos_boot_game_add(void) TT_WEAK;
+extern int  eidos_boot_game_add_state(int *permille, const char **text) TT_WEAK;
+extern void eidos_boot_game_add_cancel(void) TT_WEAK;
+
+#define VER_WHITE 2             /* install.h's BW_GAME_WHITE (1 is Black) */
+/* eidos_boot_game_add_state's answers */
+enum { VADD_NONE, VADD_CHOOSING, VADD_CHECKING, VADD_WRITING, VADD_FAILED, VADD_DONE };
+
+#define VER_FLAG_W 86
+
+static int g_ver_cur;           /* the window's choice: 0 the first, 1 BACK */
+
+static int ver_on(void)
+{
+    return eidos_boot_other_game != NULL && eidos_boot_game != NULL && eidos_boot_game_switch != NULL
+           && eidos_boot_game_add != NULL && eidos_boot_game_add_state != NULL
+           && eidos_boot_game_add_cancel != NULL && eidos_boot_other_game() != 0;
+}
+
+/* The flag's box: at the menu's top, in the middle, or at the window's
+ * foot on the hint bar in a style that asks for it (theme.h,
+ * title_version_flag_low). */
+static EidosUiRect ver_flag_box(EidosUiCtx *c, int W, int H)
+{
+    EidosUiRect r;
+
+    r.w = VER_FLAG_W;
+    r.h = STYLE_FLAG_H;
+    r.x = (W - r.w) / 2;
+    r.y = ui_theme_active()->title_version_flag_low ? H - ui_bar_h(c) - r.h : 0;
+    return r;
+}
+
+/* The flag: VERSION over the two games' names, the one played white over a
+ * line, the other grey (dark when its data is not in the install yet).
+ * The style flag's own box, hung from the window's top or standing on the
+ * hint bar.  Returns its box for the pointer. */
+static EidosUiRect ver_flag(EidosUiCtx *c, int W, int H, int hot)
+{
+    EidosUiRect r = ver_flag_box(c, W, H);
+    int low = r.y != 0;
+    int white = eidos_boot_game() == VER_WHITE, there = eidos_boot_other_game() == 1;
+    int fx, fy, fw, fh, lean = 0, left, cwid, i, w0, w1, x;
+    const char *name[2];
+
+    name[0] = ui_tr("BLACK");
+    name[1] = ui_tr("WHITE");
+    fx = r.x;
+    fy = r.y;
+    fw = r.w;
+    fh = hot ? -r.h : r.h;
+    if (!low && ui_app_window(c, "style-flag", &fx, &fy, &fw, &fh)) {
+        left = fx;
+        lean = fw;
+        cwid = r.w - 22;
+    } else {
+        /* (hung from the top: its head is past the window's edge; on the
+         * bar: its foot is under the bar, which is drawn after it) */
+        ui_panel(c, r.x, low ? r.y : r.y - 8, r.w, r.h + 8, UI_CUT_TL | UI_CUT_BR, 5, UI_BODY,
+                 hot ? UI_CYAN : UI_EDGE, 240);
+        left = r.x + 8;
+        cwid = r.w - 16;
+    }
+#define FLAG_X(row) (left + lean * (r.h - (row)) / r.h)
+    ui_text(c, FLAG_X(6) + (cwid - ui_text_w(ui_tr("VERSION"), UI_FONT_SMALL)) / 2, r.y + 3, ui_tr("VERSION"),
+            UI_RAW(0xF8F8F8u), (s32)UI_RAW(0x101014u), UI_FONT_SMALL, 1);
+    w0 = ui_text_w(name[0], UI_FONT_SMALL);
+    w1 = ui_text_w(name[1], UI_FONT_SMALL);
+    x = FLAG_X(19) + (cwid - (w0 + 8 + w1)) / 2;
+    for (i = 0; i < 2; i++) {
+        int now = i == white;
+        int wd = i == 0 ? w0 : w1;
+
+        ui_text(c, x, r.y + 15, name[i], UI_RAW(now ? 0xF8F8F8u : there ? 0xBEC4D0u : 0x70768Au),
+                (s32)UI_RAW(0x101014u), UI_FONT_SMALL, 1);
+        if (now) {
+            ui_fill(c, x, r.y + 12 + 14, wd, 1, UI_RAW(0xFFFFFFu), 255);
+        }
+        x += wd + 8;
+    }
+#undef FLAG_X
+    return r;
+}
+
+/* The flag was chosen: the other version at once when its data is there,
+ * else the window that asks for its ROM. */
+static void ver_press(void)
+{
+    if (eidos_boot_other_game() == 1) {
+        if (eidos_boot_game_switch() == 0) {
+            eidos_ui_sound(0x54C);
+            eidos_ui_crossfade();
+            g_ver_cool = 30;            /* the menu is the other game's from the next frames on */
+        }
+        return;
+    }
+    g_ver_open = 1;
+    g_ver_cur = 0;
+    eidos_ui_sound(0x54C);
+    eidos_ui_crossfade();
+}
+
+static void ver_close(void)
+{
+    g_ver_open = 0;
+    g_ver_cool = 15;
+    eidos_ui_sound(0x551);
+    eidos_ui_crossfade();
+}
+
+/* The window in the menu's place.  Returns whether it is up. */
+static int ver_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, int W, int H, int ready)
+{
+    const char *hints[6];
+    u32 hint_keys[3];
+    u32 k = eidos_ui_keys_pressed();
+    const char *other, *why = "", *ch[2];
+    char msg[1200];
+    int bar = ui_bar_h(c), state, permille = 0, dw, dh, dx, dy, lines, nch = 0, chosen = -1, ans, busy;
+
+    (void)view;
+    if (!ver_on()) {
+        g_ver_open = 0;
+        return 0;
+    }
+    eidos_ui_take_keys(BW_KEY_X);
+    if (g_ver_cool > 0) {
+        g_ver_cool--;                   /* the key that closed it is not the menu's */
+        eidos_ui_take_keys(BW_KEY_GAME);
+    }
+    if (!g_ver_open) {
+        if (ready && g_ver_cool == 0 && (k & BW_KEY_X)) {
+            ver_press();
+        }
+        if (!g_ver_open) {
+            return 0;
+        }
+        k = 0;
+    }
+    eidos_ui_take_keys(BW_KEY_GAME);
+    state = eidos_boot_game_add_state(&permille, &why);
+    if (state == VADD_NONE && eidos_boot_other_game() == 1) {
+        /* the data was made and the game went to that version: the window
+         * has nothing left to ask */
+        g_ver_open = 0;
+        g_ver_cool = 15;
+        return 0;
+    }
+    busy = state == VADD_CHOOSING || state == VADD_CHECKING || state == VADD_WRITING || state == VADD_DONE;
+    other = eidos_boot_game() == VER_WHITE ? "Black" : "White";
+
+    backdrop(c, W, H, (int)in->frame);
+    switch (state) {
+    case VADD_CHOOSING:
+        snprintf(msg, sizeof msg, "%s", ui_tr("Choose the file in the window that opened."));
+        break;
+    case VADD_CHECKING:
+        snprintf(msg, sizeof msg, "%s", ui_tr("Checking your ROM."));
+        break;
+    case VADD_WRITING:
+        snprintf(msg, sizeof msg, "%s", ui_tr("Writing the game data."));
+        break;
+    case VADD_DONE:
+        snprintf(msg, sizeof msg, ui_trf("Starting Pok\xC3\xA9mon %s."), other);
+        break;
+    case VADD_FAILED: {
+        /* the installer's own sentence, which is plain ASCII for a
+         * terminal: the game's name as this window spells it */
+        static const char plain[] = "Pokemon", name[] = "Pok\xC3\xA9mon";
+        size_t n = 0;
+
+        while (*why != '\0' && n + sizeof name < sizeof msg) {
+            if (strncmp(why, plain, sizeof plain - 1) == 0) {
+                memcpy(msg + n, name, sizeof name - 1);
+                n += sizeof name - 1;
+                why += sizeof plain - 1;
+            } else {
+                msg[n++] = *why++;
+            }
+        }
+        msg[n] = '\0';
+        ch[nch++] = ui_tr("CHOOSE");
+        ch[nch++] = ui_tr("BACK");
+        break;
+    }
+    default:
+        snprintf(msg, sizeof msg,
+                 ui_trf("Pok\xC3\xA9mon %s is not added yet. Choose your own Pok\xC3\xA9mon %s ROM, the .nds "
+                        "file. It is read once to make the game data."), other, other);
+        ch[nch++] = ui_tr("CHOOSE");
+        ch[nch++] = ui_tr("BACK");
+        break;
+    }
+    dw = W - 80 < 320 ? W - 80 : 320;
+    lines = ui_wrap(msg, dw - 20, UI_FONT_LARGE, NULL, NULL);
+    dh = 14 + 15 * lines + 26;
+    dx = (W - dw) / 2;
+    dy = (H - bar - dh) / 2;
+    if (nch == 2 && (k & (BW_KEY_LEFT | BW_KEY_RIGHT))) {
+        g_ver_cur = (k & BW_KEY_LEFT) ? 0 : 1;
+        eidos_ui_sound(0x548);
+    }
+    ui_dialog(c, dx, dy, dw, msg, ch, nch, g_ver_cur, UI_CYAN);
+    if (state == VADD_CHECKING || state == VADD_WRITING) {
+        /* the bar in the place of the choices, the two steps one after the other */
+        ui_progress(c, dx + 10, dy + dh - 16, dw - 20, (state == VADD_WRITING ? 1000 : 0) + permille, 2000, UI_CYAN);
+    }
+    /* the two buttons ui_dialog draws: 56 wide, right aligned */
+    for (ans = 0; ans < nch; ans++) {
+        EidosUiRect br;
+        int st;
+
+        br.x = dx + dw - 10 - 62 * (nch - ans) + 6;
+        br.y = dy + dh - 24;
+        br.w = 56;
+        br.h = 18;
+        st = eidos_ui_hit(br);
+        if (st & EIDOS_UI_HOVER) {
+            ui_fill(c, br.x, br.y, br.w, br.h, UI_CYAN2, 90);
+        }
+        if (st & EIDOS_UI_CLICK) {
+            chosen = ans;
+        }
+    }
+    if (nch == 2 && (k & BW_KEY_A)) {
+        chosen = g_ver_cur;
+    }
+    if ((k & BW_KEY_B) || eidos_ui_right_click()) {
+        chosen = busy ? 2 : 1;
+    }
+    if (chosen == 0) {
+        /* (a failure's message is put away, then the dialog is asked for) */
+        eidos_boot_game_add_cancel();
+        (void)eidos_boot_game_add();
+        eidos_ui_sound(0x54C);
+    } else if (chosen == 1) {
+        eidos_boot_game_add_cancel();
+        ver_close();
+    } else if (chosen == 2 && (state == VADD_CHECKING || state == VADD_WRITING)) {
+        eidos_boot_game_add_cancel();   /* nothing stays behind; the question comes back */
+        eidos_ui_sound(0x551);
+    }
+    if (nch == 2) {
+        hints[0] = "A";
+        hints[1] = "Confirm";
+        hints[2] = "\xE2\x86\x90\xE2\x86\x92";
+        hints[3] = "Choose";
+        hints[4] = "B";
+        hints[5] = "Back";
+        hint_keys[0] = BW_KEY_A;
+        hint_keys[1] = BW_KEY_RIGHT;
+        hint_keys[2] = BW_KEY_B;
+        ui_hints(c, H - bar, W, hints, 3, hint_keys);
+    } else if (state == VADD_CHECKING || state == VADD_WRITING) {
+        hints[0] = "B";
+        hints[1] = "Stop";
+        hint_keys[0] = BW_KEY_B;
+        ui_hints(c, H - bar, W, hints, 1, hint_keys);
+    } else {
+        ui_hints(c, H - bar, W, hints, 0, hint_keys);
+    }
+    return 1;
+}
+
 static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 {
     TtProc *p = NULL;
@@ -2819,6 +3156,10 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         return;
     }
     if (!g_style_open && eidos_ui_try_state() == 0 && mods_screen(c, view, in, W, H, state == SM_STATE_SELECT)) {
+        return;
+    }
+    if (!g_style_open && !g_mods_open && eidos_ui_try_state() == 0
+        && ver_screen(c, view, in, W, H, state == SM_STATE_SELECT)) {
         return;
     }
 
@@ -3234,9 +3575,10 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                                                           : hints_one;
         const u32 *bk = slots > 1 && card >= 0 ? keys_slots : keys_one;
         int bn = slots > 1 && card >= 0 ? 3 : 2, j;
-        const char *hp[10];
-        u32 hk[5];
+        const char *hp[12];
+        u32 hk[6];
         EidosUiRect fr;
+        int hn;
 
         fr.w = STYLE_FLAG_W;
         fr.h = STYLE_FLAG_H;
@@ -3258,6 +3600,21 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         hp[2 * bn] = "SELECT";
         hp[2 * bn + 1] = "Style";
         hk[bn] = BW_KEY_SELECT;
+        hn = bn + 1;
+        if (ver_on()) {
+            /* the other version's flag, between the two, and its key */
+            EidosUiRect vr = ver_flag_box(c, W, H);
+
+            j = eidos_ui_hit(vr);
+            (void)ver_flag(c, W, H, (j & EIDOS_UI_HOVER) != 0);
+            if ((j & EIDOS_UI_CLICK) && state == SM_STATE_SELECT && g_ver_cool == 0 && eidos_ui_try_state() == 0) {
+                ver_press();
+            }
+            hp[2 * hn] = "X";
+            hp[2 * hn + 1] = "Version";
+            hk[hn] = BW_KEY_X;
+            hn++;
+        }
         if (mods_on()) {
             /* the mod manager's flag, at the other corner, and its key */
             u32 mi[MODS_MAX];
@@ -3274,13 +3631,12 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             if ((j & EIDOS_UI_CLICK) && state == SM_STATE_SELECT && g_mods_cool == 0 && eidos_ui_try_state() == 0) {
                 mods_show();
             }
-            hp[2 * (bn + 1)] = "Y";
-            hp[2 * (bn + 1) + 1] = "Mods";
-            hk[bn + 1] = BW_KEY_Y;
-            ui_hints(c, H - ui_bar_h(c), W, hp, bn + 2, hk);
-        } else {
-            ui_hints(c, H - ui_bar_h(c), W, hp, bn + 1, hk);
+            hp[2 * hn] = "Y";
+            hp[2 * hn + 1] = "Mods";
+            hk[hn] = BW_KEY_Y;
+            hn++;
         }
+        ui_hints(c, H - ui_bar_h(c), W, hp, hn, hk);
     }
     dbg = getenv("EIDOS_TITLE_DEBUG");
     if (dbg != NULL && (in->frame % 30) == 0) {

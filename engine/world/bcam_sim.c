@@ -65,6 +65,8 @@ static const s16 *g_sincos;     /* FX_SinCosTable_ 0x020A1B38, 4096 pairs (sin, 
 static const s16 *g_atan;       /* FX_AtanIdxTable_ 0x020A5B38, 129 entries */
 static const u16 *g_codepair;   /* sPalAnmCodePairTable 0x0209E904, 25 pairs */
 
+static void data_check(void);   /* (all of these are one game's: read again for the other) */
+
 static int ovl_load(void)
 {
     char path[1024];
@@ -855,6 +857,7 @@ int bcam_sim_slot(int pos, float out[3])
 {
     V3 v;
 
+    data_check();
     if (pos < 0 || pos > 13 || (!g_ovl && tables_load() != 0))
         return -1;
     v = slot_position(pos);
@@ -2620,6 +2623,7 @@ int bcam_sim_run(int kind, int id, int attacker, int defender, BcamFrame **frame
     g_trace = getenv("BCAM_TRACE") != NULL;
     *frames = NULL;
     *count = 0;
+    data_check();
     if (!g_ovl || !g_sincos) {
         if (tables_load() != 0)
             return -1;
@@ -2734,8 +2738,29 @@ static void names_load(void)
     bw_arc_close(&arc);
 }
 
+/* The run went to the other version of the game (sdk/port.h,
+ * bw_data_generation): the overlay's bytes and the move names are the old
+ * game's, and the three ARM9 tables point into an image that was freed. */
+static void data_check(void)
+{
+    static u32 seen;
+
+    if (seen != bw_data_generation()) {
+        seen = bw_data_generation();
+        free(g_ovl);
+        g_ovl = NULL;
+        g_ovl_len = 0;
+        g_sincos = NULL;
+        g_atan = NULL;
+        g_codepair = NULL;
+        memset(g_names, 0, sizeof g_names);
+        g_names_count = -1;
+    }
+}
+
 const char *bcam_sim_move_name(int id)
 {
+    data_check();
     if (g_names_count < 0)
         names_load();
     if (id <= 0 || id >= g_names_count || !g_names[id][0])

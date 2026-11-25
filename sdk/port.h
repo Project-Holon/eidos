@@ -29,6 +29,15 @@ extern "C" {
  */
 void        bw_set_data_root(const char *path);
 const char *bw_data_root(void);
+/*
+ * A number that changes each time the data root is set.  A run can go from
+ * one game's data to the other's without ending (the boot's version switch,
+ * demo/eidos_boot.c), so whatever keeps something read from the data root
+ * for longer than one use (a table, a decoded picture, an open archive, a
+ * pointer bw_arm9_rodata gave) keeps this number with it and reads again
+ * when the number has changed.
+ */
+u32         bw_data_generation(void);
 
 /*
  * Mods laid over the data root, in a load order where a later mod wins
@@ -87,6 +96,16 @@ const void *bw_arm9_rodata(u32 address, u32 size);
  * before the call are invalid after it.
  */
 void bw_arm9_set_image(const void *image, u32 size);
+
+/*
+ * Forget the ARM9 image that was read: the next use reads
+ * extract/arm9_dec.bin again, from the data root in force then, and sets
+ * the cartridge's language and layout again (sdk/langmap.h).  For a data
+ * root that changes while the program runs (the other version of the
+ * game).  Pointers bw_arm9_rodata returned before the call are invalid
+ * after it.
+ */
+void bw_arm9_forget(void);
 
 /*
  * Install the game's archive name table, which is what the boot's

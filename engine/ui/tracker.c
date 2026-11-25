@@ -281,6 +281,19 @@ static void map_load(void)
     u8 *rgba;
     int i;
 
+    {
+        static u32 gen;
+
+        if (gen != eidos_ui_data_generation()) {
+            gen = eidos_ui_data_generation();   /* the other version's data: its own map and places */
+            free((void *)g_map.rgba);
+            g_map.rgba = NULL;
+            free(g_places);
+            g_places = NULL;
+            g_nplaces = 0;
+            g_map_tried = 0;
+        }
+    }
     if (g_map_tried) {
         return;
     }

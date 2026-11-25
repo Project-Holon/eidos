@@ -116,9 +116,27 @@ int avatar_field_register(void)
 {
     static const u32 walk_member[2] = { 6, 9 };     /* Hilbert, Hilda */
     static const u32 walk_code[2] = { 1, 4 };
+    static u32 seen;
     u32 tsize = 0, sprites = 0, rows, k;
     u8 *table, *grown;
 
+    if (seen != bw_data_generation()) {
+        /* The run went to the other version of the game (sdk/port.h,
+         * bw_data_generation).  The grown table and the copied sprites were
+         * made from the old game's archives and lie over the new game's:
+         * they are taken away, so the two are read as they are and made
+         * again, and no slot holds a look any more. */
+        seen = bw_data_generation();
+        if (g_registered != 0) {
+            (void)bw_vfs_mem_clear("", "a/0/4/8", BW_VFS_MEM_ALL);
+            (void)bw_vfs_mem_clear("", "a/0/4/9", BW_VFS_MEM_ALL);
+            bw_vfs_flush_path("a/0/4/8");
+            bw_vfs_flush_path("a/0/4/9");
+            memset(g_slot, 0, sizeof g_slot);
+            g_age = 0;
+            g_registered = 0;
+        }
+    }
     if (g_registered != 0) {
         return g_registered > 0 ? 0 : -1;
     }

@@ -39,6 +39,7 @@ static void layer_cache_drop(void);     /* the kept bw_vfs_file_layer answers, b
 
 static char g_data_root[1024] = "extract/data";
 static int  g_data_root_set;
+static u32  g_data_generation;      /* bw_data_generation */
 
 /* Copy `path` (length n) to dst, dropping trailing separators. */
 static void copy_root(char *dst, size_t cap, const char *path, size_t n)
@@ -61,8 +62,14 @@ void bw_set_data_root(const char *path)
     }
     copy_root(g_data_root, sizeof(g_data_root), path, strlen(path));
     g_data_root_set = 1;
+    g_data_generation++;
     bw_vfs_flush();
     layer_cache_drop();
+}
+
+u32 bw_data_generation(void)
+{
+    return g_data_generation;
 }
 
 const char *bw_data_root(void)

@@ -549,8 +549,14 @@ done:
 
 const UiImage *ui_badge_image(int badge)
 {
+    static u32 gen;
+
     if (badge < 0 || badge > 7) {
         return NULL;
+    }
+    if (gen != eidos_ui_data_generation()) {
+        gen = eidos_ui_data_generation();   /* another game's data: read again */
+        g_badge_state = 0;
     }
     if (g_badge_state == 0) {
         badges_load();

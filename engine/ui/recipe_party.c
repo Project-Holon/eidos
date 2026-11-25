@@ -263,10 +263,23 @@ static int g_msg_n;
 
 static const MsgCache *msg_bank(int bank)
 {
+    static u32 gen;
     int i;
     long n;
     u8 *buf;
 
+    if (gen != eidos_ui_data_generation()) {
+        /* another game's data: its own text, from its own archive */
+        gen = eidos_ui_data_generation();
+        for (i = 0; i < g_msg_n; i++) {
+            free(g_msg[i].data);
+        }
+        g_msg_n = 0;
+        if (g_msg_arc_state == 1) {
+            bw_arc_close(&g_msg_arc);
+        }
+        g_msg_arc_state = 0;
+    }
     for (i = 0; i < g_msg_n; i++) {
         if (g_msg[i].bank == bank) {
             return g_msg[i].data != NULL ? &g_msg[i] : NULL;

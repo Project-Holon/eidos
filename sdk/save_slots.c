@@ -222,6 +222,12 @@ static void mark_bad(int n)
     g_seen[n] = slot_time(n);
 }
 
+void bw_slots_folder_changed(void)
+{
+    memset(g_bad, 0, sizeof g_bad);
+    memset(g_seen, 0, sizeof g_seen);
+}
+
 static int offered(int n)
 {
     if (g_bad[n] && g_seen[n] != slot_time(n)) {

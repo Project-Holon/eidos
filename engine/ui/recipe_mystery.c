@@ -286,9 +286,14 @@ static int g_back_have;
 
 static void mg_backdrop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch, int take)
 {
+    static u32 gen;
     const u8 *scr;
     int k, s;
 
+    if (gen != eidos_ui_data_generation()) {
+        gen = eidos_ui_data_generation();       /* the other version's data: its own screen, taken again */
+        g_back_have = 0;
+    }
     /* the backdrop is the cyan screen (the game swaps which one that is):
      * green and blue well above red, and bright enough not to be in a
      * fade */

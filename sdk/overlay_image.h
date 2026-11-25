@@ -122,6 +122,14 @@ const void *bw_ovl_file_bytes(u32 id, u32 offset, u32 size);
  */
 void bw_ovl_set_file(u32 id, const void *bytes, u32 size);
 
+/*
+ * Forget every overlay file that was read (or set): the next load of an
+ * overlay reads its file again, from the data root in force then.  For a
+ * data root that changes while the program runs; called with no overlay
+ * resident (before the reset that starts the game again).
+ */
+void bw_ovl_forget_files(void);
+
 /* Why a trampoline could not forward. */
 enum {
     BW_OVL_WHY_NONE = 0,         /* no overlay is resident over the address    */

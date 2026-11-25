@@ -142,10 +142,24 @@ A multiplayer game does not fast forward, so a two-game test plays at the
 game's own speed. Make a long scene (the opening, the starter) once, save
 both games, and start each test from those saves.
 
+## A standalone game and its two versions
+
+| Switch | What it does |
+|---|---|
+| `EIDOS_USER_DIR=<folder>` | The user folder a standalone game uses: `profiles/Black`, `profiles/White` and a plain start's old `saves/` and `mods/` are looked for there, not in the player's own folder. With `EIDOS_HOME` (the game data and `config.txt`) a test touches nothing of the player's. |
+| `EIDOS_NO_BUILT_DATA=1` | A development build leaves out the data root compiled into it, as a release build has none: the install's own folders are used. |
+| `EIDOS_GAME_SWITCH_AT=<frame>[,<frame>...]` | The other version of the game at those frames (the frame count starts again at each switch). |
+| `EIDOS_GAME_ADD_ROM=<file>` | The file the title menu's add-a-version window takes, with no file dialog. |
+
+`--import-old-saves` copies a plain start's old saves into their game's
+profile and ends (the launcher's call). The test programs are
+`tests/test_profiles.c` (the rules, on made-up folders) and, outside the
+repository's tests, whole starts of the game on a test home.
+
 ## The mods index
 
-The game's own mod manager (`--mods`, `docs/distribution.md`) reads the mods
-index and installs from it (`sdk/mod_catalog.h`).
+The game's own mod manager (a standalone game's, `docs/distribution.md`)
+reads the mods index and installs from it (`sdk/mod_catalog.h`).
 
 | Switch | What it does |
 |---|---|

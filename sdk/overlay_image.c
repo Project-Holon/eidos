@@ -184,6 +184,18 @@ const void *bw_ovl_file_bytes(u32 id, u32 offset, u32 size)
     return f->bytes + offset;
 }
 
+void bw_ovl_forget_files(void)
+{
+    u32 id;
+
+    for (id = 0; id < OVL_MAX; id++) {
+        free(g_files[id].bytes);
+        g_files[id].bytes = NULL;
+        g_files[id].size = 0;
+        g_files[id].tried = 0;
+    }
+}
+
 void bw_ovl_set_file(u32 id, const void *bytes, u32 size)
 {
     OvlFile *f;

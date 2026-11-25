@@ -249,6 +249,19 @@ const char *eidos_ui_scene_name(void);
 /* Forget every recipe's state (a restart, a new run). */
 void eidos_ui_reset(void);
 
+/*
+ * The game data's generation.  The interface keeps what it read from the
+ * game's files (text banks, the fonts, icons, the title's logo) and the
+ * archives it opened, for the whole run.  When the game data becomes
+ * another game's while the program runs (the other version,
+ * demo/eidos_boot.c), eidos_ui_data_changed closes the shared archives,
+ * drops the shared pictures and gives the generation its next number; a
+ * recipe's own cache keeps the number it was made at and is made again
+ * when the number is another.
+ */
+u32  eidos_ui_data_generation(void);
+void eidos_ui_data_changed(void);
+
 /* ------------------------------------------------------------------ */
 /* For recipes: actions and hit regions                                */
 /* ------------------------------------------------------------------ */

@@ -114,6 +114,23 @@ const char *eidos_ui_scene_name(void)
     return g_scene;
 }
 
+static u32 g_data_generation;
+
+u32 eidos_ui_data_generation(void)
+{
+    return g_data_generation;
+}
+
+extern void ui_assets_reset(void) __attribute__((weak));
+
+void eidos_ui_data_changed(void)
+{
+    g_data_generation++;
+    if (ui_assets_reset != NULL) {
+        ui_assets_reset();      /* the fonts, the shared archives, the icons and the figures */
+    }
+}
+
 void eidos_ui_reset(void)
 {
     u32 i;

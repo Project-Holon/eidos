@@ -97,6 +97,7 @@
 #include "frame.h"
 #include "plat_crash.h"
 #include "port.h"
+#include "vfs.h"
 #if EIDOS_BOOT_SDL
 #include "settings.h"           /* engine/platform: the SDL3 build's */
 #endif
@@ -124,9 +125,7 @@ static const char *g_shot_dir = ".";
 /* --mod FOLDER: run with that one mod only (the player's mod list is not
  * read); --mod-log FILE: everything the port writes to stderr, the mod
  * loader's reports and the mods' own log lines with it, goes to FILE.
- * Both are for a mod tool's "run in eidos" (kenon).  --mods: the title menu
- * offers the game's own mod manager (sdk/mod_menu.h, bw_mod_menu_manager),
- * for a game no launcher starts. */
+ * Both are for a mod tool's "run in eidos" (kenon). */
 static const char *g_only_mod;
 static const char *g_mod_log;
 /* --g3d-trace N: the 3D command trace of frame N (hw3d.c g3d_hw_trace). */
@@ -255,11 +254,14 @@ static int parse_shots(const char *list)
 #include "langmap.h"
 #include "kit.h"
 #include "wizard.h"
+#include "profiles.h"
+#include "picker.h"
 #endif
 #include "mp.h"
 #include "link.h"
 #include "arm7/wm.h"
 #include "save_slots.h"
+#include "firmware.h"
 
 #ifndef EIDOS_OVERLAYS
 #define EIDOS_OVERLAYS 0
@@ -2069,6 +2071,14 @@ static int         g_restart_pending;
  * goes on with a new game or with the save that is in force. */
 static void boot_start_game(BootRunNext next);
 static void boot_run_restart(void);
+#if EIDOS_BOOT_SDL
+/* The other version of the game was asked for (eidos_boot_game_switch):
+ * carried out at the frame loop's safe point, as a restart is. */
+static int  g_game_switch_pending;
+static void boot_game_switch_now(void);
+/* ... or its ROM, to make its data first (eidos_boot_game_add). */
+static void boot_game_add_step(void);
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Multiplayer: the held game                                          */
@@ -2359,9 +2369,26 @@ static void boot_mp_wait_saves(BootRun *run)
  * other game calls). */
 #if defined(__GNUC__) || defined(__clang__)
 extern void *SAVE_CONTROL_Get(void) __attribute__((weak));
+/* Where the game keeps its save control pointer (_pSaveControl). */
+extern void *bw_dsref__pSaveControl __attribute__((weak));
 #else
 extern void *SAVE_CONTROL_Get(void);
+extern void *bw_dsref__pSaveControl;
 #endif
+
+/* Whether the game has made its save control.  The game's own getter halts
+ * the game when there is none, and after a restart the game's start-up may
+ * need more than one frame to make it (a slow disk: a game data folder
+ * that was written a moment ago), so the pointer itself is read. */
+static int boot_save_control_made(void)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    if (&bw_dsref__pSaveControl == NULL) {
+        return 0;
+    }
+#endif
+    return bw_dsref__pSaveControl != NULL && *(void **)bw_dsref__pSaveControl != NULL;
+}
 
 /*
  * The interface's own restarts (the style chooser's preview, engine/ui/
@@ -2481,6 +2508,32 @@ static void boot_frame(void *user)
     {
         u32 flags = 0;
 
+#if EIDOS_BOOT_SDL
+        {
+            /* test switch EIDOS_GAME_SWITCH_AT=FRAME[,FRAME...]: the other
+             * version of the game at those frames of the run
+             * (docs/test-switches.md) */
+            static const char *at;
+            static int read;
+
+            if (!read) {
+                read = 1;
+                at = getenv("EIDOS_GAME_SWITCH_AT");
+            }
+            if (at != NULL && *at != '\0'
+                && eidos_frame_count(&run->loop) >= (u64)strtoull(at, NULL, 10)) {
+                at = strchr(at, ',');
+                at = at != NULL ? at + 1 : NULL;
+                g_game_switch_pending = 1;
+            }
+        }
+        boot_game_add_step();
+        if (g_game_switch_pending) {
+            g_game_switch_pending = 0;
+            g_restart_pending = 0;
+            boot_game_switch_now();
+        } else
+#endif
         if (g_restart_pending) {
             g_restart_pending = 0;
             boot_run_restart();
@@ -2723,7 +2776,7 @@ static void boot_frame(void *user)
      * rows do it (ov088's startmenu.c).
      */
     if (g_run_next != BOOT_RUN_TITLE && eidos_frame_count(&run->loop) > 0 &&
-        SAVE_CONTROL_Get != NULL && SAVE_CONTROL_Get() != NULL) {
+        SAVE_CONTROL_Get != NULL && boot_save_control_made()) {
         /* the game's own start-up has made its save control: the game
          * systems are up, and the title's own continue would run now */
         if (g_run_quick && boot_proc_pushing_logo()) {
@@ -3277,6 +3330,16 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
             fflush(stdout);
         }
     }
+    {
+        /* the mods in force, for the log: which folders this run reads */
+        u32 i, count = bw_mod_count();
+
+        /* (on the error output, beside the "eidos: Pokemon ..." line of
+         * the start, so the two keep their order in one log) */
+        for (i = 0; i < count; i++) {
+            fprintf(stderr, "eidos_boot: mod in force: %s\n", bw_mod_root_at(i));
+        }
+    }
     commit_main_ram();
 
     eidos_frame_init(&g_run.loop, hooks, g_run.top, g_run.bottom);
@@ -3376,7 +3439,7 @@ static void usage(void)
                     "[--input SCRIPT] [--fullscreen|--borderless|--windowed] "
                     "[--resolution N|auto] [--pixel-scale N|auto] "
                     "[--layout vertical|horizontal|one] [--two-screens] [--swap-screens] "
-                    "[--gap N] [--volume N] [--mod FOLDER] [--mod-log FILE] [--mods]\n");
+                    "[--gap N] [--volume N] [--mod FOLDER] [--mod-log FILE] [--standalone]\n");
 #if EIDOS_BOOT_SDL
     fputs(bw_setup_usage(), stderr);
 #endif
@@ -3411,13 +3474,455 @@ static void boot_setenv(const char *name, const char *value)
 #endif
 }
 
+/*
+ * A standalone game: one no launcher manages.  It is every start that is
+ * not given a profile folder (--profile-dir, which the eidos launcher
+ * always passes), and a start with --standalone, for another front end
+ * that keeps a profile folder of its own.  A standalone game offers what
+ * the launcher otherwise does: its own mod manager on the title menu
+ * (sdk/mod_menu.h) and, when it plays from the two game profiles, the
+ * other version of the game.
+ *
+ * The two game profiles (install/profiles.h): a standalone game with no
+ * folder of its own plays Black from <user folder>/profiles/Black and
+ * White from <user folder>/profiles/White, the launcher's own two.  A run
+ * that names its places itself (--profile-dir, BW_SAVE_DIR,
+ * EIDOS_SETTINGS) keeps them.
+ */
+static int g_profile_given;         /* --profile-dir */
+static int g_standalone_flag;       /* --standalone */
+static int g_import_only;           /* --import-old-saves */
+static int g_standalone;
+#if EIDOS_BOOT_SDL
+static int g_profiles;              /* the run plays from the two game profiles */
+static int g_profile_game;          /* BW_GAME_*: the profile in use; 0 none yet */
+static int g_old_game;              /* BW_GAME_*: what the install played before this start */
+
+/* The user folder: where a plain start kept saves/ and mods/, and where
+ * profiles/ is.  EIDOS_USER_DIR names another one (tests). */
+static int boot_user_dir(char *out, size_t n)
+{
+    const char *env = getenv("EIDOS_USER_DIR");
+    char saves[1024];
+    size_t len;
+
+    if (env != NULL && env[0] != '\0') {
+        return snprintf(out, n, "%s", env) < (int)n ? 0 : -1;
+    }
+    if (bw_plat_default_save_dir(saves, sizeof saves) != 0) {
+        return -1;
+    }
+    /* (the default save folder is <user folder>/saves) */
+    len = strlen(saves);
+    while (len > 0 && (saves[len - 1] == '/' || saves[len - 1] == '\\')) {
+        len--;
+    }
+    while (len > 0 && saves[len - 1] != '/' && saves[len - 1] != '\\') {
+        len--;
+    }
+    while (len > 1 && (saves[len - 1] == '/' || saves[len - 1] == '\\')) {
+        len--;
+    }
+    if (len == 0 || len >= n) {
+        return -1;
+    }
+    memcpy(out, saves, len);
+    out[len] = '\0';
+    return 0;
+}
+
+/* The run plays `game` from its profile: the folders are made, a plain
+ * start's old saves are copied in once, and the save folder, the mods
+ * folder and the settings file are the profile's from here on. */
+static void boot_profile_use(int game)
+{
+    char user[1024], dir[BW_PROFILE_PATH_MAX], path[BW_PROFILE_PATH_MAX + 32];
+    char old_saves[1100], old_mods[1100], old_settings[BW_SETUP_PATH_MAX + 32], home[BW_SETUP_PATH_MAX];
+    char note[2400];
+    BwProfileOld old;
+    int rc;
+
+    if (!g_profiles || game == g_profile_game
+        || (game != BW_GAME_BLACK && game != BW_GAME_WHITE)
+        || boot_user_dir(user, sizeof user) != 0) {
+        return;
+    }
+    snprintf(old_saves, sizeof old_saves, "%s/saves", user);
+    snprintf(old_mods, sizeof old_mods, "%s/mods", user);
+    memset(&old, 0, sizeof old);
+    old.saves = old_saves;
+    old.mods = old_mods;
+    if (bw_setup_home(home, sizeof home) == 0) {
+        snprintf(old_settings, sizeof old_settings, "%s/settings.ini", home);
+        old.settings = old_settings;
+    }
+    old.game = (BwGame)g_old_game;
+    rc = bw_profile_prepare(user, (BwGame)game, &old, dir, sizeof dir, note, sizeof note);
+    if (note[0] != '\0') {
+        fprintf(stderr, "eidos: %s\n", note);
+    }
+    if (rc == BW_PROFILE_FAILED) {
+        g_profiles = 0;         /* the old places, for this run */
+        return;
+    }
+    snprintf(path, sizeof path, "%s/saves", dir);
+    boot_setenv("BW_SAVE_DIR", path);
+    snprintf(path, sizeof path, "%s/mods", dir);
+    boot_setenv("EIDOS_MODS_DIR", path);
+    snprintf(path, sizeof path, "%s/settings.ini", dir);
+    boot_setenv("EIDOS_SETTINGS", path);
+    eidos_settings_set_path(path);
+    /* One set of settings for the player, whichever version is played:
+     * each save of them also writes the other game's profile, when that
+     * profile is there (a profile made later starts with a copy of these:
+     * install/profiles.c). */
+    eidos_settings_share_with(NULL);
+    if (bw_profile_dir(user, game == BW_GAME_WHITE ? BW_GAME_BLACK : BW_GAME_WHITE, dir, sizeof dir) == 0
+        && bw_path_kind_utf8(dir) == BW_PATH_DIR) {
+        snprintf(path, sizeof path, "%s/settings.ini", dir);
+        eidos_settings_share_with(path);
+    }
+    g_profile_game = game;
+}
+
+/* The data root compiled into a development build (a release build has
+ * none), for a start that names no folder.  --game and --rom mean the
+ * install's own folders, so it stands aside for them, and
+ * EIDOS_NO_BUILT_DATA=1 leaves it out (docs/test-switches.md). */
+static const char *boot_built_data(const BwSetupRequest *s)
+{
+    if (s->game != BW_GAME_UNKNOWN || s->rom != NULL || getenv("EIDOS_NO_BUILT_DATA") != NULL) {
+        return "";
+    }
+    return EIDOS_DEFAULT_DATA_ROOT;
+}
+
+/* Before the settings are read: which game this start will play, as far
+ * as the arguments and the install say it without a window (--game, the
+ * ROM of --rom, else the folder the setup resolves), and its profile.  A
+ * first start of all knows it only after the first-run window. */
+static void boot_profile_first(int argc, char **argv)
+{
+    BwSetupRequest pre;
+    BwSetupResolved r;
+    BwSetupConfig c;
+    char code[5], note_env[BW_SETUP_PATH_MAX];
+    int game = BW_GAME_UNKNOWN;
+    int i;
+
+    g_profiles = g_standalone && !g_profile_given
+                 && (getenv("BW_SAVE_DIR") == NULL || getenv("BW_SAVE_DIR")[0] == '\0')
+                 && (getenv("EIDOS_SETTINGS") == NULL || getenv("EIDOS_SETTINGS")[0] == '\0');
+    if (!g_profiles) {
+        return;
+    }
+    /* what a plain start of an older eidos played, and so whose saves the
+     * old plain folder holds: the folder of the first config line, else
+     * the default one */
+    if (bw_setup_config_load(&c) == 0 && c.data_root[0] != '\0') {
+        g_old_game = bw_setup_game_of(c.data_root, NULL);
+    } else if (bw_setup_default_extract(note_env, sizeof note_env) == 0) {
+        g_old_game = bw_setup_game_of(note_env, NULL);
+    }
+    memset(&pre, 0, sizeof pre);
+    for (i = 1; i < argc; i++) {
+        (void)bw_setup_parse_arg(&pre, argc, argv, &i);
+    }
+    pre.follow_last = 1;            /* (a standalone game plays the game played last) */
+    if (pre.data_root == NULL && bw_os_getenv("BW_DATA_ROOT", note_env, sizeof note_env) == NULL
+        && boot_built_data(&pre)[0] != '\0') {
+        pre.data_root = boot_built_data(&pre);
+    }
+    if (pre.game != BW_GAME_UNKNOWN) {
+        game = pre.game;
+    } else if (pre.rom != NULL && bw_rom_peek_code(pre.rom, code) == 0) {
+        game = bw_setup_game_of_code(code);
+    } else if (bw_setup_resolve(&pre, &r) == 0) {
+        game = bw_setup_game_of(r.extract_dir, NULL);
+    }
+    boot_profile_use(game);
+}
+
+/* ------------------------------------------------------------------ */
+/* The other version of the game                                       */
+/* ------------------------------------------------------------------ */
+
+static int g_game_now;              /* BW_GAME_*: what the run plays */
+static int g_other_state;           /* eidos_boot_other_game's answer */
+
+/* What the run plays and whether its other version can be had, read from
+ * the install once at the start and after each change (the answer costs
+ * file reads: a screen asks it every frame). */
+static void boot_game_note(int game)
+{
+    char dir[BW_SETUP_PATH_MAX];
+
+    g_game_now = game;
+    g_other_state = 0;
+    if (g_profiles && (game == BW_GAME_BLACK || game == BW_GAME_WHITE)) {
+        g_other_state = bw_setup_find_game(game == BW_GAME_WHITE ? BW_GAME_BLACK : BW_GAME_WHITE,
+                                           dir, sizeof dir) == 0 ? 1 : 2;
+    }
+}
+
+/* The game this run plays: BW_GAME_BLACK or BW_GAME_WHITE (install.h). */
+int eidos_boot_game(void)
+{
+    return g_game_now;
+}
+
+/* The other version: 0 not offered (a run with a profile folder of its
+ * own: the launcher's, a phone's), 1 its data is in the install, 2 it is
+ * not: its ROM has to be added first. */
+int eidos_boot_other_game(void)
+{
+    return g_other_state;
+}
+
+/* Go to the other version now, without leaving the program: 0 asked (the
+ * frame loop carries it out before the next frame), -1 when its data is
+ * not there. */
+int eidos_boot_game_switch(void)
+{
+    if (g_other_state != 1) {
+        return -1;
+    }
+    g_game_switch_pending = 1;
+    return 0;
+}
+
+/*
+ * The switch, at the frame loop's safe point.  The other game's profile
+ * first (its saves, mods and settings: with no profile the switch is not
+ * made, so one game never plays on the other's save), then the save chip's
+ * last writes to the old file, the data root, and everything that was read
+ * from the old one and kept: the ARM9 image and with it the cartridge's
+ * layout (sdk/langmap.h), the overlay files, the file layer's archives
+ * (bw_set_data_root).  Then the port's own restart, to the title menu.
+ */
+static void boot_game_switch_now(void)
+{
+    char dir[BW_SETUP_PATH_MAX], ex[BW_SETUP_PATH_MAX], data[BW_SETUP_PATH_MAX];
+    int other = g_game_now == BW_GAME_WHITE ? BW_GAME_BLACK : BW_GAME_WHITE;
+
+    if (!g_profiles || bw_setup_find_game((BwGame)other, dir, sizeof dir) != 0) {
+        fprintf(stderr, "eidos: no game data of Pokemon %s: the game stays as it is\n",
+                bw_setup_game_title((BwGame)other));
+        boot_game_note(g_game_now);
+        return;
+    }
+    /* what the old profile's files still wait for: the save chip's and the
+     * firmware chip's last writes, to the old folder */
+    (void)bw_arm7_backup_flush();
+    (void)bw_arm7_nvram_flush();
+    boot_profile_use(other);
+    if (g_profile_game != other) {
+        fprintf(stderr, "eidos: no profile for Pokemon %s: the game stays as it is\n",
+                bw_setup_game_title((BwGame)other));
+        return;
+    }
+    /* what is kept of the old save folder, beside the two chips' files
+     * (which the restart reads again from the folder in force): the
+     * console's settings file and the marks on the slot files.  Your games
+     * (sdk/save_games.c) and the mod list follow the folder by themselves. */
+    bw_firmware_reload();
+    bw_slots_folder_changed();
+    (void)eidos_settings_commit();      /* the settings in force go with the player */
+    /* The mods in force are the old profile's: the list is emptied (or put
+     * back to what the environment names, the port's own list), so that the
+     * start-up of the new run reads the other profile's record and mods
+     * folder and nothing of this one's (sdk/mod_menu.c, model_build). */
+    {
+        const char *roots = getenv("BW_MOD_ROOT");
+
+        if (g_only_mod == NULL && roots != NULL && roots[0] != '\0') {
+            bw_set_mod_root(roots);
+        } else {
+            bw_clear_mods();
+        }
+    }
+    bw_setup_split(dir, ex, sizeof ex, data, sizeof data);
+    (void)bw_setup_set_current(ex);
+    bw_set_data_root(data);
+    bw_arm9_forget();
+    bw_ovl_forget_files();
+    eidos_ui_data_changed();            /* the interface's own text, fonts, icons and logo */
+    bw_arm7_backup_set_path(NULL);      /* the chip reads the other profile's save */
+    boot_game_note(other);
+    fprintf(stderr, "eidos: Pokemon %s from %s; saves in %s; standalone\n",
+            bw_setup_game_title((BwGame)other), ex, bw_save_dir());
+    g_run_next = BOOT_RUN_MENU;
+    boot_run_restart();
+}
+
+/*
+ * The other version's ROM, added while the game runs.  The player's file
+ * comes from the platform's own dialog (install/picker.h), which blocks
+ * until it closes: it is opened here, on the frame loop's thread at its
+ * safe point, as the first-run window opens it from its own loop.  The
+ * check and the extraction run on a worker (the port's own thread, a fiber
+ * in the wasm32 build), and the screen reads how far they are.  When the
+ * data is made the game goes to that version.
+ */
+enum {
+    BOOT_ADD_NONE = 0,
+    BOOT_ADD_CHOOSING,      /* the file dialog is asked for, or open */
+    BOOT_ADD_CHECKING,      /* the ROM is read and compared with the known dumps */
+    BOOT_ADD_WRITING,       /* the game data is written */
+    BOOT_ADD_FAILED,        /* g_add.msg says why */
+    BOOT_ADD_DONE           /* made: the switch follows */
+};
+
+static struct {
+    volatile int state;
+    volatile int done, total;       /* the step's progress */
+    volatile int cancel;
+    BwThread *thread;
+    char rom[BW_SETUP_PATH_MAX];
+    char msg[1024];
+} g_add;
+
+static int boot_add_progress(void *ctx, u32 done, u32 total, const char *what)
+{
+    (void)ctx;
+    g_add.state = strcmp(what, "hashing") == 0 ? BOOT_ADD_CHECKING : BOOT_ADD_WRITING;
+    g_add.total = (int)total;
+    g_add.done = (int)done;
+#if defined(__wasm__)
+    /* the fibers take turns and the install never blocks: the frame gets
+     * a turn every frame or so (engine/platform/wizard.c does the same) */
+    {
+        static unsigned long long last;
+        unsigned long long now = bw_clock_ns();
+
+        if (now - last >= 16000000ull) {
+            last = now;
+            bw_thread_sleep_ns(0);
+        }
+    }
+#endif
+    return g_add.cancel;
+}
+
+static void boot_add_main(void *arg)
+{
+    char dir[BW_SETUP_PATH_MAX];
+    int other = g_game_now == BW_GAME_WHITE ? BW_GAME_BLACK : BW_GAME_WHITE;
+    int rc;
+
+    (void)arg;
+    rc = bw_setup_install_game(g_add.rom, (BwGame)other, 0, 1, boot_add_progress, NULL, NULL,
+                               dir, sizeof dir, g_add.msg, sizeof g_add.msg);
+    if (rc == 0) {
+        fprintf(stderr, "eidos: the game data of Pokemon %s is in %s\n",
+                bw_setup_game_title((BwGame)other), dir);
+    }
+    g_add.state = rc == 0 ? BOOT_ADD_DONE : rc == BW_CANCELLED ? BOOT_ADD_NONE : BOOT_ADD_FAILED;
+}
+
+/* Ask for the other version's ROM: the file dialog opens before the next
+ * frame.  0 asked, -1 when this run does not offer it or an add is going. */
+int eidos_boot_game_add(void)
+{
+    if (g_other_state != 2 || (g_add.state != BOOT_ADD_NONE && g_add.state != BOOT_ADD_FAILED)
+        || g_add.thread != NULL) {
+        return -1;
+    }
+    g_add.msg[0] = '\0';
+    g_add.cancel = 0;
+    g_add.done = 0;
+    g_add.total = 0;
+    g_add.state = BOOT_ADD_CHOOSING;
+    return 0;
+}
+
+/* How far the add is (BOOT_ADD_*), `permille` of the step under way and,
+ * when it failed, the sentence that says why. */
+int eidos_boot_game_add_state(int *permille, const char **text)
+{
+    int total = g_add.total, done = g_add.done;
+
+    if (permille != NULL) {
+        *permille = total > 0 ? (int)((long long)done * 1000 / total) : 0;
+    }
+    if (text != NULL) {
+        *text = g_add.msg;
+    }
+    return g_add.state;
+}
+
+/* Stop the check or the extraction (nothing stays behind), or put a
+ * failure's message away. */
+void eidos_boot_game_add_cancel(void)
+{
+    if (g_add.state == BOOT_ADD_CHECKING || g_add.state == BOOT_ADD_WRITING) {
+        g_add.cancel = 1;
+    } else if (g_add.state == BOOT_ADD_FAILED) {
+        g_add.state = BOOT_ADD_NONE;
+    }
+}
+
+/* The add's steps that belong to the frame loop's thread. */
+static void boot_game_add_step(void)
+{
+    if (g_add.state == BOOT_ADD_CHOOSING && g_add.thread == NULL) {
+        const char *env = getenv("EIDOS_GAME_ADD_ROM");     /* test switch: the file, with no dialog */
+        int other = g_game_now == BW_GAME_WHITE ? BW_GAME_BLACK : BW_GAME_WHITE;
+        char title[64];
+        int rc;
+
+        snprintf(title, sizeof title, "Choose your Pokemon %s ROM", bw_setup_game_title((BwGame)other));
+        if (env != NULL && env[0] != '\0') {
+            snprintf(g_add.rom, sizeof g_add.rom, "%s", env);
+            rc = BW_PICK_OK;
+        } else {
+            rc = bw_pick_rom(NULL, title, g_add.rom, sizeof g_add.rom);
+        }
+        if (rc == BW_PICK_OK) {
+            g_add.state = BOOT_ADD_CHECKING;
+            g_add.thread = bw_thread_start(boot_add_main, NULL);
+            if (g_add.thread == NULL) {
+                snprintf(g_add.msg, sizeof g_add.msg, "The ROM could not be read: no thread could be started.");
+                g_add.state = BOOT_ADD_FAILED;
+            }
+        } else if (rc == BW_PICK_UNAVAILABLE) {
+            snprintf(g_add.msg, sizeof g_add.msg, "%s Start eidos with --rom <file> instead.", g_add.rom);
+            g_add.state = BOOT_ADD_FAILED;
+        } else {
+            g_add.state = BOOT_ADD_NONE;
+        }
+    }
+    if (g_add.thread != NULL && g_add.state != BOOT_ADD_CHECKING && g_add.state != BOOT_ADD_WRITING) {
+        bw_thread_join(g_add.thread);
+        g_add.thread = NULL;
+        if (g_add.state == BOOT_ADD_DONE) {
+            g_add.state = BOOT_ADD_NONE;
+            boot_game_note(g_game_now);     /* the other version is there now */
+            g_game_switch_pending = g_other_state == 1;
+        }
+    }
+}
+#endif
+
 static int boot_launcher_arg(int argc, char **argv, int *i, int apply)
 {
     const char *a = argv[*i];
 
+    if (strcmp(a, "--standalone") == 0) {
+        g_standalone_flag = 1;
+        return 1;
+    }
+    if (strcmp(a, "--import-old-saves") == 0) {
+        /* for the launcher: a plain start's old saves into their game's
+         * profile (install/profiles.h), one line that says what was done,
+         * and no game */
+        g_import_only = 1;
+        return 1;
+    }
     if (strcmp(a, "--profile-dir") == 0 && *i + 1 < argc) {
         const char *dir = argv[++*i];
 
+        g_profile_given = 1;
         if (apply) {
             char path[1024];
 
@@ -3503,6 +4008,7 @@ static char **vita_args(int *argc)
     argv[n++] = "--layout";
     argv[n++] = "one";
     argv[n++] = "--window";
+    argv[n++] = "--standalone";    /* no launcher here: the game's own mod manager */
     setenv("EIDOS_TOUCH_DEVICE", "1", 1);
     /* the first-run screen names the ROM's folder (install/picker.c) */
     setenv("EIDOS_CONSOLE", "Vita", 1);
@@ -3596,15 +4102,30 @@ int main(int argc, char **argv)
     for (i = 1; i < argc; i++) {
         (void)boot_launcher_arg(argc, argv, &i, 1);
     }
+    g_standalone = g_standalone_flag || !g_profile_given;
+    bw_mod_menu_set_manager(g_standalone);  /* the title menu offers the game's own mod manager */
 #if EIDOS_BOOT_SDL
+    boot_profile_first(argc, argv);
+    if (g_import_only) {
+        if (g_profile_game == BW_GAME_UNKNOWN) {
+            fprintf(stderr, "eidos: no old saves were copied: the install names no game they are of\n");
+        }
+        return 0;
+    }
     eidos_settings_load();      /* settings.ini; the flags below override it */
+#else
+    if (g_import_only) {
+        return 0;
+    }
 #endif
     for (i = 1; i < argc; i++) {
         if (boot_launcher_arg(argc, argv, &i, 0)) {
             continue;           /* read above */
         }
-        tool_args = 1;
 #if EIDOS_BOOT_SDL
+        /* The player's own options (the display, the layout, the game and
+         * its data) do not make the run a tool's: its window still opens.
+         * --no-window is a tool's word: nothing may open. */
         int sr = eidos_settings_parse_arg(argc, argv, &i);
 
         if (sr < 0) {
@@ -3614,7 +4135,11 @@ int main(int argc, char **argv)
         if (sr > 0) {
             continue;
         }
-        /* --data-root, --rom, --move-data, --reset-data (install/setup.h) */
+        if (strcmp(argv[i], "--no-window") == 0 || strcmp(argv[i], "--reset-data") == 0
+            || strcmp(argv[i], "--move-data") == 0) {
+            tool_args = 1;
+        }
+        /* --data-root, --rom, --game, --move-data, --reset-data (install/setup.h) */
         sr = bw_setup_parse_arg(&setup, argc, argv, &i);
         if (sr < 0) {
             usage();
@@ -3624,12 +4149,11 @@ int main(int argc, char **argv)
             continue;
         }
 #endif
+        tool_args = 1;
         if (strcmp(argv[i], "--data-root") == 0 && i + 1 < argc) {
             data_root = argv[++i];
         } else if (strcmp(argv[i], "--mod") == 0 && i + 1 < argc) {
             g_only_mod = argv[++i];
-        } else if (strcmp(argv[i], "--mods") == 0) {
-            bw_mod_menu_set_manager(1);     /* the title menu offers the game's own mod manager */
         } else if (strcmp(argv[i], "--mod-log") == 0 && i + 1 < argc) {
             g_mod_log = argv[++i];
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
@@ -3741,7 +4265,11 @@ int main(int argc, char **argv)
         data_root = getenv("BW_DATA_ROOT");
     }
     if (data_root == NULL || data_root[0] == '\0') {
+#if EIDOS_BOOT_SDL
+        data_root = boot_built_data(&setup);
+#else
         data_root = EIDOS_DEFAULT_DATA_ROOT;
+#endif
     }
 #if EIDOS_BOOT_SDL
     /* The data the way every front end finds it (engine/platform/wizard.h):
@@ -3754,10 +4282,31 @@ int main(int argc, char **argv)
 
         setup.data_root = data_root[0] != '\0' ? data_root : NULL;
         setup.no_window = !window;
+        setup.follow_last = g_profiles;     /* a standalone game: the game played last */
         if (!eidos_firstrun(&setup, setup_data, sizeof setup_data, &status)) {
             return status;
         }
         data_root = setup_data;
+        if (setup.rom != NULL && !window) {
+            /* --no-window --rom: the data was asked for, not the game */
+            return 0;
+        }
+        {
+            /* the profile of the game the data holds (known only now on a
+             * first start, when the first-run window took the ROM), and
+             * one line that says what this start plays and from where */
+            char ex[BW_SETUP_PATH_MAX], dd[BW_SETUP_PATH_MAX], code[5];
+            int game;
+
+            bw_setup_split(setup_data, ex, sizeof ex, dd, sizeof dd);
+            game = bw_setup_game_of(ex, code);
+            boot_profile_use(game);
+            boot_game_note(game);
+            fprintf(stderr, "eidos: Pokemon %s (%s) from %s; saves in %s%s\n",
+                    game != BW_GAME_UNKNOWN ? bw_setup_game_title((BwGame)game) : "Black or White",
+                    code[0] != '\0' ? code : "no header", ex, bw_save_dir(),
+                    g_standalone ? "; standalone" : "");
+        }
     }
 #endif
     if (data_root[0] != '\0') {

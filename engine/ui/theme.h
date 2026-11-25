@@ -256,6 +256,10 @@ typedef struct UiThemeOps {
     void (*title_menu_layout)(UiTitleMenuLayout *l, int phase);
     void (*title_menu_backdrop)(EidosUiCtx *c, const UiTitleMenuLayout *l);
     void (*title_menu_row)(EidosUiCtx *c, int x, int y, int w, int h, const char *label, int selected, int hover);
+    /* Non-zero: the title menu's version flag (the other game, a standalone
+     * game's) stands at the window's foot, on the hint bar, not at its top
+     * between the two other flags: for a style whose logo is there. */
+    int title_version_flag_low;
     /* The party screen (UiPartyLayout above): its places; what stands under
      * them (the title and the count at its right); one plate; the chosen
      * Pokemon's pane; the prompt; one entry of the menu.  NULL: Kosmos's. */

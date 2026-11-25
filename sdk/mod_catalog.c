@@ -1130,6 +1130,7 @@ static u32  g_count, g_unfit, g_unread;
 static int  g_state;
 static char g_error[200];
 static unsigned long long g_read_at;    /* bw_clock_ns when the list came */
+static char g_read_dir[PATH_MAX_LEN];   /* the mods folder it was read for */
 static int  g_want_read;                /* a read asked for while the worker was busy */
 
 static int  g_job;                      /* BW_MOD_CATALOG_JOB_*         */
@@ -1221,18 +1222,31 @@ static void start_read(void)
     work_start(w);
 }
 
+/* The mods folder in force is not the one the work, or the list kept, was
+ * for: the run went to the other version of the game, which has its own
+ * profile and so its own mods (the boot's version switch).  What a mod
+ * fits and which ones are installed are then to be found again. */
+static int other_folder(const char *was)
+{
+    char folder[PATH_MAX_LEN];
+
+    return bw_mod_menu_installed_folder(folder, sizeof(folder)) == 0 && strcmp(folder, was) != 0;
+}
+
 void bw_mod_catalog_read(unsigned fresh_s)
 {
     if (g_work != NULL) {
-        if (g_work->kind != WORK_READ || g_stop) {
+        const int other = other_folder(g_work->mods_dir);
+
+        if (g_work->kind != WORK_READ || g_stop || other) {
             g_want_read = 1;            /* after the work that runs */
-            if (g_state != BW_MOD_CATALOG_READY) {
+            if (g_state != BW_MOD_CATALOG_READY || other) {
                 g_state = BW_MOD_CATALOG_READING;
             }
         }
         return;
     }
-    if (g_state == BW_MOD_CATALOG_READY && fresh_s != 0 &&
+    if (g_state == BW_MOD_CATALOG_READY && fresh_s != 0 && !other_folder(g_read_dir) &&
         bw_clock_ns() - g_read_at < (unsigned long long)fresh_s * 1000000000ull) {
         return;
     }
@@ -1264,6 +1278,7 @@ static void take(void)
                 g_unfit = w->unfit;
                 g_unread = w->unread;
                 g_read_at = bw_clock_ns();
+                copy_text(g_read_dir, sizeof(g_read_dir), w->mods_dir);
                 g_state = BW_MOD_CATALOG_READY;
                 mark_installed();
             } else {

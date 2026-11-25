@@ -2382,11 +2382,34 @@ static const Done *done_get_key(const void *owner, const char *key, Model *md, c
 /* The same, for a model in a pose of its own (`pose`: its animations' frames, hashed): made and kept for that pose. */
 static const Done *done_get_posed(const void *owner, const char *key, u32 pose, Model *md, const char *setkey, Buf set)
 {
+    static u32 seen;
     unsigned i;
     Done *d = NULL;
 
     if (getenv("EIDOS_NO_REMADE") != NULL) {
         return NULL;
+    }
+    if (seen != bw_data_generation()) {
+        /* The run went to the other version of the game (sdk/port.h,
+         * bw_data_generation).  A record is found by its model's name, and
+         * the other game's model of that name need not be the same model,
+         * so none is kept: each is made again, or read from the store,
+         * which does compare the model (store_sum). */
+        seen = bw_data_generation();
+        for (i = 0; i < g_ndones; i++) {
+            int t;
+
+            for (t = 0; t < g_dones[i].ntex; t++) {
+                free(g_dones[i].tex[t].rgba);
+            }
+            free(g_dones[i].two);
+            free(g_dones[i].drop);
+            free(g_dones[i].turn);
+            free(g_dones[i].tri);
+        }
+        memset(g_dones, 0, sizeof g_dones);
+        g_ndones = 0;
+        g_done = NULL;
     }
     for (i = 0; i < g_ndones && d == NULL; i++) {
         if (strcmp(g_dones[i].key, key) == 0 && g_dones[i].pose == pose) {
@@ -2965,7 +2988,15 @@ static const u8 *tile_tables(size_t *len)
     static u8 *ov;
     static size_t n;
     static int tried;
+    static u32 seen;
 
+    if (seen != bw_data_generation()) {
+        seen = bw_data_generation();    /* the other version's data: its own overlay file */
+        free(ov);
+        ov = NULL;
+        n = 0;
+        tried = 0;
+    }
     if (!tried) {
         static const char *const dirs[] = { "overlays_dec", "overlays" };
         int i;

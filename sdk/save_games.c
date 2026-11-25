@@ -39,15 +39,25 @@ static void copy_word(char *out, size_t size, const char *s)
 
 static void load(void)
 {
+    static char from[512];      /* the file the list was read from */
     char path[512], line[160];
     FILE *f;
 
+    /* The save folder can change within a run (a standalone game that goes
+     * to the other version plays from that version's profile): the list is
+     * the folder's, so it is read again from the folder in force, and the
+     * old folder's list is never written into the new one. */
+    games_file(path, sizeof path);
+    if (g_loaded && strcmp(from, path) != 0) {
+        g_loaded = 0;
+        g_has_pending = 0;
+    }
     if (g_loaded) {
         return;
     }
     g_loaded = 1;
     g_count = 0;
-    games_file(path, sizeof path);
+    snprintf(from, sizeof from, "%s", path);
     if ((f = fopen(path, "rb")) == NULL) {
         return;
     }

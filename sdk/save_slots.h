@@ -38,6 +38,10 @@ int  bw_slots_current_hidden(void);
 /* Make the slot in force the backup chip's file (at start-up, and when a
  * multiplayer game gives the player's own save back). */
 void bw_slots_apply(void);
+/* The save folder is another one from here on (a standalone game that went
+ * to the other version of the game plays from that version's profile):
+ * what was found out about the old folder's slot files is forgotten. */
+void bw_slots_folder_changed(void);
 
 /*
  * The title menu's Continue card: the next used slot after the one in

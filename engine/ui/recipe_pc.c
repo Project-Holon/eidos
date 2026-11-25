@@ -362,12 +362,33 @@ static u16 rotl3(u16 k)
  * (F000, kind, count, arguments) are left out, a line break is a space. */
 static const char *pc_text(int b, u32 idx)
 {
+    static u32 gen;
     PcBank *k = &g_bank[b];
     const u8 *e;
     u32 sect, off, len, i, o = 0;
     u16 key, nk;
     char *s;
 
+    if (gen != eidos_ui_data_generation()) {
+        /* another game's data: its own text, from its own archive */
+        int q;
+
+        gen = eidos_ui_data_generation();
+        for (q = 0; q < TXT_COUNT; q++) {
+            if (g_bank[q].cache != NULL) {
+                for (i = 0; i < g_bank[q].count; i++) {
+                    free(g_bank[q].cache[i]);
+                }
+                free(g_bank[q].cache);
+            }
+            free(g_bank[q].data);
+            memset(&g_bank[q], 0, sizeof g_bank[q]);
+        }
+        if (g_msg_state == 1) {
+            bw_arc_close(&g_msg_arc);
+        }
+        g_msg_state = 0;
+    }
     if (!k->tried) {
         bank_load(b);
     }
