@@ -1,10 +1,60 @@
 {
     "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
     "format": 1,
-    "game": {
-        "kind": "iso",
-        "label": "Your own Pokémon Black or Pokémon White ROM, the .nds file itself (not the archive it came in)."
-    },
+    "inputs": [
+        {
+            "id": "rom-black",
+            "label": "Your own Pokémon Black ROM, the .nds file itself (not the archive it came in). English, French, German, Italian or Spanish.",
+            "formats": [
+                {
+                    "type": "file",
+                    "extensions": [
+                        "nds"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "rom-white",
+            "label": "Your own Pokémon White ROM, the .nds file itself (not the archive it came in). English, French, German, Italian or Spanish.",
+            "formats": [
+                {
+                    "type": "file",
+                    "extensions": [
+                        "nds"
+                    ]
+                }
+            ]
+        }
+    ],
+    "games": [
+        {
+            "id": "black",
+            "name": "Pokémon Black",
+            "args": [
+                "--game=black"
+            ],
+            "inputs": [
+                "rom-black"
+            ],
+            "saves": [
+                "{appdata}/eidos/profiles/Black/saves"
+            ]
+        },
+        {
+            "id": "white",
+            "name": "Pokémon White",
+            "args": [
+                "--game=white"
+            ],
+            "inputs": [
+                "rom-white"
+            ],
+            "saves": [
+                "{appdata}/eidos/profiles/White/saves"
+            ]
+        }
+    ],
     "prepare": {
         "program": [
             "eidos.exe",
@@ -13,8 +63,8 @@
         ],
         "args": [
             "--no-window",
-            "--rom",
-            "{game}"
+            "--rom={input:rom-black}",
+            "--rom={input:rom-white}"
         ],
         "label": "Getting the game data from your ROM"
     },
@@ -23,30 +73,15 @@
             "eidos.exe",
             "eidos",
             "eidos.AppImage"
+        ],
+        "args": [
+            "--standalone",
+            "--window"
         ]
     },
     "saves": [
-        "{config}/eidos/saves",
-        "{local}/eidos/saves"
+        "{appdata}/eidos/profiles"
     ],
-    "folders": {
-        "saves": [
-            {
-                "path": "{config}/eidos/saves"
-            },
-            {
-                "path": "{local}/eidos/saves"
-            }
-        ],
-        "logs": [
-            {
-                "path": "{config}/eidos/saves"
-            },
-            {
-                "path": "{local}/eidos/saves"
-            }
-        ]
-    },
     "settings": [
         {
             "id": "window",
@@ -82,12 +117,8 @@
             "id": "layout",
             "label": "Layout",
             "in": "args",
-            "help": "Remaster puts the game on one widescreen window. Classic keeps the DS's two screens.",
+            "help": "Remaster puts the game on one widescreen window. Classic keeps the DS's two screens. Game's option leaves the choice to eidos.",
             "choices": [
-                {
-                    "label": "Game's option",
-                    "args": []
-                },
                 {
                     "label": "Remaster (one screen)",
                     "args": [
@@ -100,14 +131,12 @@
                     "args": [
                         "--two-screens"
                     ]
+                },
+                {
+                    "label": "Game's option",
+                    "args": []
                 }
             ]
         }
-    ],
-    "requires": [
-        "start",
-        "setup",
-        "settings.args",
-        "settings.choices"
     ]
 }
