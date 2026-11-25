@@ -13,6 +13,7 @@ mod ghdownload;
 mod launch;
 mod layout;
 mod mods;
+mod oldsaves;
 #[cfg(desktop)]
 mod pad;
 mod profile;
@@ -401,6 +402,35 @@ fn play(
 fn profile_dir(app: &App, name: &str) -> R<PathBuf> {
     profile::get(&app.layout, name)?;
     Ok(app.layout.profile(name))
+}
+
+/// The newest game the launcher can start that knows the import, if the
+/// user folder holds old saves that wait for it.
+fn old_saves_importer(app: &App) -> Option<versions::Resolved> {
+    if !oldsaves::pending(&app.layout.root) {
+        return None;
+    }
+    let s = app.settings();
+    let v = versions::resolve(&app.layout, s.local_build.as_deref(), profile::LATEST).ok()?;
+    oldsaves::can_import(&v.id).then_some(v)
+}
+
+/// Whether the saves a plain eidos kept before the game profiles wait to be
+/// imported, and a game that can import them is installed.
+#[tauri::command]
+fn old_saves_pending(app: State<App>) -> bool {
+    old_saves_importer(&app).is_some()
+}
+
+/// Imports them (the game's own rules, `eidos --import-old-saves`) and
+/// returns the game's line about it.  Off the main thread: the window stays
+/// alive and shows that it is at work.
+#[tauri::command(async)]
+fn import_old_saves(app: State<App>) -> R<String> {
+    match old_saves_importer(&app) {
+        Some(v) => oldsaves::import(&v.exe),
+        None => Ok(String::new()),
+    }
 }
 
 #[tauri::command]
@@ -1027,6 +1057,8 @@ pub fn run() {
             get_settings,
             save_settings,
             take_pending_join,
+            old_saves_pending,
+            import_old_saves,
         ])
         .run(tauri::generate_context!())
         .expect("the launcher could not start");

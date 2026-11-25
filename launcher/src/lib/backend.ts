@@ -83,6 +83,10 @@ export const LATEST = "latest";
 export const LOCAL = "local";
 
 export const overview = () => invoke<Overview>("overview");
+/// The saves a plain eidos kept before the game profiles: whether they wait
+/// to be imported, and the import (the game's own line about it, or "").
+export const oldSavesPending = () => invoke<boolean>("old_saves_pending");
+export const importOldSaves = () => invoke<string>("import_old_saves");
 
 /// One save of a profile, read from its save file (src-tauri/src/saves.rs).
 export type Save = {

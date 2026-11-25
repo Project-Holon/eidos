@@ -4,7 +4,9 @@
   import { toast } from "morphe/menu.svelte";
   import {
     gamesOf,
+    importOldSaves,
     message,
+    oldSavesPending,
     overview,
     play,
     romLibrary,
@@ -92,9 +94,28 @@
     }
   }
 
+  // The saves of a plain eidos from before the game profiles: imported
+  // once, by the game itself, while a window says so.
+  let importing = $state(false);
+
+  async function importOld() {
+    try {
+      if (!(await oldSavesPending())) return;
+      importing = true;
+      const note = await importOldSaves();
+      importing = false;
+      if (note) toast(note);
+      await refresh();
+    } catch (e) {
+      importing = false;
+      toast(message(e), true);
+    }
+  }
+
   onMount(() => {
     refresh();
     loadGames();
+    importOld();
     // The launcher's own update, once per launch; a failure only reports.
     checkForUpdate().then(() => {
       if (updates.state.kind === "failed") toast(updates.state.message, true);
@@ -234,6 +255,16 @@
         <p class="muted">Installing version {updates.state.version}</p>
         <div class="bar"><div class="fill moving" style:width="30%"></div></div>
       {/if}
+    </div>
+  </div>
+{/if}
+
+{#if importing}
+  <div class="updating" role="status">
+    <div class="window box">
+      <h2>Importing your saves</h2>
+      <p class="muted">Copying the saves of your older eidos into your profiles</p>
+      <div class="bar"><div class="fill moving" style:width="30%"></div></div>
     </div>
   </div>
 {/if}
