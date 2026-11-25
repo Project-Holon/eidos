@@ -5,21 +5,31 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.7
 
+Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration.
+
 ### One-Screen Mode & UI
-- **Interface Scale**: The interface now keeps the size it has at 1280x720 at every window size (scale 3 at 1920x1080 and 4 at 2560x1440, where it was a third and a quarter larger).
-- **Mod Manager**: Started with `--mods`, the game shows a MODS button at the title menu's top left that opens its own mod manager in the chosen style, with the installed mods that work with this game and a switch for each; phones and consoles always have it.
-- **Pokédex Registration**: A first catch of a species now opens the style's own Pokédex on that species; its category, type, height, weight and entry go from unknown to known and the OWN counter counts it, in step with the game's own page. A species already owned goes straight to the nickname question.
+- **Consistent UI Scaling**: Normalized one-screen UI scaling across all window resolutions to match the proportions at 1280×720 (using 3× scale at 1920×1080 and 4× at 2560×1440 instead of overscaling by 25–33%).
+- **In-Game Mod Manager**: Added a standalone Mod Manager accessible via the top-left `MODS` button on the title menu (enabled by default on mobile and consoles, or with `--mods` on desktop). Styled to match the active UI theme, it lets you toggle installed compatible mods and browse, install, update, or uninstall mods from the official index with full download verification.
+- **Pokédex Registration Screen**: Catching a new species for the first time now opens the active UI style's native Pokédex view, animating the reveal of its category, type, height, weight, and Pokédex entry while incrementing the `OWN` counter in sync with the game. Previously caught species proceed directly to the nickname prompt.
+
+### Multiplayer
+- **Lobby Start Button**: Fixed the host's `Start` button remaining disabled in the one-screen lobby even after all players readied up.
+- **Clipboard Code Paste**: Added a `Paste` button to the Join box on the Play Together screen that immediately joins using a room code, server `host:port`, or invite link from your clipboard.
 
 ### Modding
-- **Mod Return Values (64-bit)**: Fixed every game function a code mod calls returning 0 on the 64-bit build, which left randomizer and Archipelago mods without effect.
-- **Mods for One Version**: A mod whose manifest says `game = black` or `game = white` is not loaded in the other version; Settings and the launcher show it as Unavailable and name the version it needs.
+- **64-Bit Mod Return Values**: Fixed native engine calls from WAMR code mods always returning `0` on 64-bit builds, restoring full functionality for randomizer and Archipelago mods.
+- **Version-Specific Mods**: Mods declaring `game = black` or `game = white` in their manifest are now prevented from loading in the opposite version and appear as `Unavailable` (with the required version noted) in both the in-game Settings and the launcher.
+- **Launcher Mod Updates**: Fixed the launcher caching initial metadata indefinitely for index mods published without an explicit version number, allowing new releases to be detected.
 
 ### Real-Map Battles & Spot Editor
-- **Objects on Furniture**: Objects standing on furniture that a room repairs now stand on its new top; Striaton Gym's counter is whole and its cash register sits on it.
+- **Props on Rebuilt Furniture**: Props placed atop reconstructed indoor furniture now rest properly on the rebuilt surface; restored Striaton Gym's counter geometry with the cash register seated on top.
 
 ### Fixes
-- **Nickname Question**: Fixed the screen flickering and showing pale copies of the Pokémon after a catch, a press during its fade-in being lost, a two-second wait with no change, and the message box vanishing for one frame after NO.
-- **Pokédex**: Fixed the Kosmos Pokédex holding and releasing its picture on every step of a page change.
+- **Post-Catch Nickname Transition**: Eliminated screen flickering and ghosted Pokémon afterimages following a catch, preserved button presses during fade-in, removed a two-second black-screen delay before the nickname prompt, and prevented the dialogue box from disappearing for a single frame after selecting `NO`.
+- **Kosmos Pokédex Transitions**: Fixed multi-step fade transitions repeatedly capturing and releasing frame snapshots when flipping pages in the Kosmos Pokédex.
+- **Relay Connection Errors**: Fixed failed hosting attempts from **Your Games** (when the relay is unreachable) dropping into a duplicate games list without explanation; the menu now stays on the Play Together screen and displays an error message.
+- **Plasma C-Gear Notice**: Fixed the C-Gear warning text before the Continue screen being truncated and overlapping below its confirmation prompt in the Plasma style.
+- **Bottom-Bar Key Hints**: Fixed clicks and taps on bottom-bar key hints passing through to the underlying screen (such as clicking `Back` in the style chooser inadvertently returning the title menu to the title screen).
 
 ## 0.2.6
 

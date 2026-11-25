@@ -35,6 +35,11 @@ int  ui_textbox_band(void);
  * caller that places something by the box (a choice list) takes its y
  * from here; ui_textbox_draw docks the box itself. */
 int  ui_textbox_place(EidosUiCtx *c, int kind, int y, int h);
+/* A screen with two messages up at once: the bands drawn from now on stand
+ * `rows` canvas rows higher (the height of the band under them and the
+ * rule between the two: ui_textbox_h + 6), until it is set to 0 again.  It
+ * changes nothing where a message is a box at its own place. */
+void ui_textbox_band_lift(int rows);
 /* The height ui_textbox_draw gives the window's box; 0 when it is blank. */
 int  ui_textbox_h(const void *bmpwin);
 /* The Bmp of a live BmpWin, or NULL. */

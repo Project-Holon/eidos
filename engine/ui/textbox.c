@@ -453,6 +453,13 @@ int ui_textbox_band(void)
     return t != NULL && t->message_band;
 }
 
+static int g_band_lift;
+
+void ui_textbox_band_lift(int rows)
+{
+    g_band_lift = rows > 0 ? rows : 0;
+}
+
 int ui_textbox_place(EidosUiCtx *c, int kind, int y, int h)
 {
     int top;
@@ -462,7 +469,7 @@ int ui_textbox_place(EidosUiCtx *c, int kind, int y, int h)
     }
     top = ui_hints_top();
     top = top >= 0 ? top - c->oy : c->canvas->h - c->safe_b - c->oy;
-    return top - 6 - h;
+    return top - 6 - h - g_band_lift;
 }
 
 int ui_textbox_h(const void *bmpwin)

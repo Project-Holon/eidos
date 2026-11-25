@@ -2845,16 +2845,25 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         const u8 *desc = *(const u8 *const *)((const char *)work + 0xF0);
         const u8 *yn = *(const u8 *const *)((const char *)work + 0x7C);
         int bw = H * 4 / 3 - 8, bx = (W - bw) / 2, by;
+        int lift = 0;
 
         backdrop(c, W, H, (int)in->frame);
         ui_fill(c, 0, 0, W, H, 0x000000u, 150);
-        if (desc != NULL && (*(const u16 *)desc & 0x7FFFu) == 0x7FB2u) {
-            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, bx, 8, bw, desc, -1, -1);
-        }
         by = H - ui_bar_h(c) - 4 - 42;
         if (msgw != NULL && (*(const u16 *)msgw & 0x7FFFu) == 0x7FB2u) {
             by = H - ui_bar_h(c) - 4 - (msgw[6] * 8 + 10);
             ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, bx, by, bw, msgw, -1, -1);
+            if (ui_textbox_band() && ui_textbox_h(msgw) > 0) {
+                /* a band is docked on the bottom edge wherever it was asked for: the yes/no
+                 * goes by where it is, and the notice's band stands on it, not under it */
+                by = ui_textbox_place(c, UI_TEXTBOX_SYSTEM, by, ui_textbox_h(msgw));
+                lift = ui_textbox_h(msgw) + 6;
+            }
+        }
+        if (desc != NULL && (*(const u16 *)desc & 0x7FFFu) == 0x7FB2u) {
+            ui_textbox_band_lift(lift);
+            ui_textbox_draw(c, UI_TEXTBOX_SYSTEM, bx, 8, bw, desc, -1, -1);
+            ui_textbox_band_lift(0);
         }
         /* the connect prompt asks at its step 3 (STARTMENU_StateConnectPrompt) */
         if (yn != NULL && state == 7 && *((const u8 *)work + 0x12A) == 3) {
