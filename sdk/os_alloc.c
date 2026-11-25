@@ -163,16 +163,123 @@ void bw_block_free(void *block)
  * pointer-typed form before the matched file's own extern), never in the
  * matched file, which must keep its DS bytes.
  */
+/*
+ * The extra heap, as the DS has it.  On a DS (not a DSi) the game's own
+ * OS_CreateExtraHeap (src/game/arm9/os_alloc.c, compiled as written) turns
+ * the 16 KiB at 0x02000000, under the ARM9 module, into one more OS heap,
+ * and GFL_USE_InitSystem takes 0x3F00 bytes of it as GFL heap 9
+ * (GFL_HEAP_RegisterBlockHeap).  Taken from the host instead, heap 9 and
+ * what lives in it (heap 5 while the game system runs) were nowhere in the
+ * DS address space, and a reader of the DS's memory (a RetroAchievements set
+ * reads heap 9's child count at 0x02000034) saw zeros.  So for that one heap
+ * the two calls do what the game's own do, on the game's own records
+ * (OSiHeapInfo, the extra heap's handle in g_020A86AC) and with its own list
+ * helpers: the block is 0x02000020, as on the DS.  Every other heap stays on
+ * the host.  The records hold 32-bit pointers: a build with wider ones
+ * keeps the host block.
+ */
+typedef struct BwCell {
+    struct BwCell *prev;
+    struct BwCell *next;
+    long size;
+} BwCell;
+
+typedef struct BwHeapDesc {
+    long size;
+    BwCell *free;
+    BwCell *allocated;
+} BwHeapDesc;
+
+typedef struct BwHeapInfo {
+    volatile int currentHeap;
+    int numHeaps;
+    void *arenaStart;
+    void *arenaEnd;
+    BwHeapDesc *heapArray;
+} BwHeapInfo;
+
+typedef struct BwExtraHeap {        /* os_alloc.o's .data at 0x020A86AC */
+    int handle;                     /* OSi_ExtraHeapHandle, -1 none */
+    int arena;                      /* OSi_ExtraHeapArenaId */
+} BwExtraHeap;
+
+extern void *bw_dsref_OSiHeapInfo __attribute__((weak));
+extern void *bw_dsref_g_020A86AC __attribute__((weak));
+extern BwCell *DLAddFront(BwCell *list, BwCell *cell) __attribute__((weak));
+extern BwCell *DLExtract(BwCell *list, BwCell *cell) __attribute__((weak));
+extern BwCell *DLInsert(BwCell *list, BwCell *cell) __attribute__((weak));
+
+/* The extra heap's record when `arena` and `heap` name it, else NULL. */
+static BwHeapDesc *extra_heap(u32 arena, void *heap)
+{
+    const BwExtraHeap *x;
+    BwHeapInfo *info;
+
+    if (sizeof(void *) != 4u || &bw_dsref_OSiHeapInfo == NULL || &bw_dsref_g_020A86AC == NULL
+        || bw_dsref_OSiHeapInfo == NULL || bw_dsref_g_020A86AC == NULL
+        || DLAddFront == NULL || DLExtract == NULL || DLInsert == NULL || arena >= 9u) {
+        return NULL;
+    }
+    x = (const BwExtraHeap *)bw_dsref_g_020A86AC;
+    if (x->handle < 0 || (int)(intptr_t)heap != x->handle || (int)arena != x->arena) {
+        return NULL;
+    }
+    info = ((BwHeapInfo **)bw_dsref_OSiHeapInfo)[arena];
+    return info != NULL && x->handle < info->numHeaps ? &info->heapArray[x->handle] : NULL;
+}
+
 void *OS_AllocFromHeap(u32 arena, void *heap, u32 size)
 {
-    (void)arena;
-    (void)heap;
-    return bw_aligned_alloc(size, 4);
+    BwHeapDesc *hd = extra_heap(arena, heap);
+    BwCell *cell;
+    long want, leftover;
+
+    if (hd == NULL) {
+        return bw_aligned_alloc(size, 4);
+    }
+    /* the game's own OS_AllocFromHeap: the first cell that fits, split when
+     * at least 0x40 bytes are left, the block after the cell's 0x20 bytes */
+    want = (long)((size + 0x3Fu) & ~0x1Fu);
+    for (cell = hd->free; cell != NULL && want > cell->size; cell = cell->next) {
+    }
+    if (cell == NULL) {
+        return NULL;
+    }
+    leftover = cell->size - want;
+    if ((u32)leftover < 0x40u) {
+        hd->free = DLExtract(hd->free, cell);
+    } else {
+        BwCell *rest = (BwCell *)((u8 *)cell + want);
+
+        cell->size = want;
+        rest->size = leftover;
+        rest->prev = cell->prev;
+        rest->next = cell->next;
+        if (rest->next != NULL) {
+            rest->next->prev = rest;
+        }
+        if (rest->prev != NULL) {
+            rest->prev->next = rest;
+        } else {
+            hd->free = rest;
+        }
+    }
+    hd->allocated = DLAddFront(hd->allocated, cell);
+    return (u8 *)cell + 0x20;
 }
 
 void OS_FreeToHeap(u32 arena, void *heap, void *block)
 {
-    (void)arena;
-    (void)heap;
-    bw_aligned_free(block);
+    BwHeapDesc *hd = extra_heap(arena, heap);
+
+    if (hd == NULL) {
+        bw_aligned_free(block);
+        return;
+    }
+    if (block != NULL) {
+        BwCell *cell = (BwCell *)((u8 *)block - 0x20);
+
+        hd->allocated = DLExtract(hd->allocated, cell);
+        hd->free = DLInsert(hd->free, cell);
+    }
 }
