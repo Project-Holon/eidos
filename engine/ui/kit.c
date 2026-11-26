@@ -59,6 +59,7 @@
 #include "kit.h"
 #include "theme.h"
 #include "padglyph.h"
+#include "type_icons.h"
 
 /* ------------------------------------------------------------------ */
 /* Themes                                                              */
@@ -1193,15 +1194,40 @@ const char *ui_move_name_modern(int id, const char *game_name)
     return NULL;
 }
 
+/* (weak: the interface's tests link this file without the dex recipe) */
+extern int ui_type_game_name(int type, char *out, int cap) __attribute__((weak));
+
 const char *ui_type_name(int type)
 {
-    return (type >= 0 && type < 17) ? k_type_name[type] : "???";
+    /* a type a mod adds (17 to 30): its name in the game's text, in
+     * capitals as the game's own are here */
+    static char added[14][24];
+    int i;
+
+    if (type >= 0 && type < 17) {
+        return k_type_name[type];
+    }
+    if (type >= 17 && type <= 30 && ui_type_game_name != NULL &&
+        ui_type_game_name(type, added[type - 17], (int)sizeof added[0]) > 0) {
+        for (i = 0; added[type - 17][i] != '\0'; i++) {
+            added[type - 17][i] = (char)toupper((unsigned char)added[type - 17][i]);
+        }
+        return added[type - 17];
+    }
+    return "???";
 }
 
 u32 ui_type_color(int type)
 {
-    return (type >= 0 && type < 17) ? k_type_color[type]
-         : type == UI_TYPE_UNKNOWN ? k_type_color[17] : UI_EDGE2;
+    u32 rgb;
+
+    if (type >= 0 && type < 17) {
+        return k_type_color[type];
+    }
+    if (type == UI_TYPE_UNKNOWN) {
+        return k_type_color[17];
+    }
+    return type >= 17 && bw_type_ui_color((u32)type, &rgb) ? rgb : UI_EDGE2;
 }
 
 void ui_def_type_tag(EidosUiCtx *c, int x, int y, int w, int type)

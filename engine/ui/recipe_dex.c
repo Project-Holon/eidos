@@ -2109,6 +2109,11 @@ int ui_species_name(int species, char *out, int cap)
     return msg_get(MSG_NAME, (u32)species, out, cap);
 }
 
+int ui_type_game_name(int type, char *out, int cap)
+{
+    return msg_get(199, (u32)type, out, cap);      /* the type names, line = type */
+}
+
 void ui_species_types(int species, int *t1, int *t2)
 {
     species_types(species, t1, t2);

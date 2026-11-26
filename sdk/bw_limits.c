@@ -721,6 +721,7 @@ extern void bw_dex_ext_forget(void) __attribute__((weak));     /* sdk/dex_save.c
 extern void bw_dex_data_forget(void) __attribute__((weak));    /* sdk/dex_data.c */
 extern void bw_cries_forget(void) __attribute__((weak));       /* sdk/cries.c */
 extern void bw_type_chart_forget(void) __attribute__((weak));  /* sdk/type_chart.c */
+extern void bw_type_icons_apply(void) __attribute__((weak));   /* sdk/type_icons.c */
 
 int bw_limits_apply(void)
 {
@@ -764,6 +765,9 @@ int bw_limits_apply(void)
     if (build_machine_moves() != 0) {
         fprintf(stderr, "eidos: the TM and HM move table could not be built\n");
         rc = -1;
+    }
+    if (bw_type_icons_apply != NULL) {
+        bw_type_icons_apply();      /* the added types' icons and buttons */
     }
     return rc;
 }

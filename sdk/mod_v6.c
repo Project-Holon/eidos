@@ -38,6 +38,7 @@
 #include "vfs.h"
 #include "mod_v6.h"
 #include "type_chart.h"
+#include "type_icons.h"
 
 extern const char *bw_mod_savedata_namespace(void) BW_PORT_WEAK;
 extern void *bw_mod_state_game_data(void);
@@ -658,6 +659,9 @@ void bw_mod_v6_overlay_loaded(u32 id)
     if (id == 223u) {
         bw_event_fire_starter_choices();
     }
+    /* the per-type tables of the battle's buttons and the Hall of Fame
+     * take the added types (sdk/type_icons.c) */
+    bw_type_icons_overlay_loaded(id);
     if (id == 93u) {
         /* the copy just made is the game's own chart */
         u8 *t;

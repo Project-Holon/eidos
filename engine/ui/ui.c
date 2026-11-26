@@ -924,6 +924,7 @@ extern void ZONEDATA_SetEventFlag(void *ev, int flagId) __attribute__((weak));
 extern u32 POKE_TOOL_GetExpForLevel(u16 species, u16 form, u16 level) __attribute__((weak));
 extern void POKE_TOOL_SetPartyValue(void *pp, u32 paramId, uintptr_t value) __attribute__((weak));
 extern void POKE_TOOL_CalcParam(void *pp) __attribute__((weak));
+extern void POKE_TOOL_SetMoveSlot(void *pp, u16 move, u32 slot) __attribute__((weak));
 extern void *POKE_TOOL_Create(u16 species, u16 level, u64 otId, u16 heapId) __attribute__((weak));
 extern u32 POKEPARTY_Add(void *party, const void *member) __attribute__((weak));
 extern u32 POKEPARTY_RemoveMember(void *party, s32 pos) __attribute__((weak));
@@ -1144,6 +1145,24 @@ static void debug_party(void)
             (void)POKEPARTY_RemoveMember(party, (s32)POKEPARTY_GetCount(party) - 1);
         }
         fprintf(stderr, "eidos: debug party: %u member(s)\n", (unsigned)POKEPARTY_GetCount(party));
+    }
+    /* EIDOS_DEBUG_MOVES="move,move,move,move": the first member's moves,
+     * slot by slot (0 keeps a slot's move), each with its full PP */
+    if (getenv("EIDOS_DEBUG_MOVES") != NULL && POKE_TOOL_SetMoveSlot != NULL && POKEPARTY_GetCount(party) > 0) {
+        const char *m = getenv("EIDOS_DEBUG_MOVES");
+        u32 slot;
+
+        for (slot = 0; slot < 4 && *m != '\0'; slot++) {
+            u32 move = (u32)strtoul(m, (char **)&m, 10);
+
+            if (move != 0u) {
+                POKE_TOOL_SetMoveSlot(POKEPARTY_GetMember(party, 0), (u16)move, slot);
+                fprintf(stderr, "eidos: debug move slot %u = move %u\n", (unsigned)slot, (unsigned)move);
+            }
+            while (*m == ',' || *m == ' ') {
+                m++;
+            }
+        }
     }
     /* EIDOS_DEBUG_ITEMS="item:count,...": into the bag */
     if (getenv("EIDOS_DEBUG_ITEMS") != NULL && GAME_DATA_GetMyItem != NULL && MYITEM_SAVEDATA_AddItem != NULL) {

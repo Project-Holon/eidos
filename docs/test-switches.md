@@ -10,6 +10,7 @@ game. The code is in `engine/ui/ui.c` unless noted.
 |---|---|
 | `EIDOS_DEBUG_PARTY="species:level,..."` | Replaces the party's members with fresh Pokemon. `0` keeps a slot. Members past the party's count are added. `species.form:level` gives a form. |
 | `EIDOS_DEBUG_LEVEL=N` | The level for members that name none (default 50). |
+| `EIDOS_DEBUG_MOVES="move,move,move,move"` | The first party member's moves, slot by slot, each with its full PP. `0` keeps a slot's move. Set with `EIDOS_DEBUG_PARTY`'s party. |
 | `EIDOS_DEBUG_PARTY_COUNT=N` | The party keeps its first N members. Use a one-Pokemon party for whiteout tests: A alone cannot pick the next Pokemon after a faint. |
 | `EIDOS_DEBUG_ITEMS="item:count,..."` | Puts items in the bag. |
 | `EIDOS_DEBUG_PROPS=N` | The first N Musical props (of 100) are owned. |

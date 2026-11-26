@@ -346,6 +346,8 @@ u32  ui_type_color(int type);
 /* recipe_dex.c: a species' name from the game's text (> 0 when found) and
  * its two types (the same number twice for one type). */
 int  ui_species_name(int species, char *out, int cap);
+/* recipe_dex.c: a type's name from the game's text (bank 199, > 0 when found). */
+int  ui_type_game_name(int type, char *out, int cap);
 void ui_species_types(int species, int *t1, int *t2);
 /* recipe_dex.c: the style's Pokedex screen on one species, for the registration after a catch (recipe_menus.c, the
  * scene "catch"), outside the Pokedex app.  open: how far the Pokedex is open, as the Pokedex itself counts it (0
