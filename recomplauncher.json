@@ -1,0 +1,142 @@
+{
+    "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+    "format": 1,
+    "inputs": [
+        {
+            "id": "rom-black",
+            "label": "Your own Pokémon Black ROM, the .nds file itself (not the archive it came in). English, French, German, Italian or Spanish.",
+            "formats": [
+                {
+                    "type": "file",
+                    "extensions": [
+                        "nds"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "rom-white",
+            "label": "Your own Pokémon White ROM, the .nds file itself (not the archive it came in). English, French, German, Italian or Spanish.",
+            "formats": [
+                {
+                    "type": "file",
+                    "extensions": [
+                        "nds"
+                    ]
+                }
+            ]
+        }
+    ],
+    "games": [
+        {
+            "id": "black",
+            "name": "Pokémon Black",
+            "args": [
+                "--game=black"
+            ],
+            "inputs": [
+                "rom-black"
+            ],
+            "saves": [
+                "{appdata}/eidos/profiles/Black/saves"
+            ]
+        },
+        {
+            "id": "white",
+            "name": "Pokémon White",
+            "args": [
+                "--game=white"
+            ],
+            "inputs": [
+                "rom-white"
+            ],
+            "saves": [
+                "{appdata}/eidos/profiles/White/saves"
+            ]
+        }
+    ],
+    "prepare": {
+        "program": [
+            "eidos.exe",
+            "eidos",
+            "eidos.AppImage"
+        ],
+        "args": [
+            "--no-window",
+            "--rom={input:rom-black}",
+            "--rom={input:rom-white}"
+        ],
+        "label": "Getting the game data from your ROM"
+    },
+    "start": {
+        "program": [
+            "eidos.exe",
+            "eidos",
+            "eidos.AppImage"
+        ],
+        "args": [
+            "--standalone",
+            "--window"
+        ]
+    },
+    "saves": [
+        "{appdata}/eidos/profiles"
+    ],
+    "settings": [
+        {
+            "id": "window",
+            "label": "Window",
+            "in": "args",
+            "help": "Windowed opens eidos in a window. Fullscreen and Borderless start it covering the screen. Game's option leaves the choice to eidos.",
+            "choices": [
+                {
+                    "label": "Game's option",
+                    "args": []
+                },
+                {
+                    "label": "Windowed",
+                    "args": [
+                        "--windowed"
+                    ]
+                },
+                {
+                    "label": "Fullscreen",
+                    "args": [
+                        "--fullscreen"
+                    ]
+                },
+                {
+                    "label": "Borderless",
+                    "args": [
+                        "--borderless"
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "layout",
+            "label": "Layout",
+            "in": "args",
+            "help": "Remaster puts the game on one widescreen window. Classic keeps the DS's two screens. Game's option leaves the choice to eidos.",
+            "choices": [
+                {
+                    "label": "Remaster (one screen)",
+                    "args": [
+                        "--layout",
+                        "one"
+                    ]
+                },
+                {
+                    "label": "Classic (two screens)",
+                    "args": [
+                        "--two-screens"
+                    ]
+                },
+                {
+                    "label": "Game's option",
+                    "args": []
+                }
+            ]
+        }
+    ]
+}
