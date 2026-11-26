@@ -86,6 +86,7 @@
 #include "battle_handlers.h"
 #include "trainer_mons.h"
 #include "shops.h"
+#include "move_anims.h"
 #include "mod_catalog.h"
 #include "mod_menu.h"
 #include "avatar.h"              /* the other players' figures, each in its look */
@@ -3346,10 +3347,18 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     /* The mods' moves, abilities and items that work like a built-in one
      * (sdk/battle_handlers.h), read with the same final mod list. */
     bw_bh_load();
+    /* (the move a preview plays is one there is, now the mods' limit is known) */
+    if (bw_preview_move() > bw_limit_get(BW_PORT_LIMIT_MOVE_LAST)) {
+        fprintf(stderr, "eidos: --preview-move: no move %u (the moves are 1 to %u)\n", (unsigned)bw_preview_move(),
+                (unsigned)bw_limit_get(BW_PORT_LIMIT_MOVE_LAST));
+        exit(2);
+    }
     /* and the per-member numbers of trainers' Pokemon (sdk/trainer_mons.h) */
     bw_trmons_load();
     /* and the shops' lists (sdk/shops.h) */
     bw_shops_load();
+    /* and the moves' animations (sdk/move_anims.h) */
+    bw_move_anims_load();
     /* The mods: the loader runs after the save is chosen and before the
      * game runs (docs/mod-implementation.md, section 3).  The declared
      * table the manifest's address check asks is registered by
@@ -3526,6 +3535,9 @@ static int g_profile_given;         /* --profile-dir */
 static int g_standalone_flag;       /* --standalone */
 static int g_import_only;           /* --import-old-saves */
 static const char *g_tidy_only;     /* --tidy-saves <folder> */
+static unsigned g_preview_move;     /* --preview-move <id>                    */
+static unsigned g_preview_a = 25;   /* --preview-species <attacker> <defender> */
+static unsigned g_preview_b = 504;  /* (Pikachu on Patrat when not given)     */
 static int g_standalone;
 #if EIDOS_BOOT_SDL
 static int g_profiles;              /* the run plays from the two game profiles */
@@ -3972,6 +3984,91 @@ static void boot_game_add_step(void)
 }
 #endif
 
+/* A file copied whole; 0 when done. */
+static int boot_copy_file(const char *from, const char *to)
+{
+    FILE *in = fopen(from, "rb"), *out;
+    char buf[65536];
+    size_t n;
+    int bad = 0;
+
+    if (in == NULL) {
+        return -1;
+    }
+    if ((out = fopen(to, "wb")) == NULL) {
+        fclose(in);
+        return -1;
+    }
+    while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
+        bad |= fwrite(buf, 1, n, out) != n;
+    }
+    bad |= ferror(in) != 0;
+    fclose(in);
+    bad |= fclose(out) != 0;
+    return bad ? -1 : 0;
+}
+
+/*
+ * --preview-move: the run plays from a copy of the profile's save and
+ * settings in a folder of its own (the player's saves are never written),
+ * continues it from the title, and starts a wild battle of the two species
+ * once the field runs (the debug battle, engine/ui/ui.c); the interface
+ * then plays the move's animation over and over (debug_preview).
+ */
+static void boot_preview_setup(void)
+{
+    const char *saves = getenv("BW_SAVE_DIR"), *settings = getenv("EIDOS_SETTINGS");
+    const char *tmp = getenv("TEMP") != NULL ? getenv("TEMP") : getenv("TMPDIR") != NULL ? getenv("TMPDIR") : "/tmp";
+    char dir[1024], from[1200], to[1200], arg[64];
+    int n, found = 0;
+    FILE *f;
+
+    if (g_preview_move == 0) {
+        return;
+    }
+    snprintf(dir, sizeof dir, "%s/eidos-preview", tmp);
+    snprintf(to, sizeof to, "%s/saves", dir);
+    (void)bw_plat_mkdirs(to);
+    snprintf(to, sizeof to, "%s/saves/pokeblack.sav", dir);
+    for (n = 1; saves != NULL && n <= 64 && !found; n++) {
+        if (n == 1) {
+            snprintf(from, sizeof from, "%s/pokeblack.sav", saves);
+        } else {
+            snprintf(from, sizeof from, "%s/slots/save%d.sav", saves, n);
+        }
+        found = boot_copy_file(from, to) == 0;
+    }
+    if (!found) {
+        fprintf(stderr, "eidos: --preview-move needs a save in the profile: start a game once\n");
+        exit(2);
+    }
+    snprintf(to, sizeof to, "%s/saves", dir);
+    boot_setenv("BW_SAVE_DIR", to);
+    snprintf(to, sizeof to, "%s/settings.ini", dir);
+    if (settings != NULL) {
+        (void)boot_copy_file(settings, to);
+    }
+    boot_setenv("EIDOS_SETTINGS", to);
+#if EIDOS_BOOT_SDL
+    eidos_settings_set_path(to);
+#endif
+    snprintf(to, sizeof to, "%s/preview_script.txt", dir);
+    if ((f = fopen(to, "wb")) != NULL) {
+        /* (the last step waits until the window closes: a script's end
+         * ends the run) */
+        fputs("mash title_menu START 60\nmash field A 40\nwait field 60\nframes 1000000000\n", f);
+        fclose(f);
+        boot_setenv("EIDOS_UI_SCRIPT", to);
+    }
+    snprintf(arg, sizeof arg, "wild %u 50", g_preview_b);
+    boot_setenv("EIDOS_DEBUG_BATTLE", arg);
+    snprintf(arg, sizeof arg, "%u", g_preview_a);
+    boot_setenv("EIDOS_DEBUG_PARTY", arg);
+    boot_setenv("EIDOS_DEBUG_PARTY_COUNT", "1");
+    boot_setenv("EIDOS_DEBUG_BATTLE_SCENE", "0");     /* (the Battle Scene option on) */
+    bw_preview_set(g_preview_move, g_preview_a, g_preview_b);
+}
+
 static int boot_launcher_arg(int argc, char **argv, int *i, int apply)
 {
     const char *a = argv[*i];
@@ -3984,6 +4081,25 @@ static int boot_launcher_arg(int argc, char **argv, int *i, int apply)
         /* for the launcher: that saves folder put in order (sdk/save_tidy.h),
          * one line that says what was done, and no game */
         g_tidy_only = argv[++*i];
+        return 1;
+    }
+    if (strcmp(a, "--preview-move") == 0 && *i + 1 < argc) {
+        /* for kenon: a battle that plays this move's animation over and
+         * over (sdk/move_anims.h), on a copy of the profile's save */
+        g_preview_move = (unsigned)strtoul(argv[++*i], NULL, 10);
+        if (g_preview_move == 0) {
+            fprintf(stderr, "eidos: --preview-move: '%s' is not a move id\n", argv[*i]);
+            exit(2);
+        }
+        return 1;
+    }
+    if (strcmp(a, "--preview-species") == 0 && *i + 2 < argc) {
+        g_preview_a = (unsigned)strtoul(argv[++*i], NULL, 10);
+        g_preview_b = (unsigned)strtoul(argv[++*i], NULL, 10);
+        if (g_preview_a == 0 || g_preview_b == 0) {
+            fprintf(stderr, "eidos: --preview-species: two species ids, the attacker's and the defender's\n");
+            exit(2);
+        }
         return 1;
     }
     if (strcmp(a, "--import-old-saves") == 0) {
@@ -4187,6 +4303,7 @@ int main(int argc, char **argv)
     }
 #if EIDOS_BOOT_SDL
     boot_profile_first(argc, argv);
+    boot_preview_setup();
     boot_share_handler_params();
     if (g_import_only) {
         if (g_profile_game == BW_GAME_UNKNOWN) {

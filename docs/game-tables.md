@@ -64,3 +64,21 @@ list 5 at 8. Lists 6 to 25 cover other clerks, such as second Mart counters
 and department store floors. A `bp` list is one of the 3 Battle Subway prize
 lists and sets each item's price in BP. Each list holds up to 40 items.
 Omitted lists keep their base-game inventories.
+
+## move_anims.txt
+
+Maps a move to a base-game move's battle animation.
+
+    53 = 85          # Flamethrower plays Thunderbolt's animation
+    600 = 236        # a new move (Moonblast) plays Moonlight's
+
+The value is a base-game move ID (1 to 559). Omitted base-game moves
+keep their own animations. Omitted custom moves use the animation of the
+move assigned to them in `move_handlers.txt`, falling back to Pound.
+
+To preview an animation, run eidos with `--preview-move <move id>` (and
+optionally `--preview-species <attacker> <defender>`, defaulting to
+Pikachu attacking Patrat). It loads a copy of the profile's save without
+modifying the original, opens a battle, and loops the animation until
+the window closes. No turns execute and no damage is dealt. An unknown
+move ID exits with code 2 and prints an error to stderr.

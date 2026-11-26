@@ -37,6 +37,7 @@ int eidos_ui_battle_right_free_y(void);     /* recipe_battle.c */
 #include "textbox.h"
 #include "settings.h"
 #include "overlay.h"
+#include "move_anims.h"
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -2585,6 +2586,43 @@ int eidos_ui_debug_battle_started(void)
     return g_debug_battle_started;
 }
 
+/* eidos --preview-move ID (sdk/move_anims.h): once the preview's battle
+ * is at its command screen, the move's animation from the first Pokemon
+ * on the second, played again each time the battle view is idle for 45
+ * frames, until the window closes.  The request is the battle view's own
+ * (ov094 BTLV_EFFECT_StartEffectWithRequest, the layout of
+ * BtlvEffScriptRequest), so no turn runs: nobody takes damage. */
+extern void ov094_BTLV_EFFECT_StartEffectWithRequest(const void *request) __attribute__((weak));
+extern int ov094_BTLV_EFFECT_IsBusy(void) __attribute__((weak));
+
+static void debug_preview(void)
+{
+    static u32 idle;
+    struct {
+        u16 scriptId;
+        u8 pad[2];
+        int attackerPos, defenderPos;
+        u8 variant, option, pad2[2];
+        int kind;
+    } req;
+    u32 move = bw_preview_move();
+
+    if (move == 0 || strcmp(g_scene, "battle_action") != 0 || ov094_BTLV_EFFECT_StartEffectWithRequest == NULL
+        || ov094_BTLV_EFFECT_IsBusy == NULL || ov094_BTLV_EFFECT_IsBusy()) {
+        idle = 0;
+        return;
+    }
+    if (++idle < 45) {
+        return;
+    }
+    idle = 0;
+    memset(&req, 0, sizeof req);
+    req.scriptId = (u16)bw_move_anim(move);
+    req.attackerPos = 0;
+    req.defenderPos = 1;
+    ov094_BTLV_EFFECT_StartEffectWithRequest(&req);
+}
+
 static void debug_battle(void)
 {
     static int done, wait, fade_back;
@@ -3275,6 +3313,7 @@ void eidos_ui_game_frame(void)
         live_objects_log();
         event_log();
         debug_battle();
+        debug_preview();
         debug_script();
         debug_open();
         debug_ltrade();

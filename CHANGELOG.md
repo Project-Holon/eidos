@@ -22,6 +22,7 @@ Unlimited save slots, parameterized and combined mod handlers, RecompLauncher su
 - **Icon Palettes**: Mods can set each Pokémon's party and box icon palette via `eidos/tables/icon_palette.txt` (`<icon index> = <palette> [<female palette>]`). Updated the one-screen party and Bag screens to draw icons from modded tables (`icon_palette.txt`, `item_icons.txt`) instead of the base-game tables, and to display items past the original 627 when a mod raises `limit.items`.
 - **TM & HM Moves**: Mods can change the move each TM and HM teaches via `eidos/tables/machine_moves.txt` (`TM35 = 53`).
 - **Shops**: Mods can override Poké Mart clerk inventories and Battle Subway BP prize lists via `eidos/tables/shops.txt` (`mart.5 = 1 2 3 50`).
+- **Move Animations**: Mods can map any move to another move's battle animation via `eidos/tables/move_anims.txt` (`53 = 85`). Custom moves default to the animation of the move whose handler they use instead of an unrelated effect. `eidos --preview-move <id>` loops a move's animation in a preview battle.
 
 ### Saves
 - **Unlimited Save Slots**: Removed the 8-slot limit on single-player and Multiplayer-screen games as well as the 32-session limit on hosted co-op games. Starting a `New Game` always allocates a fresh slot without prompting to overwrite an existing save.
