@@ -565,6 +565,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/inflate.c       # DEFLATE, for packaged mods
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_bw.c        # `.bw` mod packages, unpacked to a cache
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/bw_limits.c     # content limits mods raise (bw_limit_get)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_handlers.c  # mod moves, abilities, items that work like a built-in one
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_table.c     # a mod's own data tables (`table` lines)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_hooks.c     # on/off switch for port-side code hooks (docs/hooks.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_slot.c      # the mod seam's slot registry (docs/mod-interface.md)
@@ -1957,7 +1958,8 @@ add_test(NAME test_native_port_tools COMMAND ${Python3_EXECUTABLE}
 foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_mod_messages
           test_mod_text test_mod_script test_mod_rule test_mod_timer test_mod_export
           test_mod_menu test_mod_input test_mod_handoff test_mod_restart
-          test_mod_avatar test_mod_net test_save_games test_save_tidy test_https test_mod_catalog)
+          test_mod_avatar test_mod_net test_save_games test_save_tidy test_battle_handlers test_https
+          test_mod_catalog)
     add_executable(${t} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${t}.c)
     target_include_directories(${t} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests)

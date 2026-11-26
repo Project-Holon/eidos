@@ -6,15 +6,18 @@ Each release's notes on GitHub start with its section here
 ## 0.2.8
 
 ### Launcher
-- **RecompLauncher Support**: Added a `recomplauncher.json` at the top of the Windows and macOS zips so RecompLauncher can find and start eidos (#49, thanks @elripalda).
-- **Mod Badges**: The `Official` badge now follows the mod index: katalogos mods are official unless the index marks them unofficial, and mods from other repositories only when the index marks them official (also in the in-game Mod Manager).
-- **Multiplayer Saves in the Save List**: Fixed the Home page listing randomizer and multiworld saves made on the Multiplayer screen as ordinary saves; they stay under `Your games`, as on the title's Continue card.
-- **Save Housekeeping After Installs**: The old-save import and the save cleanup now run right after a version finishes installing, not only at the launcher's next start; the save list's header shows the number of saves instead of "of 8".
+- **RecompLauncher Support**: Added `recomplauncher.json` to the root of the Windows and macOS standalone archives so RecompLauncher can automatically detect and launch eidos (thanks @elripalda, #49).
+- **Official Mod Badges**: Synchronized `Official` mod badges in both the launcher and the in-game Mod Manager with the mod index (`katalogos` entries default to official unless marked otherwise, while third-party repository mods display the badge only when explicitly flagged as official).
+- **Multiplayer Save Filtering**: Fixed the Home tab listing randomizer and multiworld saves created on the Multiplayer screen as standard single-player saves; they now remain exclusively under **Your Games**, matching the title menu's Continue screen.
+- **Post-Install Save Maintenance**: Legacy save import and save-slot cleanup now run immediately after a new engine version finishes installing rather than waiting for the next launcher restart, and the save list header now displays the total save count instead of `"of 8"`.
+
+### Modding
+- **Parameterized Move, Ability & Item Handlers**: Mods can assign existing battle effect handlers to custom or built-in moves, abilities, and held items via `eidos/tables/ability_handlers.txt`, `move_handlers.txt`, and `item_handlers.txt`, while overriding handler parameters such as target stat and stage delta, inflicted status condition, trigger chance, damage/stat multiplier, tested type, HP fraction, and weather effect (e.g., an Intimidate variant that lowers Sp. Atk by 2 stages: `165 = 22 stat=spatk stages=-2`). Supported parameter keys for every built-in handler are documented in `handler_params.json` alongside the executable.
 
 ### Saves
-- **No Save Limit**: Removed the 8-slot limit on single-player saves and on Multiplayer screen games, and the 32-game limit on hosted co-op games; `New Game` always takes a free slot, so the "replace which save" prompt is gone.
-- **Multiplayer Games Kept Apart**: Randomizer, multiworld and Archipelago saves started from the Multiplayer screen now live in their own `games/` folder instead of taking single-player slots.
-- **Save Slot Cleanup**: At each start the game puts the saves folder in order: files left by new games that were never saved move to `unreadable/` (kept, never deleted), and the saves left are numbered again with no gaps; no file is ever written over, and a cleanup cut short goes on at the next start.
+- **Unlimited Save Slots**: Removed the 8-slot limit on single-player and Multiplayer-screen games as well as the 32-session limit on hosted co-op games. Starting a `New Game` always allocates a fresh slot without prompting to overwrite an existing save.
+- **Dedicated Multiplayer Save Directory**: Randomizer, multiworld, and Archipelago runs started from the Multiplayer screen are now stored in a dedicated `games/` subdirectory rather than occupying single-player save slots.
+- **Automatic Save Folder Compaction**: On startup, the engine organizes the `saves` directory by moving incomplete files from unsaved New Games into `unreadable/` (preserving them without deletion) and renumbering valid save slots sequentially without gaps or overwrites. Interrupted compactions resume cleanly on the next launch.
 
 ## 0.2.7
 

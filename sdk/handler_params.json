@@ -1,0 +1,1918 @@
+{
+ "format": 1,
+ "aletheia": "50731dd699",
+ "keys": {
+  "stat": [
+   "accuracy",
+   "atk",
+   "def",
+   "evasion",
+   "spatk",
+   "spdef",
+   "speed"
+  ],
+  "stages": [
+   -6,
+   6
+  ],
+  "status": [
+   "burn",
+   "confusion",
+   "freeze",
+   "infatuation",
+   "paralysis",
+   "poison",
+   "sleep"
+  ],
+  "chance": [
+   0,
+   100
+  ],
+  "type": [
+   "normal",
+   "fighting",
+   "flying",
+   "poison",
+   "ground",
+   "rock",
+   "bug",
+   "ghost",
+   "steel",
+   "fire",
+   "water",
+   "grass",
+   "electric",
+   "psychic",
+   "ice",
+   "dragon",
+   "dark"
+  ],
+  "ratio": [
+   0.1,
+   4.0
+  ],
+  "hp": [
+   "1/1",
+   "1/16"
+  ],
+  "weather": [
+   "hail",
+   "rain",
+   "sand",
+   "sun"
+  ]
+ },
+ "move": {
+  "23": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_StompDoubleDamageVsMinimized: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "26": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": []
+  },
+  "37": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_ThrashStartLock: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable"
+   ]
+  },
+  "50": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_DisableOnUncategorizedMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "57": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_SurfDoubleDamageVsDiving: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "76": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "80": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_ThrashStartLock: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable"
+   ]
+  },
+  "89": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "99": {
+   "keys": {
+    "stat": "atk",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "117": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_BideAdvanceTurn: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "130": {
+   "keys": {
+    "stat": "def",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "136": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": []
+  },
+  "156": {
+   "keys": {
+    "status": "sleep"
+   },
+   "notes": []
+  },
+  "169": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_TrapAddNoEscape: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "170": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_LockOnOnUncategorizedMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "174": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_CurseApply: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_CurseApply: 3 places of rank, not adjustable",
+    "HAND_WAZA_CurseApply: its hp comes after a command, not adjustable"
+   ]
+  },
+  "187": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_WAZA_BellyDrumMaximizeAttack: its rank comes after a command, not adjustable"
+   ]
+  },
+  "199": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_LockOnOnUncategorizedMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "200": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_ThrashStartLock: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable"
+   ]
+  },
+  "205": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_RolloutStartLock: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "212": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_TrapAddNoEscape: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "217": {
+   "keys": {
+    "chance": 20,
+    "hp": "1/4"
+   },
+   "notes": []
+  },
+  "222": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "227": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_EncoreAddSick: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "250": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_WhirlpoolOnCalcDamageRatio: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "253": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_UproarStart: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "254": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_StockpileOnMoveEffect: 2 places of rank, not adjustable"
+   ]
+  },
+  "255": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_StockpileUseOnMoveEnd: 2 places of rank, not adjustable"
+   ]
+  },
+  "256": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_StockpileUseOnMoveEnd: 2 places of rank, not adjustable"
+   ]
+  },
+  "259": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_TormentOnUncategorizedMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "262": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_MementoOnUncategorizedMove: 2 places of rank, not adjustable"
+   ]
+  },
+  "263": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "268": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "269": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_TauntOnUncategorizedMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "270": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "290": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_SecretPowerOnAddEffect: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_SecretPowerOnAddEffect: its rank comes after a command, not adjustable"
+   ]
+  },
+  "301": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_RolloutStartLock: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "335": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_TrapAddNoEscape: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "355": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_RoostGroundFlyingType: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "362": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "367": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_AcupressureRaiseRandomStat: its rank runs in a loop, not adjustable"
+   ]
+  },
+  "375": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_PsychoShiftTransferStatus: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "380": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_GastroAcidSuppressAbility: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "382": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "392": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_AquaRingApplyEffect: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "393": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_MagnetRiseAddFloating: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "432": {
+   "keys": {
+    "stat": "evasion",
+    "stages": -1
+   },
+   "notes": []
+  },
+  "474": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_VenoshockDoublePowerOnPoison: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "479": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_SmackDownGroundTarget: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "481": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_FlameBurstDamageAdjacent: its hp runs in a loop, not adjustable"
+   ]
+  },
+  "504": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_ShellSmashChangeStats: 5 places of rank, not adjustable"
+   ]
+  },
+  "514": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_RetaliateDoublePowerAfterAllyFaint: its ratio runs in a loop, not adjustable"
+   ]
+  },
+  "537": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_StompDoubleDamageVsMinimized: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "558": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "559": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  }
+ },
+ "ability": {
+  "2": {
+   "keys": {
+    "weather": "rain"
+   },
+   "notes": []
+  },
+  "3": {
+   "keys": {
+    "stat": "speed",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "8": {
+   "keys": {
+    "ratio": 0.8
+   },
+   "notes": []
+  },
+  "9": {
+   "keys": {
+    "status": "paralysis",
+    "chance": 30
+   },
+   "notes": []
+  },
+  "10": {
+   "keys": {
+    "type": "electric",
+    "hp": "1/4"
+   },
+   "notes": []
+  },
+  "11": {
+   "keys": {
+    "type": "water",
+    "hp": "1/4"
+   },
+   "notes": []
+  },
+  "13": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_WeatherLock_ClearWeather: its weather is decided at run time, not adjustable"
+   ]
+  },
+  "14": {
+   "keys": {
+    "ratio": 1.3
+   },
+   "notes": []
+  },
+  "18": {
+   "keys": {
+    "type": "fire",
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "22": {
+   "keys": {
+    "stat": "atk",
+    "stages": -1
+   },
+   "notes": []
+  },
+  "24": {
+   "keys": {
+    "hp": "1/8"
+   },
+   "notes": []
+  },
+  "27": {
+   "keys": {
+    "chance": 30
+   },
+   "notes": [
+    "HAND_TOKUSEI_EffectSporeOnDamageReaction: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "28": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_SynchronizeOnSickAdded: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "31": {
+   "keys": {
+    "type": "electric",
+    "stat": "spatk",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "33": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "34": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "37": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "38": {
+   "keys": {
+    "status": "poison",
+    "chance": 30
+   },
+   "notes": []
+  },
+  "44": {
+   "keys": {
+    "hp": "1/16"
+   },
+   "notes": []
+  },
+  "45": {
+   "keys": {
+    "weather": "sand"
+   },
+   "notes": []
+  },
+  "47": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "49": {
+   "keys": {
+    "status": "burn",
+    "chance": 30
+   },
+   "notes": []
+  },
+  "55": {
+   "keys": {
+    "ratio": 0.8
+   },
+   "notes": []
+  },
+  "56": {
+   "keys": {
+    "status": "infatuation",
+    "chance": 30
+   },
+   "notes": []
+  },
+  "57": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "58": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "61": {
+   "keys": {
+    "chance": 33
+   },
+   "notes": []
+  },
+  "62": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "63": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "65": {
+   "keys": {
+    "type": "grass",
+    "hp": "1/3",
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "66": {
+   "keys": {
+    "type": "fire",
+    "hp": "1/3",
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "67": {
+   "keys": {
+    "type": "water",
+    "hp": "1/3",
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "68": {
+   "keys": {
+    "type": "bug",
+    "hp": "1/3",
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "70": {
+   "keys": {
+    "weather": "sun"
+   },
+   "notes": []
+  },
+  "74": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "76": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_WeatherLock_ClearWeather: its weather is decided at run time, not adjustable"
+   ]
+  },
+  "77": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "78": {
+   "keys": {
+    "type": "electric",
+    "stat": "speed",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "79": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_RivalryScalePower: 2 places of ratio, not adjustable"
+   ]
+  },
+  "80": {
+   "keys": {
+    "stat": "speed",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "81": {
+   "keys": {
+    "ratio": 0.8
+   },
+   "notes": []
+  },
+  "83": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_AngerPointOnDamageReaction: its rank is decided at run time, not adjustable"
+   ]
+  },
+  "84": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "85": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "87": {
+   "keys": {
+    "ratio": 1.25,
+    "type": "water",
+    "hp": "1/4"
+   },
+   "notes": [
+    "HAND_TOKUSEI_DrySkinWeatherEffect: 2 places of hp, not adjustable"
+   ]
+  },
+  "88": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_DownloadOnMemberIn: its rank is decided at run time, not adjustable"
+   ]
+  },
+  "89": {
+   "keys": {
+    "ratio": 1.2
+   },
+   "notes": []
+  },
+  "90": {
+   "keys": {
+    "hp": "1/8"
+   },
+   "notes": []
+  },
+  "94": {
+   "keys": {
+    "hp": "1/8",
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "95": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "97": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "101": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "106": {
+   "keys": {
+    "hp": "1/4"
+   },
+   "notes": []
+  },
+  "110": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "111": {
+   "keys": {
+    "ratio": 0.75
+   },
+   "notes": []
+  },
+  "112": {
+   "keys": {
+    "ratio": 0.5,
+    "ratio.2": 0.5
+   },
+   "notes": []
+  },
+  "114": {
+   "keys": {
+    "type": "water",
+    "stat": "spatk",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "115": {
+   "keys": {
+    "hp": "1/16"
+   },
+   "notes": []
+  },
+  "116": {
+   "keys": {
+    "ratio": 0.75
+   },
+   "notes": []
+  },
+  "117": {
+   "keys": {
+    "weather": "hail"
+   },
+   "notes": []
+  },
+  "120": {
+   "keys": {
+    "ratio": 1.2
+   },
+   "notes": []
+  },
+  "122": {
+   "keys": {
+    "ratio": 1.5,
+    "ratio.2": 1.5
+   },
+   "notes": []
+  },
+  "123": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_BadDreamsHurtSleepers: its hp runs in a loop, not adjustable"
+   ]
+  },
+  "125": {
+   "keys": {
+    "ratio": 1.3
+   },
+   "notes": []
+  },
+  "128": {
+   "keys": {
+    "stat": "atk",
+    "stages": 2
+   },
+   "notes": []
+  },
+  "129": {
+   "keys": {
+    "hp": "1/2",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "130": {
+   "keys": {
+    "chance": 30
+   },
+   "notes": [
+    "HAND_TOKUSEI_CursedBody_DisableAttackerMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "131": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_Healer_CureAllyStatus: its chance runs in a loop, not adjustable"
+   ]
+  },
+  "132": {
+   "keys": {
+    "ratio": 0.75
+   },
+   "notes": []
+  },
+  "133": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_WeakArmor_LowerDefenseRaiseSpeed: 2 places of rank, not adjustable"
+   ]
+  },
+  "134": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "135": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "136": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "137": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "138": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "139": {
+   "keys": {
+    "chance": 50
+   },
+   "notes": []
+  },
+  "141": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_Moody_RaiseAndLowerStat: 2 places of rank, not adjustable"
+   ]
+  },
+  "143": {
+   "keys": {
+    "chance": 30
+   },
+   "notes": [
+    "HAND_TOKUSEI_PoisonTouch_PoisonOnContact: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "144": {
+   "keys": {
+    "hp": "1/3"
+   },
+   "notes": []
+  },
+  "146": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "148": {
+   "keys": {
+    "ratio": 1.3
+   },
+   "notes": []
+  },
+  "153": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_MoxieRaiseAttackOnKnockOut: its rank runs in a loop, not adjustable"
+   ]
+  },
+  "154": {
+   "keys": {
+    "stat": "atk",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "155": {
+   "keys": {
+    "stat": "speed",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "157": {
+   "keys": {
+    "type": "grass",
+    "stat": "atk",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "159": {
+   "keys": {
+    "ratio": 1.3
+   },
+   "notes": []
+  },
+  "160": {
+   "keys": {
+    "hp": "1/8"
+   },
+   "notes": []
+  },
+  "161": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": []
+  },
+  "162": {
+   "keys": {
+    "ratio": 1.1001
+   },
+   "notes": []
+  }
+ },
+ "item": {
+  "43": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_ITEM_RecoverHpOnTrigger: 2 places of hp, not adjustable",
+    "HAND_ITEM_RecoverHpOnCheck: 2 places of hp, not adjustable"
+   ]
+  },
+  "112": {
+   "keys": {
+    "ratio": 1.2
+   },
+   "notes": []
+  },
+  "135": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_AdamantOrbMovePower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "136": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_LustrousOrbMovePower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "155": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_ITEM_RecoverHpOnTrigger: 2 places of hp, not adjustable",
+    "HAND_ITEM_RecoverHpOnCheck: 2 places of hp, not adjustable"
+   ]
+  },
+  "158": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_ITEM_RecoverHpOnTrigger: 2 places of hp, not adjustable",
+    "HAND_ITEM_RecoverHpOnCheck: 2 places of hp, not adjustable"
+   ]
+  },
+  "159": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_ITEM_RequestUseAtHalfHpChecked: 2 places of hp, not adjustable",
+    "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
+    "HAND_ITEM_FigyBerryFlavorHeal: its sick comes after a command, not adjustable",
+    "HAND_ITEM_FigyBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_FigyBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
+    "HAND_ITEM_FigyBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "160": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_ITEM_RequestUseAtHalfHpChecked: 2 places of hp, not adjustable",
+    "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
+    "HAND_ITEM_WikiBerryFlavorHeal: its sick comes after a command, not adjustable",
+    "HAND_ITEM_WikiBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_WikiBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
+    "HAND_ITEM_WikiBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "161": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_ITEM_RequestUseAtHalfHpChecked: 2 places of hp, not adjustable",
+    "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
+    "HAND_ITEM_MagoBerryFlavorHeal: its sick comes after a command, not adjustable",
+    "HAND_ITEM_MagoBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_MagoBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
+    "HAND_ITEM_MagoBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "162": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_ITEM_RequestUseAtHalfHpChecked: 2 places of hp, not adjustable",
+    "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
+    "HAND_ITEM_AguavBerryFlavorHeal: its sick comes after a command, not adjustable",
+    "HAND_ITEM_AguavBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_AguavBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
+    "HAND_ITEM_AguavBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "163": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "HAND_ITEM_RequestUseAtHalfHpChecked: 2 places of hp, not adjustable",
+    "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
+    "HAND_ITEM_IapapaBerryFlavorHeal: its sick comes after a command, not adjustable",
+    "HAND_ITEM_IapapaBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_IapapaBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
+    "HAND_ITEM_IapapaBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "184": {
+   "keys": {
+    "type": "fire",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "185": {
+   "keys": {
+    "type": "water",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "186": {
+   "keys": {
+    "type": "electric",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "187": {
+   "keys": {
+    "type": "grass",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "188": {
+   "keys": {
+    "type": "ice",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "189": {
+   "keys": {
+    "type": "fighting",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "190": {
+   "keys": {
+    "type": "poison",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "191": {
+   "keys": {
+    "type": "ground",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "192": {
+   "keys": {
+    "type": "flying",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "193": {
+   "keys": {
+    "type": "psychic",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "194": {
+   "keys": {
+    "type": "bug",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "195": {
+   "keys": {
+    "type": "rock",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "196": {
+   "keys": {
+    "type": "ghost",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "197": {
+   "keys": {
+    "type": "dragon",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "198": {
+   "keys": {
+    "type": "dark",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "199": {
+   "keys": {
+    "type": "steel",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "200": {
+   "keys": {
+    "type": "normal",
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "201": {
+   "keys": {
+    "stat": "atk",
+    "stages": 1
+   },
+   "notes": [
+    "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "202": {
+   "keys": {
+    "stat": "def",
+    "stages": 1
+   },
+   "notes": [
+    "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "203": {
+   "keys": {
+    "stat": "speed",
+    "stages": 1
+   },
+   "notes": [
+    "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "204": {
+   "keys": {
+    "stat": "spatk",
+    "stages": 1
+   },
+   "notes": [
+    "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "205": {
+   "keys": {
+    "stat": "spdef",
+    "stages": 1
+   },
+   "notes": [
+    "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "206": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "207": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_RaiseRandomStatTwo: its rank is decided at run time, not adjustable"
+   ]
+  },
+  "208": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_RecoverHpByMaxHpDivisor: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "209": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MicleBerryCheckOnSwitchIn: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_MicleBerryCheckAfterDamage: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_MicleBerryCheckAfterAction: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_MicleBerryCheckHp: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_MicleBerryRaiseAccuracy: its sick is decided at run time, not adjustable",
+    "HAND_ITEM_MicleBerryUseWhenForced: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "210": {
+   "keys": {
+    "hp": "1/4"
+   },
+   "notes": []
+  },
+  "211": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_HitBackAttacker: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "212": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_HitBackAttacker: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "213": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_BrightPowderLowerAccuracy: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "215": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MachoBraceHalveSpeed: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "217": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_QuickClawMoveFirst: its chance is decided at run time, not adjustable"
+   ]
+  },
+  "220": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": [
+    "HAND_ITEM_Choice_LockMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "222": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SilverPowderBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "225": {
+   "keys": {
+    "ratio": 1.5,
+    "ratio.2": 1.5
+   },
+   "notes": []
+  },
+  "226": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "227": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "230": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_FocusBand_CheckSurvive: its chance is decided at run time, not adjustable"
+   ]
+  },
+  "233": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MetalCoatBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "234": {
+   "keys": {
+    "hp": "1/16"
+   },
+   "notes": []
+  },
+  "236": {
+   "keys": {
+    "ratio": 2.0,
+    "status": "paralysis"
+   },
+   "notes": []
+  },
+  "237": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SoftSandBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "238": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_HardStoneBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "239": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MiracleSeedBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "240": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_BlackGlassesBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "241": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_BlackBeltBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "242": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MagnetBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "243": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MysticWaterBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "244": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SharpBeakBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "245": {
+   "keys": {
+    "status": "poison"
+   },
+   "notes": [
+    "HAND_ITEM_PoisonBarbBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "246": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_NeverMeltIceBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "247": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SpellTagBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "248": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_TwistedSpoonBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "249": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_CharcoalBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "250": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_DragonFangBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "251": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SilkScarfBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "254": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SeaIncenseBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "255": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_LaxIncenseLowerAccuracy: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "257": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "258": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "265": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_WideLensRaiseAccuracy: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "266": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MuscleBandBoostPhysical: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "267": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_WiseGlassesBoostSpecial: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "268": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_ExpertBelt_BoostSuperEffective: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "270": {
+   "keys": {
+    "hp": "1/10"
+   },
+   "notes": [
+    "HAND_ITEM_LifeOrb_BoostDamage: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "272": {
+   "keys": {
+    "status": "poison",
+    "status.2": "poison"
+   },
+   "notes": []
+  },
+  "273": {
+   "keys": {
+    "status": "burn",
+    "status.2": "burn"
+   },
+   "notes": []
+  },
+  "274": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "276": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_ZoomLensRaiseAccuracy: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "277": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_Metronome_BoostConsecutiveUse: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "278": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_IronBallSpeedRatio: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "280": {
+   "keys": {
+    "status": "infatuation"
+   },
+   "notes": []
+  },
+  "281": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_BlackSludge_HealOrDamage: 2 places of hp, not adjustable"
+   ]
+  },
+  "287": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": [
+    "HAND_ITEM_Choice_LockMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "288": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_StickyBarb_TurnEndDamage: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "289": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "290": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "291": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "292": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "293": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "294": {
+   "keys": {
+    "ratio": 0.5
+   },
+   "notes": []
+  },
+  "296": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_BigRoot_BoostDrain: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "297": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": [
+    "HAND_ITEM_Choice_LockMove: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "298": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_CharcoalBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "299": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MysticWaterBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "300": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MagnetBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "301": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MiracleSeedBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "302": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_NeverMeltIceBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "303": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_BlackBeltBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "304": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_PoisonBarbBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "305": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SoftSandBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "306": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SharpBeakBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "307": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_TwistedSpoonBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "308": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SilverPowderBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "309": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_HardStoneBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "310": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SpellTagBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "311": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_DragonFangBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "312": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_BlackGlassesBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "313": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_MetalCoatBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "314": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_OddIncenseBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "315": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_RockIncenseBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "317": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_WaveIncenseBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "318": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_RoseIncenseBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "538": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "539": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_FloatStoneWeightRatio: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "540": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_RockyHelmetDamageReaction: its hp is decided at run time, not adjustable"
+   ]
+  },
+  "545": {
+   "keys": {
+    "stat": "spatk",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "546": {
+   "keys": {
+    "stat": "atk",
+    "stages": 1
+   },
+   "notes": []
+  },
+  "548": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "549": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "550": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "551": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "552": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "553": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "554": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "555": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "556": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "557": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "558": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "559": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "560": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "561": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "562": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "563": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  },
+  "564": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": []
+  }
+ }
+}

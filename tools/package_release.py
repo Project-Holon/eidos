@@ -42,6 +42,7 @@ read.  Standard library only.
 
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import stat
@@ -180,10 +181,20 @@ def find_lib(build, patterns, extra_dirs):
     return None
 
 
+def handler_params(version):
+    """sdk/handler_params.json (tools/handler_params.py) with the release's
+    version in it: the battle handler keys mods may change, for kenon."""
+    with open(os.path.join(ROOT, "sdk", "handler_params.json"), encoding="utf-8") as fh:
+        doc = json.load(fh)
+    doc["eidos"] = version
+    return json.dumps(doc, indent=1) + "\n"
+
+
 def common(pkg, version, run, userdir, scratch, extra_note=""):
     for d in DOCS:
         pkg.add(d, os.path.join(ROOT, d))
     pkg.add("recomplauncher.json", os.path.join(ROOT, "recomplauncher.json"))
+    pkg.add_text("handler_params.json", handler_params(version), scratch=scratch)
     pkg.add_text("README.txt", README_TXT % {
         "version": version, "run": run, "userdir": userdir} + extra_note,
         scratch=scratch)
@@ -299,6 +310,8 @@ def package_linux(args, scratch):
         fh.write(APPRUN)
     os.chmod(os.path.join(appdir, "AppRun"), 0o755)
     shutil.copy2(os.path.join(ROOT, "recomplauncher.json"), appdir)
+    with open(os.path.join(appdir, "handler_params.json"), "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(handler_params(args.version))
     share = os.path.join(appdir, "usr/share/doc/eidos")
     os.makedirs(share)
     for d in DOCS:

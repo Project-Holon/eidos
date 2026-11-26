@@ -83,6 +83,7 @@
 #include "mod_hooks.h"
 #include "mod_loader.h"
 #include "bw_limits.h"
+#include "battle_handlers.h"
 #include "mod_catalog.h"
 #include "mod_menu.h"
 #include "avatar.h"              /* the other players' figures, each in its look */
@@ -3340,6 +3341,9 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
      * extended to match (sdk/limits.h): the mod list is final and the
      * game's data is bound, and nothing of the game has run yet. */
     (void)bw_limits_apply();
+    /* The mods' moves, abilities and items that work like a built-in one
+     * (sdk/battle_handlers.h), read with the same final mod list. */
+    bw_bh_load();
     /* The mods: the loader runs after the save is chosen and before the
      * game runs (docs/mod-implementation.md, section 3).  The declared
      * table the manifest's address check asks is registered by
@@ -3558,6 +3562,40 @@ static int boot_user_dir(char *out, size_t n)
 /* The run plays `game` from its profile: the folders are made, a plain
  * start's old saves are copied in once, and the save folder, the mods
  * folder and the settings file are the profile's from here on. */
+/* The battle handler keys this eidos takes (docs/battle-handlers.md):
+ * handler_params.json beside the program, copied to the user folder when
+ * it differs there, so kenon finds the one of the eidos that ran last at a
+ * fixed place (<user folder>/handler_params.json). */
+static void boot_share_handler_params(void)
+{
+    char exe[1024], user[1024], from[1200], to[1200];
+    static char a[256 * 1024], b[256 * 1024];
+    long na, nb;
+    FILE *f;
+
+    if (bw_os_exe_dir(exe, sizeof exe) != 0 || boot_user_dir(user, sizeof user) != 0
+        || snprintf(from, sizeof from, "%s/handler_params.json", exe) >= (int)sizeof from
+        || snprintf(to, sizeof to, "%s/handler_params.json", user) >= (int)sizeof to) {
+        return;
+    }
+    if ((f = fopen(from, "rb")) == NULL) {
+        return;                     /* (a build tree: no reference beside it) */
+    }
+    na = (long)fread(a, 1, sizeof a, f);
+    fclose(f);
+    nb = -1;
+    if ((f = fopen(to, "rb")) != NULL) {
+        nb = (long)fread(b, 1, sizeof b, f);
+        fclose(f);
+    }
+    if (na <= 0 || na >= (long)sizeof a || (na == nb && memcmp(a, b, (size_t)na) == 0)) {
+        return;
+    }
+    if (bw_plat_mkdirs(user) == 0 && bw_save_write_atomic(to, a, (u32)na) == 0) {
+        fprintf(stderr, "eidos: the battle handler keys of this version are in %s\n", to);
+    }
+}
+
 static void boot_profile_use(int game)
 {
     char user[1024], dir[BW_PROFILE_PATH_MAX], path[BW_PROFILE_PATH_MAX + 32];
@@ -4143,6 +4181,7 @@ int main(int argc, char **argv)
     }
 #if EIDOS_BOOT_SDL
     boot_profile_first(argc, argv);
+    boot_share_handler_params();
     if (g_import_only) {
         if (g_profile_game == BW_GAME_UNKNOWN) {
             fprintf(stderr, "eidos: no old saves were copied: the install names no game they are of\n");
