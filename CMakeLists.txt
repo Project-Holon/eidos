@@ -571,6 +571,9 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/move_anims.c  # mod move animations, the move preview
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/dex_save.c  # the dex's bits of species past the save's room
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/dex_data.c  # the regional table, shapes and letters of mod species
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/form_gfx.c  # the pictures of a form a mod adds
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/snd_se.c  # the player a mod's sound effect plays on
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/cries.c  # the cry a species plays (cries.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_table.c     # a mod's own data tables (`table` lines)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_hooks.c     # on/off switch for port-side code hooks (docs/hooks.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_slot.c      # the mod seam's slot registry (docs/mod-interface.md)

@@ -56,6 +56,14 @@ int bw_save_bytes_loadable(const u8 *image, size_t size);
  */
 int bw_saves_tidy(const char *saves, char *note, size_t note_size);
 
+/* The name a save's per-save mod files take (sdk/mod_savedata.c,
+ * mods/<namespace>/<name>.bin), from the save file's path in the saves
+ * folder: ".sav" dropped and "/" made "-" (pokeblack.sav "pokeblack",
+ * slots/save2.sav "slots-save2", games/game3.sav "games-game3"); any other
+ * character the layer does not take becomes '_'.  0, or -1 when it does not
+ * fit. */
+int bw_save_state_name(const char *rel, char *out, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

@@ -705,6 +705,7 @@ const u8 *bw_icon_palette_table(u32 *rows)
 
 extern void bw_dex_ext_forget(void) __attribute__((weak));     /* sdk/dex_save.c */
 extern void bw_dex_data_forget(void) __attribute__((weak));    /* sdk/dex_data.c */
+extern void bw_cries_forget(void) __attribute__((weak));       /* sdk/cries.c */
 
 int bw_limits_apply(void)
 {
@@ -716,6 +717,9 @@ int bw_limits_apply(void)
     }
     if (bw_dex_data_forget != NULL) {
         bw_dex_data_forget();       /* (and another regional table, other species) */
+    }
+    if (bw_cries_forget != NULL) {
+        bw_cries_forget();          /* (and other cries) */
     }
 
     defaults();

@@ -933,6 +933,7 @@ extern void *BLOCK20_SAVEDATA_GetBlockFromSys(void *gd) __attribute__((weak));
 extern void CGEAR_SAVE_SetObtained(void *cgearSave, u8 value) __attribute__((weak));
 extern u32 MYITEM_SAVEDATA_AddItem(void *bag, u16 itemId, u16 quantity, u16 heapId) __attribute__((weak));
 #define DEBUG_PARAM_EXP 0x08u           /* POKE_TOOL_PARAM_EXP                  */
+#define DEBUG_PARAM_FORM 0x6Fu          /* the form                             */
 #define DEBUG_FIELD_HEAP 0x15u          /* the field's heap                     */
 
 /* How many whiteouts the run has seen (sdk/mod_event_battle.c). */
@@ -1093,8 +1094,12 @@ static void debug_party(void)
     for (i = 0; i < 6 && *list != '\0'; i++) {
         u16 sp = (u16)strtoul(list, (char **)&list, 10), mlv = lv;
         long short_by = 0;
+        u32 form = 0;
         void *pp;
 
+        if (*list == '.') {
+            form = (u32)strtoul(list + 1, (char **)&list, 10);     /* "species.form" */
+        }
         if (*list == ':') {
             mlv = (u16)strtoul(list + 1, (char **)&list, 10);
             if (*list == ':') {
@@ -1111,6 +1116,10 @@ static void debug_party(void)
             }
             pp = POKEPARTY_GetMember(party, i);
             POKE_TOOL_SetupPartyParam(pp, sp, mlv, id);
+            if (form != 0 && POKE_TOOL_SetPartyValue != NULL && POKE_TOOL_CalcParam != NULL) {
+                POKE_TOOL_SetPartyValue(pp, DEBUG_PARAM_FORM, (uintptr_t)form);
+                POKE_TOOL_CalcParam(pp);
+            }
             if (short_by > 0 && POKE_TOOL_GetExpForLevel != NULL && POKE_TOOL_SetPartyValue != NULL
                 && POKE_TOOL_CalcParam != NULL && mlv < 100) {
                 u32 next = POKE_TOOL_GetExpForLevel(sp, 0, (u16)(mlv + 1));

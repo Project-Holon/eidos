@@ -11,6 +11,7 @@
 #include "plat_dir.h"
 #include "plat_save.h"
 #include "save_slots.h"
+#include "save_tidy.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define BW_SLOTS_WEAK __attribute__((weak))
@@ -51,6 +52,8 @@ extern void bw_games_pending_clear(void) BW_SLOTS_WEAK;
 extern int  bw_games_has_pending(void) BW_SLOTS_WEAK;
 /* sdk/mod_title.c: the title goes straight on with the save in force */
 extern int  bw_mod_title_autostart_pending(void) BW_SLOTS_WEAK;
+/* sdk/mod_savedata.c: the save the per-save mod files belong to */
+extern void bw_mod_savedata_set_save(const char *name) BW_SLOTS_WEAK;
 
 /* The game's SaveControl (src/game/arm9/save_control.c): isNewGame at 0,
  * hasFlashSave at 1. */
@@ -211,6 +214,28 @@ static void set_current(int n)
 
 /* The slot in force as the chip's file: at start-up (the next identify
  * reads it), or live (the chip keeps its type and reads the file again). */
+/* The per-save layer's name for the save in force (save_tidy.h): its
+ * mods' files beside it are its own. */
+static void tell_state_layer(void)
+{
+    char rel[64], name[64];
+    int n = bw_slots_current();
+
+    if (bw_mod_savedata_set_save == NULL) {
+        return;
+    }
+    if (n == 1) {
+        snprintf(rel, sizeof rel, "pokeblack.sav");
+    } else if (n > 1) {
+        snprintf(rel, sizeof rel, "slots/save%d.sav", n);
+    } else {
+        snprintf(rel, sizeof rel, "games/game%d.sav", -n);
+    }
+    if (bw_save_state_name(rel, name, sizeof name) == 0) {
+        bw_mod_savedata_set_save(name);
+    }
+}
+
 static void apply(int live)
 {
     void (*set)(const char *) = live ? bw_arm7_backup_switch_path
@@ -218,6 +243,7 @@ static void apply(int live)
     char path[512];
     char dir[512];
 
+    tell_state_layer();
     if (set == NULL) {
         return;
     }

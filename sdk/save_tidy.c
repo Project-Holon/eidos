@@ -282,7 +282,7 @@ static void scan_numbers(const char *saves, const char *dir, const char *prefix,
 /* ------------------------------------------------------------------ */
 
 typedef struct Move {
-    char from[96], to[96];
+    char from[200], to[200];
 } Move;
 
 typedef struct Plan {
@@ -428,6 +428,341 @@ static int read_records(const char *saves, const char *rel, Rec **out, int *coun
     return 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* The saves' per-save mod files                                       */
+/* ------------------------------------------------------------------ */
+
+int bw_save_state_name(const char *rel, char *out, size_t size)
+{
+    size_t n = strlen(rel), i;
+
+    if (n > 4 && strcmp(rel + n - 4, ".sav") == 0) {
+        n -= 4;
+    }
+    if (n == 0 || n + 1 > size || n >= 64) {
+        return -1;
+    }
+    for (i = 0; i < n; i++) {
+        char c = rel[i];
+
+        out[i] = (char)(c == '/' || c == '\\' ? '-'
+                        : (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-'
+                              || c == '_' ? c : '_');
+    }
+    out[n] = '\0';
+    return 0;
+}
+
+/*
+ * The per-save layer keeps a mod's data for a save in
+ * mods/<namespace>/<the save's name>.bin (and files it moved aside,
+ * <name>.bin.<suffix>).  A save that moves takes its files along: each
+ * move of a save is followed in the plan by the moves of its files, and a
+ * file already at a new name (left by a save that is gone) is moved aside
+ * first, to aside-<name>, never written over.
+ *
+ * Until the saves named their files, every save used "pokeblack": such a
+ * file goes to the save it was written with, when that is one save other
+ * than pokeblack.sav (its header's save_check is that save's checksum,
+ * the layer's rule: the CRC-32 of the chip's 512 KB with the save's bytes
+ * first).  A file of no other save stays pokeblack.sav's.
+ */
+typedef struct StateFile {
+    char ns[72], name[128];
+} StateFile;
+
+typedef struct StateFiles {
+    StateFile *v;
+    int n, cap;
+    const char *ns;             /* (the listing: the folder being read) */
+} StateFiles;
+
+static int state_file_add(StateFiles *l, const char *ns, const char *name)
+{
+    if (strlen(ns) >= sizeof l->v[0].ns || strlen(name) >= sizeof l->v[0].name) {
+        return 0;               /* (no name the layer writes) */
+    }
+    if (l->n == l->cap) {
+        int cap = l->cap ? l->cap * 2 : 32;
+        StateFile *v = (StateFile *)realloc(l->v, (size_t)cap * sizeof *v);
+
+        if (v == NULL) {
+            return -1;
+        }
+        l->v = v;
+        l->cap = cap;
+    }
+    snprintf(l->v[l->n].ns, sizeof l->v[0].ns, "%s", ns);
+    snprintf(l->v[l->n].name, sizeof l->v[0].name, "%s", name);
+    l->n++;
+    return 0;
+}
+
+static int list_state_file(void *ctx, const char *name)
+{
+    StateFiles *l = (StateFiles *)ctx;
+
+    if (strstr(name, ".bin") != NULL) {
+        (void)state_file_add(l, l->ns, name);
+    }
+    return 0;
+}
+
+typedef struct StateDirs {
+    const char *saves;
+    StateFiles *files;
+} StateDirs;
+
+static int list_state_dir(void *ctx, const char *name)
+{
+    StateDirs *d = (StateDirs *)ctx;
+    char p[PATH_MAX_LEN];
+
+    if (name[0] == '.' || snprintf(p, sizeof p, "%s/mods/%s", d->saves, name) >= (int)sizeof p
+        || bw_plat_path_kind(p) != BW_PATH_DIR) {
+        return 0;
+    }
+    d->files->ns = name;
+    (void)bw_plat_list_dir(p, list_state_file, d->files);
+    return 0;
+}
+
+static int state_file_at(const StateFiles *l, const char *ns, const char *name)
+{
+    int i;
+
+    for (i = 0; i < l->n; i++) {
+        if (strcmp(l->v[i].ns, ns) == 0 && strcmp(l->v[i].name, name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* One file's move in the plan, and in the list that stands for the folder
+ * as the plan leaves it. */
+static int plan_state_move(Plan *p, StateFiles *l, int i, const char *to_name)
+{
+    char from[200], to[200];
+
+    if (snprintf(from, sizeof from, "mods/%s/%s", l->v[i].ns, l->v[i].name) >= (int)sizeof from
+        || snprintf(to, sizeof to, "mods/%s/%s", l->v[i].ns, to_name) >= (int)sizeof to
+        || strlen(to_name) >= sizeof l->v[i].name) {
+        return 0;               /* (a name too long to be one of the layer's) */
+    }
+    if (plan_move(p, from, to) != 0) {
+        return -1;
+    }
+    snprintf(l->v[i].name, sizeof l->v[i].name, "%s", to_name);
+    return 0;
+}
+
+/* The files of the save named `from` (stem) to the save named `to`. */
+static int plan_state_follow(Plan *p, StateFiles *l, const char *from, const char *to)
+{
+    size_t lf = strlen(from);
+    int i;
+
+    for (i = 0; i < l->n; i++) {
+        const char *rest = l->v[i].name + lf;
+        char want[160];
+        int j;
+
+        if (strncmp(l->v[i].name, from, lf) != 0 || strncmp(rest, ".bin", 4) != 0 || (rest[4] != '\0' && rest[4] != '.')
+            || snprintf(want, sizeof want, "%s%s", to, rest) >= (int)sizeof want) {
+            continue;
+        }
+        if ((j = state_file_at(l, l->v[i].ns, want)) >= 0) {
+            char aside[200];
+            int k;
+
+            for (k = 1;; k++) {             /* a file a gone save left there: aside, not written over */
+                if (k == 1) {
+                    snprintf(aside, sizeof aside, "aside-%s", want);
+                } else {
+                    snprintf(aside, sizeof aside, "aside-%d-%s", k, want);
+                }
+                if (state_file_at(l, l->v[j].ns, aside) < 0) {
+                    break;
+                }
+            }
+            if (plan_state_move(p, l, j, aside) != 0) {
+                return -1;
+            }
+        }
+        if (plan_state_move(p, l, i, want) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+extern u32 bw_mod_savedata_crc(const void *data, u32 size)
+#if defined(__GNUC__) || defined(__clang__)
+    __attribute__((weak))
+#endif
+    ;
+
+#define CHIP_SIZE 0x80000u
+
+/* The layer's checksum of a save file (its save_check), or 0 when it
+ * cannot be read. */
+static u32 save_file_check(const char *saves, const char *rel)
+{
+    char path[PATH_MAX_LEN];
+    u8 *chip;
+    FILE *f;
+    u32 crc = 0;
+
+    if (bw_mod_savedata_crc == NULL || join(path, sizeof path, saves, rel) != 0 || (f = fopen(path, "rb")) == NULL) {
+        return 0;
+    }
+    if ((chip = (u8 *)malloc(CHIP_SIZE)) != NULL) {
+        size_t got = fread(chip, 1, CHIP_SIZE, f);
+
+        memset(chip + got, 0xFF, CHIP_SIZE - got);
+        crc = got > 0 ? bw_mod_savedata_crc(chip, CHIP_SIZE) : 0;
+        free(chip);
+    }
+    fclose(f);
+    return crc;
+}
+
+/* The header's save_check of a state file (mods/<ns>/<name>), 0 when there
+ * is none. */
+static u32 state_file_check(const char *saves, const char *ns, const char *name)
+{
+    char path[PATH_MAX_LEN];
+    u8 head[24];
+    FILE *f;
+    u32 check = 0;
+
+    if (snprintf(path, sizeof path, "%s/mods/%s/%s", saves, ns, name) >= (int)sizeof path
+        || (f = fopen(path, "rb")) == NULL) {
+        return 0;
+    }
+    if (fread(head, 1, sizeof head, f) == sizeof head && le32(head) == 0x534D5742u) {  /* "BWMS", BW_MOD_STATE_MAGIC */
+        check = le32(head + 20);
+    }
+    fclose(f);
+    return check;
+}
+
+static int plan_state_files(const char *saves, Plan *p, const Ints *solo, const Ints *pool)
+{
+    StateFiles l = {0};
+    StateDirs d;
+    char path[PATH_MAX_LEN], from[160], to[160];
+    int i, nsaves = solo->n + pool->n, m, nmoves = p->nmoves;
+    u32 *checks = NULL;
+
+    if (join(path, sizeof path, saves, "mods") != 0 || bw_plat_path_kind(path) != BW_PATH_DIR) {
+        return 0;
+    }
+    d.saves = saves;
+    d.files = &l;
+    (void)bw_plat_list_dir(path, list_state_dir, &d);
+    if (l.n == 0) {
+        free(l.v);
+        return 0;
+    }
+    /* the files all saves shared: to the save they were written with */
+    for (i = 0; i < l.n; i++) {
+        u32 want;
+        int k, found = -1, many = 0;
+
+        if (strcmp(l.v[i].name, "pokeblack.bin") != 0 || (want = state_file_check(saves, l.v[i].ns, "pokeblack.bin")) == 0) {
+            continue;
+        }
+        if (checks == NULL) {
+            if ((checks = (u32 *)calloc((size_t)(nsaves > 0 ? nsaves : 1), sizeof *checks)) == NULL) {
+                free(l.v);
+                return -1;
+            }
+            for (k = 0; k < nsaves; k++) {
+                char rel[96];
+
+                if (k < solo->n) {
+                    slot_rel(solo->v[k], rel, sizeof rel);
+                } else {
+                    snprintf(rel, sizeof rel, "games/game%d.sav", pool->v[k - solo->n]);
+                }
+                checks[k] = save_file_check(saves, rel);
+            }
+        }
+        for (k = 0; k < nsaves; k++) {
+            if (checks[k] == want) {
+                many += found >= 0;
+                found = k;
+            }
+        }
+        if (found < 0 || many > 0 || (found < solo->n && solo->v[found] == 1)) {
+            continue;           /* pokeblack.sav's, or no single save's: it stays */
+        }
+        if (found < solo->n) {
+            slot_rel(solo->v[found], from, sizeof from);
+        } else {
+            snprintf(from, sizeof from, "games/game%d.sav", pool->v[found - solo->n]);
+        }
+        if (bw_save_state_name(from, to, sizeof to) == 0 && state_file_at(&l, l.v[i].ns, strcat(to, ".bin")) < 0) {
+            /* (first in the plan: the saves' own moves then take it along) */
+            if (plan_state_move(p, &l, i, to) != 0) {
+                free(checks);
+                free(l.v);
+                return -1;
+            }
+        }
+    }
+    free(checks);
+    /* the moves just added go first: they name the files by the saves'
+     * names before any save moves */
+    if (p->nmoves > nmoves) {
+        int added = p->nmoves - nmoves;
+        Move *tmp = (Move *)malloc((size_t)added * sizeof *tmp);
+
+        if (tmp == NULL) {
+            free(l.v);
+            return -1;
+        }
+        memcpy(tmp, p->moves + nmoves, (size_t)added * sizeof *tmp);
+        memmove(p->moves + added, p->moves, (size_t)nmoves * sizeof *tmp);
+        memcpy(p->moves, tmp, (size_t)added * sizeof *tmp);
+        free(tmp);
+    }
+    /* each save's own move, then its files' (in the plan's order) */
+    {
+        Plan out = *p;
+        Move *all = p->moves;
+        int total = p->nmoves;
+
+        out.moves = NULL;
+        out.nmoves = out.cap = 0;
+        for (m = 0; m < total; m++) {
+            if (plan_move(&out, all[m].from, all[m].to) != 0) {
+                free(out.moves);
+                free(l.v);
+                return -1;
+            }
+            if (strncmp(all[m].from, "mods/", 5) == 0) {
+                continue;
+            }
+            if (bw_save_state_name(all[m].from, from, sizeof from) == 0
+                && bw_save_state_name(all[m].to, to, sizeof to) == 0
+                && plan_state_follow(&out, &l, from, to) != 0) {
+                free(out.moves);
+                free(l.v);
+                return -1;
+            }
+        }
+        free(p->moves);
+        p->moves = out.moves;
+        p->nmoves = out.nmoves;
+        p->cap = out.cap;
+    }
+    free(l.v);
+    return 0;
+}
+
 /* The plan for the folder as it is now: 0 made (maybe empty), -1 failed. */
 static int make_plan(const char *saves, Plan *p)
 {
@@ -548,6 +883,9 @@ static int make_plan(const char *saves, Plan *p)
     if (p->slot == cur) {
         p->slot = 0;
     }
+    if (plan_state_files(saves, p, &solo, &pool) != 0) {
+        goto fail;
+    }
     free(solo.v);
     free(pool.v);
     free(keep.v);
@@ -575,7 +913,7 @@ static int plan_empty(const Plan *p)
 static int plan_write(const char *saves, const Plan *p)
 {
     char path[PATH_MAX_LEN];
-    size_t cap = 256 + (size_t)p->nmoves * 220 + p->games_len * 2, n = 0;
+    size_t cap = 256 + (size_t)p->nmoves * 420 + p->games_len * 2, n = 0;
     char *text = (char *)malloc(cap);
     const char *g;
     int i, r;
@@ -609,7 +947,7 @@ static int plan_write(const char *saves, const Plan *p)
 /* The plan back from tidy.txt: 1 read, 0 none there, -1 not whole. */
 static int plan_read(const char *saves, Plan *p)
 {
-    char path[PATH_MAX_LEN], line[LINE_MAX_LEN + 64];
+    char path[PATH_MAX_LEN], line[LINE_MAX_LEN + 420];
     FILE *f;
     int ended = 0;
 
@@ -618,10 +956,10 @@ static int plan_read(const char *saves, Plan *p)
         return 0;
     }
     while (fgets(line, sizeof line, f) != NULL) {
-        char a[96], b[96];
+        char a[200], b[200];
 
         line[strcspn(line, "\r\n")] = '\0';
-        if (strncmp(line, "move ", 5) == 0 && sscanf(line + 5, "%95s %95s", a, b) == 2) {
+        if (strncmp(line, "move ", 5) == 0 && sscanf(line + 5, "%199s %199s", a, b) == 2) {
             (void)plan_move(p, a, b);
         } else if (strncmp(line, "games ", 6) == 0) {
             (void)plan_games_line(p, line + 6);

@@ -72,9 +72,7 @@ Maps a move to a base-game move's battle animation.
     53 = 85          # Flamethrower plays Thunderbolt's animation
     600 = 236        # a new move (Moonblast) plays Moonlight's
 
-The value is a base-game move ID (1 to 559). Omitted base-game moves
-keep their own animations. Omitted custom moves use the animation of the
-move assigned to them in `move_handlers.txt`, falling back to Pound.
+The value is a move ID with an animation script: a base-game move (1 to 559) or a move whose script a mod provides. Mods can supply a battle animation script for any move, including custom moves, at `a/0/6/6/<move id>` (in the game's raw battle effect script format). A move's animation resolves in order: its `move_anims.txt` entry, its own script (base-game or mod-supplied), the script of the base move in `move_handlers.txt`, and finally Pound. Scripts reference shared battle effects (a/0/6/7) as `0x231 + n`, preserving the base game's numbering. Custom sound effects added to the sound archive play on the player specified by their sequence.
 
 To preview an animation, run eidos with `--preview-move <move id>` (and
 optionally `--preview-species <attacker> <defender>`, defaulting to
@@ -90,7 +88,7 @@ manifest. Species IDs 650 to 714 are unused because the base game's
 archives store eggs and alternate forms at those positions. An ID from
 715 onward counts as a species once a mod provides its stats record
 (a/0/1/6 member). Each alternate form of an added species uses the stats
-slot `formStatsIndex + form - 1`, also starting at 715.
+slot `formStatsIndex + form - 1`, also starting at 715. A form's sprites, icon, and icon palette row follow its slot (sprites at `slot × 20` in a/0/0/4, icons at `slot × 2 + 7` in a/0/0/7). A palette-only form (`formSpriteShared`) keeps its species' sprites and uses its slot's palettes (`slot × 20 + 18` and `+ 19`).
 
 Pokedex height and weight lines (banks 244, 245, and 268 of a/0/0/2) are
 indexed by Pokedex record. Base species use their species ID, and base
@@ -131,3 +129,12 @@ search (A is 0, Z is 25). Omitted values keep their base-game defaults.
 For an added species, an omitted `letter` defaults to the first letter of
 its name, and an omitted `shape` matches no shape. An added form without
 a `shape` inherits its species' shape.
+
+## cries.txt
+
+Sets the cry for a species or form.
+
+    715 = 25         # Pikachu's cry
+    716.1 = 134      # form 1 plays Vaporeon's cry
+
+The value is a wave archive ID in the sound archive: a base-game species' cry (its species ID) or one added by a mod. Omitted forms inherit their species' cry. Omitted base-game species keep their own cries. Omitted added species play no cry.

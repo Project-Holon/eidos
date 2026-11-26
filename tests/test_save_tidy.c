@@ -247,6 +247,47 @@ static void make_report_folder(void)
     put_file("slots/notes.txt", SHORT, "not a slot");  /* not a slot's name: left alone */
 }
 
+/* A mod's state file for a save (sdk/mod_savedata.c: the header's magic
+ * "BWMS" and save_check at 20), marked. */
+extern u32 bw_mod_savedata_crc(const void *data, u32 size);
+
+static int put_state(const char *rel, u32 save_check, const char *mark)
+{
+    u8 blob[64];
+    char path[512], dir[512];
+    const char *slash = strrchr(rel, '/');
+
+    memset(blob, 0, sizeof blob);
+    put32(blob, 0x534D5742u);
+    put32(blob + 20, save_check);
+    snprintf((char *)blob + 32, 32, "%s", mark);
+    snprintf(dir, sizeof dir, "%s/%.*s", T_DIR, (int)(slash - rel), rel);
+    (void)bw_plat_mkdirs(dir);
+    snprintf(path, sizeof path, "%s/%s", T_DIR, rel);
+    return bw_save_write_atomic(path, blob, sizeof blob);
+}
+
+static int state_is(const char *rel, const char *mark)
+{
+    char path[512];
+    u8 blob[64];
+
+    snprintf(path, sizeof path, "%s/%s", T_DIR, rel);
+    return bw_save_read(path, blob, sizeof blob) == (long)sizeof blob && strcmp((char *)blob + 32, mark) == 0;
+}
+
+/* The checksum the per-save layer writes with a save: CRC-32 of the 512 KB
+ * chip (an image made here is the whole chip). */
+static u32 save_check_of(int kind, const char *mark)
+{
+    u32 size;
+    u8 *img = image(kind, mark, &size);
+    u32 c = bw_mod_savedata_crc(img, size);
+
+    free(img);
+    return c;
+}
+
 static void check_report_folder_done(const char *when)
 {
     char label[96];
@@ -320,6 +361,41 @@ int main(int argc, char **argv)
     check_report_folder_done("first start");
     BW_CHECK_EQ("in order now: nothing to do", bw_saves_tidy(T_DIR, note, sizeof note), 0);
     check_report_folder_done("second start");
+
+    printf("the saves' mod files move with them\n");
+    (void)bw_plat_remove_tree(T_DIR);
+    (void)bw_plat_mkdirs(T_DIR);
+    put_file("pokeblack.sav", SAVE, "one");
+    put_file("slots/save2.sav", GARBAGE, "two");
+    put_file("slots/save3.sav", SAVE, "three");
+    put_text("slot.txt", "3\n");
+    /* written with save three while every save used "pokeblack" */
+    put_state("mods/arkh/pokeblack.bin", save_check_of(SAVE, "three"), "arkh of three");
+    put_state("mods/arkh/slots-save3.bin.v2", 0, "arkh aside of three");
+    /* slot 1's own: stays */
+    put_state("mods/other/pokeblack.bin", save_check_of(SAVE, "one"), "other of one");
+    /* the file of slot 2, which holds no save: with it to unreadable/ */
+    put_state("mods/m.dex/slots-save2.bin", 0, "dex of two");
+    /* slot 3's own: with it to slot 2, once slot 2's has gone to unreadable/ */
+    put_state("mods/m.dex/slots-save3.bin", 0, "dex of three");
+    BW_CHECK_EQ("files moved", bw_saves_tidy(T_DIR, note, sizeof note), 1);
+    BW_CHECK_EQ("save three is slot 2", is_file("slots/save2.sav", SAVE, "three"), 1);
+    BW_CHECK_EQ("the shared file went to save three, then with it", state_is("mods/arkh/slots-save2.bin", "arkh of three"), 1);
+    BW_CHECK_EQ("its aside file with it", state_is("mods/arkh/slots-save2.bin.v2", "arkh aside of three"), 1);
+    BW_CHECK_EQ("no shared file left", gone("mods/arkh/pokeblack.bin"), 1);
+    BW_CHECK_EQ("slot 1's own stays", state_is("mods/other/pokeblack.bin", "other of one"), 1);
+    BW_CHECK_EQ("slot 2's to unreadable/ with its file", state_is("mods/m.dex/unreadable-slot2.bin", "dex of two"), 1);
+    BW_CHECK_EQ("slot 3's file to slot 2", state_is("mods/m.dex/slots-save2.bin", "dex of three"), 1);
+    BW_CHECK_EQ("nothing left at the old names", gone("mods/m.dex/slots-save3.bin") && gone("mods/arkh/slots-save3.bin.v2"), 1);
+    BW_CHECK_EQ("in order now: nothing to do", bw_saves_tidy(T_DIR, note, sizeof note), 0);
+    {
+        char name[64];
+
+        BW_CHECK_EQ("the name of slot 1", bw_save_state_name("pokeblack.sav", name, sizeof name) == 0
+                    && strcmp(name, "pokeblack") == 0, 1);
+        BW_CHECK_EQ("the name of a game", bw_save_state_name("games/game3.sav", name, sizeof name) == 0
+                    && strcmp(name, "games-game3") == 0, 1);
+    }
 
     printf("a crash after each move, then the next start\n");
     {

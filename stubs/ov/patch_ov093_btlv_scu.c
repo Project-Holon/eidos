@@ -6,8 +6,12 @@
  * effect machine reads an id from 0x231 on as another kind of effect
  * (ov094 btlv_effvm.c, BTLV_EFFVM_StartScript): a mod's move past the
  * game's would play some other effect.  The request is the one place a
- * move's id goes in as an effect, so this is where it becomes the game's
- * move whose animation it plays.  Otherwise the function is the game's.
+ * move's id goes in as an effect, so this is where it becomes the move
+ * whose script it plays (sdk/move_anims.c).  A script from 0x231 on is a
+ * mod's own for a move the game does not have: it is asked for as 0x8000 |
+ * the move, which the effect machine's patch reads as that move's member
+ * of a/0/6/6 (stubs/ov/patch_ov094_btlv_effvm.c).  Otherwise the function
+ * is the game's.
  *
  * The game's own records
  * ----------------------
@@ -61,7 +65,11 @@ void BTLV_SCU_StartWazaEffect(BtlvScu *scu, int attackerPos, int defenderPos, u3
 {
     BtlvScuWazaRequest *req = &scu->waza;
 
-    req->wazaId = (u16)bw_move_anim(wazaId);    /* (the game's move whose animation it plays) */
+    u32 anim = bw_move_anim(wazaId);            /* (the move whose script it plays) */
+
+    /* a script from 0x231 on (a mod's for a move the game does not have):
+     * asked for as 0x8000 | its move (stubs/ov/patch_ov094_btlv_effvm.c) */
+    req->wazaId = (u16)(anim >= 0x231u ? (0x8000u | anim) : anim);
     req->attackerPos = attackerPos;
     req->defenderPos = defenderPos;
     req->turnCount = (u8)turnCount;
