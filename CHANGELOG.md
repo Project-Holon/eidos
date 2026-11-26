@@ -13,6 +13,7 @@ Each release's notes on GitHub start with its section here
 
 ### Modding
 - **Parameterized Move, Ability & Item Handlers**: Mods can assign existing battle effect handlers to custom or built-in moves, abilities, and held items via `eidos/tables/ability_handlers.txt`, `move_handlers.txt`, and `item_handlers.txt`, while overriding handler parameters such as target stat and stage delta, inflicted status condition, trigger chance, damage/stat multiplier, tested type, HP fraction, and weather effect (e.g., an Intimidate variant that lowers Sp. Atk by 2 stages: `165 = 22 stat=spatk stages=-2`). Supported parameter keys for every built-in handler are documented in `handler_params.json` alongside the executable.
+- **Combined Handlers**: One move, ability, or item can work like up to four built-in ones at once, each with its own parameters, joined with `+` (e.g., Intimidate on Sp. Atk plus Drizzle: `22 = 22 stat=spatk stages=-2 + 2`). Combinations whose handlers keep state in the same slot are refused; `handler_params.json` lists each handler's slots under `work`.
 
 ### Saves
 - **Unlimited Save Slots**: Removed the 8-slot limit on single-player and Multiplayer-screen games as well as the 32-session limit on hosted co-op games. Starting a `New Game` always allocates a fresh slot without prompting to overwrite an existing save.

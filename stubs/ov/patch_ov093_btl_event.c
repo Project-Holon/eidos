@@ -7,6 +7,9 @@
  * numbers for that id (eidos/tables/*_handlers.txt) reach the places the
  * handler uses a number.  Calls nest: a handler's command can dispatch
  * more events.  BTL_EVENT_MultiplyVar is one such place (`ratio`).
+ * The game runs the first row of a factor that answers an event; a
+ * factor of several bases (`165 = 22 + 2`) runs the first row of each
+ * base, in line order (bw_bh_row_end).
  * Otherwise both functions are the game's own.
  *
  * symbols:
@@ -88,6 +91,7 @@ int BTL_EVENT_ClampVar(struct BtlEventVarStack *stack, int index, int value);
 /* sdk/battle_handlers.c */
 extern void bw_bh_enter(int type, int id, int handler);
 extern void bw_bh_leave(void);
+extern int bw_bh_row_end(int type, int id, int row);
 extern int bw_bh_ratio(int ratio);
 
 void BTL_EVENT_DispatchToFactors(struct BtlServerFlow *context, int eventId, int factorType, int checkSkip)
@@ -100,6 +104,7 @@ void BTL_EVENT_DispatchToFactors(struct BtlServerFlow *context, int eventId, int
     int count;
     int typeMismatch;
     u32 ownerId;
+    int end;
     for (factor = gBtlEventFactorList.head; factor != 0; ) {
         next = factor->next;
         if (factor->running && !factor->keepRunning) goto advance;
@@ -126,8 +131,12 @@ void BTL_EVENT_DispatchToFactors(struct BtlServerFlow *context, int eventId, int
             if (factor->removePending) {
                 if (next != 0 && !next->active) next = factor->next;
                 BTL_EVENT_RemoveFactor(factor);
+                break;
             }
-            break;
+            /* (a joined table: the next base's rows; otherwise the game's stop) */
+            end = bw_bh_row_end(factor->factorType, factor->key, (int)i);
+            if (end <= (int)i) break;
+            i = (u32)end - 1;
         }
 advance:
         if (next == 0) break;

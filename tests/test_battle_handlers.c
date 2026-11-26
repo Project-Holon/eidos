@@ -130,6 +130,76 @@ int main(void)
     BW_CHECK_EQ("a row the table does not list: as it was", stat == 1 && amount == -1, 1);
     bw_bh_leave();
 
+    printf("several bases\n");
+    bw_bh_clear();
+    BW_CHECK_EQ("Intimidate + Levitate", line(BW_BH_ABILITY, "190 = 22 stat=spatk stages=-2 + 26"), 0);
+    BW_CHECK_EQ("Levitate + Truant (both keep state in slot 0)", line(BW_BH_ABILITY, "191 = 26 + 54"), 0);
+    BW_CHECK_EQ("one base twice", line(BW_BH_ABILITY, "192 = 22 + 22"), 0);
+    BW_CHECK_EQ("five bases", line(BW_BH_ABILITY, "193 = 22 + 26 + 66 + 9 + 24"), -1);
+    BW_CHECK_EQ("a + with no base", line(BW_BH_ABILITY, "193 = 22 +"), -1);
+    BW_CHECK_EQ("Blaze + Static, keys on each", line(BW_BH_ABILITY, "194 = 66 ratio=2.0 + 9 chance=50"), 0);
+    bw_bh_check();
+    BW_CHECK_EQ("the line of two", (long)bw_bh_parts(BW_BH_ABILITY, 190), 2);
+    BW_CHECK_EQ("its first base", (long)bw_bh_part_base(BW_BH_ABILITY, 190, 0), INTIMIDATE);
+    BW_CHECK_EQ("its second base", (long)bw_bh_part_base(BW_BH_ABILITY, 190, 1), 26);
+    BW_CHECK_EQ("the first base's key", bw_bh_part_key(BW_BH_ABILITY, 190, 0, BW_BH_KEY_STAT, 1, &v) && v == 3, 1);
+    BW_CHECK_EQ("a shared work slot: left out", (long)bw_bh_parts(BW_BH_ABILITY, 191), 1);
+    BW_CHECK_EQ("the left-out line is its own base", (long)bw_bh_base(BW_BH_ABILITY, 191), 191);
+    BW_CHECK_EQ("one base twice: left out", (long)bw_bh_parts(BW_BH_ABILITY, 192), 1);
+    {
+        /* the joined table: Intimidate's 2 rows, then Levitate's 3 (rows here are ints) */
+        static const int intim[2] = { 100, 101 }, lev[3] = { 200, 201, 202 };
+        const void *tables[2] = { intim, lev };
+        const u32 counts[2] = { 2, 3 };
+        u32 total = 0;
+        const int *joined = (const int *)bw_bh_join(BW_BH_ABILITY, 190, 2, tables, counts, sizeof(int), &total);
+
+        BW_REQUIRE("joined", joined != NULL);
+        BW_CHECK_EQ("five rows", (long)total, 5);
+        BW_CHECK_EQ("in line order", joined[0] == 100 && joined[1] == 101 && joined[2] == 200 && joined[4] == 202, 1);
+        BW_CHECK_EQ("made once", bw_bh_join(BW_BH_ABILITY, 190, 2, tables, counts, sizeof(int), &total) == joined, 1);
+        /* the dispatch runs each base's first answering row: after a row, Levitate's rows start at 2 */
+        BW_CHECK_EQ("after Intimidate's row 0: row 2", (long)bw_bh_row_end(BW_BH_ABILITY, 190, 0), 2);
+        BW_CHECK_EQ("after Intimidate's row 1: row 2", (long)bw_bh_row_end(BW_BH_ABILITY, 190, 1), 2);
+        BW_CHECK_EQ("after Levitate's row 3: the end", (long)bw_bh_row_end(BW_BH_ABILITY, 190, 3), 5);
+        BW_CHECK_EQ("one base: the game's stop", (long)bw_bh_row_end(BW_BH_ABILITY, 22, 0), 0);
+    }
+    /* row 0 is Intimidate's: its key; row 2 is Levitate's first: Intimidate's key does not reach it */
+    bw_bh_enter(BW_BH_ABILITY, 190, 0);
+    stat = 1;
+    amount = -1;
+    bw_bh_rank(&stat, &amount);
+    BW_CHECK_EQ("Intimidate's row: Sp. Atk -2", stat == 3 && amount == -2, 1);
+    bw_bh_leave();
+    bw_bh_enter(BW_BH_ABILITY, 190, 2);
+    stat = 1;
+    amount = -1;
+    bw_bh_rank(&stat, &amount);
+    BW_CHECK_EQ("Levitate's row: not Intimidate's key", stat == 1 && amount == -1, 1);
+    bw_bh_leave();
+    {
+        static const int blaze[1] = { 1 }, stat_[1] = { 2 };
+        const void *tables[2] = { blaze, stat_ };
+        const u32 counts[2] = { 1, 1 };
+        u32 total = 0;
+
+        (void)bw_bh_join(BW_BH_ABILITY, 194, 2, tables, counts, sizeof(int), &total);
+        bw_bh_enter(BW_BH_ABILITY, 194, 0);
+        BW_CHECK_EQ("Blaze's row: its ratio", (long)bw_bh_ratio(6144), 8192);
+        BW_CHECK_EQ("Blaze's row: not Static's chance", (long)bw_bh_chance(30), 30);
+        bw_bh_leave();
+        bw_bh_enter(BW_BH_ABILITY, 194, 1);
+        BW_CHECK_EQ("Static's row: its chance", (long)bw_bh_chance(30), 50);
+        BW_CHECK_EQ("Static's row: not Blaze's ratio", (long)bw_bh_ratio(6144), 6144);
+        bw_bh_leave();
+    }
+    bw_bh_clear();
+    BW_CHECK_EQ("the built-in one tuned, and one more", line(BW_BH_ABILITY, "22 = 22 stages=-2 + 2"), 0);
+    bw_bh_check();
+    BW_CHECK_EQ("still two bases", (long)bw_bh_parts(BW_BH_ABILITY, 22), 2);
+    BW_CHECK_EQ("its own id is the built-in one", (long)bw_bh_part_base(BW_BH_ABILITY, 22, 0), INTIMIDATE);
+    BW_CHECK_EQ("and Drizzle", (long)bw_bh_part_base(BW_BH_ABILITY, 22, 1), 2);
+
     (void)why;
     bw_bh_clear();
     BW_REPORT("test_battle_handlers");

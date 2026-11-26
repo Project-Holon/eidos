@@ -5,13 +5,13 @@
  * A mod's tables, eidos/tables/ability_handlers.txt, move_handlers.txt and
  * item_handlers.txt, one line an id:
  *
- *     <id> = <base id> [key=value ...]
+ *     <id> = <base id> [key=value ...] [+ <base id> [key=value ...] ...]
  *
  * The battle runs the base id's handlers for the id (the game's handler
  * tables, hand_tokusei.c, hand_waza.c, hand_item.c), and the keys change
  * the numbers those handlers use: `165 = 22 stat=spatk stages=-2` is an
  * Intimidate that lowers Sp. Atk by 2.  `22 = 22 stages=-2` tunes the
- * built-in one.
+ * built-in one.  With `+` the id works like up to four (docs/battle-handlers.md).
  *
  * The battle code reaches this file through the patches in stubs/ov/
  * (patch_ov093_hand_tokusei.c, patch_ov093_btl_event.c,
@@ -65,8 +65,35 @@ void bw_bh_load(void);
 /* The same checks on the lines bw_bh_parse_line read (for the tests). */
 void bw_bh_check(void);
 
-/* The id whose handlers run for `id` of `type`: its base, or itself. */
+/* The id whose handlers run for `id` of `type`: its base, or itself (for
+ * a line of several bases, the first). */
 int  bw_bh_base(int type, int id);
+
+/*
+ * A line of several bases (`165 = 22 stat=spatk + 26`): how many (1 for
+ * an id with no line or one base), the built-in id of base `part` (0 for
+ * a part whose base does not resolve), and its keys.
+ */
+int  bw_bh_parts(int type, int id);
+int  bw_bh_part_base(int type, int id, int part);
+int  bw_bh_part_key(int type, int id, int part, int key, int index, int *value);
+
+/*
+ * The handler tables of the bases of `id`, joined in line order into one
+ * table the factor runs (rows of `row_size` bytes; tables[k] has counts[k]
+ * rows, 0 for a base with no handlers).  Made once and kept for the run;
+ * the running frames know which base each row came from.  NULL when `id`
+ * has no line of `n` bases.
+ */
+const void *bw_bh_join(int type, int id, int n, const void *const *tables, const u32 *counts, u32 row_size,
+                       u32 *total);
+
+/* The game's dispatch runs the first row of a factor that answers an event,
+ * and no more.  In a joined table that is each base's first row: after row
+ * `row` ran, the dispatch goes on from the row this gives (where the base
+ * holding `row` ends).  0 for a factor that is not a joined table: the
+ * dispatch stops, as the game's does. */
+int  bw_bh_row_end(int type, int id, int row);
 
 /* The battle runs the `handler`-th handler of the factor (type, id), and is
  * done with it.  They nest: a handler's command can run other handlers. */

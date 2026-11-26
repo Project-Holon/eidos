@@ -29,6 +29,27 @@ A later mod's line for the same id replaces an earlier one. A line that
 does not read, a key the base's handlers have no place for, or a value out
 of range is said in the log (`eidos: battle tables: ...`) and left out.
 
+## Several bases on one line
+
+An id can work like up to four built-in ones at once, each with its own
+keys, joined with `+`:
+
+    190 = 22 stat=spatk stages=-2 + 26     # Intimidate on Sp. Atk, and Levitate
+    22 = 22 stages=-2 + 2                  # the built-in Intimidate, tuned, and Drizzle
+    1 = 234 hp=1/2 + 161                   # Leftovers by half, and Mago Berry
+
+A key is that base's: `stages` after `22` changes Intimidate's stat drop,
+not another base's. A part that names the line's own id is the built-in
+one, as on a line of one base. A part whose base has a line of several
+bases itself is refused, and so is one base named twice.
+
+Some handlers keep state in their factor's work slots (Truant remembers
+the turn it loafs, Levitate whether it is in the air). `handler_params.json`
+lists the slots for each id that uses them (`"work": [0, 1]`). Two bases
+whose slots overlap would overwrite each other's state, so such a line is
+refused (item slot 6 is the engine's own and does not count). Kenon
+refuses the same lines before they reach the game.
+
 ## The keys
 
 | Key | Values | Where the handler uses it |
@@ -93,6 +114,14 @@ when the site table lists that place. `HAND_TOKUSEI_AddAbilityHandlers`,
 `HAND_ITEM_AddFactor` and `HAND_WAZA_AddMoveHandler` look the base up in the
 registry and add the factor under the id itself. With no table lines every
 patched function does what the game's does.
+
+A line of several bases is one factor whose handler table is the bases'
+tables joined in line order, made once and kept for the run (`bw_bh_join`),
+with the first base's priority. The game's dispatch runs only the first row
+of a factor that answers an event; for a joined table it runs the first
+answering row of each base instead (`bw_bh_row_end`), so Intimidate and
+Drizzle both act on the switch-in. A running row is mapped back to its base
+and its row in that base's table, so the base's keys and site list apply.
 
 ## What a copy does not inherit
 

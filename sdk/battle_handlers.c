@@ -1,6 +1,6 @@
 /*
- * sdk/battle_handlers.c -- moves, abilities and items that work like a
- * built-in one, with numbers of their own (battle_handlers.h).
+ * sdk/battle_handlers.c -- moves, abilities and items that work like one
+ * or more built-in ones, with numbers of their own (battle_handlers.h).
  */
 
 #include <stdio.h>
@@ -11,6 +11,7 @@
 #include "vfs.h"
 
 #define MAX_PARAMS  12
+#define MAX_PARTS   4           /* bases on one line: `a + b + c + d` */
 #define MAX_DEPTH   32
 #define MAX_CHAIN   16
 
@@ -19,10 +20,22 @@ typedef struct Param {
     s32 value;
 } Param;
 
-typedef struct Entry {
-    int   type, id, base;
+/* One base of a line and the keys after it. */
+typedef struct Part {
+    int   base;             /* as written; its built-in end: chain_end */
     int   nparams;
     Param params[MAX_PARAMS];
+} Part;
+
+typedef struct Entry {
+    int   type, id;
+    int   nparts;
+    Part  parts[MAX_PARTS];
+    /* the joined handler table (bw_bh_join), made at the first battle that
+     * needs it and kept: its rows and where each part's rows start */
+    void *joined;
+    u32   joined_total;
+    u32   part_rows[MAX_PARTS];
 } Entry;
 
 static Entry *g_entries;
@@ -165,11 +178,73 @@ static int is_space(char c)
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
+/* `key=value` from s to e into the part: 0, or -1 with `why`. */
+static int parse_param(Part *part, const char *s, const char *e, char *why, int why_size)
+{
+    const char *eq = memchr(s, '=', (size_t)(e - s)), *dot, *ks;
+    char msg[160];
+    int key, index = 1, value;
+
+    if (eq == NULL) {
+        snprintf(msg, sizeof msg, "expected key=value, found `%.*s`", (int)(e - s), s);
+        say(why, why_size, msg);
+        return -1;
+    }
+    dot = memchr(s, '.', (size_t)(eq - s));
+    ks = dot != NULL ? dot : eq;
+    for (key = 0; key < BW_BH_KEY_COUNT; key++) {
+        if ((size_t)(ks - s) == strlen(k_keys[key]) && strncmp(k_keys[key], s, (size_t)(ks - s)) == 0) {
+            break;
+        }
+    }
+    if (key == BW_BH_KEY_COUNT) {
+        snprintf(msg, sizeof msg, "unknown key `%.*s`", (int)(eq - s), s);
+        say(why, why_size, msg);
+        return -1;
+    }
+    if (dot != NULL && int_value(dot + 1, (size_t)(eq - dot - 1), 1, 8, &index) != 0) {
+        snprintf(msg, sizeof msg, "the index of `%.*s` is not 1 to 8", (int)(eq - s), s);
+        say(why, why_size, msg);
+        return -1;
+    }
+    if (key_value(key, eq + 1, (size_t)(e - eq - 1), &value) != 0) {
+        snprintf(msg, sizeof msg, "`%.*s` is not a value of %s", (int)(e - eq - 1), eq + 1, k_keys[key]);
+        say(why, why_size, msg);
+        return -1;
+    }
+    if (part->nparams == MAX_PARAMS) {
+        say(why, why_size, "too many keys for one base");
+        return -1;
+    }
+    part->params[part->nparams].key = (u8)key;
+    part->params[part->nparams].index = (u8)index;
+    part->params[part->nparams].value = value;
+    part->nparams++;
+    return 0;
+}
+
+/* A base id at p: its value and the end, or -1. */
+static int parse_base(const char **p, int *base)
+{
+    char *end;
+    long v;
+
+    while (is_space(**p)) {
+        (*p)++;
+    }
+    v = strtol(*p, &end, 10);
+    if (end == *p || v < 1 || v > 0xFFFF) {
+        return -1;
+    }
+    *base = (int)v;
+    *p = end;
+    return 0;
+}
+
 int bw_bh_parse_line(int type, const char *line, char *why, int why_size)
 {
     Entry e;
     const char *p = line, *s;
-    char msg[160];
     long v;
     char *end;
     Entry *have;
@@ -184,7 +259,7 @@ int bw_bh_parse_line(int type, const char *line, char *why, int why_size)
     }
     v = strtol(p, &end, 10);
     if (end == p || v < 1 || v > 0xFFFF) {
-        say(why, why_size, "expected `<id> = <base id> [key=value ...]`");
+        say(why, why_size, "expected `<id> = <base id> [key=value ...] [+ <base id> ...]`");
         return -1;
     }
     e.id = (int)v;
@@ -197,66 +272,42 @@ int bw_bh_parse_line(int type, const char *line, char *why, int why_size)
         return -1;
     }
     p++;
-    v = strtol(p, &end, 10);
-    if (end == p || v < 1 || v > 0xFFFF) {
+    if (parse_base(&p, &e.parts[0].base) != 0) {
         say(why, why_size, "expected the base id after `=`");
         return -1;
     }
-    e.base = (int)v;
-    p = end;
+    e.nparts = 1;
     for (;;) {
-        const char *eq, *dot, *ks;
-        int key, index = 1, value;
-
         while (is_space(*p)) {
             p++;
         }
         if (*p == '\0' || *p == '#') {
             break;
         }
+        if (*p == '+') {
+            p++;
+            if (e.nparts == MAX_PARTS) {
+                say(why, why_size, "more than 4 bases on one line");
+                return -1;
+            }
+            if (parse_base(&p, &e.parts[e.nparts].base) != 0) {
+                say(why, why_size, "expected a base id after `+`");
+                return -1;
+            }
+            e.nparts++;
+            continue;
+        }
         s = p;
-        while (*p != '\0' && !is_space(*p) && *p != '#') {
+        while (*p != '\0' && !is_space(*p) && *p != '#' && *p != '+') {
             p++;
         }
-        eq = memchr(s, '=', (size_t)(p - s));
-        if (eq == NULL) {
-            snprintf(msg, sizeof msg, "expected key=value, found `%.*s`", (int)(p - s), s);
-            say(why, why_size, msg);
+        if (parse_param(&e.parts[e.nparts - 1], s, p, why, why_size) != 0) {
             return -1;
         }
-        dot = memchr(s, '.', (size_t)(eq - s));
-        ks = dot != NULL ? dot : eq;
-        for (key = 0; key < BW_BH_KEY_COUNT; key++) {
-            if ((size_t)(ks - s) == strlen(k_keys[key]) && strncmp(k_keys[key], s, (size_t)(ks - s)) == 0) {
-                break;
-            }
-        }
-        if (key == BW_BH_KEY_COUNT) {
-            snprintf(msg, sizeof msg, "unknown key `%.*s`", (int)(eq - s), s);
-            say(why, why_size, msg);
-            return -1;
-        }
-        if (dot != NULL && int_value(dot + 1, (size_t)(eq - dot - 1), 1, 8, &index) != 0) {
-            snprintf(msg, sizeof msg, "the index of `%.*s` is not 1 to 8", (int)(eq - s), s);
-            say(why, why_size, msg);
-            return -1;
-        }
-        if (key_value(key, eq + 1, (size_t)(p - eq - 1), &value) != 0) {
-            snprintf(msg, sizeof msg, "`%.*s` is not a value of %s", (int)(p - eq - 1), eq + 1, k_keys[key]);
-            say(why, why_size, msg);
-            return -1;
-        }
-        if (e.nparams == MAX_PARAMS) {
-            say(why, why_size, "too many keys on one line");
-            return -1;
-        }
-        e.params[e.nparams].key = (u8)key;
-        e.params[e.nparams].index = (u8)index;
-        e.params[e.nparams].value = value;
-        e.nparams++;
     }
     have = find(type, e.id);
     if (have != NULL) {
+        free(have->joined);
         *have = e;                  /* a later mod's line wins */
         return 0;
     }
@@ -277,6 +328,11 @@ int bw_bh_parse_line(int type, const char *line, char *why, int why_size)
 
 void bw_bh_clear(void)
 {
+    int i;
+
+    for (i = 0; i < g_count; i++) {
+        free(g_entries[i].joined);
+    }
     g_count = 0;
 }
 
@@ -303,7 +359,7 @@ static void load_file(const char *root, const char *name, int type)
 }
 
 /* ------------------------------------------------------------------ */
-/* The places the game's handlers use a number                         */
+/* What the game's handlers use                                        */
 /* ------------------------------------------------------------------ */
 
 /* One row a place a handler uses a number eidos can change, written by
@@ -324,6 +380,33 @@ static const Site k_sites[] = {
 };
 
 #define SITE_COUNT ((int)(sizeof(k_sites) / sizeof(k_sites[0])))
+
+/* The factor work slots a built-in id's handlers keep state in, as a mask
+ * (battle_handler_work.inc, the same generator): two bases of one line
+ * may not share one. */
+typedef struct Work {
+    u8  type;
+    u16 id;
+    u8  mask;
+} Work;
+
+static const Work k_work[] = {
+#include "battle_handler_work.inc"
+};
+
+#define WORK_COUNT ((int)(sizeof(k_work) / sizeof(k_work[0])))
+
+static int work_mask(int type, int id)
+{
+    int i;
+
+    for (i = 0; i < WORK_COUNT; i++) {
+        if (k_work[i].type == type && k_work[i].id == id) {
+            return k_work[i].mask;
+        }
+    }
+    return 0;
+}
 
 /* the keys of each kind of place */
 static int site_of_key(int key)
@@ -373,7 +456,9 @@ static int site_exists(int type, int id, int site, int index)
 /* The bases                                                           */
 /* ------------------------------------------------------------------ */
 
-/* The end of `id`'s chain of bases, or -1 for a chain that comes back. */
+/* The built-in end of a base: followed through lines of one base (`b =
+ * c`); -1 for a chain that comes back, or a line of several bases on the
+ * way (a base is one id's handlers). */
 static int chain_end(int type, int id)
 {
     int hops;
@@ -381,19 +466,23 @@ static int chain_end(int type, int id)
 
     for (hops = 0; hops < MAX_CHAIN; hops++) {
         e = find(type, id);
-        if (e == NULL || e->base == id) {
+        if (e == NULL || (e->nparts == 1 && e->parts[0].base == id)) {
             return id;
         }
-        id = e->base;
+        if (e->nparts != 1) {
+            return -1;
+        }
+        id = e->parts[0].base;
     }
     return -1;
 }
 
-int bw_bh_base(int type, int id)
+/* The built-in end of base `base` on the line of `id`: a part that names
+ * the line's own id is the built-in one (`22 = 22 stages=-2 + 2` tunes
+ * Intimidate and adds Drizzle), as on a line of one base. */
+static int part_end(int type, int id, int base)
 {
-    int end = chain_end(type, id);
-
-    return end < 0 ? id : end;
+    return base == id ? id : chain_end(type, base);
 }
 
 static const char *type_name(int type)
@@ -401,32 +490,92 @@ static const char *type_name(int type)
     return type == BW_BH_ABILITY ? "ability" : type == BW_BH_ITEM ? "item" : "move";
 }
 
-/* After every mod's lines are read: a chain that comes back, or a key the
- * base's handlers have no place for, is said and left out. */
+int bw_bh_parts(int type, int id)
+{
+    Entry *e = find(type, id);
+
+    return e != NULL ? e->nparts : 1;
+}
+
+int bw_bh_part_base(int type, int id, int part)
+{
+    Entry *e = find(type, id);
+    int end;
+
+    if (e == NULL) {
+        return id;
+    }
+    if (part < 0 || part >= e->nparts) {
+        return 0;
+    }
+    if (e->nparts == 1) {
+        end = chain_end(type, id);
+        return end < 0 ? id : end;
+    }
+    end = part_end(type, id, e->parts[part].base);
+    return end < 0 ? 0 : end;
+}
+
+int bw_bh_base(int type, int id)
+{
+    return bw_bh_part_base(type, id, 0);
+}
+
+/* After every mod's lines are read: a line whose bases come back to it,
+ * that names one base twice, or whose bases' handlers keep state in the
+ * same factor work slot is said and left out; so is a key a base's
+ * handlers have no place for. */
 static void check_lines(void)
 {
-    int i, k;
+    int i, k, j;
 
     for (i = 0; i < g_count; i++) {
         Entry *e = &g_entries[i];
-        int base = chain_end(e->type, e->id);
+        int bases[MAX_PARTS], masks = 0, bad = 0;
 
-        if (base < 0) {
-            fprintf(stderr, "eidos: battle tables: %s %d: its bases come back to it; the line is left out\n",
-                    type_name(e->type), e->id);
+        for (k = 0; k < e->nparts && !bad; k++) {
+            bases[k] = e->nparts == 1 ? chain_end(e->type, e->id) : part_end(e->type, e->id, e->parts[k].base);
+            if (bases[k] < 0) {
+                fprintf(stderr, "eidos: battle tables: %s %d: base %d comes back to it or has several bases "
+                        "itself; the line is left out\n", type_name(e->type), e->id, e->parts[k].base);
+                bad = 1;
+                break;
+            }
+            for (j = 0; j < k; j++) {
+                if (bases[j] == bases[k]) {
+                    fprintf(stderr, "eidos: battle tables: %s %d: base %d twice; the line is left out\n",
+                            type_name(e->type), e->id, bases[k]);
+                    bad = 1;
+                }
+            }
+            if (!bad && (masks & work_mask(e->type, bases[k])) != 0) {
+                fprintf(stderr, "eidos: battle tables: %s %d: base %d keeps state in a factor slot another "
+                        "base of the line uses (handler_params.json, \"work\"); the line is left out\n",
+                        type_name(e->type), e->id, bases[k]);
+                bad = 1;
+            }
+            masks |= work_mask(e->type, bases[k]);
+        }
+        if (bad) {
+            free(e->joined);
             g_entries[i] = g_entries[--g_count];
             i--;
             continue;
         }
-        for (k = 0; k < e->nparams; k++) {
-            int site = site_of_key(e->params[k].key);
+        for (k = 0; k < e->nparts; k++) {
+            Part *pt = &e->parts[k];
 
-            if (!site_exists(e->type, base, site, e->params[k].index)) {
-                fprintf(stderr, "eidos: battle tables: %s %d (works like %d): %s%s%d has no place in its handlers "
-                        "(tools/handler_params.py lists the keys); left out\n", type_name(e->type), e->id, base,
-                        k_keys[e->params[k].key], e->params[k].index > 1 ? "." : " ", e->params[k].index);
-                e->params[k] = e->params[--e->nparams];
-                k--;
+            for (j = 0; j < pt->nparams; j++) {
+                int site = site_of_key(pt->params[j].key);
+
+                if (!site_exists(e->type, bases[k], site, pt->params[j].index)) {
+                    fprintf(stderr, "eidos: battle tables: %s %d (works like %d): %s%s%d has no place in its "
+                            "handlers (handler_params.json lists the keys); left out\n", type_name(e->type),
+                            e->id, bases[k], k_keys[pt->params[j].key], pt->params[j].index > 1 ? "." : " ",
+                            pt->params[j].index);
+                    pt->params[j] = pt->params[--pt->nparams];
+                    j--;
+                }
             }
         }
     }
@@ -452,18 +601,60 @@ void bw_bh_check(void)
     check_lines();
 }
 
-int bw_bh_key(int type, int id, int key, int index, int *value)
+int bw_bh_part_key(int type, int id, int part, int key, int index, int *value)
 {
     Entry *e = find(type, id);
     int i;
 
-    for (i = 0; e != NULL && i < e->nparams; i++) {
-        if (e->params[i].key == key && e->params[i].index == index) {
-            *value = e->params[i].value;
+    if (e == NULL || part < 0 || part >= e->nparts) {
+        return 0;
+    }
+    for (i = 0; i < e->parts[part].nparams; i++) {
+        if (e->parts[part].params[i].key == key && e->parts[part].params[i].index == index) {
+            *value = e->parts[part].params[i].value;
             return 1;
         }
     }
     return 0;
+}
+
+int bw_bh_key(int type, int id, int key, int index, int *value)
+{
+    return bw_bh_part_key(type, id, 0, key, index, value);
+}
+
+const void *bw_bh_join(int type, int id, int n, const void *const *tables, const u32 *counts, u32 row_size,
+                       u32 *total)
+{
+    Entry *e = find(type, id);
+    u32 rows = 0, at = 0;
+    int k;
+    unsigned char *out;
+
+    if (e == NULL || n != e->nparts || n < 1) {
+        return NULL;
+    }
+    if (e->joined != NULL) {
+        *total = e->joined_total;
+        return e->joined;
+    }
+    for (k = 0; k < n; k++) {
+        rows += counts[k];
+    }
+    if (rows == 0 || (out = (unsigned char *)malloc((size_t)rows * row_size)) == NULL) {
+        return NULL;
+    }
+    for (k = 0; k < n; k++) {
+        if (counts[k] > 0) {
+            memcpy(out + (size_t)at * row_size, tables[k], (size_t)counts[k] * row_size);
+        }
+        e->part_rows[k] = counts[k];
+        at += counts[k];
+    }
+    e->joined = out;
+    e->joined_total = rows;
+    *total = rows;
+    return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -471,24 +662,55 @@ int bw_bh_key(int type, int id, int key, int index, int *value)
 /* ------------------------------------------------------------------ */
 
 typedef struct Frame {
-    int type, id, handler;
+    int type, id;
+    int part, row;          /* the part its row came from, the row in that base's table */
     unsigned used;          /* the kinds of place already met in this call */
 } Frame;
 
 static Frame g_stack[MAX_DEPTH];
 static int   g_depth, g_lost;   /* (g_lost: calls past MAX_DEPTH, not kept) */
 
+int bw_bh_row_end(int type, int id, int row)
+{
+    Entry *e;
+    int k, end = 0;
+
+    if (g_count == 0 || (e = find(type, id)) == NULL || e->nparts < 2 || e->joined == NULL) {
+        return 0;
+    }
+    for (k = 0; k < e->nparts; k++) {
+        end += (int)e->part_rows[k];
+        if (row < end) {
+            return end;
+        }
+    }
+    return 0;
+}
+
 void bw_bh_enter(int type, int id, int handler)
 {
+    Frame *f;
+    Entry *e;
+
     if (g_depth == MAX_DEPTH) {
         g_lost++;
         return;
     }
-    g_stack[g_depth].type = type;
-    g_stack[g_depth].id = id;
-    g_stack[g_depth].handler = handler;
-    g_stack[g_depth].used = 0;
-    g_depth++;
+    f = &g_stack[g_depth++];
+    f->type = type;
+    f->id = id;
+    f->part = 0;
+    f->row = handler;
+    f->used = 0;
+    /* a joined table: which base's rows the handler is in */
+    if (g_count > 0 && (e = find(type, id)) != NULL && e->nparts > 1 && e->joined != NULL) {
+        int k;
+
+        for (k = 0; k < e->nparts && f->row >= (int)e->part_rows[k]; k++) {
+            f->row -= (int)e->part_rows[k];
+        }
+        f->part = k < e->nparts ? k : e->nparts - 1;
+    }
 }
 
 void bw_bh_leave(void)
@@ -520,7 +742,12 @@ static int reached(int site, Frame **out)
     }
     f->used |= bit;
     *out = f;
-    return site_index(f->type, bw_bh_base(f->type, f->id), f->handler, site);
+    return site_index(f->type, bw_bh_part_base(f->type, f->id, f->part), f->row, site);
+}
+
+static int frame_key(const Frame *f, int key, int index, int *value)
+{
+    return bw_bh_part_key(f->type, f->id, f->part, key, index, value);
 }
 
 static void said(const Frame *f, const char *what, long was, long now)
@@ -539,11 +766,11 @@ void bw_bh_rank(u32 *stat, s8 *amount)
     if (n == 0) {
         return;
     }
-    if (bw_bh_key(f->type, f->id, BW_BH_KEY_STAT, n, &v)) {
+    if (frame_key(f, BW_BH_KEY_STAT, n, &v)) {
         said(f, "stat", (long)*stat, v);
         *stat = (u32)v;
     }
-    if (bw_bh_key(f->type, f->id, BW_BH_KEY_STAGES, n, &v)) {
+    if (frame_key(f, BW_BH_KEY_STAGES, n, &v)) {
         said(f, "stages", *amount, v);
         *amount = (s8)v;
     }
@@ -554,7 +781,7 @@ int bw_bh_sick(u32 *kind)
     Frame *f;
     int n = reached(BW_BH_SITE_SICK, &f), v;
 
-    if (n == 0 || !bw_bh_key(f->type, f->id, BW_BH_KEY_STATUS, n, &v) || (u32)v == *kind) {
+    if (n == 0 || !frame_key(f, BW_BH_KEY_STATUS, n, &v) || (u32)v == *kind) {
         return 0;
     }
     said(f, "status", (long)*kind, v);
@@ -567,7 +794,7 @@ void bw_bh_weather(u8 *weather)
     Frame *f;
     int n = reached(BW_BH_SITE_WEATHER, &f), v;
 
-    if (n != 0 && bw_bh_key(f->type, f->id, BW_BH_KEY_WEATHER, n, &v)) {
+    if (n != 0 && frame_key(f, BW_BH_KEY_WEATHER, n, &v)) {
         said(f, "weather", *weather, v);
         *weather = (u8)v;
     }
@@ -578,7 +805,7 @@ static int one_value(int site, int key, int value)
     Frame *f;
     int n = reached(site, &f), v;
 
-    if (n != 0 && bw_bh_key(f->type, f->id, key, n, &v)) {
+    if (n != 0 && frame_key(f, key, n, &v)) {
         said(f, k_keys[key], value, v);
         return v;
     }

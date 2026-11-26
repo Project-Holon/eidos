@@ -52,6 +52,10 @@ int HAND_TOKUSEI_UnpackAbilityPriority(u32 *packedInfo);
 
 /* sdk/battle_handlers.c */
 extern int bw_bh_base(int type, int id);
+extern int bw_bh_parts(int type, int id);
+extern int bw_bh_part_base(int type, int id, int part);
+extern const void *bw_bh_join(int type, int id, int n, const void *const *tables, const u32 *counts, u32 row_size,
+                              u32 *total);
 extern int bw_bh_type(int type);
 
 struct BtlServerFlow;
@@ -71,10 +75,53 @@ extern void BTL_EVENT_MultiplyVar(int key, int multiplier);
 extern struct BtlPokeParam *BTL_SERVER_FLOW_GetPokeParam(struct BtlServerFlow *flow, int pokeId);
 extern u32 BTL_CALC_DivideMaxHp(struct BtlPokeParam *bpp, u32 divisor);
 
+/* An ability that works like several (`165 = 22 + 26`): one factor whose
+ * table is the bases' tables joined in line order (sdk/battle_handlers.c
+ * keeps it and knows which base each row came from), with the first
+ * found base's priority. */
+static struct BtlEventFactor *add_joined_abilities(struct BtlPokeParam *bpp, u16 abilityId, int parts)
+{
+    const void *tables[4];
+    u32 counts[4], total = 0, i;
+    int k, priority = -1;
+    const void *joined;
+
+    for (k = 0; k < parts && k < 4; k++) {
+        u32 base = (u32)bw_bh_part_base(BTL_EVENT_TYPE_ABILITY, abilityId, k);
+
+        tables[k] = 0;
+        counts[k] = 0;
+        for (i = 0; base != 0 && i < ABILITY_REGISTRY_COUNT; i++) {
+            if (base == gAbilityHandlerRegistry[i].abilityId) {
+                u32 packed;
+                int p;
+
+                tables[k] = gAbilityHandlerRegistry[i].getHandlers(&packed);
+                p = HAND_TOKUSEI_UnpackAbilityPriority(&packed);
+                counts[k] = packed;
+                if (priority < 0) {
+                    priority = p;
+                }
+                break;
+            }
+        }
+    }
+    if (priority < 0) {
+        return 0;
+    }
+    joined = bw_bh_join(BTL_EVENT_TYPE_ABILITY, abilityId, k, tables, counts, sizeof(BtlEventHandler), &total);
+    if (joined == 0 || total == 0) {
+        return 0;
+    }
+    return BTL_EVENT_AddFactor(BTL_EVENT_TYPE_ABILITY, abilityId, priority, HAND_TOKUSEI_GetPokeSpeed(bpp),
+                               BTL_POKEPARAM_GetPokeId(bpp), (const BtlEventHandler *)joined, (u16)total);
+}
+
 /* Adds the handler table of the ability that the poke holds to the event factor list. */
 struct BtlEventFactor *HAND_TOKUSEI_AddAbilityHandlers(struct BtlPokeParam *bpp)
 {
     u16 abilityId = BTL_POKEPARAM_GetValue(bpp, 0x10);
+    int parts = bw_bh_parts(BTL_EVENT_TYPE_ABILITY, abilityId);
     u32 base = (u32)bw_bh_base(BTL_EVENT_TYPE_ABILITY, abilityId);
     u32 i;
     u32 speed;
@@ -83,6 +130,9 @@ struct BtlEventFactor *HAND_TOKUSEI_AddAbilityHandlers(struct BtlPokeParam *bpp)
     u32 handlerCount;
     BtlEventHandler *handlers;
 
+    if (parts > 1) {
+        return add_joined_abilities(bpp, abilityId, parts);
+    }
     for (i = 0; i < ABILITY_REGISTRY_COUNT; i++) {
         if (base == gAbilityHandlerRegistry[i].abilityId) {
             speed = HAND_TOKUSEI_GetPokeSpeed(bpp);

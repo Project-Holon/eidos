@@ -59,11 +59,49 @@ extern u32 BTL_SERVER_FLOW_IsActionCounterSet(struct BtlServerFlow *flow);
 
 /* sdk/battle_handlers.c */
 extern int bw_bh_base(int type, int id);
+extern int bw_bh_parts(int type, int id);
+extern int bw_bh_part_base(int type, int id, int part);
+extern const void *bw_bh_join(int type, int id, int n, const void *const *tables, const u32 *counts, u32 row_size,
+                              u32 *total);
 extern int bw_bh_type(int type);
+
+/* An item that works like several (`1 = 234 + 161`): one factor whose
+ * table is the bases' tables joined in line order. */
+static struct BtlEventFactor *add_joined_items(struct BtlPokeParam *poke, u32 itemId, int parts)
+{
+    const void *tables[4];
+    u32 counts[4], total = 0, i;
+    int k, found = 0;
+    const void *joined;
+
+    for (k = 0; k < parts && k < 4; k++) {
+        u32 base = (u32)bw_bh_part_base(BTL_EVENT_TYPE_ITEM, (int)itemId, k);
+
+        tables[k] = 0;
+        counts[k] = 0;
+        for (i = 0; base != 0 && i < ITEM_HANDLER_COUNT; i++) {
+            if (base == gItemHandlerRegistry[i].itemId) {
+                tables[k] = gItemHandlerRegistry[i].getHandlers(&counts[k]);
+                found = 1;
+                break;
+            }
+        }
+    }
+    if (!found) {
+        return 0;
+    }
+    joined = bw_bh_join(BTL_EVENT_TYPE_ITEM, (int)itemId, k, tables, counts, sizeof(BtlEventHandler), &total);
+    if (joined == 0 || total == 0) {
+        return 0;
+    }
+    return BTL_EVENT_AddFactor(BTL_EVENT_TYPE_ITEM, itemId, 6, (u16)BTL_POKEPARAM_GetStatRaw(poke, 0xc),
+                               BTL_POKEPARAM_GetPokeId(poke), (const BtlEventHandler *)joined, (u16)total);
+}
 
 /* Add the event factor of an item to the factor list; 0 if the item has no handler. */
 struct BtlEventFactor *HAND_ITEM_AddFactor(struct BtlPokeParam *poke, u32 itemId)
 {
+    int parts = bw_bh_parts(BTL_EVENT_TYPE_ITEM, (int)itemId);
     u32 base = (u32)bw_bh_base(BTL_EVENT_TYPE_ITEM, (int)itemId);
     u32 i;
     u16 speed;
@@ -71,6 +109,9 @@ struct BtlEventFactor *HAND_ITEM_AddFactor(struct BtlPokeParam *poke, u32 itemId
     BtlEventHandler *handlerTable;
     u32 handlerCount;
 
+    if (parts > 1) {
+        return add_joined_items(poke, itemId, parts);
+    }
     for (i = 0; i < ITEM_HANDLER_COUNT; i++) {
         if (base == gItemHandlerRegistry[i].itemId) {
             speed = BTL_POKEPARAM_GetStatRaw(poke, 0xc);

@@ -126,6 +126,19 @@
     "HAND_WAZA_BideAdvanceTurn: its sick is decided at run time, not adjustable"
    ]
   },
+  "119": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ]
+  },
   "130": {
    "keys": {
     "stat": "def",
@@ -144,6 +157,13 @@
     "status": "sleep"
    },
    "notes": []
+  },
+  "168": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "169": {
    "keys": {},
@@ -173,6 +193,13 @@
     "HAND_WAZA_BellyDrumMaximizeAttack: its rank comes after a command, not adjustable"
    ]
   },
+  "194": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    6
+   ]
+  },
   "199": {
    "keys": {},
    "notes": [
@@ -198,18 +225,37 @@
     "HAND_WAZA_TrapAddNoEscape: its sick is decided at run time, not adjustable"
    ]
   },
+  "214": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ]
+  },
   "217": {
    "keys": {
     "chance": 20,
     "hp": "1/4"
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "222": {
    "keys": {
     "ratio": 2.0
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "227": {
    "keys": {},
@@ -221,6 +267,13 @@
    "keys": {},
    "notes": [
     "HAND_WAZA_WhirlpoolOnCalcDamageRatio: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "251": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
    ]
   },
   "253": {
@@ -265,6 +318,13 @@
    },
    "notes": []
   },
+  "266": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    6
+   ]
+  },
   "268": {
    "keys": {
     "ratio": 2.0
@@ -281,7 +341,32 @@
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
+  "277": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    6
+   ]
+  },
+  "288": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    6
+   ]
+  },
+  "289": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    6
+   ]
   },
   "290": {
    "keys": {},
@@ -302,6 +387,13 @@
     "HAND_WAZA_TrapAddNoEscape: its sick is decided at run time, not adjustable"
    ]
   },
+  "343": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
   "355": {
    "keys": {},
    "notes": [
@@ -320,6 +412,13 @@
     "HAND_WAZA_AcupressureRaiseRandomStat: its rank runs in a loop, not adjustable"
    ]
   },
+  "374": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
   "375": {
    "keys": {},
    "notes": [
@@ -336,7 +435,16 @@
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ]
   },
   "392": {
    "keys": {},
@@ -361,6 +469,13 @@
    "keys": {},
    "notes": [
     "HAND_WAZA_VenoshockDoublePowerOnPoison: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "476": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    6
    ]
   },
   "479": {
@@ -420,6 +535,28 @@
    },
    "notes": []
   },
+  "5": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
+  "6": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1
+   ]
+  },
+  "7": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
   "8": {
    "keys": {
     "ratio": 0.8
@@ -447,6 +584,13 @@
    },
    "notes": []
   },
+  "12": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
   "13": {
    "keys": {},
    "notes": [
@@ -459,12 +603,33 @@
    },
    "notes": []
   },
+  "15": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
+  "17": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
   "18": {
    "keys": {
     "type": "fire",
     "ratio": 1.5
    },
    "notes": []
+  },
+  "20": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "22": {
    "keys": {
@@ -478,6 +643,13 @@
     "hp": "1/8"
    },
    "notes": []
+  },
+  "26": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "27": {
    "keys": {
@@ -493,13 +665,24 @@
     "HAND_TOKUSEI_SynchronizeOnSickAdded: its sick is decided at run time, not adjustable"
    ]
   },
+  "29": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1
+   ]
+  },
   "31": {
    "keys": {
     "type": "electric",
     "stat": "spatk",
     "stages": 1
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "33": {
    "keys": {
@@ -513,6 +696,13 @@
    },
    "notes": []
   },
+  "36": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
   "37": {
    "keys": {
     "ratio": 2.0
@@ -525,6 +715,20 @@
     "chance": 30
    },
    "notes": []
+  },
+  "40": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
+  "41": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "44": {
    "keys": {
@@ -551,6 +755,30 @@
    },
    "notes": []
   },
+  "51": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1
+   ]
+  },
+  "52": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1
+   ]
+  },
+  "54": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1
+   ]
+  },
   "55": {
    "keys": {
     "ratio": 0.8
@@ -568,13 +796,45 @@
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ]
   },
   "58": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ]
+  },
+  "59": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
+  "60": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "61": {
    "keys": {
@@ -632,6 +892,21 @@
    },
    "notes": []
   },
+  "72": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
+  "73": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1
+   ]
+  },
   "74": {
    "keys": {
     "ratio": 2.0
@@ -687,7 +962,10 @@
    "keys": {
     "ratio": 2.0
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "85": {
    "keys": {
@@ -748,6 +1026,20 @@
    },
    "notes": []
   },
+  "102": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
+  "104": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
   "106": {
    "keys": {
     "hp": "1/4"
@@ -779,7 +1071,10 @@
     "stat": "spatk",
     "stages": 1
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "115": {
    "keys": {
@@ -810,7 +1105,10 @@
     "ratio": 1.5,
     "ratio.2": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "123": {
    "keys": {},
@@ -823,6 +1121,13 @@
     "ratio": 1.3
    },
    "notes": []
+  },
+  "126": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "128": {
    "keys": {
@@ -920,6 +1225,14 @@
    },
    "notes": []
   },
+  "145": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0,
+    1
+   ]
+  },
   "146": {
    "keys": {
     "ratio": 2.0
@@ -983,6 +1296,20 @@
     "ratio": 1.1001
    },
    "notes": []
+  },
+  "163": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
+  "164": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
   }
  },
  "item": {
@@ -1042,6 +1369,9 @@
     "HAND_ITEM_FigyBerryFlavorHeal: its hp is decided at run time, not adjustable",
     "HAND_ITEM_FigyBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
     "HAND_ITEM_FigyBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "160": {
@@ -1055,6 +1385,9 @@
     "HAND_ITEM_WikiBerryFlavorHeal: its hp is decided at run time, not adjustable",
     "HAND_ITEM_WikiBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
     "HAND_ITEM_WikiBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "161": {
@@ -1068,6 +1401,9 @@
     "HAND_ITEM_MagoBerryFlavorHeal: its hp is decided at run time, not adjustable",
     "HAND_ITEM_MagoBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
     "HAND_ITEM_MagoBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "162": {
@@ -1081,6 +1417,9 @@
     "HAND_ITEM_AguavBerryFlavorHeal: its hp is decided at run time, not adjustable",
     "HAND_ITEM_AguavBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
     "HAND_ITEM_AguavBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "163": {
@@ -1094,6 +1433,9 @@
     "HAND_ITEM_IapapaBerryFlavorHeal: its hp is decided at run time, not adjustable",
     "HAND_ITEM_IapapaBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
     "HAND_ITEM_IapapaBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "184": {
@@ -1101,119 +1443,170 @@
     "type": "fire",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "185": {
    "keys": {
     "type": "water",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "186": {
    "keys": {
     "type": "electric",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "187": {
    "keys": {
     "type": "grass",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "188": {
    "keys": {
     "type": "ice",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "189": {
    "keys": {
     "type": "fighting",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "190": {
    "keys": {
     "type": "poison",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "191": {
    "keys": {
     "type": "ground",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "192": {
    "keys": {
     "type": "flying",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "193": {
    "keys": {
     "type": "psychic",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "194": {
    "keys": {
     "type": "bug",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "195": {
    "keys": {
     "type": "rock",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "196": {
    "keys": {
     "type": "ghost",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "197": {
    "keys": {
     "type": "dragon",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "198": {
    "keys": {
     "type": "dark",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "199": {
    "keys": {
     "type": "steel",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "200": {
    "keys": {
     "type": "normal",
     "ratio": 0.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "201": {
    "keys": {
@@ -1308,18 +1701,27 @@
    "keys": {
     "hp": "1/4"
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "211": {
    "keys": {},
    "notes": [
     "HAND_ITEM_HitBackAttacker: its hp is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "212": {
    "keys": {},
    "notes": [
     "HAND_ITEM_HitBackAttacker: its hp is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "213": {
@@ -1338,6 +1740,9 @@
    "keys": {},
    "notes": [
     "HAND_ITEM_QuickClawMoveFirst: its chance is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "220": {
@@ -1377,6 +1782,9 @@
    "keys": {},
    "notes": [
     "HAND_ITEM_FocusBand_CheckSurvive: its chance is decided at run time, not adjustable"
+   ],
+   "work": [
+    0
    ]
   },
   "233": {
@@ -1546,6 +1954,13 @@
     "HAND_ITEM_LifeOrb_BoostDamage: its ratio is decided at run time, not adjustable"
    ]
   },
+  "271": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
+  },
   "272": {
    "keys": {
     "status": "poison",
@@ -1565,6 +1980,13 @@
     "ratio": 2.0
    },
    "notes": []
+  },
+  "275": {
+   "keys": {},
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "276": {
    "keys": {},
@@ -1816,103 +2238,154 @@
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "549": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "550": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "551": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "552": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "553": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "554": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "555": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "556": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "557": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "558": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "559": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "560": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "561": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "562": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "563": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   },
   "564": {
    "keys": {
     "ratio": 1.5
    },
-   "notes": []
+   "notes": [],
+   "work": [
+    0
+   ]
   }
  }
 }
