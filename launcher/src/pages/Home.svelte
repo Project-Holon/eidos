@@ -456,7 +456,8 @@
       display: flex;
       flex-direction: column;
       gap: 0.6rem;
-      padding: 1rem 1.2rem;
+      --pad-x: 1.2rem;
+      padding: 1rem var(--pad-x);
     }
   }
   .news header {
@@ -494,6 +495,31 @@
     min-height: 0;
     overflow-y: auto;
     line-height: 1.5;
+    margin-right: calc(-1 * var(--pad-x));
+    padding-right: var(--pad-x);
+    scrollbar-gutter: stable;
+  }
+  /* the notes fade out at the foot while there is more below, and not at
+     the end (where the webview can tell how far the notes are scrolled) */
+  @property --notes-fade {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 2rem;
+  }
+  @supports (animation-timeline: scroll()) {
+    .notes {
+      mask-image: linear-gradient(to bottom, #000 calc(100% - var(--notes-fade)), transparent);
+      animation: notes-end linear both;
+      animation-timeline: scroll(self);
+    }
+    @keyframes notes-end {
+      90% {
+        --notes-fade: 2rem;
+      }
+      to {
+        --notes-fade: 0rem;
+      }
+    }
   }
   .notes :global(h4) {
     margin: 0.4rem 0 0.3rem;
@@ -537,7 +563,8 @@
       padding-top: 0.5rem;
     }
     .saves {
-      padding: 0.75rem 1rem;
+      --pad-x: 1rem;
+      padding: 0.75rem var(--pad-x);
       gap: 0.5rem;
     }
   }
@@ -575,7 +602,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    padding: 1rem 1.1rem;
+    --pad-x: 1.1rem;
+    padding: 1rem var(--pad-x);
     min-width: 0;
     min-height: 0;
   }
@@ -588,6 +616,10 @@
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
     align-content: start;
     gap: 0.6rem;
+    /* the scroll bar at the card's edge, the save cards where they were */
+    margin-right: calc(-1 * var(--pad-x));
+    padding-right: var(--pad-x);
+    scrollbar-gutter: stable;
   }
   .saves footer {
     display: flex;

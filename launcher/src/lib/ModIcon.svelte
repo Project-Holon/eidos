@@ -20,7 +20,7 @@
 </script>
 
 <span class="mod-icon" aria-hidden="true">
-  {#if url}<img src={url} alt="" />{:else}<Icon name="mods" size={18} />{/if}
+  {#if url}<img src={url} alt="" onerror={() => (url = null)} />{:else}<Icon name="mods" size={18} />{/if}
 </span>
 
 <style>

@@ -14,6 +14,20 @@ if (import.meta.env.DEV) {
 }
 installMenuFallback();
 
+// The launcher keeps its 1280x720 proportions at every window size, as the
+// game's interface does: the whole page (text, cards, gaps, sprites) is
+// zoomed by the window's size over 1280x720, in eighths so 1920x1080 is
+// exactly 1.5 and 2560x1440 exactly 2.  Never below 1: a smaller window or
+// a phone keeps the page's own narrow layouts.
+function applyScale() {
+  const s = Math.min(innerWidth / 1280, innerHeight / 720);
+  const z = s <= 1 ? 1 : Math.floor(s * 8) / 8;
+  document.documentElement.style.setProperty("zoom", String(z));
+  document.documentElement.style.setProperty("--scale", String(z));
+}
+applyScale();
+addEventListener("resize", applyScale);
+
 const target = document.getElementById("app");
 if (!target) throw new Error("no #app element");
 

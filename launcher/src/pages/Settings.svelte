@@ -303,7 +303,8 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    padding: 1.1rem 1.2rem;
+    --pad-x: 1.2rem;
+    padding: 1.1rem var(--pad-x);
   }
   .title {
     font-weight: 600;
@@ -365,5 +366,15 @@
   }
   .buttons > .grow {
     flex: 1 1 14rem;
+  }
+  /* Save stays in sight at the foot of its card while the fields above it
+     scroll */
+  .scroll > .buttons {
+    position: sticky;
+    bottom: -1.1rem;
+    margin: 0 -1.2rem -1.1rem;
+    padding: 1rem 1.2rem 1.1rem;
+    background: var(--panel);
+    border-radius: 0 0 var(--radius) var(--radius);
   }
 </style>

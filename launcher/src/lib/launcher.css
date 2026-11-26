@@ -85,7 +85,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
-  max-width: 52rem;
+  max-width: 64rem;
   min-height: 0;
   /* the last resort, when even the lists at their smallest leave too
      little room: the page scrolls inside its own area, the window never */
@@ -103,11 +103,22 @@ body {
   flex: none;
   min-height: 0;
 }
+/* The last section with a list takes the height that is left and scrolls
+   its list; an earlier one keeps its own height (up to 45% of the page),
+   so a short list never scrolls beside a long one. */
 .page > div:has(.rows, .scroll) {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   min-height: 9rem;
+}
+/* (Settings lays its sections out in columns, not one under another) */
+.page:not(.settings) > div:has(.rows, .scroll):has(~ div .rows, ~ div .scroll) {
+  flex: 0 1 auto;
+  max-height: 45%;
+}
+.page > div:has(.rows, .scroll) > .window {
+  min-height: 0;
 }
 .page > div > .window:has(> .scroll) {
   display: flex;
@@ -118,6 +129,47 @@ body {
 .page .scroll {
   min-height: 5rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+/* Slim scroll bars in the theme's own colours, the same in every list: a
+   pill on a clear track, no arrows, scaled with the page.  (Only the
+   ::-webkit-scrollbar rules: setting scrollbar-width or scrollbar-color
+   makes Chromium drop them for its own default bar.) */
+::-webkit-scrollbar {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+/* the pill keeps clear of the card's rounded corners: the track starts and
+   ends a corner's radius in, and the pill sits off the card's edge */
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  background-clip: padding-box;
+  border: solid transparent;
+  border-width: 0.15rem 0.3rem 0.15rem 0.15rem;
+  border-radius: 999px;
+  min-height: 2rem;
+}
+.window::-webkit-scrollbar-track {
+  margin-block: calc(var(--radius) + 2px);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+/* a list scrolling inside a card reaches out to the card's edge, so its
+   scroll bar sits there (as a card's own list's does) and its rows stay
+   where they were; --pad-x is the card's side padding */
+.window .scroll {
+  margin-right: calc(-1 * var(--pad-x, 0px));
+  padding-right: var(--pad-x, 0px);
 }
 .page .rows > *,
 .page .scroll > * {
@@ -136,12 +188,12 @@ body {
 
 /* A section's small capital label, as kenon's sidebar groups */
 .section-label {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--faint);
-  margin: 0 0 0.45rem 0.1rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -169,8 +221,23 @@ body {
   border-top: 1px solid var(--line);
 }
 
+.rows > li {
+  transition: background-color 0.12s;
+}
 .rows > li:hover {
-  background: var(--panel-2);
+  background: var(--panel-3);
+}
+
+/* Hovers ease in, the same in every control */
+button,
+.btn,
+input,
+select {
+  transition:
+    border-color 0.12s,
+    background-color 0.12s,
+    color 0.12s,
+    box-shadow 0.12s;
 }
 
 .rows > li.empty {

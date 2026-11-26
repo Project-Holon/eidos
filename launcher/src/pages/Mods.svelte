@@ -319,6 +319,21 @@
     color: var(--muted);
     font-size: 0.85rem;
     line-height: 1.35;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  /* every catalog row reads from its top: the icon, the title and the
+     button on one line, whatever the description's length */
+  li.catalog {
+    align-items: flex-start;
+  }
+  li.catalog .actions :global(button),
+  li.catalog .actions .badge {
+    min-width: 6.5rem;
+    justify-content: center;
   }
   .switch {
     position: relative;
