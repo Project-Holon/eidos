@@ -96,6 +96,39 @@ int bw_plat_replace_file(const char *from, const char *to)
                                  MOVEFILE_WRITE_THROUGH) ? 0 : -1;
 }
 
+/* Without MOVEFILE_REPLACE_EXISTING the move fails when `to` is there: the
+ * check and the move are one step. */
+int bw_plat_move_new(const char *from, const char *to)
+{
+    DWORD err;
+
+    if (MoveFileExA(from, to, MOVEFILE_WRITE_THROUGH))
+        return 0;
+    err = GetLastError();
+    return (err == ERROR_ALREADY_EXISTS || err == ERROR_FILE_EXISTS) ? 1 : -1;
+}
+
+/* A file opened for this process alone (no sharing) and deleted when it is
+ * closed: the system closes it when the process ends, a crash too, so a
+ * lock is never left behind. */
+void *bw_plat_lock_folder(const char *dir)
+{
+    char path[1024];
+    HANDLE h;
+
+    if (snprintf(path, sizeof path, "%s/tidy.lock", dir) >= (int)sizeof path)
+        return NULL;
+    h = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_ALWAYS,
+                    FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+    return h == INVALID_HANDLE_VALUE ? NULL : (void *)h;
+}
+
+void bw_plat_unlock_folder(void *lock)
+{
+    if (lock != NULL)
+        CloseHandle((HANDLE)lock);
+}
+
 #else /* POSIX */
 
 #include <errno.h>
@@ -158,6 +191,75 @@ int bw_plat_replace_file(const char *from, const char *to)
 {
     return rename(from, to) == 0 ? 0 : -1;
 }
+
+/* rename() replaces a file that is there, so the move is a link to the new
+ * name (which fails when it is taken: the check and the move are one step)
+ * and the old name's removal.  A file system or a system with no links
+ * (FAT, the consoles) checks first and renames: one process plays there. */
+int bw_plat_move_new(const char *from, const char *to)
+{
+    struct stat st;
+
+    if (link(from, to) == 0) {
+        if (unlink(from) != 0) {
+            (void)unlink(to);       /* (both names: back to the old one alone) */
+            return -1;
+        }
+        return 0;
+    }
+    if (errno == EEXIST)
+        return 1;
+    if (stat(to, &st) == 0)
+        return 1;
+    return rename(from, to) == 0 ? 0 : -1;
+}
+
+#if defined(__vita__) || defined(__SWITCH__) || defined(__wasm__)
+/* One process plays: nothing to keep out. */
+void *bw_plat_lock_folder(const char *dir)
+{
+    (void)dir;
+    return (void *)1;
+}
+
+void bw_plat_unlock_folder(void *lock)
+{
+    (void)lock;
+}
+#else
+#include <fcntl.h>
+#include <stdint.h>
+
+/* A POSIX record lock on tidy.lock (fcntl F_SETLK): the system lets go
+ * when the process ends, a crash too.  The file stays, empty; only the lock
+ * counts. */
+void *bw_plat_lock_folder(const char *dir)
+{
+    char path[1024];
+    struct flock fl;
+    int fd;
+
+    if (snprintf(path, sizeof path, "%s/tidy.lock", dir) >= (int)sizeof path)
+        return NULL;
+    fd = open(path, O_RDWR | O_CREAT, 0644);
+    if (fd < 0)
+        return NULL;
+    memset(&fl, 0, sizeof fl);
+    fl.l_type = F_WRLCK;
+    fl.l_whence = SEEK_SET;
+    if (fcntl(fd, F_SETLK, &fl) != 0) {
+        close(fd);
+        return NULL;
+    }
+    return (void *)(intptr_t)(fd + 1);
+}
+
+void bw_plat_unlock_folder(void *lock)
+{
+    if (lock != NULL)
+        close((int)(intptr_t)lock - 1);     /* (closing lets the lock go) */
+}
+#endif
 
 #endif
 

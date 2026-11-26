@@ -45,6 +45,20 @@ int bw_plat_sync_file(FILE *f);
  */
 int bw_plat_replace_file(const char *from, const char *to);
 
+/*
+ * Move `from` to `to` only when nothing is at `to`: 0 moved, 1 `to` is
+ * taken (nothing was done), -1 failed.  Never writes over a file.
+ */
+int bw_plat_move_new(const char *from, const char *to);
+
+/*
+ * The folder for this process alone while it puts it in order
+ * (sdk/save_tidy.h): a handle, or NULL when another process has it.  The
+ * system lets go when the process ends, even in a crash.
+ */
+void *bw_plat_lock_folder(const char *dir);
+void  bw_plat_unlock_folder(void *lock);
+
 #ifdef __cplusplus
 }
 #endif

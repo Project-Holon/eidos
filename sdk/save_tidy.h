@@ -16,7 +16,10 @@
  *   next to slot 2, and so on.  slot.txt follows the save it named.
  * - games.ini is kept as games.ini.moved once its lines are in games/.
  *
- * A file is never written over.  The whole plan is written to tidy.txt in
+ * A file is never written over: each move fails when its new name is taken
+ * (bw_plat_move_new), and one process at a time works on a folder
+ * (bw_plat_lock_folder; another finds it locked and leaves it be).  The
+ * whole plan is written to tidy.txt in
  * the folder before the first move, tidy.step counts the moves done, and a
  * start that finds tidy.txt goes on with it from that step, so a crash in
  * the middle loses nothing.  The step runs at the

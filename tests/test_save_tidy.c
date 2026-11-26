@@ -7,6 +7,11 @@
  * finds every mark exactly once, in the place the rules say, with every
  * byte as it was.
  */
+/* setenv, fork and waitpid are POSIX, not C99 */
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +22,17 @@
 #include "plat_save.h"
 #include "save_tidy.h"
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #define T_DIR "test_save_tidy_tmp"
+
+static const char *g_self;      /* this program, for the four-at-once case */
 
 #define IMAGE       0x80000u
 #define COPY_SIZE   0x23F9Cu
@@ -267,11 +282,17 @@ static void check_report_folder_done(const char *when)
     BW_CHECK_EQ(label, gone("tidy.txt") && gone("tidy.step"), 1);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     char note[400];
     u32 size;
     u8 *img;
+
+    /* a child of the four-at-once case: one tidy of the folder */
+    if (argc == 3 && strcmp(argv[1], "--child") == 0) {
+        return bw_saves_tidy(argv[2], note, sizeof note) < 0 ? 1 : 0;
+    }
+    g_self = argv[0];
 
     printf("which images hold a save\n");
     img = image(SAVE, "x", &size);
@@ -433,6 +454,73 @@ int main(void)
     BW_CHECK_EQ("no unreadable/", gone("unreadable"), 1);
     BW_CHECK_EQ("no slot.txt made", gone("slot.txt"), 1);
     BW_CHECK_EQ("an empty folder", bw_saves_tidy(T_DIR "/none", note, sizeof note), 0);
+
+    printf("a move never writes over a file\n");
+    put_file("a.sav", SAVE, "mine");
+    put_file("b.sav", SAVE, "theirs");
+    BW_CHECK_EQ("refused: the name is taken", bw_plat_move_new(T_DIR "/a.sav", T_DIR "/b.sav"), 1);
+    BW_CHECK_EQ("the one moved stays", is_file("a.sav", SAVE, "mine"), 1);
+    BW_CHECK_EQ("the one there stays", is_file("b.sav", SAVE, "theirs"), 1);
+    BW_CHECK_EQ("to a free name", bw_plat_move_new(T_DIR "/a.sav", T_DIR "/c.sav"), 0);
+    BW_CHECK_EQ("moved whole", is_file("c.sav", SAVE, "mine") && gone("a.sav"), 1);
+
+#ifdef _WIN32
+    /* (a POSIX record lock does not keep out its own process: there the
+     * four-at-once case below is the test) */
+    printf("a folder another holder works on is left alone\n");
+    make_report_folder();
+    {
+        void *lock = bw_plat_lock_folder(T_DIR);
+
+        BW_REQUIRE("the lock", lock != NULL);
+        BW_CHECK_EQ("a second lock is refused", bw_plat_lock_folder(T_DIR) == NULL, 1);
+        BW_CHECK_EQ("locked: nothing done", bw_saves_tidy(T_DIR, note, sizeof note), 0);
+        BW_CHECK_EQ("slot 2 where it was", is_file("slots/save2.sav", GARBAGE, "two"), 1);
+        BW_CHECK_EQ("no plan made", gone("tidy.txt"), 1);
+        bw_plat_unlock_folder(lock);
+    }
+    BW_CHECK_EQ("free again: done", bw_saves_tidy(T_DIR, note, sizeof note), 1);
+    check_report_folder_done("after the lock");
+#endif
+
+    printf("four processes at once on one folder\n");
+    make_report_folder();
+    {
+        int k, done = 1;
+#ifdef _WIN32
+        intptr_t kids[4];
+        const char *args[4] = { g_self, "--child", T_DIR, NULL };
+
+        for (k = 0; k < 4; k++) {
+            kids[k] = _spawnv(_P_NOWAIT, g_self, args);
+        }
+        for (k = 0; k < 4; k++) {
+            int code = -1;
+
+            done &= kids[k] != -1 && _cwait(&code, kids[k], 0) != -1 && code == 0;
+        }
+#else
+        pid_t kids[4];
+
+        for (k = 0; k < 4; k++) {
+            kids[k] = fork();
+            if (kids[k] == 0) {
+                char n[400];
+
+                _exit(bw_saves_tidy(T_DIR, n, sizeof n) < 0 ? 1 : 0);
+            }
+        }
+        for (k = 0; k < 4; k++) {
+            int st = 0;
+
+            done &= kids[k] > 0 && waitpid(kids[k], &st, 0) == kids[k] && WIFEXITED(st) && WEXITSTATUS(st) == 0;
+        }
+#endif
+        BW_CHECK_EQ("all four ran and none failed", done, 1);
+        /* one of them did the work, or it is left for the next start */
+        (void)bw_saves_tidy(T_DIR, note, sizeof note);
+        check_report_folder_done("after four at once");
+    }
 
     (void)bw_plat_remove_tree(T_DIR);
     BW_REPORT("test_save_tidy");

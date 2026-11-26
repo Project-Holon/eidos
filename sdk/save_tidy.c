@@ -679,11 +679,22 @@ static int do_move(const char *saves, const Move *m, char *note, size_t note_siz
         say(note, note_size, "The saves were not put in order: %s is there already, and %s stays.", m->to, m->from);
         return -1;
     }
-    if (make_parent(saves, m->to) != 0 || bw_plat_replace_file(from, to) != 0) {
+    if (make_parent(saves, m->to) != 0) {
+        say(note, note_size, "The saves were not put in order: the folder of %s could not be made.", m->to);
+        return -1;
+    }
+    /* (the move itself refuses a file that came at the new name since the
+     * check above: never written over) */
+    switch (bw_plat_move_new(from, to)) {
+    case 0:
+        return 0;
+    case 1:
+        say(note, note_size, "The saves were not put in order: %s is there already, and %s stays.", m->to, m->from);
+        return -1;
+    default:
         say(note, note_size, "The saves were not put in order: %s could not be moved to %s.", m->from, m->to);
         return -1;
     }
-    return 0;
 }
 
 /*
@@ -761,8 +772,7 @@ static int plan_run(const char *saves, const Plan *p, char *note, size_t note_si
         }
     }
     if (p->retire && join(path, sizeof path, saves, "games.ini") == 0 && bw_plat_path_kind(path) == BW_PATH_FILE) {
-        if (join(to, sizeof to, saves, p->retire_to) != 0 || bw_plat_path_kind(to) != BW_PATH_NONE
-            || bw_plat_replace_file(path, to) != 0) {
+        if (join(to, sizeof to, saves, p->retire_to) != 0 || bw_plat_move_new(path, to) != 0) {
             say(note, note_size, "The saves were not put in order: games.ini could not be kept as %s.", p->retire_to);
             return -1;
         }
@@ -770,16 +780,12 @@ static int plan_run(const char *saves, const Plan *p, char *note, size_t note_si
     return 0;
 }
 
-int bw_saves_tidy(const char *saves, char *note, size_t note_size)
+static int tidy_locked(const char *saves, char *note, size_t note_size)
 {
     char path[PATH_MAX_LEN];
     Plan p;
     int r;
 
-    say(note, note_size, "%s", "");
-    if (saves == NULL || saves[0] == '\0' || bw_plat_path_kind(saves) != BW_PATH_DIR) {
-        return 0;
-    }
     r = plan_read(saves, &p);
     if (r < 0) {
         say(note, note_size, "The saves were not put in order: tidy.txt in %s is not whole.", saves);
@@ -820,4 +826,24 @@ int bw_saves_tidy(const char *saves, char *note, size_t note_size)
         saves, p.to_pool, p.set_aside, p.renumbered);
     plan_free(&p);
     return 1;
+}
+
+int bw_saves_tidy(const char *saves, char *note, size_t note_size)
+{
+    void *lock;
+    int r;
+
+    say(note, note_size, "%s", "");
+    if (saves == NULL || saves[0] == '\0' || bw_plat_path_kind(saves) != BW_PATH_DIR) {
+        return 0;
+    }
+    /* one process at a time: another eidos (or the launcher's) at work on
+     * the folder finishes it, and this one leaves it be */
+    lock = bw_plat_lock_folder(saves);
+    if (lock == NULL) {
+        return 0;
+    }
+    r = tidy_locked(saves, note, note_size);
+    bw_plat_unlock_folder(lock);
+    return r;
 }
