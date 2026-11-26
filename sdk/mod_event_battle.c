@@ -70,6 +70,7 @@
 #include "mod_state.h"
 #include "mod_slot.h"
 #include "mod_manifest.h"
+#include "trainer_mons.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -860,9 +861,11 @@ static void fill_setup_trainer_ids(u16 *out, const BwPortSetup *setup)
     if (setup == NULL) {
         return;
     }
+    /* the opposing trainers are clients 1 and 3 (client 2 is the player's
+     * partner: BTL_SETUP_SetupTrainerTag and SetupTrainerMulti) */
     for (i = 0u; i < 2u; i++) {
         const BwPortTrainerData *trainer =
-            (const BwPortTrainerData *)setup->trainerData[i + 1u];
+            (const BwPortTrainerData *)setup->trainerData[1u + 2u * i];
 
         if (trainer != NULL) {
             out[i] = trainer->trainerId;
@@ -1352,6 +1355,33 @@ static void fire_trainer_mons(const BwPortSetup *setup)
     }
 }
 
+/*
+ * The mods' per-member numbers (eidos/tables/trainer_mons.txt,
+ * sdk/trainer_mons.h) for each trainer the setup holds a party of: the
+ * opponents (clients 1 and 3) and a partner (client 2, a multi battle).
+ * Before battle.trainer_mon, so a code mod sees the table's numbers.
+ */
+static void apply_trainer_table(BwPortSetup *setup)
+{
+    u32 client, i, count;
+
+    if (setup == NULL || setup->competitor == 0u || POKEPARTY_GetCount == NULL || POKEPARTY_GetMember == NULL) {
+        return;
+    }
+    for (client = 1u; client < 4u; client++) {
+        const BwPortTrainerData *trainer = (const BwPortTrainerData *)setup->trainerData[client];
+        struct Party *party = (struct Party *)setup->party[client];
+
+        if (trainer == NULL || party == NULL) {
+            continue;
+        }
+        count = POKEPARTY_GetCount(party);
+        for (i = 0u; i < count && i < 6u; i++) {
+            (void)bw_trmons_apply(trainer->trainerId, i, POKEPARTY_GetMember(party, i));
+        }
+    }
+}
+
 static void apply_battle_setup(const BwEventPayload *in, BwPortSetup *setup)
 {
     if (setup == NULL) {
@@ -1378,6 +1408,7 @@ static void apply_battle_setup(const BwEventPayload *in, BwPortSetup *setup)
         break;   /* the multi battle is not applied */
     }
     apply_level_adjust(setup, in->battle_start.level_adjust);
+    apply_trainer_table(setup);
     fire_trainer_mons(setup);
 }
 

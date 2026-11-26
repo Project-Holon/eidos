@@ -401,6 +401,309 @@ static int build_table(u32 ti)
     return 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* The Pokemon icons' palettes                                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * _IconPaletteTable (arm9 poke_tool_ext.c, POKE_TOOL_CalcIconPalette): one
+ * byte per icon index, the palette (0..2, a/0/0/7's three) in the low four
+ * bits and the female icon's in the high four.  The icon index is the n of
+ * the icon members (7 + 2n): the species, 650 and 651 the eggs, the
+ * alternate forms from 652.  712 bytes on the DS (up to the next object,
+ * gFontFormatInitFuncs at 0x0209E73C).
+ *
+ * eidos/tables/icon_palette.txt:  <icon index> = <palette> [<female palette>]
+ * The female palette is the palette when not given.  Rows past the game's
+ * are kept, for the icons a later species limit adds (they read as 0 until
+ * a mod gives them).
+ */
+#define ICON_PAL_VANILLA 712u
+#define ICON_PAL_MAX     4096u
+
+static u8 *g_icon_pal;              /* the copy in the game's place      */
+static const u8 *g_icon_pal_game;   /* the game's own table              */
+
+static void read_icon_palette_rows(const char *root, u8 *rows, u32 *count)
+{
+    char path[1200];
+    char *text;
+    const char *p, *s, *e;
+    u32 line = 0;
+
+    if (strlen(root) + 40 > sizeof(path)) {
+        return;
+    }
+    sprintf(path, "%s/eidos/tables/icon_palette.txt", root);
+    if ((text = read_text(path)) == NULL) {
+        return;
+    }
+    p = text;
+    while (next_line(&p, &s, &e)) {
+        const char *eq = s, *q, *vs;
+        u32 id, v[2], k;
+
+        line++;
+        if (s == e) {
+            continue;
+        }
+        while (eq < e && *eq != '=') {
+            eq++;
+        }
+        q = eq;
+        while (q > s && (q[-1] == ' ' || q[-1] == '\t')) {
+            q--;
+        }
+        if (eq == e || parse_u32(s, q, &id) != 0 || id >= ICON_PAL_MAX) {
+            fprintf(stderr, "eidos: %s:%u: expected `<icon index 0..%u> = <palette> [<female palette>]`\n", path,
+                    (unsigned)line, (unsigned)(ICON_PAL_MAX - 1u));
+            continue;
+        }
+        q = eq + 1;
+        for (k = 0; k < 2; k++) {
+            while (q < e && (*q == ' ' || *q == '\t')) {
+                q++;
+            }
+            if (q == e) {
+                break;
+            }
+            vs = q;
+            while (q < e && *q != ' ' && *q != '\t') {
+                q++;
+            }
+            if (parse_u32(vs, q, &v[k]) != 0 || v[k] > 15u) {
+                k = 3;
+                break;
+            }
+        }
+        while (q < e && (*q == ' ' || *q == '\t')) {
+            q++;
+        }
+        if (k == 0 || k == 3 || q != e) {
+            fprintf(stderr, "eidos: %s:%u: expected one or two palettes of 0..15\n", path, (unsigned)line);
+            continue;
+        }
+        if (k == 1) {
+            v[1] = v[0];
+        }
+        rows[id] = (u8)(v[0] | (v[1] << 4));
+        if (id + 1u > *count) {
+            *count = id + 1u;
+        }
+    }
+    free(text);
+}
+
+static int build_icon_palette(void)
+{
+    const BwDataImage *img = bw_data_installed();
+    const BwDataName *n;
+    u32 m, count = ICON_PAL_VANILLA;
+    int modded = 0;
+    u8 *rows;
+
+    if (img == NULL || (n = bw_data_find(img, "_IconPaletteTable")) == NULL || n->ref == NULL || *n->ref == NULL) {
+        return 0;
+    }
+    for (m = 0; m < bw_mod_count(); m++) {
+        char path[1200];
+        const char *root = bw_mod_root_at(m);
+        FILE *f;
+
+        if (strlen(root) + 40 < sizeof(path)) {
+            sprintf(path, "%s/eidos/tables/icon_palette.txt", root);
+            if ((f = fopen(path, "rb")) != NULL) {
+                fclose(f);
+                modded = 1;
+            }
+        }
+    }
+    if (!modded) {
+        if (g_icon_pal != NULL) {       /* (a mod with rows was turned off) */
+            *n->ref = (void *)g_icon_pal_game;
+            free(g_icon_pal);
+            g_icon_pal = NULL;
+        }
+        return 0;               /* the game's own table serves */
+    }
+    if ((rows = (u8 *)calloc(ICON_PAL_MAX, 1)) == NULL) {
+        return -1;
+    }
+    /* the game's own rows first: the reference still points at them, or at
+     * an earlier apply's copy, whose first rows are the game's own then */
+    if (g_icon_pal_game == NULL) {
+        g_icon_pal_game = (const u8 *)*n->ref;
+    }
+    memcpy(rows, g_icon_pal_game, ICON_PAL_VANILLA);
+    for (m = 0; m < bw_mod_count(); m++) {
+        read_icon_palette_rows(bw_mod_root_at(m), rows, &count);
+    }
+    free(g_icon_pal);
+    g_icon_pal = rows;
+    *n->ref = rows;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* The moves TMs and HMs teach                                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * g_0209EAA0 (arm9 file_util.c, FILE_UTIL_GetMachineMove and
+ * FILE_UTIL_IsHmMove): the move id each machine teaches, one u16 per
+ * machine in the item order: TM01..TM92 rows 0..91, HM01..HM06 rows
+ * 92..97, TM93..TM95 rows 98..100.  A fixed 101 rows: a machine is an
+ * item in FILE_UTIL_IsMachineItem's two id windows.
+ *
+ * eidos/tables/machine_moves.txt:  TM35 = 53    HM03 = 57
+ */
+#define MACHINES 101u
+
+static u16 *g_machines;
+static const u16 *g_machines_game;
+
+/* The row of `TM35` or `HM03` (case does not count), or -1. */
+static int machine_row(const char *s, const char *e)
+{
+    u32 n;
+
+    if (e - s < 3 || (s[0] != 'T' && s[0] != 't' && s[0] != 'H' && s[0] != 'h') || (s[1] != 'M' && s[1] != 'm') ||
+        parse_u32(s + 2, e, &n) != 0) {
+        return -1;
+    }
+    if (s[0] == 'H' || s[0] == 'h') {
+        return n >= 1 && n <= 6 ? (int)(91 + n) : -1;
+    }
+    if (n >= 1 && n <= 92) {
+        return (int)n - 1;
+    }
+    return n >= 93 && n <= 95 ? (int)(n + 5) : -1;
+}
+
+static void read_machine_rows(const char *root, u16 *rows)
+{
+    char path[1200];
+    char *text;
+    const char *p, *s, *e;
+    u32 line = 0;
+
+    if (strlen(root) + 40 > sizeof(path)) {
+        return;
+    }
+    sprintf(path, "%s/eidos/tables/machine_moves.txt", root);
+    if ((text = read_text(path)) == NULL) {
+        return;
+    }
+    p = text;
+    while (next_line(&p, &s, &e)) {
+        const char *eq = s, *q, *vs;
+        u32 move;
+        int row;
+
+        line++;
+        if (s == e) {
+            continue;
+        }
+        while (eq < e && *eq != '=') {
+            eq++;
+        }
+        q = eq;
+        while (q > s && (q[-1] == ' ' || q[-1] == '\t')) {
+            q--;
+        }
+        row = eq == e ? -1 : machine_row(s, q);
+        q = eq + 1;
+        while (q < e && (*q == ' ' || *q == '\t')) {
+            q++;
+        }
+        vs = q;
+        while (q < e && *q != ' ' && *q != '\t') {
+            q++;
+        }
+        if (row < 0 || parse_u32(vs, q, &move) != 0 || move == 0 || move > bw_limit_get(BW_PORT_LIMIT_MOVE_LAST)) {
+            fprintf(stderr, "eidos: %s:%u: expected `TM01..TM95 or HM01..HM06 = <move id 1..%u>`\n", path,
+                    (unsigned)line, (unsigned)bw_limit_get(BW_PORT_LIMIT_MOVE_LAST));
+            continue;
+        }
+        rows[row] = (u16)move;
+    }
+    free(text);
+}
+
+static int build_machine_moves(void)
+{
+    const BwDataImage *img = bw_data_installed();
+    const BwDataName *n;
+    u32 m;
+    int modded = 0;
+    u16 *rows;
+
+    if (img == NULL || (n = bw_data_find(img, "g_0209EAA0")) == NULL || n->ref == NULL || *n->ref == NULL) {
+        return 0;
+    }
+    for (m = 0; m < bw_mod_count(); m++) {
+        char path[1200];
+        const char *root = bw_mod_root_at(m);
+        FILE *f;
+
+        if (strlen(root) + 40 < sizeof(path)) {
+            sprintf(path, "%s/eidos/tables/machine_moves.txt", root);
+            if ((f = fopen(path, "rb")) != NULL) {
+                fclose(f);
+                modded = 1;
+            }
+        }
+    }
+    if (g_machines_game == NULL) {
+        g_machines_game = (const u16 *)*n->ref;
+    }
+    if (!modded) {
+        if (g_machines != NULL) {       /* (a mod with rows was turned off) */
+            *n->ref = (void *)g_machines_game;
+            free(g_machines);
+            g_machines = NULL;
+        }
+        return 0;
+    }
+    if ((rows = (u16 *)malloc(MACHINES * sizeof *rows)) == NULL) {
+        return -1;
+    }
+    memcpy(rows, g_machines_game, MACHINES * sizeof *rows);
+    for (m = 0; m < bw_mod_count(); m++) {
+        read_machine_rows(bw_mod_root_at(m), rows);
+    }
+    free(g_machines);
+    g_machines = rows;
+    *n->ref = rows;
+    return 0;
+}
+
+static const void *table_now(const char *name)
+{
+    const BwDataImage *img = bw_data_installed();
+    const BwDataName *n;
+
+    if (img == NULL || (n = bw_data_find(img, name)) == NULL || n->ref == NULL) {
+        return NULL;
+    }
+    return *n->ref;
+}
+
+const u16 *bw_item_icon_table(void)
+{
+    return (const u16 *)table_now("item_gfx_member");
+}
+
+const u8 *bw_icon_palette_table(u32 *rows)
+{
+    const u8 *t = (const u8 *)table_now("_IconPaletteTable");
+
+    if (rows != NULL) {
+        *rows = t != NULL && t == g_icon_pal ? ICON_PAL_MAX : ICON_PAL_VANILLA;
+    }
+    return t;
+}
+
 int bw_limits_apply(void)
 {
     u32 i;
@@ -422,6 +725,14 @@ int bw_limits_apply(void)
                     k_tables[i].name);
             rc = -1;
         }
+    }
+    if (build_icon_palette() != 0) {
+        fprintf(stderr, "eidos: the icon palette table could not be built\n");
+        rc = -1;
+    }
+    if (build_machine_moves() != 0) {
+        fprintf(stderr, "eidos: the TM and HM move table could not be built\n");
+        rc = -1;
     }
     return rc;
 }

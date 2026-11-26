@@ -84,6 +84,8 @@
 #include "mod_loader.h"
 #include "bw_limits.h"
 #include "battle_handlers.h"
+#include "trainer_mons.h"
+#include "shops.h"
 #include "mod_catalog.h"
 #include "mod_menu.h"
 #include "avatar.h"              /* the other players' figures, each in its look */
@@ -3344,6 +3346,10 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     /* The mods' moves, abilities and items that work like a built-in one
      * (sdk/battle_handlers.h), read with the same final mod list. */
     bw_bh_load();
+    /* and the per-member numbers of trainers' Pokemon (sdk/trainer_mons.h) */
+    bw_trmons_load();
+    /* and the shops' lists (sdk/shops.h) */
+    bw_shops_load();
     /* The mods: the loader runs after the save is chosen and before the
      * game runs (docs/mod-implementation.md, section 3).  The declared
      * table the manifest's address check asks is registered by

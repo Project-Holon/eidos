@@ -56,6 +56,7 @@
 #include "kit.h"
 #include "port.h"
 #include "g2d.h"
+#include "bw_limits.h"
 
 #define ITEM_MAX        627
 #define ITEM_TABLE_ADDR 0x0209EB6Cu
@@ -67,7 +68,10 @@ typedef struct UiOwned {
     UiImage im;             /* im.rgba points at the block we own          */
 } UiOwned;
 
-static UiOwned *g_item[ITEM_MAX];
+/* one per item id up to the current item limit (bw_limit_get), grown as
+ * the limit is raised */
+static UiOwned **g_item;
+static u32 g_item_n;
 static UiOwned *g_app[UI_APP_ICON_COUNT];
 static u8       g_app_tried[UI_APP_ICON_COUNT];
 static UiOwned *g_mon[ICON_MEMBERS * 2];
@@ -113,7 +117,10 @@ static void free_images(UiOwned **list, int n)
 
 void ui_icons_reset(void)
 {
-    free_images(g_item, ITEM_MAX);
+    free_images(g_item, (int)g_item_n);
+    free(g_item);
+    g_item = NULL;
+    g_item_n = 0;
     free_images(g_app, UI_APP_ICON_COUNT);
     memset(g_app_tried, 0, sizeof(g_app_tried));
     held_drop();
@@ -151,13 +158,30 @@ const UiImage *ui_item_icon(u16 item)
     u16 p16[16];
     UiOwned *o;
 
-    if (item == 0 || item >= ITEM_MAX) {
+    u32 count = bw_limit_get(BW_PORT_LIMIT_ITEM_LAST) + 1u;
+
+    if (item == 0 || item >= count) {
         return NULL;
+    }
+    if (count > g_item_n) {
+        UiOwned **grown = (UiOwned **)realloc(g_item, count * sizeof *grown);
+
+        if (grown == NULL) {
+            return NULL;
+        }
+        memset(grown + g_item_n, 0, (count - g_item_n) * sizeof *grown);
+        g_item = grown;
+        g_item_n = count;
     }
     if (g_item[item] != NULL) {
         return &g_item[item]->im;
     }
-    tab = (const u8 *)bw_arm9_rodata(ITEM_TABLE_ADDR, ITEM_MAX * 4);
+    /* the table the game reads now: a mod's rows (eidos/tables/item_icons.txt)
+     * and the items past the game's own */
+    tab = (const u8 *)bw_item_icon_table();
+    if (tab == NULL && item < ITEM_MAX) {
+        tab = (const u8 *)bw_arm9_rodata(ITEM_TABLE_ADDR, ITEM_MAX * 4);
+    }
     if (tab == NULL) {
         return NULL;
     }
@@ -354,8 +378,17 @@ const UiImage *ui_mon_icon(u16 species, u8 form, int frame)
     if (g_mon_pal == NULL) {
         return NULL;
     }
-    ptab = (const u8 *)bw_arm9_rodata(ICON_PAL_ADDR, ICON_PAL_BYTES);
-    bank = (ptab != NULL && pal_index < ICON_PAL_BYTES) ? (u32)(ptab[pal_index] & 15) : 0;
+    /* the palette table the game reads now (a mod's eidos/tables/icon_palette.txt) */
+    {
+        u32 rows = 0;
+
+        ptab = bw_icon_palette_table(&rows);
+        if (ptab == NULL) {
+            ptab = (const u8 *)bw_arm9_rodata(ICON_PAL_ADDR, ICON_PAL_BYTES);
+            rows = ICON_PAL_BYTES;
+        }
+        bank = (ptab != NULL && pal_index < rows) ? (u32)(ptab[pal_index] & 15) : 0;
+    }
     if (read_pal16(g_mon_pal, g_mon_pal_size, bank < 3 ? bank : 0, p16) != 0) {
         return NULL;
     }
