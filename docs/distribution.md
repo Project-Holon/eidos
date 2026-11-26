@@ -129,11 +129,17 @@ the other version of the game.
   starts, and left where they are; a file `copied-to-profiles.txt` in the
   old saves folder says where the copy went. A profile that has saves
   already (the player used the launcher too) keeps them: the old saves go
-  into its free save slots, each with its line of the Your games record,
-  and the old multiplayer games beside its own; with too few free slots the
-  old folder becomes a profile of its own, `Standalone Black` or
-  `Standalone White`. `eidos --import-old-saves` does only this and ends,
-  for the launcher.
+  into its free save slots (there is no limit on saves), each with its line
+  of the Your games record, and the old multiplayer games beside its own.
+  `eidos --import-old-saves` does only this and ends, for the launcher.
+- **Saves in order** (`sdk/save_tidy.h`). At each start, before the save is
+  read, the game puts its saves folder in order: the Multiplayer screen's
+  games go to `games/`, a slot file that holds no save goes to
+  `unreadable/` (kept, never deleted), and the saves left close up as
+  slots 1, 2, 3 and on. A file is never written over, and the plan is
+  written to `tidy.txt` first, so a crash in the middle loses nothing.
+  `eidos --tidy-saves <saves folder>` does only this and ends, for the
+  launcher.
 - **The other version** (`demo/eidos_boot.c`, `eidos_boot_game_switch`). The
   title menu has a VERSION flag between the mod manager's and the style's.
   With the other game's data in the install, the flag (or X) goes to that

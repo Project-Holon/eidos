@@ -261,6 +261,9 @@ static int parse_shots(const char *list)
 #include "link.h"
 #include "arm7/wm.h"
 #include "save_slots.h"
+/* sdk/save_games.h (its BwGame is not install/setup.h's): the records read again */
+extern void bw_games_forget(void);
+#include "save_tidy.h"
 #include "firmware.h"
 
 #ifndef EIDOS_OVERLAYS
@@ -3288,6 +3291,26 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
             bw_mod_net_set_token_file(tokens);
         }
     }
+    /* The saves folder in order, once a run, before the game reads a save
+     * (sdk/save_tidy.h): the Multiplayer screen's games in games/, the
+     * files that hold no save set aside, the saves with no gap. */
+    {
+        static int tidied;
+
+        if (!tidied) {
+            char note[1200];
+            int r = bw_saves_tidy(bw_save_dir(), note, sizeof note);
+
+            tidied = 1;
+            if (r != 0 && note[0] != '\0') {
+                fprintf(stderr, "eidos: %s\n", note);
+            }
+            if (r > 0) {
+                bw_slots_forget();
+                bw_games_forget();
+            }
+        }
+    }
     /* The save slot in force is the backup chip's file (sdk/save_slots.h);
      * a multiplayer game holds its own file and keeps it. */
     if (bw_slots_try_boot()) {
@@ -3492,6 +3515,7 @@ static void boot_setenv(const char *name, const char *value)
 static int g_profile_given;         /* --profile-dir */
 static int g_standalone_flag;       /* --standalone */
 static int g_import_only;           /* --import-old-saves */
+static const char *g_tidy_only;     /* --tidy-saves <folder> */
 static int g_standalone;
 #if EIDOS_BOOT_SDL
 static int g_profiles;              /* the run plays from the two game profiles */
@@ -3912,6 +3936,12 @@ static int boot_launcher_arg(int argc, char **argv, int *i, int apply)
         g_standalone_flag = 1;
         return 1;
     }
+    if (strcmp(a, "--tidy-saves") == 0 && *i + 1 < argc) {
+        /* for the launcher: that saves folder put in order (sdk/save_tidy.h),
+         * one line that says what was done, and no game */
+        g_tidy_only = argv[++*i];
+        return 1;
+    }
     if (strcmp(a, "--import-old-saves") == 0) {
         /* for the launcher: a plain start's old saves into their game's
          * profile (install/profiles.h), one line that says what was done,
@@ -4104,6 +4134,13 @@ int main(int argc, char **argv)
     }
     g_standalone = g_standalone_flag || !g_profile_given;
     bw_mod_menu_set_manager(g_standalone);  /* the title menu offers the game's own mod manager */
+    if (g_tidy_only != NULL) {
+        char note[1200];
+        int r = bw_saves_tidy(g_tidy_only, note, sizeof note);
+
+        fprintf(stderr, "eidos: %s\n", r == 0 ? "The saves are in order already." : note);
+        return r < 0 ? 1 : 0;
+    }
 #if EIDOS_BOOT_SDL
     boot_profile_first(argc, argv);
     if (g_import_only) {

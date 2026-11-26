@@ -25,11 +25,13 @@ fn has_entries(dir: &Path) -> bool {
     fs::read_dir(dir).map(|mut rd| rd.next().is_some()).unwrap_or(false)
 }
 
-/// Whether a saves folder holds a game: slot 1's file, another slot's, or a
-/// multiplayer game (the game's `bw_profile_has_saves`).
+/// Whether a saves folder holds a game: slot 1's file, another slot's, a
+/// Multiplayer screen game or a multiplayer game (the game's
+/// `bw_profile_has_saves`).
 fn has_saves(saves: &Path) -> bool {
     saves.join("pokeblack.sav").is_file()
         || has_entries(&saves.join("slots"))
+        || has_entries(&saves.join("games"))
         || has_entries(&saves.join("multiplayer"))
 }
 
@@ -54,6 +56,41 @@ pub fn note_of(output: &str) -> String {
         .find(|l| l.starts_with("The saves in ") || l.starts_with("no old saves"))
         .unwrap_or("")
         .to_string()
+}
+
+/// The first version whose game knows `--tidy-saves`.
+const FIRST_TIDY: &str = "0.2.8";
+
+/// Whether a version's game can put a saves folder in order: a local
+/// build, or 0.2.8 and later.
+pub fn can_tidy(id: &str) -> bool {
+    id == versions::LOCAL || versions::compare(id, FIRST_TIDY) != std::cmp::Ordering::Less
+}
+
+/// Runs the game's tidy step on one saves folder (the game's rules,
+/// sdk/save_tidy.h: Multiplayer screen games to games/, files with no save
+/// set aside in unreadable/, the saves with no gap) and returns its line,
+/// empty when the folder was in order.
+pub fn tidy(exe: &Path, saves: &Path) -> Result<String, String> {
+    if !saves.is_dir() {
+        return Ok(String::new());
+    }
+    let out = Command::new(exe)
+        .arg("--tidy-saves")
+        .arg(saves)
+        .output()
+        .map_err(|e| format!("Could not start eidos to put the saves in order: {e}"))?;
+    let text = String::from_utf8_lossy(&out.stderr).into_owned();
+    let line = text
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("eidos: "))
+        .find(|l| l.starts_with("The saves"))
+        .unwrap_or("")
+        .to_string();
+    if !out.status.success() {
+        return Err(if line.is_empty() { "eidos could not put the saves in order.".into() } else { line });
+    }
+    Ok(if line.contains("in order already") { String::new() } else { line })
 }
 
 /// Runs the game's import and returns its line.

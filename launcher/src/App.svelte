@@ -5,6 +5,7 @@
   import {
     gamesOf,
     importOldSaves,
+    tidySaves,
     message,
     oldSavesPending,
     overview,
@@ -95,16 +96,20 @@
   }
 
   // The saves of a plain eidos from before the game profiles: imported
-  // once, by the game itself, while a window says so.
+  // once, by the game itself, while a window says so.  Then each profile's
+  // saves put in order (the game's tidy step).  At launch, and again when a
+  // version is installed: the game that does them may have just come.
   let importing = $state(false);
 
-  async function importOld() {
+  async function saveChores() {
     try {
-      if (!(await oldSavesPending())) return;
-      importing = true;
-      const note = await importOldSaves();
-      importing = false;
-      if (note) toast(note);
+      if (await oldSavesPending()) {
+        importing = true;
+        const note = await importOldSaves();
+        importing = false;
+        if (note) toast(note);
+      }
+      for (const note of await tidySaves()) toast(note);
       await refresh();
     } catch (e) {
       importing = false;
@@ -115,13 +120,14 @@
   onMount(() => {
     refresh();
     loadGames();
-    importOld();
+    saveChores();
     // The launcher's own update, once per launch; a failure only reports.
     checkForUpdate().then(() => {
       if (updates.state.kind === "failed") toast(updates.state.message, true);
     });
     const stops: Promise<() => void>[] = [
       listen("running-changed", refresh),
+      listen("version-installed", saveChores),
       listen<string>("invite", async (e) => {
         await takePendingJoin();
         await refresh();

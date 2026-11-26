@@ -69,6 +69,7 @@ holds the move steps (their frames then count from when it opens), and
 | `EIDOS_MOD_MESSAGE_LOG=1` | Each mod message goes to the log too (`sdk/mod_message.c`). |
 | `EIDOS_VFS_MEM_DUMP=DIR` | Each archive member a mod sets in memory (`vfs_member_set`) is also written to `DIR/<archive>/<index>`, a mod folder's member layout, so the same bytes can be run as plain member files without the mod's code (`sdk/mod_vfs.c`). |
 | `EIDOS_SAVE_TEST_AT=FRAME` | The game saves at its first quiet moment after that frame (`demo/eidos_boot.c`). |
+| `EIDOS_TIDY_STOP_AFTER=N` | The saves folder's tidy step (`sdk/save_tidy.h`) stops after N moves as a crash would, leaving its plan (`tidy.txt`) for the next start. For the test that the next start goes on and loses nothing (`tests/test_save_tidy.c`). |
 | `EIDOS_GL_DUMP=FILE.bmp:N` (or `:N-M`) | Writes the OpenGL presenter's window at the Nth present (or every present from N to M as FILE.N.bmp) (`engine/platform/plat_gl.c`). |
 | `EIDOS_GL_STATE=N` | At the Nth present, logs the presenter's GL state (viewport, scissor, framebuffer, the screens' rectangles), how far a full-window clear reaches and which columns the frame lights (`engine/platform/plat_gl.c`). |
 | `EIDOS_EVENT_LOG=1` | Logs the running game event's chain whenever it changes, as offsets from `GAMESYSTEM_GetEvent`: add the offset to that function's address in `nm` of the program to name each event. Finds which code runs a scene. |

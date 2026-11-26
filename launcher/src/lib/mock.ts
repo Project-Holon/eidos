@@ -82,6 +82,8 @@ const answers: Record<string, unknown> = {
   locate_rom: roms,
   move_profile_data: "The data is now at E:\\Games\\eidos.",
   take_pending_join: null,
+  old_saves_pending: false,
+  tidy_saves: [],
 };
 
 let next = 1;

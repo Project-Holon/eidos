@@ -56,6 +56,11 @@ int bw_profile_has_saves(const char *saves_dir)
         && bw_path_kind_utf8(path) == BW_PATH_DIR && bw_dir_is_empty_utf8(path) == 0) {
         return 1;
     }
+    /* the Multiplayer screen's games (sdk/save_games.h) */
+    if (join(path, sizeof(path), saves_dir, "games") == 0
+        && bw_path_kind_utf8(path) == BW_PATH_DIR && bw_dir_is_empty_utf8(path) == 0) {
+        return 1;
+    }
     if (join(path, sizeof(path), saves_dir, "multiplayer") == 0
         && bw_path_kind_utf8(path) == BW_PATH_DIR && bw_dir_is_empty_utf8(path) == 0) {
         return 1;
@@ -203,15 +208,76 @@ static int record_moved(const char *saves, const char *old_mods, const char *new
 /* The old saves beside a profile's own                                */
 /* ------------------------------------------------------------------ */
 
-#define SLOTS_MAX 8
-
-/* The file of save slot `slot` (1 to SLOTS_MAX) in a saves folder. */
+/* The file of save slot `slot` (1 and up: there is no limit) in a saves
+ * folder. */
 static int slot_path(const char *saves, int slot, char *out, size_t n)
 {
     int w = slot == 1 ? snprintf(out, n, "%s/pokeblack.sav", saves)
                       : snprintf(out, n, "%s/slots/save%d.sav", saves, slot);
 
     return (w < 0 || (size_t)w >= n) ? -1 : 0;
+}
+
+/* A slot is taken when a file is there, a save or not: a free slot has no
+ * file, so nothing is ever written over (sdk/save_tidy.h sets aside the
+ * files that hold no save). */
+static int slot_taken(const char *saves, int slot)
+{
+    char path[BW_PROFILE_PATH_MAX];
+
+    return slot_path(saves, slot, path, sizeof(path)) != 0 || bw_path_kind_utf8(path) != BW_PATH_NONE;
+}
+
+/* The slots of a folder, in order, by their files' names. */
+typedef struct SlotList {
+    int *v;
+    int n, cap;
+} SlotList;
+
+static int slot_list_add(SlotList *l, int x)
+{
+    if (l->n == l->cap) {
+        int cap = l->cap ? l->cap * 2 : 16;
+        int *v = (int *)realloc(l->v, (size_t)cap * sizeof *v);
+
+        if (v == NULL) {
+            return -1;
+        }
+        l->v = v;
+        l->cap = cap;
+    }
+    l->v[l->n++] = x;
+    return 0;
+}
+
+static int slot_entry(void *ctx, const char *name, int kind)
+{
+    SlotList *l = (SlotList *)ctx;
+    size_t len = strlen(name);
+    long v = 0;
+    size_t i;
+
+    if (kind != BW_PATH_FILE || len < 9 || strncmp(name, "save", 4) != 0 || strcmp(name + len - 4, ".sav") != 0
+        || name[4] == '0') {
+        return 0;
+    }
+    for (i = 4; i < len - 4; i++) {
+        if (name[i] < '0' || name[i] > '9' || v > 100000000L) {
+            return 0;
+        }
+        v = v * 10 + (name[i] - '0');
+    }
+    if (v >= 2) {
+        (void)slot_list_add(l, (int)v);
+    }
+    return 0;
+}
+
+static int cmp_slot(const void *a, const void *b)
+{
+    int x = *(const int *)a, y = *(const int *)b;
+
+    return (x > y) - (x < y);
 }
 
 /* A slot holds a save when its file is there and not empty. */
@@ -260,52 +326,68 @@ static int mp_entry(void *ctx, const char *name, int kind)
 }
 
 /*
- * The old saves into the free slots of `saves`.  The files are copied to a
- * staging folder first and moved into place after, so a copy that does not
- * finish leaves the profile as it was.  0 done (`left` the multiplayer
- * games that stayed behind), 1 too few free slots (nothing was touched),
- * -1 failed.
+ * The old saves into the free slots of `saves`: the slots with no file, in
+ * order, past the last one when there are not enough below it (there is no
+ * limit).  A file already there, a save or not, is never written over.
+ * The files are copied to a staging folder first and moved into place
+ * after, so a copy that does not finish leaves the profile as it was.  0
+ * done (`left` the multiplayer games that stayed behind), -1 failed.
  */
 static int import_slots(const char *old, const char *saves, int *left)
 {
     char stage[BW_PROFILE_PATH_MAX], src[BW_PROFILE_PATH_MAX], dst[BW_PROFILE_PATH_MAX];
     char tmp[BW_PROFILE_PATH_MAX], line[256];
-    int from[SLOTS_MAX], to[SLOTS_MAX], nfrom = 0, nto = 0, slot, i;
+    SlotList fromlist = {0}, tolist = {0};
+    int *from, *to, nfrom, slot, i, rc = -1;
     FILE *in, *out;
     MpWalk mp;
 
     *left = 0;
-    for (slot = 1; slot <= SLOTS_MAX; slot++) {
-        if (slot_used(old, slot)) {
-            from[nfrom++] = slot;
+    /* the old folder's saves: slot 1 and the slots/ files, by number */
+    if (slot_used(old, 1) && slot_list_add(&fromlist, 1) != 0) {
+        goto done;
+    }
+    if (join(src, sizeof(src), old, "slots") == 0 && bw_path_kind_utf8(src) == BW_PATH_DIR) {
+        SlotList found = {0};
+
+        (void)bw_list_dir_utf8(src, slot_entry, &found);
+        for (i = 0; i < found.n; i++) {
+            if (slot_used(old, found.v[i])) {
+                (void)slot_list_add(&fromlist, found.v[i]);
+            }
         }
-        if (!slot_used(saves, slot)) {
-            to[nto++] = slot;
+        free(found.v);
+    }
+    qsort(fromlist.v, (size_t)fromlist.n, sizeof *fromlist.v, cmp_slot);
+    /* as many free slots of the profile, in order */
+    for (slot = 1; tolist.n < fromlist.n; slot++) {
+        if (!slot_taken(saves, slot) && slot_list_add(&tolist, slot) != 0) {
+            goto done;
         }
     }
-    if (nfrom > nto) {
-        return 1;
-    }
+    from = fromlist.v;
+    to = tolist.v;
+    nfrom = fromlist.n;
     if (join(dst, sizeof(dst), saves, "slots") != 0 || bw_mkdirs_utf8(dst) != 0
         || join(stage, sizeof(stage), saves, "import-old") != 0
         || bw_remove_tree_utf8(stage) != 0 || bw_mkdirs_utf8(stage) != 0) {
-        return -1;
+        goto done;
     }
     for (i = 0; i < nfrom; i++) {
         snprintf(line, sizeof(line), "%d.sav", from[i]);
         if (slot_path(old, from[i], src, sizeof(src)) != 0 || join(tmp, sizeof(tmp), stage, line) != 0
             || copy_one(src, tmp) != 0 || bw_path_kind_utf8(tmp) != BW_PATH_FILE) {
             (void)bw_remove_tree_utf8(stage);
-            return -1;
+            goto done;
         }
     }
     for (i = 0; i < nfrom; i++) {
         snprintf(line, sizeof(line), "%d.sav", from[i]);
+        /* (bw_rename_utf8 fails when the slot has a file: never written over) */
         if (join(tmp, sizeof(tmp), stage, line) != 0 || slot_path(saves, to[i], dst, sizeof(dst)) != 0
-            || bw_remove_tree_utf8(dst) != 0 /* (an empty file of an unused slot) */
             || bw_rename_utf8(tmp, dst) != 0) {
             (void)bw_remove_tree_utf8(stage);
-            return -1;
+            goto done;
         }
     }
     (void)bw_remove_tree_utf8(stage);
@@ -341,48 +423,15 @@ static int import_slots(const char *old, const char *saves, int *left)
         mp.left = 0;
         mp.failed = 0;
         if (bw_list_dir_utf8(src, mp_entry, &mp) != 0 || mp.failed) {
-            return -1;
+            goto done;
         }
         *left = mp.left;
     }
-    return 0;
-}
-
-/* The old folder as a profile of its own, which the launcher lists:
- * "Standalone Black" or "Standalone White".  0 made, 1 it is there
- * already (nothing was touched), -1 failed. */
-static int import_profile(const char *user_dir, BwGame game, const BwProfileOld *old,
-                          char *dir, size_t n)
-{
-    char path[BW_PROFILE_PATH_MAX], saves[BW_PROFILE_PATH_MAX];
-    FILE *fp;
-    int w = snprintf(dir, n, "%s/profiles/Standalone %s", user_dir, game == BW_GAME_WHITE ? "White" : "Black");
-
-    if (w < 0 || (size_t)w >= n) {
-        return -1;
-    }
-    if (bw_path_kind_utf8(dir) != BW_PATH_NONE) {
-        return 1;
-    }
-    if (join(saves, sizeof(saves), dir, "saves") != 0 || bw_copy_tree_utf8(old->saves, saves) != 0
-        || join(path, sizeof(path), dir, "mods") != 0 || bw_mkdirs_utf8(path) != 0
-        || (old->mods != NULL && bw_path_kind_utf8(old->mods) == BW_PATH_DIR
-            && bw_copy_tree_utf8(old->mods, path) != 0)
-        || ((void)record_moved(saves, old->mods, path), 0)
-        || join(path, sizeof(path), dir, "settings.ini") != 0
-        || (old->settings != NULL && copy_one(old->settings, path) != 0)
-        || join(path, sizeof(path), dir, "profile.json") != 0) {
-        return -1;
-    }
-    /* (the launcher's own file: the newest version, and the game; Black
-     * is written as no game, as the launcher writes it) */
-    fp = bw_fopen_utf8(path, "wb");
-    if (fp == NULL) {
-        return -1;
-    }
-    fprintf(fp, game == BW_GAME_WHITE ? "{\n  \"version\": \"latest\",\n  \"game\": \"white\"\n}\n"
-                                      : "{\n  \"version\": \"latest\"\n}\n");
-    return fclose(fp) == 0 ? 0 : -1;
+    rc = 0;
+done:
+    free(fromlist.v);
+    free(tolist.v);
+    return rc;
 }
 
 /* The note that says the old folder is no longer read. */
@@ -421,7 +470,6 @@ int bw_profile_prepare(const char *user_dir, BwGame game, const BwProfileOld *ol
         if (bw_profile_has_saves(saves)) {
             /* the profile is in use (the launcher's): its saves stay the
              * ones played, and the old ones come beside them */
-            char own[BW_PROFILE_PATH_MAX];
             int left = 0;
             int rc = import_slots(old->saves, saves, &left);
 
@@ -435,20 +483,6 @@ int bw_profile_prepare(const char *user_dir, BwGame game, const BwProfileOld *ol
                 } else {
                     say(note, note_len, "The saves in %s were copied to free save slots of %s.",
                         old->saves, saves);
-                }
-            } else if (rc == 1) {
-                rc = import_profile(user_dir, game, old, own, sizeof(own));
-                if (rc == 0) {
-                    mark_copied(mark, own);
-                    copied = 1;
-                    say(note, note_len, "The saves in %s were copied to a profile of their own, %s: "
-                        "%s has too few free save slots.", old->saves, own, saves);
-                } else if (rc == 1) {
-                    say(note, note_len, "The saves in %s were not copied: %s has too few free save "
-                        "slots and %s is there already.", old->saves, saves, own);
-                } else {
-                    say(note, note_len, "The saves in %s could not be copied to %s; they stay where "
-                        "they are.", old->saves, own);
                 }
             } else {
                 say(note, note_len, "The saves in %s could not be copied to %s; they stay where "

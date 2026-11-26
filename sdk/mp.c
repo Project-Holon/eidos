@@ -515,10 +515,36 @@ static long game_time(const char *dir, const char *name)
 
 typedef struct GameList {
     char (*names)[BW_MP_GAME_NAME_MAX];
-    long times[BW_MP_GAMES_MAX];
+    long *times;                    /* one a name, `max` of them */
     int  n, max;
     const char *dir;
 } GameList;
+
+static int game_count_one(void *ctx, const char *name)
+{
+    GameList *l = (GameList *)ctx;
+    char path[520];
+
+    snprintf(path, sizeof(path), "%s/%s", l->dir, name);
+    if (bw_plat_path_kind(path) == BW_PATH_DIR && strlen(name) < BW_MP_GAME_NAME_MAX) {
+        l->n++;
+    }
+    return 0;
+}
+
+int bw_mp_game_count(void)
+{
+    char dir[440];
+    GameList l;
+
+    if (games_dir(dir, sizeof(dir)) != 0) {
+        return 0;
+    }
+    memset(&l, 0, sizeof(l));
+    l.dir = dir;
+    (void)bw_plat_list_dir(dir, game_count_one, &l);
+    return l.n;
+}
 
 static int game_list_one(void *ctx, const char *name)
 {
@@ -553,10 +579,14 @@ int bw_mp_game_list(char names[][BW_MP_GAME_NAME_MAX], int max)
         return 0;
     }
     memset(&l, 0, sizeof(l));
+    if (max <= 0 || (l.times = (long *)malloc((size_t)max * sizeof *l.times)) == NULL) {
+        return 0;
+    }
     l.names = names;
-    l.max = max < BW_MP_GAMES_MAX ? max : BW_MP_GAMES_MAX;
+    l.max = max;
     l.dir = dir;
     (void)bw_plat_list_dir(dir, game_list_one, &l);
+    free(l.times);
     return l.n;
 }
 

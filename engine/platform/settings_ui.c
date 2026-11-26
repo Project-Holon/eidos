@@ -425,7 +425,6 @@ static const ValueName k_choice_names[] = {
 #define STR_MP_MODE_START    "Start a new game"
 #define STR_MP_MODE_MAKE     "Make the world"
 #define STR_MP_MODE_EXPORT   "Save the options file"
-#define STR_MP_MODE_FULL     "Every save slot is used"
 #define STR_MP_MODE_TYPE     "Type"
 #define STR_MP_SAVED         "Saved. Its path is copied."
 #define STR_MP_NOT_SAVED     "The file could not be saved"
@@ -675,7 +674,6 @@ static struct {
 static int g_mode_mod = -1;
 static int g_mode_k = -1;
 static int g_mode_card = -1;
-static int g_mode_full;
 static char g_mode_said[96];
 
 /* The code typed in the Join box, asked about before joining (metaxy's
@@ -712,9 +710,26 @@ static int g_host_from_hub;
 static int g_gl_n;
 static unsigned g_mp_tick;
 
-/* The host's games, read when the Host view opens. */
-static char g_games[BW_MP_GAMES_MAX][BW_MP_GAME_NAME_MAX];
+/* The host's games, read when the Host view opens (as many as there are). */
+static char (*g_games)[BW_MP_GAME_NAME_MAX];
 static int  g_ngames;
+
+/* The host's games into a list grown to hold them all: how many. */
+static int read_mp_games(char (**list)[BW_MP_GAME_NAME_MAX])
+{
+    int n = bw_mp_game_count();
+    char (*grown)[BW_MP_GAME_NAME_MAX];
+
+    if (n <= 0) {
+        return 0;
+    }
+    grown = (char (*)[BW_MP_GAME_NAME_MAX])realloc(*list, (size_t)n * BW_MP_GAME_NAME_MAX);
+    if (grown == NULL) {
+        return 0;
+    }
+    *list = grown;
+    return bw_mp_game_list(grown, n);
+}
 
 /* The game's keyboard: what it is open for (KB_*), and how. */
 #define KB_NONE     0
@@ -887,22 +902,6 @@ static void build_session_rows(void)
             add_row(ROW_MP_YOUR_GAME, k, 0);
         }
     }
-}
-
-/* A save slot the mode's new game can take without replacing a save. */
-static int slot_free(void)
-{
-    int n;
-
-    if (!bw_slots_used(bw_slots_current())) {
-        return 1;
-    }
-    for (n = 1; n <= BW_SLOTS_MAX; n++) {
-        if (!bw_slots_used(n)) {
-            return 1;
-        }
-    }
-    return 0;
 }
 
 /* The mod option KB_MOD_TEXT opens for (keyboard_open clears g_kb). */
@@ -1749,7 +1748,6 @@ static int mode_type_step(int d)
         }
     }
     g_mode_k = list[(at + d + n) % n];
-    g_mode_full = 0;
     g_mode_said[0] = '\0';
     build_rows_keep_cursor();
     return 1;
@@ -2040,7 +2038,7 @@ static int session_action(int type)
     case ROW_SESSION_HOST:
         if (g_mp_view == MP_VIEW_CHOOSE) {
             /* Host: the games the host kept, newest first, and a new one */
-            g_ngames = bw_mp_game_list(g_games, BW_MP_GAMES_MAX);
+            g_ngames = read_mp_games(&g_games);
             g_mp_view = MP_VIEW_HOST;
             g_sess.have = 0;
             build_rows();
@@ -2146,7 +2144,6 @@ static int session_action(int type)
         g_mode_mod = r->arg;
         g_mode_k = r->arg2;
         g_mode_card = r->arg2;
-        g_mode_full = 0;
         g_mode_said[0] = '\0';
         g_mp_view = MP_VIEW_MODE;
         build_rows();
@@ -2173,10 +2170,6 @@ static int session_action(int type)
             put(g_room.said, (int)sizeof g_room.said, STR_MP_ROOM_NO_MOD);
             return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
         }
-        if (!slot_free()) {
-            put(g_room.said, (int)sizeof g_room.said, STR_MP_MODE_FULL);
-            return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
-        }
         snprintf(line, sizeof line, "ap %s:%s %s %s", g_room.host, g_room.port, g_room.slot,
                  g_room.pass[0] != '\0' ? g_room.pass : "-");
         if (bw_mod_menu_mode_begin_join(rm, rk, line) != 0) {
@@ -2193,10 +2186,6 @@ static int session_action(int type)
         /* the world's own new game: the mod that joins worlds, told the code
          * (mode_code during game.new) */
         if (!g_look.can_join) {
-            return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
-        }
-        if (!slot_free()) {
-            put(g_look.said, (int)sizeof g_look.said, STR_MP_MODE_FULL);
             return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
         }
         if (bw_mod_menu_mode_begin_join(g_look.join_mod, g_look.join_mode, g_look.code) != 0) {
@@ -2226,13 +2215,8 @@ static int session_action(int type)
             put(g_mode_said, (int)sizeof g_mode_said, STR_MP_NOT_SAVED);
             return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
         }
-        /* A new game in a free save slot, told the mode (mode_get during
-         * game.new).  Every slot used: said on the row; the game's own
-         * "replace a save" is the title menu's New Game, never this. */
-        if (!slot_free()) {
-            g_mode_full = 1;
-            return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
-        }
+        /* A new game in a file of its own (games/, sdk/save_games.h), told
+         * the mode (mode_get during game.new). */
         if (bw_mod_menu_mode_begin((u32)g_mode_mod, (u32)g_mode_k) != 0) {
             if (getenv("EIDOS_MP_UI_LOG") != NULL) {
                 fprintf(stderr, "eidos: mp ui: mode %d/%d did not begin\n", g_mode_mod, g_mode_k);
@@ -3595,8 +3579,6 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
                        : STR_MP_MODE_START);
         if (bw_mod_menu_mode_off((u32)g_mode_mod, (u32)g_mode_k)) {
             put(value, nv, STR_MP_MODE_OFF);
-        } else if (g_mode_full) {
-            put(value, nv, STR_MP_MODE_FULL);
         } else if (g_mode_said[0] != '\0') {
             put(value, nv, g_mode_said);
         }
@@ -4289,14 +4271,14 @@ int eidos_sui_mp_row_extra(int i, const char **heading, const char **help, int *
 /* The list, read from the disk at most twice a second (the hub draws it
  * every frame): the cards' saves first, newest first, then the co-op
  * games the host kept. */
-#define MP_GAMES_MAX (BW_SLOTS_MAX + BW_MP_GAMES_MAX)
-static EidosSuiGame g_gl[MP_GAMES_MAX];
+static EidosSuiGame *g_gl;     /* grown to hold them all */
+static int g_gl_cap;
 static int g_gl_n = -1;   /* (declared above) */
 static unsigned g_gl_tick;
 
 static void games_read(void)
 {
-    static char kept[BW_MP_GAMES_MAX][BW_MP_GAME_NAME_MAX];
+    static char (*kept)[BW_MP_GAME_NAME_MAX];
     int nk, ng, i;
 
     if (g_gl_n >= 0 && g_mp_tick - g_gl_tick < 30u) {
@@ -4305,7 +4287,17 @@ static void games_read(void)
     g_gl_tick = g_mp_tick;
     g_gl_n = 0;
     ng = bw_games_count();
-    for (i = 0; i < ng && g_gl_n < MP_GAMES_MAX; i++) {
+    nk = read_mp_games(&kept);
+    if (ng + nk > g_gl_cap) {
+        EidosSuiGame *grown = (EidosSuiGame *)realloc(g_gl, (size_t)(ng + nk) * sizeof *grown);
+
+        if (grown == NULL) {
+            return;
+        }
+        g_gl = grown;
+        g_gl_cap = ng + nk;
+    }
+    for (i = 0; i < ng; i++) {
         EidosSuiGame *out = &g_gl[g_gl_n];
         BwGame g;
         u32 mod, mode;
@@ -4332,8 +4324,7 @@ static void games_read(void)
         out->ok = found;
         g_gl_n++;
     }
-    nk = bw_mp_game_list(kept, BW_MP_GAMES_MAX);
-    for (i = 0; i < nk && g_gl_n < MP_GAMES_MAX; i++) {
+    for (i = 0; i < nk; i++) {
         EidosSuiGame *out = &g_gl[g_gl_n++];
 
         memset(out, 0, sizeof *out);

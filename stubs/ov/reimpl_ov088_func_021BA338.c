@@ -49,8 +49,6 @@ extern void bw_mod_title_open_multiplayer(void);
 extern int bw_mod_title_join_pending(void);
 extern int bw_slots_flip(int d);
 extern int bw_slots_new_game(void);
-extern int bw_slots_replacing(void);
-extern void bw_slots_set_replacing(int on);
 extern int bw_mp_take_started(void);
 extern int bw_mp_take_started_peek(void);
 extern void eidos_sui_enter(void);
@@ -165,18 +163,12 @@ int func_021BA338(char *p)
         func_020061E4(0x54c);
         switch (*(u8 *)(p + *(u8 *)(p + 0x128) + 0x120)) {
         case 0:
-            if (bw_mod_title_settings_on() && bw_slots_replacing()) {
-                /* the save to replace is chosen: the game's own warning,
-                 * then the new game in that save's place */
-                bw_slots_set_replacing(0);
-                return func_021BC0AC(p, 8);
-            }
             *(u8 *)(p + 0x129) = *(u8 *)(p + *(u8 *)(p + 0x128) + 0x120);
             return func_021BC0AC(p, 7);
         case 1:
-            /* New Game takes a free slot when there is one, so the
-             * game's "this deletes your save" comes only when every slot
-             * is used (sdk/save_slots.h) */
+            /* New Game takes a free slot (sdk/save_slots.h: there is
+             * always one), so the game's "this deletes your save" never
+             * comes for a save of the player's */
             if (bw_mod_title_settings_on() && !bw_mp_take_started_peek()) {
                 if (bw_slots_new_game()) {
                     /* the new game goes to a free slot: no warning, as
@@ -184,14 +176,6 @@ int func_021BA338(char *p)
                     *(u8 *)(p + 0x129) = 1;
                     return func_021BC080(p, 1);
                 }
-                if (!bw_slots_replacing() &&
-                    func_020071EC(*(void **)p) == 1) {
-                    /* every slot is used: the Continue card asks which
-                     * save the new game replaces; A again takes it */
-                    bw_slots_set_replacing(1);
-                    return rebuild(p);
-                }
-                bw_slots_set_replacing(0);
             }
             return func_021BC0AC(p, 8);
         case 2:
@@ -230,24 +214,14 @@ int func_021BA338(char *p)
             return func_021BC0AC(p, 11);
         }
     }
-    /* Left and right on the Continue card: the next save slot (and on New
-     * Game while it asks which save to replace) */
+    /* Left and right on the Continue card: the next save slot */
     if (bw_mod_title_settings_on() &&
-        (*(u8 *)(p + *(u8 *)(p + 0x128) + 0x120) == 0 || bw_slots_replacing()) &&
+        *(u8 *)(p + *(u8 *)(p + 0x128) + 0x120) == 0 &&
         (func_020362DC() & 0x30)) {
         if (bw_slots_flip((func_020362DC() & 0x10) ? 1 : -1)) {
             func_020061E4(0x548);
             return rebuild(p);
         }
-    }
-    if (bw_mod_title_settings_on() && bw_slots_replacing()) {
-        /* B gives the choice up; up and down wait for it */
-        if (func_020362DC() & 2) {
-            func_020061E4(0x551);
-            bw_slots_set_replacing(0);
-            return rebuild(p);
-        }
-        return 5;
     }
     if (func_020362DC() & 2) {
         func_020061E4(0x551);

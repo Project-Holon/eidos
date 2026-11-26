@@ -9,22 +9,23 @@
 #include <sys/stat.h>
 
 #include "save.h"
+#include "plat_save.h"
 #include "save_slots.h"
 #include "save_games.h"
 
-#define GAMES_MAX BW_SLOTS_MAX
-
-static BwGame g_games[GAMES_MAX];
-static int    g_count;
+static BwGame *g_games;         /* games/games.ini's records (slot -k) */
+static int    g_count, g_cap;
+static int   *g_old;            /* the slots an older eidos's games.ini names */
+static int    g_old_count, g_old_cap;
 static int    g_loaded;
 static BwGame g_pending;
 static int    g_has_pending;
 
-static void games_file(char *out, size_t size)
+static void games_file(char *out, size_t size, const char *name)
 {
     const char *dir = bw_save_dir();
 
-    snprintf(out, size, "%s/games.ini", dir != NULL ? dir : ".");
+    snprintf(out, size, "%s/%s", dir != NULL ? dir : ".", name);
 }
 
 static void copy_word(char *out, size_t size, const char *s)
@@ -37,9 +38,57 @@ static void copy_word(char *out, size_t size, const char *s)
     out[k] = '\0';
 }
 
+static int add_game(const BwGame *g)
+{
+    if (g_count == g_cap) {
+        int cap = g_cap ? g_cap * 2 : 16;
+        BwGame *v = (BwGame *)realloc(g_games, (size_t)cap * sizeof *v);
+
+        if (v == NULL) {
+            return -1;
+        }
+        g_games = v;
+        g_cap = cap;
+    }
+    g_games[g_count++] = *g;
+    return g_count - 1;
+}
+
+static void add_old(int n)
+{
+    if (g_old_count == g_old_cap) {
+        int cap = g_old_cap ? g_old_cap * 2 : 16;
+        int *v = (int *)realloc(g_old, (size_t)cap * sizeof *v);
+
+        if (v == NULL) {
+            return;
+        }
+        g_old = v;
+        g_old_cap = cap;
+    }
+    g_old[g_old_count++] = n;
+}
+
+/* One line of a record file into `g`: 1 read, 0 not a record. */
+static int parse(const char *line, BwGame *g)
+{
+    char kind[8], role[8], ns[BW_GAMES_NS_MAX], mode[BW_GAMES_MODE_MAX], code[BW_GAMES_CODE_MAX];
+
+    if (line[0] == '#' ||
+        sscanf(line, "%d %7s %31s %23s %7s %16s", &g->slot, kind, ns, mode, role, code) != 6 || g->slot < 1) {
+        return 0;
+    }
+    g->kind = strcmp(kind, "world") == 0 ? BW_GAME_WORLD : strcmp(kind, "room") == 0 ? BW_GAME_ROOM : BW_GAME_SOLO;
+    g->role = strcmp(role, "joined") == 0 ? BW_GAME_JOINED : BW_GAME_HOST;
+    copy_word(g->ns, sizeof g->ns, ns);
+    copy_word(g->mode, sizeof g->mode, mode);
+    copy_word(g->code, sizeof g->code, strcmp(code, "-") == 0 ? "" : code);
+    return 1;
+}
+
 static void load(void)
 {
-    static char from[512];      /* the file the list was read from */
+    static char from[512];      /* the folder the list was read from */
     char path[512], line[160];
     FILE *f;
 
@@ -47,7 +96,7 @@ static void load(void)
      * to the other version plays from that version's profile): the list is
      * the folder's, so it is read again from the folder in force, and the
      * old folder's list is never written into the new one. */
-    games_file(path, sizeof path);
+    games_file(path, sizeof path, "");
     if (g_loaded && strcmp(from, path) != 0) {
         g_loaded = 0;
         g_has_pending = 0;
@@ -57,52 +106,68 @@ static void load(void)
     }
     g_loaded = 1;
     g_count = 0;
+    g_old_count = 0;
     snprintf(from, sizeof from, "%s", path);
-    if ((f = fopen(path, "rb")) == NULL) {
-        return;
-    }
-    while (g_count < GAMES_MAX && fgets(line, sizeof line, f) != NULL) {
-        BwGame g;
-        char kind[8], role[8], ns[BW_GAMES_NS_MAX], mode[BW_GAMES_MODE_MAX], code[BW_GAMES_CODE_MAX];
-        int i, dup = 0;
+    games_file(path, sizeof path, "games/games.ini");
+    if ((f = fopen(path, "rb")) != NULL) {
+        while (fgets(line, sizeof line, f) != NULL) {
+            BwGame g;
+            int i, dup = 0;
 
-        if (line[0] == '#' ||
-            sscanf(line, "%d %7s %31s %23s %7s %16s", &g.slot, kind, ns, mode, role, code) != 6 ||
-            g.slot < 1 || g.slot > BW_SLOTS_MAX) {
-            continue;
+            if (!parse(line, &g)) {
+                continue;
+            }
+            g.slot = -g.slot;
+            for (i = 0; i < g_count; i++) {
+                dup |= g_games[i].slot == g.slot;
+            }
+            if (!dup) {
+                (void)add_game(&g);
+            }
         }
-        g.kind = strcmp(kind, "world") == 0 ? BW_GAME_WORLD : strcmp(kind, "room") == 0 ? BW_GAME_ROOM : BW_GAME_SOLO;
-        g.role = strcmp(role, "joined") == 0 ? BW_GAME_JOINED : BW_GAME_HOST;
-        copy_word(g.ns, sizeof g.ns, ns);
-        copy_word(g.mode, sizeof g.mode, mode);
-        copy_word(g.code, sizeof g.code, strcmp(code, "-") == 0 ? "" : code);
-        for (i = 0; i < g_count; i++) {
-            dup |= g_games[i].slot == g.slot;
-        }
-        if (!dup) {
-            g_games[g_count++] = g;
-        }
+        fclose(f);
     }
-    fclose(f);
+    /* an older eidos's record, until the tidy step moves its saves */
+    games_file(path, sizeof path, "games.ini");
+    if ((f = fopen(path, "rb")) != NULL) {
+        while (fgets(line, sizeof line, f) != NULL) {
+            BwGame g;
+
+            if (parse(line, &g)) {
+                add_old(g.slot);
+            }
+        }
+        fclose(f);
+    }
 }
 
 static void store(void)
 {
-    char path[512], text[GAMES_MAX * 128 + 64];
-    int i, n;
+    static const char head[] = "# the saves the Multiplayer screen made (sdk/save_games.h)\n";
+    char path[512];
+    size_t cap = sizeof head + (size_t)g_count * 128, n;
+    char *text = (char *)malloc(cap);
+    int i;
 
-    n = snprintf(text, sizeof text, "# the saves the Multiplayer screen made (sdk/save_games.h)\n");
-    for (i = 0; i < g_count && n > 0 && (size_t)n < sizeof text; i++) {
+    if (text == NULL) {
+        return;
+    }
+    n = (size_t)snprintf(text, cap, "%s", head);
+    for (i = 0; i < g_count && n < cap; i++) {
         const BwGame *g = &g_games[i];
 
-        n += snprintf(text + n, sizeof text - (size_t)n, "%d %s %s %s %s %s\n", g->slot,
-                      g->kind == BW_GAME_WORLD ? "world" : g->kind == BW_GAME_ROOM ? "room" : "solo", g->ns, g->mode,
-                      g->role == BW_GAME_JOINED ? "joined" : "host", g->code[0] != '\0' ? g->code : "-");
+        n += (size_t)snprintf(text + n, cap - n, "%d %s %s %s %s %s\n", -g->slot,
+                              g->kind == BW_GAME_WORLD ? "world" : g->kind == BW_GAME_ROOM ? "room" : "solo", g->ns,
+                              g->mode, g->role == BW_GAME_JOINED ? "joined" : "host",
+                              g->code[0] != '\0' ? g->code : "-");
     }
-    if (n > 0 && (size_t)n < sizeof text) {
-        games_file(path, sizeof path);
+    if (n < cap) {
+        games_file(path, sizeof path, "games");
+        (void)bw_plat_mkdirs(path);
+        games_file(path, sizeof path, "games/games.ini");
         (void)bw_save_write_atomic(path, text, (u32)n);
     }
+    free(text);
 }
 
 /* A word the file can hold: no space, at least one character. */
@@ -139,6 +204,16 @@ void bw_games_pending_clear(void)
     g_has_pending = 0;
 }
 
+void bw_games_forget(void)
+{
+    g_loaded = 0;                   /* the records read again at the next ask */
+}
+
+int bw_games_has_pending(void)
+{
+    return g_has_pending;
+}
+
 static int find(int n)
 {
     int i;
@@ -156,25 +231,20 @@ void bw_games_saved(int n)
     int i;
 
     load();
+    if (!g_has_pending) {
+        return;                     /* a plain new game: a slot of the player's own */
+    }
+    g_pending.slot = n;
     i = find(n);
-    if (g_has_pending) {
-        g_pending.slot = n;
-        if (i < 0 && g_count < GAMES_MAX) {
-            i = g_count++;
-        }
-        if (i >= 0) {
-            g_games[i] = g_pending;
-        }
-        g_has_pending = 0;
-        fprintf(stderr, "eidos: save: slot %d holds a %s game (%s), listed under Your games\n", n,
-                g_pending.kind == BW_GAME_WORLD ? "world" : g_pending.kind == BW_GAME_ROOM ? "room" : "solo",
-                g_pending.mode);
-    } else if (i >= 0) {
-        /* a plain new game took the slot */
-        g_games[i] = g_games[--g_count];
-    } else {
+    if (i >= 0) {
+        g_games[i] = g_pending;
+    } else if (add_game(&g_pending) < 0) {
         return;
     }
+    g_has_pending = 0;
+    fprintf(stderr, "eidos: save: game %d holds a %s game (%s), listed under Your games\n", -n,
+            g_pending.kind == BW_GAME_WORLD ? "world" : g_pending.kind == BW_GAME_ROOM ? "room" : "solo",
+            g_pending.mode);
     store();
 }
 
@@ -199,8 +269,18 @@ void bw_games_world_code(const char *code)
 
 int bw_games_hidden(int n)
 {
+    int i;
+
+    if (n < 0) {
+        return 1;
+    }
     load();
-    return find(n) >= 0;
+    for (i = 0; i < g_old_count; i++) {
+        if (g_old[i] == n) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static long slot_time(int n)
@@ -224,9 +304,12 @@ int bw_games_count(void)
 
 int bw_games_at(int i, BwGame *out)
 {
-    int order[GAMES_MAX], n = 0, k, j;
+    int *order, n = 0, k, j, r = -1;
 
     load();
+    if (g_count == 0 || (order = (int *)malloc((size_t)g_count * sizeof *order)) == NULL) {
+        return -1;
+    }
     for (k = 0; k < g_count; k++) {
         if (bw_slots_used(g_games[k].slot)) {
             order[n++] = k;
@@ -241,9 +324,10 @@ int bw_games_at(int i, BwGame *out)
             order[j - 1] = t;
         }
     }
-    if (i < 0 || i >= n || out == NULL) {
-        return -1;
+    if (i >= 0 && i < n && out != NULL) {
+        *out = g_games[order[i]];
+        r = 0;
     }
-    *out = g_games[order[i]];
-    return 0;
+    free(order);
+    return r;
 }

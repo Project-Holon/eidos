@@ -21,14 +21,13 @@
  *
  * A profile that has saves of its own (the player used the launcher too)
  * keeps them: the old saves go into its free save slots (sdk/save_slots.h:
- * slot 1 is pokeblack.sav, slots 2 to 8 are slots/save<n>.sav), each with
- * its line of the Your games record under its new slot number
- * (sdk/save_games.h, games.ini), and the old multiplayer games beside the
- * profile's (one of a name the profile has already stays behind).  The
- * old folder's mods, settings and mod data are not taken then: the
- * profile's own stand.  With too few free slots the old folder becomes a
- * profile of its own, "Standalone Black" or "Standalone White", which the
- * launcher lists.
+ * slot 1 is pokeblack.sav, slots 2 and on are slots/save<n>.sav, with no
+ * limit; a free slot is one with no file, so nothing is written over),
+ * each with its line of the Your games record under its new slot number
+ * (games.ini; the game's tidy step, sdk/save_tidy.h, then moves those
+ * games to games/), and the old multiplayer games beside the profile's
+ * (one of a name the profile has already stays behind).  The old folder's
+ * mods, settings and mod data are not taken then: the profile's own stand.
  *
  * Plain C99 over install.h's files (UTF-8 paths); nothing here knows the
  * user folder, which only the caller can name (sdk/plat_save.h's rule, or

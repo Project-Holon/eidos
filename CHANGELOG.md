@@ -9,6 +9,12 @@ Each release's notes on GitHub start with its section here
 - **RecompLauncher Support**: Added a `recomplauncher.json` at the top of the Windows and macOS zips so RecompLauncher can find and start eidos (#49, thanks @elripalda).
 - **Mod Badges**: The `Official` badge now follows the mod index: katalogos mods are official unless the index marks them unofficial, and mods from other repositories only when the index marks them official (also in the in-game Mod Manager).
 - **Multiplayer Saves in the Save List**: Fixed the Home page listing randomizer and multiworld saves made on the Multiplayer screen as ordinary saves; they stay under `Your games`, as on the title's Continue card.
+- **Save Housekeeping After Installs**: The old-save import and the save cleanup now run right after a version finishes installing, not only at the launcher's next start; the save list's header shows the number of saves instead of "of 8".
+
+### Saves
+- **No Save Limit**: Removed the 8-slot limit on single-player saves and on Multiplayer screen games, and the 32-game limit on hosted co-op games; `New Game` always takes a free slot, so the "replace which save" prompt is gone.
+- **Multiplayer Games Kept Apart**: Randomizer, multiworld and Archipelago saves started from the Multiplayer screen now live in their own `games/` folder instead of taking single-player slots.
+- **Save Slot Cleanup**: At each start the game puts the saves folder in order: files left by new games that were never saved move to `unreadable/` (kept, never deleted), and the saves left are numbered again with no gaps; no file is ever written over, and a cleanup cut short goes on at the next start.
 
 ## 0.2.7
 

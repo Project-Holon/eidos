@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 
 #include "save.h"
+#include "plat_dir.h"
 #include "plat_save.h"
 #include "save_slots.h"
 
@@ -47,6 +48,7 @@ extern int  bw_arm7_backup_dirty(void) BW_SLOTS_WEAK;
 extern int  bw_games_hidden(int n) BW_SLOTS_WEAK;
 extern void bw_games_saved(int n) BW_SLOTS_WEAK;
 extern void bw_games_pending_clear(void) BW_SLOTS_WEAK;
+extern int  bw_games_has_pending(void) BW_SLOTS_WEAK;
 /* sdk/mod_title.c: the title goes straight on with the save in force */
 extern int  bw_mod_title_autostart_pending(void) BW_SLOTS_WEAK;
 
@@ -62,15 +64,92 @@ int bw_slots_path(int n, char *out, u32 size)
     const char *dir = bw_save_dir();
     int w;
 
-    if (n < 1 || n > BW_SLOTS_MAX || dir == NULL || dir[0] == '\0') {
+    if (n == 0 || dir == NULL || dir[0] == '\0') {
         return -1;
     }
     if (n == 1) {
         w = snprintf(out, size, "%s/pokeblack.sav", dir);
-    } else {
+    } else if (n > 1) {
         w = snprintf(out, size, "%s/slots/save%d.sav", dir, n);
+    } else {
+        w = snprintf(out, size, "%s/games/game%d.sav", dir, -n);
     }
     return (w < 0 || (u32)w >= size) ? -1 : 0;
+}
+
+/* The numbers n of the files "<prefix><n><suffix>" of a folder of the save
+ * folder: the highest (0 when there is none). */
+typedef struct SlotScan {
+    const char *prefix, *suffix;
+    int high;
+} SlotScan;
+
+static int scan_one(void *ctx, const char *name)
+{
+    SlotScan *s = (SlotScan *)ctx;
+    size_t lp = strlen(s->prefix), ls = strlen(s->suffix), ln = strlen(name);
+    const char *p;
+    long v = 0;
+
+    if (ln <= lp + ls || strncmp(name, s->prefix, lp) != 0 || strcmp(name + ln - ls, s->suffix) != 0
+        || name[lp] == '0') {
+        return 0;
+    }
+    for (p = name + lp; p < name + ln - ls; p++) {
+        if (*p < '0' || *p > '9' || v > 100000000L) {
+            return 0;
+        }
+        v = v * 10 + (*p - '0');
+    }
+    if (v > s->high) {
+        s->high = (int)v;
+    }
+    return 0;
+}
+
+static int highest_in(const char *sub, const char *prefix, const char *suffix)
+{
+    const char *dir = bw_save_dir();
+    char path[512];
+    SlotScan s;
+
+    s.prefix = prefix;
+    s.suffix = suffix;
+    s.high = 0;
+    if (dir != NULL && dir[0] != '\0' && snprintf(path, sizeof path, "%s/%s", dir, sub) < (int)sizeof path
+        && bw_plat_path_kind(path) == BW_PATH_DIR) {
+        (void)bw_plat_list_dir(path, scan_one, &s);
+    }
+    return s.high;
+}
+
+/* The highest slot of the player's own that holds a file (0: none).  There
+ * is no limit: the loops below go to it, and New Game takes the next. */
+static int last_slot(void)
+{
+    int high = highest_in("slots", "save", ".sav");
+
+    return high >= 2 ? high : (bw_slots_used(1) ? 1 : 0);
+}
+
+/* The lowest slot of the player's own with no file: a gap (which the tidy
+ * step closes at the start), or the one after the last. */
+static int first_free(void)
+{
+    int n, last = last_slot();
+
+    for (n = 1; n <= last; n++) {
+        if (!bw_slots_used(n)) {
+            return n;
+        }
+    }
+    return last + 1;
+}
+
+/* A file for a Multiplayer screen game: the next game of games/ (-k). */
+static int next_game(void)
+{
+    return -(highest_in("games", "game", ".sav") + 1);
 }
 
 int bw_slots_used(int n)
@@ -108,7 +187,8 @@ int bw_slots_current(void)
     }
     current_file(path, sizeof(path));
     if ((f = fopen(path, "rb")) != NULL) {
-        if (fscanf(f, "%d", &n) != 1 || n < 1 || n > BW_SLOTS_MAX) {
+        /* a slot of the player's own (1 and up) or a game of games/ (-k) */
+        if (fscanf(f, "%d", &n) != 1 || n == 0) {
             n = 1;
         }
         fclose(f);
@@ -148,7 +228,7 @@ static void apply(int live)
     if (bw_slots_path(bw_slots_current(), path, sizeof(path)) == 0) {
         const char *sd = bw_save_dir();
 
-        snprintf(dir, sizeof(dir), "%s/slots", sd != NULL ? sd : ".");
+        snprintf(dir, sizeof(dir), "%s/%s", sd != NULL ? sd : ".", bw_slots_current() < 0 ? "games" : "slots");
         (void)bw_plat_mkdirs(dir);
         set(path);
     }
@@ -198,11 +278,38 @@ static int reload(int has_save)
 
 /* A slot the game could not load this run (a new game left before its
  * first save writes a file the game does not take as a save): it is not
- * offered, counted or stepped onto. */
-static unsigned char g_bad[BW_SLOTS_MAX + 1];
-/* The verdicts hold for the file as it was read: its time stamp then
- * (g_seen: read by the game's loader at that stamp, good or bad). */
-static long g_seen[BW_SLOTS_MAX + 1];
+ * offered, counted or stepped onto.  The verdicts hold for the file as it
+ * was read: its time stamp then (seen: read by the game's loader at that
+ * stamp, good or bad).  One entry a slot of the player's own, grown as
+ * slots come. */
+typedef struct Verdict {
+    unsigned char bad;
+    long seen;
+} Verdict;
+static Verdict *g_verdict;
+static int g_verdicts;
+static Verdict g_no_verdict;    /* (a game of games/, or no room: no verdict kept) */
+
+static Verdict *verdict(int n)
+{
+    if (n < 1) {
+        memset(&g_no_verdict, 0, sizeof g_no_verdict);
+        return &g_no_verdict;
+    }
+    if (n >= g_verdicts) {
+        int cap = n + 16;
+        Verdict *v = (Verdict *)realloc(g_verdict, (size_t)cap * sizeof *v);
+
+        if (v == NULL) {
+            memset(&g_no_verdict, 0, sizeof g_no_verdict);
+            return &g_no_verdict;
+        }
+        memset(v + g_verdicts, 0, (size_t)(cap - g_verdicts) * sizeof *v);
+        g_verdict = v;
+        g_verdicts = cap;
+    }
+    return &g_verdict[n];
+}
 
 /* When the slot's file was last written (0 when it cannot be read). */
 static long slot_time(int n)
@@ -218,23 +325,34 @@ static long slot_time(int n)
 
 static void mark_bad(int n)
 {
-    g_bad[n] = 1;
-    g_seen[n] = slot_time(n);
+    Verdict *v = verdict(n);
+
+    v->bad = 1;
+    v->seen = slot_time(n);
 }
 
 void bw_slots_folder_changed(void)
 {
-    memset(g_bad, 0, sizeof g_bad);
-    memset(g_seen, 0, sizeof g_seen);
+    if (g_verdict != NULL) {
+        memset(g_verdict, 0, (size_t)g_verdicts * sizeof *g_verdict);
+    }
+}
+
+void bw_slots_forget(void)
+{
+    bw_slots_folder_changed();
+    g_current = 0;                  /* slot.txt read again */
 }
 
 static int offered(int n)
 {
-    if (g_bad[n] && g_seen[n] != slot_time(n)) {
-        g_bad[n] = 0;               /* written since: to be read again */
-        g_seen[n] = 0;
+    Verdict *v = verdict(n);
+
+    if (v->bad && v->seen != slot_time(n)) {
+        v->bad = 0;                 /* written since: to be read again */
+        v->seen = 0;
     }
-    return bw_slots_used(n) && !g_bad[n];
+    return bw_slots_used(n) && !v->bad;
 }
 
 /* A save a Multiplayer screen card made: the Continue card leaves it to
@@ -264,29 +382,32 @@ static int g_pending;       /* a new game not saved yet (below) */
 static void judge_all(void)
 {
     unsigned char *sc;
-    int cur = bw_slots_current(), n, had, moved = 0;
+    int cur = bw_slots_current(), n, had, moved = 0, last = last_slot();
 
     if (g_pending != 0 || SAVE_CONTROL_Get == NULL || SAVE_CONTROL_Reload == NULL
         || (sc = (unsigned char *)SAVE_CONTROL_Get()) == NULL) {
         return;
     }
     had = sc[SAVE_CONTROL_HAS_SAVE];
-    for (n = 1; n <= BW_SLOTS_MAX; n++) {
+    for (n = 1; n <= last; n++) {
+        Verdict *v;
         long t;
 
         if (n == cur || !bw_slots_used(n)) {
             continue;
         }
         t = slot_time(n);
-        if (g_seen[n] == t && t != 0) {
+        v = verdict(n);
+        if (v->seen == t && t != 0) {
             continue;               /* judged as it is now */
         }
         g_current = n;              /* (slot.txt is not written for a look) */
         apply(1);
-        g_bad[n] = reload(1) ? 0 : 1;
-        g_seen[n] = t;
+        v = verdict(n);
+        v->bad = reload(1) ? 0 : 1;
+        v->seen = t;
         moved = 1;
-        if (g_bad[n]) {
+        if (v->bad) {
             fprintf(stderr, "eidos: save: slot %d holds a file that is no save; it is not offered\n", n);
         }
     }
@@ -426,21 +547,19 @@ void bw_slots_settle(void)
         /* (a Your games entry the title is about to go on with stays) */
         /* the slot in force is a Multiplayer screen game (played last): the
          * Continue card shows the player's own newest save, or none */
-        int n, best = 0;
+        int n, best = 0, last = last_slot();
         long best_t = -1;
 
-        for (n = 1; n <= BW_SLOTS_MAX; n++) {
+        for (n = 1; n <= last; n++) {
             if (n != cur && shown(n) && slot_time(n) > best_t) {
                 best = n;
                 best_t = slot_time(n);
             }
         }
-        for (n = 1; best == 0 && n <= BW_SLOTS_MAX; n++) {
-            if (!bw_slots_used(n)) {
-                best = n;           /* no save of its own: a free slot, New Game alone */
-            }
+        if (best == 0) {
+            best = first_free();    /* no save of its own: a free slot, New Game alone */
         }
-        if (best != 0) {
+        {
             set_current(best);
             apply(1);
             if (!reload(bw_slots_used(best))) {
@@ -462,11 +581,11 @@ void bw_slots_settle(void)
      * (the newest file that loads), so a new game left before it was saved
      * does not hide the game before it */
     mark_bad(cur);
-    for (i = 1; i < BW_SLOTS_MAX; i++) {
-        int n, best = 0;
+    for (i = 1; i <= last_slot(); i++) {
+        int n, best = 0, last = last_slot();
         long best_t = -1;
 
-        for (n = 1; n <= BW_SLOTS_MAX; n++) {
+        for (n = 1; n <= last; n++) {
             long t;
 
             if (n == cur || !shown(n)) {
@@ -512,11 +631,17 @@ int bw_slots_load_file(const char *path)
 
 int bw_slots_flip(int d)
 {
-    int cur = bw_slots_current();
+    int cur = bw_slots_current(), last = last_slot();
     int i;
 
-    for (i = 1; i < BW_SLOTS_MAX; i++) {
-        int n = ((cur - 1 + d * i) % BW_SLOTS_MAX + BW_SLOTS_MAX) % BW_SLOTS_MAX + 1;
+    if (last < 1) {
+        return 0;
+    }
+    if (cur < 1) {
+        cur = d > 0 ? last : 1;     /* (a game of games/: the player's own from the end) */
+    }
+    for (i = 1; i <= last; i++) {
+        int n = ((cur - 1 + d * i) % last + last) % last + 1;
 
         if (shown(n)) {
             if (n == cur) {
@@ -554,24 +679,23 @@ static void hold_new_game(int n, int prev)
 int bw_slots_new_game(void)
 {
     int n, cur = bw_slots_current();
+    int game = bw_games_has_pending != NULL && bw_games_has_pending();
 
     /* Free means no file: a file the game would not load (marked active,
      * a new game left unsaved) is kept, for recovery, and never written
-     * over by a new game. */
-    if (!bw_slots_used(cur)) {
+     * over by a new game.  A Multiplayer screen card's game takes a file of
+     * games/, a plain one a slot of the player's own; there is always a
+     * free one. */
+    if (!bw_slots_used(cur) && (game ? cur < 0 : cur > 0)) {
         hold_new_game(cur, cur);
         return 0;                   /* the slot in force is free already */
     }
-    for (n = 1; n <= BW_SLOTS_MAX; n++) {
-        if (!bw_slots_used(n)) {
-            g_current = n;          /* slot.txt waits for the first save */
-            apply(1);
-            reload(0);
-            hold_new_game(n, cur);
-            return 1;
-        }
-    }
-    return 0;                       /* every slot is used: the game warns */
+    n = game ? next_game() : first_free();
+    g_current = n;                  /* slot.txt waits for the first save */
+    apply(1);
+    reload(0);
+    hold_new_game(n, cur);
+    return 1;
 }
 
 void bw_slots_frame(void)
@@ -607,7 +731,7 @@ void bw_slots_frame(void)
 
 int bw_slots_continue(int n)
 {
-    if (n < 1 || n > BW_SLOTS_MAX || !offered(n) || g_pending != 0) {
+    if (n == 0 || !offered(n) || g_pending != 0) {
         return 0;
     }
     if (n != bw_slots_current()) {
@@ -644,18 +768,24 @@ void bw_slots_dropped(void)
     }
 }
 
-/* New Game with every slot used: the player chooses the save it replaces
- * on the Continue card. */
-static int g_replace;
+int bw_slots_count(void)
+{
+    int used = 0, n, last = last_slot();
+
+    for (n = 1; n <= last; n++) {
+        used += shown(n) ? 1 : 0;
+    }
+    return used;
+}
 
 void bw_slots_label(char *out, u32 size)
 {
-    int used = 0, at = 0, n;
+    int used = 0, at = 0, n, last = last_slot(), cur = bw_slots_current();
 
-    for (n = 1; n <= BW_SLOTS_MAX; n++) {
+    for (n = 1; n <= last; n++) {
         if (shown(n)) {
             used++;
-            if (n == bw_slots_current()) {
+            if (n == cur) {
                 at = used;
             }
         }
@@ -664,15 +794,5 @@ void bw_slots_label(char *out, u32 size)
         out[0] = '\0';
         return;
     }
-    snprintf(out, size, g_replace ? "Replace %d/%d?" : "< %d/%d >", at, used);
-}
-
-int bw_slots_replacing(void)
-{
-    return g_replace;
-}
-
-void bw_slots_set_replacing(int on)
-{
-    g_replace = on != 0;
+    snprintf(out, size, "< %d/%d >", at, used);
 }

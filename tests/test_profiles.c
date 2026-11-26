@@ -20,10 +20,10 @@
  *      profile, once, the originals left, another game's saves not taken;
  *   4. the old saves beside a profile's own: the free slots in order, the
  *      Your games lines under their new numbers, the multiplayer games,
- *      a file of no length that counts as a free slot, nothing of the
+ *      a file of no length that is never written over, nothing of the
  *      profile changed, nothing copied twice;
- *   5. too few free slots: a profile of their own, for either game, and
- *      what happens when it is there already;
+ *   5. no limit on the slots: old saves past slot 8 when the profile has
+ *      no free slot below it, for either game;
  *   6. a copy that cannot be made leaves the profile and the old folder
  *      as they were and is tried again;
  *   7. a new profile's settings: the other game's, never over its own.
@@ -526,20 +526,21 @@ static int test_profile_slots(void)
     BW_CHECK_EQ("copied", rc, BW_PROFILE_COPIED);
     BW_CHECK_EQ("into free save slots", strstr(note, "free save slots") != NULL, 1);
     BW_CHECK_EQ("and one multiplayer game stayed behind", strstr(note, "1 multiplayer game ") != NULL, 1);
-    /* the free slots are 3 (no length), 4, 6, 7, 8: the old saves take 3, 4, 6, 7 in their order */
-    BW_CHECK_EQ("old 1 is slot 3", holds(dir, "saves/slots/save3.sav", "OLD-1"), 1);
-    BW_CHECK_EQ("old 2 is slot 4", holds(dir, "saves/slots/save4.sav", "OLD-2"), 1);
-    BW_CHECK_EQ("old 4 is slot 6", holds(dir, "saves/slots/save6.sav", "OLD-4"), 1);
-    BW_CHECK_EQ("old 8 is slot 7", holds(dir, "saves/slots/save7.sav", "OLD-8"), 1);
-    BW_CHECK_EQ("slot 8 stays free", holds(dir, "saves/slots/save8.sav", NULL), 1);
+    /* the free slots are 4, 6, 7, 8 (3 has a file, if one of no length): the old saves take them in order */
+    BW_CHECK_EQ("the file of no length stays", holds(dir, "saves/slots/save3.sav", ""), 1);
+    BW_CHECK_EQ("old 1 is slot 4", holds(dir, "saves/slots/save4.sav", "OLD-1"), 1);
+    BW_CHECK_EQ("old 2 is slot 6", holds(dir, "saves/slots/save6.sav", "OLD-2"), 1);
+    BW_CHECK_EQ("old 4 is slot 7", holds(dir, "saves/slots/save7.sav", "OLD-4"), 1);
+    BW_CHECK_EQ("old 8 is slot 8", holds(dir, "saves/slots/save8.sav", "OLD-8"), 1);
+    BW_CHECK_EQ("slot 9 stays free", holds(dir, "saves/slots/save9.sav", NULL), 1);
     BW_CHECK_EQ("the profile's saves are as they were", holds(dir, "saves/pokeblack.sav", "OWN-1")
                                                         && holds(dir, "saves/slots/save2.sav", "OWN-2")
                                                         && holds(dir, "saves/slots/save5.sav", "OWN-5"), 1);
     BW_CHECK_EQ("its slot in force too", holds(dir, "saves/slot.txt", "2\n"), 1);
     BW_CHECK_EQ("Your games: its line, then the old ones under their new slots",
                 holds(dir, "saves/games.ini", "5 world soul_link coop host ABC234\n"
-                                              "4 solo arkhipelagos solo host -\n"
-                                              "7 room arkhipelagos ap joined AP38281\n"), 1);
+                                              "6 solo arkhipelagos solo host -\n"
+                                              "8 room arkhipelagos ap joined AP38281\n"), 1);
     BW_CHECK_EQ("its multiplayer game is its own", holds(dir, "saves/multiplayer/Friends/host.sav", "OWN-MP"), 1);
     BW_CHECK_EQ("the other one came", holds(dir, "saves/multiplayer/Rivals/host.sav", "OLD-MP-2"), 1);
     BW_CHECK_EQ("and the file", holds(dir, "saves/multiplayer/secrets.txt", "OLD-SECRET"), 1);
@@ -556,10 +557,10 @@ static int test_profile_slots(void)
     /* nothing twice */
     rc = bw_profile_prepare(user, BW_GAME_BLACK, &old, own, sizeof(own), note, sizeof(note));
     BW_CHECK_EQ("the next start: ready", rc == BW_PROFILE_READY && note[0] == '\0', 1);
-    BW_CHECK_EQ("slot 8 is still free", holds(dir, "saves/slots/save8.sav", NULL), 1);
+    BW_CHECK_EQ("slot 9 is still free", holds(dir, "saves/slots/save9.sav", NULL), 1);
     BW_CHECK_EQ("Your games has three lines", holds(dir, "saves/games.ini", "5 world soul_link coop host ABC234\n"
-                                                                             "4 solo arkhipelagos solo host -\n"
-                                                                             "7 room arkhipelagos ap joined AP38281\n"), 1);
+                                                                             "6 solo arkhipelagos solo host -\n"
+                                                                             "8 room arkhipelagos ap joined AP38281\n"), 1);
 
     /* the profile's slot 1 free: an old save takes it */
     user_of("user-slot1", user, sizeof(user), saves, sizeof(saves));
@@ -623,7 +624,7 @@ static int test_profile_full(void)
         snprintf(rel, sizeof(rel), "saves/slots/save%d.sav", n);
         BW_CHECK_EQ("own slot", put(dir, rel, "OWN"), 0);
     }
-    /* one slot free, two old saves */
+    /* one slot free below 9, two old saves: the second goes past 8 */
     BW_CHECK_EQ("old 1", put(saves, "pokeblack.sav", "OLD-1"), 0);
     BW_CHECK_EQ("old 2", put(saves, "slots/save2.sav", "OLD-2"), 0);
     BW_CHECK_EQ("old Your games", put(saves, "games.ini", "2 solo arkhipelagos solo host -\n"), 0);
@@ -632,25 +633,20 @@ static int test_profile_full(void)
 
     rc = bw_profile_prepare(user, BW_GAME_WHITE, &old, own, sizeof(own), note, sizeof(note));
     BW_CHECK_EQ("copied", rc, BW_PROFILE_COPIED);
-    BW_CHECK_EQ("to a profile of their own", strstr(note, "profile of their own") != NULL
-                                             && strstr(note, "Standalone White") != NULL, 1);
+    BW_CHECK_EQ("into free save slots", strstr(note, "free save slots") != NULL, 1);
+    BW_CHECK_EQ("old 1 is slot 8", holds(dir, "saves/slots/save8.sav", "OLD-1"), 1);
+    BW_CHECK_EQ("old 2 is slot 9", holds(dir, "saves/slots/save9.sav", "OLD-2"), 1);
+    BW_CHECK_EQ("its line under slot 9", holds(dir, "saves/games.ini", "9 solo arkhipelagos solo host -\n"), 1);
+    BW_CHECK_EQ("the profile's own saves stand", holds(dir, "saves/pokeblack.sav", "OWN-1")
+                                                 && holds(dir, "saves/slots/save7.sav", "OWN"), 1);
     path_of(own2, sizeof(own2), user, "profiles/Standalone White");
-    BW_CHECK_EQ("its saves, numbers kept", holds(own2, "saves/pokeblack.sav", "OLD-1")
-                                           && holds(own2, "saves/slots/save2.sav", "OLD-2"), 1);
-    BW_CHECK_EQ("its Your games", holds(own2, "saves/games.ini", "2 solo arkhipelagos solo host -\n"), 1);
-    BW_CHECK_EQ("its mod", holds(own2, "mods/Old/mod.bw", "OLD-MOD"), 1);
-    BW_CHECK_EQ("its settings", holds(own2, "settings.ini", "volume = 37\n"), 1);
-    BW_CHECK_EQ("the launcher's file names White",
-                holds(own2, "profile.json", "{\n  \"version\": \"latest\",\n  \"game\": \"white\"\n}\n"), 1);
-    BW_CHECK_EQ("the game's profile is untouched", holds(dir, "saves/pokeblack.sav", "OWN-1")
-                                                   && holds(dir, "saves/slots/save8.sav", NULL)
-                                                   && holds(dir, "saves/games.ini", NULL), 1);
+    BW_CHECK_EQ("no profile of their own", holds(own2, "saves/pokeblack.sav", NULL), 1);
     BW_CHECK_EQ("the run plays from the game's profile", strcmp(own, dir), 0);
     BW_CHECK_EQ("the old folder is marked", holds(saves, BW_PROFILE_COPIED_NAME, NULL), 0);
     rc = bw_profile_prepare(user, BW_GAME_WHITE, &old, own, sizeof(own), note, sizeof(note));
     BW_CHECK_EQ("the next start: ready, nothing to say", rc == BW_PROFILE_READY && note[0] == '\0', 1);
 
-    /* Black's file names no game, and a profile of that name already there is left alone */
+    /* Black, every slot to 8 used: the old save is slot 9 */
     user_of("user-full-b", user, sizeof(user), saves, sizeof(saves));
     old.saves = saves;
     old.mods = NULL;
@@ -665,18 +661,10 @@ static int test_profile_full(void)
         BW_CHECK_EQ("own slot", put(dir, rel, "OWN"), 0);
     }
     BW_CHECK_EQ("old 1", put(saves, "pokeblack.sav", "OLD-1"), 0);
-    path_of(own2, sizeof(own2), user, "profiles/Standalone Black");
-    BW_CHECK_EQ("a profile of that name is there", put(own2, "saves/pokeblack.sav", "SOMEONE"), 0);
     rc = bw_profile_prepare(user, BW_GAME_BLACK, &old, own, sizeof(own), note, sizeof(note));
-    BW_CHECK_EQ("ready, not copied", rc, BW_PROFILE_READY);
-    BW_CHECK_EQ("the note says why", strstr(note, "were not copied") != NULL, 1);
-    BW_CHECK_EQ("that profile is untouched", holds(own2, "saves/pokeblack.sav", "SOMEONE"), 1);
-    BW_CHECK_EQ("no mark: it can still be done", holds(saves, BW_PROFILE_COPIED_NAME, NULL), 1);
-    bw_remove_tree_utf8(own2);
-    rc = bw_profile_prepare(user, BW_GAME_BLACK, &old, own, sizeof(own), note, sizeof(note));
-    BW_CHECK_EQ("with the name free: copied", rc, BW_PROFILE_COPIED);
-    BW_CHECK_EQ("Black's file names no game", holds(own2, "profile.json", "{\n  \"version\": \"latest\"\n}\n"), 1);
-    BW_CHECK_EQ("its save", holds(own2, "saves/pokeblack.sav", "OLD-1"), 1);
+    BW_CHECK_EQ("copied", rc, BW_PROFILE_COPIED);
+    BW_CHECK_EQ("slot 9", holds(dir, "saves/slots/save9.sav", "OLD-1"), 1);
+    BW_CHECK_EQ("slot 8 as it was", holds(dir, "saves/slots/save8.sav", "OWN"), 1);
     return 0;
 }
 

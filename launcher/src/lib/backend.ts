@@ -89,6 +89,8 @@ export const overview = () => invoke<Overview>("overview");
 /// to be imported, and the import (the game's own line about it, or "").
 export const oldSavesPending = () => invoke<boolean>("old_saves_pending");
 export const importOldSaves = () => invoke<string>("import_old_saves");
+/// Each profile's saves put in order by the game (eidos --tidy-saves): its line for each folder it changed.
+export const tidySaves = () => invoke<string[]>("tidy_saves");
 
 /// One save of a profile, read from its save file (src-tauri/src/saves.rs).
 export type Save = {

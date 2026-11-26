@@ -2,16 +2,17 @@
  * sdk/save_slots.h -- several single-player saves (docs/multiplayer.md,
  * "Save slots"; metaxy docs/SPEC.md section 11).
  *
- * The DS game knows one save.  The port keeps up to BW_SLOTS_MAX save files
- * and hands the game one of them (the backup chip's file, sdk/arm7/fs.c).
- * Slot 1 is the save the port always had (pokeblack.sav in the save
- * folder); slots 2 to 8 are slots/save<n>.sav.  The slot in force is kept
- * in slot.txt, so the game opens on it again.
+ * The DS game knows one save.  The port keeps as many save files as the
+ * player makes and hands the game one of them (the backup chip's file,
+ * sdk/arm7/fs.c).  Slot 1 is the save the port always had (pokeblack.sav in
+ * the save folder); slots 2 and on are slots/save<n>.sav.  The saves the
+ * Multiplayer screen's cards made are slots -1, -2 and on:
+ * games/game<k>.sav (sdk/save_games.h).  The slot in force is kept in
+ * slot.txt, so the game opens on it again.
  *
- * The title menu flips the slots on its Continue card (left and right),
- * and New Game takes a free slot.  With every slot used, New Game asks
- * which save it replaces, then the game's own "this deletes your save"
- * warning comes.
+ * The title menu flips the player's own slots on its Continue card (left
+ * and right), and New Game takes a free slot: there is always one.  The
+ * folder's tidy step (sdk/save_tidy.h) closes the gaps at each start.
  */
 #ifndef BW_PORT_SAVE_SLOTS_H
 #define BW_PORT_SAVE_SLOTS_H
@@ -22,15 +23,14 @@
 extern "C" {
 #endif
 
-#define BW_SLOTS_MAX 8
-
-/* The file of slot n (1 to BW_SLOTS_MAX).  0, or -1 without a save folder. */
+/* The file of slot n (1 and up, or -k for games/game<k>.sav).  0, or -1
+ * without a save folder. */
 int  bw_slots_path(int n, char *out, u32 size);
 
 /* Whether slot n holds a save. */
 int  bw_slots_used(int n);
 
-/* The slot in force (1 to BW_SLOTS_MAX). */
+/* The slot in force (1 and up, or -k). */
 int  bw_slots_current(void);
 /* 1 when the save in force is one of Your games (sdk/save_games.h). */
 int  bw_slots_current_hidden(void);
@@ -42,6 +42,9 @@ void bw_slots_apply(void);
  * to the other version of the game plays from that version's profile):
  * what was found out about the old folder's slot files is forgotten. */
 void bw_slots_folder_changed(void);
+/* The folder's files moved (sdk/save_tidy.h): all that was found out is
+ * forgotten, slot.txt too. */
+void bw_slots_forget(void);
 
 /*
  * The title menu's Continue card: the next used slot after the one in
@@ -63,9 +66,10 @@ int  bw_slots_continue(int n);
 void bw_slots_settle(void);
 
 /*
- * The title menu's New Game: when the slot in force holds a save and a
- * slot is free, the free slot is taken, so the new game does not touch the
- * save.  1 when it moved to a free slot.
+ * The title menu's New Game: when the slot in force holds a save, a free
+ * slot is taken, so the new game does not touch the save (a Multiplayer
+ * screen card's new game takes the next file of games/).  1 when it moved
+ * to a free slot, 0 when the slot in force was free already.
  */
 int  bw_slots_new_game(void);
 /* Each frame: a held new game is written out at its first completed save. */
@@ -84,12 +88,8 @@ int  bw_slots_load_file(const char *path);
 /* The Continue card's line: "< 2/3 >" (the slot among the used ones), or
  * "" when there is no save. */
 void bw_slots_label(char *out, u32 size);
-
-/* New Game with every slot used: the Continue card asks which save the
- * new game replaces ("Replace 3/8?"); left and right choose, A takes it, B
- * gives up.  Whether that choice is up, and setting it. */
-int  bw_slots_replacing(void);
-void bw_slots_set_replacing(int on);
+/* How many saves of the player's own the Continue card offers. */
+int  bw_slots_count(void);
 
 /*
  * A session on another save that leaves no trace (the style chooser's

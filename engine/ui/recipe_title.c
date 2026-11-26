@@ -89,8 +89,7 @@ extern u32    POKE_TOOL_GetPartyValue(void *pp, u32 param, u32 arg) TT_WEAK;
 extern int  bw_mod_title_settings_on(void) TT_WEAK;
 extern int  bw_mod_title_in_settings(void) TT_WEAK;
 extern void bw_slots_label(char *out, u32 size) TT_WEAK;
-extern int  bw_slots_used(int n) TT_WEAK;
-extern int  bw_slots_replacing(void) TT_WEAK;
+extern int  bw_slots_count(void) TT_WEAK;
 
 /* Proc (arm9/procsys.h): data 0x00, overlayId 0x04, seq 0x08, subSeq 0x0C,
  * procWork 0x10, work 0x14.  ProcSys: current 0x08. */
@@ -705,15 +704,7 @@ static const SaveInfo *info_get(void *work, const EidosUiFrame *in, int state)
 
 static int slot_count(void)
 {
-    int n, used = 0;
-
-    if (bw_slots_used == NULL) {
-        return 1;
-    }
-    for (n = 1; n <= 8; n++) {
-        used += bw_slots_used(n) ? 1 : 0;
-    }
-    return used;
+    return bw_slots_count != NULL ? bw_slots_count() : 1;
 }
 
 /* What a click asked of the menu, carried out one press at a time. */

@@ -364,7 +364,7 @@
   <aside class="saves window" aria-label="Saves">
     <header>
       <span class="section-label">Saves in {selected}</span>
-      <span class="faint small">{saveList.length} of 8{#if hidden > 0} · {hidden} {game === "black" ? "White" : "Black"} hidden{/if}</span>
+      <span class="faint small">{saveList.length} {saveList.length === 1 ? "save" : "saves"}{#if hidden > 0} · {hidden} {game === "black" ? "White" : "Black"} hidden{/if}</span>
     </header>
       <div class="list">
         {#if shown.length === 0}

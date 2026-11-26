@@ -600,6 +600,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_catalog.c      # the mods index: the list, the install, the removal
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_slots.c       # several single-player saves
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_games.c       # the saves the Multiplayer screen made
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_tidy.c        # a saves folder put in order
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/preview_save.c     # the style chooser's preview save, packed (tools/preview_save.py)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_frame.c        # the mod layer's frame tick
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_avatar.c       # the field avatars
@@ -1956,7 +1957,7 @@ add_test(NAME test_native_port_tools COMMAND ${Python3_EXECUTABLE}
 foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_mod_messages
           test_mod_text test_mod_script test_mod_rule test_mod_timer test_mod_export
           test_mod_menu test_mod_input test_mod_handoff test_mod_restart
-          test_mod_avatar test_mod_net test_save_games test_https test_mod_catalog)
+          test_mod_avatar test_mod_net test_save_games test_save_tidy test_https test_mod_catalog)
     add_executable(${t} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${t}.c)
     target_include_directories(${t} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests)

@@ -510,7 +510,7 @@ static void test_saves(void)
  * a taken name gets a number. */
 static void test_games(void)
 {
-    char names[BW_MP_GAMES_MAX][BW_MP_GAME_NAME_MAX];
+    char names[32][BW_MP_GAME_NAME_MAX];
     char made[BW_MP_GAME_NAME_MAX];
     int n, i, a = 0, b = 0;
 
@@ -536,7 +536,7 @@ static void test_games(void)
     BW_CHECK_EQ("chosen", strcmp(bw_mp_game(), made), 0);
     BW_CHECK_EQ("the same name again", bw_mp_game_create("Tour1", made, sizeof made), 0);
     BW_CHECK_EQ("gets a number", strncmp(made, "Tour1 ", 6), 0);
-    n = bw_mp_game_list(names, BW_MP_GAMES_MAX);
+    n = bw_mp_game_list(names, 32);
     for (i = 0; i < n; i++) {
         a |= strcmp(names[i], "Tour1") == 0;
         b |= strcmp(names[i], made) == 0;

@@ -226,9 +226,11 @@ int  bw_mp_dir(char *out, u32 size);
 /* The host's games: each one a folder of <save>/multiplayer/games with
  * its own saves.  The list is newest first; select chooses the game the
  * next host plays, create makes a new one from a name (made a folder name,
- * numbered when taken) and chooses it.  0 or a count on success. */
+ * numbered when taken) and chooses it.  0 or a count on success.  There
+ * is no limit on the games: count says how many there are, and list fills
+ * up to `max` names. */
 #define BW_MP_GAME_NAME_MAX 24
-#define BW_MP_GAMES_MAX     32
+int  bw_mp_game_count(void);
 int  bw_mp_game_list(char names[][BW_MP_GAME_NAME_MAX], int max);
 int  bw_mp_game_select(const char *name);
 int  bw_mp_game_create(const char *name, char *out, u32 size);
