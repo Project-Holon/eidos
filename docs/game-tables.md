@@ -154,7 +154,7 @@ The ID is the attacking type (0 Normal to 16 Dark, in game order: Normal, Fighti
 
 ## New types
 
-Mods add types past the base game's 17 by raising `limit.types` (up to 30) in the manifest (`limit.types = 17` adds type 17). Type 31 is reserved internally for "no type", so 30 is the maximum. Each added type requires a name at line `<type>` of text bank 199 (`a/0/0/2/199.msg`), matchups in `type_chart.txt`, and graphics and colors in `types.txt`. Added types appear in battles, the Bag's TM pocket, the Summary screen, the PC Box, the Pokédex (entry pages, registration, and search), the trade screen, the battle party list, and the Move Reminder.
+Mods add types past the base game's 17 by raising `limit.types` (up to 30) in the manifest (`limit.types = 17` adds type 17). Type 31 is reserved internally for "no type", so 30 is the maximum. Each added type requires a name at line `<type>` of text bank 199 (`a/0/0/2/199.msg`), matchups in `type_chart.txt`, and graphics and colors in `types.txt`. Added types appear in battles, the Bag's TM pocket, the Summary screen, the PC Box, the Pokédex (entry pages, registration, and search), the battle party list, and the Move Reminder.
 
 ## types.txt
 

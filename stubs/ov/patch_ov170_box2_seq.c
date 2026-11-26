@@ -18,9 +18,10 @@
  * 7); the box has no palette animator on the sub screen.  The colours are
  * written when an icon is shown, after those loads.
  * BOX2_SEQ_LoadBoxScreen starts the row over (its palettes were loaded
- * again) and BOX2_SEQ_ReleaseBoxGraphics gives the borrowed actors back
- * their images before the characters go, frees the added types' characters
- * and leaves the row.  The rest is the game's own.
+ * again) and BOX2_SEQ_ReleaseBoxGraphics, which runs once the box's actors
+ * are gone (BOX2_SEQ_DeleteBox2UiScene), forgets the borrowed actors, frees
+ * the added types' characters and leaves the row.  The rest is the game's
+ * own.
  *
  * symbols:
  *   APP_ICON_GetArchiveId 0x020275E4 thumb
@@ -226,9 +227,9 @@ void BOX2_SEQ_ReleaseBoxGraphics(char *work)
 {
     unsigned i;
     if (g_box == work) {
+        /* (the actors are gone: nothing to give back) */
         for (i = 0; i < GAME_TYPES; i++)
-            if (g_borrowed[i] != 0)
-                give_back(work, (int)i);
+            g_borrowed[i] = 0;
         g_box = 0;
     }
     bw_type_icon_chars_release(work);

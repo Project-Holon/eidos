@@ -9,10 +9,13 @@
  * the finger cursor writes row 11, the Pokemon icons of a double or triple
  * battle rows 11..13, the wireless icon row 14.  So row 15 is the added
  * types' row on this screen: BTLV_INPUT_LoadCommonGraphics pushes the
- * screen (bw_type_screen_push) once the type palette is in, with the input's
- * palette animator and its bank 3 (the sub OBJ palette) and the type rows
- * 8..10 (0x700, the rows the buttons' dim and light requests name), and
- * BTLV_INPUT_Delete pops it.  The rest of both is the game's own.
+ * screen (bw_type_screen_push) once the type palette is in, and
+ * BTLV_INPUT_Delete pops it.  The input's palette animator (the battle
+ * effect's) holds the sub OBJ palette's rows 0..14 only (0x1E0 bytes), so
+ * row 15 is written to the hardware alone: no fade of the animator touches
+ * it, and an added type's icon keeps its colours when the buttons of a
+ * Pokemon that can only Struggle are dimmed.  The rest of both is the
+ * game's own.
  *
  * symbols:
  *   PALANM_LoadHandlePaletteToSlot 0x020216B4 thumb
@@ -160,7 +163,7 @@ void BTLV_INPUT_LoadCommonGraphics(BtlvInput *input)
     /* the added types' row: the type palette's row 7, the last of the sub
      * OBJ palette */
     base = CLACT_GetPaletteVramAddress(input->typePal, 1) / 32;
-    bw_type_screen_push(input, 1, base, base + 7, input->palAnm, 3, (u16)(7u << base));
+    bw_type_screen_push(input, 1, base, base + 7, 0, 0, 0);
     for (i = 0; i < 4; i++)
         input->typeChr[i] = CLACT_RegisterCharacter(arc, APP_ICON_GetTypeCellFileId(0), 0, 1, input->heap);
     ARC_TOOL_DeleteHandle(arc);

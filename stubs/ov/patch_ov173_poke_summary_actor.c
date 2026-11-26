@@ -22,8 +22,8 @@
  * gives the actor back the sheet and offset 0.
  *
  * The screen's cell actor system has room for its own nine characters and
- * no more (d_021B820C n_chars 9), so POKE_SUMMARY_ACTOR_InitSystem asks for
- * four more, one a sub icon.
+ * no more (d_021B820C n_chars 9), so with added types
+ * POKE_SUMMARY_ACTOR_InitSystem asks for four more, one a sub icon.
  * POKE_SUMMARY_ACTOR_DeleteSystem frees the added types' characters before
  * CLACT_ExitSystem frees the rest, and leaves both rows.  The rest is the
  * game's own.
@@ -113,6 +113,7 @@ extern void bw_type_screen_select(const void *owner);
 extern void bw_type_screen_pop(const void *owner);
 extern int bw_type_icon_char(const void *owner, u32 type, u16 heap, u32 vram);
 extern void bw_type_icon_chars_release(const void *owner);
+extern int bw_types_added(void);
 
 /* arm9 clact.h */
 struct ClactSysInit {
@@ -169,7 +170,9 @@ void POKE_SUMMARY_ACTOR_InitSystem(u8 *work, void *archiveHandle)
     struct ClactSysInit cfg = d_021B820C;
     void *b;
     (void)archiveHandle;
-    cfg.n_chars += 4;     /* (the sub icons of added types) */
+    if (bw_types_added()) {
+        cfg.n_chars += 4;     /* (the sub icons of added types) */
+    }
     CLACT_InitSystem(&cfg, (const struct DispVramCfg *)d_021B8250, SUMMARY_HEAP);
     b = CLACT_CreateUnit(14, 0, SUMMARY_HEAP);
     ((PokeSummaryWork *)work)->unit = b;
