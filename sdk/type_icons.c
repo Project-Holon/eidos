@@ -67,6 +67,16 @@
 extern int bw_mod_vfs_member_get(const char *archive, u32 index, void *out, u32 size);
 extern int bw_mod_vfs_member_set_for(const char *root, const char *archive, u32 index,
                                      const void *data, u32 size);
+extern int bw_mod_text_get(u32 archive, u32 file, u32 entry, u32 block, u16 *out, u32 max_units);
+extern int bw_mod_text_set_for(const char *root, u32 archive, u32 file, u32 entry, u32 block,
+                               const u16 *units, u32 count);
+
+/* The Pokedex search's names (a/0/0/2 bank 277): an added type's at line
+ * SEARCH_NAME_LINE + type - 17, copied from bank 199 (the game's type names)
+ * at apply; ov210 asks for it (patch_ov210_zknsearch_main.c). */
+#define SEARCH_NAME_BANK 277u
+#define SEARCH_NAME_LINE 256u
+#define TYPE_NAME_BANK   199u
 
 /* The game's functions this calls (weak: tools that link the library
  * without the game). */
@@ -382,6 +392,15 @@ void bw_type_icons_apply(void)
         }
         if (t->has_button) {
             make_button(type, t);
+        }
+        {
+            u16 name[64];
+            int n = bw_mod_text_get(2, TYPE_NAME_BANK, type, 0, name, 64);
+
+            if (n > 0) {
+                (void)bw_mod_text_set_for(bw_mod_root_at((u32)t->root), 2, SEARCH_NAME_BANK,
+                                          SEARCH_NAME_LINE + (type - GAME_TYPES), 0, name, (u32)n);
+            }
         }
     }
 }
