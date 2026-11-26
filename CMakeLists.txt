@@ -569,6 +569,8 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/trainer_mons.c  # mod per-member numbers for trainers' Pokemon
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/shops.c  # mod shop lists
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/move_anims.c  # mod move animations, the move preview
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/dex_save.c  # the dex's bits of species past the save's room
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/dex_data.c  # the regional table, shapes and letters of mod species
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_table.c     # a mod's own data tables (`table` lines)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_hooks.c     # on/off switch for port-side code hooks (docs/hooks.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_slot.c      # the mod seam's slot registry (docs/mod-interface.md)
@@ -605,6 +607,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_slots.c       # several single-player saves
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_games.c       # the saves the Multiplayer screen made
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_tidy.c        # a saves folder put in order
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/save_species.c     # the species a save holds
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/preview_save.c     # the style chooser's preview save, packed (tools/preview_save.py)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_frame.c        # the mod layer's frame tick
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_avatar.c       # the field avatars
@@ -1961,7 +1964,7 @@ add_test(NAME test_native_port_tools COMMAND ${Python3_EXECUTABLE}
 foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_mod_messages
           test_mod_text test_mod_script test_mod_rule test_mod_timer test_mod_export
           test_mod_menu test_mod_input test_mod_handoff test_mod_restart
-          test_mod_avatar test_mod_net test_save_games test_save_tidy test_battle_handlers test_trainer_mons test_shops test_move_anims test_https
+          test_mod_avatar test_mod_net test_save_games test_save_tidy test_save_species test_battle_handlers test_trainer_mons test_shops test_move_anims test_https
           test_mod_catalog)
     add_executable(${t} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${t}.c)
     target_include_directories(${t} PRIVATE

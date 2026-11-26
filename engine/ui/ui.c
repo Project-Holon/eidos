@@ -1070,7 +1070,7 @@ static void debug_party(void)
     u16 lv;
 
     if (list == NULL && (getenv("EIDOS_DEBUG_ITEMS") != NULL || getenv("EIDOS_DEBUG_PARTY_COUNT") != NULL
-                         || getenv("EIDOS_DEBUG_PROPS") != NULL)) {
+                         || getenv("EIDOS_DEBUG_PROPS") != NULL || getenv("EIDOS_DEBUG_DEX_NATIONAL") != NULL)) {
         list = "";                      /* items or the count alone */
     }
     if (done || list == NULL || &bw_dsref__GameSystemGlobal == NULL || GAME_DATA_GetMyParty == NULL
@@ -1165,6 +1165,20 @@ static void debug_party(void)
                 MUSICAL_SAVE_AddProp(ms, (u32)k);
             }
             fprintf(stderr, "eidos: debug props: the first %d owned\n", nprops);
+        }
+    }
+    /* EIDOS_DEBUG_DEX_NATIONAL=1: the National Pokedex obtained and shown */
+    if (getenv("EIDOS_DEBUG_DEX_NATIONAL") != NULL && atoi(getenv("EIDOS_DEBUG_DEX_NATIONAL")) != 0) {
+        extern void *ZUKAN_SAVE_GetFromGameData(void *gameData) __attribute__((weak));
+        extern void *ZUKAN_SAVE_EnableNationalDex(void *pZukan) __attribute__((weak));
+        extern void ZUKAN_SAVE_SetViewMode(void *pZukan, u32 value) __attribute__((weak));
+
+        if (ZUKAN_SAVE_GetFromGameData != NULL && ZUKAN_SAVE_EnableNationalDex != NULL && ZUKAN_SAVE_SetViewMode != NULL) {
+            void *z = ZUKAN_SAVE_GetFromGameData(gd);
+
+            (void)ZUKAN_SAVE_EnableNationalDex(z);
+            ZUKAN_SAVE_SetViewMode(z, 1);
+            fprintf(stderr, "eidos: debug dex: the National Pokedex\n");
         }
     }
     /* EIDOS_DEBUG_FLAGS="hex,hex": event flags set (0x961 and 0x962 give

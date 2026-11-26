@@ -82,3 +82,52 @@ Pikachu attacking Patrat). It loads a copy of the profile's save without
 modifying the original, opens a battle, and loops the animation until
 the window closes. No turns execute and no damage is dealt. An unknown
 move ID exits with code 2 and prints an error to stderr.
+
+## New species
+
+Mods add species past 649 by raising `limit.species` (up to 2047) in the
+manifest. Species IDs 650 to 714 are unused because the base game's
+archives store eggs and alternate forms at those positions. An ID from
+715 onward counts as a species once a mod provides its stats record
+(a/0/1/6 member). Each alternate form of an added species uses the stats
+slot `formStatsIndex + form - 1`, also starting at 715.
+
+Pokedex height and weight lines (banks 244, 245, and 268 of a/0/0/2) are
+indexed by Pokedex record. Base species use their species ID, and base
+forms use records 651 to 726. An added species or form slot uses record
+`727 + (ID - 715)`. Names, categories, and entries use the species ID.
+
+Added archive members must use the same compression as the base game's
+member in the same slot.
+
+The save's Pokedex holds 672 species. eidos stores seen and caught flags
+for later species in one file per mod beside each save
+(`saves/mods/<mod folder>.dex/`), keeping the save valid for the base
+game and other tools. A new game resets these files to empty.
+
+## regional_dex.txt
+
+Sets a species' Unova Pokedex membership and number.
+
+    715 = unova      # in the Unova Pokedex, numbered after the last one
+    716 = 157        # a number of its own
+    717 = none       # not in the Unova Pokedex
+
+`unova` assigns numbers after the highest number in the table, in species
+ID order. Numbers start at 0 (Victini) and set the Unova Pokedex order.
+Omitted base-game species keep their original numbers. Added species are
+excluded from the Unova Pokedex until assigned a number or `unova`.
+
+## pokedex.txt
+
+Sets Pokedex search fields stored outside species data.
+
+    715 = shape 3 letter 21
+    716.1 = shape 5      # form 1
+
+`shape` sets the body shape filter (0 to 13) for a species or one of its
+forms. `letter` sets the letter group of the species' name for name
+search (A is 0, Z is 25). Omitted values keep their base-game defaults.
+For an added species, an omitted `letter` defaults to the first letter of
+its name, and an omitted `shape` matches no shape. An added form without
+a `shape` inherits its species' shape.

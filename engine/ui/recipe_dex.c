@@ -38,6 +38,8 @@
 #include "input.h"
 #include "textbox.h"
 #include "theme.h"
+#include "dex_data.h"
+#include "bw_limits.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define DEX_WEAK __attribute__((weak))
@@ -137,23 +139,13 @@ typedef struct DexNow {
 static int g_skip;              /* the list drops the id list's first entry */
 
 /* The number the game prints for a species (ZUKAN_LIST_PrintListRow, the
- * info page): in the Unova view its regional number, from the game's table
- * (member 0x29C of the personal archive: a u16 a species, 999 for one that
- * is not in the Unova Pokedex; Victini is 0), in the National view the
- * species number.  `fallback` when the view is not known. */
-#define DEX_REGIONAL_ARC    "a/0/1/6"
-#define DEX_REGIONAL_MEMBER 0x29Cu
-
+ * info page): in the Unova view its regional number (the game's table with
+ * the mods' rows, sdk/dex_data.c; Victini is 0), in the National view the
+ * species number.  `fallback` when the view is not known or the species is
+ * not in the Unova Pokedex. */
 static int dex_number(void *save, int species, int fallback)
 {
-    static u16 tab[650];
-    static int state;           /* 0 not tried, 1 read, -1 failed */
-    static u32 gen;
-
-    if (gen != eidos_ui_data_generation()) {
-        gen = eidos_ui_data_generation();   /* another game's data: its own table */
-        state = 0;
-    }
+    int n;
 
     if (save == NULL || ZUKAN_SAVE_GetViewMode == NULL || species <= 0) {
         return fallback;
@@ -161,27 +153,8 @@ static int dex_number(void *save, int species, int fallback)
     if (ZUKAN_SAVE_GetViewMode(save) != 0) {
         return species;
     }
-    if (state == 0) {
-        BwArcFile arc;
-        u8 raw[sizeof tab];
-        u32 i;
-
-        state = -1;
-        if (bw_arc_open(&arc, DEX_REGIONAL_ARC) == 0) {
-            if (DEX_REGIONAL_MEMBER < arc.count && bw_arc_member_size(&arc, DEX_REGIONAL_MEMBER) == (long)sizeof raw
-                && bw_arc_read_member(&arc, DEX_REGIONAL_MEMBER, raw, (u32)sizeof raw) == (long)sizeof raw) {
-                for (i = 0; i < 650u; i++) {
-                    tab[i] = (u16)(raw[i * 2u] | raw[i * 2u + 1u] << 8);
-                }
-                state = 1;
-            }
-            bw_arc_close(&arc);
-        }
-    }
-    if (state != 1 || species >= 650 || tab[species] == 999) {
-        return fallback;
-    }
-    return tab[species];
+    n = bw_dex_regional((u32)species);
+    return n >= 0 ? n : fallback;
 }
 
 /* The Pokedex wrapper proc and its child, or NULL.  *child_overlay is the
@@ -248,9 +221,6 @@ static int dex_probe(DexNow *v)
             v->kind = DEX_LIST;
             v->ids = (const u16 *)rdptr(args, ZA_IDS);
             v->count = (int)rd16p(args, ZA_COUNT);
-            if (v->count > 649) {
-                v->count = 649;
-            }
             v->mode = (int)rd16p(args, ZA_MODE);
             v->save = (void *)rdptr(args, ZA_SAVE);
             if (zw != NULL) {
@@ -724,7 +694,9 @@ static int g_reg;               /* the registration draws (not the Pokedex app):
 
 static void hw_strings(int species, int caught, char *ht, int htn, char *wt, int wtn)
 {
-    int both = caught && msg_get(MSG_HEIGHT, (u32)species, ht, htn) > 0 && msg_get(MSG_WEIGHT, (u32)species, wt, wtn) > 0;
+    /* (the lines are the dex record's: a species a mod adds has one from 727, sdk/dex_data.c) */
+    u32 rec = bw_dex_record((u32)species);
+    int both = caught && msg_get(MSG_HEIGHT, rec, ht, htn) > 0 && msg_get(MSG_WEIGHT, rec, wt, wtn) > 0;
 
     if (!both || !(g_facts & FACT_HEIGHT)) {
         snprintf(ht, (size_t)htn, "\?\?\?'\?\?\"");
@@ -2005,10 +1977,10 @@ static void reg_counts(const DexNow *v, int species, int owned, int *seen, int *
     int sp;
 
     *seen = *own = *part = *whole = 0;
-    for (sp = 1; sp <= 649; sp++) {
+    for (sp = 1; sp <= (int)bw_limit_get(BW_PORT_LIMIT_SPECIES_LAST); sp++) {
         int st, counted;
 
-        if (dex_number(v->save, sp, -1) < 0) {
+        if (!bw_dex_species_exists((u32)sp) || dex_number(v->save, sp, -1) < 0) {
             continue;           /* not in the Unova Pokedex */
         }
         st = dex_state(v, sp);

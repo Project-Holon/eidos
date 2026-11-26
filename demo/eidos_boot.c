@@ -3586,8 +3586,9 @@ static int boot_user_dir(char *out, size_t n)
  * fixed place (<user folder>/handler_params.json). */
 static void boot_share_handler_params(void)
 {
+    enum { CAP = 256 * 1024 };
     char exe[1024], user[1024], from[1200], to[1200];
-    static char a[256 * 1024], b[256 * 1024];
+    char *a, *b;                    /* (on the heap: the 32-bit image has little room, cmake/check_image.cmake) */
     long na, nb;
     FILE *f;
 
@@ -3599,19 +3600,23 @@ static void boot_share_handler_params(void)
     if ((f = fopen(from, "rb")) == NULL) {
         return;                     /* (a build tree: no reference beside it) */
     }
-    na = (long)fread(a, 1, sizeof a, f);
+    if ((a = (char *)malloc(2 * CAP)) == NULL) {
+        fclose(f);
+        return;
+    }
+    b = a + CAP;
+    na = (long)fread(a, 1, CAP, f);
     fclose(f);
     nb = -1;
     if ((f = fopen(to, "rb")) != NULL) {
-        nb = (long)fread(b, 1, sizeof b, f);
+        nb = (long)fread(b, 1, CAP, f);
         fclose(f);
     }
-    if (na <= 0 || na >= (long)sizeof a || (na == nb && memcmp(a, b, (size_t)na) == 0)) {
-        return;
-    }
-    if (bw_plat_mkdirs(user) == 0 && bw_save_write_atomic(to, a, (u32)na) == 0) {
+    if (na > 0 && na < (long)CAP && !(na == nb && memcmp(a, b, (size_t)na) == 0)
+        && bw_plat_mkdirs(user) == 0 && bw_save_write_atomic(to, a, (u32)na) == 0) {
         fprintf(stderr, "eidos: the battle handler keys of this version are in %s\n", to);
     }
+    free(a);
 }
 
 static void boot_profile_use(int game)

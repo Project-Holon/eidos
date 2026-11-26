@@ -223,10 +223,17 @@ static u32 play_seconds_of_game(const struct GameData *gameData)
  * game.new: the new game start event.  The payload has no fields
  * (docs/mod-payloads.md, section 2): the event is the moment itself.
  */
+extern void bw_dex_ext_new_game(void) __attribute__((weak));    /* sdk/dex_save.c */
+extern void bw_dex_ext_save_loaded(void) __attribute__((weak)); /* sdk/dex_save.c */
+
 static void build_game_new(const BwEventCall *call, BwEventPayload *out)
 {
     (void)call;
     memset(&out->game_new, 0, sizeof(out->game_new));
+    /* the dex extension of a new game starts empty (sdk/dex_save.c) */
+    if (bw_dex_ext_new_game != NULL) {
+        bw_dex_ext_new_game();
+    }
 }
 
 /*
@@ -245,6 +252,8 @@ static void build_game_new(const BwEventCall *call, BwEventPayload *out)
  * happens.  The window is closed here and the payload it held is dropped,
  * the way a failed write drops it.
  */
+extern void bw_dex_ext_save(void) __attribute__((weak));       /* sdk/dex_save.c */
+
 static void build_save_begin(const BwEventCall *call, BwEventPayload *out)
 {
     const struct SaveControl *save = (const struct SaveControl *)call->a[0];
@@ -257,6 +266,10 @@ static void build_save_begin(const BwEventCall *call, BwEventPayload *out)
         bw_mod_savedata_save_start();
     } else if (bw_mod_savedata_save_begin != NULL) {
         bw_mod_savedata_save_begin();
+    }
+    /* the dex extension (sdk/dex_save.c) is stored with the save */
+    if (bw_dex_ext_save != NULL) {
+        bw_dex_ext_save();
     }
 }
 
@@ -327,6 +340,10 @@ static void build_save_load(const BwEventCall *call, BwEventPayload *out)
     const struct SaveControl *save;
 
     memset(&out->save_load, 0, sizeof(out->save_load));
+    /* the dex extension: the loaded save's own files (sdk/dex_save.c) */
+    if (bw_dex_ext_save_loaded != NULL) {
+        bw_dex_ext_save_loaded();
+    }
     save = GAME_DATA_GetSaveControl(gameData);
     out->save_load.play_seconds = play_seconds_of_save(save);
     out->save_load.zone = save_zone(save);

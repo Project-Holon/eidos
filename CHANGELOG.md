@@ -23,11 +23,13 @@ Unlimited save slots, parameterized and combined mod handlers, RecompLauncher su
 - **TM & HM Moves**: Mods can change the move each TM and HM teaches via `eidos/tables/machine_moves.txt` (`TM35 = 53`).
 - **Shops**: Mods can override Poké Mart clerk inventories and Battle Subway BP prize lists via `eidos/tables/shops.txt` (`mart.5 = 1 2 3 50`).
 - **Move Animations**: Mods can map any move to another move's battle animation via `eidos/tables/move_anims.txt` (`53 = 85`). Custom moves default to the animation of the move whose handler they use instead of an unrelated effect. `eidos --preview-move <id>` loops a move's animation in a preview battle.
+- **Custom Species**: Mods can add species past 649 (IDs 715 to 2047) by raising `limit.species` in the manifest. The Pokédex lists them in the National and Unova views, sorts and searches them by name, height, and weight, and displays each species' entry page with its own height and weight lines. Mods place a species in the Unova Pokédex with `eidos/tables/regional_dex.txt` (`715 = unova`, or a number such as `715 = 156`) and set its search shape and letter group in `eidos/tables/pokedex.txt` (`715 = shape 3`). See `docs/game-tables.md`.
 
 ### Saves
 - **Unlimited Save Slots**: Removed the 8-slot limit on single-player and Multiplayer-screen games as well as the 32-session limit on hosted co-op games. Starting a `New Game` always allocates a fresh slot without prompting to overwrite an existing save.
 - **Dedicated Multiplayer Save Directory**: Randomizer, multiworld, and Archipelago runs started from the Multiplayer screen are now stored in a dedicated `games/` subdirectory rather than occupying single-player save slots.
 - **Automatic Save Folder Compaction**: On startup, the engine organizes the `saves` directory by moving incomplete files from unsaved New Games into `unreadable/` (preserving them without deletion) and renumbering valid save slots sequentially without gaps or overwrites. Interrupted compactions resume cleanly on the next launch.
+- **Custom Species Pokédex Flags**: Seen and caught flags for species past 672 are stored in one file per mod alongside each save (`saves/mods/<mod folder>.dex/`), keeping the save file compatible with the base game and external tools.
 
 ### Interface Text
 - **Plainer Wording**: Rewrote the Settings help, Multiplayer screens, first-run setup, Mod Manager messages, and launcher text to be shorter and clearer, and removed help lines that only repeated their label.

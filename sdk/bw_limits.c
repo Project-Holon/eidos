@@ -54,12 +54,11 @@ static const LimitRow k_limits[BW_PORT_LIMIT_COUNT] = {
      * fldmmdl_types.h).  Not raisable until the code-to-index remap is in
      * the port. */
     { NULL, 799u, 799u },
-    /* SPECIES_LAST: the last species id (arm9 species.h).  Not raisable
-     * yet: the tables indexed by species (the ARM9's own, the sprite and
-     * icon member math, the save's seen and caught bit arrays) still have
-     * the DS sizes; it becomes "limit.species" (ceiling 2047) once they
-     * grow with it. */
-    { NULL, 649u, 649u },
+    /* SPECIES_LAST: the last species id (arm9 species.h).  Species are u16
+     * in the records; the dex's bits past the save's room live in the dex
+     * extension (sdk/dex_save.c).  2047 is the wild and trainer records'
+     * 11-bit field. */
+    { "limit.species", 649u, 2047u },
 };
 
 static u32 g_value[BW_PORT_LIMIT_COUNT];
@@ -704,10 +703,20 @@ const u8 *bw_icon_palette_table(u32 *rows)
     return t;
 }
 
+extern void bw_dex_ext_forget(void) __attribute__((weak));     /* sdk/dex_save.c */
+extern void bw_dex_data_forget(void) __attribute__((weak));    /* sdk/dex_data.c */
+
 int bw_limits_apply(void)
 {
     u32 i;
     int rc = 0;
+
+    if (bw_dex_ext_forget != NULL) {
+        bw_dex_ext_forget();        /* (the mod list may be another: which mod adds which species) */
+    }
+    if (bw_dex_data_forget != NULL) {
+        bw_dex_data_forget();       /* (and another regional table, other species) */
+    }
 
     defaults();
     for (i = 0; i < bw_mod_count(); i++) {

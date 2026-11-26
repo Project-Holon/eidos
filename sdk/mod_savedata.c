@@ -900,8 +900,13 @@ void bw_mod_savedata_set_api(u32 api)
  * named after it, so a player who keeps several game saves gets one
  * state file per save.
  */
+extern void bw_dex_ext_forget(void) __attribute__((weak));     /* sdk/dex_save.c */
+
 void bw_mod_savedata_set_save(const char *name)
 {
+    if (bw_dex_ext_forget != NULL) {
+        bw_dex_ext_forget();        /* (another save: its own dex extension) */
+    }
     if (!save_name_ok(name)) {
         report(bw_mod_savedata_namespace(),
                "the game save's name is not usable; the default stands");
