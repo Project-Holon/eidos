@@ -60,6 +60,7 @@
 #define ICON_VARIANTS  0x400u           /* a/0/8/3: the added types' icon variants */
 #define BUTTON_NORMAL  0xC2u            /* a/0/1/1: Normal's move button */
 #define BUTTON_ADDED   0x400u           /* a/0/1/1: the added types' buttons */
+#define LABEL_VARIANTS 0x400u           /* a/1/5/9: the added types' Pokedex label variants */
 #define HOF_NORMAL_FX  0x22u
 #define HOF_NORMAL_PAL 3u
 
@@ -98,6 +99,7 @@ typedef struct AddedType {
     int has_color;
     u32 color;              /* 0xRRGGBB                              */
     int variants;           /* the icon variants are in memory       */
+    int labels;             /* the label variants are in memory      */
 } AddedType;
 
 static AddedType g_types[ADDED];
@@ -290,36 +292,35 @@ static u8 *chunk(u8 *file, u32 size, const char *magic, u32 *data_size)
     return NULL;
 }
 
-/* The six variants of an added type's icon: colours 1 and 2 drawn with pair
- * k's colours (1 + 2k, 2 + 2k). */
-static void make_variants(u32 type, AddedType *t)
+/* Six variants of an added type's picture (`member` of `archive`): colours 1
+ * and 2 drawn with pair k's colours (1 + 2k, 2 + 2k), as members base +
+ * 6 * (type - 17) + k.  1 when they are in memory. */
+static int make_six(u32 type, AddedType *t, const char *archive, u32 member, u32 base, const char *what)
 {
-    static u8 icon[2048], var[2048];
-    int size = bw_mod_vfs_member_get("a/0/8/3", t->icon, icon, sizeof icon);
+    static u8 pic[8192], var[8192];
+    int size = bw_mod_vfs_member_get(archive, member, pic, sizeof pic);
     u8 *px;
     u32 n, i, k;
 
-    t->variants = 0;
-    if (t->icon == 0xFFFFFFFFu || size <= 0 || (u32)size > sizeof icon ||
-        (px = chunk(icon, (u32)size, "RAHC", &n)) == NULL || n == 0) {
-        fprintf(stderr, "eidos: type %u: no icon in a/0/8/3 member %d; Normal's is shown\n",
-                (unsigned)type, (int)t->icon);
-        return;
+    if (member == 0xFFFFFFFFu || size <= 0 || (u32)size > sizeof pic ||
+        (px = chunk(pic, (u32)size, "RAHC", &n)) == NULL || n == 0) {
+        fprintf(stderr, "eidos: type %u: no %s in %s member %d\n", (unsigned)type, what, archive, (int)member);
+        return 0;
     }
     for (i = 0; i < n * 2; i++) {
         u32 c = (px[i / 2] >> ((i & 1) * 4)) & 15u;
 
         if (!(c == 0 || c == 14 || c == 15 || (c >= 1 && c <= t->ncolors))) {
-            fprintf(stderr, "eidos: type %u: its icon uses colour %u (it has %u colours, 0, 14 and 15); "
-                    "Normal's is shown\n", (unsigned)type, (unsigned)c, (unsigned)t->ncolors);
-            return;
+            fprintf(stderr, "eidos: type %u: its %s uses colour %u (it has %u colours, 0, 14 and 15)\n",
+                    (unsigned)type, what, (unsigned)c, (unsigned)t->ncolors);
+            return 0;
         }
     }
     for (k = 0; k < PAIRS; k++) {
         u8 *vp;
 
-        memcpy(var, icon, (size_t)size);
-        vp = var + (px - icon);
+        memcpy(var, pic, (size_t)size);
+        vp = var + (px - pic);
         for (i = 0; i < n; i++) {
             u32 lo = vp[i] & 15u, hi = vp[i] >> 4;
 
@@ -327,12 +328,12 @@ static void make_variants(u32 type, AddedType *t)
             hi = hi >= 1 && hi <= 2 ? hi + 2 * k : hi;
             vp[i] = (u8)(lo | hi << 4);
         }
-        if (bw_mod_vfs_member_set_for(bw_mod_root_at((u32)t->root), "a/0/8/3",
-                                      ICON_VARIANTS + PAIRS * (type - GAME_TYPES) + k, var, (u32)size) != 0) {
-            return;
+        if (bw_mod_vfs_member_set_for(bw_mod_root_at((u32)t->root), archive,
+                                      base + PAIRS * (type - GAME_TYPES) + k, var, (u32)size) != 0) {
+            return 0;
         }
     }
-    t->variants = 1;
+    return 1;
 }
 
 /* An added type's move button: Normal's frame (row 0, colours 0..7) and the
@@ -372,7 +373,12 @@ void bw_type_icons_apply(void)
         if (t->ncolors == 0) {
             fprintf(stderr, "eidos: type %u: no `colors`; Normal's icon is shown\n", (unsigned)type);
         } else {
-            make_variants(type, t);
+            t->variants = make_six(type, t, "a/0/8/3", t->icon, ICON_VARIANTS, "icon");
+            if (!t->variants) {
+                fprintf(stderr, "eidos: type %u: Normal's icon is shown\n", (unsigned)type);
+            }
+            t->labels = t->label != 0xFFFFFFFFu &&
+                        make_six(type, t, "a/1/5/9", t->label, LABEL_VARIANTS, "Pokedex labels");
         }
         if (t->has_button) {
             make_button(type, t);
@@ -514,6 +520,26 @@ void bw_type_screen_ensure(const void *owner, int engine, int base, int row, voi
         }
     }
     bw_type_screen_push(owner, engine, base, row, palanm, bank, type_rows);
+}
+
+int bw_types_added(void)
+{
+    return bw_limit_get(BW_PORT_LIMIT_TYPE_LAST) >= GAME_TYPES;
+}
+
+void bw_type_screen_select(const void *owner)
+{
+    int i;
+
+    for (i = 0; i < g_nscreens - 1; i++) {
+        if (g_screens[i].owner == owner) {
+            Screen keep = g_screens[i];
+
+            memmove(&g_screens[i], &g_screens[i + 1], (size_t)(g_nscreens - i - 1) * sizeof(Screen));
+            g_screens[g_nscreens - 1] = keep;
+            return;
+        }
+    }
 }
 
 void bw_type_screen_pop(const void *owner)
@@ -668,6 +694,24 @@ void bw_type_icon_chars_release(const void *owner)
             g_chars[i].owner = NULL;
         }
     }
+}
+
+u32 bw_type_label_member(u32 type)
+{
+    AddedType *t = added(type);
+    Screen *s;
+    int k;
+
+    if (t == NULL || !t->labels || g_nscreens == 0) {
+        return 0xFFFFFFFFu;
+    }
+    s = &g_screens[g_nscreens - 1];
+    for (k = 0; k < (int)PAIRS; k++) {
+        if (s->pair_type[k] == (int)type) {
+            return LABEL_VARIANTS + PAIRS * (type - GAME_TYPES) + (u32)k;
+        }
+    }
+    return 0xFFFFFFFFu;
 }
 
 u8 APP_ICON_GetTypePaletteOffset(int type)

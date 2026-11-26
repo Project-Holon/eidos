@@ -43,6 +43,18 @@ void bw_type_screen_pop(const void *owner);
 void bw_type_screen_ensure(const void *owner, int engine, int base, int row,
                            void *palanm, int bank, u16 type_rows);
 
+/* 1 when a mod adds types (limit.types past 16). */
+int bw_types_added(void);
+
+/* `owner` on top of the stack, as it is (a screen of two instances that
+ * draw by turns: the Pokedex page and its language side). */
+void bw_type_screen_select(const void *owner);
+
+/* The a/1/5/9 member with an added type's six Pokedex labels drawn with the
+ * colour pair the screen on top gives it (call after
+ * APP_ICON_GetTypeCellFileId), or 0xFFFFFFFF when it has none. */
+u32 bw_type_label_member(u32 type);
+
 /*
  * A character (CLACT_RegisterCharacter, OBJ space `vram`: 0 main, 1 sub)
  * with an added type's icon as the screen on top draws it, for a screen
