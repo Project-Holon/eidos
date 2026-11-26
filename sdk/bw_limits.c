@@ -562,12 +562,26 @@ static int build_icon_palette(void)
  * g_0209EAA0 (arm9 file_util.c, FILE_UTIL_GetMachineMove and
  * FILE_UTIL_IsHmMove): the move id each machine teaches, one u16 per
  * machine in the item order: TM01..TM92 rows 0..91, HM01..HM06 rows
- * 92..97, TM93..TM95 rows 98..100.  A fixed 101 rows: a machine is an
- * item in FILE_UTIL_IsMachineItem's two id windows.
+ * 92..97, TM93..TM95 rows 98..100: 101 rows, a machine being an item in
+ * FILE_UTIL_IsMachineItem's two id windows.
  *
- * eidos/tables/machine_moves.txt:  TM35 = 53    HM03 = 57
+ * Mods add TMs from TM96: a species record's machine bits are four u32
+ * (bits 0..94 TM01..TM95, 95..100 HM01..HM06), so bits 101..127 are free,
+ * and TM96..TM122 take bit and table row TM number + 5.  Each is an item a
+ * mod adds (eidos/tables/machine_items.txt), which the port's
+ * FILE_UTIL_IsMachineItem, FILE_UTIL_GetMachineMove and FILE_UTIL_GetId
+ * know (sdk/machines.c).  The copy has 128 rows: the game's 101 are
+ * followed by other data, so they alone are copied.
+ *
+ * eidos/tables/machine_moves.txt:  TM35 = 53    HM03 = 57    TM96 = 605
+ * eidos/tables/machine_items.txt:  TM96 = 627
  */
 #define MACHINES 101u
+#define MACHINE_ROWS 128u
+#define NEW_TM_FIRST 96u
+#define NEW_TM_LAST 122u
+
+static u16 g_machine_items[MACHINE_ROWS];      /* the item of each added TM's row, 0: none */
 
 static u16 *g_machines;
 static const u16 *g_machines_game;
@@ -586,6 +600,9 @@ static int machine_row(const char *s, const char *e)
     }
     if (n >= 1 && n <= 92) {
         return (int)n - 1;
+    }
+    if (n >= NEW_TM_FIRST && n <= NEW_TM_LAST) {
+        return (int)(n + 5);
     }
     return n >= 93 && n <= 95 ? (int)(n + 5) : -1;
 }
@@ -631,13 +648,90 @@ static void read_machine_rows(const char *root, u16 *rows)
             q++;
         }
         if (row < 0 || parse_u32(vs, q, &move) != 0 || move == 0 || move > bw_limit_get(BW_PORT_LIMIT_MOVE_LAST)) {
-            fprintf(stderr, "eidos: %s:%u: expected `TM01..TM95 or HM01..HM06 = <move id 1..%u>`\n", path,
+            fprintf(stderr, "eidos: %s:%u: expected `TM01..TM122 or HM01..HM06 = <move id 1..%u>`\n", path,
                     (unsigned)line, (unsigned)bw_limit_get(BW_PORT_LIMIT_MOVE_LAST));
             continue;
         }
         rows[row] = (u16)move;
     }
     free(text);
+}
+
+/* One mod's machine_items.txt: the item of each added TM. */
+static void read_machine_items(const char *root)
+{
+    char path[1200];
+    char *text;
+    const char *p, *s, *e;
+    u32 line = 0;
+
+    if (strlen(root) + 40 > sizeof(path)) {
+        return;
+    }
+    sprintf(path, "%s/eidos/tables/machine_items.txt", root);
+    if ((text = read_text(path)) == NULL) {
+        return;
+    }
+    p = text;
+    while (next_line(&p, &s, &e)) {
+        const char *eq = s, *q, *vs;
+        u32 item, r;
+        int row;
+
+        line++;
+        if (s == e) {
+            continue;
+        }
+        while (eq < e && *eq != '=') {
+            eq++;
+        }
+        q = eq;
+        while (q > s && (q[-1] == ' ' || q[-1] == '\t')) {
+            q--;
+        }
+        row = eq == e ? -1 : machine_row(s, q);
+        q = eq + 1;
+        while (q < e && (*q == ' ' || *q == '\t')) {
+            q++;
+        }
+        vs = q;
+        while (q < e && *q != ' ' && *q != '\t') {
+            q++;
+        }
+        if (row < (int)(NEW_TM_FIRST + 5) || parse_u32(vs, q, &item) != 0 || item <= 626u ||
+            item > bw_limit_get(BW_PORT_LIMIT_ITEM_LAST)) {
+            fprintf(stderr, "eidos: %s:%u: expected `TM96..TM122 = <item id 627..%u>`\n", path,
+                    (unsigned)line, (unsigned)bw_limit_get(BW_PORT_LIMIT_ITEM_LAST));
+            continue;
+        }
+        for (r = 0; r < MACHINE_ROWS; r++) {
+            if (g_machine_items[r] == item && r != (u32)row) {
+                g_machine_items[r] = 0;     /* (one TM an item: a later line wins) */
+            }
+        }
+        g_machine_items[row] = (u16)item;
+    }
+    free(text);
+}
+
+int bw_machine_bit_of_item(u32 item)
+{
+    u32 r;
+
+    if (item <= 626u) {
+        return -1;
+    }
+    for (r = NEW_TM_FIRST + 5; r < MACHINE_ROWS; r++) {
+        if (g_machine_items[r] == item) {
+            return (int)r;
+        }
+    }
+    return -1;
+}
+
+u32 bw_machine_item_of_bit(u32 bit)
+{
+    return bit < MACHINE_ROWS ? g_machine_items[bit] : 0;
 }
 
 static int build_machine_moves(void)
@@ -662,12 +756,18 @@ static int build_machine_moves(void)
                 fclose(f);
                 modded = 1;
             }
+            sprintf(path, "%s/eidos/tables/machine_items.txt", root);
+            if ((f = fopen(path, "rb")) != NULL) {
+                fclose(f);
+                modded = 1;
+            }
         }
     }
     if (g_machines_game == NULL) {
         g_machines_game = (const u16 *)*n->ref;
     }
     if (!modded) {
+        memset(g_machine_items, 0, sizeof g_machine_items);
         if (g_machines != NULL) {       /* (a mod with rows was turned off) */
             *n->ref = (void *)g_machines_game;
             free(g_machines);
@@ -675,12 +775,20 @@ static int build_machine_moves(void)
         }
         return 0;
     }
-    if ((rows = (u16 *)malloc(MACHINES * sizeof *rows)) == NULL) {
+    if ((rows = (u16 *)calloc(MACHINE_ROWS, sizeof *rows)) == NULL) {
         return -1;
     }
     memcpy(rows, g_machines_game, MACHINES * sizeof *rows);
+    memset(g_machine_items, 0, sizeof g_machine_items);
     for (m = 0; m < bw_mod_count(); m++) {
         read_machine_rows(bw_mod_root_at(m), rows);
+        read_machine_items(bw_mod_root_at(m));
+    }
+    for (m = NEW_TM_FIRST + 5; m < MACHINE_ROWS; m++) {
+        if (g_machine_items[m] != 0 && rows[m] == 0) {
+            fprintf(stderr, "eidos: TM%u has an item (machine_items.txt) and no move (machine_moves.txt)\n",
+                    (unsigned)(m - 5));
+        }
     }
     free(g_machines);
     g_machines = rows;
@@ -697,6 +805,11 @@ static const void *table_now(const char *name)
         return NULL;
     }
     return *n->ref;
+}
+
+const u16 *bw_machine_moves(void)
+{
+    return (const u16 *)table_now("g_0209EAA0");
 }
 
 const u16 *bw_item_icon_table(void)

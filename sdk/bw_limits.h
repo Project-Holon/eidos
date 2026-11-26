@@ -66,4 +66,11 @@ const u8  *bw_icon_palette_table(u32 *rows);
 #ifdef __cplusplus
 }
 #endif
+/* The machine move table in force (128 rows with mods' TMs, else the
+ * game's 101), the added TM an item is (its bit, TM96 = 101) or -1, and
+ * the item of an added TM's bit or 0 (sdk/bw_limits.c). */
+const u16 *bw_machine_moves(void);
+int bw_machine_bit_of_item(u32 item);
+u32 bw_machine_item_of_bit(u32 bit);
+
 #endif /* BW_PORT_LIMITS_H */
