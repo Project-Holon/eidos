@@ -503,6 +503,19 @@ void bw_type_screen_push(const void *owner, int engine, int base, int row, void 
     write_colors(s, 14, k_ends, 2);
 }
 
+void bw_type_screen_ensure(const void *owner, int engine, int base, int row, void *palanm, int bank,
+                           u16 type_rows)
+{
+    int i;
+
+    for (i = 0; i < g_nscreens; i++) {
+        if (g_screens[i].owner == owner) {
+            return;
+        }
+    }
+    bw_type_screen_push(owner, engine, base, row, palanm, bank, type_rows);
+}
+
 void bw_type_screen_pop(const void *owner)
 {
     int i;
@@ -587,6 +600,74 @@ u32 APP_ICON_GetTypeCellFileId(u32 type)
     }
     k = pair_for(type);
     return k < 0 ? ICON_FIRST : ICON_VARIANTS + PAIRS * (type - GAME_TYPES) + (u32)k;
+}
+
+/* ------------------------------------------------------------------ */
+/* Characters of added types, for screens that swap character proxies  */
+/* ------------------------------------------------------------------ */
+
+extern void *ARC_TOOL_CreateHandle(u32 archive, unsigned int heap) GAME_FN;
+extern void ARC_TOOL_DeleteHandle(void *handle) GAME_FN;
+extern int CLACT_RegisterCharacter(void *archive, u32 file, u32 compressed, u32 vram, u16 heap) GAME_FN;
+extern void CLACT_ReleaseCharacter(u32 idx) GAME_FN;
+
+typedef struct TypeChar {
+    const void *owner;
+    u32 type;
+    u32 member;             /* the icon variant it holds */
+    int chr;
+} TypeChar;
+
+#define TYPE_CHARS_MAX 16
+
+static TypeChar g_chars[TYPE_CHARS_MAX];
+
+int bw_type_icon_char(const void *owner, u32 type, u16 heap, u32 vram)
+{
+    u32 member = APP_ICON_GetTypeCellFileId(type);      /* (gives the type its pair) */
+    TypeChar *c = NULL;
+    void *arc;
+    int i;
+
+    if (member == ICON_FIRST || ARC_TOOL_CreateHandle == NULL || CLACT_RegisterCharacter == NULL) {
+        return -1;
+    }
+    for (i = 0; i < TYPE_CHARS_MAX && c == NULL; i++) {
+        if (g_chars[i].owner == owner && g_chars[i].type == type) {
+            if (g_chars[i].member == member) {
+                return g_chars[i].chr;
+            }
+            c = &g_chars[i];
+            CLACT_ReleaseCharacter((u32)c->chr);        /* (its pair moved: a hidden icon) */
+        }
+    }
+    for (i = 0; i < TYPE_CHARS_MAX && c == NULL; i++) {
+        if (g_chars[i].owner == NULL) {
+            c = &g_chars[i];
+        }
+    }
+    if (c == NULL) {
+        return -1;
+    }
+    arc = ARC_TOOL_CreateHandle(0x53, heap);    /* a/0/8/3 (APP_ICON_GetArchiveId) */
+    c->chr = CLACT_RegisterCharacter(arc, member, 0, vram, heap);
+    ARC_TOOL_DeleteHandle(arc);
+    c->owner = c->chr >= 0 ? owner : NULL;
+    c->type = type;
+    c->member = member;
+    return c->chr;
+}
+
+void bw_type_icon_chars_release(const void *owner)
+{
+    int i;
+
+    for (i = 0; i < TYPE_CHARS_MAX; i++) {
+        if (g_chars[i].owner == owner && owner != NULL) {
+            CLACT_ReleaseCharacter((u32)g_chars[i].chr);
+            g_chars[i].owner = NULL;
+        }
+    }
 }
 
 u8 APP_ICON_GetTypePaletteOffset(int type)

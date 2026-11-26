@@ -38,6 +38,21 @@ void bw_type_screen_push(const void *owner, int engine, int base, int row,
                          void *palanm, int bank, u16 type_rows);
 void bw_type_screen_pop(const void *owner);
 
+/* bw_type_screen_push when `owner` is not on the stack yet; nothing when it
+ * is (a screen whose patches each meet the first added type). */
+void bw_type_screen_ensure(const void *owner, int engine, int base, int row,
+                           void *palanm, int bank, u16 type_rows);
+
+/*
+ * A character (CLACT_RegisterCharacter, OBJ space `vram`: 0 main, 1 sub)
+ * with an added type's icon as the screen on top draws it, for a screen
+ * that shows icons by character proxy (the summary).  Kept per owner and
+ * type, made again when the type's colour pair moved; -1 when there is no
+ * icon.  bw_type_icon_chars_release frees an owner's characters.
+ */
+int bw_type_icon_char(const void *owner, u32 type, u16 heap, u32 vram);
+void bw_type_icon_chars_release(const void *owner);
+
 /* An added type's colour on the one-screen interface (types.txt `color`,
  * else its first `colors`): 1 and *rgb (0xRRGGBB), or 0. */
 int bw_type_ui_color(u32 type, u32 *rgb);
