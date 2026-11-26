@@ -3,6 +3,13 @@
 Each release's notes on GitHub start with its section here
 (tools/release_notes.py). Newest first.
 
+## 0.2.8
+
+### Launcher
+- **RecompLauncher Support**: Added a `recomplauncher.json` at the top of the Windows and macOS zips so RecompLauncher can find and start eidos (#49, thanks @elripalda).
+- **Mod Badges**: The `Official` badge now follows the mod index: katalogos mods are official unless the index marks them unofficial, and mods from other repositories only when the index marks them official (also in the in-game Mod Manager).
+- **Multiplayer Saves in the Save List**: Fixed the Home page listing randomizer and multiworld saves made on the Multiplayer screen as ordinary saves; they stay under `Your games`, as on the title's Continue card.
+
 ## 0.2.7
 
 Hotfixes, in-game Mod Manager, RecompLauncher, and RetroAchievements integration.
