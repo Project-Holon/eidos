@@ -65,6 +65,9 @@ pub struct CatalogMod {
     pub version: String,
     pub author: String,
     pub description: String,
+    /// The Official badge: a mod of the index repository unless the index
+    /// marks it `unofficial`, another repository's mod only when the index
+    /// marks it `official` ([`Mark`]).
     pub official: bool,
     pub multiplayer: bool,
     pub has_code: bool,
@@ -125,8 +128,41 @@ fn index_url(setting: &str) -> &str {
     }
 }
 
-fn read_index(agent: &ureq::Agent, url: &str) -> Result<Index, String> {
-    let idx: Index = serde_json::from_slice(&get(agent, url, MAX_JSON)?)
+/// The entries' badge marks (katalogos README, "The index"): a mod of the
+/// index repository (`mod`) is official unless marked `"unofficial": true`;
+/// another repository's mod (`repo`) is not, unless marked
+/// `"official": true`.  Read beside the katalogos crate's `Index`, which
+/// this launcher pins at an older tag.
+#[derive(Deserialize, Default)]
+struct Marks {
+    #[serde(default)]
+    mods: Vec<Mark>,
+}
+
+#[derive(Deserialize, Default, Clone, Copy)]
+struct Mark {
+    #[serde(default)]
+    unofficial: bool,
+    #[serde(default)]
+    official: bool,
+}
+
+impl Mark {
+    /// The badge of an entry: `repo_entry` for a `repo` line, `hosted` what
+    /// its mod.json says (official: kept in the index repository).
+    fn badge(&self, repo_entry: bool, hosted: bool) -> bool {
+        if repo_entry {
+            self.official
+        } else {
+            hosted && !self.unofficial
+        }
+    }
+}
+
+/// The index, and each entry's marks.
+fn read_index(agent: &ureq::Agent, url: &str) -> Result<(Index, Vec<Mark>), String> {
+    let bytes = get(agent, url, MAX_JSON)?;
+    let idx: Index = serde_json::from_slice(&bytes)
         .map_err(|e| format!("The mod index does not read: {e}"))?;
     if idx.format != FORMAT {
         return Err(format!(
@@ -134,7 +170,12 @@ fn read_index(agent: &ureq::Agent, url: &str) -> Result<Index, String> {
             idx.format
         ));
     }
-    Ok(idx)
+    // (an index whose marks do not read keeps every badge as mod.json says)
+    let marks = serde_json::from_slice::<Marks>(&bytes).unwrap_or_default();
+    let marks = (0..idx.mods.len())
+        .map(|i| marks.mods.get(i).copied().unwrap_or_default())
+        .collect();
+    Ok((idx, marks))
 }
 
 /// Where a release file's copy is kept: a name made from its address.
@@ -189,7 +230,7 @@ fn get_kept(agent: &ureq::Agent, cache: &Path, url: &str, max: u64, pinned: bool
 /// among the errors and the others still show.
 pub fn list(index_setting: &str, cache: &Path) -> Result<Catalog, String> {
     let agent = agent();
-    let idx = read_index(&agent, index_url(index_setting))?;
+    let (idx, marks) = read_index(&agent, index_url(index_setting))?;
     let mut out = Catalog { mods: Vec::new(), errors: Vec::new() };
     for (i, e) in idx.mods.iter().enumerate() {
         let url = release_url(e, "mod.json");
@@ -218,7 +259,7 @@ pub fn list(index_setting: &str, cache: &Path) -> Result<Catalog, String> {
                 version: j.version,
                 author: j.author,
                 description: j.description,
-                official: j.official,
+                official: marks[i].badge(e.repo.is_some() && e.official.is_none(), j.official),
                 multiplayer: j.multiplayer.is_some(),
                 has_code: j.has_code,
                 games: j.games,
@@ -248,7 +289,7 @@ pub fn installed(dir: &Path) -> Option<Installed> {
 /// Returns the mod's folder.
 pub fn install(profile_dir: &Path, index_setting: &str, index: usize) -> Result<String, String> {
     let agent = agent();
-    let idx = read_index(&agent, index_url(index_setting))?;
+    let (idx, _) = read_index(&agent, index_url(index_setting))?;
     let e = idx.mods.get(index).ok_or("That mod is no longer in the index.")?;
     let j: ModJson = serde_json::from_slice(&get(&agent, &release_url(e, "mod.json"), MAX_JSON)?)
         .map_err(|err| format!("mod.json: {err}"))?;
@@ -288,6 +329,28 @@ mod tests {
     fn default_index() {
         assert_eq!(index_url(""), DEFAULT_INDEX);
         assert_eq!(index_url("  https://x/i.json "), "https://x/i.json");
+    }
+
+    /// The Official badge: an index mod unless marked unofficial, another
+    /// repository's mod only when marked official.
+    #[test]
+    fn badge_marks() {
+        let m: Marks = serde_json::from_str(
+            r#"{"format":1,"mods":[
+                {"mod":"a","version":"1.0.0"},
+                {"mod":"b","version":"1.0.0","unofficial":true},
+                {"repo":"x/y"},
+                {"repo":"x/z","official":true},
+                {"mod":"c","version":"1.0.0","official":true,"unofficial":true}]}"#,
+        )
+        .unwrap();
+        assert!(m.mods[0].badge(false, true));
+        assert!(!m.mods[1].badge(false, true));
+        assert!(!m.mods[2].badge(true, false));
+        assert!(m.mods[3].badge(true, false));
+        assert!(!m.mods[4].badge(false, true));
+        // an index mod whose mod.json is not the index's own has no badge
+        assert!(!m.mods[0].badge(false, false));
     }
 
     /// A kept copy is the file for a pinned address; for the newest

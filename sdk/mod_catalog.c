@@ -209,6 +209,19 @@ int bw_mod_catalog_parse_index(const char *text, size_t size, BwCatalogEntry *ou
             (*bad)++;
             continue;
         }
+        /* The index's badge marks: a mod of the index repository is
+         * official unless "unofficial": true; another repository's mod is
+         * not, unless "official": true. */
+        if (has_mod && bw_json_member(item, "unofficial", &m)) {
+            int b = 0;
+
+            e.unofficial = bw_json_bool(m, &b) == 0 && b;
+        }
+        if (has_repo && bw_json_member(item, "official", &m)) {
+            int b = 0;
+
+            e.marked_official = bw_json_bool(m, &b) == 0 && b;
+        }
         if (*count < max) {
             out[(*count)++] = e;
         }
@@ -388,6 +401,13 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
     if (out->size == 0 || out->size > BW_MOD_CATALOG_PACKAGE_MAX) {
         set_err(err, err_size, "the package's size (%llu bytes) is past the package limit", out->size);
         return -1;
+    }
+    /* The index's marks decide the badge (bw_mod_catalog_parse_index); the
+     * checks above go by mod.json's own "official", where it is hosted. */
+    if (e->unofficial) {
+        out->official = 0;
+    } else if (e->marked_official) {
+        out->official = 1;
     }
     return 0;
 }

@@ -88,8 +88,8 @@ static void test_index(void)
     static const char index[] =
         "{ \"format\": 1, \"mods\": [\n"
         "  { \"mod\": \"nuzlocke\", \"version\": \"1.1.0\" },\n"
-        "  { \"repo\": \"Project-Holon/arkhipelagos\" },\n"
-        "  { \"repo\": \"Some.One/Their_Mod\", \"version\": \"v2.0.10\" },\n"
+        "  { \"repo\": \"Project-Holon/arkhipelagos\", \"unofficial\": true },\n"
+        "  { \"repo\": \"Some.One/Their_Mod\", \"version\": \"v2.0.10\", \"official\": true },\n"
         "  { \"mod\": \"no-version\" },\n"
         "  { \"mod\": \"Bad_Id\", \"version\": \"1.0.0\" },\n"
         "  { \"repo\": \"not-a-repo\" },\n"
@@ -122,6 +122,21 @@ static void test_index(void)
         BW_CHECK_EQ("pinned release address",
                     strcmp(text, "https://localhost:8443/Some.One/Their_Mod/releases/download/v2.0.10/mod.json"), 0);
         BW_CHECK_EQ("address that does not fit", bw_mod_catalog_entry_url(&e[2], "https://h", "mod.json", text, 20), -1);
+        BW_CHECK_EQ("official, not marked", e[0].unofficial, 0);
+        BW_CHECK_EQ("unofficial only on an index mod", e[1].unofficial, 0);
+        BW_CHECK_EQ("repository not marked official", e[1].marked_official, 0);
+        BW_CHECK_EQ("repository marked official", e[2].marked_official, 1);
+    }
+    {
+        static const char marked[] =
+            "{ \"format\": 1, \"mods\": [ { \"mod\": \"some-mod\", \"version\": \"3.1.1\", \"unofficial\": true, "
+            "\"official\": true } ] }";
+
+        BW_CHECK_EQ("marked index reads", bw_mod_catalog_parse_index(marked, strlen(marked), e, 8, &n, &bad, err,
+                                                                     sizeof(err)), 0);
+        BW_CHECK_EQ("marked entry", (long)n, 1);
+        BW_CHECK_EQ("marked unofficial", n == 1 ? e[0].unofficial : -1, 1);
+        BW_CHECK_EQ("official only on a repository", n == 1 ? e[0].marked_official : -1, 0);
     }
     BW_CHECK_EQ("index format 2", bw_mod_catalog_parse_index("{\"format\":2,\"mods\":[]}", 22, e, 8, &n, &bad,
                                                              err, sizeof(err)), -1);
@@ -192,6 +207,11 @@ static void test_mod_json(void)
     BW_CHECK_EQ("official api", m.api, 6);
     BW_CHECK_EQ("official has no code", m.has_code, 0);
     BW_CHECK_EQ("official is official", m.official, 1);
+    eo.unofficial = 1;                  /* the index marks it */
+    BW_CHECK_EQ("unofficial mod reads", parse_with(official, NULL, NULL, &eo, &m, err, sizeof(err)), 0);
+    BW_CHECK_EQ("unofficial mod is not official", m.official, 0);
+    eo.unofficial = 0;
+    (void)parse_with(official, NULL, NULL, &eo, &m, err, sizeof(err));
     BW_CHECK_EQ("official size", (long)m.size, 612);
     BW_CHECK_EQ("official files", (long)m.files, 2);
     BW_CHECK_EQ("official hash", strcmp(m.sha256, SHA), 0);
@@ -228,6 +248,10 @@ static void test_mod_json(void)
     BW_CHECK_EQ("other has code", m.has_code, 1);
     BW_CHECK_EQ("other is not official", m.official, 0);
     BW_CHECK_EQ("other names no interface", m.api, 0);
+    er.marked_official = 1;             /* the index marks it */
+    BW_CHECK_EQ("marked other reads", parse_with(other, "5000000000", "5000", &er, &m, err, sizeof(err)), 0);
+    BW_CHECK_EQ("marked other is official", m.official, 1);
+    er.marked_official = 0;
     BW_CHECK_EQ("other, newest release", parse_with(other, "5000000000", "5000", &elatest, &m, err, sizeof(err)), 0);
     BW_CHECK_EQ("other with a path", parse_with(other, "\"games\"", "\"path\": \"mods/x\", \"games\"", &er, &m,
                                                 err, sizeof(err)), -1);

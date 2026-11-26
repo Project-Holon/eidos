@@ -210,6 +210,8 @@ typedef struct BwCatalogEntry {
     char official[52];                  /* "mod": an official mod's id, or ""  */
     char repo[104];                     /* "repo": owner/name, or ""           */
     char version[24];                   /* "version": x.y.z, or ""             */
+    int  unofficial;                    /* "unofficial": true, with "mod"      */
+    int  marked_official;               /* "official": true, with "repo"       */
 } BwCatalogEntry;
 
 /* A mod.json, the parts the game uses. */
@@ -225,7 +227,8 @@ typedef struct BwCatalogMod {
     int  games;                         /* BW_MOD_GAME_* bits (sdk/vfs.h)  */
     int  api;                           /* the mod interface it needs, 0: none stated */
     int  has_code;
-    int  official;
+    int  official;                      /* the badge: hosted in the index repository,
+                                         * or as the index's marks say */
 } BwCatalogMod;
 
 /*

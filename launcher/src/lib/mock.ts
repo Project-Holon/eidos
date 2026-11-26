@@ -40,6 +40,7 @@ const catalog = {
     { id: "katalogos/exp-share", name: "Exp. Share", version: "1.0.0", author: "Project Holon", description: "The whole party gains experience in every battle. Can be switched off in the settings.", official: true, multiplayer: false, hasCode: false, games: ["black", "white"], tags: ["quality of life"], size: 700, icon: { item: 216 }, index: 2 },
     { id: "katalogos/smart-trainers", name: "Smart Trainers", version: "0.2.0", author: "Project Holon", description: "Trainers battle like a thinking player.", official: true, multiplayer: false, hasCode: true, games: ["black", "white"], tags: ["difficulty"], size: 72000, icon: { item: 267 }, index: 3 },
     { id: "someone/fairy-type", name: "Fairy type", version: "0.3.0", author: "someone", description: "Adds the Fairy type.", official: false, multiplayer: false, hasCode: false, games: ["white"], tags: ["types"], size: 512000, icon: null, index: 4 },
+    { id: "oukilil/blaze-black-full", name: "Blaze Black (Full, unofficial)", version: "3.1.2", author: "Drayano (unofficial conversion with kenon)", description: "An unofficial conversion of Drayano's Blaze Black 3.1, this conversion is not his and he does not support it.", official: false, multiplayer: false, hasCode: false, games: ["black"], tags: ["rom hack", "unofficial"], size: 1600000, icon: { species: 646 }, index: 5 },
   ],
   errors: [],
 };

@@ -1112,7 +1112,7 @@ mod tests {
             return;
         };
         let rom = nds::rom::Rom::open(Path::new(&rom)).unwrap();
-        for item in [4u16, 216, 267, 280] {
+        for item in [4u16, 216, 267, 280, 590, 428] {
             let img = nds::item::item_icon(&rom, item).unwrap();
             std::fs::write(
                 PathBuf::from(&out).join(format!("item_{item}.png")),

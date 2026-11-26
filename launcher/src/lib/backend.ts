@@ -48,6 +48,8 @@ export type CatalogMod = {
   version: string;
   author: string;
   description: string;
+  /// The Official badge: an index mod unless the index marks it
+  /// unofficial, another repository's mod only when marked official.
   official: boolean;
   multiplayer: boolean;
   hasCode: boolean;

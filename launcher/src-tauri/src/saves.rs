@@ -114,11 +114,29 @@ fn view(slot: u8, s: Save, saved: u64) -> SaveView {
     }
 }
 
-/// Every slot that holds a save, in slot order. A file that is not a save
-/// the game would load (a new game left before its first save, a damaged
-/// file) is left out, as the title menu leaves it out.
+/// The slots a Multiplayer screen card made (a mod's mode: a solo
+/// randomizer, a world made or joined): `<saves>/games.ini`, one line a
+/// slot, `<slot> <kind> <mod> <mode> <role> <code>` (sdk/save_games.h).
+/// eidos keeps them out of the title's Continue card and lists them under
+/// Your games, so they are not the player's own saves here either.
+pub fn mode_slots(saves: &Path) -> Vec<u8> {
+    fs::read_to_string(saves.join("games.ini"))
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.starts_with('#') && l.split_whitespace().count() >= 6)
+        .filter_map(|l| l.split_whitespace().next()?.parse::<u8>().ok())
+        .filter(|n| (1..=SLOTS).contains(n))
+        .collect()
+}
+
+/// Every slot that holds one of the player's own saves, in slot order. A
+/// file that is not a save the game would load (a new game left before its
+/// first save, a damaged file) is left out, as the title menu leaves it
+/// out, and so is a save a Multiplayer screen card made (`mode_slots`).
 pub fn list(saves: &Path) -> Vec<SaveView> {
+    let modes = mode_slots(saves);
     let mut out: Vec<SaveView> = (1..=SLOTS)
+        .filter(|n| !modes.contains(n))
         .filter_map(|n| {
             let path = slot_path(saves, n);
             let bytes = fs::read(&path).ok()?;
@@ -127,9 +145,10 @@ pub fn list(saves: &Path) -> Vec<SaveView> {
         })
         .collect();
     // The slot the game opens on: slot.txt's, or when that slot holds a
-    // file the game cannot load, the newest save (bw_slots_settle).
+    // file the game cannot load or a mode's save, the newest save
+    // (bw_slots_settle; the Continue card offers no mode save).
     let in_file = slot_in_file(saves);
-    let used = slot_path(saves, in_file).is_file();
+    let used = slot_path(saves, in_file).is_file() || modes.contains(&in_file);
     let current = if out.iter().any(|s| s.slot == in_file) || !used {
         Some(in_file)
     } else {
@@ -195,6 +214,19 @@ mod tests {
         fs::write(slot_path(&d, 2), vec![0u8; nds::save::IMAGE_SIZE]).unwrap();
         assert!(list(&d).is_empty());
         assert!(set_current(&d, 2).is_err());
+    }
+
+    #[test]
+    fn mode_saves_are_not_listed() {
+        let d = dir("modes");
+        fs::write(
+            d.join("games.ini"),
+            "# comment\n3 solo arkhipelagos solo host -\n5 world arkhipelagos multiworld joined ABCD\nbad line\n12 solo x y host -\n",
+        )
+        .unwrap();
+        assert_eq!(mode_slots(&d), vec![3, 5]);
+        assert!(set_current(&d, 3).is_err());
+        assert!(mode_slots(&dir("nomodes")).is_empty());
     }
 
     /// A real profile's saves folder in EIDOS_SAVES; without it, nothing.
