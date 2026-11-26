@@ -150,4 +150,23 @@ Sets type effectiveness for each attacking type against each defending type.
     12 = 8                           # Electric hits Normal for double
     9 = 4 4 4 4 4 2 8 4 8 2 2 8 4 4 8 2 4    # Fire's base-game line in full
 
-The ID is the attacking type (0 Normal to 16 Dark, in game order: Normal, Fighting, Flying, Poison, Ground, Rock, Bug, Ghost, Steel, Fire, Water, Grass, Electric, Psychic, Ice, Dragon, Dark). Values are effectiveness codes against each defending type in the same order: 0 (no effect), 2 (not very effective), 4 (normal), 8 (super effective). A shorter line changes only the defending types it reaches. Omitted types keep their base-game values. Later mods override earlier ones per value.
+The ID is the attacking type (0 Normal to 16 Dark, in game order: Normal, Fighting, Flying, Poison, Ground, Rock, Bug, Ghost, Steel, Fire, Water, Grass, Electric, Psychic, Ice, Dragon, Dark). Values are effectiveness codes against each defending type in the same order: 0 (no effect), 2 (not very effective), 4 (normal), 8 (super effective). A shorter line changes only the defending types it reaches. Omitted types keep their base-game values. Later mods override earlier ones per value. With added types (`limit.types`, below), lines and values run up to the last type, and every pair with an added type defaults to 4.
+
+## New types
+
+Mods add types past the base game's 17 by raising `limit.types` (up to 30) in the manifest (`limit.types = 17` adds type 17). Type 31 is reserved internally for "no type", so 30 is the maximum. Each added type requires a name at line `<type>` of text bank 199 (`a/0/0/2/199.msg`), matchups in `type_chart.txt`, and graphics and colors in `types.txt`. Added types appear in battles, the Bag's TM pocket, the Summary screen, the PC Box, the Pokédex (entry pages, registration, and search), the trade screen, the battle party list, and the Move Reminder.
+
+## types.txt
+
+Defines each added type's graphics and colors.
+
+    17 = icon 172 colors F6A5D5 9C4A7B label 113 button F6A4D5 D594BD BD7BA4 9C6A8B 835273 624152 hof 47 17 color F6A5D5
+
+- `icon`: Member of a/0/8/3 (32x16 4bpp RGCN, matching member 0x22). Uses palette indices 0 (transparent), 1 and 2 (from `colors`), 14 (outline), and 15 (white text).
+- `colors`: One or two RRGGBB colors for icon palette indices 1 and 2.
+- `label`: Member of a/1/5/9 containing the six Pokédex labels for other languages (Japanese, French, German, Italian, Spanish, Korean), 32x16 each, using the icon's palette. Defaults to `icon`.
+- `button`: Six RRGGBB shades for the battle move button. Defaults to Normal's button.
+- `hof`: Hall of Fame particle and palette members in a/2/1/6. Defaults to Normal's.
+- `color`: RRGGBB color for the one-screen interface. Defaults to the first `colors` entry.
+
+A type without an entry or a valid icon falls back to Normal's icon. A later mod's entry for a type overrides an earlier one. Each screen allocates colors for the added types it displays, so up to six added types can appear on one screen at a time.

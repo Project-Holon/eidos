@@ -63,12 +63,9 @@ static const LimitRow k_limits[BW_PORT_LIMIT_COUNT] = {
      * build's "no type", and the item record's Natural Gift type is 5
      * bits with 31 for none, so 30 is the most.  A game tree older than
      * that (no BW_LIMIT_TYPE_LAST, CMakeLists.txt) keeps 17 as "no type"
-     * and a chart of 17 columns: the limit stays at 16 there.  It also
-     * stays at 16 until the screens that show a type icon (the battle's
-     * move buttons, the bag, the summary, the PC box, the Pokedex) take
-     * an added type: they keep arrays of 17 (TYPE_SCREENS_READY). */
-#define TYPE_SCREENS_READY 0
-#if defined(BW_GAME_TYPE_LIMIT) && TYPE_SCREENS_READY
+     * and a chart of 17 columns: the limit stays at 16 there.  The screens
+     * that show a type take an added one through sdk/type_icons.c. */
+#ifdef BW_GAME_TYPE_LIMIT
     { "limit.types", 16u, 30u },
 #else
     { "limit.types", 16u, 16u },
