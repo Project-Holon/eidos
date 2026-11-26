@@ -5,20 +5,25 @@ Each release's notes on GitHub start with its section here
 
 ## 0.2.8
 
+Unlimited save slots, parameterized and combined mod handlers, RecompLauncher support, and launcher improvements.
+
 ### Launcher
 - **RecompLauncher Support**: Added `recomplauncher.json` to the root of the Windows and macOS standalone archives so RecompLauncher can automatically detect and launch eidos (thanks @elripalda, #49).
 - **Official Mod Badges**: Synchronized `Official` mod badges in both the launcher and the in-game Mod Manager with the mod index (`katalogos` entries default to official unless marked otherwise, while third-party repository mods display the badge only when explicitly flagged as official).
-- **Multiplayer Save Filtering**: Fixed the Home tab listing randomizer and multiworld saves created on the Multiplayer screen as standard single-player saves; they now remain exclusively under **Your Games**, matching the title menu's Continue screen.
+- **Multiplayer Save Filtering**: Fixed the Home tab listing randomizer and multiworld saves created on the Multiplayer screen as single-player saves. They now appear only under **Your Games**, matching the title menu's Continue screen.
 - **Post-Install Save Maintenance**: Legacy save import and save-slot cleanup now run immediately after a new engine version finishes installing rather than waiting for the next launcher restart, and the save list header now displays the total save count instead of `"of 8"`.
 
 ### Modding
 - **Parameterized Move, Ability & Item Handlers**: Mods can assign existing battle effect handlers to custom or built-in moves, abilities, and held items via `eidos/tables/ability_handlers.txt`, `move_handlers.txt`, and `item_handlers.txt`, while overriding handler parameters such as target stat and stage delta, inflicted status condition, trigger chance, damage/stat multiplier, tested type, HP fraction, and weather effect (e.g., an Intimidate variant that lowers Sp. Atk by 2 stages: `165 = 22 stat=spatk stages=-2`). Supported parameter keys for every built-in handler are documented in `handler_params.json` alongside the executable.
-- **Combined Handlers**: One move, ability, or item can work like up to four built-in ones at once, each with its own parameters, joined with `+` (e.g., Intimidate on Sp. Atk plus Drizzle: `22 = 22 stat=spatk stages=-2 + 2`). Combinations whose handlers keep state in the same slot are refused; `handler_params.json` lists each handler's slots under `work`.
+- **Combined Handlers**: Mods can combine up to four built-in handlers on a single move, ability, or item using `+`, each with its own parameters (e.g., Intimidate on Sp. Atk plus Drizzle: `22 = 22 stat=spatk stages=-2 + 2`). Combinations whose handlers share a state slot are rejected. `handler_params.json` lists each handler's slots under `work`.
 
 ### Saves
 - **Unlimited Save Slots**: Removed the 8-slot limit on single-player and Multiplayer-screen games as well as the 32-session limit on hosted co-op games. Starting a `New Game` always allocates a fresh slot without prompting to overwrite an existing save.
 - **Dedicated Multiplayer Save Directory**: Randomizer, multiworld, and Archipelago runs started from the Multiplayer screen are now stored in a dedicated `games/` subdirectory rather than occupying single-player save slots.
 - **Automatic Save Folder Compaction**: On startup, the engine organizes the `saves` directory by moving incomplete files from unsaved New Games into `unreadable/` (preserving them without deletion) and renumbering valid save slots sequentially without gaps or overwrites. Interrupted compactions resume cleanly on the next launch.
+
+### Interface Text
+- **Plainer Wording**: Rewrote the Settings help, Multiplayer screens, first-run setup, Mod Manager messages, and launcher text to be shorter and clearer, and removed help lines that only repeated their label.
 
 ## 0.2.7
 
@@ -183,6 +188,8 @@ Overhauled 3D battle scenes, expanded multiplayer and randomizer/Archipelago sup
 
 ## 0.2.5
 
+Three interface styles, ~50% faster frame times, launcher gamepad support, and bug fixes.
+
 ### One-Screen Mode & UI
 - **Interface Styles**: Added selectable UI themes for one-screen menus and battles under `Settings > Layout > Interface style` (`STYLE` in the in-game Options menu): **Kosmos** (the previous default), **Plasma** (a modern take on Black and White), and **Harmonia** (closest to the original DS interface), each with dedicated screen layouts.
 - **Style Chooser & Live Preview**: Prompt to select a UI style on first launch (reopenable anytime from the title menu with `SELECT`). Includes an interactive preview mode that lets you test the X menu, party, Bag, and battles across styles using a built-in in-memory save without touching your actual save file.
@@ -266,6 +273,8 @@ eidos now runs on the Switch and Vita, draws with each platform's native rendere
 
 ## 0.2.3
 
+Interface translations, mod icons, expanded mod APIs, and Pokédex/runtime fixes.
+
 ### Mods & Launcher
 - **Mod Icons**: The Mods page shows each mod's icon.
 - **Whiteout for Mods**: A code mod can white the player out as after a lost battle (`whiteout`): the blackout screen, the last Pokémon Center and the nurse.
@@ -287,6 +296,8 @@ eidos now runs on the Switch and Vita, draws with each platform's native rendere
 
 ## 0.2.2
 
+Launcher mod catalog, Black and White profiles, Mod API v5, and crash fixes.
+
 ### Mods & Launcher
 - **Get Mods**: The Mods page lists the mods of katalogos, our mod index, with Install and Update; a download is checked before it is unpacked. The official mods are Nuzlocke, Soul Link (multiplayer) and Exp. Share.
 - **Mod Icons**: A mod can show an item's or a Pokémon's picture from your own ROM, or its own image.
@@ -306,6 +317,8 @@ eidos now runs on the Switch and Vita, draws with each platform's native rendere
 
 ## 0.2.1
 
+Launcher hotfixes, giving items from the one-screen Bag, and N's Accumula Town battle camera fix.
+
 ### One-Screen Mode & UI
 - **Giving Items**: Giving an item from the Bag uses the one-screen party list ("Give to which Pokémon?", swapping held items) instead of the DS screen.
 
@@ -319,6 +332,8 @@ eidos now runs on the Switch and Vita, draws with each platform's native rendere
 PS: Honestly I'm only pushing this because the launcher is broken LOL.
 
 ## 0.2.0
+
+Android/iOS builds, online Union Room, Mystery Gift, GPU rendering, and localized one-screen UI.
 
 ### One-Screen Mode & UI
 - **Text Boxes**: Speech, narration and system messages are redrawn as one-screen boxes in the game's font; lists, YES / NO and the field's menus (Union Room talk, Battle Subway) are our own lists.
@@ -377,12 +392,16 @@ PS: Honestly I'm only pushing this because the launcher is broken LOL.
 
 ## 0.1.9
 
+Fixes for the title screen save list, naming keyboard softlock, and one-screen keyboard navigation.
+
 ### Bug Fixes
 - **Saves**: Fixed title screen failing to display existing saves after quitting an unsaved New Game; the menu now properly selects the last-played save (#10).
 - **One-Screen UI**: Fixed naming keyboard rendering behind the Multiplayer screen and softlocking input (#9).
 - **Keyboard Navigation**: Fixed one-screen keyboard D-pad/arrow controls using original DS key coordinates instead of matching the visible layout (#7).
 
 ## 0.1.8
+
+Touch controls, reworked PC storage, ROM library, controller glyphs, performance gains, and fixes.
 
 ### One-Screen Mode & UI
 - **Touch & Mouse Movement**: Added an on-screen virtual stick: drag to walk, push past the outer ring to run, and tap NPCs to interact.
@@ -424,6 +443,8 @@ PS: Honestly I'm only pushing this because the launcher is broken LOL.
 
 ## 0.1.7
 
+Smooth menu fades, animated Pokédex sprites, ~150 hand-placed battle cameras, and macOS fixes.
+
 ### One-Screen Mode & UI
 - **Menus & Apps**: Smooth fades when menus and apps open and close, with no flashes or black frames, and a quick return to the menu. Menu icons use the game's own sprites, and the interface has more room in small windows such as 1280x720.
 - **Pokédex**: Animated Pokémon sprites and a short opening animation.
@@ -444,6 +465,8 @@ PS: Honestly I'm only pushing this because the launcher is broken LOL.
 - macOS: Fixed a crash when choosing your ROM.
 
 ## 0.1.6
+
+64-bit builds, SDL3, one-screen Remaster layout, self-updating launcher, and multiplayer fixes.
 
 ### Platforms
 - **64-bit Builds**: Windows, Linux (AppImage) and macOS (Apple silicon), with multiplayer and code mods. The game keeps the DS's own memory layout and plays the same. No more 32-bit packages.
@@ -467,10 +490,14 @@ PS: Honestly I'm only pushing this because the launcher is broken LOL.
 
 ## 0.1.5
 
+DS-accurate high-resolution 3D outlines without floor gaps or edge flicker.
+
 ### Visuals & Extras
 - **3D Outlines**: At high resolution they now match the DS: no gap or thin line under objects on the floor, and no comb or flicker along edges.
 
 ## 0.1.4
+
+Instant Text option, launcher version fix, and button/hover styling.
 
 ### Visuals & Extras
 - **Instant Text**: Each page of a message appears at once, whatever the text speed (`Settings > Extras`, or `Options > EXTRAS` in the game).
@@ -479,6 +506,8 @@ PS: Honestly I'm only pushing this because the launcher is broken LOL.
 - Shows its real version, outlines the folder, copy and remove buttons, and highlights text boxes and lists on hover.
 
 ## 0.1.3
+
+In-game Display and Sound settings, hidden console window, and GitHub rate-limit handling.
 
 ### Settings
 - **In-Game Settings**: DISPLAY and SOUND pages in the game's Options screen, changed with the arrows in the bottom bar or with L and R.
@@ -491,16 +520,22 @@ PS: Honestly I'm only pushing this because the launcher is broken LOL.
 
 ## 0.1.2
 
+Pixel scale and 3D resolution settings, sharp default 3D, and auto-sized startup window.
+
 ### Visuals & Extras
 - **Display Settings**: Pixel scale (how big each DS pixel is) and 3D resolution (how detailed the 3D is), each Auto or a fixed size. The 3D is now sharp by default.
 - The window opens at a size that fits the screen.
 
 ## 0.1.1
 
+Hotfix preventing Escape from closing the game.
+
 ### Bug Fixes
 - Escape no longer closes the game. Use the window's close button.
 
 ## 0.1.0
+
+Initial release with relay multiplayer and launcher for profiles, versions, and mods.
 
 - First release. The game asks for your own ROM on the first start.
 - **Multiplayer**: Host a game through the public relay and share the code.

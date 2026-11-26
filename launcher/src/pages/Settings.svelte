@@ -88,12 +88,12 @@
   }
 
   async function addFolder() {
-    const p = await open({ directory: true, multiple: false, title: "A folder with ROMs" });
+    const p = await open({ directory: true, multiple: false, title: "Select ROM folder" });
     if (typeof p === "string") await add([p]);
   }
 
   async function locate(r: RomView) {
-    const p = await open({ multiple: false, title: `Where is ${fileName(r.path)}?`, filters: [{ name: "DS ROM", extensions: ["nds"] }] });
+    const p = await open({ multiple: false, title: `Locate ${fileName(r.path)}`, filters: [{ name: "DS ROM", extensions: ["nds"] }] });
     if (typeof p !== "string") return;
     try {
       roms = await locateRom(r.path, p);
@@ -113,7 +113,7 @@
   const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
   async function pickBuild() {
-    const path = await open({ directory: true, multiple: false, title: "Folder with an eidos build" });
+    const path = await open({ directory: true, multiple: false, title: "Select local build folder" });
     if (typeof path === "string") localBuild = path;
   }
 
@@ -137,7 +137,7 @@
 
   async function checkNow() {
     await checkForUpdate(true);
-    if (updates.state.kind === "current") toast("The launcher is up to date.");
+    if (updates.state.kind === "current") toast("Launcher is up to date.");
     else if (updates.state.kind === "failed") toast(updates.state.message, true);
   }
 </script>
@@ -186,20 +186,20 @@
               {#if r.status === "verified"}
                 <span class="badge ok" title={r.name ?? ""}>Verified</span>
               {:else if r.status === "modified"}
-                <span class="badge bad" title="Not a known good dump: edited, damaged or another revision">Modified</span>
+                <span class="badge bad" title="Unknown dump: modified, corrupt, or unsupported revision">Modified</span>
               {:else}
                 <span class="badge bad">Missing</span>
                 <button onclick={() => locate(r)}><Icon name="folder" size={15} />Locate</button>
               {/if}
-              <button class="quiet" onclick={() => remove(r)} title="Remove from the list"><Icon name="trash" size={15} /></button>
+              <button class="quiet" onclick={() => remove(r)} title="Remove from list"><Icon name="trash" size={15} /></button>
             </div>
           {/each}
         </div>
       {/if}
       <div class="inline buttons">
-        <span class="muted small grow">Each file is checked against the known good dumps. The files stay where they are.</span>
+        <span class="muted small grow">ROMs are verified against known good dumps.</span>
         {#if !MOBILE}<button disabled={adding} onclick={addFolder}><Icon name="folder" size={15} />Add folder</button>{/if}
-        <button class="primary" disabled={adding} onclick={addFiles}><Icon name="plus" size={15} />{adding ? "Checking" : "Add ROMs"}</button>
+        <button class="primary" disabled={adding} onclick={addFiles}><Icon name="plus" size={15} />{adding ? "Verifying" : "Add ROMs"}</button>
       </div>
     </div>
   </div>
@@ -221,11 +221,11 @@
       </div>
       <label class="inline check">
         <input type="checkbox" bind:checked={auto} onchange={() => setAutoUpdate(auto)} />
-        Update on start
+        Update on startup
       </label>
       <label class="inline check">
         <input type="checkbox" bind:checked={pre} onchange={() => setPreReleases(pre)} />
-        Show test builds in Versions
+        Show pre-releases in Versions
       </label>
     </div>
   </div>
@@ -235,30 +235,30 @@
     <h2 class="section-label">Downloads</h2>
     <div class="window block scroll">
       <label class="field">
-        <span>Releases repository</span>
+        <span>Release repository</span>
         <input bind:value={repo} placeholder="owner/name" />
       </label>
       <label class="field">
         <span>GitHub token {tokenSet ? "(saved)" : ""}</span>
-        <input type="password" bind:value={token} placeholder="Only for a private repository" autocomplete="off" />
+        <input type="password" bind:value={token} placeholder="Private repositories only" autocomplete="off" />
         {#if tokenSet}
-          <span class="inline check"><input type="checkbox" bind:checked={clearToken} /> Remove the saved token</span>
+          <span class="inline check"><input type="checkbox" bind:checked={clearToken} /> Remove saved token</span>
         {/if}
-        <span class="hint">Stored as plain text in the launcher's settings file.</span>
+        <span class="hint">Stored in plain text in the launcher settings file.</span>
       </label>
       <label class="field">
         <span>Local build folder</span>
         <span class="inline">
-          <input class="grow" bind:value={localBuild} placeholder="A folder with eidos.exe or eidos_boot.exe" />
+          <input class="grow" bind:value={localBuild} placeholder="Folder containing eidos.exe or eidos_boot.exe" />
           <button onclick={pickBuild}><Icon name="folder" size={15} />Choose</button>
         </span>
       </label>
       <label class="field">
-        <span>Mods index address</span>
-        <input bind:value={indexUrl} placeholder="Empty: no index" />
+        <span>Mod index URL</span>
+        <input bind:value={indexUrl} placeholder="Leave empty to disable" />
       </label>
       <div class="inline buttons">
-        <button class="quiet outlined" onclick={() => openFolder("root")}><Icon name="folder" size={15} />Open the eidos folder</button>
+        <button class="quiet outlined" onclick={() => openFolder("root")}><Icon name="folder" size={15} />Open eidos folder</button>
         <div class="grow"></div>
         <button class="primary" onclick={save}><Icon name="check" size={15} />Save</button>
       </div>

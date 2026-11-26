@@ -168,55 +168,55 @@ static const char *const k_axis_neg_short[] = { "LS Left", "LS Up", "RS Left", "
 
 /* Help text (bottom screen).  Two lines per option id, then fixed texts. */
 static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
-    [EIDOS_OPT_DISPLAY_MODE]        = { "The window mode.", "" },
-    [EIDOS_OPT_DISPLAY_PIXEL_SCALE] = { "Size of each DS pixel.",
+    [EIDOS_OPT_DISPLAY_MODE]        = { "", "" },
+    [EIDOS_OPT_DISPLAY_PIXEL_SCALE] = { "",
                                         "Auto fills the window." },
-    [EIDOS_OPT_DISPLAY_RESOLUTION]  = { "Detail of the 3D.",
+    [EIDOS_OPT_DISPLAY_RESOLUTION]  = { "",
                                         "Auto matches the window." },
-    [EIDOS_OPT_LAYOUT_ARRANGEMENT]  = { "How the screens are placed.", "" },
-    [EIDOS_OPT_LAYOUT_SWAP]         = { "Swap the two screens.", "" },
-    [EIDOS_OPT_LAYOUT_GAP]          = { "Space between the screens.", "" },
-    [EIDOS_OPT_SOUND_VOLUME]        = { "The volume.", "" },
-    [EIDOS_OPT_EXTRAS_INSTANT_TEXT] = { "Show each page of a message",
-                                        "at once." },
-    [EIDOS_OPT_BATTLE_BACKDROP]     = { "The real map, or the game's",
-                                        "own battle scenery." },
-    [EIDOS_OPT_BATTLE_PLATFORMS]    = { "The game's own stages",
-                                        "under the Pokemon." },
-    [EIDOS_OPT_MOVE_COLOURS]        = { "Move names in battle messages",
-                                        "show their type colour." },
+    [EIDOS_OPT_LAYOUT_ARRANGEMENT]  = { "", "" },
+    [EIDOS_OPT_LAYOUT_SWAP]         = { "", "" },
+    [EIDOS_OPT_LAYOUT_GAP]          = { "", "" },
+    [EIDOS_OPT_SOUND_VOLUME]        = { "", "" },
+    [EIDOS_OPT_EXTRAS_INSTANT_TEXT] = { "",
+                                        "" },
+    [EIDOS_OPT_BATTLE_BACKDROP]     = { "Overworld map or original",
+                                        "battle backgrounds." },
+    [EIDOS_OPT_BATTLE_PLATFORMS]    = { "Original platforms under Pokemon.",
+                                        "" },
+    [EIDOS_OPT_MOVE_COLOURS]        = { "Colour move names by type",
+                                        "in battle messages." },
     [EIDOS_OPT_WEATHER_HAZE]        = { "Fog, sand and snow also dim",
                                         "the Pokemon in battle." },
-    [EIDOS_OPT_PAD_ICONS]           = { "The controller's buttons in hints.",
-                                        "Auto follows the controller." },
-    [EIDOS_OPT_OUTLINES]            = { "Dark edges on 3D objects,",
-                                        "one screen pixel wide." },
-    [EIDOS_OPT_TRANSITIONS]         = { "Doors and map changes. Seamless",
-                                        "never goes black." },
-    [EIDOS_OPT_GPU_2D]              = { "The graphics card draws the",
-                                        "screens. Off uses the CPU." },
+    [EIDOS_OPT_PAD_ICONS]           = { "Controller icons in hints.",
+                                        "Auto matches the controller." },
+    [EIDOS_OPT_OUTLINES]            = { "One screen pixel wide.",
+                                        "" },
+    [EIDOS_OPT_TRANSITIONS]         = { "Seamless skips the fade to black",
+                                        "at doors and map changes." },
+    [EIDOS_OPT_GPU_2D]              = { "Off renders on the CPU.",
+                                        "" },
     [EIDOS_OPT_RENDERER]            = { "Native: Direct3D, Metal or",
-                                        "Vulkan. Applies at restart." },
-    [EIDOS_OPT_VSYNC]               = { "Every frame shown evenly.",
-                                        "Off: the DS's own speed." },
-    [EIDOS_OPT_UI_THEME]            = { "The look of the one-screen",
+                                        "Vulkan. Applies on restart." },
+    [EIDOS_OPT_VSYNC]               = { "Syncs frames to display.",
+                                        "Off uses native DS frame rate." },
+    [EIDOS_OPT_UI_THEME]            = { "Applies to one-screen",
                                         "menus and battles." },
 };
-#define HELP_BIND1     "Bind a key or pad button."
+#define HELP_BIND1     "Bind a key or gamepad button."
 #define HELP_BIND2     ""
 #define HELP_DEFAULTS1 "Reset this page."
 #define HELP_DEFAULTS2 ""
-#define HELP_CAPTURE1  "Press a key or pad button."
+#define HELP_CAPTURE1  "Press a key or gamepad button."
 #define HELP_CAPTURE2  "B: cancel"
-#define HELP_SECTION_DISPLAY  "Window mode and sharpness."
+#define HELP_SECTION_DISPLAY  "Window, scale and resolution."
 #define HELP_SECTION_LAYOUT   "Screen arrangement."
 #define HELP_SECTION_CONTROLS "Keyboard and gamepad."
-#define HELP_SECTION_SOUND    "Volume."
-#define HELP_SECTION_MODS     "Installed mods."
-#define HELP_SECTION_NETWORK  "Relay and name."
+#define HELP_SECTION_SOUND    ""
+#define HELP_SECTION_MODS     ""
+#define HELP_SECTION_NETWORK  "Relay and player name."
 #define HELP_SECTION_SESSION  "Host or join a game."
-#define HELP_SECTION_MOD_TAB  "A mod's own settings."
-#define HELP_SECTION_EXTRAS   "Extra options."
+#define HELP_SECTION_MOD_TAB  "Mod settings."
+#define HELP_SECTION_EXTRAS   ""
 #define HELP_KEYS_L0   "A: open"
 #define HELP_KEYS_L0B  "B: back"
 #define HELP_KEYS_L1   "L/R: tabs"
@@ -224,33 +224,33 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
 
 /* The Mods section: the mods, their switches, their own settings, the
  * clear action and the folders no mod claims. */
-#define HELP_MOD_SWITCH1 "Turn the mod on or off."
+#define HELP_MOD_SWITCH1 ""
 #define HELP_MOD_FOR_WHITE  "This mod is for Pokemon White."
 #define HELP_MOD_FOR_BLACK  "This mod is for Pokemon Black."
-#define HELP_MOD_FOR_NONE   "This mod names a game that is not Black or White."
-#define HELP_MOD_NOT_LOADED "It is not loaded in this game."
+#define HELP_MOD_FOR_NONE   "Not for Pokemon Black or White."
+#define HELP_MOD_NOT_LOADED "Not loaded in this game."
 #define HELP_MOD_SWITCH2 "X/Y: move"
-#define HELP_MOD_OPTION1 "A mod setting."
+#define HELP_MOD_OPTION1 ""
 #define HELP_MOD_OPTION2 ""
 #define HELP_MOD_CLEAR1  "Delete the mod's saved data."
 #define HELP_MOD_CLEAR2  ""
 #define HELP_MOD_RELOAD1 "Reload the mods folder."
 #define HELP_MOD_RELOAD2 ""
-#define HELP_MOD_FOLDER1 "The mods folder."
+#define HELP_MOD_FOLDER1 ""
 #define HELP_MOD_FOLDER2 ""
-#define HELP_MOD_REVERT1 "Undo the changes."
+#define HELP_MOD_REVERT1 ""
 #define HELP_MOD_REVERT2 ""
-#define HELP_ORPHAN1     "Data of a removed mod."
+#define HELP_ORPHAN1     "Saved data from a removed mod."
 #define HELP_ORPHAN2     ""
 
 /* The Network section: the port's own settings for the network service. */
-#define HELP_NET_RELAY1  "The relay address."
-#define HELP_NET_RELAY2  "tls://name: secure"
-#define HELP_NET_RPORT1  "The relay port."
+#define HELP_NET_RELAY1  "Use tls://host for encryption."
+#define HELP_NET_RELAY2  ""
+#define HELP_NET_RPORT1  ""
 #define HELP_NET_RPORT2  "A: type"
-#define HELP_NET_CPORT1  "The control port."
+#define HELP_NET_CPORT1  ""
 #define HELP_NET_CPORT2  "A: type"
-#define HELP_NET_NAME1   "Your name."
+#define HELP_NET_NAME1   ""
 #define HELP_NET_NAME2   "A: change"
 #define HELP_NET_DEFAULTS1 "Reset this page."
 #define HELP_NET_DEFAULTS2 ""
@@ -259,30 +259,30 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
 
 /* The Session section: the port's own peer session (sdk/mod_net.h, "The
  * port's own session"). */
-#define HELP_SESSION_CODE1  "The game code."
+#define HELP_SESSION_CODE1  ""
 #define HELP_SESSION_CODE2  "A: copy"
 #define STR_COPIED          "copied"
-#define HELP_SESSION_JCODE1 "The code to join."
+#define HELP_SESSION_JCODE1 ""
 #define HELP_SESSION_JCODE2 "A: type"
-#define HELP_SESSION_HOST1  "Host a game."
+#define HELP_SESSION_HOST1  ""
 #define HELP_SESSION_HOST2  ""
-#define HELP_SESSION_JOIN1  "Join a game."
+#define HELP_SESSION_JOIN1  ""
 #define HELP_SESSION_JOIN2  ""
-#define HELP_SESSION_LEAVE1 "Leave the game."
+#define HELP_SESSION_LEAVE1 ""
 #define HELP_SESSION_LEAVE2 ""
 #define HELP_SESSION_SELF1  "You."
 #define HELP_SESSION_SELF2  ""
-#define HELP_SESSION_PEER1  "A player."
+#define HELP_SESSION_PEER1  ""
 #define HELP_SESSION_PEER2  ""
-#define HELP_MP_START1      "Start the game."
+#define HELP_MP_START1      ""
 #define HELP_MP_START2      ""
-#define HELP_MP_PLAYER1     "A player."
+#define HELP_MP_PLAYER1     ""
 #define HELP_MP_PLAYER2     ""
 #define HELP_MP_GAME1       "Host this game."
 #define HELP_MP_GAME2       ""
 #define HELP_MP_NEW1        "Host a new game."
 #define HELP_MP_NEW2        "You name it first."
-#define HELP_SESSION_REVERT1 "Undo the changes."
+#define HELP_SESSION_REVERT1 ""
 #define HELP_SESSION_REVERT2 ""
 
 /* The run restart (the Mods section) and the menu's own question. */
@@ -293,9 +293,9 @@ static const char *const k_option_help[EIDOS_OPT_COUNT][2] = {
 
 /* The run-status panel (the Mods section) and the input injection's limit
  * (the Network section). */
-#define HELP_PANEL1   "Show the mod panel."
+#define HELP_PANEL1   ""
 #define HELP_PANEL2   ""
-#define HELP_INJECT1  "Longest input press, in frames."
+#define HELP_INJECT1  "Max input press (frames)."
 #define HELP_INJECT2  ""
 
 /* Row labels by option id (EIDOS_OPT_*); NULL for hidden options. */
@@ -384,8 +384,8 @@ static const ValueName k_choice_names[] = {
 #define STR_MORE_BELOW  "More below"
 #define STR_MORE_ABOVE  "More above"
 #define STR_MORE_BOTH   "More above and below"
-#define HELP_BACK_L0    "Leave."
-#define HELP_BACK_L1    "Back."
+#define HELP_BACK_L0    "Exit."
+#define HELP_BACK_L1    ""
 #define STR_DEFAULTS    "Restore defaults"
 #define STR_PRESS_KEY   "Press a key"
 #define STR_UNBOUND     "None"
@@ -395,7 +395,7 @@ static const ValueName k_choice_names[] = {
 #define STR_MOD_REVERT  "Revert changes"
 #define STR_MOD_RELOAD  "Reload mods"
 #define STR_MOD_FOLDER  "Mods folder"
-#define STR_ORPHAN      "orphan"
+#define STR_ORPHAN      "Unused"
 #define STR_NET_RELAY   "Relay address"
 #define STR_NET_RPORT   "Relay port"
 #define STR_NET_CPORT   "Control port"
@@ -407,11 +407,11 @@ static const ValueName k_choice_names[] = {
 #define STR_MP_START         "Start game"
 #define STR_MP_READY         "Ready"
 #define STR_MP_RUNNING       "Playing"
-#define STR_MP_MISSING       "missing"
+#define STR_MP_MISSING       "offline"
 #define STR_MP_MODS          ", mods differ"
 #define STR_SESSION_JOINCODE "Code"
 #define STR_MP_CONNECTING    "Connecting..."
-#define STR_MP_WAIT_HOST     "Waiting for the host"
+#define STR_MP_WAIT_HOST     "Waiting for host"
 #define STR_MP_NOT_FOUND     "Code not found"
 #define STR_MP_DEFAULT_NAME  "Player"
 #define STR_SESSION_HOST     "Host"
@@ -421,36 +421,36 @@ static const ValueName k_choice_names[] = {
 #define STR_SESSION_PEER     "Player"
 #define STR_SESSION_REVERT   "Revert changes"
 #define STR_MP_NEW_GAME      "New game"
-#define STR_MP_MODE_OFF      "Not in this version"
-#define STR_MP_MODE_START    "Start a new game"
-#define STR_MP_MODE_MAKE     "Make the world"
-#define STR_MP_MODE_EXPORT   "Save the options file"
+#define STR_MP_MODE_OFF      "Unavailable"
+#define STR_MP_MODE_START    "Start new game"
+#define STR_MP_MODE_MAKE     "Create world"
+#define STR_MP_MODE_EXPORT   "Save options file"
 #define STR_MP_MODE_TYPE     "Type"
-#define STR_MP_SAVED         "Saved. Its path is copied."
-#define STR_MP_NOT_SAVED     "The file could not be saved"
-#define STR_MP_CHECKING      "Checking the code..."
-#define STR_MP_NO_CODE       "No game or world has that code"
-#define STR_MP_NO_ANSWER     "The relay did not answer"
-#define STR_MP_HOST_BUSY     "A connection is still being made. Try again in a moment."
-#define STR_MP_NO_PASTE      "The clipboard holds no game code"
-#define STR_MP_WORLD_JOIN    "Join the world"
-#define STR_MP_WORLD_WAITING "Its maker has not opened it yet"
-#define STR_MP_WORLD_CLOSED  "Its maker closed it"
-#define STR_MP_WORLD_BROKEN  "The relay cannot serve it"
-#define STR_MP_WORLD_FULL    "Every player has joined"
-#define STR_MP_ROOM_NO_MOD   "Needs a mod that plays Archipelago rooms"
-#define STR_MP_ROOM_JOIN     "Join the room"
-#define STR_MP_WORLD_IS_WHITE "This world is for Pokemon White"
-#define STR_MP_WORLD_IS_BLACK "This world is for Pokemon Black"
-#define STR_MP_WORLD_NO_MOD  "Needs a mod that joins worlds"
+#define STR_MP_SAVED         "Saved. Path copied."
+#define STR_MP_NOT_SAVED     "Could not save file"
+#define STR_MP_CHECKING      "Checking code..."
+#define STR_MP_NO_CODE       "Unknown game or world code"
+#define STR_MP_NO_ANSWER     "Relay did not respond"
+#define STR_MP_HOST_BUSY     "Still connecting. Try again in a moment."
+#define STR_MP_NO_PASTE      "No game code in clipboard"
+#define STR_MP_WORLD_JOIN    "Join world"
+#define STR_MP_WORLD_WAITING "Not opened by host yet"
+#define STR_MP_WORLD_CLOSED  "Closed by host"
+#define STR_MP_WORLD_BROKEN  "Unavailable on relay"
+#define STR_MP_WORLD_FULL    "All player slots taken"
+#define STR_MP_ROOM_NO_MOD   "Requires an Archipelago mod"
+#define STR_MP_ROOM_JOIN     "Join room"
+#define STR_MP_WORLD_IS_WHITE "World requires Pokemon White"
+#define STR_MP_WORLD_IS_BLACK "World requires Pokemon Black"
+#define STR_MP_WORLD_NO_MOD  "Requires a mod to join worlds"
 #define STR_MP_WORLD_PLAYERS "Players"
 #define STR_MP_WORLD_GAME    "Game"
 #define STR_KB_NAME          "Your name?"
-#define STR_KB_CODE          "The game code?"
-#define STR_KB_NEW_GAME      "Name the new game?"
+#define STR_KB_CODE          "Game code?"
+#define STR_KB_NEW_GAME      "New game name?"
 
 /* The run restart (the Mods section) and the menu's own question. */
-#define STR_MOD_RESTART "Restart the run"
+#define STR_MOD_RESTART "Restart run"
 #define STR_Q_TITLE     "Confirm"
 #define STR_Q_YES       "Yes"
 #define STR_Q_NO        "No"
@@ -466,7 +466,7 @@ static const ValueName k_choice_names[] = {
 #define STR_SESS_NOSESS  "No session"
 #define STR_SESS_REFUSED "Refused"
 #define STR_SESS_BIG     "Too big"
-#define STR_SESS_IO      "No answer"
+#define STR_SESS_IO      "No reply"
 #define STR_SESS_ARG     "Bad code"
 #define STR_SESS_FAILED  "Failed"
 
@@ -1029,8 +1029,8 @@ const char *eidos_sui_keyboard_prompt(void)
     case KB_CODE:     return STR_KB_CODE;
     case KB_NEW_GAME: return STR_KB_NEW_GAME;
     case KB_MOD_TEXT: return bw_mod_menu_option_label((u32)g_kb.mod, (u32)g_kb.opt);
-    case KB_AP_SLOT:  return "Your slot's name?";
-    case KB_AP_PASS:  return "The room's password?";
+    case KB_AP_SLOT:  return "Slot name?";
+    case KB_AP_PASS:  return "Room password?";
     default:          return NULL;
     }
 }
@@ -1276,8 +1276,8 @@ typedef struct QuestionText {
 
 static const QuestionText k_questions[] = {
     { "", "" },                              /* QUESTION_NONE    */
-    { "Restart the run?",                    /* QUESTION_RESTART */
-      "Back to the title screen." },
+    { "Restart run?",                    /* QUESTION_RESTART */
+      "Return to title screen." },
 };
 
 static struct {
@@ -4220,7 +4220,7 @@ int eidos_sui_mp_row(int i, char *label, int nl, char *value, int nv)
 int eidos_sui_mp_row_extra(int i, const char **heading, const char **help, int *ok)
 {
     static const char *const start_help[3] = {
-        "Starts a new game in a free save slot. It is listed under Your games on the Multiplayer screen; "
+        "Uses a free save slot, listed under Your games, and "
         "your other saves stay as they are.",
         "Makes the world on the relay and starts your game in it. Its code shows in your game: send it to "
         "your friends, who type it in the Join box.",
@@ -4240,7 +4240,7 @@ int eidos_sui_mp_row_extra(int i, const char **heading, const char **help, int *
         if (heading != NULL) *heading = bw_mod_menu_option_heading((u32)r->arg, (u32)r->arg2);
         if (help != NULL) *help = bw_mod_menu_option_help((u32)r->arg, (u32)r->arg2);
     } else if (r->type == ROW_MP_MODE_TYPE) {
-        if (help != NULL) *help = "The kind of game this card makes. Left and right switch it; the rows below "
+        if (help != NULL) *help = "Left/Right switches the mode. The rows below "
                                   "and the text above change with it.";
     } else if (r->type == ROW_MP_MODE_START) {
         int k = bw_mod_menu_mode_export((u32)g_mode_mod, (u32)g_mode_k) != NULL ? 2
@@ -4250,7 +4250,7 @@ int eidos_sui_mp_row_extra(int i, const char **heading, const char **help, int *
         if (ok != NULL) *ok = !bw_mod_menu_mode_off((u32)g_mode_mod, (u32)g_mode_k);
     } else if (r->type == ROW_MP_WORLD_JOIN) {
         if (help != NULL) *help = "Starts your game in this world, in a free save slot. It is listed under Your "
-                                  "games; the world's rules are its maker's.";
+                                  "games. The host sets the rules.";
         if (ok != NULL) *ok = g_look.can_join;
     } else if (r->type == ROW_MP_ROOM_SLOT) {
         if (help != NULL) *help = "The slot name in the room's game, as in the options file you sent its host.";

@@ -310,7 +310,7 @@
       <Icon name="download" size={20} />
       <div class="what">
         <span class="headline">eidos {update.id ?? update.tag} is available</span>
-        <span class="sub">{updating ? stage || "Installing" : `You have ${version ? versionLabel(version) : "no version"}.`}</span>
+        <span class="sub">{updating ? stage || "Installing" : `Installed: ${version ? versionLabel(version) : "none"}`}</span>
       </div>
       <button class="primary" disabled={updating || running} onclick={() => installUpdate(update)}>
         {updating ? "Installing" : "Update"}
@@ -327,7 +327,7 @@
       {:else}
         No version installed.
       {/if}
-      <button class="quiet outlined" onclick={() => onGoto("versions")}><Icon name="download" size={16} />Install one</button>
+      <button class="quiet outlined" onclick={() => onGoto("versions")}><Icon name="download" size={16} />Install version</button>
     </p>
   {/if}
   {#if error}<p class="note bad" role="alert">{error}</p>{/if}
@@ -354,7 +354,7 @@
         <!-- escaped text with simple markup (lib/notes.ts) -->
         <div class="notes">{@html notes}</div>
       {:else}
-        <p class="muted small">This release has no notes.</p>
+        <p class="muted small">No release notes.</p>
       {/if}
     </section>
   {/if}
@@ -376,7 +376,7 @@
             class:current={s.current}
             disabled={running}
             onclick={() => chooseSave(s)}
-            title={s.current ? "The game opens on this save" : "Open this save next time"}
+            title={s.current ? "Loads on next launch" : "Load this save on next launch"}
           >
             <span class="avatar" aria-hidden="true">
               {#if player(s)}<img src={player(s)} alt="" />{/if}
@@ -384,7 +384,7 @@
             <span class="body">
             <span class="top">
               <span class="who" class:female={s.female}>{s.trainer}</span>
-              {#if s.current}<span class="badge accent">Continues here</span>{:else}<span class="faint small">Save {s.slot}</span>{/if}
+              {#if s.current}<span class="badge accent">Active</span>{:else}<span class="faint small">Save {s.slot}</span>{/if}
             </span>
             <span class="party">
               {#each s.party as m, i (i)}
@@ -409,13 +409,13 @@
                 {#each Array(8) as _, i}<i class:on={((s.badgeBits >> i) & 1) === 1}></i>{/each}
               </span>
             {/if}
-            <span class="where faint small">{s.place || "Unknown place"} · {ago(s.saved)}</span>
+            <span class="where faint small">{s.place || "Unknown location"} · {ago(s.saved)}</span>
             </span>
           </button>
         {/each}
       </div>
     <footer>
-      <span class="faint small hint">New Game in the title menu takes a free slot.</span>
+      <span class="faint small hint">New Game on the title screen uses an empty slot.</span>
       {#if !MOBILE}<button class="quiet outlined" onclick={() => openFolder("saves", selected)}><Icon name="folder" size={15} />Open saves folder</button>{/if}
     </footer>
   </aside>

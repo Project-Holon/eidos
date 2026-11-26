@@ -167,11 +167,11 @@ int bw_mod_catalog_parse_index(const char *text, size_t size, BwCatalogEntry *ou
     if (bw_json_parse(text, size, &root) != 0 || bw_json_kind(root) != BW_JSON_OBJECT ||
         !bw_json_member(root, "mods", &mods) || bw_json_kind(mods) != BW_JSON_ARRAY ||
         !bw_json_member(root, "format", &v) || bw_json_u64(v, &format) != 0) {
-        set_err(err, err_size, "The mod index does not read.");
+        set_err(err, err_size, "Invalid mod index.");
         return -1;
     }
     if (format != 1) {
-        set_err(err, err_size, "The mod index is format %llu; this eidos reads format 1. Update eidos.",
+        set_err(err, err_size, "Unsupported mod index format %llu (expected 1). Update eidos.",
                 format);
         return -1;
     }
@@ -279,7 +279,7 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
 
     memset(out, 0, sizeof(*out));
     if (bw_json_parse(text, size, &root) != 0 || bw_json_kind(root) != BW_JSON_OBJECT) {
-        set_err(err, err_size, "mod.json does not read");
+        set_err(err, err_size, "invalid mod.json");
         return -1;
     }
     if (!bw_json_member(root, "format", &v) || bw_json_u64(v, &n) != 0 || n != 1) {
@@ -296,7 +296,7 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
     if (!bw_json_member(root, "name", &v) || bw_json_string(v, out->name, sizeof(out->name)) < 0 ||
         !bw_json_member(root, "description", &v) || bw_json_string(v, out->about, sizeof(out->about)) < 0 ||
         blank(out->name) || blank(out->about)) {
-        set_err(err, err_size, "mod.json has no name or no description");
+        set_err(err, err_size, "mod.json missing name or description");
         return -1;
     }
     if (bw_json_member(root, "author", &v)) {
@@ -311,7 +311,7 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
             have[i] = lower(have[i]);
         }
         if (strcmp(have, want) != 0) {
-            set_err(err, err_size, "its mod.json is another mod's (%.80s)", out->id);
+            set_err(err, err_size, "mod.json is for another mod (%.80s)", out->id);
             return -1;
         }
     }
@@ -320,7 +320,7 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
     }
     path[0] = '\0';
     if (bw_json_member(root, "path", &v) && bw_json_string(v, path, sizeof(path)) != 0) {
-        set_err(err, err_size, "mod.json's path does not read");
+        set_err(err, err_size, "invalid path in mod.json");
         return -1;
     }
     /* (katalogos: verify, "repo / id / path do not agree") */
@@ -330,7 +330,7 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
         snprintf(want_path, sizeof(want_path), "mods/%s", out->id + (strlen(out->id) > 10 ? 10 : 0));
         if (strcmp(repo, BW_MOD_CATALOG_REPO) != 0 || strncmp(out->id, "katalogos/", 10) != 0 ||
             !valid_id(out->id + 10) || strcmp(path, want_path) != 0) {
-            set_err(err, err_size, "mod.json's repo, id and path do not agree");
+            set_err(err, err_size, "mod.json repo, id, and path mismatch");
             return -1;
         }
     } else {
@@ -339,7 +339,7 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
             lower_repo[i] = lower(lower_repo[i]);
         }
         if (!valid_repo(repo) || strcmp(out->id, lower_repo) != 0 || path[0] != '\0') {
-            set_err(err, err_size, "mod.json's repo, id and path do not agree");
+            set_err(err, err_size, "mod.json repo, id, and path mismatch");
             return -1;
         }
     }
@@ -348,11 +348,11 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
         return -1;
     }
     if (e->version[0] != '\0' && strcmp(e->version, out->version) != 0) {
-        set_err(err, err_size, "the index names version %s, its mod.json %s", e->version, out->version);
+        set_err(err, err_size, "version mismatch (index %s, mod.json %s)", e->version, out->version);
         return -1;
     }
     if (!bw_json_member(root, "games", &v) || (count = bw_json_count(v)) == 0) {
-        set_err(err, err_size, "mod.json names no game");
+        set_err(err, err_size, "mod.json has no games");
         return -1;
     }
     for (i = 0; i < count; i++) {
@@ -360,20 +360,20 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
 
         if (!bw_json_item(v, i, &item) || bw_json_string(item, game, sizeof(game)) != 0 ||
             (strcmp(game, "black") != 0 && strcmp(game, "white") != 0)) {
-            set_err(err, err_size, "mod.json's games are not black and white");
+            set_err(err, err_size, "mod.json games must be black or white");
             return -1;
         }
         out->games |= strcmp(game, "black") == 0 ? BW_MOD_GAME_BLACK : BW_MOD_GAME_WHITE;
     }
     if (bw_json_member(root, "api", &v) && bw_json_kind(v) != BW_JSON_NULL) {
         if (bw_json_u64(v, &n) != 0 || n > 100000ull) {
-            set_err(err, err_size, "mod.json's api does not read");
+            set_err(err, err_size, "invalid api in mod.json");
             return -1;
         }
         out->api = (int)n;
     }
     if (!bw_json_member(root, "has_code", &v) || bw_json_bool(v, &b) != 0) {
-        set_err(err, err_size, "mod.json does not say whether the mod has code");
+        set_err(err, err_size, "invalid has_code in mod.json");
         return -1;
     }
     out->has_code = b;
@@ -382,24 +382,24 @@ int bw_mod_catalog_parse_mod(const char *text, size_t size, const BwCatalogEntry
         !member_text(pack, "sha256", out->sha256, sizeof(out->sha256)) ||
         !bw_json_member(pack, "size", &v) || bw_json_u64(v, &out->size) != 0 ||
         !bw_json_member(pack, "files", &v) || bw_json_u64(v, &n) != 0 || n > 0xFFFFFFFFull) {
-        set_err(err, err_size, "mod.json's package does not read");
+        set_err(err, err_size, "invalid package in mod.json");
         return -1;
     }
     out->files = (u32)n;
     if (strlen(out->sha256) != 64) {
-        set_err(err, err_size, "mod.json's package does not read");
+        set_err(err, err_size, "invalid package in mod.json");
         return -1;
     }
     for (i = 0; i < 64; i++) {
         char c = out->sha256[i] = lower(out->sha256[i]);
 
         if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
-            set_err(err, err_size, "mod.json's package does not read");
+            set_err(err, err_size, "invalid package in mod.json");
             return -1;
         }
     }
     if (out->size == 0 || out->size > BW_MOD_CATALOG_PACKAGE_MAX) {
-        set_err(err, err_size, "the package's size (%llu bytes) is past the package limit", out->size);
+        set_err(err, err_size, "package size (%llu bytes) exceeds limit", out->size);
         return -1;
     }
     /* The index's marks decide the badge (bw_mod_catalog_parse_index); the
@@ -962,17 +962,17 @@ static void work_install(Work *w)
     why[0] = '\0';
     if (bw_mod_catalog_entry_url(&w->entry, w->base, "mod.json", url, sizeof(url)) != 0 ||
         get_text(url, &text, &size, why, sizeof(why)) != 0) {
-        set_err(w->err, sizeof(w->err), "The download failed: %s.", why[0] != '\0' ? why : "no address");
+        set_err(w->err, sizeof(w->err), "Download failed: %s.", why[0] != '\0' ? why : "bad URL");
         return;
     }
     n = bw_mod_catalog_parse_mod(text, size, &w->entry, &m, why, sizeof(why));
     free(text);
     if (n != 0) {
-        set_err(w->err, sizeof(w->err), "The download failed: %s.", why);
+        set_err(w->err, sizeof(w->err), "Download failed: %s.", why);
         return;
     }
     if (!bw_mod_catalog_fits(&m, w->game, w->api, w->code)) {
-        set_err(w->err, sizeof(w->err), "This version of the mod does not work with this game.");
+        set_err(w->err, sizeof(w->err), "This mod version is incompatible with this game.");
         return;
     }
 
@@ -981,7 +981,7 @@ static void work_install(Work *w)
         join(off, sizeof(off), parent, OFF_FOLDER) != 0 ||
         join(tmp, sizeof(tmp), parent, DOWNLOAD_FOLDER) != 0 ||
         join(bw, sizeof(bw), tmp, "mod.bw") != 0) {
-        set_err(w->err, sizeof(w->err), "The mods folder's path is too long.");
+        set_err(w->err, sizeof(w->err), "Mods folder path is too long.");
         return;
     }
     in_off[0] = '\0';
@@ -1014,14 +1014,14 @@ static void work_install(Work *w)
     n = snprintf(staging, sizeof(staging), "%s/.%s.new", w->mods_dir, folder);
     if (n <= 0 || (size_t)n >= sizeof(staging) ||
         join(record, sizeof(record), staging, BW_MOD_CATALOG_INSTALLED) != 0) {
-        set_err(w->err, sizeof(w->err), "The mods folder's path is too long.");
+        set_err(w->err, sizeof(w->err), "Mods folder path is too long.");
         return;
     }
 
     /* the package, into a file, checked against its mod.json */
     (void)bw_plat_remove_tree(tmp);
     if (bw_plat_mkdirs(tmp) != 0 || bw_plat_mkdirs(w->mods_dir) != 0 || (f = fopen(bw, "wb")) == NULL) {
-        set_err(w->err, sizeof(w->err), "The mods folder cannot be written.");
+        set_err(w->err, sizeof(w->err), "Cannot write to the mods folder.");
         return;
     }
     memset(&g, 0, sizeof(g));
@@ -1045,21 +1045,21 @@ static void work_install(Work *w)
     }
     if (fclose(f) != 0 && n == 0) {
         n = -1;
-        copy_text(g.err, sizeof(g.err), "the file could not be kept");
+        copy_text(g.err, sizeof(g.err), "could not save file");
     }
     if (n != 0) {
-        set_err(w->err, sizeof(w->err), "The download failed: %.150s.", g.err[0] != '\0' ? g.err : "no address");
+        set_err(w->err, sizeof(w->err), "Download failed: %.150s.", g.err[0] != '\0' ? g.err : "bad URL");
         goto fail;
     }
     bw_sha256_end(&sink.sha, hash);
     bw_sha256_hex(hash, hex);
     if (sink.size != m.size) {
-        set_err(w->err, sizeof(w->err), "The download does not match its mod.json: mod.bw is %llu bytes, "
-                "mod.json says %llu.", sink.size, m.size);
+        set_err(w->err, sizeof(w->err), "Download size mismatch: mod.bw is %llu bytes, "
+                "mod.json expects %llu.", sink.size, m.size);
         goto fail;
     }
     if (strcmp(hex, m.sha256) != 0) {
-        set_err(w->err, sizeof(w->err), "The download does not match its mod.json (its SHA-256 differs).");
+        set_err(w->err, sizeof(w->err), "Download SHA-256 does not match mod.json.");
         goto fail;
     }
 
@@ -1076,12 +1076,12 @@ static void work_install(Work *w)
     }
     bw_thread_join(t);
     if (unpack.rc != 0) {
-        set_err(w->err, sizeof(w->err), "mod.bw does not read as a package: %.120s", unpack.err);
+        set_err(w->err, sizeof(w->err), "Could not unpack mod.bw: %.120s", unpack.err);
         goto fail;
     }
     files = count_files(staging);
     if (files != m.files) {
-        set_err(w->err, sizeof(w->err), "mod.bw holds %u files, mod.json says %u.", (unsigned)files,
+        set_err(w->err, sizeof(w->err), "mod.bw has %u files (mod.json lists %u).", (unsigned)files,
                 (unsigned)m.files);
         goto fail_staging;
     }
@@ -1090,19 +1090,19 @@ static void work_install(Work *w)
         if (f != NULL) {
             fclose(f);
         }
-        set_err(w->err, sizeof(w->err), "The mods folder cannot be written.");
+        set_err(w->err, sizeof(w->err), "Cannot write to the mods folder.");
         goto fail_staging;
     }
     if (fclose(f) != 0) {
-        set_err(w->err, sizeof(w->err), "The mods folder cannot be written.");
+        set_err(w->err, sizeof(w->err), "Cannot write to the mods folder.");
         goto fail_staging;
     }
     if (exists(w->dest) && bw_plat_remove_tree(w->dest) != 0) {
-        set_err(w->err, sizeof(w->err), "The old copy could not be removed: a file of it is in use.");
+        set_err(w->err, sizeof(w->err), "Could not remove old copy: a file is in use.");
         goto fail_staging;
     }
     if (move_folder(staging, w->dest) != 0) {
-        set_err(w->err, sizeof(w->err), "The mod could not be moved into the mods folder.");
+        set_err(w->err, sizeof(w->err), "Could not move mod into the mods folder.");
         goto fail_staging;
     }
     if (in_off[0] != '\0') {
@@ -1234,7 +1234,7 @@ static void start_read(void)
     g_want_read = 0;
     if (w == NULL) {
         g_state = BW_MOD_CATALOG_FAILED;
-        copy_text(g_error, sizeof(g_error), "There is no mods folder.");
+        copy_text(g_error, sizeof(g_error), "Mods folder not found.");
         return;
     }
     g_state = BW_MOD_CATALOG_READING;
@@ -1579,7 +1579,7 @@ int bw_mod_catalog_remove(const char *root)
 
     g_job_error[0] = '\0';
     if (g_work != NULL && g_work->kind == WORK_INSTALL) {
-        copy_text(g_job_error, sizeof(g_job_error), "An install is running.");
+        copy_text(g_job_error, sizeof(g_job_error), "Install in progress.");
         return -1;
     }
     if (!bw_mod_catalog_can_remove(root)) {
@@ -1594,7 +1594,7 @@ int bw_mod_catalog_remove(const char *root)
     }
     rc = bw_plat_remove_tree(path);
     if (rc != 0) {
-        copy_text(g_job_error, sizeof(g_job_error), "The mod could not be removed whole: a file of it is in use.");
+        copy_text(g_job_error, sizeof(g_job_error), "Could not fully remove mod: a file is in use.");
     }
     (void)bw_mod_menu_reload();
     mark_installed();

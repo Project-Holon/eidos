@@ -78,7 +78,7 @@
             <span class="title">Local build</span>
             <span class="sub">{ov.localBuild}</span>
           </div>
-          {#if !ov.localOk}<span class="badge bad">No eidos program</span>{/if}
+          {#if !ov.localOk}<span class="badge bad">No eidos executable</span>{/if}
         </li>
       {/if}
       {#each ov.installed as id, i (id)}
@@ -99,7 +99,7 @@
   <div>
     <h2 class="section-label">
       Releases
-      <button class="quiet small refresh" disabled={loading} onclick={() => load(true)} title="Refresh the list">
+      <button class="quiet small refresh" disabled={loading} onclick={() => load(true)} title="Refresh releases">
         <Icon name="refresh" size={14} />{loading ? "Loading" : "Refresh"}
       </button>
     </h2>
@@ -121,10 +121,10 @@
               {#if r.installed}
                 <span class="badge ok"><Icon name="check" size={13} />Installed</span>
               {:else if !r.available}
-                <span class="badge">Not for this system</span>
+                <span class="badge">Unsupported platform</span>
               {:else}
                 <button class={r.tag === newest && busy !== r.tag ? "primary" : ""} disabled={busy !== null} onclick={() => install(r.tag)}>
-                  <Icon name="download" size={15} />{busy === r.tag ? stage || "Working" : "Install"}
+                  <Icon name="download" size={15} />{busy === r.tag ? stage || "Installing" : "Install"}
                 </button>
               {/if}
             </div>

@@ -71,7 +71,7 @@ suffix (`pre.1`) instead of "release".  It tags `vx.y.z-pre.1`, drafts the
 release marked as a pre-release, and its launcher carries version
 `x.y.z-pre.1`.  GitHub's "latest" skips pre-releases, so no launcher
 updates itself to it and no Play button picks it; a player sees it in
-Versions only with *Settings > Updates > Show test builds in Versions* on.
+Versions only with *Settings > Updates > Show pre-releases in Versions* on.
 When it is good, run the release itself on the same commit (it does not
 turn into the release).
 

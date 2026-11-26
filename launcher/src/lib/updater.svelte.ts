@@ -99,7 +99,7 @@ export async function setPreReleases(on: boolean): Promise<void> {
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("no answer from the update server")), ms);
+    const t = setTimeout(() => reject(new Error("update server timed out")), ms);
     p.then(
       (v) => (clearTimeout(t), resolve(v)),
       (e) => (clearTimeout(t), reject(e)),
@@ -125,7 +125,7 @@ async function install(update: Update) {
   } catch (e) {
     noteFailure(update.version);
     updates.overlay = false;
-    updates.state = { kind: "failed", message: `The update to ${update.version} failed: ${text(e)}` };
+    updates.state = { kind: "failed", message: `Update to ${update.version} failed: ${text(e)}` };
   }
 }
 
@@ -152,7 +152,7 @@ export async function checkForUpdate(manual = false): Promise<void> {
   }
   const f = readFailures();
   if (!manual && f && f.version === update.version && f.count >= 2 && Date.now() - f.at < RETRY_AFTER_MS) {
-    updates.state = { kind: "failed", message: `The update to ${update.version} failed twice; try it from Settings.` };
+    updates.state = { kind: "failed", message: `Update to ${update.version} failed twice. Try again in Settings.` };
     return;
   }
   await install(update);

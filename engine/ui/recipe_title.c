@@ -1160,7 +1160,7 @@ static void title_yes_no(EidosUiCtx *c, const EidosUiFrame *in, const u8 *menu, 
  */
 static const char *const k_style_id[3] = { "kosmos", "plasma", "harmonia" };
 static const char *const k_style_name[3] = { "KOSMOS", "PLASMA", "HARMONIA" };
-static const char *const k_style_line[3] = { "Clean and dark", "Bold, leaning", "As on the DS" };
+static const char *const k_style_line[3] = { "Clean and dark", "Bold, angled", "Original DS" };
 static const u32 k_sign_tone[3][3] = {       /* light, colour, shade */
     { 0xA0EEFAu, 0x00C8E8u, 0x0084A4u },
     { 0xFFEA96u, 0xF8BC28u, 0xC4840Cu },
@@ -1739,7 +1739,7 @@ static int style_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         int hn = 0;
         const char *head = "Choose a style";
         const char *sub = g_style_first ? "You can change it later from this menu."
-                                        : "It changes at once.";
+                                        : "Applies instantly.";
         int m = W >= 560 ? 14 : 8, gap = 8, cw = (W - 2 * m - 2 * gap) / 3, chh = cw * 9 / 16;
         int block = 52 + chh + 22, top = (H - bar - block) / 2 + 52, act = -1, x;
 
@@ -2025,7 +2025,7 @@ static void mods_install_call(void *arg)
         (void)bw_mod_menu_apply();      /* (the install's end reads the list again: the switches first) */
     }
     if (bw_mod_catalog_install((u32)(uintptr_t)arg) != 0) {
-        snprintf(g_mods_note, sizeof g_mods_note, "%s", ui_tr("The download could not start."));
+        snprintf(g_mods_note, sizeof g_mods_note, "%s", ui_tr("Could not start download."));
         g_mods_wait = 0;
     }
 }
@@ -2413,9 +2413,9 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
                 continue;
             }
             if (l->kind == MROW_NOTE && l->ref != 1) {
-                const char *text = l->ref == 0 ? ui_tr("Reading the list of mods...")
-                                 : l->ref == 2 ? ui_tr("Every mod of the list is installed.")
-                                               : ui_tr("No mods are installed.");
+                const char *text = l->ref == 0 ? ui_tr("Loading mod list...")
+                                 : l->ref == 2 ? ui_tr("All available mods are installed.")
+                                               : ui_tr("No mods installed.");
 
                 if (l->ref == 0) {
                     ui_spinner(c, r.x + 4, r.y + 4, (int)(in->frame / 6u), UI_CYAN);
@@ -2450,7 +2450,7 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
                 ui_clip(c, r.x + 6, cy0, r.w - 50, cy1 - cy0);
             }
             if (l->kind == MROW_NOTE) {
-                ui_text(c, r.x + tpad, r.y + 3, ui_tr("The list of mods could not be read."), UI_WHITE, UI_EDGE,
+                ui_text(c, r.x + tpad, r.y + 3, ui_tr("Could not load mod list."), UI_WHITE, UI_EDGE,
                         UI_FONT_LARGE, 1);
                 {
                     char why[200], fit[200];
@@ -2697,7 +2697,7 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
 
             if (ci >= 0 && cat_state == CAT_READING) {
                 /* (the list on screen is the one before: its mods are asked for when the new one is in) */
-                snprintf(g_mods_note, sizeof g_mods_note, "%s", ui_tr("The list of mods is being read. Try again in a moment."));
+                snprintf(g_mods_note, sizeof g_mods_note, "%s", ui_tr("Loading mod list. Try again in a moment."));
                 snprintf(g_mods_note_id, sizeof g_mods_note_id, "%s", bw_mod_catalog_id_at((u32)ci));
             } else if (ci >= 0) {
                 snprintf(g_mods_follow, sizeof g_mods_follow, "%s", bw_mod_catalog_id_at((u32)ci));
@@ -2727,7 +2727,7 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
 
         ch[0] = ui_tr("REMOVE");
         ch[1] = ui_tr("KEEP");
-        snprintf(q, sizeof q, ui_trf("Remove %s? What it saved for your games stays."), g_mods_ask_name);
+        snprintf(q, sizeof q, ui_trf("Remove %s? Its save data is kept."), g_mods_ask_name);
         dh = 14 + 15 * ui_wrap(q, dw - 20, UI_FONT_LARGE, NULL, NULL) + 26;
         dx = x0 + (ww - dw) / 2;
         dy = y0 + (wh - dh) / 2;
@@ -2992,13 +2992,13 @@ static int ver_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, 
     backdrop(c, W, H, (int)in->frame);
     switch (state) {
     case VADD_CHOOSING:
-        snprintf(msg, sizeof msg, "%s", ui_tr("Choose the file in the window that opened."));
+        snprintf(msg, sizeof msg, "%s", ui_tr("Select the ROM in the file dialog."));
         break;
     case VADD_CHECKING:
-        snprintf(msg, sizeof msg, "%s", ui_tr("Checking your ROM."));
+        snprintf(msg, sizeof msg, "%s", ui_tr("Checking ROM..."));
         break;
     case VADD_WRITING:
-        snprintf(msg, sizeof msg, "%s", ui_tr("Writing the game data."));
+        snprintf(msg, sizeof msg, "%s", ui_tr("Writing game data..."));
         break;
     case VADD_DONE:
         snprintf(msg, sizeof msg, ui_trf("Starting Pok\xC3\xA9mon %s."), other);
@@ -3025,8 +3025,8 @@ static int ver_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, 
     }
     default:
         snprintf(msg, sizeof msg,
-                 ui_trf("Pok\xC3\xA9mon %s is not added yet. Choose your own Pok\xC3\xA9mon %s ROM, the .nds "
-                        "file. It is read once to make the game data."), other, other);
+                 ui_trf("Pok\xC3\xA9mon %s is not installed. Select your Pok\xC3\xA9mon %s ROM (.nds)."),
+                 other, other);
         ch[nch++] = ui_tr("CHOOSE");
         ch[nch++] = ui_tr("BACK");
         break;

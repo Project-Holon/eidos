@@ -98,7 +98,7 @@
   }
 
   async function askMove(name: string) {
-    const path = await open({ directory: true, multiple: false, title: "Move the game data to" });
+    const path = await open({ directory: true, multiple: false, title: "Move game data to" });
     if (typeof path === "string") moveAsk = { name, path };
   }
 
@@ -147,7 +147,7 @@
               <button class="quiet" onclick={() => (renaming = null)}>Cancel</button>
             </div>
           {:else}
-            <button class="pick" onclick={() => onSelect(p.name)} title="Play with this profile">
+            <button class="pick" onclick={() => onSelect(p.name)} title="Select profile">
               <span class="dot" aria-hidden="true"></span>
               <span class="main">
                 <span class="title">{p.name}</span>
@@ -157,15 +157,15 @@
             {#if !MOBILE}
             <select
               value={p.version}
-              aria-label="Version of {p.name}"
+              aria-label="{p.name} version"
               onchange={(e) => run(() => setProfileVersion(p.name, e.currentTarget.value))}>
               {#each choices as c}<option value={c}>{versionLabel(c)}</option>{/each}
               {#if !choices.includes(p.version)}<option value={p.version}>{p.version} (not installed)</option>{/if}
             </select>
             {/if}
             <div class="actions">
-              {#if !MOBILE}<button class="quiet outlined" title="Open this profile's folder" onclick={() => openFolder("profile", p.name)}><Icon name="folder" size={15} />Folder</button>{/if}
-              <button class="quiet outlined" title="Make a copy of this profile" onclick={() => duplicate(p.name)}><Icon name="copy" size={15} />Copy</button>
+              {#if !MOBILE}<button class="quiet outlined" title="Open profile folder" onclick={() => openFolder("profile", p.name)}><Icon name="folder" size={15} />Folder</button>{/if}
+              <button class="quiet outlined" title="Copy profile" onclick={() => duplicate(p.name)}><Icon name="copy" size={15} />Copy</button>
               {#if p.name !== "Black" && p.name !== "White"}
                 <button class="quiet" title="Rename" onclick={() => ((renaming = p.name), (renameTo = p.name))}><Icon name="edit" size={15} /></button>
                 <button class="quiet danger" title="Delete" onclick={() => askDelete(p.name)}><Icon name="trash" size={15} /></button>
@@ -174,7 +174,7 @@
             {#if !MOBILE}
             <div class="data">
               {#if moveAsk?.name === p.name}
-                <span class="path" title={moveAsk.path}>Move the game data to {moveAsk.path}?</span>
+                <span class="path" title={moveAsk.path}>Move game data to {moveAsk.path}?</span>
                 <button class="primary" onclick={doMove}>Move</button>
                 <button class="quiet outlined" onclick={() => (moveAsk = null)}>Cancel</button>
               {:else}
@@ -182,7 +182,7 @@
                 <span class="label">Game data folder</span>
                 <span class="path" class:faint={!p.dataRoot} title={p.dataRoot}>{moving === p.name ? "Moving..." : p.dataRoot || "Default"}</span>
                 <button class="quiet outlined" disabled={busy} onclick={() => pickData(p.name)}><Icon name="folder" size={15} />Choose...</button>
-                <button class="quiet outlined" disabled={busy} title="Move the existing game data to another folder" onclick={() => askMove(p.name)}>Move...</button>
+                <button class="quiet outlined" disabled={busy} title="Move existing game data to another folder" onclick={() => askMove(p.name)}>Move...</button>
                 <button class="quiet outlined" disabled={!p.dataRoot || busy} onclick={() => run(() => setProfileDataRoot(p.name, ""))}>Use default</button>
               {/if}
             </div>
@@ -192,9 +192,9 @@
               <select
                 class="lang-select"
                 value={p.game || "black"}
-                aria-label="Game of {p.name}"
+                aria-label="{p.name} game"
                 disabled={p.name === "Black" || p.name === "White" || (gameChoices.length < 2 && gameChoices.includes((p.game || "black") as "black" | "white")) || ov.running.includes(p.name)}
-                title={gameChoices.length < 2 ? "Add ROMs of the other game in Settings to choose it" : undefined}
+                title={gameChoices.length < 2 ? "Add the other game's ROM in Settings to switch" : undefined}
                 onchange={(e) => run(() => setProfileGame(p.name, e.currentTarget.value))}>
                 {#each gameChoices as g (g)}<option value={g}>{g === "black" ? "Pokémon Black" : "Pokémon White"}</option>{/each}
                 {#if !gameChoices.includes((p.game || "black") as "black" | "white")}
@@ -205,9 +205,9 @@
               <select
                 class="lang-select"
                 value={p.language || "en"}
-                aria-label="Language of {p.name}"
+                aria-label="{p.name} language"
                 disabled={(langChoices.length < 2 && langChoices.some((l) => l.code === (p.language || "en"))) || ov.running.includes(p.name)}
-                title={langChoices.length < 2 ? "Add ROMs in other languages in Settings to choose one" : undefined}
+                title={langChoices.length < 2 ? "Add ROMs in other languages in Settings to switch" : undefined}
                 onchange={(e) => run(() => setProfileLanguage(p.name, e.currentTarget.value))}>
                 {#each langChoices as l (l.code)}<option value={l.code}>{langLabel(l)}</option>{/each}
                 {#if !langChoices.some((l) => l.code === (p.language || "en"))}
@@ -243,7 +243,7 @@
 
 <dialog bind:this={deleteDialog} class="modal" onclose={() => (deleting = null)}>
   <h2>Delete {deleting}?</h2>
-  <p class="muted">Its mods, saves and settings are deleted with it. This cannot be undone.</p>
+  <p class="muted">Deletes this profile's mods, saves, and settings. This cannot be undone.</p>
   <div class="buttons">
     <button class="quiet" onclick={() => deleteDialog?.close()}>Cancel</button>
     <button class="primary danger" onclick={confirmDelete}>Delete</button>

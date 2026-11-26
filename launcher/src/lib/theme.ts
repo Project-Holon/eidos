@@ -39,4 +39,4 @@ export function setLauncherTheme(t: LauncherTheme) {
   setTheme(t === "game" ? gameTheme : t);
 }
 
-export const LAUNCHER_THEMES: [LauncherTheme, string][] = [["game", "Follow the game"], ...THEMES];
+export const LAUNCHER_THEMES: [LauncherTheme, string][] = [["game", "Follow game"], ...THEMES];

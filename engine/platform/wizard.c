@@ -424,32 +424,26 @@ static const char *console_name(void)
 static void show_welcome(Wiz *z)
 {
     z->screen = EIDOS_WIZARD_WELCOME;
-    snprintf(z->heading, sizeof(z->heading), "Pokemon Black or White is needed");
+    snprintf(z->heading, sizeof(z->heading), "Pokemon Black or White required");
     if (console_name() != NULL) {
         const char *dir = getenv("EIDOS_ROM_FOLDER");
 
         snprintf(z->body, sizeof(z->body),
                  "%s%s"
-                 "eidos runs Pokemon Black or White from your own copy of the game: "
-                 "a ROM, the file a dumping tool makes from your cartridge, ending "
-                 "in .nds. Nothing is downloaded.\n\n"
+                 "eidos runs from your own .nds ROM dumped from your cartridge.\n\n"
                  "Copy the ROM to this folder on your %s:\n"
-                 ">%s\n\n"
-                 "eidos reads it once and keeps the game data it needs.",
+                 ">%s",
                  z->cfg->reason != NULL ? z->cfg->reason : "",
                  z->cfg->reason != NULL ? "\n\n" : "",
                  console_name(), dir != NULL ? dir : "");
         z->foot[0] = '\0';
-        buttons(z, "Look again", ACT_CHOOSE, NULL, ACT_NONE);
+        buttons(z, "Scan again", ACT_CHOOSE, NULL, ACT_NONE);
         return;
     }
     if (on_phone()) {
         snprintf(z->body, sizeof(z->body),
                  "%s%s"
-                 "eidos runs Pokemon Black or White from your own copy of the game: "
-                 "a ROM, the file a dumping tool makes from your cartridge, usually "
-                 "ending in .nds. Nothing is downloaded. eidos reads the ROM once "
-                 "and keeps the game data it needs on this phone.",
+                 "eidos runs from your own ROM dumped from your cartridge (usually .nds).",
                  z->cfg->reason != NULL ? z->cfg->reason : "",
                  z->cfg->reason != NULL ? "\n\n" : "");
         z->foot[0] = '\0';
@@ -458,16 +452,14 @@ static void show_welcome(Wiz *z)
     }
     snprintf(z->body, sizeof(z->body),
              "%s%s"
-             "eidos runs Pokemon Black or White from your own copy of the game. It needs "
-             "a ROM: the file a dumping tool makes from your cartridge, usually "
-             "ending in .nds. Nothing is downloaded, and the ROM is not copied: "
-             "eidos reads it once and writes the game data it needs to\n"
+             "eidos runs from your own ROM dumped from your cartridge (usually .nds). "
+             "Game data is saved to:\n"
              ">%s\n\n"
-             "Choose the file, or drag it onto this window.",
+             "You can also drag the ROM onto this window.",
              z->cfg->reason != NULL ? z->cfg->reason : "",
              z->cfg->reason != NULL ? "\n\n" : "",
              z->cfg->extract_dir);
-    snprintf(z->foot, sizeof(z->foot), "Enter or O: choose the file    Esc: quit");
+    snprintf(z->foot, sizeof(z->foot), "Enter or O: choose file    Esc: quit");
     buttons(z, "Choose ROM file...", ACT_CHOOSE, "Quit", ACT_QUIT);
 }
 
@@ -501,9 +493,8 @@ static void start_job(Wiz *z, const char *rom)
     z->job = j;
     z->thread = bw_thread_start(job_main, j);
     z->screen = EIDOS_WIZARD_CHECKING;
-    snprintf(z->heading, sizeof(z->heading), "Checking your ROM");
-    snprintf(z->body, sizeof(z->body), "Reading\n>%s\nto make sure it is the "
-             "game eidos needs. This takes a few seconds.", z->rom);
+    snprintf(z->heading, sizeof(z->heading), "Checking ROM");
+    snprintf(z->body, sizeof(z->body), "Verifying\n>%s", z->rom);
     snprintf(z->foot, sizeof(z->foot), "Esc: cancel");
     buttons(z, "Cancel", ACT_CANCEL, NULL, ACT_NONE);
 }
@@ -511,10 +502,8 @@ static void start_job(Wiz *z, const char *rom)
 static void show_writing(Wiz *z)
 {
     z->screen = EIDOS_WIZARD_WRITING;
-    snprintf(z->heading, sizeof(z->heading), "Writing the game data");
-    snprintf(z->body, sizeof(z->body), "Your ROM is the right one. The game "
-             "data is being written to\n>%s\nCancelling leaves nothing behind.",
-             z->dest);
+    snprintf(z->heading, sizeof(z->heading), "Extracting game data");
+    snprintf(z->body, sizeof(z->body), "Writing to\n>%s", z->dest);
 }
 
 static const char *refusal_heading(const Job *j)
@@ -524,23 +513,23 @@ static const char *refusal_heading(const Job *j)
     }
     switch (j->outcome.stage) {
     case BW_STAGE_IDENTIFY:
-        return "This file cannot be used";
+        return "Cannot use this file";
     case BW_STAGE_VERDICT:
         if (j->outcome.other_game) {
-            return "This is the other game";
+            return "Wrong game version";
         }
         switch (j->outcome.verdict) {
-        case BW_VERDICT_NOT_DS:      return "This is not a DS game";
-        case BW_VERDICT_OTHER_GAME:  return "This is a different game";
-        case BW_VERDICT_UNSUPPORTED: return "Not supported yet";
-        case BW_VERDICT_DAMAGED:     return "This dump is damaged";
-        case BW_VERDICT_MODIFIED:    return "Not the original game";
-        default:                     return "This file cannot be used";
+        case BW_VERDICT_NOT_DS:      return "Not a DS ROM";
+        case BW_VERDICT_OTHER_GAME:  return "Wrong DS game";
+        case BW_VERDICT_UNSUPPORTED: return "Unsupported ROM";
+        case BW_VERDICT_DAMAGED:     return "Corrupted ROM dump";
+        case BW_VERDICT_MODIFIED:    return "Modified ROM";
+        default:                     return "Cannot use this file";
         }
     case BW_STAGE_SPACE:
         return "Not enough free space";
     default:
-        return "The game data could not be written";
+        return "Failed to write game data";
     }
 }
 
@@ -556,29 +545,27 @@ static void finish_job(Wiz *z)
         z->screen = EIDOS_WIZARD_DONE;
         snprintf(z->heading, sizeof(z->heading), "Ready to play");
         snprintf(z->body, sizeof(z->body), "%s",
-                 j->outcome.already ? "This ROM's game data was already here."
-                                    : "The game data is ready. The ROM is not "
-                                      "needed again.");
+                 j->outcome.already ? "Game data already extracted."
+                                    : "The ROM is no longer needed.");
         z->foot[0] = '\0';
         buttons(z, "Start", ACT_START, NULL, ACT_NONE);
     } else if (j->rc == 0) {
         z->screen = EIDOS_WIZARD_DONE;
         snprintf(z->heading, sizeof(z->heading), "Ready to play");
         snprintf(z->body, sizeof(z->body),
-                 "%s\n>%s\n\nIt was made from\n>%s\n\n"
-                 "eidos remembers both. The ROM is not needed again unless a "
-                 "later version of eidos asks for it.",
-                 j->outcome.already ? "This ROM's game data was already in"
-                                    : "The game data is in",
+                 "%s\n>%s\n\nExtracted from:\n>%s\n\n"
+                 "The ROM is only needed again if a newer eidos version requires it.",
+                 j->outcome.already ? "Game data already in:"
+                                    : "Game data saved to:",
                  z->dest, z->rom);
         snprintf(z->foot, sizeof(z->foot), "Enter: start");
         buttons(z, "Start", ACT_START, NULL, ACT_NONE);
     } else {
         z->screen = EIDOS_WIZARD_REFUSED;
         snprintf(z->heading, sizeof(z->heading), "%s", refusal_heading(j));
-        snprintf(z->body, sizeof(z->body), "%s\n\nThe file:\n>%s",
+        snprintf(z->body, sizeof(z->body), "%s\n\nFile:\n>%s",
                  j->rc == BW_CANCELLED
-                     ? "Nothing was written. Choose the file again when you are ready."
+                     ? "No files were written."
                      : j->msg,
                  z->rom);
         snprintf(z->foot, sizeof(z->foot),

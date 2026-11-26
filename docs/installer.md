@@ -196,15 +196,15 @@ so it now starts the way the game will.
      dropping the file on the window does the same. When setup opened
      because of something other than missing data, the reason comes
      first.
-   - *Checking your ROM*, then *Writing the game data*: a progress bar
+   - *Checking ROM*, then *Extracting game data*: a progress bar
      driven by the worker thread and a Cancel button (Escape).
    - *Refused*, with a headline per case and the core's message under it:
-     "This file cannot be used" (an archive, too small, too large),
-     "This is not a DS game", "This is a different game", "Not supported
-     yet" (White, another region), "This dump is damaged", "Not the
-     original game" (modified, patched or another revision; both hashes
-     shown), "Not enough free space", "The game data could not be
-     written", "Cancelled". One button: "Choose another file...".
+     "Cannot use this file" (an archive, too small, too large),
+     "Not a DS ROM", "Wrong DS game", "Wrong game version" (the other
+     game), "Unsupported ROM" (another region), "Corrupted ROM dump",
+     "Modified ROM" (modified, patched or another revision, both hashes
+     shown), "Not enough free space", "Failed to write game data",
+     "Cancelled". One button: "Choose another file...".
    - *Ready to play*: where the data is, which ROM it came from; Start.
    Every button has a key: Enter (the focused button), Escape (quit or
    cancel), Tab or the arrows (move focus), O (choose a file). The mouse

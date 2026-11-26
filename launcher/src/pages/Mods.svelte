@@ -40,8 +40,8 @@
   // "" when it fits; else what the hover says, the game it needs.
   function needs(games: string[]): string {
     if (games.includes(game)) return "";
-    if (games.length === 0) return "Made for another game";
-    return `Needs Pokémon ${games[0] === "white" ? "White" : "Black"}`;
+    if (games.length === 0) return "Requires another game";
+    return `Requires Pokémon ${games[0] === "white" ? "White" : "Black"}`;
   }
 
   let mods = $state<ModInfo[]>(untrack(() => cachedMods.get(selected)) ?? []);
@@ -128,7 +128,7 @@
   }
 
   async function pickPackage() {
-    const path = await open({ multiple: false, title: "Add a mod", filters: [{ name: "Mod package", extensions: ["bw"] }] });
+    const path = await open({ multiple: false, title: "Add mod", filters: [{ name: "Mod package", extensions: ["bw"] }] });
     if (typeof path !== "string") return;
     try {
       const info = await modsInspect(path);
@@ -140,7 +140,7 @@
   }
 
   async function pickFolder() {
-    const path = await open({ directory: true, multiple: false, title: "Add a mod folder" });
+    const path = await open({ directory: true, multiple: false, title: "Add mod folder" });
     if (typeof path === "string") run(() => modsAdd(selected, path), "Mod added.");
   }
 
@@ -221,7 +221,7 @@
     </div>
     {#if indexUrl}<p class="muted">From {indexUrl}</p>{/if}
     {#if catalogError}
-      <p class="muted">Could not read the mod list: {catalogError}</p>
+      <p class="muted">Could not load mod list: {catalogError}</p>
     {/if}
     <ul class="rows window">
       {#if catalog}
@@ -235,7 +235,7 @@
                 {c.name}
                 {#if c.official}<span class="badge accent">Official</span>{/if}
                 {#if c.multiplayer}<span class="badge">Multiplayer</span>{/if}
-                {#if c.hasCode}<span class="badge" title="This mod runs its own code in the game">Code</span>{/if}
+                {#if c.hasCode}<span class="badge" title="Runs custom code in the game">Code</span>{/if}
               </span>
               <span class="sub">{c.author} · {c.version} · {size(c.size)}{c.games.length === 1 ? ` · ${c.games[0] === "black" ? "Black" : "White"} only` : ""}</span>
               <span class="desc">{c.description}</span>
@@ -253,20 +253,20 @@
             </div>
           </li>
         {:else}
-          <li class="empty">No mods in the list</li>
+          <li class="empty">No mods available</li>
         {/each}
         {#each catalog.errors as e}
           <li class="empty">{e.entry}: {e.error}</li>
         {/each}
       {:else if loadingCatalog}
-        <li class="empty">Loading the mod list</li>
+        <li class="empty">Loading mod list</li>
       {/if}
     </ul>
   </div>
 </section>
 
 <dialog bind:this={addDialog} class="modal">
-  <h2>Add this mod?</h2>
+  <h2>Add mod?</h2>
   <p class="muted">{adding?.label}</p>
   <div class="buttons">
     <button class="quiet" onclick={() => addDialog?.close()}>Cancel</button>
@@ -276,7 +276,7 @@
 
 <dialog bind:this={removeDialog} class="modal">
   <h2>Remove {removing?.name}?</h2>
-  <p class="muted">The mod's folder is deleted from this profile.</p>
+  <p class="muted">Deletes the mod folder from this profile.</p>
   <div class="buttons">
     <button class="quiet" onclick={() => removeDialog?.close()}>Cancel</button>
     <button class="primary danger" onclick={confirmRemove}>Remove</button>

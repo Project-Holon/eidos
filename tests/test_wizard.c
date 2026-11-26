@@ -8,14 +8,14 @@
  * player would cause (a file dropped on the window, a click, a key); its
  * `pick` hook stands in for the native file dialog.  Runs:
  *
- *   1. an archive dropped: refused, "This file cannot be used", and the
+ *   1. an archive dropped: refused, "Cannot use this file", and the
  *      message says to unpack it; a mouse click on "Choose another
  *      file..." opens the (scripted) dialog, which returns the synthetic
  *      cartridge; with the test-only override it is checked and written;
  *      "Ready to play"; Enter.  The extraction is there and the window
  *      drew text on every screen (and wrote a BMP of each);
  *   2. the synthetic cartridge dropped without the override: refused as
- *      "Not the original game", nothing written; Escape quits;
+ *      "Modified ROM", nothing written; Escape quits;
  *   3. a ROM given up front, Escape at once: cancelled or, if the worker
  *      was quicker, finished; either way the folder is never half written;
  *      then the window is closed;
@@ -167,7 +167,7 @@ static void script(void *user, const EidosWizardView *v)
             push_drop(s->drop1);
             s->step = 1;
         } else if (s->step == 1 && v->screen == EIDOS_WIZARD_REFUSED) {
-            if (strcmp(v->heading, "This file cannot be used") != 0
+            if (strcmp(v->heading, "Cannot use this file") != 0
                 || strstr(v->body, "unpack") == NULL) {
                 printf("  run 1: archive refusal reads \"%s\" / \"%s\"\n", v->heading, v->body);
                 s->failed = 1;
@@ -325,7 +325,7 @@ int main(int argc, char **argv)
     s.drop1 = g_synth;
     rc = eidos_wizard_run(&cfg, rom_out, sizeof(rom_out));
     BW_CHECK_EQ("run 2: quit", rc, EIDOS_WIZARD_QUIT);
-    BW_CHECK_EQ("run 2: refused as modified", strcmp(s.heading, "Not the original game"), 0);
+    BW_CHECK_EQ("run 2: refused as modified", strcmp(s.heading, "Modified ROM"), 0);
     BW_CHECK_EQ("run 2: the message names the known dump",
                 strstr(s.body, "known good dump") != NULL, 1);
     BW_CHECK_EQ("run 2: nothing written", bw_path_kind_utf8(dir), BW_PATH_NONE);

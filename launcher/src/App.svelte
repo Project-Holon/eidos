@@ -253,11 +253,11 @@
   <div class="updating" role="status">
     <div class="window box">
       {#if updates.state.kind === "downloading"}
-        <h2>Updating the launcher</h2>
+        <h2>Updating launcher</h2>
         <p class="muted">Downloading version {updates.state.version}</p>
         <div class="bar"><div class="fill" style:width="{percent ?? 30}%" class:moving={percent === null}></div></div>
       {:else if updates.state.kind === "installing"}
-        <h2>Updating the launcher</h2>
+        <h2>Updating launcher</h2>
         <p class="muted">Installing version {updates.state.version}</p>
         <div class="bar"><div class="fill moving" style:width="30%"></div></div>
       {/if}
@@ -268,8 +268,8 @@
 {#if importing}
   <div class="updating" role="status">
     <div class="window box">
-      <h2>Importing your saves</h2>
-      <p class="muted">Copying the saves of your older eidos into your profiles</p>
+      <h2>Importing saves</h2>
+      <p class="muted">Copying saves from your previous eidos install into profiles</p>
       <div class="bar"><div class="fill moving" style:width="30%"></div></div>
     </div>
   </div>
@@ -279,7 +279,7 @@
   <h2>Add Pokémon {askRom === "white" ? "White" : "Black"}</h2>
   <p class="muted">
     The {askRom === "white" ? "White" : "Black"} profile needs your own Pokémon {askRom === "white" ? "White" : "Black"} ROM.
-    Add it in Settings, ROMs.
+    Add it in Settings > ROMs.
   </p>
   <div class="buttons">
     <button class="quiet" onclick={() => askDialog?.close()}>Not now</button>

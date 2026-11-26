@@ -72,7 +72,7 @@ static const EidosOption k_options[EIDOS_OPT_COUNT] = {
       EIDOS_LAYOUT_VERTICAL, k_arrangements, "", 0, NULL },
     { "Layout", "swap_screens", "Swap screens", EIDOS_OPTKIND_CHOICE, 0, 1, 1,
       0, k_offon, "", 0, NULL },
-    { "Layout", "gap", "Gap between screens", EIDOS_OPTKIND_INT, 0, 128, 1, 0,
+    { "Layout", "gap", "Screen gap", EIDOS_OPTKIND_INT, 0, 128, 1, 0,
       NULL, "px", 0, NULL },
     { "Sound", "volume", "Master volume", EIDOS_OPTKIND_INT, 0, 100, 5, 50,
       NULL, "%", 0, NULL },
