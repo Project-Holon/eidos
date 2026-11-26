@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov070/itemmenu.c ITEMMENU_SetMoveTypeIconsVisible ITEMMENU_PrintMoveInfoText ITEMMENU_FreeGraphics
+ * patches: src/game/ov070/itemmenu.c ITEMMENU_SetMoveTypeIconsVisible ITEMMENU_PrintMoveInfoText ITEMMENU_FreeGraphics ITEMMENU_DrawMoveInfo
  *
  * The bag's TM and HM pocket shows the type of a move a mod gives a type it
  * adds (sdk/type_icons.c).
@@ -15,6 +15,11 @@
  * no palette animator on the sub screen.  ITEMMENU_FreeGraphics forgets the
  * added type's character (CLACT_ExitSystem frees it with the rest) and the
  * bag's row.
+ *
+ * ITEMMENU_DrawMoveInfo prints a TM's number as its machine id + 1 (TM01 is
+ * id 0): a TM a mod adds (TM96 on: sdk/machines.c) has the id TM number +
+ * 5, so it prints that number, in three digits from TM100
+ * (bw_machine_bag_number).  The rest is the game's own.
  * The rest is the game's own.
  *
  * symbols:
@@ -44,6 +49,14 @@
  *   CLACT_SetActorDrawEnable 0x0204B3DC arm
  *   CLACT_SetActorPaletteOffset 0x0204B6F4 arm
  *   CLACT_SetActorImageProxy 0x0204B784 arm
+ *   WORDSET_SetSlotFromMsgCB 0x0201EF34 thumb
+ *   FILE_UTIL_ReadStringAlt 0x02020FB4 thumb
+ *   FILE_UTIL_GetMachineIndex 0x02021350 thumb
+ *   BMP_WIN_TransferChars 0x02045334 arm
+ *   BMP_WIN_ClearScreen 0x020456F8 arm
+ *   BMP_Clear 0x02043B5C arm
+ *   ITEMMENU_RegisterItemName 0x021B61F4 thumb ov070
+ *   ITEMMENU_CreateMovingCursor 0x021B9E14 thumb ov070
  *   ITEMMENU_GetSlot 0x021B616C thumb ov070
  *   ITEMMENU_GetCursorIndex 0x021B61B8 thumb ov070
  *   ITEMMENU_PrintToWindow 0x021BB6E0 thumb ov070
@@ -129,7 +142,9 @@ typedef struct ItemMenuWork {
     struct Actor *inputGuard;           /* 0x72C */
     void *touchTask;                    /* 0x730 */
     ItemMenuWindow listWindows[9];      /* 0x734 */
-    u8 pad_77c[0x840 - 0x77C];
+    u8 pad_77c[0x80C - 0x77C];
+    int currentPocket;                  /* 0x80C */
+    u8 pad_810[0x840 - 0x810];
     int screenState;                    /* 0x840 */
 } ItemMenuWork;
 
@@ -177,6 +192,17 @@ BagSlot *ITEMMENU_GetSlot(ItemMenuWork *work, int index);
 int ITEMMENU_GetCursorIndex(ItemMenuWork *work);
 void ITEMMENU_PrintToWindow(ItemMenuWork *work, ItemMenuWindow *slot, void *str, u16 x, TextCoord y, u16 color);
 void ITEMMENU_FlushWindowAt(ItemMenuWindow *slot);
+void WORDSET_SetSlotFromMsgCB(struct WordSet *words, u32 slot, u32 entryIndex);
+void FILE_UTIL_ReadStringAlt(void *dst, u32 entry, u32 heap);
+u8 FILE_UTIL_GetMachineIndex(u16 machineId);
+u32 FILE_UTIL_GetId(u32 machineId);
+void BMP_WIN_TransferChars(struct BmpWin *win);
+void BMP_WIN_ClearScreen(struct BmpWin *win);
+void BMP_Clear(struct Bmp *bmp, u8 value);
+void ITEMMENU_RegisterItemName(ItemMenuWork *work, int slot, unsigned int itemId);
+void ITEMMENU_CreateMovingCursor(ItemMenuWork *work, int id);
+/* sdk/machines.c */
+extern u32 bw_machine_bag_number(u32 id);
 
 #define WAZA_TOOL_GetDamageType(a) WAZA_TOOL_GetParam((a), 2)
 
@@ -345,4 +371,66 @@ void ITEMMENU_FreeGraphics(ItemMenuWork *work)
     }
     CLACT_DeleteUnit((struct Unit *)work->clactSys);
     CLACT_ExitSystem();
+}
+
+void ITEMMENU_DrawMoveInfo(ItemMenuWork *work)
+{
+    u32 i;
+    u32 j;
+    u16 *slotPtr;
+    u16 moveId;
+    u8 machineIndex;
+    u32 number;
+
+    j = 0;
+    for (i = 0; i < 3; i++)
+        CLACT_SetActorDrawEnable((struct ClactActor *)work->damageClassActors[i], 0);
+    for (j = 0; j < 17; j++)
+        CLACT_SetActorDrawEnable((struct ClactActor *)work->typeActors[j], 0);
+    slotPtr = (void *)ITEMMENU_GetSlot(work, ITEMMENU_GetCursorIndex(work));
+    if (slotPtr == 0 || *slotPtr == 0) {
+        ITEMMENU_SetMoveTypeIconsVisible(work, 0);
+        return;
+    }
+    ITEMMENU_SetMoveTypeIconsVisible(work, 1);
+    BMP_Clear(BMP_WIN_GetBmp(work->listWindows[ITEMMENU_WINDOW_ITEM_COUNT].window), 0);
+    BMP_Clear(BMP_WIN_GetBmp(work->listWindows[ITEMMENU_WINDOW_ITEM_PRICE].window), 0);
+    BMP_Clear(BMP_WIN_GetBmp(work->listWindows[ITEMMENU_WINDOW_ITEM_DESC].window), 0);
+    moveId = FILE_UTIL_GetMachineMove(*slotPtr);
+    if (moveId == 0) {
+        MSGDATA_ReadString(work->msgBank, 0x86, work->tempString);
+        ITEMMENU_RegisterItemName(work, 0, *slotPtr);
+        WORDSET_CopyTaggedText(work->wordSet, work->messageString, work->tempString);
+        ITEMMENU_PrintToWindow(work, &work->listWindows[ITEMMENU_WINDOW_ITEM_COUNT], work->messageString, 0, (TextCoord)4, 0x3DC0);
+        if (work->currentPocket != 4) {
+            MSGDATA_ReadString(work->msgBank, 0x83, work->tempString);
+            WORDSET_SetSlotNumber(work->wordSet, 0, slotPtr[1], 3, 0, PM_LANG_HALF_WIDTH_DIGITS);
+            WORDSET_CopyTaggedText(work->wordSet, work->messageString, work->tempString);
+            ITEMMENU_PrintToWindow(work, &work->listWindows[ITEMMENU_WINDOW_ITEM_PRICE], work->messageString, 0, (TextCoord)4, 0x3DC0);
+        } else {
+            BMP_WIN_TransferChars(work->listWindows[ITEMMENU_WINDOW_ITEM_PRICE].window);
+        }
+        BMP_WIN_ClearScreen((work->listWindows[ITEMMENU_WINDOW_ITEM_NAME].window));
+    } else {
+        machineIndex = FILE_UTIL_GetMachineIndex(*slotPtr);
+        if (machineIndex == 0xFF) {
+            MSGDATA_ReadString(work->msgBank, 0x45, work->tempString);
+            number = bw_machine_bag_number(FILE_UTIL_GetId(*slotPtr));
+            WORDSET_SetSlotNumber(work->wordSet, 0, number, number >= 100 ? 3 : 2, 2, PM_LANG_HALF_WIDTH_DIGITS);
+        } else {
+            MSGDATA_ReadString(work->msgBank, 0x47, work->tempString);
+            WORDSET_SetSlotNumber(work->wordSet, 0, machineIndex + 1, 2, 2, PM_LANG_HALF_WIDTH_DIGITS);
+        }
+        WORDSET_SetSlotFromMsgCB(work->wordSet, 1, moveId);
+        WORDSET_CopyTaggedText(work->wordSet, work->messageString, work->tempString);
+        ITEMMENU_PrintToWindow(work, &work->listWindows[ITEMMENU_WINDOW_ITEM_COUNT], work->messageString, 0, (TextCoord)4, 0x3DC0);
+        ITEMMENU_PrintMoveInfoText(work, moveId);
+        BMP_WIN_TransferChars(work->listWindows[ITEMMENU_WINDOW_ITEM_PRICE].window);
+    }
+    FILE_UTIL_ReadStringAlt(work->tempString, *slotPtr, work->heapId);
+    ITEMMENU_PrintToWindow(work, &work->listWindows[ITEMMENU_WINDOW_ITEM_DESC], work->tempString, 0, (TextCoord)4, 0x3DC0);
+    ITEMMENU_FlushWindowAt(&work->listWindows[ITEMMENU_WINDOW_ITEM_COUNT]);
+    ITEMMENU_FlushWindowAt(&work->listWindows[ITEMMENU_WINDOW_ITEM_PRICE]);
+    ITEMMENU_FlushWindowAt(&work->listWindows[ITEMMENU_WINDOW_ITEM_DESC]);
+    ITEMMENU_CreateMovingCursor(work, *slotPtr);
 }

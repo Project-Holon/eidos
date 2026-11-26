@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov021/scrcmd_proc_fld.c SCRCMD_PROC_FLD_BuildItemListByBadges SCRCMD_PROC_FLD_BuildItemListFixed
+ * patches: src/game/ov021/scrcmd_proc_fld.c SCRCMD_PROC_FLD_BuildItemListByBadges SCRCMD_PROC_FLD_BuildItemListFixed SCRCMD_PROC_FLD_SetItemSlot SCRCMD_PROC_FLD_ShowTmBuyConfirm
  *
  * symbols:
  *   d_021D946C  0x021D946C  data  ov021
@@ -7,6 +7,12 @@
  *   d_021DE1A8  0x021DE1A8  data  ov021
  *   d_021D9430  0x021D9430  data  ov021
  *   d_021DE164  0x021DE164  data  ov021
+ *   WORDSET_SetSlotFromMsgCB 0x0201EF34 thumb
+ *   WORDSET_SetSlotNumber 0x0201EFA4 thumb
+ *   WORDSET_CopyTaggedText 0x0201F250 thumb
+ *   BMP_MENUWORK_AddStrItem 0x0201F898 thumb
+ *   SCRCMD_PROC_FLD_PrepareMessageWindow 0x021B4878 thumb ov021
+ *   SCRCMD_PROC_FLD_ShowMessage 0x021B4894 thumb ov021
  *
  * A mod's shop lists (sdk/shops.h, eidos/tables/shops.txt).  The shop's two
  * list builders take a mod's list when one is given for the list the shop
@@ -18,6 +24,12 @@
  *       discount.  A mod's `mart.<n>`.
  *   SCRCMD_PROC_FLD_BuildItemListFixed     the BP prize lists (d_021DE164[n],
  *       d_021D9430[n] items, each with its price).  A mod's `bp.<n>`.
+ *
+ * A TM shop's rows and its buy question print the TM's number as the
+ * item id - 327 (TM01 is item 328).  A TM a mod adds (TM96 on, an item
+ * past 626: sdk/machines.c) prints its own number, in three digits from
+ * TM100 (bw_machine_shop_number): SCRCMD_PROC_FLD_SetItemSlot and
+ * SCRCMD_PROC_FLD_ShowTmBuyConfirm, the game's otherwise.
  *
  * The game's own records
  * ----------------------
@@ -64,6 +76,11 @@ typedef struct ShopWork {
     void *itemSlots;                /* 0x180 */
     void *yesNoMenu;                /* 0x184 */
     void *shopMsgBank;              /* 0x188 */
+    u8 pad18c[4];
+    void *wordSet;                  /* 0x190 */
+    u8 pad194[4];
+    void *textBuffer;               /* 0x198 */
+    void *cancelText;               /* 0x19C: the TM row's text, "No. [n] [move]" */
 } ShopWork;
 
 #define SHOP_CHECK(name, cond) typedef char shop_check_##name[(cond) ? 1 : -1]
@@ -72,6 +89,11 @@ SHOP_CHECK(count, sizeof(void *) != 4 || offsetof(ShopWork, itemCount) == 0x160)
 SHOP_CHECK(tm, sizeof(void *) != 4 || offsetof(ShopWork, isTmShop) == 0x162);
 SHOP_CHECK(slots, sizeof(void *) != 4 || offsetof(ShopWork, itemSlots) == 0x180);
 SHOP_CHECK(msgs, sizeof(void *) != 4 || offsetof(ShopWork, shopMsgBank) == 0x188);
+SHOP_CHECK(words, sizeof(void *) != 4 || offsetof(ShopWork, wordSet) == 0x190);
+SHOP_CHECK(text, sizeof(void *) != 4 || offsetof(ShopWork, cancelText) == 0x19C);
+
+#define SHOP_WIN_MESSAGE 6
+#define PM_LANG_HALF_WIDTH_DIGITS 1
 
 struct MsgBank;
 
@@ -97,6 +119,20 @@ extern void BMP_MENUWORK_AddMsgItem(struct BmpMenuWork *items, struct MsgBank *b
 extern u32 FILE_UTIL_IsMachineItem(u32 id);
 extern u32 FILE_UTIL_GetItemParam(u32 item, u32 sel, u32 heap);
 extern u32 GPOWER_ApplyShopPrice(u32 price);
+struct WordSet;
+struct Strbuf;
+struct U16Vec;
+struct BmpWin;
+extern void WORDSET_SetSlotFromMsgCB(struct WordSet *words, u32 slot, u32 entryIndex);
+extern void WORDSET_SetSlotNumber(struct WordSet *words, u32 slot, u32 number, u32 topDigitIndex, u32 padMode,
+                                  u32 isHalfWidth);
+extern void WORDSET_CopyTaggedText(struct WordSet *words, struct Strbuf *dst, struct Strbuf *src);
+extern void BMP_MENUWORK_AddStrItem(struct BmpMenuWork *items, const struct U16Vec *src, u32 param, u32 heapId);
+extern u16 FILE_UTIL_GetMachineMove(u16 machineId);
+extern void SCRCMD_PROC_FLD_PrepareMessageWindow(struct BmpWin *window);
+extern void SCRCMD_PROC_FLD_ShowMessage(ShopWork *shop, u32 messageId);
+/* sdk/machines.c */
+extern u32 bw_machine_shop_number(u32 item);
 void SCRCMD_PROC_FLD_SetItemSlot(ShopWork *shop, int slotIndex, int isTmShop, int itemId, struct MsgBank *msgBank);
 u32 SCRCMD_PROC_FLD_LoadItemRows(ShopItem *items, int count);
 
@@ -156,4 +192,35 @@ void SCRCMD_PROC_FLD_BuildItemListFixed(ShopWork *shop, int tableIndex)
     shop->itemCount = (u16)row;
     BMP_MENUWORK_AddMsgItem((struct BmpMenuWork *)shop->itemSlots + row, (struct MsgBank *)shop->shopMsgBank, 0xb, -2, shop->heapId);
     MSGDATA_Delete(msgBank);
+}
+
+/* The digits a TM number takes: 2, 3 from TM100 (a mod's). */
+static u32 tm_digits(u32 number)
+{
+    return number >= 100 ? 3 : 2;
+}
+
+void SCRCMD_PROC_FLD_SetItemSlot(ShopWork *shop, int slotIndex, int isTmShop, int itemId, struct MsgBank *msgBank)
+{
+    if (isTmShop == 1) {
+        u32 number = bw_machine_shop_number((u32)itemId);
+
+        WORDSET_SetSlotNumber((struct WordSet *)shop->wordSet, 0, number, tm_digits(number), 2, PM_LANG_HALF_WIDTH_DIGITS);
+        WORDSET_SetSlotFromMsgCB((struct WordSet *)shop->wordSet, 1, FILE_UTIL_GetMachineMove((u16)itemId));
+        WORDSET_CopyTaggedText((struct WordSet *)shop->wordSet, (struct Strbuf *)shop->textBuffer, (struct Strbuf *)shop->cancelText);
+        BMP_MENUWORK_AddStrItem(((struct BmpMenuWork *)shop->itemSlots + slotIndex), (const struct U16Vec *)shop->textBuffer, (u32)slotIndex, shop->heapId);
+    } else {
+        BMP_MENUWORK_AddMsgItem(((struct BmpMenuWork *)shop->itemSlots + slotIndex), msgBank, (u32)itemId, (u32)slotIndex, shop->heapId);
+    }
+}
+
+void SCRCMD_PROC_FLD_ShowTmBuyConfirm(ShopWork *shop, u32 messageId, u32 itemId, u32 price)
+{
+    u32 number = bw_machine_shop_number(itemId);
+
+    SCRCMD_PROC_FLD_PrepareMessageWindow((struct BmpWin *)shop->windows[SHOP_WIN_MESSAGE]);
+    WORDSET_SetSlotNumber((struct WordSet *)shop->wordSet, 0, number, tm_digits(number), 2, PM_LANG_HALF_WIDTH_DIGITS);
+    WORDSET_SetSlotFromMsgCB((struct WordSet *)shop->wordSet, 1, FILE_UTIL_GetMachineMove((u16)itemId));
+    WORDSET_SetSlotNumber((struct WordSet *)shop->wordSet, 2, price, 5, 0, PM_LANG_HALF_WIDTH_DIGITS);
+    SCRCMD_PROC_FLD_ShowMessage(shop, messageId);
 }

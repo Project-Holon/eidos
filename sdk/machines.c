@@ -45,6 +45,22 @@ u16 FILE_UTIL_GetMachineMove(u16 machineId)
     return bit >= 0 ? rows[bit] : 0;
 }
 
+/* The number a shop prints for a TM item: the game's item - 327 for its
+ * own (TM01..TM92), the TM number for a mod's (bit - 5). */
+u32 bw_machine_shop_number(u32 item)
+{
+    int bit = item > 626u ? bw_machine_bit_of_item(item) : -1;
+
+    return bit >= 0 ? (u32)bit - 5u : item - 327u;
+}
+
+/* The number the bag prints for a TM by its id (FILE_UTIL_GetId): the
+ * game's id + 1 for its own, the TM number for a mod's. */
+u32 bw_machine_bag_number(u32 id)
+{
+    return id > 100u ? id - 5u : id + 1u;
+}
+
 u32 FILE_UTIL_GetId(u32 machineId)
 {
     int bit;
