@@ -81,6 +81,15 @@ endif()
 set(ENV{EIDOS_SOURCE_TREE} "${EIDOS_SOURCE_TREE}")
 set(EIDOS_TREE_ENV ${CMAKE_COMMAND} -E env EIDOS_SOURCE_TREE=${EIDOS_SOURCE_TREE})
 
+# Types past the game's 17 (limit.types, sdk/type_chart.c) need an aletheia
+# tree whose PC build reads the type chart by the type count and takes 31 as
+# "no type" (port_limits.h names BW_LIMIT_TYPE_LAST).  An older tree keeps
+# the limit at the game's 16.
+file(STRINGS "${ALETHEIA_ROOT}/src/game/port_limits.h" _bw_type_limit REGEX "BW_LIMIT_TYPE_LAST")
+if(_bw_type_limit)
+    add_compile_definitions(BW_GAME_TYPE_LIMIT=1)
+endif()
+
 # Where the player's extracted assets live.  Relative paths are taken against
 # the aletheia checkout, so -DBW_DATA_ROOT=extract/data does the obvious
 # thing when aletheia is where the assets were extracted.
@@ -574,6 +583,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/form_gfx.c  # the pictures of a form a mod adds
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/snd_se.c  # the player a mod's sound effect plays on
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/cries.c  # the cry a species plays (cries.txt)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_chart.c  # the chart with the types mods add (type_chart.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_table.c     # a mod's own data tables (`table` lines)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_hooks.c     # on/off switch for port-side code hooks (docs/hooks.md)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_slot.c      # the mod seam's slot registry (docs/mod-interface.md)

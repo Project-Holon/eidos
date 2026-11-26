@@ -59,6 +59,20 @@ static const LimitRow k_limits[BW_PORT_LIMIT_COUNT] = {
      * extension (sdk/dex_save.c).  2047 is the wild and trainer records'
      * 11-bit field. */
     { "limit.species", 649u, 2047u },
+    /* TYPE_LAST: the last type id (arm9 poke_type.h).  31 is the PC
+     * build's "no type", and the item record's Natural Gift type is 5
+     * bits with 31 for none, so 30 is the most.  A game tree older than
+     * that (no BW_LIMIT_TYPE_LAST, CMakeLists.txt) keeps 17 as "no type"
+     * and a chart of 17 columns: the limit stays at 16 there.  It also
+     * stays at 16 until the screens that show a type icon (the battle's
+     * move buttons, the bag, the summary, the PC box, the Pokedex) take
+     * an added type: they keep arrays of 17 (TYPE_SCREENS_READY). */
+#define TYPE_SCREENS_READY 0
+#if defined(BW_GAME_TYPE_LIMIT) && TYPE_SCREENS_READY
+    { "limit.types", 16u, 30u },
+#else
+    { "limit.types", 16u, 16u },
+#endif
 };
 
 static u32 g_value[BW_PORT_LIMIT_COUNT];
@@ -706,6 +720,7 @@ const u8 *bw_icon_palette_table(u32 *rows)
 extern void bw_dex_ext_forget(void) __attribute__((weak));     /* sdk/dex_save.c */
 extern void bw_dex_data_forget(void) __attribute__((weak));    /* sdk/dex_data.c */
 extern void bw_cries_forget(void) __attribute__((weak));       /* sdk/cries.c */
+extern void bw_type_chart_forget(void) __attribute__((weak));  /* sdk/type_chart.c */
 
 int bw_limits_apply(void)
 {
@@ -720,6 +735,9 @@ int bw_limits_apply(void)
     }
     if (bw_cries_forget != NULL) {
         bw_cries_forget();          /* (and other cries) */
+    }
+    if (bw_type_chart_forget != NULL) {
+        bw_type_chart_forget();     /* (and other types) */
     }
 
     defaults();

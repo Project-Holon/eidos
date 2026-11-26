@@ -8,11 +8,26 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `50731dd699fb0fb3f881cd028a67d8f6aa649a88`
-- Date: 2026-11-17
-- Subject: Host guard for the diamond dust divide by 0 (Icirrus City, 31 December); CLACT_GetActorAnimIndex (was GetActorAnimSeqCount)
+- Revision: `d4dfca395614e28ed01ea2307baaca626be43340`
+- Date: 2026-11-26
+- Subject: Type limit for mods past 16, ball ids and last move type
 
-The step from `ce8fb59a0e`: one host guard and names; the ROM is byte-identical.
+The step from `50731dd699`: types past the game's 17 for mods, and names; the
+ROM is byte-identical.  port_limits.h names BW_LIMIT_TYPE_LAST, and
+arm9/poke_type.h gives POKETYPE_LAST, POKETYPE_COUNT and POKETYPE_NONE.  The
+PC build reads the type chart as [attacker * POKETYPE_COUNT + defender] and
+takes 31 as "no type" at every place the DS writes or tests 17 (Roost, a
+typeless move, Conversion 2, Color Change, the last move type, the Pokedex
+info page), so the port can give the game a larger chart (sdk/type_chart.c,
+limit.types).  CMakeLists.txt turns limit.types on only for a tree that has
+BW_LIMIT_TYPE_LAST.  Renames the port meets in comments only:
+BtlPokeParam.lastTargetPos is lastMoveType, and the battle effect values
+that were called type codes are ball ids (BTLV_EFFVM_CmdSetBallSource,
+params.ballItem, BTLV_EFFECT_StartBallThrowEffect).  The six commits on the
+way (`cbe3894287` to `543c40a139`) are names from the game's data and its
+battle handler tables; the port's patches name none of them.
+
+The step before, from `ce8fb59a0e`: one host guard and names; the ROM is byte-identical.
 WEATHER_DIAMOND_DUST_UpdateParticle (ov025) takes a sparkle's age modulo two
 intervals that its spawn function can make 0 (remainders of a negative random
 number plus a constant).  The DS runtime divide gives 0 for a divisor of 0;

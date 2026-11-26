@@ -81,6 +81,10 @@ modifying the original, opens a battle, and loops the animation until
 the window closes. No turns execute and no damage is dealt. An unknown
 move ID exits with code 2 and prints an error to stderr.
 
+## Testing a mod on its own saves
+
+`eidos --test-saves <folder>` runs the game with saves, per-save mod files, and settings in `<folder>` instead of the profile. The first run copies the profile's save (the one `--preview-move` uses), its per-save mod files, and settings into `<folder>`, or starts a new game if the profile has no save. Later runs continue the save in `<folder>`, carrying one playthrough across mod edits. Profile saves are never modified.
+
 ## New species
 
 Mods add species past 649 by raising `limit.species` (up to 2047) in the
@@ -138,3 +142,12 @@ Sets the cry for a species or form.
     716.1 = 134      # form 1 plays Vaporeon's cry
 
 The value is a wave archive ID in the sound archive: a base-game species' cry (its species ID) or one added by a mod. Omitted forms inherit their species' cry. Omitted base-game species keep their own cries. Omitted added species play no cry.
+
+## type_chart.txt
+
+Sets type effectiveness for each attacking type against each defending type.
+
+    12 = 8                           # Electric hits Normal for double
+    9 = 4 4 4 4 4 2 8 4 8 2 2 8 4 4 8 2 4    # Fire's base-game line in full
+
+The ID is the attacking type (0 Normal to 16 Dark, in game order: Normal, Fighting, Flying, Poison, Ground, Rock, Bug, Ghost, Steel, Fire, Water, Grass, Electric, Psychic, Ice, Dragon, Dark). Values are effectiveness codes against each defending type in the same order: 0 (no effect), 2 (not very effective), 4 (normal), 8 (super effective). A shorter line changes only the defending types it reaches. Omitted types keep their base-game values. Later mods override earlier ones per value.

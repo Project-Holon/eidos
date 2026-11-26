@@ -2649,7 +2649,7 @@ int bcam_sim_run(int kind, int id, int attacker, int defender, BcamFrame **frame
         rc = play_entry(k_switch, (int)(sizeof(k_switch) / sizeof(k_switch[0])), -1);
         break;
     case BCAM_BALL:
-        /* BTL_CLIENT_StepThrowBall: BTLV_EFFECT_StartEffectWithColor(the foe,
+        /* BTL_CLIENT_StepThrowBall: BTLV_EFFECT_StartBallThrowEffect(the foe,
          * the ball, the shakes, caught, critical) runs effect 9 with the
          * user 0 and the target the foe */
         scene_set((1u << 1) | (1u << 0));

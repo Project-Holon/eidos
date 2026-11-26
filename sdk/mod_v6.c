@@ -37,6 +37,7 @@
 #include "mod_event.h"
 #include "vfs.h"
 #include "mod_v6.h"
+#include "type_chart.h"
 
 extern const char *bw_mod_savedata_namespace(void) BW_PORT_WEAK;
 extern void *bw_mod_state_game_data(void);
@@ -547,6 +548,10 @@ u32 bw_mod_v6_text_input_pending(void)
  * each time ov093 loads (bw_mod_v6_overlay_loaded) and at once when a mod
  * sets it during a battle.  The game's own chart is kept from the first
  * load, for type_chart_get and for a mod that clears its chart.
+ *
+ * With the types mods add, the game reads a chart of count x count
+ * (sdk/type_chart.c), and a chart of this service is its first 17 rows
+ * and columns: it is written and read row by row.
  */
 extern void *bw_dsref_ov093_gBtlCalcTypeAffinityTable __attribute__((weak));
 extern void bw_event_fire_starter_choices(void);
@@ -566,11 +571,35 @@ static u32         g_chart_count;
 static BwTypeChart g_game_chart;
 static int         g_have_game_chart;
 
+/* Copy the 17 x 17 block between a chart of `stride` columns and a
+ * service chart. */
+static void block_out(u8 *t, u32 stride, const u8 *cells)
+{
+    u32 r;
+
+    for (r = 0; r < BW_TYPE_CHART_TYPES; r++) {
+        memcpy(t + r * stride, cells + r * BW_TYPE_CHART_TYPES, BW_TYPE_CHART_TYPES);
+    }
+}
+
+static void block_in(u8 *cells, const u8 *t, u32 stride)
+{
+    u32 r;
+
+    for (r = 0; r < BW_TYPE_CHART_TYPES; r++) {
+        memcpy(cells + r * BW_TYPE_CHART_TYPES, t + r * stride, BW_TYPE_CHART_TYPES);
+    }
+}
+
+/* Set while ov093's names are bound and the overlay not yet counted as
+ * loaded (bw_mod_v6_overlay_loaded runs inside the load). */
+static int g_ov093_binding;
+
 static u8 *chart_place(void)
 {
     if (&bw_dsref_ov093_gBtlCalcTypeAffinityTable == NULL ||
         bw_dsref_ov093_gBtlCalcTypeAffinityTable == NULL ||
-        (bw_overlay_is_loaded != NULL && !bw_overlay_is_loaded(93u))) {
+        (!g_ov093_binding && bw_overlay_is_loaded != NULL && !bw_overlay_is_loaded(93u))) {
         return NULL;
     }
     return (u8 *)bw_dsref_ov093_gBtlCalcTypeAffinityTable;
@@ -608,11 +637,18 @@ static void chart_write(void)
         return;
     }
     if (!g_have_game_chart) {
-        memcpy(g_game_chart.cell, t, sizeof(g_game_chart.cell));
+        block_in(g_game_chart.cell, t, bw_type_count());
         g_have_game_chart = 1;
     }
     c = chart_in_force();
-    memcpy(t, c != NULL ? c->cell : g_game_chart.cell, sizeof(g_game_chart.cell));
+    if (c != NULL) {
+        block_out(t, bw_type_count(), c->cell);
+    } else if (bw_type_chart_built() != NULL) {
+        /* the chart with the mods' types and rows */
+        memcpy(t, bw_type_chart_built(), bw_type_count() * bw_type_count());
+    } else {
+        block_out(t, BW_TYPE_CHART_TYPES, g_game_chart.cell);
+    }
 }
 
 void bw_mod_v6_overlay_loaded(u32 id)
@@ -624,15 +660,20 @@ void bw_mod_v6_overlay_loaded(u32 id)
     }
     if (id == 93u) {
         /* the copy just made is the game's own chart */
-        u8 *t = chart_place();
+        u8 *t;
 
+        g_ov093_binding = 1;
+        t = chart_place();
         if (t != NULL) {
             memcpy(g_game_chart.cell, t, sizeof(g_game_chart.cell));
             g_have_game_chart = 1;
+            /* the types and rows mods add: the game reads that chart now */
+            bw_type_chart_loaded(g_game_chart.cell);
         }
         if (g_chart_count > 0) {
             chart_write();
         }
+        g_ov093_binding = 0;
     }
 }
 
@@ -699,7 +740,7 @@ int bw_mod_v6_type_chart_get(BwTypeChart *out)
     }
     t = chart_place();
     if (t != NULL) {
-        memcpy(out->cell, t, sizeof(out->cell));
+        block_in(out->cell, t, bw_type_count());
         return 0;
     }
     if (g_have_game_chart) {

@@ -55,7 +55,7 @@
  * keepBackground, bit 12 stopSeOnEnd), scriptVar 0x004, attackerPos 0x0DC,
  * defenderPos 0x0E0, scriptBuf 0x1E8, pendingScriptBuf 0x1EC,
  * pendingScriptOffset 0x1F0, heapId 0x238, layoutMode 0x244, params 0x248
- * (16 bytes: kind, variant, option, side, ...), effectId 0x258, typeSource
+ * (16 bytes: kind, variant, option, side, ...), effectId 0x258, ballSource
  * 0x25C, lastEffectId 0x2A4, lastSlot 0x2A8.  A script file: u8
  * variantCount, then a 0x38-byte record a variant from 4 whose first u32 is
  * the variant's entry offset.  The offsets are the DS ones: pointers are
@@ -146,7 +146,7 @@ typedef struct BtlvEffVmParams {
     u8 side;
     int argA;
     int argB;
-    u16 typeCode;
+    u16 ballItem;
     u8 pad[2];
 } BtlvEffVmParams;
 

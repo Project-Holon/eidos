@@ -4074,6 +4074,96 @@ static void boot_preview_setup(void)
     bw_preview_set(g_preview_move, g_preview_a, g_preview_b);
 }
 
+/*
+ * --test-saves <folder>: kenon's test runs of a mod.  The saves, their
+ * per-mod files and the settings live in <folder>, never in the profile.
+ * The first run (no <folder>/saves yet) copies the profile's save in, the
+ * one --preview-move would take, with its per-mod files and the profile's
+ * settings; with no save in the profile the run starts a new game.  Later
+ * runs continue the folder's own save, so one playthrough lasts across a
+ * mod's edits.  Everything else is a normal start.
+ */
+static const char *g_test_saves;     /* --test-saves <folder>             */
+
+typedef struct TestModCopy {
+    const char *from_saves, *to_saves, *name;
+} TestModCopy;
+
+/* One mod's per-save file of the copied save, as the folder's pokeblack. */
+static int boot_test_mod_file(void *ctx, const char *ns, int kind)
+{
+    const TestModCopy *t = (const TestModCopy *)ctx;
+    char from[1200], to[1200];
+
+    if (kind != BW_PATH_DIR || ns[0] == '.' || snprintf(from, sizeof from, "%s/mods/%s/%s.bin", t->from_saves, ns, t->name) >= (int)sizeof from
+        || snprintf(to, sizeof to, "%s/mods/%s", t->to_saves, ns) >= (int)sizeof to) {
+        return 0;
+    }
+    if (bw_path_kind_utf8(from) != BW_PATH_FILE) {
+        return 0;
+    }
+    (void)bw_mkdirs_utf8(to);
+    snprintf(to, sizeof to, "%s/mods/%s/pokeblack.bin", t->to_saves, ns);
+    (void)boot_copy_file(from, to);
+    return 0;
+}
+
+static void boot_test_saves_setup(void)
+{
+    const char *saves = getenv("BW_SAVE_DIR"), *settings = getenv("EIDOS_SETTINGS");
+    char to_saves[1024], from[1200], to[1200], name[32];
+    int n;
+
+    if (g_test_saves == NULL) {
+        return;
+    }
+    if (g_preview_move != 0) {
+        fprintf(stderr, "eidos: --test-saves and --preview-move cannot run together\n");
+        exit(2);
+    }
+    if (snprintf(to_saves, sizeof to_saves, "%s/saves", g_test_saves) >= (int)sizeof to_saves) {
+        fprintf(stderr, "eidos: --test-saves: the folder's path is too long\n");
+        exit(2);
+    }
+    if (bw_path_kind_utf8(to_saves) != BW_PATH_DIR) {
+        /* the first run: the profile's save, its per-mod files, the settings */
+        if (bw_mkdirs_utf8(to_saves) != 0) {
+            fprintf(stderr, "eidos: --test-saves: cannot make %s\n", to_saves);
+            exit(2);
+        }
+        snprintf(to, sizeof to, "%s/pokeblack.sav", to_saves);
+        for (n = 1; saves != NULL && n <= 64; n++) {
+            if (n == 1) {
+                snprintf(from, sizeof from, "%s/pokeblack.sav", saves);
+                snprintf(name, sizeof name, "pokeblack");
+            } else {
+                snprintf(from, sizeof from, "%s/slots/save%d.sav", saves, n);
+                snprintf(name, sizeof name, "slots-save%d", n);
+            }
+            if (boot_copy_file(from, to) == 0) {
+                TestModCopy t;
+
+                t.from_saves = saves;
+                t.to_saves = to_saves;
+                t.name = name;
+                snprintf(from, sizeof from, "%s/mods", saves);
+                (void)bw_list_dir_utf8(from, boot_test_mod_file, &t);
+                break;
+            }
+        }
+        snprintf(to, sizeof to, "%s/settings.ini", g_test_saves);
+        if (settings != NULL) {
+            (void)boot_copy_file(settings, to);
+        }
+    }
+    boot_setenv("BW_SAVE_DIR", to_saves);
+    snprintf(to, sizeof to, "%s/settings.ini", g_test_saves);
+    boot_setenv("EIDOS_SETTINGS", to);
+#if EIDOS_BOOT_SDL
+    eidos_settings_set_path(to);
+#endif
+}
+
 static int boot_launcher_arg(int argc, char **argv, int *i, int apply)
 {
     const char *a = argv[*i];
@@ -4086,6 +4176,12 @@ static int boot_launcher_arg(int argc, char **argv, int *i, int apply)
         /* for the launcher: that saves folder put in order (sdk/save_tidy.h),
          * one line that says what was done, and no game */
         g_tidy_only = argv[++*i];
+        return 1;
+    }
+    if (strcmp(a, "--test-saves") == 0 && *i + 1 < argc) {
+        /* for kenon: a mod's test runs keep their own saves and settings
+         * in this folder (boot_test_saves_setup) */
+        g_test_saves = argv[++*i];
         return 1;
     }
     if (strcmp(a, "--preview-move") == 0 && *i + 1 < argc) {
@@ -4309,6 +4405,7 @@ int main(int argc, char **argv)
 #if EIDOS_BOOT_SDL
     boot_profile_first(argc, argv);
     boot_preview_setup();
+    boot_test_saves_setup();
     boot_share_handler_params();
     if (g_import_only) {
         if (g_profile_game == BW_GAME_UNKNOWN) {

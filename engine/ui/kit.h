@@ -333,8 +333,9 @@ void ui_cursor_corners(EidosUiCtx *c, int x, int y, int w, int h, u32 color);
  * male, 1 female, 2 none. */
 /* Types are the game's own numbers: NORMAL 0 .. STEEL 8, FIRE 9, WATER 10,
  * GRASS 11, ELECTRIC 12, PSYCHIC 13, ICE 14, DRAGON 15, DARK 16; the
- * unknown mark (an unseen Pokemon) is UI_TYPE_UNKNOWN. */
-#define UI_TYPE_UNKNOWN 17
+ * unknown mark (an unseen Pokemon) is UI_TYPE_UNKNOWN, the game's "no
+ * type" number (17 is a type a mod can add). */
+#define UI_TYPE_UNKNOWN 31
 const char *ui_type_name(int type);
 /* The spelling later games give a move whose Black and White name was
  * squeezed into 12 letters ("Dragon Breath"), or NULL: only when

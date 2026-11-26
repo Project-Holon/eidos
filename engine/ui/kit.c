@@ -1117,7 +1117,7 @@ void ui_def_bar(EidosUiCtx *c, int x, int y, int w, int h, int num, int den)
 }
 
 /* Black and White's own type numbers (17 types, Fire = 9), then the
- * unknown mark at UI_TYPE_UNKNOWN. */
+ * unknown mark (UI_TYPE_UNKNOWN). */
 static const char *const k_type_name[18] = {
     "NORMAL", "FIGHTING", "FLYING", "POISON", "GROUND", "ROCK", "BUG", "GHOST",
     "STEEL", "FIRE", "WATER", "GRASS", "ELECTRIC", "PSYCHIC", "ICE",
@@ -1195,12 +1195,13 @@ const char *ui_move_name_modern(int id, const char *game_name)
 
 const char *ui_type_name(int type)
 {
-    return (type >= 0 && type < 18) ? k_type_name[type] : "???";
+    return (type >= 0 && type < 17) ? k_type_name[type] : "???";
 }
 
 u32 ui_type_color(int type)
 {
-    return (type >= 0 && type < 18) ? k_type_color[type] : UI_EDGE2;
+    return (type >= 0 && type < 17) ? k_type_color[type]
+         : type == UI_TYPE_UNKNOWN ? k_type_color[17] : UI_EDGE2;
 }
 
 void ui_def_type_tag(EidosUiCtx *c, int x, int y, int w, int type)
