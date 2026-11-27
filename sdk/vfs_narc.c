@@ -924,6 +924,19 @@ static int collect(const char *rel, int layer, Collect *c)
             c->list[c->count - 1].mem = g_mem[k].data;
             c->list[c->count - 1].mem_size = g_mem[k].size;
         }
+        /* the port's own made lines (root ""), after every mod's: the lines
+         * no mod wrote for what the mods add (sdk/text_from.c) */
+        for (k = 0; k < g_lines_count; k++) {
+            if (g_lines[k].root[0] != '\0' || strcmp(g_lines[k].rel, rel) != 0) {
+                continue;
+            }
+            if (add_entry(&c->msg, &c->msg_count, &c->msg_cap, g_lines[k].bank, n * 2u, NULL) != 0) {
+                free_collect(c);
+                return -1;
+            }
+            c->msg[c->msg_count - 1].lang = 2;
+            c->msg[c->msg_count - 1].lines = &g_lines[k].lines;
+        }
     }
     /* The line files go in load order per bank, a mod's `<bank>.<lang>.msg`
      * after its `<bank>.msg` (the merge applies them in this order; a
@@ -1121,6 +1134,18 @@ static int build_sdat(const char *rel, int layer, u8 **out, u32 *out_size)
             continue;
         }
         text = read_whole(path, &text_size);
+        if (text != NULL) {
+            /* the parser reads a C string: the file's bytes and a NUL */
+            u8 *z = (u8 *)realloc(text, (size_t)text_size + 1);
+
+            if (z == NULL) {
+                free(text);
+                text = NULL;
+            } else {
+                text = z;
+                text[text_size] = '\0';
+            }
+        }
         if (text == NULL || bw_sdat_parse_decl((const char *)text, &decls[nadd],
                                                err, sizeof(err)) != 0) {
             fprintf(stderr, "vfs: %s: %s\n", path, text == NULL ? "cannot read" : err);

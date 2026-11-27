@@ -21,8 +21,8 @@
 #include <stdint.h>
 
 #define EIDOS_EMBED_MAGIC    0x44424D45u        /* "EMBD" */
-#define EIDOS_EMBED_MAX_W    2560
-#define EIDOS_EMBED_MAX_H    1440
+#define EIDOS_EMBED_MAX_W    3840
+#define EIDOS_EMBED_MAX_H    2160
 #define EIDOS_EMBED_STALE_MS 3000u
 
 typedef struct EidosEmbedShm {

@@ -32,6 +32,7 @@
 
 int eidos_ui_battle_right_free_y(void);     /* recipe_battle.c */
 #include "theme.h"
+#include "ui_lang.h"
 #include "dsmem.h"
 #include "input.h"
 #include "textbox.h"
@@ -60,6 +61,7 @@ static int g_down_wx = -1, g_down_wy = -1;   /* ... in window pixels (read_mouse
 static int g_right;                          /* right button this frame    */
 static int g_want_text, g_text_wanted;       /* typing asked this frame    */
 static int g_want_objs, g_objs_wanted;       /* OBJ layers asked (bits)    */
+static int g_want_3d, g_3d_wanted;           /* the 3D frame at DS size asked */
 static u32 g_keys_prev, g_keys_now, g_keys_edge, g_take;   /* the player's keys    */
 static u32 g_take_last;             /* the keys the screen took on the frame before */
 static u32 g_tap_keys;              /* tapped hints of taken keys: presses of the next frame */
@@ -402,6 +404,16 @@ void eidos_ui_want_objs(int screen)
 int eidos_ui_objs_wanted(void)
 {
     return g_objs_wanted;
+}
+
+void eidos_ui_want_3d(void)
+{
+    g_want_3d = 1;
+}
+
+int eidos_ui_3d_wanted(void)
+{
+    return g_3d_wanted;
 }
 
 int eidos_ui_keys_lit(void)
@@ -915,7 +927,26 @@ extern u32 MYSTATUS_GetId(const void *ms) __attribute__((weak));
 extern u32 POKEPARTY_GetCount(const void *party) __attribute__((weak));
 extern void *POKEPARTY_GetMember(void *party, u32 pos) __attribute__((weak));
 extern void POKE_TOOL_SetupPartyParam(void *pp, u16 species, u16 level, u64 otId) __attribute__((weak));
+extern void POKE_TOOL_SetupPartyParamEx(void *pp, u16 species, u16 level, u64 otId, u32 ivs, u64 personality)
+    __attribute__((weak));
 extern u8 *bw_dsref__GameSystemGlobal __attribute__((weak));
+
+/* A debug Pokemon set up as the game's POKE_TOOL_SetupPartyParam does it,
+ * shiny when `shiny` (a trailing "s": "493.17s", "386s"): its personality's two
+ * halves and the trainer id's two halves xor to below 8 (arm9 poke_tool.c,
+ * POKE_TOOL_IsShinyOtIdPersonality). */
+static void debug_setup_mon(void *pp, u16 species, u16 level, u32 otId, int shiny)
+{
+    u32 lo = (0x2B5Du * (u32)species + level) & 0xFFFFu;
+
+    if (shiny && POKE_TOOL_SetupPartyParamEx != NULL) {
+        u32 hi = lo ^ (otId >> 16) ^ (otId & 0xFFFFu);
+
+        POKE_TOOL_SetupPartyParamEx(pp, species, level, otId, 0xFFFFFFFFu, (u64)(hi << 16 | lo));
+        return;
+    }
+    POKE_TOOL_SetupPartyParam(pp, species, level, otId);
+}
 extern void POKE_TOOL_SetMoveSlot(void *pp, u16 move, u32 slot) __attribute__((weak));
 extern void MISC_SetBadge(void *misc, u32 bit) __attribute__((weak));
 extern void *GAME_DATA_GetMiscSave(void *gd) __attribute__((weak));
@@ -923,6 +954,10 @@ extern void *GAME_DATA_GetEventWork(const void *gd) __attribute__((weak));
 extern void ZONEDATA_SetEventFlag(void *ev, int flagId) __attribute__((weak));
 extern u32 POKE_TOOL_GetExpForLevel(u16 species, u16 form, u16 level) __attribute__((weak));
 extern void POKE_TOOL_SetPartyValue(void *pp, u32 paramId, uintptr_t value) __attribute__((weak));
+extern uintptr_t POKE_TOOL_GetPartyValue(void *pp, u32 paramId, uintptr_t arg) __attribute__((weak));
+extern u32 POKE_TOOL_ChangeForm(void *pp, u32 form) __attribute__((weak));
+extern u32 POKE_TOOL_GetPlateTypeForwarder(u32 item) __attribute__((weak));
+extern u32 POKE_TOOL_GetBoxParamIndex(u32 item) __attribute__((weak));
 extern void POKE_TOOL_CalcParam(void *pp) __attribute__((weak));
 extern void POKE_TOOL_SetMoveSlot(void *pp, u16 move, u32 slot) __attribute__((weak));
 extern void *POKE_TOOL_Create(u16 species, u16 level, u64 otId, u16 heapId) __attribute__((weak));
@@ -1053,7 +1088,22 @@ static void debug_held(void)
         u32 item = (u32)strtoul(list, (char **)&list, 10);
 
         if (item != 0u) {
-            POKE_TOOL_SetPartyValue(POKEPARTY_GetMember(party, i), 6u, (uintptr_t)item);
+            void *mon = POKEPARTY_GetMember(party, i);
+            u32 species;
+
+            POKE_TOOL_SetPartyValue(mon, 6u, (uintptr_t)item);
+            /* the form the item gives, as the party menu's give does
+             * (ov091 PLIST_MENU_ApplyArceusPlateForm, _ApplyGenesectDriveForm) */
+            species = POKE_TOOL_GetPartyValue != NULL ? (u32)POKE_TOOL_GetPartyValue(mon, 5u, 0) : 0u;
+            if (POKE_TOOL_ChangeForm != NULL && species == 493u && POKE_TOOL_GetPlateTypeForwarder != NULL) {
+                (void)POKE_TOOL_ChangeForm(mon, POKE_TOOL_GetPlateTypeForwarder(item));
+            } else if (POKE_TOOL_ChangeForm != NULL && species == 649u && POKE_TOOL_GetBoxParamIndex != NULL) {
+                (void)POKE_TOOL_ChangeForm(mon, POKE_TOOL_GetBoxParamIndex(item));
+            }
+            if (species == 493u || species == 649u) {
+                fprintf(stderr, "eidos: debug held: member %u species %u item %u form %u\n", (unsigned)i,
+                        (unsigned)species, (unsigned)item, (unsigned)POKE_TOOL_GetPartyValue(mon, 0x6Fu, 0));
+            }
         }
         while (*list == ',' || *list == ' ') {
             list++;
@@ -1072,7 +1122,8 @@ static void debug_party(void)
     u16 lv;
 
     if (list == NULL && (getenv("EIDOS_DEBUG_ITEMS") != NULL || getenv("EIDOS_DEBUG_PARTY_COUNT") != NULL
-                         || getenv("EIDOS_DEBUG_PROPS") != NULL || getenv("EIDOS_DEBUG_DEX_NATIONAL") != NULL)) {
+                         || getenv("EIDOS_DEBUG_PROPS") != NULL || getenv("EIDOS_DEBUG_DEX_NATIONAL") != NULL
+                         || getenv("EIDOS_DEBUG_DEX_AT") != NULL || getenv("EIDOS_DEBUG_PARTY_FORM") != NULL)) {
         list = "";                      /* items or the count alone */
     }
     if (done || list == NULL || &bw_dsref__GameSystemGlobal == NULL || GAME_DATA_GetMyParty == NULL
@@ -1096,10 +1147,15 @@ static void debug_party(void)
         u16 sp = (u16)strtoul(list, (char **)&list, 10), mlv = lv;
         long short_by = 0;
         u32 form = 0;
+        int shiny = 0;
         void *pp;
 
         if (*list == '.') {
             form = (u32)strtoul(list + 1, (char **)&list, 10);     /* "species.form" */
+        }
+        if (*list == 's') {
+            shiny = 1;                                              /* "species[.form]s" */
+            list++;
         }
         if (*list == ':') {
             mlv = (u16)strtoul(list + 1, (char **)&list, 10);
@@ -1116,7 +1172,7 @@ static void debug_party(void)
                 n = POKEPARTY_GetCount(party);
             }
             pp = POKEPARTY_GetMember(party, i);
-            POKE_TOOL_SetupPartyParam(pp, sp, mlv, id);
+            debug_setup_mon(pp, sp, mlv, id, shiny);
             if (form != 0 && POKE_TOOL_SetPartyValue != NULL && POKE_TOOL_CalcParam != NULL) {
                 POKE_TOOL_SetPartyValue(pp, DEBUG_PARAM_FORM, (uintptr_t)form);
                 POKE_TOOL_CalcParam(pp);
@@ -1133,6 +1189,29 @@ static void debug_party(void)
         }
         while (*list == ',' || *list == ' ') {
             list++;
+        }
+    }
+    /* EIDOS_DEBUG_PARTY_FORM="slot.form,...": the party member in that slot
+     * (the same Pokemon) changes to that form, as a form change does */
+    if (getenv("EIDOS_DEBUG_PARTY_FORM") != NULL && POKE_TOOL_SetPartyValue != NULL && POKE_TOOL_CalcParam != NULL) {
+        const char *m = getenv("EIDOS_DEBUG_PARTY_FORM");
+
+        while (*m >= '0' && *m <= '9') {
+            u32 slot = (u32)strtoul(m, (char **)&m, 10), form = 0;
+
+            if (*m == '.') {
+                form = (u32)strtoul(m + 1, (char **)&m, 10);
+            }
+            if (slot < POKEPARTY_GetCount(party)) {
+                void *pp = POKEPARTY_GetMember(party, slot);
+
+                POKE_TOOL_SetPartyValue(pp, DEBUG_PARAM_FORM, (uintptr_t)form);
+                POKE_TOOL_CalcParam(pp);
+                fprintf(stderr, "eidos: debug party slot %u to form %u\n", (unsigned)slot, (unsigned)form);
+            }
+            while (*m == ',' || *m == ' ') {
+                m++;
+            }
         }
     }
     /* EIDOS_DEBUG_PARTY_COUNT=N: the party keeps its first N members (a
@@ -1211,6 +1290,57 @@ static void debug_party(void)
             fprintf(stderr, "eidos: debug dex: the National Pokedex\n");
         }
     }
+    /* EIDOS_DEBUG_DEX_AT=N: the Pokedex opens on species N (the save's last
+     * species shown) */
+    if (getenv("EIDOS_DEBUG_DEX_AT") != NULL && atoi(getenv("EIDOS_DEBUG_DEX_AT")) > 0) {
+        extern void *ZUKAN_SAVE_GetFromGameData(void *gameData) __attribute__((weak));
+        extern void ZUKAN_SAVE_SetLastViewedSpecies(void *pZukan, u32 value) __attribute__((weak));
+
+        if (ZUKAN_SAVE_GetFromGameData != NULL && ZUKAN_SAVE_SetLastViewedSpecies != NULL) {
+            ZUKAN_SAVE_SetLastViewedSpecies(ZUKAN_SAVE_GetFromGameData(gd), (u32)atoi(getenv("EIDOS_DEBUG_DEX_AT")));
+            fprintf(stderr, "eidos: debug dex: at species %d\n", atoi(getenv("EIDOS_DEBUG_DEX_AT")));
+        }
+    }
+    /* EIDOS_DEBUG_DEX_SEEN="species.form[-last][s],...": those forms seen
+     * (shiny with an "s"), as a sighting marks them (sdk/dex_save.c) */
+    if (getenv("EIDOS_DEBUG_DEX_SEEN") != NULL) {
+        extern void *ZUKAN_SAVE_GetFromGameData(void *gameData) __attribute__((weak));
+        extern void ZUKAN_SAVE_SetSeenGenderFlag(void *pZukan, u32 species, int sel, int half) __attribute__((weak));
+        extern void ZUKAN_SAVE_SetSeenFormFlag(void *pZukan, u32 species, u32 sel, u32 shiny, u32 form)
+            __attribute__((weak));
+        const char *m = getenv("EIDOS_DEBUG_DEX_SEEN");
+
+        while (ZUKAN_SAVE_GetFromGameData != NULL && ZUKAN_SAVE_SetSeenGenderFlag != NULL
+               && ZUKAN_SAVE_SetSeenFormFlag != NULL && *m != '\0') {
+            void *z = ZUKAN_SAVE_GetFromGameData(gd);
+            u32 sp = (u32)strtoul(m, (char **)&m, 10), first = 0, last, f;
+            int shiny = 0;
+
+            if (*m == '.') {
+                first = (u32)strtoul(m + 1, (char **)&m, 10);
+            }
+            last = first;
+            if (*m == '-') {
+                last = (u32)strtoul(m + 1, (char **)&m, 10);
+            }
+            if (*m == 's') {
+                shiny = 1;
+                m++;
+            }
+            if (sp == 0) {
+                break;
+            }
+            ZUKAN_SAVE_SetSeenGenderFlag(z, sp, 0, shiny);
+            for (f = first; f <= last; f++) {
+                ZUKAN_SAVE_SetSeenFormFlag(z, sp, 0, (u32)shiny, f);
+            }
+            fprintf(stderr, "eidos: debug dex: species %u forms %u-%u seen%s\n", (unsigned)sp, (unsigned)first,
+                    (unsigned)last, shiny ? " (shiny)" : "");
+            while (*m == ',' || *m == ' ') {
+                m++;
+            }
+        }
+    }
     /* EIDOS_DEBUG_FLAGS="hex,hex": event flags set (0x961 and 0x962 give
      * the field menu its POKEMON and POKEDEX buttons) */
     if (getenv("EIDOS_DEBUG_FLAGS") != NULL && ZONEDATA_SetEventFlag != NULL && GAME_DATA_GetEventWork != NULL) {
@@ -1284,7 +1414,7 @@ extern u32 bw_arm7_backup_failures(void) __attribute__((weak));
 static void save_failing_notice(EidosUiCtx *c)
 {
     static u32 shown;               /* frames it has been up this time      */
-    const char *msg = "The save could not be written to storage. Do not close the game.";
+    const char *msg = ui_tr("The save could not be written to storage. Do not close the game.");
     int w, x, a;
 
     if (bw_arm7_backup_failures == NULL || bw_arm7_backup_failures() < 2u) {
@@ -2007,6 +2137,8 @@ static void debug_script(void)
  * the game's own events, once the field has run 90 frames with no event:
  *   "clear N"     the game clear (EVENT_GAMECLEAR_Create): the Hall of
  *                 Fame, the staff roll and the save after them
+ *   "hof N"       the Hall of Fame viewer (SCRCMD_CreateSubProcEvent):
+ *                 0 the first entry, 1 the later ones
  *   "trade N S"   in-game trade N for party slot S (FLD_TRADE_CreateEvent)
  *   "relearn S"   the move relearner for party slot S (as
  *                 SCRCMD_PROC_CallMoveRelearn opens it)
@@ -2026,6 +2158,7 @@ static void debug_script(void)
  *                 partner's), for the trade screen's tests
  * The save these run on is a test copy: the game clear saves. */
 extern void *ov010_EVENT_GAMECLEAR_Create(void *gsys, u32 mode) __attribute__((weak));
+extern void *ov021_SCRCMD_CreateSubProcEvent(void *gsys, u32 procId, u16 *result) __attribute__((weak));
 extern int ov021_FIELD_SUBSCREEN_RequestMode(void *subscreen, u32 mode) __attribute__((weak));
 extern void *ov021_FLD_TRADE_CreateEvent(void *gsys, u32 tradeId, u32 partyIndex) __attribute__((weak));
 extern void *ov021_EVENT_NAMEIN_Create(void *gsys, void *fieldMap, void *parent, u32 mode, u16 *result)
@@ -2109,6 +2242,13 @@ static void debug_open(void)
                                                      debug_open_done, NULL);
     } else if (sscanf(what, "clear %u", &a) == 1 && ov010_EVENT_GAMECLEAR_Create != NULL) {
         ev = ov010_EVENT_GAMECLEAR_Create(gs, a);
+    } else if (sscanf(what, "hof %u", &a) == 1 && ov021_SCRCMD_CreateSubProcEvent != NULL) {
+        /* the Hall of Fame viewer (overlay 171), as the script command
+         * opens it: DendouViewParams.source 0 the first entry (save block
+         * 42), 1 the ring of extra save 8 */
+        static u16 hof_result;
+
+        ev = ov021_SCRCMD_CreateSubProcEvent(gs, a, &hof_result);
     } else if (sscanf(what, "trade %u %u", &a, &b2) == 2 && ov021_FLD_TRADE_CreateEvent != NULL) {
         ev = ov021_FLD_TRADE_CreateEvent(gs, a, b2);
     } else if (sscanf(what, "relearn %u", &a) == 1 && ov010_WAZA_OSHIE_CreateMoveList != NULL
@@ -2661,7 +2801,7 @@ static void debug_preview(void)
     }
     idle = 0;
     memset(&req, 0, sizeof req);
-    req.scriptId = (u16)bw_move_anim(move);
+    req.scriptId = (u16)bw_move_anim_request(move);
     req.attackerPos = 0;
     req.defenderPos = 1;
     ov094_BTLV_EFFECT_StartEffectWithRequest(&req);
@@ -2759,9 +2899,44 @@ static void debug_battle(void)
     if (enc == NULL) {
         return;
     }
-    if (sscanf(what, "wild %u %u", &a1, &a2) >= 1 && ov021_FIELD_ENCOUNT_StartScriptedWild != NULL) {
+    if (sscanf(what, "wild %u", &a1) == 1 && ov021_FIELD_ENCOUNT_StartScriptedWild != NULL) {
+        unsigned wform = 0;
+        int wshiny = 0;
+        const char *p = what + 4;
+
+        /* "wild SPECIES[.FORM][s] LEVEL": the wild Pokemon in that form,
+         * shiny with an "s" */
+        a1 = (unsigned)strtoul(p, (char **)&p, 10);
+        if (*p == '.') {
+            wform = (unsigned)strtoul(p + 1, (char **)&p, 10);
+        }
+        if (*p == 's') {
+            wshiny = 1;
+            p++;
+        }
+        a2 = (unsigned)strtoul(p, (char **)&p, 10);
         ev = ov021_FIELD_ENCOUNT_StartScriptedWild(enc, (u16)a1, (u8)a2, 0);
         fade_back = ev != NULL;
+        if (ev != NULL && (wform != 0 || wshiny) && GAME_EVENT_GetWork != NULL && POKEPARTY_GetMember != NULL
+            && POKE_TOOL_SetPartyValue != NULL && POKE_TOOL_CalcParam != NULL) {
+            /* ScriptedBattleArgs.btlSetup (+0x04, ov010 event_battle.c), its
+             * foes' party (BattleSetupParam.party[1], +0x28) */
+            void *bs = *(void **)((u8 *)GAME_EVENT_GetWork(ev) + 0x04);
+            void *party = bs != NULL ? *(void **)((u8 *)bs + 0x28) : NULL;
+
+            if (party != NULL) {
+                void *mon = POKEPARTY_GetMember(party, 0);
+
+                if (wshiny && POKE_TOOL_GetPartyValue != NULL) {
+                    /* made again with a shiny personality for its own trainer id */
+                    debug_setup_mon(mon, (u16)a1, (u16)a2, (u32)POKE_TOOL_GetPartyValue(mon, 7u, 0), 1);
+                }
+                if (wform != 0) {
+                    POKE_TOOL_SetPartyValue(mon, DEBUG_PARAM_FORM, (uintptr_t)wform);
+                }
+                POKE_TOOL_CalcParam(mon);
+            }
+        }
     } else if (sscanf(what, "trainer %u", &a1) == 1 && getenv("EIDOS_DEBUG_FOES") == NULL &&
                ov010_EVENT_BATTLE_CreateEncounterTask != NULL) {
         /* as a trainer's own battle: the trainer's encounter effect and
@@ -2783,7 +2958,8 @@ static void debug_battle(void)
 
         ov021_FIELD_ENCOUNT_SetupTrainerBattle(enc, bs, (u32)debug_trainer_rule(a1), 0, a1, 0, 4);
         /* EIDOS_DEBUG_FOES="species,species,...": the trainer's team becomes
-         * fresh Pokemon of those species (BattleSetupParam.party[1], +0x28) */
+         * fresh Pokemon of those species (BattleSetupParam.party[1], +0x28);
+         * "species.form" gives a form */
         if (getenv("EIDOS_DEBUG_FOES") != NULL && POKE_TOOL_SetupPartyParam != NULL &&
             POKEPARTY_GetMember != NULL && POKEPARTY_GetCount != NULL) {
             const char *list = getenv("EIDOS_DEBUG_FOES");
@@ -2793,9 +2969,22 @@ static void debug_battle(void)
 
             for (i = 0; i < n && *list != '\0'; i++) {
                 u16 sp = (u16)strtoul(list, (char **)&list, 10);
+                u32 form = 0;
+                int shiny = 0;
 
+                if (*list == '.') {
+                    form = (u32)strtoul(list + 1, (char **)&list, 10);     /* "species.form" */
+                }
+                if (*list == 's') {
+                    shiny = 1;                                              /* "species[.form]s" */
+                    list++;
+                }
                 if (sp != 0) {
-                    POKE_TOOL_SetupPartyParam(POKEPARTY_GetMember(party, i), sp, lv, 0);
+                    debug_setup_mon(POKEPARTY_GetMember(party, i), sp, lv, 0, shiny);
+                    if (form != 0 && POKE_TOOL_SetPartyValue != NULL && POKE_TOOL_CalcParam != NULL) {
+                        POKE_TOOL_SetPartyValue(POKEPARTY_GetMember(party, i), DEBUG_PARAM_FORM, (uintptr_t)form);
+                        POKE_TOOL_CalcParam(POKEPARTY_GetMember(party, i));
+                    }
                 }
                 while (*list == ',' || *list == ' ') {
                     list++;
@@ -3033,6 +3222,13 @@ static struct {
     u32 rec_left, rec_n;
     int quit;
 } g_us;
+static int g_us_play;           /* a `play` step ran: the script's end does not quit */
+static int g_us_freeze;         /* a `freeze` step ran: the game's steps stop */
+
+int eidos_ui_script_frozen(void)
+{
+    return g_us_freeze;
+}
 static char g_us_type[128];         /* a `type` step's text for the next frame */
 
 static u32 us_button(const char *s, int n)
@@ -3180,7 +3376,9 @@ static void ui_script_step(void)
             g_us.waiting = 0;
         }
         if (*g_us.pc == '\0') {
-            g_us.quit = g_us.quit ? g_us.quit : 1;
+            if (!g_us_play) {
+                g_us.quit = g_us.quit ? g_us.quit : 1;
+            }
             return;
         }
         e = g_us.pc;
@@ -3300,6 +3498,11 @@ static void ui_script_step(void)
         } else if (strcmp(cmd, "log") == 0) {
             fprintf(stderr, "eidos: ui script: %s (scene %s, input frame %u)\n", line + 4, g_scene,
                     (unsigned)bw_input_frame_number());
+        } else if (strcmp(cmd, "play") == 0) {
+            g_us_play = 1;              /* the script's end hands the game to the player */
+        } else if (strcmp(cmd, "freeze") == 0) {
+            g_us_play = 1;              /* the game stops where it is; the interface and */
+            g_us_freeze = 1;            /* the window go on (the theme review app) */
         } else if (strcmp(cmd, "quit") == 0) {
             g_us.quit = 1;
             return;
@@ -3862,6 +4065,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     touch_scroll_update();
     g_want_text = 0;
     g_want_objs = 0;
+    g_want_3d = 0;
     g_keys_now = bw_input_player_buttons();
     g_keys_edge = (g_keys_now & ~g_keys_prev) | g_tap_keys;     /* (with the hints tapped last frame) */
     g_tap_keys = 0;
@@ -4164,6 +4368,7 @@ void eidos_ui_frame(const EidosUiFrame *in, EidosUiView *view,
     }
     g_text_wanted = g_want_text;
     g_objs_wanted = g_want_objs;
+    g_3d_wanted = g_want_3d;
     bw_input_set_host_mask(g_take);
     /* a phone's taller hint bar lies over the world, as on a computer: the
      * world keeps the whole window, so it does not move as bars come and

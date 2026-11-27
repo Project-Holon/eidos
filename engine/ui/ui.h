@@ -115,7 +115,11 @@ typedef struct EidosUiView {
     int held_backdrop;      /* 1: live world with kept picture halved behind it;
                                2: kept picture at full brightness (cut-in with
                                darkenScreen == 0). Set only on cut-in overlays */
-    int dark;               /* how far the game has faded the world's
+    int wide_bg;            /* non-zero: the world screen's text BGs (a
+                               move's effect background in BG3) continue
+                               past the DS screen's left and right edges, as
+                               their maps wrap, instead of the 3D's ground */
+    int dark;              /* how far the game has faded the world's
                                screen to black, 0..16 (filled by
                                eidos_ui_frame): the kept picture fades with
                                it                                           */
@@ -363,6 +367,14 @@ int  eidos_ui_text_wanted(void);
 void eidos_ui_want_objs(int screen);
 int  eidos_ui_objs_wanted(void);
 
+/* A recipe that composes a screen with its 3D itself (the screens it gets,
+ * EidosUiFrame.screen_rgba, hold one placeholder colour where the GPU
+ * draws the 3D) calls this every frame it wants the 3D frame at DS size:
+ * the CPU rasteriser then also draws it (g3d_hw_frame, at 1x), from the
+ * next frame on.  The request lasts one frame. */
+void eidos_ui_want_3d(void);
+int  eidos_ui_3d_wanted(void);
+
 /* ------------------------------------------------------------------ */
 /* Recipes                                                             */
 /* ------------------------------------------------------------------ */
@@ -403,6 +415,9 @@ void eidos_ui_game_frame(void);
 int  eidos_ui_script_draw(void);
 int  eidos_ui_script_shot(char *name, int cap);
 int  eidos_ui_script_quit(void);
+/* Non-zero once the script's `freeze` step ran: the game's steps stop, the
+ * interface and the window go on (the theme review app). */
+int  eidos_ui_script_frozen(void);
 /* Run fn(arg) on the game's thread at the start of its next frame, in the
  * order queued (a recipe that applies a change through the game's own
  * functions: they allocate and draw, so only the game's thread may call

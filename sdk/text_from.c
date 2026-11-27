@@ -19,7 +19,9 @@
  *     for a plate, the Douse Drive for a drive (types.txt), else none.
  *
  * Only the mod's own entries past the game's (moves from 560, items from
- * 627) are made, and only lines no later mod changed.
+ * 627) are made, and only lines no later mod changed.  A move or an item a
+ * mod adds with no such line at all (in any language) gets one made the same
+ * way, in the port's own layer after every mod's lines.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -294,6 +296,44 @@ static u32 item_source(u32 item)
     return 0;
 }
 
+/* Line `entry` of `bank` for `id` (a move or an item a mod adds), made from
+ * its source's game line with the name swapped (bank 286: the name in
+ * capitals): the count, or -1 when there is nothing to make it from. */
+static int made_line(u32 bank, u32 entry, u32 id, u16 *out)
+{
+    u16 tmpl[MAX_UNITS], from[MAX_UNITS], to[MAX_UNITS];
+    u32 src, name_bank;
+    int nt, nf, nto, k;
+
+    if (bank == BANK_MCAPS) {
+        nto = text_now(BANK_MNAME, id, to);
+        if (nto <= 0) {
+            return -1;
+        }
+        for (k = 0; k < nto; k++) {
+            out[k] = upper(to[k]);
+        }
+        return nto;
+    }
+    src = bank == BANK_USED ? move_source(id) : item_source(id);
+    if (src == 0) {
+        return -1;                      /* (an item with no source) */
+    }
+    name_bank = bank == BANK_USED ? BANK_MNAME : BANK_INAME;
+    nt = text_now(bank, bank == BANK_USED ? src * 3u + entry % 3u : src, tmpl);
+    nf = text_now(name_bank, src, from);
+    nto = text_now(name_bank, id, to);
+    if (nt < 0 || nf <= 0 || nto <= 0) {
+        return -1;
+    }
+    k = swap_name(tmpl, nt, from, nf, to, nto, out);
+    if (k < 0) {
+        fprintf(stderr, "eidos: text: bank %u line %u: the source line does not name its entry; "
+                "the line stays\n", (unsigned)bank, (unsigned)entry);
+    }
+    return k;
+}
+
 /* One bank of one mod: every line of its plain file for an entry it adds,
  * with no line in the game's language and unchanged since, made again. */
 static void make_bank(const char *root, u32 bank, const char *code)
@@ -311,9 +351,9 @@ static void make_bank(const char *root, u32 bank, const char *code)
     made = (BwMsgLine *)calloc(plain.count, sizeof *made);
     for (i = 0; made != NULL && i < plain.count; i++) {
         const BwMsgLine *l = &plain.lines[i];
-        u16 now[MAX_UNITS], tmpl[MAX_UNITS], from[MAX_UNITS], to[MAX_UNITS], out[MAX_UNITS];
-        int nnow, nt, nf, nto, no = -1;
-        u32 id = bank == BANK_USED ? l->index / 3u : l->index, src;
+        u16 now[MAX_UNITS], out[MAX_UNITS];
+        int nnow, no;
+        u32 id = bank == BANK_USED ? l->index / 3u : l->index;
 
         if (line_at(&plain, l->index) != l || (have_local && line_at(&local, l->index) != NULL)) {
             continue;                   /* (a later line of the file, or translated) */
@@ -325,36 +365,9 @@ static void make_bank(const char *root, u32 bank, const char *code)
         if (nnow != (int)l->len || (l->len != 0 && memcmp(now, l->units, l->len * sizeof(u16)) != 0)) {
             continue;                   /* (a later mod changed it) */
         }
-        if (bank == BANK_MCAPS) {
-            int k;
-
-            nto = text_now(BANK_MNAME, id, to);
-            if (nto <= 0) {
-                continue;
-            }
-            for (k = 0; k < nto; k++) {
-                out[k] = upper(to[k]);
-            }
-            no = nto;
-        } else {
-            u32 name_bank = bank == BANK_USED ? BANK_MNAME : BANK_INAME;
-
-            src = bank == BANK_USED ? move_source(id) : item_source(id);
-            if (src == 0) {
-                continue;               /* (an item with no source: its own line stays) */
-            }
-            nt = text_now(bank, bank == BANK_USED ? src * 3u + l->index % 3u : src, tmpl);
-            nf = text_now(name_bank, src, from);
-            nto = text_now(name_bank, id, to);
-            if (nt < 0 || nf <= 0 || nto <= 0) {
-                continue;
-            }
-            no = swap_name(tmpl, nt, from, nf, to, nto, out);
-            if (no < 0) {
-                fprintf(stderr, "eidos: text: bank %u line %u: the source line does not name its entry; "
-                        "the mod's own line stays\n", (unsigned)bank, (unsigned)l->index);
-                continue;
-            }
+        no = made_line(bank, l->index, id, out);
+        if (no < 0) {
+            continue;                   /* (nothing to make it from: the mod's own line stays) */
         }
         made[n].units = (u16 *)malloc(((size_t)no + 1) * sizeof(u16));
         if (made[n].units == NULL) {
@@ -375,6 +388,54 @@ static void make_bank(const char *root, u32 bank, const char *code)
     bw_msg_lines_free(&plain);
     if (have_local) {
         bw_msg_lines_free(&local);
+    }
+}
+
+/* The lines no mod wrote at all for the moves and items mods add (an added
+ * move with no "used" line, an item with no plural): made the same way, in
+ * the port's own layer, after every mod's lines. */
+static void fill_blanks(void)
+{
+    static const u32 banks[] = { BANK_USED, BANK_MCAPS, BANK_ARTICLE, BANK_PLURAL };
+    u32 b, moves_end = (u32)bw_limit_get(BW_PORT_LIMIT_MOVE_LAST) + 1u;
+    u32 items_end = (u32)bw_limit_get(BW_PORT_LIMIT_ITEM_LAST) + 1u;
+
+    for (b = 0; b < sizeof banks / sizeof banks[0]; b++) {
+        u32 bank = banks[b], move = bank == BANK_USED || bank == BANK_MCAPS;
+        u32 first = move ? GAME_MOVES : GAME_ITEMS, end = move ? moves_end : items_end;
+        u32 per = bank == BANK_USED ? 3u : 1u, id, k, n = 0;
+        BwMsgLine *made;
+
+        if (end <= first) {
+            continue;
+        }
+        made = (BwMsgLine *)calloc((size_t)(end - first) * per, sizeof *made);
+        for (id = first; made != NULL && id < end; id++) {
+            for (k = 0; k < per; k++) {
+                u32 entry = bank == BANK_USED ? id * 3u + k : id;
+                u16 now[MAX_UNITS], out[MAX_UNITS];
+                int no;
+
+                if (text_now(bank, entry, now) > 0) {
+                    continue;           /* (a line a mod wrote, or made above) */
+                }
+                no = made_line(bank, entry, id, out);
+                if (no <= 0 || (made[n].units = (u16 *)malloc((size_t)no * sizeof(u16))) == NULL) {
+                    continue;
+                }
+                memcpy(made[n].units, out, (size_t)no * sizeof(u16));
+                made[n].index = entry;
+                made[n].len = (u32)no;
+                n++;
+            }
+        }
+        if (n > 0 && bw_vfs_lines_set("", TEXT_ARCHIVE, bank, made, n) != 0) {
+            fprintf(stderr, "eidos: text: bank %u: the missing lines could not be made\n", (unsigned)bank);
+        }
+        for (k = 0; made != NULL && k < n; k++) {
+            free(made[k].units);
+        }
+        free(made);
     }
 }
 
@@ -400,5 +461,8 @@ void bw_text_from_apply(void)
         for (b = 0; b < sizeof banks / sizeof banks[0]; b++) {
             make_bank(root, banks[b], code);
         }
+    }
+    if (bw_mod_count() > 0) {
+        fill_blanks();
     }
 }

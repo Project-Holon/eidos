@@ -413,8 +413,15 @@ static EidosPadBinding pad_binding_for(const EidosPlatform *p, const EidosPadBin
  * builds without the interface) */
 extern int eidos_ui_debug_battle_started(void) __attribute__((weak));
 
+static int forced_pad_family(void);
+
 int eidos_platform_face_swap(const EidosPlatform *p)
 {
+    int f = forced_pad_family();
+
+    if (f >= 0) {
+        return p != NULL && p->face_default && f != 5 && f != 6;   /* (Switch and GameCube confirm on the right) */
+    }
     return p != NULL && p->face_default && pad_bottom_confirms(p->pad_type);
 }
 
@@ -1388,7 +1395,8 @@ static void render(EidosPlatform *p)
                              ((p->ui_view.cap_mix & 31) << 13) |
                              (p->ui_view.ds_only ? 1 << 18 : 0) |
                              (p->ui_view.spare_world ? 1 << 19 : 0) |
-                             (p->ui_view.held_backdrop ? (p->ui_view.held_backdrop & 3) << 20 : 0));
+                             (p->ui_view.held_backdrop ? (p->ui_view.held_backdrop & 3) << 20 : 0) |
+                             (p->ui_view.wide_bg ? 1 << 22 : 0));
         } else {
             eidos_gpu_one_set(p->gl, 0, 0, 0, NULL, 0, 0, 0);
         }
@@ -2336,6 +2344,18 @@ void eidos_platform_set_3d_zero(EidosPlatform *p, const u8 *zero)
     }
 }
 
+int eidos_platform_world_wide_bg(EidosPlatform *p)
+{
+    return p != NULL && world_active(p) && p->ui_view.wide_bg != 0;
+}
+
+void eidos_platform_set_3d_side(EidosPlatform *p, const u8 *side)
+{
+    if (eidos_platform_gpu3d(p)) {
+        eidos_gpu_set_3d_side(p->gl, side, (int)SCREEN_W, (int)SCREEN_H);
+    }
+}
+
 int eidos_platform_gpu2d(EidosPlatform *p, const struct G2dGpuFrame *f, u8 *readback)
 {
     if (p == NULL || p->gl == NULL) {
@@ -2595,8 +2615,21 @@ int eidos_platform_mouse(const EidosPlatform *p, struct EidosUiMouse *m)
     return 1;
 }
 
+/* For checks only: EIDOS_PAD_FAMILY=N (padglyph.h UI_PAD_*) plays a pad of
+ * that family in use, whatever is plugged in (the theme review app's
+ * console views: the Switch's, the Steam Deck's, the Vita's buttons). */
+static int forced_pad_family(void)
+{
+    const char *s = getenv("EIDOS_PAD_FAMILY");
+
+    return s != NULL && s[0] >= '0' && s[0] <= '7' && s[1] == '\0' ? s[0] - '0' : -1;
+}
+
 int eidos_platform_pad_last(const EidosPlatform *p)
 {
+    if (forced_pad_family() >= 0) {
+        return 1;
+    }
     return p != NULL && p->pad_last;
 }
 
@@ -2679,6 +2712,9 @@ void eidos_platform_key_names(const EidosPlatform *p, const char *names[12])
  * from the type SDL reports; Xbox One for a pad SDL cannot place. */
 int eidos_platform_pad_family(const EidosPlatform *p)
 {
+    if (forced_pad_family() >= 0) {
+        return forced_pad_family();
+    }
     switch (p != NULL ? p->pad_type : SDL_GAMEPAD_TYPE_UNKNOWN) {
     case SDL_GAMEPAD_TYPE_XBOX360:                    return 0;
     case SDL_GAMEPAD_TYPE_PS3:                        return 2;
@@ -2770,6 +2806,21 @@ void eidos_platform_safe_area(const EidosPlatform *p, int *x, int *y, int *w, in
         *y = r.y * oh / wh;
         *w = r.w * ow / ww;
         *h = r.h * oh / wh;
+    }
+    {
+        /* For checks only: EIDOS_SAFE_AREA="L T R B" (window pixels the
+         * system covers on each side), a phone's notch and corners on a
+         * desktop window (the theme review app's phone views). */
+        const char *sa = getenv("EIDOS_SAFE_AREA");
+        int l, t, rr, b;
+
+        if (sa != NULL && sscanf(sa, "%d %d %d %d", &l, &t, &rr, &b) == 4 && l >= 0 && t >= 0 && rr >= 0 && b >= 0
+            && l + rr < ow && t + b < oh) {
+            *x = l;
+            *y = t;
+            *w = ow - l - rr;
+            *h = oh - t - b;
+        }
     }
     if (edge != NULL) {
         m = ow * atoi(edge) / 100;
