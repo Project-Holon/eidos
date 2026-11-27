@@ -137,6 +137,24 @@ static int hp_value(const char *s, size_t n, int *out)
     return int_value(s + 2, n - 2, 1, 16, out);
 }
 
+extern int bw_type_by_name(const char *s, size_t n) __attribute__((weak));     /* sdk/type_icons.c */
+extern u32 bw_type_count(void) __attribute__((weak));                           /* sdk/type_chart.c */
+
+/* A type: the game's name, an added type's types.txt `name`, or its number
+ * (0 up to the mods' type limit). */
+static int type_value(const char *s, size_t n, int *out)
+{
+    u32 count = bw_type_count != NULL ? bw_type_count() : 17u;
+
+    if (word_value(k_types, s, n, out) == 0) {
+        return 0;
+    }
+    if (bw_type_by_name != NULL && (*out = bw_type_by_name(s, n)) >= 0) {
+        return 0;
+    }
+    return int_value(s, n, 0, (int)count - 1, out);
+}
+
 static int key_value(int key, const char *s, size_t n, int *out)
 {
     switch (key) {
@@ -144,7 +162,7 @@ static int key_value(int key, const char *s, size_t n, int *out)
     case BW_BH_KEY_STAGES:  return int_value(s, n, -6, 6, out);
     case BW_BH_KEY_STATUS:  return word_value(k_status, s, n, out);
     case BW_BH_KEY_CHANCE:  return int_value(s, n, 0, 100, out);
-    case BW_BH_KEY_TYPE:    return word_value(k_types, s, n, out);
+    case BW_BH_KEY_TYPE:    return type_value(s, n, out);
     case BW_BH_KEY_RATIO:   return ratio_value(s, n, out);
     case BW_BH_KEY_HP:      return hp_value(s, n, out);
     case BW_BH_KEY_WEATHER: return word_value(k_weather, s, n, out);

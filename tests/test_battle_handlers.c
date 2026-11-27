@@ -55,6 +55,10 @@ int main(void)
     BW_CHECK_EQ("the parsed value", bw_bh_key(BW_BH_ABILITY, 165, BW_BH_KEY_STAT, 1, &v) && v == 3, 1);
     BW_CHECK_EQ("a ratio in 4096ths", bw_bh_key(BW_BH_ABILITY, 166, BW_BH_KEY_RATIO, 1, &v) && v == 8192, 1);
     BW_CHECK_EQ("a type by name", bw_bh_key(BW_BH_ABILITY, 166, BW_BH_KEY_TYPE, 1, &v) && v == 10, 1);
+    BW_CHECK_EQ("a type by number", line(BW_BH_ABILITY, "169 = 66 type=12"), 0);
+    BW_CHECK_EQ("its value", bw_bh_key(BW_BH_ABILITY, 169, BW_BH_KEY_TYPE, 1, &v) && v == 12, 1);
+    BW_CHECK_EQ("a type past the limit (no mod adds one)", line(BW_BH_ABILITY, "168 = 66 type=17"), -1);
+    BW_CHECK_EQ("a type no table names", line(BW_BH_ABILITY, "168 = 66 type=fairy"), -1);
     BW_CHECK_EQ("a later line wins", line(BW_BH_ABILITY, "165 = 22 stat=spdef stages=-2"), 0);
     BW_CHECK_EQ("its value", bw_bh_key(BW_BH_ABILITY, 165, BW_BH_KEY_STAT, 1, &v) && v == 4, 1);
 

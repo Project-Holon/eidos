@@ -108,6 +108,7 @@ typedef struct AddedType {
     u32 hof_fx, hof_pal;
     int has_color;
     u32 color;              /* 0xRRGGBB                              */
+    char name[24];          /* its word in the tables (`type=fairy`) */
     int variants;           /* the icon variants are in memory       */
     int labels;             /* the label variants are in memory      */
 } AddedType;
@@ -222,9 +223,23 @@ static void type_line(const char *path, u32 line, char *text, int root)
             t.color = c;
             t.has_color = 1;
             i++;
+        } else if (strcmp(k, "name") == 0 && i < n) {
+            const char *s = w[i++];
+            size_t l = strlen(s), q;
+            int ok = l > 0 && l < sizeof t.name;
+
+            for (q = 0; ok && q < l; q++) {
+                ok = (s[q] >= 'a' && s[q] <= 'z') || (s[q] >= '0' && s[q] <= '9' && q > 0) || s[q] == '_';
+            }
+            if (ok) {
+                memcpy(t.name, s, l + 1);
+            } else {
+                fprintf(stderr, "eidos: %s:%u: `name %s` is not a lowercase word (a to z, 0 to 9, _); left out\n",
+                        path, (unsigned)line, s);
+            }
         } else {
-            fprintf(stderr, "eidos: %s:%u: `%s` is not a key of types.txt (icon, colors, label, button, hof, color)\n",
-                    path, (unsigned)line, k);
+            fprintf(stderr, "eidos: %s:%u: `%s` is not a key of types.txt (icon, colors, label, button, hof, color, "
+                    "name)\n", path, (unsigned)line, k);
             return;
         }
     }
@@ -403,6 +418,22 @@ void bw_type_icons_apply(void)
             }
         }
     }
+}
+
+/* The added type a types.txt `name` names (`fairy`), -1 for none.  Read
+ * at the first ask after the mod list is applied. */
+int bw_type_by_name(const char *s, size_t n)
+{
+    u32 type;
+
+    for (type = GAME_TYPES; type <= MAX_TYPE; type++) {
+        AddedType *t = added(type);
+
+        if (t != NULL && t->have && t->name[0] != '\0' && strlen(t->name) == n && strncmp(t->name, s, n) == 0) {
+            return (int)type;
+        }
+    }
+    return -1;
 }
 
 int bw_type_ui_color(u32 type, u32 *rgb)

@@ -95,7 +95,7 @@ index keeps it, so a mod can reword them or translate them:
 | `chance` | 0 to 100 | a percent roll |
 | `hp` | `1/1` to `1/16` | an HP fraction (of the Pokemon's maximum HP) |
 | `ratio` | 0.1 to 4.0 | a multiplier it applies (power, damage, accuracy, speed) |
-| `type` | `normal` to `dark` | a type it tests (pinch abilities, absorb abilities, resist berries) |
+| `type` | `normal` to `dark`, an added type's `name` from `types.txt` (`fairy`), or a type number up to `limit.types` | a type it tests (pinch abilities, absorb abilities, resist berries) |
 
 An id whose handlers use two numbers of one kind in different handlers
 numbers them in its handler table's order: `ratio` and `ratio.2`, `stat.2`

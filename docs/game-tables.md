@@ -180,7 +180,7 @@ Mods add types past the base game's 17 by raising `limit.types` (up to 30) in th
 
 Defines each added type's graphics and colors.
 
-    17 = icon 172 colors F6A5D5 9C4A7B label 113 button F6A4D5 D594BD BD7BA4 9C6A8B 835273 624152 hof 47 17 color F6A5D5
+    17 = name fairy icon 172 colors F6A5D5 9C4A7B label 113 button F6A4D5 D594BD BD7BA4 9C6A8B 835273 624152 hof 47 17 color F6A5D5
 
 - `icon`: Member of a/0/8/3 (32x16 4bpp RGCN, matching member 0x22). Uses palette indices 0 (transparent), 1 and 2 (from `colors`), 14 (outline), and 15 (white text).
 - `colors`: One or two RRGGBB colors for icon palette indices 1 and 2.
@@ -188,5 +188,6 @@ Defines each added type's graphics and colors.
 - `button`: Six RRGGBB shades for the battle move button. Defaults to Normal's button.
 - `hof`: Hall of Fame particle and palette members in a/2/1/6. Defaults to Normal's.
 - `color`: RRGGBB color for the one-screen interface. Defaults to the first `colors` entry.
+- `name`: A lowercase word (`a` to `z`, `0` to `9`, `_`) that battle handler tables use for the type (`type=fairy`, see `docs/battle-handlers.md`). The type's displayed name comes from text bank 199.
 
 A type without an entry or a valid icon falls back to Normal's icon. A later mod's entry for a type overrides an earlier one. Each screen allocates colors for the added types it displays, so up to six added types can appear on one screen at a time.

@@ -5,6 +5,8 @@
 #ifndef BW_PORT_TYPE_ICONS_H
 #define BW_PORT_TYPE_ICONS_H
 
+#include <stddef.h>
+
 #include "types.h"
 
 #ifdef __cplusplus
@@ -68,6 +70,10 @@ void bw_type_icon_chars_release(const void *owner);
 /* An added type's colour on the one-screen interface (types.txt `color`,
  * else its first `colors`): 1 and *rgb (0xRRGGBB), or 0. */
 int bw_type_ui_color(u32 type, u32 *rgb);
+
+/* The added type a types.txt `name` names (`fairy`: the battle tables'
+ * `type=fairy`), -1 for none. */
+int bw_type_by_name(const char *s, size_t n);
 
 /* The row a fade over `rows` of `bank` of `palanm` also covers (palanm_fade.c):
  * the bit to add, or 0. */

@@ -39,7 +39,7 @@ enum {
     BW_BH_KEY_STAGES,       /* amount of a stat change: -6..6             */
     BW_BH_KEY_STATUS,       /* the status it adds (the game's sick id)    */
     BW_BH_KEY_CHANCE,       /* a percent roll, 0..100                     */
-    BW_BH_KEY_TYPE,         /* a type it tests, 0..16                     */
+    BW_BH_KEY_TYPE,         /* a type it tests, 0 up to the type limit    */
     BW_BH_KEY_RATIO,        /* a multiplier, in 4096ths                   */
     BW_BH_KEY_HP,           /* an HP fraction's divisor, 1..16            */
     BW_BH_KEY_WEATHER,      /* the weather it starts                      */
