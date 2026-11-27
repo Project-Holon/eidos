@@ -514,7 +514,7 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
 
         if (on) {
-            const char *s = "PRESS START";
+            const char *s = ui_tr("PRESS START");
             int tw = ui_text_w(s, UI_FONT_LARGE), pw = tw + 36, ph = 26;
             int px = (W - pw) / 2, themed;
 
@@ -541,10 +541,10 @@ static void title_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     }
     /* the credit, bottom left (dark ink on White's light floor) */
     if (tt_white()) {
-        ui_text(c, 6, H - ui_bar_h(c) - 11, "Developed by GAME FREAK inc.", UI_RAW(0x303038u),
+        ui_text(c, 6, H - ui_bar_h(c) - 11, ui_tr("Developed by GAME FREAK inc."), UI_RAW(0x303038u),
                 (s32)UI_RAW(0xF4F4F4u), UI_FONT_SMALL, 1);
     } else {
-        ui_text(c, 6, H - ui_bar_h(c) - 11, "Developed by GAME FREAK inc.", UI_LIGHT, 0x202020u,
+        ui_text(c, 6, H - ui_bar_h(c) - 11, ui_tr("Developed by GAME FREAK inc."), UI_LIGHT, 0x202020u,
                 UI_FONT_SMALL, 1);
     }
 
@@ -923,7 +923,7 @@ static int card_draw(EidosUiCtx *c, int x, int y, int w, int h, const SaveInfo *
     ui_panel(c, x + 2, y + 2, w - 4, tb - 4, UI_CUT_TL, 7,
              on ? 0x00718Fu : 0x061E38u, on ? 0x00718Fu : 0x061E38u, 255);
     ui_fill(c, x + 2, y + tb - 2, w - 4, 1, on ? UI_CYAN : UI_NAVY2, 255);
-    ui_text(c, x + 10, y + 2 + ui_text_y(tb - 4, UI_FONT_LARGE), "CONTINUE", UI_WHITE,
+    ui_text(c, x + 10, y + 2 + ui_text_y(tb - 4, UI_FONT_LARGE), ui_tr("CONTINUE"), UI_WHITE,
                  CARD_SHADE, UI_FONT_LARGE, 1);
     if (slots > 1 && label != NULL && label[0] != '\0') {
         /* The save slots: a strip on the card's right edge, an up arrow, the
@@ -1033,14 +1033,14 @@ static int card_draw(EidosUiCtx *c, int x, int y, int w, int h, const SaveInfo *
             for (k = 0; k < n; k++) {
                 int cx = gx + (k & 1) * cw, cy = gy + (k >> 1) * 29;
 
-                ui_text(c, cx, cy, cap[k], CARD_LIGHT, CARD_SHADE, UI_FONT_SMALL, 1);
+                ui_text(c, cx, cy, ui_tr(cap[k]), CARD_LIGHT, CARD_SHADE, UI_FONT_SMALL, 1);
                 ui_text(c, cx, cy + 10, v[k], UI_WHITE, CARD_SHADE, UI_FONT_LARGE, 1);
             }
         } else {
             int cw = gw / n;
 
             for (k = 0; k < n; k++) {
-                ui_text(c, gx + k * cw, gy, cap[k], CARD_LIGHT, CARD_SHADE, UI_FONT_SMALL, 1);
+                ui_text(c, gx + k * cw, gy, ui_tr(cap[k]), CARD_LIGHT, CARD_SHADE, UI_FONT_SMALL, 1);
                 ui_text(c, gx + k * cw, gy + 10, v[k], UI_WHITE, CARD_SHADE, UI_FONT_LARGE, 1);
             }
         }
@@ -1103,7 +1103,7 @@ static void title_yes_no(EidosUiCtx *c, const EidosUiFrame *in, const u8 *menu, 
             name_utf8(STRBUF_GetChars((void *)sb), label[i], 24);
         }
         if (label[i][0] == '\0') {
-            snprintf(label[i], sizeof label[i], "%s", i == 0 ? "YES" : "NO");
+            snprintf(label[i], sizeof label[i], "%s", ui_tr(i == 0 ? "YES" : "NO"));
         }
         if (ui_text_w(label[i], UI_FONT_LARGE) + 30 > w) {
             w = ui_text_w(label[i], UI_FONT_LARGE) + 30;
@@ -1737,9 +1737,9 @@ static int style_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         const char *hp[8];
         u32 hk[4];
         int hn = 0;
-        const char *head = "Choose a style";
-        const char *sub = g_style_first ? "You can change it later from this menu."
-                                        : "Applies instantly.";
+        const char *head = ui_tr("Choose a style");
+        const char *sub = g_style_first ? ui_tr("You can change it later from this menu.")
+                                        : ui_tr("Applies instantly.");
         int m = W >= 560 ? 14 : 8, gap = 8, cw = (W - 2 * m - 2 * gap) / 3, chh = cw * 9 / 16;
         int block = 52 + chh + 22, top = (H - bar - block) / 2 + 52, act = -1, x;
 
@@ -1796,9 +1796,9 @@ static int style_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             style_sign(c, x + 5, top + chh + 4, i, lit);
             ui_text(c, x + 23, top + chh + ui_text_y(20, UI_FONT_LARGE), k_style_name[i],
                     UI_RAW(lit ? 0xFFFFFFu : 0x9AA0AEu), (s32)UI_RAW(0x000000u), UI_FONT_LARGE, 1);
-            if (ui_text_w(k_style_name[i], UI_FONT_LARGE) + ui_text_w(k_style_line[i], UI_FONT_SMALL) + 36 <= cw) {
-                ui_text(c, x + cw - 5 - ui_text_w(k_style_line[i], UI_FONT_SMALL),
-                        top + chh + ui_text_y(20, UI_FONT_SMALL), k_style_line[i], UI_RAW(lit ? 0xAAB0BEu : 0x6E7482u),
+            if (ui_text_w(k_style_name[i], UI_FONT_LARGE) + ui_text_w(ui_tr(k_style_line[i]), UI_FONT_SMALL) + 36 <= cw) {
+                ui_text(c, x + cw - 5 - ui_text_w(ui_tr(k_style_line[i]), UI_FONT_SMALL),
+                        top + chh + ui_text_y(20, UI_FONT_SMALL), ui_tr(k_style_line[i]), UI_RAW(lit ? 0xAAB0BEu : 0x6E7482u),
                         -1, UI_FONT_SMALL, 1);
             }
         }
@@ -1984,7 +1984,7 @@ static EidosUiRect mods_flag(EidosUiCtx *c, int hot, int on)
         cwid = r.w - 16;
     }
 #define FLAG_X(row) (left + lean * (r.h - (row)) / r.h)
-    ui_text(c, FLAG_X(6) + (cwid - ui_text_w("MODS", UI_FONT_SMALL)) / 2, r.y + 3, "MODS", UI_RAW(0xF8F8F8u),
+    ui_text(c, FLAG_X(6) + (cwid - ui_text_w(ui_tr("MODS"), UI_FONT_SMALL)) / 2, r.y + 3, ui_tr("MODS"), UI_RAW(0xF8F8F8u),
             (s32)UI_RAW(0x101014u), UI_FONT_SMALL, 1);
     snprintf(line, sizeof line, ui_trf("%d ON"), on);
     ui_text(c, FLAG_X(19) + (cwid - ui_text_w(line, UI_FONT_SMALL)) / 2, r.y + 15, line, UI_RAW(0xBEC4D0u),
@@ -2330,7 +2330,7 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
     wh = H - bar - 16;
     ui_panel(c, x0, y0, ww, wh, UI_CUT_TL | UI_CUT_BR, 9, UI_BODY, UI_EDGE, 246);
     snprintf(right, sizeof right, ui_trf("%d ON"), on);
-    ui_header(c, x0 + 4, y0 + 4, ww - 8, "MODS", "", right, UI_CYAN);
+    ui_header(c, x0 + 4, y0 + 4, ww - 8, ui_tr("MODS"), "", right, UI_CYAN);
     top = y0 + 4 + 22 + 6;
     foot = y0 + wh - 8;
     lx = x0 + 8;
@@ -2806,7 +2806,7 @@ static int mods_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in,
     nh += 2;
     if (tabs) {
         hints[nh] = "\xE2\x86\x90\xE2\x86\x92";
-        hints[nh + 1] = "Tab";
+        hints[nh + 1] = "Tabs";      /* ("Tab" is the key) */
         hint_keys[nh / 2] = BW_KEY_RIGHT;
         nh += 2;
     }
@@ -2987,7 +2987,8 @@ static int ver_screen(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, 
         return 0;
     }
     busy = state == VADD_CHOOSING || state == VADD_CHECKING || state == VADD_WRITING || state == VADD_DONE;
-    other = eidos_boot_game() == VER_WHITE ? "Black" : "White";
+    /* the version's name as the game's text has it (a/0/0/2 72/13 and 72/14) */
+    other = ui_tr(eidos_boot_game() == VER_WHITE ? "Black Version" : "White Version");
 
     backdrop(c, W, H, (int)in->frame);
     switch (state) {
@@ -3502,10 +3503,10 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 request(i, ACT_A);
             }
             if (theme->title_menu_row != NULL) {
-                theme->title_menu_row(c, r.x, r.y, r.w, r.h, kind_label(kinds[i], hook, settings_row),
+                theme->title_menu_row(c, r.x, r.y, r.w, r.h, ui_tr(kind_label(kinds[i], hook, settings_row)),
                                       i == cursor && eidos_ui_keys_lit(), (st & EIDOS_UI_HOVER) != 0);
             } else {
-                row_draw(c, r.x, r.y, r.w, r.h, kind_label(kinds[i], hook, settings_row),
+                row_draw(c, r.x, r.y, r.w, r.h, ui_tr(kind_label(kinds[i], hook, settings_row)),
                          i == cursor && eidos_ui_keys_lit(), (st & EIDOS_UI_HOVER) != 0);
             }
         }

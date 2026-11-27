@@ -1334,7 +1334,7 @@ void rx_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *name
     if (name == NULL) {
         surface_tint(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 5, 0, 0x06182Cu, 150);
         rx_label(c, x + 6, y + ui_text_y(h, UI_FONT_LARGE), num, 0, 0x6A6A6Au, UI_FONT_LARGE);
-        rx_label(c, x + 40, y + ui_text_y(h, UI_FONT_LARGE), "Empty", 0, 0x6A6A6Au, UI_FONT_LARGE);
+        rx_label(c, x + 40, y + ui_text_y(h, UI_FONT_LARGE), ui_tr("Empty"), 0, 0x6A6A6Au, UI_FONT_LARGE);
         return;
     }
     surface_tint(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 5, selected, UI_NAVY, 240);

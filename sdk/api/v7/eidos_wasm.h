@@ -112,6 +112,7 @@ enum {
     EIDOS_EVENT_MOVE_KNOWN = 126,
     EIDOS_EVENT_WEB = 127,
     EIDOS_EVENT_SETTING_BUTTON = 128,
+    EIDOS_EVENT_CONFIRM_DONE = 129,
     EIDOS_MOVE_SITE_FRONT_TILE = 0,
     EIDOS_MOVE_SITE_SCRIPT = 1,
     EIDOS_MOVE_SITE_PARTY_MENU = 2,
@@ -949,6 +950,14 @@ typedef struct EidosSettingButton {
     uint8_t key[64];  /* the button's key, NUL-terminated */
 } EidosSettingButton;  /* 72 bytes */
 
+typedef struct EidosConfirmDone {
+    EidosEvent h;
+    uint32_t ticket;  /* the question (confirm_ask's *ticket) */
+    uint32_t tag;  /* the asker's own number for it (confirm_ask's tag) */
+    uint8_t answer;  /* 1 yes, 0 no */
+    uint8_t pad[3];
+} EidosConfirmDone;  /* 20 bytes */
+
 /* A handler: return EIDOS_EVENT_CONTINUE or EIDOS_EVENT_REFUSE. */
 typedef int32_t (*EidosHandler)(EidosEvent *event);
 
@@ -1099,6 +1108,9 @@ EIDOS_IMPORT("popup") int32_t eidos_popup(const char *title, const char *text, u
 EIDOS_IMPORT("setting_show") int32_t eidos_setting_show(const char *key, const char *text);
 EIDOS_IMPORT("setting_set_text") int32_t eidos_setting_set_text(const char *key, const char *text);
 EIDOS_IMPORT("hardcore_allowed") int32_t eidos_hardcore_allowed(char *why, uint32_t size);
+EIDOS_IMPORT("string_get") int32_t eidos_string_get(const char *key, char *out, uint32_t size);
+EIDOS_IMPORT("string_language") int32_t eidos_string_language(char *out, uint32_t size);
+EIDOS_IMPORT("confirm_ask") int32_t eidos_confirm_ask(const char *text, uint32_t tag, uint32_t *ticket);
 
 /* What the module must export. */
 EIDOS_EXPORT("eidos_mod_start") int32_t eidos_mod_start(void);

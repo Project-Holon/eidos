@@ -48,6 +48,7 @@
 #include "mod_event.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
@@ -264,6 +265,7 @@ static u32 payload_size(u32 kind)
     case BW_EVENT_AP:           return (u32)sizeof(BwAp);
     case BW_EVENT_WEB:          return (u32)sizeof(BwWeb);
     case BW_EVENT_SETTING_BUTTON: return (u32)sizeof(BwSettingButton);
+    case BW_EVENT_CONFIRM_DONE: return (u32)sizeof(BwConfirmDone);
     case BW_EVENT_MOVE_KNOWN:   return (u32)sizeof(BwMoveKnown);
 
     default:                     return (u32)sizeof(BwEvent);
@@ -499,8 +501,18 @@ int bw_mod_event_scope_matches(unsigned int scope_region,
  */
 static int run_handlers(u32 kind, BwEventPayload *payload)
 {
+    static int log_events = -1;
     u32 i;
     int refused = 0;
+
+    /* EIDOS_MOD_EVENT_LOG: every firing in the log, by its id
+     * (sdk/mod_api.h), to see that one action fires its event once */
+    if (log_events < 0) {
+        log_events = getenv("EIDOS_MOD_EVENT_LOG") != NULL;
+    }
+    if (log_events) {
+        fprintf(stderr, "eidos: mod event %u\n", (unsigned int)kind);
+    }
 
     for (i = g_kind_head[kind]; i != 0; i = g_handlers[i - 1].next) {
         if (g_handlers[i - 1].fn(g_handlers[i - 1].state, &payload->h) ==

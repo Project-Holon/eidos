@@ -91,6 +91,8 @@ extern void        bw_mod_avatar_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_handoff_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_v6_frame(void) BW_PORT_WEAK;
 extern void        bw_mod_web_frame(void) BW_PORT_WEAK;
+extern void        bw_mod_battle_start_frame(void) BW_PORT_WEAK;
+extern void        bw_mod_text_frame(void) BW_PORT_WEAK;
 
 /* ------------------------------------------------------------------ */
 /* The limits                                                          */
@@ -278,6 +280,18 @@ void bw_mod_frame_tick(void)
     /* Version 7: the answers to the mods' web requests (sdk/mod_web.c). */
     if (bw_mod_web_frame != NULL) {
         bw_mod_web_frame();
+    }
+
+    /* battle.start for a battle no setup row built (the Battle Subway's,
+     * a link battle), once its overlay is in (sdk/mod_event_battle.c). */
+    if (bw_mod_battle_start_frame != NULL) {
+        bw_mod_battle_start_frame();
+    }
+
+    /* The mods' texts get a turn of their own in the field, after the
+     * handlers that queued them (sdk/mod_text.c). */
+    if (bw_mod_text_frame != NULL) {
+        bw_mod_text_frame();
     }
 }
 

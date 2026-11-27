@@ -98,7 +98,39 @@ pub struct PackageInfo {
     pub bytes: u64,
 }
 
-fn read_info(dir: &Path, enabled: bool) -> ModInfo {
+/// The game's language as a mod's files name it (eidos sdk/mod_strings.c,
+/// bw_mod_lang_code), for a profile's language: "fr", "de", "it" or "es";
+/// anything else is "en" (eidos plays a Japanese cartridge's text as
+/// English for now).
+fn lang_code(language: &str) -> &'static str {
+    match language {
+        "fr" => "fr",
+        "de" => "de",
+        "it" => "it",
+        "es" => "es",
+        _ => "en",
+    }
+}
+
+/// A manifest's `<key>.<lang>` line (`name.fr`), as eidos reads it
+/// (sdk/mod_manifest.c): the last one that is not empty counts; None for
+/// none.
+fn local_of(manifest: &str, key: &str, lang: &str) -> Option<String> {
+    let want = format!("{key}.{lang}");
+    let mut out = None;
+    for line in manifest.lines() {
+        let line = line.split('#').next().unwrap_or("");
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        if k.trim() == want && !v.trim().is_empty() {
+            out = Some(v.trim().to_string());
+        }
+    }
+    out
+}
+
+fn read_info(dir: &Path, enabled: bool, lang: &str) -> ModInfo {
     let folder = dir
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -108,7 +140,7 @@ fn read_info(dir: &Path, enabled: bool) -> ModInfo {
     let installed = crate::catalog::installed(dir);
     ModInfo {
         folder,
-        name: m.name,
+        name: local_of(text.as_deref().unwrap_or(""), "name", lang).unwrap_or(m.name),
         order: m.order,
         enabled,
         has_manifest: text.is_some(),
@@ -131,14 +163,22 @@ fn subdirs(dir: &Path) -> Vec<PathBuf> {
 }
 
 /// Every mod of the profile, enabled ones first, then by name.
+#[cfg(test)]
 pub fn list(profile_dir: &Path) -> Vec<ModInfo> {
+    list_in(profile_dir, "")
+}
+
+/// Every mod of the profile, each named in the profile's language (its
+/// manifest's `name.<lang>`, else `name`), enabled ones first, then by name.
+pub fn list_in(profile_dir: &Path, language: &str) -> Vec<ModInfo> {
+    let lang = lang_code(language);
     let mut out: Vec<ModInfo> = subdirs(&profile_dir.join(ON))
         .iter()
-        .map(|d| read_info(d, true))
+        .map(|d| read_info(d, true, lang))
         .chain(
             subdirs(&profile_dir.join(OFF))
                 .iter()
-                .map(|d| read_info(d, false)),
+                .map(|d| read_info(d, false, lang)),
         )
         .collect();
     out.sort_by_key(|m| (!m.enabled, m.name.to_lowercase()));
@@ -324,6 +364,25 @@ mod tests {
         assert_eq!(eidos_of("eidos = 0.2\n"), "");
         assert_eq!(eidos_of("eidos = v0.2.8\n"), "");
         assert_eq!(eidos_of("eidos = 0.2.8\neidos = 0.2.9\n"), "0.2.9");
+    }
+
+    #[test]
+    fn reads_the_name_in_the_profiles_language() {
+        let t = "name = Words\nname.fr = Mots  # French\nname.de =\nname.it = Parole\n";
+        assert_eq!(
+            local_of(t, "name", lang_code("fr")).as_deref(),
+            Some("Mots")
+        );
+        assert_eq!(local_of(t, "name", lang_code("de")), None);
+        assert_eq!(local_of(t, "name", lang_code("")), None);
+        assert_eq!(lang_code("ja-kana"), "en");
+        let p = tempfile::tempdir().unwrap();
+        let d = p.path().join(ON).join("words");
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join(MANIFEST), t).unwrap();
+        assert_eq!(list_in(p.path(), "it")[0].name, "Parole");
+        assert_eq!(list_in(p.path(), "es")[0].name, "Words");
+        assert_eq!(list_in(p.path(), "it")[0].folder, "words");
     }
 
     #[test]

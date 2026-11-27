@@ -137,6 +137,7 @@
 #include "mod_script.h"
 #include "mod_slot.h"
 #include "mod_state.h"
+#include "mod_strings.h"
 #include "mod_text.h"
 #include "mp.h"
 #include "mod_timer.h"
@@ -910,6 +911,46 @@ static int loader_keep_manifest(void *manifest)
     return 0;
 }
 
+/* One file of a mod's interface words (docs/mod-ui-text.md), `rel` under
+ * the mod's folder `base`, given to the interface under the mod's slot.
+ * `must`: the manifest names it, so a file that cannot be read is
+ * reported; the language files beside it are there or not. */
+static void loader_ui_text(u32 slot, const char *label, const char *base, const char *rel, int must)
+{
+    char path[1024];
+    FILE *f;
+    char *buf = NULL;
+    long len = -1;
+    int there;
+    int n = snprintf(path, sizeof path, "%s/%s", base, rel);
+
+    if (n <= 0 || (size_t)n >= sizeof path) {
+        return;
+    }
+    f = fopen(path, "rb");
+    there = f != NULL;
+    if (f != NULL && fseek(f, 0, SEEK_END) == 0) {
+        len = ftell(f);
+        if (len >= 0 && len <= (1L << 22) && fseek(f, 0, SEEK_SET) == 0) {
+            buf = (char *)malloc((size_t)len + 1u);
+            if (buf != NULL && fread(buf, 1, (size_t)len, f) != (size_t)len) {
+                free(buf);
+                buf = NULL;
+            }
+        }
+    }
+    if (f != NULL) {
+        fclose(f);
+    }
+    if (buf != NULL) {
+        fprintf(stderr, "eidos: mod %s: %d interface words (%s)\n", label,
+                ui_lang_mod_add(slot, buf, (size_t)len), rel);
+        free(buf);
+    } else if (must || there) {
+        fprintf(stderr, "eidos: mod %s: the ui_text file %s could not be read\n", label, rel);
+    }
+}
+
 /*
  * Load one mod: the mod at `index` of the mod list (sdk/vfs.h), which is
  * the load order.  Returns 1 when the mod is loaded, 0 when it is not: a
@@ -972,6 +1013,8 @@ static int loader_load(u32 index)
     copy_str(m->name, sizeof(m->name), mod_label(name, label));
     copy_str(m->ns, sizeof(m->ns), ns != NULL ? ns : label);
     copy_str(m->root, sizeof(m->root), root);
+    /* the mod's strings files, for its code and its rules (string_get) */
+    bw_mod_strings_bind(m->ns, root);
 
     /* The tables, before the rules: a rule that reads a table is checked
      * against the tables the mod has (sdk/mod_table.h).  The path is
@@ -1001,42 +1044,29 @@ static int loader_load(u32 index)
     }
 
     /* The interface's words in the mod's language (docs/mod-ui-text.md),
-     * relative to the mod's folder like a table. */
-    {
+     * relative to the mod's folder like a table; then the ones for the
+     * game's language, `ui_text.<lang>.txt` beside it (`ui_text.fr.txt`
+     * for `ui_text.txt`; that name at the root when the manifest names no
+     * file), which come after and so win (docs/mod-strings.md). */
+    if (ui_lang_mod_add != NULL) {
         const char *ui = bw_mod_manifest_ui_text(manifest);
-        char path[1024];
-        int n = -1;
+        const char *base = root != NULL && *root != '\0' ? root : dir_name;
+        char local[512];
 
-        if (ui != NULL && ui[0] != '\0' && ui_lang_mod_add != NULL) {
-            n = snprintf(path, sizeof path, "%s/%s",
-                         root != NULL && *root != '\0' ? root : dir_name, ui);
-        }
-        if (n > 0 && (size_t)n < sizeof path) {
-            FILE *f = fopen(path, "rb");
-            char *buf = NULL;
-            long len = -1;
+        if (ui != NULL && ui[0] != '\0') {
+            const char *slash = strrchr(ui, '/');
+            const char *dot = strrchr(slash != NULL ? slash : ui, '.');
+            size_t stem = dot != NULL ? (size_t)(dot - ui) : strlen(ui);
 
-            if (f != NULL && fseek(f, 0, SEEK_END) == 0) {
-                len = ftell(f);
-                if (len >= 0 && len <= (1L << 22) && fseek(f, 0, SEEK_SET) == 0) {
-                    buf = (char *)malloc((size_t)len + 1u);
-                    if (buf != NULL && fread(buf, 1, (size_t)len, f) != (size_t)len) {
-                        free(buf);
-                        buf = NULL;
-                    }
-                }
+            loader_ui_text(m->slot, label, base, ui, 1);
+            if (stem < sizeof local - 8u &&
+                snprintf(local, sizeof local, "%.*s.%s%s", (int)stem, ui, bw_mod_lang_code(),
+                         dot != NULL ? dot : "") < (int)sizeof local) {
+                loader_ui_text(m->slot, label, base, local, 0);
             }
-            if (f != NULL) {
-                fclose(f);
-            }
-            if (buf != NULL) {
-                fprintf(stderr, "eidos: mod %s: %d interface words (%s)\n", label,
-                        ui_lang_mod_add(m->slot, buf, (size_t)len), ui);
-                free(buf);
-            } else {
-                fprintf(stderr, "eidos: mod %s: the ui_text file %s could not be read\n",
-                        label, ui);
-            }
+        } else {
+            snprintf(local, sizeof local, "ui_text.%s.txt", bw_mod_lang_code());
+            loader_ui_text(m->slot, label, base, local, 0);
         }
     }
 
@@ -1241,6 +1271,9 @@ static int loader_load(u32 index)
     m->services.setting_show     = bw_mod_menu_setting_show;
     m->services.setting_set_text = bw_mod_menu_setting_set_text;
     m->services.hardcore_allowed = bw_mod_v7_hardcore_allowed;
+    m->services.string_get       = bw_mod_strings_service_get;
+    m->services.string_language  = bw_mod_strings_service_language;
+    m->services.confirm_ask      = bw_mod_message_confirm_ask;
     /* The rules' cells: the mod's own file under its namespace. */
     bw_mod_rule_set_cells_io(loader_cells_load, loader_cells_store);
 

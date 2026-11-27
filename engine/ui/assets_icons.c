@@ -439,16 +439,27 @@ const UiImage *ui_mon_icon(u16 species, u8 form, int frame)
  * than PLAY_GAP ticks, starts it again: the picture was away).  Time 0 is
  * the standing picture, kept apart: callers ask for it to measure while the
  * animation runs.
+ *
+ * A form's pictures are where the game's POKEGRA_CalcArcIndex puts them
+ * (arm9 pokegra.c, sdk/form_gfx.c): the game's forms count from the slot
+ * after the eggs, 652 + k for picture k = formSpriteIndex + form - 1
+ * (members 0x32F0 + k * 20); a mod's form has its own slot,
+ * formSpriteIndex + form - 1 from 715.  A form that only changes colour
+ * (formSpriteShared) keeps the species' sheets and takes its palettes: the
+ * game's from its list at 0x37AD + k * 2, a mod's from its slot.
  */
 #define RIG_ARCHIVE  "a/0/0/4"
 #define RIG_BLOCK    20u
 #define RIG_FRONT    9u
 #define RIG_PAL      18u
+#define RIG_FORMS    0x32F0u        /* the game's first form picture: slot 652 */
+#define RIG_FORM_PAL 0x37ADu        /* the game's palettes of colour-only forms */
+#define RIG_MOD_SLOT 715u           /* a mod's slots start here */
 
 static BwArcFile g_rig_arc;
 static int       g_rig_arc_state;           /* 0 not tried, 1 open, -1 failed */
 static G2dRig    g_rig;
-static int       g_rig_species = -1, g_rig_shiny, g_rig_ok;
+static int       g_rig_species = -1, g_rig_form, g_rig_shiny, g_rig_ok;
 #define PLAY_GAP 600u
 
 typedef struct FrontPic {
@@ -481,13 +492,37 @@ static void rig_drop(void)
     pic_drop(&g_rest);
 }
 
-static int rig_use(u16 species, int shiny)
+/* The members of a form's front: its sheets' first member and its palette. */
+static void rig_members(u16 species, u8 form, int shiny, u32 *block, u32 *pal)
 {
-    if (g_rig_species == (int)species && g_rig_shiny == shiny) {
+    u32 first, count, k;
+    int shared;
+
+    *block = (u32)species * RIG_BLOCK;
+    *pal = *block + RIG_PAL + (shiny ? 1u : 0u);
+    if (form == 0 || personal_forms(species, &first, &count, &shared) != 0 || form >= count) {
+        return;
+    }
+    k = first + form - 1u;
+    if (shared) {
+        *pal = first >= RIG_MOD_SLOT ? k * RIG_BLOCK + RIG_PAL + (shiny ? 1u : 0u)
+                                     : RIG_FORM_PAL + k * 2u + (shiny ? 1u : 0u);
+    } else {
+        *block = first >= RIG_MOD_SLOT ? k * RIG_BLOCK : RIG_FORMS + k * RIG_BLOCK;
+        *pal = *block + RIG_PAL + (shiny ? 1u : 0u);
+    }
+}
+
+static int rig_use_form(u16 species, u8 form, int shiny)
+{
+    u32 block, pal;
+
+    if (g_rig_species == (int)species && g_rig_form == (int)form && g_rig_shiny == shiny) {
         return g_rig_ok;
     }
     rig_drop();
     g_rig_species = species;
+    g_rig_form = form;
     g_rig_shiny = shiny;
     {
         static u32 gen;
@@ -507,16 +542,16 @@ static int rig_use(u16 species, int shiny)
     if (g_rig_arc_state != 1 || species == 0) {
         return 0;
     }
-    if (g2d_rig_load(&g_rig, &g_rig_arc, (u32)species * RIG_BLOCK, RIG_FRONT) != 0) {
+    rig_members(species, form, shiny, &block, &pal);
+    if (g2d_rig_load(&g_rig, &g_rig_arc, block, RIG_FRONT) != 0) {
         memset(&g_rig, 0, sizeof g_rig);
         return 0;
     }
     g_rig_ok = 1;
-    if (g2d_rig_load_palette(&g_rig, &g_rig_arc,
-                             (u32)species * RIG_BLOCK + RIG_PAL + (shiny ? 1u : 0u)) != 0
-        || g_rig.nmcr.num_multi_cell == 0) {
+    if (g2d_rig_load_palette(&g_rig, &g_rig_arc, pal) != 0 || g_rig.nmcr.num_multi_cell == 0) {
         rig_drop();
         g_rig_species = species;
+        g_rig_form = form;
         g_rig_shiny = shiny;
         return 0;
     }
@@ -563,11 +598,11 @@ static int pic_take(FrontPic *f, const G2dRigPlay *play)
     return 0;
 }
 
-const UiImage *ui_mon_front_anim(u16 species, int shiny, u32 t, int *ox, int *oy)
+const UiImage *ui_mon_front_form_anim(u16 species, u8 form, int shiny, u32 t, int *ox, int *oy)
 {
     FrontPic *f;
 
-    if (!rig_use(species, shiny)) {
+    if (!rig_use_form(species, form, shiny)) {
         return NULL;
     }
     if (t == 0) {
@@ -608,20 +643,25 @@ const UiImage *ui_mon_front_anim(u16 species, int shiny, u32 t, int *ox, int *oy
     return &f->im;
 }
 
+const UiImage *ui_mon_front_anim(u16 species, int shiny, u32 t, int *ox, int *oy)
+{
+    return ui_mon_front_form_anim(species, 0, shiny, t, ox, oy);
+}
+
 /* The front in its idle loop in the box (x, y, w, h): the largest whole
  * scale at which the loop's first frame fits, that frame's drawn pixels
  * centred and standing on the box's bottom, the later frames placed by
  * the rig's origin so the loop moves about a fixed point. */
-void ui_mon_front_draw(EidosUiCtx *c, u16 species, int shiny, u32 t, int x, int y, int w, int h)
+void ui_mon_front_form_draw(EidosUiCtx *c, u16 species, u8 form, int shiny, u32 t, int x, int y, int w, int h)
 {
-    static int f_species = -1, f_shiny, f_x0, f_y0, f_w, f_h, f_ox, f_oy;
+    static int f_species = -1, f_form, f_shiny, f_x0, f_y0, f_w, f_h, f_ox, f_oy;
     const UiImage *im;
     int ox, oy, k;
 
-    if (species != f_species || shiny != f_shiny) {
+    if (species != f_species || form != f_form || shiny != f_shiny) {
         int xx, yy, x0, y0, x1 = -1, y1 = -1;
 
-        im = ui_mon_front_anim(species, shiny, 0, &f_ox, &f_oy);
+        im = ui_mon_front_form_anim(species, form, shiny, 0, &f_ox, &f_oy);
         if (im == NULL) {
             return;
         }
@@ -641,6 +681,7 @@ void ui_mon_front_draw(EidosUiCtx *c, u16 species, int shiny, u32 t, int x, int 
             return;
         }
         f_species = species;
+        f_form = form;
         f_shiny = shiny;
         f_x0 = x0;
         f_y0 = y0;
@@ -653,7 +694,7 @@ void ui_mon_front_draw(EidosUiCtx *c, u16 species, int shiny, u32 t, int x, int 
     } else if (k > 2) {
         k = 2;              /* a large window's bigger box: no giant sprites */
     }
-    im = ui_mon_front_anim(species, shiny, t, &ox, &oy);
+    im = ui_mon_front_form_anim(species, form, shiny, t, &ox, &oy);
     if (im != NULL) {
         /* the first frame's drawn box at the bottom centre, its origin
          * there; this frame placed by its own origin */
@@ -662,6 +703,11 @@ void ui_mon_front_draw(EidosUiCtx *c, u16 species, int shiny, u32 t, int x, int 
 
         ui_image(c, gx - ox * k, gy - oy * k, im, k);
     }
+}
+
+void ui_mon_front_draw(EidosUiCtx *c, u16 species, int shiny, u32 t, int x, int y, int w, int h)
+{
+    ui_mon_front_form_draw(c, species, 0, shiny, t, x, y, w, h);
 }
 
 /* Trainer fronts are the same shape in another archive (rig.py tried
@@ -674,6 +720,5 @@ const UiImage *ui_trainer_front(u16 trainer_class)
 
 const UiImage *ui_mon_front(u16 species, u8 form, int shiny)
 {
-    (void)form;
-    return ui_mon_front_anim(species, shiny, 0, NULL, NULL);
+    return ui_mon_front_form_anim(species, form, shiny, 0, NULL, NULL);
 }

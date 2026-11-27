@@ -1102,66 +1102,78 @@ static void apply_level_adjust(const BwPortSetup *setup, s8 adjust)
 /* ------------------------------------------------------------------ */
 
 /*
- * battle.start: the battle begins.  The call carries the heap the game
- * allocates the battle setup on and nothing else, and the game creates the
- * setup in this very function and fills it in the calls that follow, so
- * the wild flag, the format and the trainer ids are not obtainable here.
- * The port feeds them into the battle context at the first battle event
- * that carries the battle's main module, where the setup is filled.
+ * battle.start fires once per battle.  The game creates the setup
+ * (BTL_SETUP_Create) and fills it in the calls that follow, so at the
+ * creation the wild flag, the format and the trainer ids are not known.
+ * The creation only opens the battle: the context of the last battle goes
+ * and the new setup is kept.  The first row that builds the setup (the
+ * wild, the trainer or the scripted battle's) fires the event with the
+ * battle's own values, and a later row that builds the same battle again
+ * (a scripted battle's setup was built by the trainer or the wild setup
+ * first) is passed over, so its format, levels and trainer members are
+ * applied once.  A battle no such row builds (the Battle Subway's, a link
+ * battle, the catching tutorial) fires it on the first frame its overlay
+ * is in, from the setup kept here.
  */
-static void build_battle_start(const BwEventCall *call, BwEventPayload *out)
-{
-    (void)call;
-    memset(&out->battle_start, 0, sizeof(out->battle_start));
+static BwPortSetup *g_start_setup;     /* the setup the creation made */
+static u8           g_start_due;       /* created, battle.start not fired yet */
 
-    /*
-     * The battle context is reset here (docs/mod-payloads.md, section 1:
-     * "Reset at battle.start"), so no field of the previous battle is
-     * left behind.
-     */
+/*
+ * The setup's creation: the battle context is reset here
+ * (docs/mod-payloads.md, section 1: "Reset at battle.start"), so no field
+ * of the previous battle is left behind, and battle.start is due.
+ */
+static void apply_battle_create(const BwEventPayload *in, BwEventCall *call)
+{
+    (void)in;
     memset(&bw_mod_battle_context, 0, sizeof(bw_mod_battle_context));
     bw_mod_battle_context.active = 1u;
-
-    /*
-     * The format reads the one the port does not know: the setup does not
-     * exist yet, so the game's own format is not known, and zero is a
-     * format a handler may ask for.  The request of the last battle goes
-     * with the context.
-     */
-    out->battle_start.format = BW_PORT_FORMAT_UNKNOWN;
     g_battle_request.format = BW_PORT_FORMAT_UNKNOWN;
     g_battle_request.level_adjust = 0;
-
-    /*
-     * The fields the port cannot fill: the setup the game will build does
-     * not exist yet, so the wild flag, the trainer ids and the handle of
-     * the opposing party stay 0, and the format reads the one the port
-     * does not know.  The port reads the battle's own values from the
-     * battle's main module at the first battle event (see
-     * feed_battle_context and fill_trainer_ids).
-     */
+    g_start_setup = (BwPortSetup *)(uintptr_t)(u64)call->ret;
+    g_start_due = 1u;
 }
 
 /*
- * battle.start: what the handlers asked for is kept until the setup is
- * built.  The setup does not exist at this row, so the port cannot write
- * the game's own work here: the request is applied at the rows where the
- * setup is built (the trainer battle, the scripted battle and the wild
- * battle).
- *
- * The format is kept only when it is a format and not the marker the port
- * uses for the one it does not know: the game's own format is not known
- * yet, so the port cannot tell a write of "single" from no write at all,
- * and it leaves the game's own format alone rather than guess it.
+ * battle.action's fight: the game asks whether a move is blocked when the
+ * player picks it (BTL_CLIENT_StepSelectMove, with the message buffer the
+ * refusal fills) and also while it builds the move menu, checks for
+ * Struggle and weighs the AI's moves (with no buffer).  Only the pick is
+ * an action.
  */
-static void apply_battle_start(const BwEventPayload *in, BwEventCall *call)
+static int when_battle_action_chosen(const BwEventCall *call)
+{
+    return call->a[3] != 0u;
+}
+
+/* A setup row fires battle.start only when it is still due. */
+static int when_battle_start_due(const BwEventCall *call)
 {
     (void)call;
+    return g_start_due != 0u;
+}
 
-    if (in->battle_start.format != BW_PORT_FORMAT_UNKNOWN) {
-        g_battle_request.format = in->battle_start.format;
+static void build_battle_setup(const BwPortSetup *setup, BwEventPayload *out);
+extern int bw_overlay_is_loaded(u32 id) BW_PORT_WEAK;
+
+void bw_mod_battle_start_frame(void)
+{
+    BwEventPayload p;
+
+    if (g_start_due == 0u || bw_overlay_is_loaded == NULL ||
+        !bw_overlay_is_loaded(93u)) {
+        return;
     }
-    g_battle_request.level_adjust = in->battle_start.level_adjust;
+    /*
+     * The battle runs and no setup row fired the event: it fires now, from
+     * the setup the creation made, which the game has filled by the time
+     * the battle's overlay is in.  The battle has read its setup already,
+     * so the format and the levels a handler asks for are not applied
+     * here.
+     */
+    memset(&p, 0, sizeof(p));
+    build_battle_setup(g_start_setup, &p);
+    (void)bw_mod_event_fire(BW_EVENT_BATTLE_START, &p);
 }
 
 /*
@@ -1176,6 +1188,8 @@ static void build_battle_setup(const BwPortSetup *setup, BwEventPayload *out)
 {
     memset(&out->battle_start, 0, sizeof(out->battle_start));
     out->battle_start.format = BW_PORT_FORMAT_UNKNOWN;
+    /* (this battle's battle.start is fired: a later row passes) */
+    g_start_due = 0u;
 
     if (setup == NULL) {
         return;
@@ -2842,24 +2856,28 @@ static const BwEventBinding g_battle_rows[] = {
       BW_SCOPE_ANY, 0u, 0u, build_heal_hp_battle, apply_heal_hp_battle,
       refuse_heal_hp_battle, NULL },
 
-    { BW_MOD_REGION_ARM9, 0x02013090u, BW_EVENT_BATTLE_START, BW_EVENT_BEFORE,
-      BW_SCOPE_ANY, 0u, 0u, build_battle_start, apply_battle_start, NULL, NULL },
+    /* battle.start fires once per battle: the setup's creation only opens
+     * the battle (the port's own row), the first setup row that builds it
+     * fires the event, and a battle no such row builds fires it on the
+     * frame its overlay is in (bw_mod_battle_start_frame). */
+    { BW_MOD_REGION_ARM9, 0x02013090u, BW_EVENT_PORT, BW_EVENT_AFTER,
+      BW_SCOPE_ANY, 0u, 0u, NULL, apply_battle_create, NULL, NULL },
 
     { BW_MOD_REGION_OVL(21), 0x021AA5CCu, BW_EVENT_BATTLE_START, BW_EVENT_AFTER,
       BW_SCOPE_ANY, 0u, 0u, build_battle_setup_trainer,
-      apply_battle_setup_trainer, NULL, NULL },
+      apply_battle_setup_trainer, NULL, when_battle_start_due },
 
     { BW_MOD_REGION_OVL(10), 0x0216E7C8u, BW_EVENT_BATTLE_START, BW_EVENT_AFTER,
       BW_SCOPE_ANY, 0u, 0u, build_battle_setup_scripted,
-      apply_battle_setup_scripted, NULL, NULL },
+      apply_battle_setup_scripted, NULL, when_battle_start_due },
 
     { BW_MOD_REGION_ARM9, 0x0201347Cu, BW_EVENT_BATTLE_START, BW_EVENT_AFTER,
       BW_SCOPE_ANY, 0u, 0u, build_battle_setup_wild, apply_battle_setup_wild,
-      NULL, NULL },
+      NULL, when_battle_start_due },
 
     { BW_MOD_REGION_OVL(93), 0x021CF5B0u, BW_EVENT_BATTLE_ACTION,
       BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_battle_action_fight, NULL,
-      refuse_battle_action_fight, NULL },
+      refuse_battle_action_fight, when_battle_action_chosen },
 
     { BW_MOD_REGION_OVL(93), 0x021CF918u, BW_EVENT_BATTLE_ACTION,
       BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_battle_action_run, NULL,
@@ -2883,9 +2901,12 @@ static const BwEventBinding g_battle_rows[] = {
     { BW_MOD_REGION_OVL(93), 0x021C1A10u, BW_EVENT_BATTLE_MOVE,
       BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_battle_move, NULL, NULL, NULL },
 
+    /* (not while the AI predicts a move's damage: BTL_SERVER_FLOW_
+     * CalcPredictedMoveDamage calls the same function for each move it
+     * weighs, and no hit lands then) */
     { BW_MOD_REGION_OVL(93), 0x021C1E74u, BW_EVENT_BATTLE_DAMAGE,
-      BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_battle_damage,
-      apply_battle_damage, NULL, NULL },
+      BW_EVENT_AFTER, BW_SCOPE_OUTSIDE, BW_MOD_REGION_OVL(93), 0x021C7E14u,
+      build_battle_damage, apply_battle_damage, NULL, NULL },
 
     { BW_MOD_REGION_OVL(93), 0x021C4F64u, BW_EVENT_BATTLE_FAINT,
       BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_battle_faint, NULL, NULL,

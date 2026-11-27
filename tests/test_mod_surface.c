@@ -58,8 +58,8 @@
  * The hash of the frozen surface on each layout the port is built at.
  *
  *   pointers  hash
- *   4         0x75B3AE08u  the number in sdk/mod_api.h
- *   8         0x0FC83E7Cu
+ *   4         0x6ED47D43u  the number in sdk/mod_api.h
+ *   8         0x02777027u
  *
  * The 32-bit one is the number the header carries.  The other is the same
  * surface on the other layout: the three tables hold host pointers, so
@@ -68,11 +68,11 @@
  */
 static unsigned int expected_hash(void)
 {
-    return (sizeof(void *) == 4) ? 0x75B3AE08u : 0x0FC83E7Cu;
+    return (sizeof(void *) == 4) ? 0x6ED47D43u : 0x02777027u;
 }
 
 /* The number in sdk/mod_api.h: the frozen one, the 32-bit hash. */
-#define BW_SURFACE_HASH_FROZEN 0x75B3AE08u
+#define BW_SURFACE_HASH_FROZEN 0x6ED47D43u
 
 /* The running hash. */
 static unsigned int h;
@@ -466,6 +466,9 @@ int main(void)
     V(ap_link); V(ap_send); V(ap_read);
     V(peer_position); V(townmap_marker_set); V(townmap_marker_clear);
     V(mode_get); V(setting_text); V(player_name); V(mode_code); V(tracker_set);
+    V(web_request); V(web_read); V(time_utc); V(ticks_ms); V(game_hash);
+    V(popup); V(setting_show); V(setting_set_text); V(hardcore_allowed);
+    V(string_get); V(string_language); V(confirm_ask);
 #undef V
 
     /* Version 6: the type chart the type_chart calls take. */

@@ -673,14 +673,14 @@ void rx_move_info(EidosUiCtx *c, int x, int y, int w, const UiMoveInfo *m, int a
     EidosUiRect saved;
 
     /* the PP */
-    nx = rx_label(c, x, y, "PP", 0, RX_MUTED, font);
+    nx = rx_label(c, x, y, ui_tr("PP"), 0, RX_MUTED, font);
     snprintf(s, sizeof(s), "%d/%d", m->pp, m->maxpp);
     rx_label(c, nx + 6, y, s, 0, m->pp == 0 ? 0xFF6040u : RX_TEXT, font);
     /* the power, and the accuracy after it */
-    nx = rx_label(c, x, y + 12, "Power", 0, RX_MUTED, font);
+    nx = rx_label(c, x, y + 12, ui_tr("Power"), 0, RX_MUTED, font);
     snprintf(s, sizeof(s), m->power > 0 ? "%d" : "-", m->power);
     nx = rx_label(c, nx + 6, y + 12, s, 0, RX_TEXT, font);
-    nx = rx_label(c, nx + 12, y + 12, "Acc.", 0, RX_MUTED, font);
+    nx = rx_label(c, nx + 12, y + 12, ui_tr("Acc."), 0, RX_MUTED, font);
     snprintf(s, sizeof(s), m->accuracy > 0 ? "%d" : "-", m->accuracy);
     rx_label(c, nx + 6, y + 12, s, 0, RX_TEXT, font);
     if (im != NULL) {
@@ -753,7 +753,7 @@ void rx_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender, 
     snprintf(lv, sizeof(lv), "%d", level);
     lx = c1 - 2 - ui_text_w(lv, UI_FONT_LARGE);
     rx_otext(c, lx, y + 1, lv, RX_TEXT, RX_PLATE_OL, UI_FONT_LARGE);
-    rx_otext(c, lx - 3 - ui_text_w("Lv", UI_FONT_SMALL), y + 5, "Lv", RX_ACCENT, RX_PLATE_OL, UI_FONT_SMALL);
+    rx_otext(c, lx - 3 - ui_text_w(ui_tr("Lv"), UI_FONT_SMALL), y + 5, ui_tr("Lv"), RX_ACCENT, RX_PLATE_OL, UI_FONT_SMALL);
     /* the bar: a shadow, the outline, the strip, a dark line, the band */
     rx_slab(c, by + 2, bh, xl0, xl1, xr0, xr1, 0, bh, 0, 0, 0x000000u, 0x000000u, 70);
     rx_slab(c, by, bh, xl0, xl1, xr0, xr1, 0, bh, 0, 0, RX_PLATE_OL, RX_PLATE_OL, 255);
@@ -766,7 +766,7 @@ void rx_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gender, 
         u32 hi, lo;
 
         ui_fill(c, tx, by + 3, tw, 8, R(0x303030u), 255);
-        ui_text(c, tx + 3, by + 3 + ui_text_y(8, UI_FONT_SMALL), "HP", R(0x00FF4Au), -1, UI_FONT_SMALL, 1);
+        ui_text(c, tx + 3, by + 3 + ui_text_y(8, UI_FONT_SMALL), ui_tr("HP"), R(0x00FF4Au), -1, UI_FONT_SMALL, 1);
         ui_fill(c, bx, by + 4, bw, 6, R(0x303030u), 255);
         ui_fill(c, bx + 1, by + 5, bw - 2, 4, R(0x585858u), 255);
         if (maxhp > 0 && hp > 0) {

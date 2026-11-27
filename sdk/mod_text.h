@@ -34,6 +34,10 @@
  * Who holds the window
  * --------------------
  *
+ * The game's own windows take a mod's text in a turn of its own ("A
+ * text's own turn" below).  What follows is the older seam for a port
+ * screen that has a window open (bw_mod_text_pump); no game hook uses it.
+ *
  * The field's message window and the field's yes/no window are overlay
  * 21's (src/game/ov021/field_msgbg.c), and the battle's message box is
  * overlay 93's (src/game/ov093/btlv_core.c).  The ARM9 cannot call into
@@ -51,9 +55,10 @@
  *         are the game's code units without the end code; the end code
  *         is added here, when the string object is built.
  *   ask   asks the question in the game's own yes/no window and returns
- *         the player's answer: 1 for yes, 0 for no.  A battle has no
- *         yes/no window, which is why a confirm is only allowed in the
- *         field (docs/mod-services.md).
+ *         the player's answer: 1 for yes, 0 for no.  It is the seam of the
+ *         old waiting `confirm`; the game registers none, since a handler
+ *         cannot wait.  A question with a ticket is asked in its own turn
+ *         instead ("A text's own turn" below).
  *   tick  advances the game to the next point where the game would
  *         accept a message.  A confirm waits for that point; without it
  *         a confirm cannot be asked and answers no.
@@ -183,6 +188,81 @@ void bw_mod_text_install(void);
  * empty or there is no window to show it in.
  */
 int bw_mod_text_pump(void);
+
+/* ------------------------------------------------------------------ */
+/* A text's own turn                                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A mod's text is shown in a turn of its own, never in a window the game
+ * has open for its own text:
+ *
+ *   field   when the field is quiet and the player stands still, the
+ *           port starts an event of its own (bw_mod_text_frame): the
+ *           field's plain window opens, the text prints at the game's
+ *           speed, A or B closes it, and the next text follows.  A
+ *           question opens the field's yes/no menu after its text.
+ *   battle  the next battle message waits: the mod's text is the battle
+ *           box's own message first, then the game's message
+ *           (stubs/ov/patch_ov093_btlv_scu_message.c).  A question opens
+ *           the battle's yes/no choice after its text, when the touch
+ *           screen is free.
+ *
+ * The overlay that has the window asks for the next text here.
+ */
+
+/*
+ * The next queued text for a window: encoded with the window's own font
+ * (a character it lacks is '?') and laid out for a window `width` pixels
+ * wide with two lines, the game's own line break and page tag between the
+ * lines.  `out` gets the units without the end code; `max_units` should
+ * leave room for the tags (BW_MOD_TEXT_LAID_OUT_MAX).  A question in the
+ * queue is answered no and passed over.  Returns the units, 0 when no
+ * text waits.
+ */
+#define BW_MOD_TEXT_LAID_OUT_MAX 256u
+u32 bw_mod_text_next(void *font, u32 width, u16 *out, u32 max_units);
+
+/*
+ * The same, for a window that can ask: a question with a ticket is taken
+ * like a text, and *ticket is its ticket (0 for a text).  The window shows
+ * the question, opens the game's own yes/no menu, and reports the answer
+ * with bw_mod_text_answer.
+ */
+u32 bw_mod_text_take(void *font, u32 width, u16 *out, u32 max_units, u32 *ticket);
+
+/* Whether the next waiting text is a question: a window that cannot ask
+ * now leaves it, and the texts behind it, for later. */
+int bw_mod_text_next_is_question(void);
+
+/* The player's answer to the question with this ticket: 1 yes, 0 no.  It
+ * is recorded; the asker hears of it on the next frame. */
+void bw_mod_text_answer(u32 ticket, int yes);
+
+/* The question on the screen, in UTF-8 (cut to `size`), for an interface
+ * that draws the yes/no menu itself: 1 while one is asked, else 0. */
+int bw_mod_text_question(char *out, u32 size);
+
+/* The layout itself, on a run of code units (for the tests). */
+u32 bw_mod_text_layout(void *font, u32 width, const u16 *units, u32 count,
+                       u16 *out, u32 max_units);
+
+/* How many texts wait. */
+u32 bw_mod_text_waiting(void);
+
+/*
+ * The field's turn: called once a frame (sdk/mod_frame.c).  It starts the
+ * field's event for the waiting texts once the field has been quiet and
+ * the player still for a few frames.
+ */
+void bw_mod_text_frame(void);
+
+/*
+ * A number that stays the same through one battle and moves on outside
+ * battles: the battle's hook keeps it with a message it holds back, and a
+ * message held in another battle is let go, not shown.
+ */
+u32 bw_mod_text_battle_mark(void);
 
 /* The reset: the port's own font goes away with the game's, the window
  * with it, and the draw side with the overlay that owns it (at power-on

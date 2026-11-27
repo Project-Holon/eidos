@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "theme.h"
+#include "ui_lang.h"
 
 /* ui.c's (touch scrolling); the tests that link the styles without the interface have none */
 #pragma weak eidos_ui_note_scrollbar
@@ -112,8 +113,20 @@ int ui_hints_top(void)
 
 int ui_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, int n, const u32 *keys)
 {
+    /* a hint's action is always the interface's word: the bar asks for it
+     * in the game's language (the key names: ui_key_label) */
+    const char *words[2 * 16];
+    int i;
+
+    if (n > 16) {
+        n = 16;
+    }
+    for (i = 0; i < n; i++) {
+        words[2 * i] = pairs[2 * i];
+        words[2 * i + 1] = ui_tr(pairs[2 * i + 1]);
+    }
     g_hints_now = c->oy + y;
-    return (g_active->hints != NULL ? g_active->hints : ui_def_hints)(c, y, w, pairs, n, keys);
+    return (g_active->hints != NULL ? g_active->hints : ui_def_hints)(c, y, w, words, n, keys);
 }
 
 void ui_bar(EidosUiCtx *c, int x, int y, int w, int h, int num, int den)

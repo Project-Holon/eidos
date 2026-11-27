@@ -108,6 +108,7 @@
 #include "mod_manifest.h"
 #include "mod_menu.h"
 #include "mod_rule.h"
+#include "mod_strings.h"
 #include "mod_table.h"
 #include "mod_bw.h"
 #include "plat_dir.h"
@@ -131,6 +132,7 @@ extern void        bw_mod_manifest_delete(void *manifest);
 extern int         bw_mod_manifest_parse_dir(void *manifest, const char *root,
                                               const char *dir_name);
 extern const char *bw_mod_manifest_name(const void *manifest);
+extern const char *bw_mod_manifest_title(const void *manifest);
 extern const char *bw_mod_manifest_about(const void *manifest, int what);
 extern const char *bw_mod_manifest_code(const void *manifest);
 extern const char *bw_mod_manifest_state(const void *manifest);
@@ -254,7 +256,11 @@ typedef struct BwModMenuMode {
 typedef struct BwModMenuMod {
     char root[BW_MOD_MENU_ROOT_MAX];    /* the mod's own folder          */
     char name[BW_MOD_MENU_NAME_MAX];    /* the name the manifest gives   */
-    char about[BW_MOD_MENU_ABOUT_MAX];  /* its `description` line, "" for none */
+    char title[BW_MOD_MENU_NAME_MAX];   /* its `name.<lang>` for the game's
+                                         * language, "" for none: the name
+                                         * shown (the namespace is name's) */
+    char about[BW_MOD_MENU_ABOUT_MAX];  /* its `description` line (the
+                                         * game's language's first), "" for none */
     char author[64];                    /* its `author` line             */
     char version[24];                   /* its `version` line            */
     char ns[BW_MOD_MENU_NS_MAX];        /* the state namespace           */
@@ -350,6 +356,15 @@ static void copy_str(char *dst, size_t size, const char *src)
     }
     memcpy(dst, src, n);
     dst[n] = '\0';
+}
+
+/* A text of the mod's settings as the screen shows it: `@key` is the line
+ * of the mod's strings files in the game's language (docs/mod-strings.md),
+ * any other text is itself.  The declaration keeps what it wrote, so a
+ * choice is matched (`?key=value`, the choices file) by its own word. */
+static const char *shown(const BwModMenuMod *m, const char *text)
+{
+    return bw_mod_strings_text(m->root, text);
 }
 
 static int is_space(char c)
@@ -655,8 +670,11 @@ static void read_manifest(BwModMenuMod *m)
     }
     copy_str(m->name, sizeof m->name, bw_mod_manifest_name(record));
     {
-        const char *t;
+        const char *t = bw_mod_manifest_title(record);
 
+        /* the name in the game's language, when the manifest has one */
+        copy_str(m->title, sizeof m->title,
+                 t != NULL && t != bw_mod_manifest_name(record) ? t : "");
         t = bw_mod_manifest_about(record, 0);
         copy_str(m->about, sizeof m->about, t != NULL ? t : "");
         t = bw_mod_manifest_about(record, 1);
@@ -929,9 +947,11 @@ static int parse_mode(BwModMenuMod *m, char *p)
 /*
  * The modes an option is shown in: a last word `@id,id` on its line, cut
  * off the value.  Each id names a mode declared above.  0 (no word): the
- * option is in the Mods section alone.
+ * option is in the Mods section alone.  `names_first`: the value's first
+ * word is a choice's names, which may be `@key` words of the mod's strings
+ * (`@cap.off|@cap.gym`), so it is never the tag word.
  */
-static u32 cut_mode_tags(BwModMenuMod *m, const char *key, char *value)
+static u32 cut_mode_tags(BwModMenuMod *m, const char *key, char *value, int names_first)
 {
     char *at = NULL;
     char *s;
@@ -941,7 +961,8 @@ static u32 cut_mode_tags(BwModMenuMod *m, const char *key, char *value)
     for (s = value; *s != '\0'; s++) {
         if (*s == '"') {
             quoted = !quoted;
-        } else if (*s == '@' && !quoted && (s == value || is_space(s[-1]))) {
+        } else if (*s == '@' && !quoted && (s == value || is_space(s[-1])) &&
+                   !(names_first && s == value)) {
             at = s;
         }
     }
@@ -1216,7 +1237,7 @@ static int parse_option(BwModMenuMod *m, char *line)
     }
     /* the two last words come in either order */
     cut_when(value, when, sizeof when);
-    modes = cut_mode_tags(m, key, value);
+    modes = cut_mode_tags(m, key, value, strcmp(kind, "choice") == 0);
     if (when[0] == '\0') {
         cut_when(value, when, sizeof when);
     }
@@ -1452,6 +1473,43 @@ static int choices_path(char *out, size_t size, const BwModMenuMod *m)
     return bw_save_path(out, size, rel);
 }
 
+/* One `@key` text of the declaration that neither the game's language's
+ * strings file nor strings.txt has: reported, and the screen shows the key
+ * (a key cut by the field it is in shows as missing too). */
+static void check_key(const BwModMenuMod *m, const char *text)
+{
+    if (text != NULL && text[0] == '@' && bw_mod_strings_get(m->root, text + 1) == NULL) {
+        report(m->name, "the text %s is in neither strings.%s.txt nor strings.txt; the key shows",
+               text, bw_mod_lang_code());
+    }
+}
+
+static void check_keys(const BwModMenuMod *m)
+{
+    u32 i;
+    int c;
+
+    for (i = 0; i < m->option_count; i++) {
+        const BwModMenuOption *o = &m->options[i];
+
+        check_key(m, o->label);
+        check_key(m, o->help);
+        if (i == 0 || strcmp(o->heading, m->options[i - 1].heading) != 0) {
+            check_key(m, o->heading);
+        }
+        for (c = 0; c < o->choice_count; c++) {
+            check_key(m, o->choices[c]);
+        }
+    }
+    for (i = 0; m->tabs != NULL && i < m->tab_count; i++) {
+        check_key(m, m->tabs[i]);
+    }
+    for (i = 0; m->modes != NULL && i < m->mode_count; i++) {
+        check_key(m, m->modes[i].title);
+        check_key(m, m->modes[i].line);
+    }
+}
+
 /* Read the declaration file and fill the mod's options. */
 static void read_declaration(BwModMenuMod *m)
 {
@@ -1487,6 +1545,7 @@ static void read_declaration(BwModMenuMod *m)
         parse_option(m, line);
     }
     free(text);
+    check_keys(m);
 }
 
 /* Read the player's choices and put them over the defaults. */
@@ -2150,6 +2209,7 @@ void bw_mod_menu_open(void)
  */
 int bw_mod_menu_reload(void)
 {
+    bw_mod_strings_reload();        /* a mod's words may have changed too */
     model_build();
     g_force_apply = 1;
     return bw_mod_menu_apply();
@@ -2218,10 +2278,15 @@ u32 bw_mod_menu_count(void)
     return g_count;
 }
 
+/* The name the lists show: the manifest's `name.<lang>` for the game's
+ * language, else its `name` (docs/mod-strings.md). */
 const char *bw_mod_menu_name_at(u32 index)
 {
     model_ready();
-    return index < g_count ? g_mods[index].name : "";
+    if (index >= g_count) {
+        return "";
+    }
+    return g_mods[index].title[0] != '\0' ? g_mods[index].title : g_mods[index].name;
 }
 
 const char *bw_mod_menu_namespace_at(u32 index)
@@ -2616,7 +2681,7 @@ const char *bw_mod_menu_option_label(u32 index, u32 option)
     if (index >= g_count || option >= g_mods[index].option_count) {
         return "";
     }
-    return g_mods[index].options[option].label;
+    return shown(&g_mods[index], g_mods[index].options[option].label);
 }
 
 int bw_mod_menu_option_kind(u32 index, u32 option)
@@ -2712,7 +2777,7 @@ const char *bw_mod_menu_option_choice(u32 index, u32 option, int choice)
     if (choice < 0 || choice >= g_mods[index].options[option].choice_count) {
         return NULL;
     }
-    return g_mods[index].options[option].choices[choice];
+    return shown(&g_mods[index], g_mods[index].options[option].choices[choice]);
 }
 
 const char *bw_mod_menu_option_text(u32 index, u32 option, char *buf,
@@ -2743,7 +2808,7 @@ const char *bw_mod_menu_option_text(u32 index, u32 option, char *buf,
         if (choice < 0 || choice >= o->choice_count) {
             choice = 0;
         }
-        snprintf(buf, size, "%s", o->choices[choice]);
+        snprintf(buf, size, "%s", shown(&g_mods[index], o->choices[choice]));
     }
     return buf;
 }
@@ -2869,14 +2934,14 @@ const char *bw_mod_menu_mode_title(u32 index, u32 mode)
 {
     const BwModMenuMode *md = mode_at(index, mode);
 
-    return md != NULL ? md->title : "";
+    return md != NULL ? shown(&g_mods[index], md->title) : "";
 }
 
 const char *bw_mod_menu_mode_line(u32 index, u32 mode)
 {
     const BwModMenuMode *md = mode_at(index, mode);
 
-    return md != NULL ? md->line : "";
+    return md != NULL ? shown(&g_mods[index], md->line) : "";
 }
 
 int bw_mod_menu_mode_off(u32 index, u32 mode)
@@ -3058,7 +3123,7 @@ const char *bw_mod_menu_tab_title(u32 index, u32 tab)
     if (index >= g_count || g_mods[index].tabs == NULL || tab >= g_mods[index].tab_count) {
         return "";
     }
-    return g_mods[index].tabs[tab];
+    return shown(&g_mods[index], g_mods[index].tabs[tab]);
 }
 
 int bw_mod_menu_option_tab(u32 index, u32 option)
@@ -3288,14 +3353,15 @@ int bw_mod_menu_find_room(u32 *index, u32 *mode)
 const char *bw_mod_menu_option_heading(u32 index, u32 option)
 {
     model_ready();
-    return index < g_count && option < g_mods[index].option_count ? g_mods[index].options[option].heading : "";
+    return index < g_count && option < g_mods[index].option_count
+           ? shown(&g_mods[index], g_mods[index].options[option].heading) : "";
 }
 
 const char *bw_mod_menu_option_help(u32 index, u32 option)
 {
     model_ready();
     return index < g_count && option < g_mods[index].option_count && g_mods[index].options[option].help != NULL
-           ? g_mods[index].options[option].help : "";
+           ? shown(&g_mods[index], g_mods[index].options[option].help) : "";
 }
 
 const char *bw_mod_menu_option_yaml(u32 index, u32 option)
@@ -3412,8 +3478,12 @@ int bw_mod_menu_mode_write_yaml(u32 index, u32 mode, const char *name, char vers
         } else {
             nth_word(vals, op->value, val, sizeof val);
             if (val[0] == '\0') {
-                copy_str(val, sizeof val, op->kind == BW_MOD_SETTING_BOOL ? (op->value ? "true" : "false")
-                                                                           : op->choices[op->value]);
+                /* (a choice named by a strings key writes the key: the file
+                 * is the same whatever the game's language) */
+                const char *name = op->kind == BW_MOD_SETTING_BOOL ? (op->value ? "true" : "false")
+                                                                    : op->choices[op->value];
+
+                copy_str(val, sizeof val, name[0] == '@' ? name + 1 : name);
             }
         }
         n += (size_t)snprintf(text + n, cap - n, "  %s: %s\n", key, val);

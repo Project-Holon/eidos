@@ -556,6 +556,29 @@ int main(void)
     BW_CHECK_EQ("the mod's handler is not told", g_mod_calls, 0);
     BW_CHECK_EQ("and the port is not asked to reload", g_reload_calls, 0);
 
+    printf("the receiving side with a confirmation that answers later\n");
+    /* The question is asked in its own turn: the save waits for the
+     * answer, and a no drops it. */
+    g_confirm_answer = BW_HANDOFF_CONFIRM_LATER;
+    g_confirm_calls = 0;
+    g_reload_calls = 0;
+    g_mod_calls = 0;
+    deliver(2, 0);
+    BW_CHECK_EQ("the player is asked", g_confirm_calls, 1);
+    BW_CHECK_EQ("nothing is installed before the answer",
+                file_holds(path, other, T_CHIP_SIZE), 1);
+    bw_mod_handoff_answer(3, 1);
+    BW_CHECK_EQ("another peer's answer installs nothing",
+                file_holds(path, other, T_CHIP_SIZE), 1);
+    bw_mod_handoff_answer(2, 0);
+    BW_CHECK_EQ("the no drops the save",
+                file_holds(path, other, T_CHIP_SIZE), 1);
+    BW_CHECK_EQ("the mod's handler is not told", g_mod_calls, 0);
+    BW_CHECK_EQ("and the port is not asked to reload", g_reload_calls, 0);
+    bw_mod_handoff_answer(2, 1);
+    BW_CHECK_EQ("an answer with no save waiting installs nothing",
+                file_holds(path, other, T_CHIP_SIZE), 1);
+
     printf("the receiving side with a confirmation that takes it\n");
     g_confirm_answer = 1;
     g_confirm_calls = 0;
@@ -584,6 +607,32 @@ int main(void)
     bw_mod_savedata_set_namespace(T_NS);
     BW_CHECK_EQ("the mod's own file is in step with the save in force",
                 bw_mod_savedata_in_step(), 1);
+
+    printf("the receiving side with a confirmation that answers yes later\n");
+    /* The port's own confirmation answers later; the yes installs the save
+     * from the kept blob. */
+    BW_REQUIRE("the save file's path is known",
+               save_path(path, sizeof path) == 0);
+    BW_REQUIRE("the game save is written again",
+               write_file(path, other, T_CHIP_SIZE) == 0);
+    g_confirm_answer = BW_HANDOFF_CONFIRM_LATER;
+    g_confirm_calls = 0;
+    g_reload_calls = 0;
+    g_mod_calls = 0;
+    deliver(2, 0);
+    BW_CHECK_EQ("the player is asked", g_confirm_calls, 1);
+    BW_CHECK_EQ("nothing is installed before the answer",
+                file_holds(path, other, T_CHIP_SIZE), 1);
+    bw_mod_handoff_answer(2, 1);
+    BW_CHECK_EQ("the yes installs the game save",
+                file_holds(path, sent, T_CHIP_SIZE), 1);
+    BW_CHECK_EQ("the mod's handler is told", g_mod_calls, 1);
+    BW_CHECK_EQ("with the save's bytes", memcmp(g_mod_bytes, sent, T_CHIP_SIZE), 0);
+    BW_CHECK_EQ("the port is asked to reload", g_reload_calls, 1);
+    bw_mod_savedata_set_namespace(T_NS);
+    BW_CHECK_EQ("the mod's own file is in step with the save in force",
+                bw_mod_savedata_in_step(), 1);
+    g_confirm_answer = 1;
 
     printf("the pieces go out over the frames\n");
     /* The port drives the frames: the pieces go out a few a frame. */

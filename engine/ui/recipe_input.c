@@ -726,13 +726,13 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     snprintf(cnt, sizeof(cnt), "%d / %d", s.len, s.maxlen);
     if (s.kind == 1 && ui_species_name != NULL
         && ui_species_name(s.species, mon, (int)sizeof mon) > 0 && mon[0] != '\0') {
-        ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, "NICKNAME", mon, cnt, acc);
+        ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, ui_tr("NICKNAME"), mon, cnt, acc);
     } else {
         /* the port's own texts (the multiplayer screen's name, a game's
          * code) are plain texts, whose kind would say FRIEND */
-        ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, "NAME",
-                  &eidos_ui_options_proc_up != NULL && eidos_ui_options_proc_up ? "MULTIPLAYER"
-                                                                                : kind_sub(s.kind), cnt, acc);
+        ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, ui_tr("NAME"),
+                  &eidos_ui_options_proc_up != NULL && eidos_ui_options_proc_up ? ui_tr("MULTIPLAYER")
+                                                                                : ui_tr(kind_sub(s.kind)), cnt, acc);
     }
 
     x0 = px + pad;
@@ -763,7 +763,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         field_x = x0;
     }
     for (i = 0; i < 4; i++) {
-        tabw[i] = ui_text_w(tabs[i], UI_FONT_SMALL) + 18;
+        tabw[i] = ui_text_w(ui_tr(tabs[i]), UI_FONT_SMALL) + 18;
         tabs_total += tabw[i] + 3;
     }
     tabs_total -= 3;
@@ -783,8 +783,8 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         clicked = hit_box(c, tx, tabs_y, tabw[i], 15, &h);
         ui_panel(c, tx, tabs_y, tabw[i], 15, UI_CUT_TL | UI_CUT_BR, 4,
                  sel ? UI_CYAN2 : (h ? 0x242424u : UI_BODY2), sel ? acc : (h ? UI_EDGE2 : UI_EDGE), 255);
-        ui_text(c, tx + (tabw[i] - ui_text_w(tabs[i], UI_FONT_SMALL)) / 2,
-                tabs_y + ui_text_y(15, UI_FONT_SMALL), tabs[i], sel ? UI_WHITE : UI_LIGHT,
+        ui_text(c, tx + (tabw[i] - ui_text_w(ui_tr(tabs[i]), UI_FONT_SMALL)) / 2,
+                tabs_y + ui_text_y(15, UI_FONT_SMALL), ui_tr(tabs[i]), sel ? UI_WHITE : UI_LIGHT,
                 sel ? 0x003C50 : (s32)UI_EDGE, UI_FONT_SMALL, 1);
         if (clicked && allow && !sel) {
             eidos_ui_tap(36 + 24 * i, 172, 3);
@@ -792,7 +792,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         tx += tabw[i] + 3;
     }
     if (!draw_game_prompt(c, in, field_x, y, narrow ? field_w : tabs_x - 6 - field_x)) {
-        ui_text(c, field_x, y + ui_text_y(15, UI_FONT_LARGE), kind_prompt(s.kind), UI_LIGHT,
+        ui_text(c, field_x, y + ui_text_y(15, UI_FONT_LARGE), ui_tr(kind_prompt(s.kind)), UI_LIGHT,
                 UI_EDGE, UI_FONT_LARGE, 1);
     }
     text_of(s.text, s.len, buf, sizeof(buf));
@@ -1041,7 +1041,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 eidos_opt_keyboard_back();
                 eidos_ui_tap(bt[bn - 1].tx, bt[bn - 1].ty, 3);
             }
-            draw_key(c, bx, by, bw2, bar_h, "BACK", g_back_focus, hh, 0, acc);
+            draw_key(c, bx, by, bw2, bar_h, ui_tr("BACK"), g_back_focus, hh, 0, acc);
             bx += bw2 + gap;
         }
         for (b = 0; b < bn; b++) {
@@ -1049,7 +1049,7 @@ static void name_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
             wgt = b == bn - 1 ? x1 - bx : bw2;
             clicked = hit_box(c, bx, by, wgt, bar_h, &hh);
-            draw_key(c, bx, by, wgt, bar_h, bt[b].lab, b == on_bar && !g_back_focus, hh, 0, acc);
+            draw_key(c, bx, by, wgt, bar_h, ui_tr(bt[b].lab), b == on_bar && !g_back_focus, hh, 0, acc);
             if (clicked && allow) {
                 eidos_ui_tap(bt[b].tx, bt[b].ty, 3);
             }
@@ -1138,7 +1138,7 @@ static void xt_name(void *entry, char *out, int cap)
         }
     }
     if (t == NULL) {
-        snprintf(out, (size_t)cap, "Trainer");
+        snprintf(out, (size_t)cap, "%s", ui_tr("Trainer"));
         return;
     }
     for (i = 0; i < 8 && t[i] != 0xFFFF && o + 4 < cap; i++) {
@@ -1184,14 +1184,14 @@ static void xt_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_panel(c, px, py, pw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE2, 244);
     }
     snprintf(cnt, sizeof(cnt), ui_trf("%d nearby"), shown);
-    ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, "XTRANSCEIVER", NULL, cnt, UI_CYAN);
+    ui_header(c, px + HEAD_IN, py + HEAD_IN, pw - 2 * HEAD_IN, ui_tr("XTRANSCEIVER"), NULL, cnt, UI_CYAN);
     x0 = px + pad;
     x1 = px + pw - pad;
     rows_y = py + HEAD_IN + 22 + 6;
     avail = py + ph - pad - rows_y;
 
     if (shown == 0) {
-        ui_text(c, x0 + 4, rows_y + 6, "Looking for someone to call.", UI_GREY, UI_EDGE,
+        ui_text(c, x0 + 4, rows_y + 6, ui_tr("Looking for someone to call."), UI_GREY, UI_EDGE,
                 UI_FONT_LARGE, 1);
     }
     y = rows_y;
@@ -1219,7 +1219,7 @@ static void xt_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         level = ((const Byte *)e)[0x1F];
         ok = level < 4;
         xt_name(e, name, sizeof(name));
-        state = !ok ? "Out of range" : sel ? "Calling" : avail_flag ? "Can call" : "Busy";
+        state = ui_tr(!ok ? "Out of range" : sel ? "Calling" : avail_flag ? "Can call" : "Busy");
         dot = !ok ? UI_EDGE2 : sel ? UI_CYAN : avail_flag ? UI_HP_G : UI_HP_Y;
 
         clicked = hit_box(c, x0, y, x1 - x0, rowh, &hh);

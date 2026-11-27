@@ -1746,7 +1746,7 @@ const char *eidos_scancode_name(int scancode, char *buf, size_t n)
     nm = scancode > 0 && scancode < SDL_SCANCODE_COUNT
          ? SDL_GetScancodeName((SDL_Scancode)scancode) : "";
     if (scancode == 0) {
-        snprintf(buf, n, "None");
+        snprintf(buf, n, "%s", ui_tr("None"));
     } else if (is_ascii_name(nm)) {
         snprintf(buf, n, "%s", nm);
     } else {
@@ -1778,7 +1778,7 @@ const char *eidos_pad_control_name(int kind, int index, char *buf, size_t n)
         return "";
     }
     if (kind < 0) {
-        snprintf(buf, n, "None");
+        snprintf(buf, n, "%s", ui_tr("None"));
     } else if (kind == EIDOS_PADBIND_BUTTON) {
         if (index >= 0 && (size_t)index < nb) {
             snprintf(buf, n, "%s", k_pad_button_names[index]);

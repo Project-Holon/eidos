@@ -544,7 +544,7 @@ static void plasma_title_menu_row(EidosUiCtx *c, int x, int y, int w, int h, con
                                   int hover)
 {
     int sel = selected || hover, font = g_title_font, cx;
-    const char *name = ui_tr(label);
+    const char *name = label;      /* (the caller's words, in the game's language) */
 
     if (h != MENU_CHIP_H) {
         /* Kosmos's places (too many entries for the band): a list's row */
@@ -702,7 +702,7 @@ static void plasma_party_plate(EidosUiCtx *c, const EidosUiRect *r, const UiPart
         ui_status_badge(c, x + w + lean / 2 - 8 - tw - 30, y + 3, m->status);
     }
     if (m->moving) {
-        rx_label(c, x + w + lean / 2 - 8 - tw - 34, y + 4, "MOVE", sel, sel ? 0x0878C0u : UI_SKY, UI_FONT_SMALL);
+        rx_label(c, x + w + lean / 2 - 8 - tw - 34, y + 4, ui_tr("MOVE"), sel, sel ? 0x0878C0u : UI_SKY, UI_FONT_SMALL);
     }
     if (m->note != NULL) {
         ui_text(c, x + 48, y + h - 12, m->note, sel ? R(rx_mix(m->note_rgb, 0x000000u, 40, 100)) : R(m->note_rgb),
@@ -736,7 +736,8 @@ static void plasma_party_detail(EidosUiCtx *c, const EidosUiRect *r, const UiPar
     rx_slab(c, py + phh * k - 10, 8, (x + w / 2 - 30 * k) * FP, (x + w / 2 - 30 * k - 4) * FP,
             (x + w / 2 + 30 * k + 4) * FP, (x + w / 2 + 30 * k) * FP, 0, 8, 0, 0, 0xFFFFFFu, 0xFFFFFFu, 40);
     if (m->front != NULL) {
-        ui_mon_front_draw(c, (u16)m->species, 0, frame, x + (w - pw * k) / 2, py, pw * k, phh * k);
+        ui_mon_front_form_draw(c, (u16)m->species, (u8)m->form, m->shiny, frame, x + (w - pw * k) / 2, py, pw * k,
+                               phh * k);
     } else if (m->icon != NULL) {
         ui_image(c, x + (w - m->icon->w * 2) / 2, py + 16, m->icon, 2);
     }
@@ -870,7 +871,7 @@ static void plasma_bag_backdrop(EidosUiCtx *c, const UiBagLayout *l, const char 
     int by = l->h - MENU_BAND_H;
 
     plasma_ground(c, l->w, by, 52, 0xC82850u);
-    ui_header(c, 0, 3, l->w, "BAG", pocket, "", UI_PINK);
+    ui_header(c, 0, 3, l->w, ui_tr("BAG"), pocket, "", UI_PINK);
     band(c, 0, by, l->w, MENU_BAND_H, 255);
 }
 

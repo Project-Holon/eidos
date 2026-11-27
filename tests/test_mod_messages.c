@@ -50,6 +50,25 @@ static int g_answer;
 /* How many times the port advanced the game. */
 static int g_ticks;
 
+/* The answers to the questions with a ticket, as the asker hears them. */
+static struct {
+    u32 ticket;
+    u32 tag;
+    int yes;
+} g_heard[8];
+static int g_heard_count;
+
+static void heard(void *user, u32 ticket, u32 tag, int yes)
+{
+    (void)user;
+    if (g_heard_count < 8) {
+        g_heard[g_heard_count].ticket = ticket;
+        g_heard[g_heard_count].tag = tag;
+        g_heard[g_heard_count].yes = yes;
+        g_heard_count++;
+    }
+}
+
 /* Shows a text: the port's text path gives the sink the game's code
  * units, without the end code. */
 static int sink_show(const u16 *units, u32 count)
@@ -275,6 +294,55 @@ int main(void)
     bw_mod_message_reset();
     BW_CHECK_EQ("the queue is empty", (long)bw_mod_message_queue_count(), 0);
     BW_CHECK_EQ("and no answer is waiting", bw_mod_message_answer_take(), -1);
+
+    printf("a question with a ticket\n");
+    /* The question keeps its place among the texts, the text path only
+     * records the answer, and the asker hears of it at the next delivery,
+     * in the order the answers came. */
+    bw_mod_message_reset();
+    bw_mod_message_set_sink(NULL);
+    {
+        u32 t1 = 0, t2 = 0;
+        BwModMessage m;
+
+        g_heard_count = 0;
+        BW_CHECK_EQ("a text first", bw_mod_message_queue_text("Hello"), 0);
+        BW_CHECK_EQ("the question is queued",
+                    bw_mod_message_ask("Take it?", 7u, heard, NULL, &t1), 0);
+        BW_CHECK_EQ("a second question",
+                    bw_mod_message_ask("Sure?", 8u, heard, NULL, &t2), 0);
+        BW_CHECK_EQ("the tickets differ", t1 != 0u && t2 != 0u && t1 != t2, 1);
+        BW_CHECK_EQ("the text is first", bw_mod_message_queue_peek_kind(),
+                    (long)BW_MOD_MESSAGE_TEXT);
+        (void)bw_mod_message_queue_take(&m);
+        BW_CHECK_EQ("then the question", bw_mod_message_queue_peek_kind(),
+                    (long)BW_MOD_MESSAGE_CONFIRM);
+        (void)bw_mod_message_queue_take(&m);
+        BW_CHECK_EQ("it carries its ticket", (long)m.ticket, (long)t1);
+        (void)bw_mod_message_queue_take(&m);
+        bw_mod_message_answered(t2, 0);
+        bw_mod_message_answered(t1, 1);
+        BW_CHECK_EQ("nothing is heard before the delivery", g_heard_count, 0);
+        bw_mod_message_deliver();
+        BW_CHECK_EQ("both are heard", g_heard_count, 2);
+        BW_CHECK_EQ("in the order they were answered", (long)g_heard[0].ticket, (long)t2);
+        BW_CHECK_EQ("the first said no", g_heard[0].yes, 0);
+        BW_CHECK_EQ("with its tag", (long)g_heard[0].tag, 8);
+        BW_CHECK_EQ("the second said yes", g_heard[1].yes, 1);
+        bw_mod_message_deliver();
+        BW_CHECK_EQ("an answer is heard once", g_heard_count, 2);
+        bw_mod_message_answered(t1, 1);
+        bw_mod_message_deliver();
+        BW_CHECK_EQ("an old ticket is not answered again", g_heard_count, 2);
+
+        BW_CHECK_EQ("an empty question is refused",
+                    bw_mod_message_ask("", 0u, heard, NULL, &t1), -1);
+        (void)bw_mod_message_ask("Lost?", 0u, heard, NULL, &t1);
+        bw_mod_message_reset();
+        bw_mod_message_answered(t1, 1);
+        bw_mod_message_deliver();
+        BW_CHECK_EQ("the reset drops a waiting question", g_heard_count, 2);
+    }
 
     bw_mod_message_set_sink(NULL);
     BW_REPORT("test_mod_messages");

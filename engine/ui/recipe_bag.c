@@ -562,7 +562,7 @@ static const char *pocket_name(const BagView *v, int p)
                 units_to_utf8(s.chars, g_pocket[i], (int)sizeof g_pocket[i]);
             }
             if (g_pocket[i][0] == '\0') {
-                snprintf(g_pocket[i], sizeof g_pocket[i], "%s", k_pocket_fallback[i]);
+                snprintf(g_pocket[i], sizeof g_pocket[i], "%s", ui_tr(k_pocket_fallback[i]));
             }
             g_pocket_ok[i] = 1;
         }
@@ -634,7 +634,7 @@ static void hints_bar(EidosUiCtx *c, int y, int w, const Hint *h, int n)
     }
     for (i = 0; i < n; i++) {
         int kw = ui_keycap_w(h[i].key);
-        int aw = ui_text_w(h[i].what, UI_FONT_SMALL);
+        int aw = ui_text_w(ui_tr(h[i].what), UI_FONT_SMALL);
         int rw = kw + 4 + aw + 4;
         int st = eidos_ui_hit(rect(x - 2, y, rw, 17));
 
@@ -650,7 +650,7 @@ static void hints_bar(EidosUiCtx *c, int y, int w, const Hint *h, int n)
         }
         ui_keycap(c, x, y + 2, h[i].key);
         x += kw + 4;
-        x = ui_text(c, x, y + 2 + ui_text_y(13, UI_FONT_SMALL), h[i].what, UI_LIGHT,
+        x = ui_text(c, x, y + 2 + ui_text_y(13, UI_FONT_SMALL), ui_tr(h[i].what), UI_LIGHT,
                     UI_EDGE, UI_FONT_SMALL, 1) + 10;
     }
 }
@@ -1015,8 +1015,8 @@ static void draw_dialog(EidosUiCtx *c, const BagView *v, int mx, int my, int mw,
 
         labels[0] = bag_msg(v->work, 132);
         labels[1] = bag_msg(v->work, 133);
-        if (labels[0][0] == '\0') labels[0] = "YES";
-        if (labels[1][0] == '\0') labels[1] = "NO";
+        if (labels[0][0] == '\0') labels[0] = ui_tr("YES");
+        if (labels[1][0] == '\0') labels[1] = ui_tr("NO");
         int cur = menu != NULL ? (int)(rd32(menu, TM_CURSOR) & 0xFFu) : -1, hover = -1;
         int keys = UI_GetInputMode != NULL && UI_GetInputMode() == 0;
 
@@ -1071,7 +1071,7 @@ static void draw_dialog(EidosUiCtx *c, const BagView *v, int mx, int my, int mw,
         if (small_button(c, bx + 28 + nw + 4, by, 24, row_h, "+")) {
             press_key(BW_KEY_UP);
         }
-        if (small_button(c, dx + dw - 12 - 56 * 2 - 6, by, 56, row_h, "OK")) {
+        if (small_button(c, dx + dw - 12 - 56 * 2 - 6, by, 56, row_h, ui_tr("OK"))) {
             press_key(BW_KEY_A);
         }
         if (small_button(c, dx + dw - 12 - 56, by, 56, row_h, bag_msg(v->work, 8))) {
@@ -1185,7 +1185,7 @@ static void run_bag(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         for (i = 0; i < 5; i++) {
             ui_fill(c, mx + 10 + i, my + 10 + i, 1, 11 - 2 * i, UI_PINK, 255);
         }
-        tx = ui_text(c, mx + 20, my + 6 + ui_text_y(hdr - 3, UI_FONT_LARGE), "BAG", UI_WHITE,
+        tx = ui_text(c, mx + 20, my + 6 + ui_text_y(hdr - 3, UI_FONT_LARGE), ui_tr("BAG"), UI_WHITE,
                      UI_EDGE, UI_FONT_LARGE, 1);
         ui_line(c, tx + 6, my + 6 + 15, tx + 11, my + 6 + 4, UI_EDGE2, 255);
         ui_text(c, tx + 15, my + 6 + ui_text_y(hdr - 3, UI_FONT_LARGE), title, UI_GREY, UI_EDGE,

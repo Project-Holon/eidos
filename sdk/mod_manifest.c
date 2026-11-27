@@ -79,6 +79,8 @@
  *     u32  bw_mod_manifest_table_count(const void *manifest);
  *     const void *bw_mod_manifest_table_at(const void *manifest, u32 i);
  *     const char *bw_mod_manifest_name(const void *manifest);
+ *     const char *bw_mod_manifest_title(const void *manifest);
+ *     const char *bw_mod_manifest_about(const void *manifest, int what);
  *     const char *bw_mod_manifest_code(const void *manifest);
  *     const char *bw_mod_manifest_state(const void *manifest);
  *     const char *bw_mod_manifest_settings(const void *manifest);
@@ -117,6 +119,7 @@
 #include "mod_api.h"
 #include "mod_manifest.h"
 #include "mod_slot.h"
+#include "mod_strings.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -862,6 +865,8 @@ void bw_mod_manifest_free(void *manifest)
         free(m->description);
         free(m->author);
         free(m->version);
+        free(m->name_local);
+        free(m->description_local);
         free(m->overrides);
         free(m->rules);
     }
@@ -1633,6 +1638,19 @@ int bw_mod_manifest_parse(void *manifest, const char *text, const char *dir_name
             } else if (set_str_n(&m->ui_text, vs, (size_t)(ve - vs)) != 0) {
                 return -1;
             }
+        } else if ((key_len == 7 && memcmp(ks, "name.", 5) == 0) ||
+                   (key_len == 14 && memcmp(ks, "description.", 12) == 0)) {
+            /* `name.<lang>` and `description.<lang>` (`name.fr`): the line
+             * a game in that language shows (docs/mod-strings.md).  Another
+             * language's line is not this game's.  `name` itself stays the
+             * one the namespace comes from, whatever the language. */
+            const char *lang = bw_mod_lang_code();
+
+            if (ve != vs && ks[key_len - 2] == lang[0] && ks[key_len - 1] == lang[1] &&
+                set_str_n(ks[0] == 'n' ? &m->name_local : &m->description_local, vs,
+                          (size_t)(ve - vs)) != 0) {
+                return -1;
+            }
         }
         /* An unknown key is ignored on purpose: a later version may add
          * keys, and an old port must not refuse a newer manifest. */
@@ -2032,14 +2050,30 @@ const char *bw_mod_manifest_name(const void *manifest)
     return m != NULL ? m->name : NULL;
 }
 
-/* The lines a mod list shows: 0 the description, 1 the author, 2 the mod's
- * own version.  NULL when the manifest has no such line. */
+/* The name a mod list shows: `name.<lang>` for the game's language, else
+ * `name`. */
+const char *bw_mod_manifest_title(const void *manifest)
+{
+    const BwModManifest *m = (const BwModManifest *)manifest;
+
+    if (m == NULL) {
+        return NULL;
+    }
+    return m->name_local != NULL ? m->name_local : m->name;
+}
+
+/* The lines a mod list shows: 0 the description (`description.<lang>` for
+ * the game's language, else `description`), 1 the author, 2 the mod's own
+ * version.  NULL when the manifest has no such line. */
 const char *bw_mod_manifest_about(const void *manifest, int what)
 {
     const BwModManifest *m = (const BwModManifest *)manifest;
 
     if (m == NULL) {
         return NULL;
+    }
+    if (what == 0 && m->description_local != NULL) {
+        return m->description_local;
     }
     return what == 0 ? m->description : what == 1 ? m->author : what == 2 ? m->version : NULL;
 }

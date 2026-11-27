@@ -14,6 +14,21 @@ ui_text = ui_text.txt
 
 The path is relative to the mod's folder, like a table or a rule.
 
+## A file for each language
+
+The words in `ui_text.txt` apply whatever the game's language. A file for
+one language goes beside it, with the language's code before the extension:
+`ui_text.fr.txt` (`en`, `fr`, `de`, `it`, `es`). Its lines apply only to a
+game in that language, and they come after the plain file's, so they win.
+Without a `ui_text` line, eidos reads `ui_text.<lang>.txt` at the mod's
+root.
+
+These files also translate the words a mod adds to the interface: a pop-up's
+title and text, a `show` row, the Tracker. Write them in the mod's own
+language and give each translation a line: `Run over = Partie finie` in
+`ui_text.fr.txt`. A mod's other texts (its settings, a rule's message, a
+code mod's lines) go in its strings files (`docs/mod-strings.md`).
+
 ## The file
 
 UTF-8 text, one label a line: the English, `=`, the translation.
@@ -66,10 +81,10 @@ Met at %s, Lv. %u. = 在%s相遇，当时为 Lv. %u。
 - Some text is not in that list. To find it, run eidos with
   `EIDOS_UI_TEXT_DUMP` set to a file path. Each run adds the English of every
   label it draws that no mod translates, once each, in the same format. Play
-  through the screens you want covered, then fill in the file. The dump also
-  lists text from the game itself that passes through the interface, such as
-  the player's name, and text built from numbers such as `No. 001`; leave
-  those lines out.
+  through the screens you want covered, then fill in the file.
+- Only the interface's own labels are translated. Names (the player's, a
+  Pokemon's, a mod's) and the game's own text are drawn as they are, so a
+  player named like a label keeps the name.
 
 ## The font
 

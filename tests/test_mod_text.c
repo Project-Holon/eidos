@@ -164,6 +164,14 @@ u32 GF_FONT_GetGlyphIndex(struct GfFont *font, u16 ch)
     return (u32)BW_MOD_MESSAGE_UNKNOWN + 1u;
 }
 
+/* The font's widths: every letter 5 pixels, a space 3 (the print adds one
+ * pixel after each). */
+u32 GF_FONT_GetCharWidth(struct GfFont *font, u16 ch)
+{
+    (void)font;
+    return ch == (u16)' ' ? 3u : 5u;
+}
+
 /* ------------------------------------------------------------------ */
 /* The draw side: the yes/no window and the game's advance             */
 /* ------------------------------------------------------------------ */
@@ -370,6 +378,69 @@ int main(void)
     bw_mod_text_set_window(&window);
     BW_CHECK_EQ("the message point shows the text", bw_mod_text_pump(), 1);
     BW_CHECK_EQ("the sink was given it", strcmp(g_printed[0], "later"), 0);
+
+    printf("a text's own turn: the layout\n");
+    /* Letters are 6 pixels with the gap, a space 4: in a window 30 pixels
+     * wide each word of four letters (24) is a line.  The second line
+     * follows a plain break; every line after it follows the game's page
+     * tag, which waits and scrolls. */
+    {
+        static const u16 want[] = {
+            'a', 'a', 'a', 'a', 0xFFFEu,
+            'b', 'b', 'b', 'b', 0xF000u, 0xBE00u, 0x0000u, 0xFFFEu,
+            'c', 'c', 'c', 'c', 0xF000u, 0xBE00u, 0x0000u, 0xFFFEu,
+            'd', 'd', 'd', 'd'
+        };
+        u16 in[19];
+        u16 out[BW_MOD_TEXT_LAID_OUT_MAX];
+        const char *src = "aaaa bbbb cccc dddd";
+        u32 n, i, same = 1;
+
+        for (i = 0; i < 19u; i++) {
+            in[i] = (u16)src[i];
+        }
+        n = bw_mod_text_layout(&g_font, 30u, in, 19u, out, BW_MOD_TEXT_LAID_OUT_MAX);
+        BW_CHECK_EQ("four lines and three breaks", (long)n, (long)(sizeof(want) / sizeof(want[0])));
+        for (i = 0; i < n && i < sizeof(want) / sizeof(want[0]); i++) {
+            same &= out[i] == want[i];
+        }
+        BW_CHECK_EQ("the breaks are the game's own", (long)same, 1);
+
+        /* Two words that fit share a line, and the space stays. */
+        n = bw_mod_text_layout(&g_font, 60u, in, 9u, out, BW_MOD_TEXT_LAID_OUT_MAX);
+        BW_CHECK_EQ("two words on one line", (long)n, 9);
+        BW_CHECK_EQ("with the space between them", (long)out[4], (long)' ');
+
+        /* The mod's own line break counts as a line. */
+        in[4] = (u16)BW_MOD_MESSAGE_NEWLINE;
+        n = bw_mod_text_layout(&g_font, 60u, in, 9u, out, BW_MOD_TEXT_LAID_OUT_MAX);
+        BW_CHECK_EQ("the mod's break is kept", (long)out[4], 0xFFFE);
+
+        /* With no font to measure, the text is as written. */
+        n = bw_mod_text_layout(NULL, 30u, in, 9u, out, BW_MOD_TEXT_LAID_OUT_MAX);
+        BW_CHECK_EQ("no font: no layout", (long)n, 9);
+
+        /* The next text: a question in the queue is passed over and answered
+         * no, and the text after it is laid out. */
+        bw_mod_message_reset();
+        BW_REQUIRE("the question is queued", bw_mod_message_queue_confirm("Ready?") == 0);
+        BW_REQUIRE("the text is queued", bw_mod_message_queue_text("aaaa bbbb") == 0);
+        BW_CHECK_EQ("two wait", (long)bw_mod_text_waiting(), 2);
+        n = bw_mod_text_next(&g_font, 30u, out, BW_MOD_TEXT_LAID_OUT_MAX);
+        BW_CHECK_EQ("the text comes laid out", (long)n, 9);
+        BW_CHECK_EQ("on two lines", (long)out[4], 0xFFFE);
+        BW_CHECK_EQ("the question was answered no", bw_mod_message_answer_take(), 0);
+        BW_CHECK_EQ("nothing waits", (long)bw_mod_text_waiting(), 0);
+        BW_CHECK_EQ("and the next is nothing", (long)bw_mod_text_next(&g_font, 30u, out,
+                                                                      BW_MOD_TEXT_LAID_OUT_MAX), 0);
+
+        /* The window's font answers which letters there are: the accented
+         * letter is a question mark in this font. */
+        BW_REQUIRE("the text is queued", bw_mod_message_queue_text("a\xC3\xA9") == 0);
+        n = bw_mod_text_next(&g_font, 300u, out, BW_MOD_TEXT_LAID_OUT_MAX);
+        BW_CHECK_EQ("two units", (long)n, 2);
+        BW_CHECK_EQ("the font lacks it", (long)out[1], (long)BW_MOD_MESSAGE_UNKNOWN);
+    }
 
     printf("the reset\n");
     bw_mod_text_reset();

@@ -124,6 +124,7 @@ typedef struct UiPartyMon {
     const UiImage *icon;
     const UiImage *front;       /* its picture, or NULL                      */
     int species, form;          /* for ui_mon_front_draw (its idle loop)     */
+    int shiny;                  /* its shiny colours                         */
     int type1, type2;
 } UiPartyMon;
 

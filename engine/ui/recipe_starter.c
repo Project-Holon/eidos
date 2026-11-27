@@ -27,6 +27,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "choice_list.h"
 #include "theme.h"
 #include "textbox.h"
@@ -183,7 +184,7 @@ static const char *game_text(void *w, u32 index, const char *fallback)
     int slot = (int)index - MSG_YES;
 
     if (slot < 0 || slot > 1) {
-        return fallback;
+        return ui_tr(fallback);
     }
     if (!g_text_ok[slot] && MSGDATA_AllocString != NULL && STRBUF_Delete != NULL
         && rdp(w, PW_MSGBANK) != NULL) {

@@ -13,7 +13,8 @@
     "give <item> <count>",
     "box <mon or party position> <box>",
     "withdraw <box> <slot>",
-    "gift \"<card file>\""
+    "gift \"<card file>\"",
+    "ask <text> [<tag>]"
   ],
   "state_fields": [
     {
@@ -615,7 +616,9 @@
     "event.<field>",
     "state.<cell>[key]",
     "setting.<key>",
-    "table.<name>[key]"
+    "table.<name>[key]",
+    "@<key>",
+    "@<key>(<expr>, ...)"
   ],
   "operators": [
     "||",
@@ -713,6 +716,7 @@
     "ap",
     "move.known",
     "web",
-    "setting.button"
+    "setting.button",
+    "confirm.done"
   ]
 }

@@ -466,7 +466,8 @@ fn tidy_saves(app: State<App>) -> R<Vec<String>> {
 
 #[tauri::command]
 fn mods_list(app: State<App>, profile: String) -> R<Vec<mods::ModInfo>> {
-    Ok(mods::list(&profile_dir(&app, &profile)?))
+    let p = profile::get(&app.layout, &profile)?;
+    Ok(mods::list_in(&app.layout.profile(&profile), &p.language))
 }
 
 #[tauri::command]

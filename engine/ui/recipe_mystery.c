@@ -545,7 +545,7 @@ static void mg_wonder_card(EidosUiCtx *c, int x, int y, int w, int h, const MgCa
 
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 9, MG_CARD_B, MG_CARD_E, 255);
     ui_fill(c, x + 3, y + 3, w - 6, 18, MG_CARD_A, 255);
-    ui_text(c, x + 12, y + 5, "WONDER CARD", UI_WHITE, MG_CARD_B, UI_FONT_SMALL, 1);
+    ui_text(c, x + 12, y + 5, ui_tr("WONDER CARD"), UI_WHITE, MG_CARD_B, UI_FONT_SMALL, 1);
     mg_date(cd, date, (int)sizeof date);
     ui_text(c, x + w - 12 - ui_text_w(date, UI_FONT_SMALL), y + 5, date, MG_PINK, MG_CARD_B, UI_FONT_SMALL, 1);
     wy = y + 28;
@@ -555,10 +555,10 @@ static void mg_wonder_card(EidosUiCtx *c, int x, int y, int w, int h, const MgCa
     }
     tx = x + 10 + ww + 10;
     mg_wrapped(c, tx, wy + 1, x + w - 10 - tx, 14, UI_FONT_LARGE, cd->title, UI_WHITE, 2);
-    ui_text(c, tx, wy + 30, cd->kind == 1 ? "Pok\xC3\xA9mon" : cd->kind == 2 ? "Item" : "Pass Power",
+    ui_text(c, tx, wy + 30, ui_tr(cd->kind == 1 ? "Pok\xC3\xA9mon" : cd->kind == 2 ? "Item" : "Pass Power"),
             MG_PINK, MG_CARD_B, UI_FONT_SMALL, 1);
     {
-        const char *st = cd->picked ? "Picked up" : "Not picked up yet";
+        const char *st = cd->picked ? ui_tr("Picked up") : ui_tr("Not picked up yet");
         int beside = tx + 60 + ui_text_w(st, UI_FONT_SMALL) <= x + w - 10;
 
         ui_text(c, beside ? tx + 60 : tx, beside ? wy + 30 : wy + 44, st, cd->picked ? MG_GREEN : MG_GOLD,
@@ -737,7 +737,7 @@ static void mg_newest(EidosUiCtx *c, void *data, int x, int y, int w, int h)
     char line[48];
 
     mg_panel(c, x, y, w, h);
-    ui_text(c, x + 8, y + 5, "NEWEST CARD", MG_TITLE, MG_SHADOW, UI_FONT_SMALL, 1);
+    ui_text(c, x + 8, y + 5, ui_tr("NEWEST CARD"), MG_TITLE, MG_SHADOW, UI_FONT_SMALL, 1);
     for (i = 0; i < 12; i++) {
         if (mg_card(data, i, &cd)) {
             last = cd;
@@ -746,7 +746,7 @@ static void mg_newest(EidosUiCtx *c, void *data, int x, int y, int w, int h)
     }
     if (!have) {
         mg_wrapped(c, x + 8, y + 24, w - 16, 13, UI_FONT_SMALL,
-                   "No cards yet. Received gifts show up here.", UI_GREY, 4);
+                   ui_tr("No cards yet. Received gifts show up here."), UI_GREY, 4);
         return;
     }
     mg_mini_card(c, x + 8, y + 20, w - 16, 44, &last, 1);
@@ -759,9 +759,9 @@ static void mg_newest(EidosUiCtx *c, void *data, int x, int y, int w, int h)
     }
     if (!last.picked) {
         mg_wrapped(c, x + 8, y + 86, w - 16, 13, UI_FONT_SMALL,
-                   "Pick it up from the deliveryman in any Pok\xC3\xA9mon Center.", MG_GOLD, 3);
+                   ui_tr("Pick it up from the deliveryman in any Pok\xC3\xA9mon Center."), MG_GOLD, 3);
     } else {
-        ui_text(c, x + 8, y + 86, "Picked up", MG_GREEN, MG_SHADOW, UI_FONT_SMALL, 1);
+        ui_text(c, x + 8, y + 86, ui_tr("Picked up"), MG_GREEN, MG_SHADOW, UI_FONT_SMALL, 1);
     }
 }
 
@@ -791,7 +791,7 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
     int mw = cw - 24 < 420 ? cw - 24 : 420, mh, mx, my, i, dy, st;
     int waiting = 0, cards = mg_card_count(data, &waiting);
     char right[32], sub[48];
-    const char *title = kind == DLG_MENU ? "MYSTERY GIFT" : kind == DLG_INFO ? "INFO" : "RECEIVE GIFT";
+    const char *title = ui_tr(kind == DLG_MENU ? "MYSTERY GIFT" : kind == DLG_INFO ? "INFO" : "RECEIVE GIFT");
     void *tb = rdp(work, W_TEXTBOX);
 
     mh = kind == DLG_RECEIVE ? 120 : kind == DLG_GIFT ? 150 : 168;
@@ -828,9 +828,9 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
                 snprintf(c2, sizeof c2, waiting == 1 ? ui_trf("%d gift waiting") : ui_trf("%d gifts waiting"),
                          waiting);
                 snprintf(sub, sizeof sub, ui_trf("%s, %s"), c1, c2);
-                subs[0] = "Wireless or internet";
+                subs[0] = ui_tr("Wireless or internet");
                 subs[1] = sub;
-                subs[2] = "How Mystery Gift works";
+                subs[2] = ui_tr("How Mystery Gift works");
                 ui_text(c, mx + 22, ty + dy + 2, mg_text(id), UI_WHITE, MG_SHADOW, UI_FONT_LARGE, 1);
                 ui_text(c, mx + 22, ty + dy + 16, subs[i], i == index ? UI_LIGHT : UI_GREY, MG_SHADOW,
                         UI_FONT_SMALL, 1);
@@ -867,7 +867,7 @@ static void mg_lists(EidosUiCtx *c, const EidosUiFrame *in, void *work, int kind
             st = mg_tile(c, tx, my + 26, tw, 62, i == index && eidos_ui_keys_lit(), dim, &dy);
             ui_text(c, tx + (tw - ui_text_w(lab, UI_FONT_SMALL)) / 2, my + 26 + dy + 30, lab,
                     dim ? UI_GREY : UI_WHITE, MG_SHADOW, UI_FONT_SMALL, 1);
-            ui_text(c, tx + (tw - ui_text_w(subs[i], UI_FONT_SMALL)) / 2, my + 26 + dy + 44, subs[i],
+            ui_text(c, tx + (tw - ui_text_w(ui_tr(subs[i]), UI_FONT_SMALL)) / 2, my + 26 + dy + 44, ui_tr(subs[i]),
                     dim ? UI_EDGE2 : UI_GREY, MG_SHADOW, UI_FONT_SMALL, 1);
             /* a mark for each way: waves, a globe, the infrared arrows */
             {
@@ -1001,7 +1001,7 @@ static int mg_pick_list(EidosUiCtx *c, const EidosUiFrame *in, void *work)
     if (my < 4) {
         my = 4;
     }
-    mg_window(c, mx, my, mw, mh, "CHOOSE A GIFT", NULL);
+    mg_window(c, mx, my, mw, mh, ui_tr("CHOOSE A GIFT"), NULL);
     first = g_pick_cursor >= rows ? g_pick_cursor - rows + 1 : 0;
     for (i = 0; i < rows && first + i < n; i++) {
         int k = first + i, ty = my + 26 + i * 34;
@@ -1031,7 +1031,7 @@ static int mg_pick_list(EidosUiCtx *c, const EidosUiFrame *in, void *work)
         int top = my + mh + 4;
 
         ui_textbox_frame(c, UI_TEXTBOX_SYSTEM, mx, top, mw, 30);
-        ui_text(c, mx + 12, top + 7, lines[0], UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
+        ui_text(c, mx + 12, top + 7, ui_tr(lines[0]), UI_WHITE, 0x464850u, UI_FONT_LARGE, 1);
     }
     (void)in;
     (void)work;
@@ -1053,7 +1053,7 @@ static void mg_only_message(EidosUiCtx *c, const EidosUiFrame *in, void *work, i
 
         mw = 220;
         mx = (cw - mw) / 2;
-        mg_window(c, mx, my, mw, mh, "RECEIVE GIFT", NULL);
+        mg_window(c, mx, my, mw, mh, ui_tr("RECEIVE GIFT"), NULL);
         cx = mx + mw / 2;
         cy = my + 60;
         for (r = 8; r <= 32; r += 8) {
@@ -1106,7 +1106,7 @@ static void mg_arrival(EidosUiCtx *c, const EidosUiFrame *in, void *work, int st
         g_arrive_t = in->frame;
     }
     t = (int)(in->frame - g_arrive_t);
-    mg_window(c, mx, my, mw, mh, state < 8 ? "RECEIVING GIFT" : "GIFT RECEIVED", NULL);
+    mg_window(c, mx, my, mw, mh, ui_tr(state < 8 ? "RECEIVING GIFT" : "GIFT RECEIVED"), NULL);
     gw = mw * 2 / 5;
     /* the gift on a light, growing in as it arrives */
     {
@@ -1198,7 +1198,7 @@ static void mg_album(EidosUiCtx *c, const EidosUiFrame *in, void *work, void *aw
     } else {
         mg_panel(c, mx + 10 + gw + 10, my + 26, mw - gw - 30, mh - 34);
         mg_wrapped(c, mx + gw + 28, my + 34, mw - gw - 46, 13, UI_FONT_SMALL,
-                   n > 0 ? "Choose a card to see it." : "No cards yet. Received gifts show up here.",
+                   ui_tr(n > 0 ? "Choose a card to see it." : "No cards yet. Received gifts show up here."),
                    UI_GREY, 4);
     }
     mg_walk_album(page, pos);

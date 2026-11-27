@@ -333,9 +333,15 @@ int main(void)
     BW_CHECK_EQ("version 7's settings calls follow them (show, set_text, hardcore_allowed)",
                 (long)offsetof(BwModServices, hardcore_allowed)
                 - (long)offsetof(BwModServices, popup), 3 * (long)sizeof(void *));
-    BW_CHECK_EQ("and nothing follows them",
+    BW_CHECK_EQ("version 7's string calls follow them (string_get, string_language)",
+                (long)offsetof(BwModServices, string_language)
+                - (long)offsetof(BwModServices, hardcore_allowed), 2 * (long)sizeof(void *));
+    BW_CHECK_EQ("version 7's question follows them (confirm_ask)",
+                (long)offsetof(BwModServices, confirm_ask)
+                - (long)offsetof(BwModServices, string_language), (long)sizeof(void *));
+    BW_CHECK_EQ("and nothing follows it",
                 (long)sizeof(BwModServices)
-                - (long)offsetof(BwModServices, hardcore_allowed),
+                - (long)offsetof(BwModServices, confirm_ask),
                 (long)sizeof(void *));
 
     printf("the in-step call\n");

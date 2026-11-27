@@ -90,6 +90,7 @@ extern void *BOX_SAVEDATA_GetHeader(void *gameData) BW_PC_WEAK;
 extern u32   POKE_TOOL_GetBoxValue(void *boxMon, u32 paramId, PcPtr arg) BW_PC_WEAK;
 extern u32   POKE_TOOL_GetPartyValue(void *partyMon, u32 paramId, PcPtr arg) BW_PC_WEAK;
 extern void *POKE_TOOL_CastToBoxParam(void *partyMon) BW_PC_WEAK;
+extern u32   POKE_TOOL_IsBoxShiny(void *boxMon) BW_PC_WEAK;
 extern void *POKEPARTY_GetMember(void *party, u32 pos) BW_PC_WEAK;
 extern u32   POKEPARTY_GetCount(const void *party) BW_PC_WEAK;
 extern void  BGWINFRM_GetPos(void *wk, u32 idx, s8 *x, s8 *y) BW_PC_WEAK;
@@ -451,6 +452,7 @@ typedef struct PcMon {
     int  exists;
     int  egg;
     int  species, form, gender, level;
+    int  shiny;
     int  hp, maxhp;         /* party only                                 */
     int  item, ability, mark;
     int  moves[4];
@@ -499,6 +501,7 @@ static int pc_mon(const PcGame *g, int slot, int full, PcMon *m)
     m->species = (int)POKE_TOOL_GetBoxValue(bm, 0x05, 0);
     m->egg = POKE_TOOL_GetBoxValue(bm, 0x4C, 0) != 0;
     m->form = (int)POKE_TOOL_GetBoxValue(bm, 0x6F, 0);
+    m->shiny = POKE_TOOL_IsBoxShiny != NULL && POKE_TOOL_IsBoxShiny(bm) != 0;
     m->gender = (int)POKE_TOOL_GetBoxValue(bm, 0x6E, 0);
     m->level = (int)POKE_TOOL_GetBoxValue(bm, 0x9E, 0);
     m->item = (int)POKE_TOOL_GetBoxValue(bm, 0x06, 0);
@@ -1401,7 +1404,7 @@ static void party_chip(EidosUiCtx *c, int x, int y, int w, int h, int slot, cons
         /* a tall row (a large canvas): the name in the large font */
         int top = y + (h - 36) / 2;
 
-        nx = ui_text(c, x + 34, top, m->egg ? "Egg" : m->nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        nx = ui_text(c, x + 34, top, m->egg ? ui_tr("Egg") : m->nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         if (!m->egg) {
             ui_gender(c, nx + 2, top, m->gender, UI_FONT_LARGE);
             fmt_int(lv, ui_tr("Lv."), m->level);
@@ -1413,7 +1416,7 @@ static void party_chip(EidosUiCtx *c, int x, int y, int w, int h, int slot, cons
     {
         int top = y + (h - 30) / 2;
 
-        nx = ui_text(c, x + 34, top + 1, m->egg ? "Egg" : m->nick, UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
+        nx = ui_text(c, x + 34, top + 1, m->egg ? ui_tr("Egg") : m->nick, UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
         if (!m->egg) {
             ui_gender(c, nx + 2, top + 1, m->gender, UI_FONT_SMALL);
             fmt_int(lv, ui_tr("Lv."), m->level);
@@ -1440,12 +1443,12 @@ static void details_wide(EidosUiCtx *c, int x, int y, int w, int h, const PcMon 
         }
     }
     if (!m->exists) {
-        ui_text(c, ix, iy, "Empty", UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, ix, iy, ui_tr("Empty"), UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
         return;
     }
     {
         char lv[16];
-        int nx = ui_text(c, ix, iy, m->egg ? "Egg" : m->nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        int nx = ui_text(c, ix, iy, m->egg ? ui_tr("Egg") : m->nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
 
         if (!m->egg) {
             ui_gender(c, nx + 3, iy, m->gender, UI_FONT_LARGE);
@@ -1459,7 +1462,7 @@ static void details_wide(EidosUiCtx *c, int x, int y, int w, int h, const PcMon 
     foot = m->egg ? 0 : 18 + 2 * 17 + 2 * 14 + 6;
     room = y + h - foot - iy;
     if (!m->egg && m->species > 0) {
-        pic = ui_mon_front((u16)m->species, (u8)m->form, 0);
+        pic = ui_mon_front((u16)m->species, (u8)m->form, m->shiny);
     }
     if (pic == NULL) {
         pic = icon_of(m, (frame / 24) & 1);
@@ -1486,9 +1489,9 @@ static void details_wide(EidosUiCtx *c, int x, int y, int w, int h, const PcMon 
     }
     marks_small(c, x + w - 8 - 48, iy + 3, m->mark);
     iy += 18;
-    ui_info_row(c, ix, iy, iw, "Ability", pc_text(TXT_ABILITY, (u32)m->ability));
+    ui_info_row(c, ix, iy, iw, ui_tr("Ability"), pc_text(TXT_ABILITY, (u32)m->ability));
     iy += 17;
-    ui_info_row(c, ix, iy, iw, "Item", m->item > 0 ? pc_text(TXT_ITEM, (u32)m->item) : "None");
+    ui_info_row(c, ix, iy, iw, ui_tr("Item"), m->item > 0 ? pc_text(TXT_ITEM, (u32)m->item) : ui_tr("None"));
     if (item_focus) {
         rect_outline(c, ix - 1, iy - 1, iw + 2, 17, UI_CYAN, 255);
     }
@@ -1515,12 +1518,12 @@ static void details_panel(EidosUiCtx *c, int x, int y, int w, int h, const PcMon
     }
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_EDGE, 225);
     if (!m->exists) {
-        ui_text(c, ix, iy, "Empty", UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, ix, iy, ui_tr("Empty"), UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
         return;
     }
     {
         char lv[16];
-        int nx = ui_text(c, ix, iy, m->egg ? "Egg" : m->nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        int nx = ui_text(c, ix, iy, m->egg ? ui_tr("Egg") : m->nick, UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
 
         if (!m->egg) {
             ui_gender(c, nx + 3, iy, m->gender, UI_FONT_LARGE);
@@ -1553,9 +1556,9 @@ static void details_panel(EidosUiCtx *c, int x, int y, int w, int h, const PcMon
         marks_small(c, tx, iy + well - 8, m->mark);
     }
     iy += well + 3;
-    ui_info_row(c, ix, iy, iw, "Ability", pc_text(TXT_ABILITY, (u32)m->ability));
+    ui_info_row(c, ix, iy, iw, ui_tr("Ability"), pc_text(TXT_ABILITY, (u32)m->ability));
     iy += 17;
-    ui_info_row(c, ix, iy, iw, "Item", m->item > 0 ? pc_text(TXT_ITEM, (u32)m->item) : "None");
+    ui_info_row(c, ix, iy, iw, ui_tr("Item"), m->item > 0 ? pc_text(TXT_ITEM, (u32)m->item) : ui_tr("None"));
     if (item_focus) {
         rect_outline(c, ix - 1, iy - 1, iw + 2, 17, UI_CYAN, 255);
     }
@@ -1637,7 +1640,7 @@ static const char *rule_text(int code)
     case 3:
         return pc_text(TXT_PROMPT, 6);      /* the last Pokemon able to battle */
     default:
-        return "It cannot go there.";
+        return ui_tr("It cannot go there.");
     }
 }
 
@@ -1658,7 +1661,7 @@ static int item_fixed_mon(const PcMon *m)
 static const char *item_rule(const PcMon *m)
 {
     if (!m->exists) {
-        return "Only a Pokemon can hold it.";
+        return ui_tr("Only a Pokemon can hold it.");
     }
     if (m->egg) {
         return pc_text(TXT_PROMPT, 31);     /* An Egg can't hold an item.    */
@@ -1667,7 +1670,7 @@ static const char *item_rule(const PcMon *m)
         return pc_text(TXT_PROMPT, 43);     /* Mail cannot be moved!         */
     }
     if (item_fixed_mon(m)) {
-        return "Its item can't be moved here.";
+        return ui_tr("Its item can't be moved here.");
     }
     return NULL;
 }
@@ -1772,7 +1775,7 @@ static void pc_drop(const PcGame *g, const PcWin *w, int slot, int box, u32 fram
             return;
         }
         if (!pc_ready(g, w, frame)) {
-            pc_say("Wait a moment.", 1, frame);
+            pc_say(ui_tr("Wait a moment."), 1, frame);
             return;
         }
         snprintf(g_item_to, sizeof(g_item_to), "%s", t.nick);
@@ -1787,7 +1790,7 @@ static void pc_drop(const PcGame *g, const PcWin *w, int slot, int box, u32 fram
         return;
     }
     if (!pc_ready(g, w, frame)) {
-        pc_say("Wait a moment.", 1, frame);
+        pc_say(ui_tr("Wait a moment."), 1, frame);
         return;
     }
     if (pc_op_start(OP_APPLY, g_hand, slot >= 0 ? slot : 0, g_hand_box, slot >= 0 ? -1 : box, 0)) {
@@ -1813,7 +1816,7 @@ static void pc_poll_op(const PcGame *g, u32 frame)
             pc_say(line, 0, frame);
             g_hand = -1;
         } else {
-            pc_say("The item could not be moved.", 1, frame);
+            pc_say(ui_tr("The item could not be moved."), 1, frame);
         }
     } else if (g_op.kind == OP_APPLY && g_apply) {
         g_apply = 0;
@@ -2191,7 +2194,7 @@ static void pc_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, cons
     for (i = 0; i < n; i++) {
         int kw = ui_keycap_w(pairs[2 * i]);
 
-        total += (kw < 13 ? 13 : kw) + 4 + ui_text_w(pairs[2 * i + 1], UI_FONT_SMALL) + gap;
+        total += (kw < 13 ? 13 : kw) + 4 + ui_text_w(ui_tr(pairs[2 * i + 1]), UI_FONT_SMALL) + gap;
     }
     if (n > 1 && x + total - gap > w) {
         gap -= (x + total - gap - w + n - 2) / (n - 1);
@@ -2202,7 +2205,7 @@ static void pc_hints(EidosUiCtx *c, int y, int w, const char *const *pairs, cons
         ui_fill(c, 0, y, w, 1, UI_EDGE, 255);
     }
     for (i = 0; i < n; i++) {
-        const char *key = pairs[2 * i], *what = pairs[2 * i + 1];
+        const char *key = pairs[2 * i], *what = ui_tr(pairs[2 * i + 1]);
         int kw = ui_keycap_w(key), aw = ui_text_w(what, UI_FONT_SMALL), rw;
 
         if (kw < 13) {
@@ -2604,7 +2607,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
 
         (void)ui_app_window(c, "pc", &fx, &fy, &fw, &fh);
     }
-    ui_header(c, 6, 5, cw - 12, "POKEMON STORAGE", mode_title(g->mode), NULL, UI_SKY);
+    ui_header(c, 6, 5, cw - 12, ui_tr("POKEMON STORAGE"), mode_title(g->mode), NULL, UI_SKY);
 
     {
         int carry_from_box = g_hand >= 0 && g_hand < SLOT_PARTY0 && g->cur_box == g_hand_box;
@@ -2678,7 +2681,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             if (ic != NULL && !hide_mon) {
                 ui_image(c, cx + (p - 2 - ic->w) / 2, cy + (p - 2 - ic->h) / 2 - 1, ic, 1);
             } else if (mon[i].egg && !hide_mon) {
-                ui_text(c, cx + 3, cy + p / 2 - 6, "Egg", UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
+                ui_text(c, cx + 3, cy + p / 2 - 6, ui_tr("Egg"), UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
             }
             if (mon[i].exists && mon[i].item > 0 && !hide) {
                 item_dot(c, cx + p - 10, cy + p - 10);
@@ -2736,7 +2739,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             int cx, cy, cwid, chh = chip_geom(&l, i, &cx, &cy, &cwid);
             int en = act_enabled(g, i, g_sel);
 
-            chip(c, cx, cy, cwid, chh, lab[i], hover_chip == i && en, en);
+            chip(c, cx, cy, cwid, chh, ui_tr(lab[i]), hover_chip == i && en, en);
             if (keys_on && g_focus == FOC_CHIP0 + i) {
                 ui_cursor_corners(c, cx - 1, cy - 1, cwid + 2, chh + 2, UI_CYAN);
             }
@@ -2797,8 +2800,8 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             /* the game's cursor is the lighter blue button */
             ui_row(c, bx, by, bw, bh, px_near(YESNO_X, i == 0 ? YES_Y : NO_Y, 8, 90, 139, 20), hov,
                    &UI_THEME_PARTY);
-            ui_text(c, bx + (bw - ui_text_w(lab[i], UI_FONT_LARGE)) / 2, by + ui_text_y(bh, UI_FONT_LARGE),
-                    lab[i], UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+            ui_text(c, bx + (bw - ui_text_w(ui_tr(lab[i]), UI_FONT_LARGE)) / 2, by + ui_text_y(bh, UI_FONT_LARGE),
+                    ui_tr(lab[i]), UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
             if (hov && mouse.up) {
                 eidos_ui_tap(YESNO_X, i == 0 ? YES_Y : NO_Y, 6);
             }
@@ -2812,8 +2815,8 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         boxes_geom(&l, limit, &x, &y, &bw, &bh, &cols, &mw, &mh);
         ui_fill(c, 0, 0, cw, ch - ui_bar_h(c), 0x000000u, 150);
         ui_panel(c, x, y, bw, bh, UI_CUT_TL | UI_CUT_BR, 8, UI_BODY, UI_SKY, 250);
-        ui_text(c, x + 8, y + 5, g_hand >= 0 && g->mode != PC_MODE_ITEMS ? "Place it in which Box?"
-                                                                       : "Jump to which Box?",
+        ui_text(c, x + 8, y + 5, g_hand >= 0 && g->mode != PC_MODE_ITEMS ? ui_tr("Place it in which Box?")
+                                                                       : ui_tr("Jump to which Box?"),
                 UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         for (i = 0; i < limit; i++) {
             int tx = x + 8 + (i % cols) * (mw + 4), ty = y + 26 + (i / cols) * (mh + 4);
@@ -2857,7 +2860,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 g_ov_cur = i;
             }
             ui_row(c, mx, by, mw, bh, i == g_ov_cur, hov, &UI_THEME_PARTY);
-            ui_text(c, mx + 7, by + ui_text_y(bh, UI_FONT_LARGE), k_menu_label[i], en ? UI_WHITE : UI_EDGE2,
+            ui_text(c, mx + 7, by + ui_text_y(bh, UI_FONT_LARGE), ui_tr(k_menu_label[i]), en ? UI_WHITE : UI_EDGE2,
                     UI_EDGE, UI_FONT_LARGE, 1);
             if (hov && mouse.up) {
                 g_ov = OV_NONE;
@@ -2880,7 +2883,7 @@ static void pc_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         my = clampi(l.gy + 2 * l.pitch - 8, 20, l.hint_y - mh - 4);
         ui_fill(c, 0, 0, cw, ch - ui_bar_h(c), 0x000000u, 150);
         ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY, UI_SKY, 250);
-        ui_text(c, mx + 6, my + 3, "MARKING", UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, mx + 6, my + 3, ui_tr("MARKING"), UI_WHITE, UI_EDGE, UI_FONT_LARGE, 1);
         for (i = 0; i < 6; i++) {
             int on = (mm.mark >> i) & 1, bx = mx + 6 + i * 20;
             int hov = mouse_live && in_rect(mouse.x, mouse.y, bx, my + 20, 18, 18);

@@ -1,58 +1,57 @@
 /*
- * patches: src/game/ov021/scrcmd_msgwin.c SCRCMD_MSGWIN_CmdPlainWinMsg SCRCMD_MSGWIN_CmdInfoSysWinMsg SCRCMD_MSGWIN_CmdYesNoWin SCRCMD_MSGWIN_OpenTalkWin SCRCMD_MSGWIN_CmdAddMenuItem
+ * patches: src/game/ov021/scrcmd_msgwin.c SCRCMD_MSGWIN_CmdAddMenuItem
  *
  * symbols:
- *   SCRIPT_SYS_GetFromWork  0x021589DC  thumb  ov010
- *   SCRIPT_SYS_Main  0x0215882C  thumb  ov010
+ *   FLDMMDL_SysPauseMove  0x0216D9A0  thumb  ov010
+ *   FLDMMDL_SysResumeMove  0x0216D9E4  thumb  ov010
+ *   FLDMMDL_SysSearchPlayer  0x0216DEE0  thumb  ov010
+ *   FLDMMDL_CheckEndAcmd  0x0216D454  thumb  ov010
+ *   FLDMMDL_CheckMoveBitMove  0x0216DA5C  thumb  ov010
+ *   FLDMMDL_OnMoveBitMovePause  0x0216DAF8  thumb  ov010
+ *   FLDMMDL_OffMoveBitMovePause  0x0216DB04  thumb  ov010
  *
- * The port's message service at the field's message window (sdk/mod_text.h;
- * sdk/mod_message.h; docs/mod-services.md, "Messages").
+ * The port's message service in the field (sdk/mod_text.h, "A text's own
+ * turn"; sdk/mod_message.h; docs/mod-services.md, "Messages"), and the PC's
+ * storage menu of the one-screen layout.
  *
- * What this file owns
- * -------------------
+ * A mod's text in the field
+ * -------------------------
  *
- * The port shows a mod's text in the game's own windows, in the game's own
- * font, at the points where the game would accept a message (sdk/mod_text.h,
- * "The show step").  The field's message windows are overlay 21's
- * (src/game/ov021/field_msgbg.c), and the ARM9 cannot call into an overlay,
- * so the side that has the window open is the side that hands it over:
- * this file.
+ * A mod's text gets a turn of its own: it never goes into a window the
+ * game has open for its own text.  When the field is quiet and the player
+ * stands still, the port starts the event below (sdk/mod_text.c,
+ * bw_mod_text_frame).  The event is the shape of the game's own field
+ * events that show a message (src/game/ov018/intrude_field.c,
+ * INTRUDE_FIELD_EventExitConfirm) and of the script commands that show one
+ * (src/game/ov021/scrcmd_msgwin.c, SCRCMD_MSGWIN_OpenPlainWinMsg and
+ * SCRCMD_MSGWIN_WaitKeyWithCursor):
  *
- * Four commands of the unit stand in for the game's own here:
+ *   1. every model stops; the player finishes the step it is in, as the
+ *      script's own lock lets it (src/game/ov021/scrcmd_fldmmdl.c,
+ *      SCRCMD_FLDMMDL_PauseMmdlsReleaseActive);
+ *   2. the field's plain window opens at the bottom of the screen, made
+ *      the way the script's plain window is made, and the text prints in
+ *      it at the game's speed, in the field's font;
+ *   3. A or B, with the game's cursor and sound, closes it; the next
+ *      waiting text follows in the same window.  A question stays on the
+ *      screen and the field's yes/no menu opens beside it, as the
+ *      script's own question does (SCRCMD_MSGWIN_YesNoEventMain); the
+ *      answer is recorded and the asker hears of it on the next frame;
+ *   4. the window closes and the models move again.
  *
- *   SCRCMD_MSGWIN_CmdPlainWinMsg     the plain window: the message box at
- *                                    the bottom of the field
- *   SCRCMD_MSGWIN_CmdInfoSysWinMsg   the information window: the box at
- *                                    the top of the field
- *   SCRCMD_MSGWIN_OpenTalkWin        the talk balloon
- *   SCRCMD_MSGWIN_CmdYesNoWin        the game's own yes/no window
- *
- * Each of them does what the game's did, and then hands the window the game
- * has just opened to the port (bw_mod_text_set_window) and drains the
- * port's queue (bw_mod_text_pump): the next text a mod queued is shown in
- * that window, in the game's own font, at the game's own position.
- *
- * The yes/no window and the game's advance
- * ----------------------------------------
- *
- * A question (a confirm) is asked in the field's own yes/no window: this
- * file creates it (FIELD_MSGBG_CreateYesNoMenu), waits for the player's
- * answer (FIELD_MSGBG_YesNoMenuMain) and hands the answer back to the
- * port.  The advance is the game's own step: the script system runs one
- * step, which is how the game reaches the next point where it would accept
- * a message.
+ * The window is the game's own, so every interface style draws it as it
+ * draws the game's plain window (engine/ui/textbox.c).
  *
  * The game's own records
  * ----------------------
  *
- * The port's library has no aletheia include path, so the few records this
- * file reads are copied here, the way sdk/mod_event_field.c does: the
- * message BG (its heap, its font and its print queue), the three windows
- * (their bitmap window and their message BG) and the cursor that sits in
- * front of them.  A copy holds the same members in the same order, so the
- * host compiler gives it the same offsets the game's own unit gets; the
- * offsets the game's own header documents are the DS ones, so they are
- * checked below only where the pointers are four bytes wide.
+ * The port's library has no aletheia include path, so the one record this
+ * file reads is copied here, the way sdk/mod_event_field.c does: the
+ * field's message BG, for its heap.  A copy holds the same members in the
+ * same order, so the host compiler gives it the same offsets the game's
+ * own unit gets; the offsets the game's own header documents are the DS
+ * ones, so they are checked below only where the pointers are four bytes
+ * wide.
  */
 
 #include "mod_text.h"
@@ -71,27 +70,20 @@
 typedef struct ScriptVm ScriptVm;
 typedef struct ScrcmdWork ScrcmdWork;
 typedef struct ScriptWork ScriptWork;
-typedef struct ScriptSys ScriptSys;
 typedef struct GameSystem GameSystem;
 typedef struct GameEvent GameEvent;
 typedef struct FieldMap FieldMap;
 typedef struct Strbuf Strbuf;
 typedef struct MsgBank MsgBank;
 typedef struct WordSet WordSet;
-typedef struct PrintQue PrintQue;
 typedef struct GfFont GfFont;
-typedef struct BmpWin BmpWin;
-typedef struct Bmp Bmp;
-typedef struct FieldMsgPrint FieldMsgPrint;
-typedef struct FieldMsgStream FieldMsgStream;
-typedef struct FieldMenuFunc FieldMenuFunc;
-typedef struct TalkMsgWinSys TalkMsgWinSys;
-typedef struct VecFx32 VecFx32;
+typedef struct PrintQue PrintQue;
+typedef struct FieldPlainWin FieldPlainWin;
+typedef struct MmdlSys MmdlSys;
+typedef struct Mmdl Mmdl;
 
-/* The wait a script command sets: the function the script system calls
- * each frame until it answers.  The unit spells its own type for it
- * (src/game/ov021/scrcmd_msgwin.c); the ARM9's own is the same pointer. */
-typedef int (*ScrcmdWaitFn)(ScriptVm *vm, ScrcmdWork *cmdWork);
+/* The function a game event runs each frame (src/game/arm9/game_event.h). */
+typedef int (*GameEventFunc)(GameEvent *event, int *seq, void *work);
 
 /* ------------------------------------------------------------------ */
 /* The port's own check                                                */
@@ -110,9 +102,9 @@ typedef int (*ScrcmdWaitFn)(ScriptVm *vm, ScrcmdWork *cmdWork);
 
 /*
  * The message BG of the field (src/game/ov021/field_msgbg_types.h): the
- * heap the field's objects come from, the font the field prints with and
- * the print queue the field runs.  The copy stops there: the record is
- * 0x17C bytes long and the rest of it is the field's own business.
+ * heap the field's objects come from.  The copy stops at the font: the
+ * record is 0x17C bytes long and the rest of it is the field's own
+ * business.
  */
 typedef struct FieldMsgBg {
     u16      heapId;        /* 0x000, the field's heap */
@@ -127,78 +119,6 @@ BW_PORT_STATIC_ASSERT(msgbg_heap, sizeof(void *) != 4 ||
                       offsetof(FieldMsgBg, heapId) == 0x000u);
 BW_PORT_STATIC_ASSERT(msgbg_font, sizeof(void *) != 4 ||
                       offsetof(FieldMsgBg, font) == 0x008u);
-BW_PORT_STATIC_ASSERT(msgbg_print_que, sizeof(void *) != 4 ||
-                      offsetof(FieldMsgBg, printQue) == 0x00Cu);
-
-/*
- * The cursor that blinks at the end of a message (the same header): it
- * sits in front of the three windows below, so their own offsets depend
- * on it.
- */
-typedef struct FieldMsgCursor {
-    u8   isDrawn;           /* 0x00 */
-    u8   animFrame;         /* 0x01, index into the y offset table */
-    u8   animWait;          /* 0x02, frames on the current animFrame */
-    Bmp *bmp;               /* 0x04, the 8x8 cursor image */
-} FieldMsgCursor;
-
-/*
- * The plain window: the message box at the bottom of the field (the same
- * header).  The copy stops at the bitmap window the text goes into.
- */
-typedef struct FieldPlainWin {
-    FieldMsgCursor    cursor;    /* 0x00 */
-    Strbuf           *strBuf;    /* 0x08, the text of the window */
-    FieldMsgBg       *msgBg;     /* 0x0C, the message BG it belongs to */
-    TalkMsgWinSys    *talkSys;   /* 0x10, the talk system window */
-    MsgBank          *msgData;   /* 0x14, the message bank it shows */
-    BmpWin           *bmpWin;    /* 0x18, the window the text goes into */
-} FieldPlainWin;
-
-BW_PORT_STATIC_ASSERT(plain_msg_bg, sizeof(void *) != 4 ||
-                      offsetof(FieldPlainWin, msgBg) == 0x0Cu);
-BW_PORT_STATIC_ASSERT(plain_bmp_win, sizeof(void *) != 4 ||
-                      offsetof(FieldPlainWin, bmpWin) == 0x18u);
-
-/*
- * The information window: the box at the top of the field (the same
- * header).  The copy stops at the message BG it belongs to.
- */
-typedef struct FieldSysWin {
-    BmpWin           *bmpWin;    /* 0x00, the window the text goes into */
-    FieldMsgStream   *stream;    /* 0x04, the running print stream */
-    FieldMsgPrint    *msgPrint;  /* 0x08, the print slot */
-    MsgBank          *msgData;   /* 0x0C, the message bank it shows */
-    Strbuf           *strBuf;    /* 0x10, the text of the window */
-    FieldMsgBg       *msgBg;     /* 0x14, the message BG it belongs to */
-} FieldSysWin;
-
-BW_PORT_STATIC_ASSERT(sys_bmp_win, sizeof(void *) != 4 ||
-                      offsetof(FieldSysWin, bmpWin) == 0x00u);
-BW_PORT_STATIC_ASSERT(sys_msg_bg, sizeof(void *) != 4 ||
-                      offsetof(FieldSysWin, msgBg) == 0x14u);
-
-/*
- * The talk balloon (the same header).  The copy stops at the message BG
- * it belongs to; the balloon's own text window is reached through the
- * talk system (TALKMSGWIN_GetBmpWin).
- */
-typedef struct FieldTalkWin {
-    u8             reserved;    /* 0x00 */
-    u8             index;       /* 0x01, the balloon slot (0..2) */
-    s16            shakeOffset; /* 0x02, the BG y offset of the shake */
-    Strbuf        *strBuf;      /* 0x04, the text of the balloon */
-    TalkMsgWinSys *talkSys;     /* 0x08, the talk system window */
-    FieldMsgCursor cursor;      /* 0x0C */
-    FieldMsgBg    *msgBg;       /* 0x14, the message BG it belongs to */
-} FieldTalkWin;
-
-BW_PORT_STATIC_ASSERT(talk_index, sizeof(void *) != 4 ||
-                      offsetof(FieldTalkWin, index) == 0x01u);
-BW_PORT_STATIC_ASSERT(talk_talk_sys, sizeof(void *) != 4 ||
-                      offsetof(FieldTalkWin, talkSys) == 0x08u);
-BW_PORT_STATIC_ASSERT(talk_msg_bg, sizeof(void *) != 4 ||
-                      offsetof(FieldTalkWin, msgBg) == 0x14u);
 
 /* ------------------------------------------------------------------ */
 /* The game's own functions                                             */
@@ -206,316 +126,276 @@ BW_PORT_STATIC_ASSERT(talk_msg_bg, sizeof(void *) != 4 ||
 
 /*
  * The game's own functions, each with the name the game's own headers
- * give it (src/game/ov021/field_msgbg.h, src/game/ov021/talkmsgwin.h,
- * src/game/ov021/fieldmap.h, src/game/arm9/gamesystem.h, the script
- * system's own headers and this unit's own).
+ * give it (src/game/ov021/field_msgbg.h, src/game/ov021/fieldmap.h,
+ * src/game/ov010/fldmmdl.h, src/game/arm9/game_event.h,
+ * src/game/arm9/gamesystem.h, src/game/arm9/strbuf.h and the key and
+ * sound headers of the ARM9).
  */
 
-/* The message BG of the field. */
-extern PrintQue *FIELD_MSGBG_GetPrintQue(FieldMsgBg *msgBg);
-extern GfFont   *FIELD_MSGBG_GetFont(FieldMsgBg *msgBg);
+/* The field's message BG and its plain window. */
+extern GfFont *FIELD_MSGBG_GetFont(FieldMsgBg *msgBg);
+extern FieldPlainWin *FIELD_MSGBG_CreatePlainWin(FieldMsgBg *msgBg, MsgBank *msgData,
+                                                 u32 winType, u16 x, u16 y,
+                                                 u16 width, u16 height);
+extern int  FIELD_MSGBG_DeletePlainWin(FieldPlainWin *plainWin);
+extern void FIELD_MSGBG_ClearPlainWin(FieldPlainWin *plainWin);
+extern void FIELD_MSGBG_PlainWinPrintStream(FieldPlainWin *plainWin, u32 x, u16 y,
+                                            Strbuf *str);
+extern u32  FIELD_MSGBG_PlainWinMain(FieldPlainWin *plainWin);
+extern void FIELD_MSGBG_PlainWinDrawCursor(FieldPlainWin *plainWin);
 
-/* The yes/no window of the field. */
-extern FieldMenuFunc *FIELD_MSGBG_CreateYesNoMenu(FieldMsgBg *msgBg,
-                                                  u32 cursorPos);
-extern int FIELD_MSGBG_YesNoMenuMain(FieldMenuFunc *menu);
-extern int FIELD_MSGBG_DeleteMenuFunc(FieldMenuFunc *menu);
+/* The field's yes/no menu (src/game/ov021/field_msgbg.c). */
+typedef struct FieldMenuFunc FieldMenuFunc;
+extern FieldMenuFunc *FIELD_MSGBG_CreateYesNoMenu(FieldMsgBg *msgBg, u32 cursorPos);
+extern int  FIELD_MSGBG_YesNoMenuMain(FieldMenuFunc *menu);
+extern int  FIELD_MSGBG_DeleteMenuFunc(FieldMenuFunc *menu);
 
-/* The windows. */
-extern void FIELD_MSGBG_InfoSysWinPrintStr(FieldSysWin *sysWin, u32 x, u16 y,
-                                           Strbuf *str);
-extern FieldTalkWin *FIELD_MSGBG_AddTalkWin(FieldMsgBg *msgBg, int index,
-                                            VecFx32 *pos, Strbuf *str,
-                                            u32 winType, u32 tailType);
-extern BmpWin *TALKMSGWIN_GetBmpWin(TalkMsgWinSys *sys, u32 index);
-
-/* The field map's message BG. */
+/* The field map. */
 extern FieldMsgBg *FIELDMAP_GetMsgBg(FieldMap *fieldMap);
+extern MmdlSys *FIELDMAP_GetMmdlSys(FieldMap *fieldMap);
 extern void *GAMESYSTEM_GetFieldMap(const GameSystem *gameSystem);
 
-/* The script work. */
-extern GameSystem *SCRCMD_WORK_GetGameSystem(ScrcmdWork *work);
-extern ScriptWork  *SCRCMD_WORK_GetScriptWork(ScrcmdWork *work);
-extern void        *SCRCMD_WORK_GetMsgWindow(ScrcmdWork *work);
-extern void         SCRCMD_WORK_SetMsgWindow(ScrcmdWork *work, void *window);
-extern unsigned short SCRIPT_WORK_ReadWorkValue(ScriptVm *vm,
-                                                 ScrcmdWork *cmdWork);
-extern u16 *SCRIPT_WORK_ReadWorkPointer(ScriptVm *vm, ScrcmdWork *cmdWork);
-extern void SCRIPT_WORK_SetCheckFlag(int flagId);
-extern void SCRIPT_SYS_CallEvent(ScriptWork *scriptWork, void *task);
+/* The field's models. */
+extern void  FLDMMDL_SysPauseMove(MmdlSys *sys);
+extern void  FLDMMDL_SysResumeMove(MmdlSys *sys);
+extern Mmdl *FLDMMDL_SysSearchPlayer(MmdlSys *sys);
+extern int   FLDMMDL_CheckEndAcmd(Mmdl *mmdl);
+extern int   FLDMMDL_CheckMoveBitMove(Mmdl *mmdl);
+extern void  FLDMMDL_OnMoveBitMovePause(Mmdl *mmdl);
+extern void  FLDMMDL_OffMoveBitMovePause(Mmdl *mmdl);
 
-/* The script VM and the script system. */
-extern u16  VM_ReadU16(ScriptVm *vm);
-extern void VM_SetWait(ScriptVm *vm, ScrcmdWaitFn waitFn);
-extern ScriptSys *SCRIPT_SYS_GetFromWork(void *scriptWork);
-extern int  SCRIPT_SYS_Main(ScriptSys *sys);
+/* The game's events. */
+extern GameEvent *GAME_EVENT_Create(GameSystem *gameSystem, GameEvent *parent,
+                                    GameEventFunc func, u32 workSize);
+extern void *GAME_EVENT_GetWork(GameEvent *event);
+extern GameSystem *GAME_EVENT_GetGameSystem(GameEvent *event);
 
-/* The commands of this unit that are not taken the place of here. */
-extern int  SCRCMD_MSGWIN_OpenPlainWinMsg(ScriptVm *vm, ScrcmdWork *cmdWork,
-                                           int winType);
-extern void SCRCMD_MSGWIN_OpenInfoSysWin(ScrcmdWork *cmdWork, u32 windowKind);
-extern Strbuf *SCRCMD_MSGWIN_ExpandMessage(ScrcmdWork *cmdWork,
-                                            ScriptWork *scriptWork, u32 msgId);
-extern GameEvent *SCRCMD_MSGWIN_CreateYesNoEvent(GameSystem *gameSystem,
-                                                 ScrcmdWork *cmdWork,
-                                                 u16 *result);
-extern int  SCRCMD_MSGWIN_WaitInfoSysWin(ScriptVm *vm, ScrcmdWork *cmdWork);
-
-/* The commands this file stands in for. */
-extern int  SCRCMD_MSGWIN_CmdPlainWinMsg(ScriptVm *vm, ScrcmdWork *cmdWork);
-extern int  SCRCMD_MSGWIN_CmdInfoSysWinMsg(ScriptVm *vm, ScrcmdWork *cmdWork);
-extern int  SCRCMD_MSGWIN_CmdYesNoWin(ScriptVm *vm, ScrcmdWork *cmdWork);
-extern void SCRCMD_MSGWIN_OpenTalkWin(ScrcmdWork *cmdWork, FieldMsgBg *msgBg,
-                                       int talkIndex, VecFx32 *pos, Strbuf *str,
-                                       u32 winType, u32 tailType);
+/* The string object, the keys and the sound. */
+extern Strbuf *STRBUF_Create(u32 capacity, u32 heapId);
+extern void    STRBUF_SetStringN(Strbuf *strbuf, const u16 *srcChars, u32 charCount);
+extern void    STRBUF_Delete(Strbuf *strbuf);
+extern u32     KEY_GetTrg(void);
+extern void    GFL_USE_PlaySeDefaultVolume(u32 seNo);
 
 /* ------------------------------------------------------------------ */
 /* The port's own constants                                            */
 /* ------------------------------------------------------------------ */
 
 /*
- * The script work's check flag of the talk window (the unit's own enum,
- * src/game/ov021/scrcmd_msgwin.c): the balloon is open while it is set.
+ * The plain window the script's message command opens
+ * (SCRCMD_MSGWIN_OpenPlainWinMsg): the plain frame (window type 0) at the
+ * bottom of the screen, one tile in, row 0x13, 0x1E tiles wide and 4 high.
+ * The text starts at (8, 0) in it.
  */
-#define MSGWIN_FLAG_TALK_WIN 2
+#define MOD_MESSAGE_WIN_TYPE   0u
+#define MOD_MESSAGE_WIN_X      1u
+#define MOD_MESSAGE_WIN_Y      0x13u
+#define MOD_MESSAGE_WIN_W      0x1Eu
+#define MOD_MESSAGE_WIN_H      4u
+#define MOD_MESSAGE_TEXT_X     8u
+#define MOD_MESSAGE_TEXT_Y     0u
 
-/*
- * How many times the yes/no window is asked before the port gives the
- * question up.  The port's own confirm waits 3600 ticks for an answer
- * (sdk/mod_message.c); the window answers on a step of the game, so it
- * waits the same number of steps.
- */
-#define MSGWIN_ASK_STEPS 3600u
+/* The width the text has: the window's pixels after the text's start. */
+#define MOD_MESSAGE_TEXT_WIDTH (MOD_MESSAGE_WIN_W * 8u - MOD_MESSAGE_TEXT_X)
+
+/* The keys that close a message and its sound
+ * (SCRCMD_MSGWIN_WaitKeyWithCursor): A or B, SE 0x547. */
+#define MOD_MESSAGE_KEYS       3u
+#define MOD_MESSAGE_SE_NEXT    0x547u
+
+/* The end code of the game's text (src/game/arm9/msgdata.c). */
+#define MOD_MESSAGE_EOS        0xFFFFu
+
+/* The script's yes/no (SCRCMD_MSGWIN_YesNoEventMain): 8 frames after the
+ * text, the menu with its cursor on YES; the menu's answers. */
+#define MOD_MESSAGE_ASK_WAIT   8u
+#define MOD_MESSAGE_ASK_YES    0
+#define MOD_MESSAGE_ASK_OPEN   2
+
+/* The event's steps. */
+enum {
+    MOD_MESSAGE_SEQ_LOCK,       /* every model stops, the player's step ends */
+    MOD_MESSAGE_SEQ_PLAYER,     /* the wait for the player's step */
+    MOD_MESSAGE_SEQ_OPEN,       /* the next text into the window */
+    MOD_MESSAGE_SEQ_PRINT,      /* the text prints */
+    MOD_MESSAGE_SEQ_KEY,        /* A or B */
+    MOD_MESSAGE_SEQ_ASK_WAIT,   /* a question: the frames before its menu */
+    MOD_MESSAGE_SEQ_ASK,        /* a question: the yes/no menu */
+    MOD_MESSAGE_SEQ_CLOSE       /* the window closes, the models move */
+};
+
+/* The event's work. */
+typedef struct ModMessageWork {
+    FieldPlainWin *plainWin;    /* the window, once it is open */
+    Strbuf        *str;         /* the text the window prints */
+    FieldMenuFunc *yesNo;       /* a question's menu, while it is open */
+    u32            ticket;      /* the question on the screen, 0 for a text */
+    u8             playerMoves; /* the player is let finish its step */
+    u8             wait;        /* the frames before the question's menu */
+    u8             reserved[2];
+    u16            units[BW_MOD_TEXT_LAID_OUT_MAX + 1u];
+} ModMessageWork;
 
 /* ------------------------------------------------------------------ */
-/* The state                                                           */
+/* The event                                                            */
 /* ------------------------------------------------------------------ */
 
-/* The message BG of the field: the yes/no window is made in it. */
-static FieldMsgBg *g_msg_bg;
-
-/* The script work the commands run in: the advance runs its script
- * system. */
-static ScriptWork *g_script_work;
-
-/* ------------------------------------------------------------------ */
-/* The window                                                          */
-/* ------------------------------------------------------------------ */
-
-/*
- * Hands the window the game has just opened to the port and drains the
- * port's queue: the next text a mod queued is shown in that window.
- *
- * The three parts are the game's own: the print queue the field runs, so
- * the text appears with the game's own speed, the bitmap window to draw
- * in, and the font the field prints with.  The heap is the field's, and
- * the position is the one the game's own text uses.
- */
-static void msgwin_show(void *bmpWin, FieldMsgBg *msgBg, u16 x, u16 y)
+int EVENT_MOD_MESSAGE_Main(GameEvent *event, int *seq, void *workPtr)
 {
-    BwModTextWindow window;
+    ModMessageWork *work = (ModMessageWork *)workPtr;
+    FieldMap *fieldMap = (FieldMap *)GAMESYSTEM_GetFieldMap(GAME_EVENT_GetGameSystem(event));
+    MmdlSys *mmdlSys = FIELDMAP_GetMmdlSys(fieldMap);
+    Mmdl *player = FLDMMDL_SysSearchPlayer(mmdlSys);
+    FieldMsgBg *msgBg;
+    u32 count;
 
-    if (bmpWin == NULL || msgBg == NULL) {
-        return;
-    }
-    window.print_que = FIELD_MSGBG_GetPrintQue(msgBg);
-    window.bmp_win = bmpWin;
-    window.font = FIELD_MSGBG_GetFont(msgBg);
-    window.heap = (u32)msgBg->heapId;
-    window.x = x;
-    window.y = y;
-    g_msg_bg = msgBg;
-    bw_mod_text_set_window(&window);
-    (void)bw_mod_text_pump();
-}
-
-/* ------------------------------------------------------------------ */
-/* The draw side                                                       */
-/* ------------------------------------------------------------------ */
-
-/*
- * The game's advance: one step of the game's own script system, which is
- * what runs the field's scripts (src/game/ov010/script_sys.c,
- * SCRIPT_SYS_Main).
- *
- * A script that waits (a message window, a menu) runs its wait function
- * in the step, so the window the game has open moves on; a script that
- * runs runs its next command in the step, and that command is the point
- * where the game would accept a message again: the pump there (in the
- * commands above) shows the port's text and asks a port's question.
- *
- * The frame itself (the input poll, the screen) belongs to the platform
- * layer (sdk/mod_text.h, "The draw side"), which an overlay cannot
- * reach; this is the part of it the field's scripts own.
- */
-static void msgwin_tick(void)
-{
-    ScriptSys *sys;
-
-    if (g_script_work == NULL) {
-        return;
-    }
-    sys = SCRIPT_SYS_GetFromWork(g_script_work);
-    if (sys == NULL) {
-        return;
-    }
-    (void)SCRIPT_SYS_Main(sys);
-}
-
-/*
- * The field's yes/no window: it shows the question and waits for the
- * player's answer.  The question goes into the message window the game
- * has open, and the window itself is the field's own yes/no menu.
- *
- * The menu's answer comes from the game's own menu code, which the
- * advance feeds: the answer is 1 for yes and 0 for no.  A question
- * nobody answers in time is a "no".
- */
-static int msgwin_ask(const u16 *units, u32 count)
-{
-    const BwModTextWindow *window;
-    FieldMenuFunc *menu;
-    u32 i;
-    int result;
-
-    if (g_msg_bg == NULL) {
-        return 0;
-    }
-    window = bw_mod_text_window();
-    if (window != NULL && window->bmp_win != NULL) {
-        /* The question goes into the message window the game has open. */
-        (void)bw_mod_text_print(window, units, count);
-    }
-    menu = FIELD_MSGBG_CreateYesNoMenu(g_msg_bg, 0);
-    if (menu == NULL) {
-        return 0;
-    }
-    for (i = 0; i < MSGWIN_ASK_STEPS; i++) {
-        result = FIELD_MSGBG_YesNoMenuMain(menu);
-        if (result != 2) {
-            /* 0 is the first item of the menu (yes), 1 the second (no). */
-            (void)FIELD_MSGBG_DeleteMenuFunc(menu);
-            return (result == 0) ? 1 : 0;
+    switch (*seq) {
+    case MOD_MESSAGE_SEQ_LOCK:
+        FLDMMDL_SysPauseMove(mmdlSys);
+        if (player != NULL && FLDMMDL_CheckEndAcmd(player) == 0) {
+            FLDMMDL_OffMoveBitMovePause(player);
+            work->playerMoves = 1;
         }
-        msgwin_tick();
+        *seq = MOD_MESSAGE_SEQ_PLAYER;
+        break;
+    case MOD_MESSAGE_SEQ_PLAYER:
+        if (work->playerMoves != 0) {
+            if (FLDMMDL_CheckEndAcmd(player) == 0) {
+                break;
+            }
+            FLDMMDL_OnMoveBitMovePause(player);
+            work->playerMoves = 0;
+        }
+        *seq = MOD_MESSAGE_SEQ_OPEN;
+        break;
+    case MOD_MESSAGE_SEQ_OPEN:
+        msgBg = FIELDMAP_GetMsgBg(fieldMap);
+        count = bw_mod_text_take(FIELD_MSGBG_GetFont(msgBg), MOD_MESSAGE_TEXT_WIDTH,
+                                 work->units, BW_MOD_TEXT_LAID_OUT_MAX, &work->ticket);
+        if (count == 0u) {
+            *seq = MOD_MESSAGE_SEQ_CLOSE;
+            break;
+        }
+        work->units[count] = (u16)MOD_MESSAGE_EOS;
+        if (work->str == NULL) {
+            work->str = STRBUF_Create(BW_MOD_TEXT_LAID_OUT_MAX + 1u, msgBg->heapId);
+        }
+        STRBUF_SetStringN(work->str, work->units, count + 1u);
+        if (work->plainWin == NULL) {
+            work->plainWin = FIELD_MSGBG_CreatePlainWin(msgBg, NULL, MOD_MESSAGE_WIN_TYPE,
+                                                        MOD_MESSAGE_WIN_X, MOD_MESSAGE_WIN_Y,
+                                                        MOD_MESSAGE_WIN_W, MOD_MESSAGE_WIN_H);
+        } else {
+            FIELD_MSGBG_ClearPlainWin(work->plainWin);
+        }
+        FIELD_MSGBG_PlainWinPrintStream(work->plainWin, MOD_MESSAGE_TEXT_X,
+                                        MOD_MESSAGE_TEXT_Y, work->str);
+        *seq = MOD_MESSAGE_SEQ_PRINT;
+        break;
+    case MOD_MESSAGE_SEQ_PRINT:
+        if (FIELD_MSGBG_PlainWinMain(work->plainWin) == 1) {
+            /* a question stays on the screen and its menu opens */
+            work->wait = (u8)MOD_MESSAGE_ASK_WAIT;
+            *seq = work->ticket != 0u ? MOD_MESSAGE_SEQ_ASK_WAIT : MOD_MESSAGE_SEQ_KEY;
+        }
+        break;
+    case MOD_MESSAGE_SEQ_ASK_WAIT:
+        if (work->wait != 0u) {
+            work->wait--;
+            break;
+        }
+        msgBg = FIELDMAP_GetMsgBg(fieldMap);
+        work->yesNo = FIELD_MSGBG_CreateYesNoMenu(msgBg, 0);
+        *seq = MOD_MESSAGE_SEQ_ASK;
+        break;
+    case MOD_MESSAGE_SEQ_ASK: {
+        int answer = FIELD_MSGBG_YesNoMenuMain(work->yesNo);
+
+        if (answer == MOD_MESSAGE_ASK_OPEN) {
+            break;
+        }
+        FIELD_MSGBG_DeleteMenuFunc(work->yesNo);
+        work->yesNo = NULL;
+        /* B is no, as in the script's own question */
+        bw_mod_text_answer(work->ticket, answer == MOD_MESSAGE_ASK_YES);
+        work->ticket = 0u;
+        *seq = MOD_MESSAGE_SEQ_OPEN;
+        break;
     }
-    (void)FIELD_MSGBG_DeleteMenuFunc(menu);
+    case MOD_MESSAGE_SEQ_KEY:
+        if (KEY_GetTrg() & MOD_MESSAGE_KEYS) {
+            GFL_USE_PlaySeDefaultVolume(MOD_MESSAGE_SE_NEXT);
+            *seq = MOD_MESSAGE_SEQ_OPEN;
+            break;
+        }
+        FIELD_MSGBG_PlainWinDrawCursor(work->plainWin);
+        break;
+    case MOD_MESSAGE_SEQ_CLOSE:
+    default:
+        if (work->plainWin != NULL) {
+            FIELD_MSGBG_DeletePlainWin(work->plainWin);
+        }
+        if (work->str != NULL) {
+            STRBUF_Delete(work->str);
+        }
+        FLDMMDL_SysResumeMove(mmdlSys);
+        return 1;
+    }
     return 0;
 }
 
 /*
- * Registers the draw side with the port: the field's yes/no window and
- * the game's advance.  The port's own reset takes the draw side away
- * (the overlay that owns it is unloaded), so every command registers it
- * again.
+ * The event for the waiting texts (sdk/mod_text.c starts it on a quiet
+ * field with GAMESYSTEM_SetEvent).
  */
-static void msgwin_setup(ScrcmdWork *cmdWork)
+GameEvent *EVENT_MOD_MESSAGE_Create(GameSystem *gameSystem)
 {
-    BwModTextDraw draw;
+    GameEvent *event;
+    ModMessageWork *work;
 
-    g_script_work = SCRCMD_WORK_GetScriptWork(cmdWork);
-    draw.ask = msgwin_ask;
-    draw.tick = msgwin_tick;
-    bw_mod_text_set_draw(&draw);
+    event = GAME_EVENT_Create(gameSystem, NULL, EVENT_MOD_MESSAGE_Main,
+                              sizeof(ModMessageWork));
+    if (event == NULL) {
+        return NULL;
+    }
+    work = (ModMessageWork *)GAME_EVENT_GetWork(event);
+    work->plainWin = NULL;
+    work->str = NULL;
+    work->yesNo = NULL;
+    work->ticket = 0u;
+    work->playerMoves = 0;
+    work->wait = 0;
+    return event;
+}
+
+/*
+ * The player stands: no step under way.  The port waits for this before a
+ * text's turn, so a player who keeps walking is not stopped in the middle
+ * of a step.
+ */
+int EVENT_MOD_MESSAGE_IsPlayerStill(GameSystem *gameSystem)
+{
+    FieldMap *fieldMap = (FieldMap *)GAMESYSTEM_GetFieldMap(gameSystem);
+    Mmdl *player;
+
+    if (fieldMap == NULL) {
+        return 0;
+    }
+    player = FLDMMDL_SysSearchPlayer(FIELDMAP_GetMmdlSys(fieldMap));
+    if (player == NULL) {
+        return 0;
+    }
+    return FLDMMDL_CheckEndAcmd(player) != 0 && FLDMMDL_CheckMoveBitMove(player) == 0;
 }
 
 /* ------------------------------------------------------------------ */
-/* The commands                                                        */
+/* The script commands the PC's menu uses                              */
 /* ------------------------------------------------------------------ */
 
-/*
- * The plain window: the message box at the bottom of the field.  The
- * game's own text goes into it at (8, 0), and the port's text goes into
- * the same place.
- */
-int SCRCMD_MSGWIN_CmdPlainWinMsg(ScriptVm *vm, ScrcmdWork *cmdWork)
-{
-    FieldPlainWin *plainWin;
-    int result;
-
-    result = SCRCMD_MSGWIN_OpenPlainWinMsg(vm, cmdWork, 0);
-    msgwin_setup(cmdWork);
-    if (result != 1) {
-        return result;
-    }
-    plainWin = (FieldPlainWin *)SCRCMD_WORK_GetMsgWindow(cmdWork);
-    if (plainWin == NULL) {
-        return result;
-    }
-    msgwin_show(plainWin->bmpWin, plainWin->msgBg, 8, 0);
-    return result;
-}
-
-/*
- * The information window: the box at the top of the field.  The game's
- * own text goes into it at (0, 0).
- */
-int SCRCMD_MSGWIN_CmdInfoSysWinMsg(ScriptVm *vm, ScrcmdWork *cmdWork)
-{
-    FieldSysWin *sysWin;
-    Strbuf *str;
-    ScriptWork *scriptWork;
-    u32 msgId;
-
-    scriptWork = SCRCMD_WORK_GetScriptWork(cmdWork);
-    msgId = SCRIPT_WORK_ReadWorkValue(vm, cmdWork);
-    SCRCMD_MSGWIN_OpenInfoSysWin(cmdWork, (u8)VM_ReadU16(vm));
-    str = SCRCMD_MSGWIN_ExpandMessage(cmdWork, scriptWork, msgId);
-    sysWin = (FieldSysWin *)SCRCMD_WORK_GetMsgWindow(cmdWork);
-    FIELD_MSGBG_InfoSysWinPrintStr(sysWin, 0, 0, str);
-    VM_SetWait(vm, SCRCMD_MSGWIN_WaitInfoSysWin);
-    msgwin_setup(cmdWork);
-    if (sysWin != NULL) {
-        msgwin_show(sysWin->bmpWin, sysWin->msgBg, 0, 0);
-    }
-    return 1;
-}
-
-/*
- * The game's own yes/no window: the command opens the event that asks
- * the player.  The port's own question is asked in the same window (see
- * msgwin_ask), so the message BG of the field is remembered here.
- */
-int SCRCMD_MSGWIN_CmdYesNoWin(ScriptVm *vm, ScrcmdWork *cmdWork)
-{
-    u16 *result;
-    ScriptWork *scriptWork;
-    GameSystem *gameSystem;
-
-    result = SCRIPT_WORK_ReadWorkPointer(vm, cmdWork);
-    scriptWork = SCRCMD_WORK_GetScriptWork(cmdWork);
-    gameSystem = SCRCMD_WORK_GetGameSystem(cmdWork);
-    SCRIPT_SYS_CallEvent(scriptWork,
-                          SCRCMD_MSGWIN_CreateYesNoEvent(gameSystem, cmdWork,
-                                                         result));
-    msgwin_setup(cmdWork);
-    g_msg_bg = FIELDMAP_GetMsgBg(
-        (FieldMap *)GAMESYSTEM_GetFieldMap(gameSystem));
-    return 1;
-}
-
-/*
- * The talk balloon.  The balloon's own text goes into the text window
- * the talk system holds for it; the port's text goes into the same one.
- */
-void SCRCMD_MSGWIN_OpenTalkWin(ScrcmdWork *cmdWork, FieldMsgBg *msgBg,
-                                int talkIndex, VecFx32 *pos, Strbuf *str,
-                                u32 winType, u32 tailType)
-{
-    FieldTalkWin *talkWin;
-
-    SCRCMD_WORK_SetMsgWindow(cmdWork,
-                             FIELD_MSGBG_AddTalkWin(msgBg, talkIndex, pos, str,
-                                                    winType, tailType));
-    SCRIPT_WORK_SetCheckFlag(MSGWIN_FLAG_TALK_WIN);
-    msgwin_setup(cmdWork);
-    talkWin = (FieldTalkWin *)SCRCMD_WORK_GetMsgWindow(cmdWork);
-    if (talkWin == NULL || talkWin->talkSys == NULL) {
-        return;
-    }
-    msgwin_show(TALKMSGWIN_GetBmpWin(talkWin->talkSys, talkWin->index),
-                talkWin->msgBg, 0, 0);
-}
+extern GameSystem *SCRCMD_WORK_GetGameSystem(ScrcmdWork *work);
+extern ScriptWork  *SCRCMD_WORK_GetScriptWork(ScrcmdWork *work);
+extern unsigned short SCRIPT_WORK_ReadWorkValue(ScriptVm *vm, ScrcmdWork *cmdWork);
+extern u16  VM_ReadU16(ScriptVm *vm);
 
 /* ------------------------------------------------------------------ */
 /* The PC's storage menu                                               */

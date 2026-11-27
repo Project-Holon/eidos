@@ -1448,7 +1448,7 @@ static void musical_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
                 ui_textbox_frame(c, UI_TEXTBOX_SYSTEM, bx, by, bw, bh);
             }
         }
-        ui_text(c, bx + 14, by + ui_text_y(bh, UI_FONT_LARGE), q[0] != '\0' ? q : "Is this look OK?", qink, qsh,
+        ui_text(c, bx + 14, by + ui_text_y(bh, UI_FONT_LARGE), q[0] != '\0' ? q : ui_tr("Is this look OK?"), qink, qsh,
                 UI_FONT_LARGE, 1);
         lx = bx + bw - lw;
         ly = by - 4 - (2 * 18 + 8);

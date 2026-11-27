@@ -56,9 +56,9 @@ does not happen.
 | Event | Game function | Region | Refuse | Modify |
 |---|---|---|---|---|
 | `route.change` | `FIELD_MAP_CHANGE_SetupZone` 0x021643E8 (ov010, every map change: `how` warp); the return of `FIELDMAP_ChangeZone` 0x021893C0 (ov021, a walk over a zone border: `how` walk) | - | - | - |
-| `map.warp` | `EVENT_MAPCHANGE_ChangeFieldEvent` 0x021841C0 | ov020 | - | destination |
+| `map.warp` | `EVENT_MAPCHANGE_ChangeFieldEvent` 0x021841C0, its first step (the map change runs it every frame with its step; step 0 is before the old map goes) | ov020 | - | destination |
 | `player.step` | `FIELD_EVENT_CHECK_CheckStepEvents` 0x0218A9B0 | ov021 | - | - |
-| `trainer.spotted` | `EVENT_TRAINER_EYE_Check` 0x021AE0CC | ov021 | the trainer does not see the player (the function returns no event) | - |
+| `trainer.spotted` | `EVENT_TRAINER_EYE_Check` 0x021AE0CC, when the game's own search (`EVENT_TRAINER_EYE_FindTrainer`) finds a trainer who sees the player; the field asks at every step | ov021 | the trainer does not see the player (the function returns no event) | - |
 | `npc.talk` | `FIELD_EVENT_CHECK_SearchGridFrontMmdl` 0x0218B4B0; on rails `FIELD_EVENT_CHECK_SearchRailFrontMmdl` 0x0218B53C | ov021 | no person is found ahead; the A press goes on to the sign and tile checks | - |
 | `menu.open` | `EVENT_FIELD_MENU_Create` 0x0215FC40 (the X-button menu event) and `EVENT_FIELD_MENU_CreateForZone` 0x0215FCE0 | ov010 | the menu does not open (no event is returned) | - |
 | `menu.build` | the return of `FIELD_MENU_Create` 0x021A836C | ov021 | - | entries (a cleared entry is hidden; one added is not built) |
@@ -77,8 +77,8 @@ fire it yet (`docs/mod-backlog.md`).
 
 | Event | Game function | Region | Refuse | Modify |
 |---|---|---|---|---|
-| `encounter.wild` | the return of `FIELD_ENCOUNT_CreateZoneWildMons` 0x021A954C; roamers the return of `FIELD_ENCOUNT_PickRoamer` 0x021A957C | ov021 | no battle; the player keeps walking; the payload names the area, the method (grass, surf, fishing, shaking grass) and the slot | species, level, shiny; the second Pokemon of a double; a reroll |
-| `encounter.static` | `EVENT_BATTLE_CreateScriptedBattle` 0x0216E7C8 | ov010 | - | species, level |
+| `encounter.wild` | the return of `FIELD_ENCOUNT_CreateZoneWildMons` 0x021A954C; roamers the return of `FIELD_ENCOUNT_PickRoamer` 0x021A957C when it picks one (every wild check asks it first) | ov021 | no battle; the player keeps walking; the payload names the area, the method (grass, surf, fishing, shaking grass) and the slot | species, level, shiny; the second Pokemon of a double; a reroll |
+| `encounter.static` | `EVENT_BATTLE_CreateScriptedBattle` 0x0216E7C8 when a script starts the battle (`FIELD_ENCOUNT_StartScriptedWild`, the one caller that passes 1 as the fourth argument); the walking, fishing and Entree Forest wild battles go through the same function and fire `encounter.wild` only | ov010 | - | species, level |
 | `encounter.trainer` | `FIELD_ENCOUNT_SetupTrainerBattle` 0x021AA5CC | ov021 | - | - |
 
 `FIELD_ENCOUNT_CreateZoneWildMons` fills the wild Pokemon after the encounter
@@ -143,7 +143,7 @@ Notes from the callers:
 
 | Event | Game function | Region | Refuse | Modify |
 |---|---|---|---|---|
-| `battle.start` | `BTL_SETUP_Create` 0x02013090 (arm9); the return of the setups: the wild `BTL_SETUP_SetupWild` 0x0201347C (arm9), the trainer `FIELD_ENCOUNT_SetupTrainerBattle` 0x021AA5CC (ov021), the scripted `EVENT_BATTLE_CreateScriptedBattle` 0x0216E7C8 (ov010) | arm9, ov010, ov021 | - | format, levels; the payload names the trainer ids and whether the battle is wild |
+| `battle.start` | once per battle: the return of the first setup that builds it, the wild `BTL_SETUP_SetupWild` 0x0201347C (arm9), the trainer `FIELD_ENCOUNT_SetupTrainerBattle` 0x021AA5CC (ov021) or the scripted `EVENT_BATTLE_CreateScriptedBattle` 0x0216E7C8 (ov010); for a battle none of them builds, the first frame of the battle (below) | arm9, ov010, ov021 | - | format, levels; the payload names the trainer ids and whether the battle is wild |
 | `battle.action` | fight `BTL_CLIENT_IsMoveSelectionBlocked` 0x021CF5B0; run `BTL_CLIENT_GetEscapeBlockerForSide` 0x021CF918 (inside `BTL_CLIENT_StepSelectRun`); switch the return of `BTL_PICK_GetLast` 0x0689CB1C (ov095, inside `BTL_CLIENT_StepSelectSwitchTarget`) | ov093 | the choice is not accepted and the action menu stays; the payload names the action and, for fight, the move | - |
 | `battle.item` | the return of `BTLV_CORE_GetSelectedItem` 0x021EA01C, inside `BTL_CLIENT_StepSelectItem` | ov093 | back to the action menu; the item stays in the bag and the turn is not spent | - |
 | `battle.switch` | `BTL_SERVER_FLOW_ProcMemberIn` 0x021BD9D4 | ov093 | - | - |
@@ -315,6 +315,20 @@ game: each is a lookup or the answer to this game's own call.
   Phione, incense and form rules) as calls inside its own unit, which a slot
   cannot reach. Binding it needs those steps split out of the unit.
 
+### Version 7
+
+Answers to this game's own calls, fired by the port's services. None of them
+goes to the other players of a multiplayer game.
+
+| Event | Game function | Region | Refuse | Modify |
+|---|---|---|---|---|
+| `confirm.done` | the player's answer to a question a mod asked with `confirm_ask` or a rule's `ask` | port | - | - |
+
+- `confirm.done` fires on the frame after the yes/no menu closed
+  (`sdk/mod_message.c`), never inside the game's window code. A code mod
+  knows its own answer by the ticket; a rule sees only its own mod's answers
+  and tells its questions apart by the tag it gave.
+
 ### What the builders fill, and what they cannot
 
 A builder fills the payload from what the bound call carries, plus the game's
@@ -432,18 +446,35 @@ per area (`sdk/mod_event_session.c`, `sdk/mod_event_field.c`,
 
 **The battle area.**
 
-- `battle.start`'s wild flag, format, trainer ids and the handle of the
-  opposing party read 0 at the row that creates the setup: the setup the
-  game will build does not exist yet.  The rows that build it (the wild
-  setup, the trainer setup and the scripted one) fill them, and the port
-  applies the format and the levels the handlers asked for.
+- `battle.start` fires once per battle. `BTL_SETUP_Create` 0x02013090 only
+  opens the battle (the battle context is reset there and the new setup is
+  kept); it fires no event, since the setup the game will build does not
+  exist yet. The first row that builds the setup (the wild setup, the
+  trainer setup or the scripted one) fires the event with the battle's own
+  wild flag, format, trainer ids and opposing party, and the port applies
+  the format and the levels the handlers asked for. A later row that builds
+  the same battle again (a scripted battle whose setup the trainer or the
+  wild setup built first) is passed over, so the levels, the trainer table
+  and `battle.trainer_mon` are applied once. A battle no such row builds
+  (the Battle Subway's, a link battle, the catching tutorial) fires it on
+  the first frame its overlay is in, from the kept setup: its values are
+  there, but the battle has read its setup by then, so the format and
+  levels a handler asks for are not applied.
+- `battle.action`'s fight fires when the player picks a move
+  (`BTL_CLIENT_StepSelectMove` asks with the message the refusal fills).
+  The game asks the same check while it builds the move menu, looks for
+  Struggle and weighs the AI's moves, with no message: those asks fire
+  nothing (the AI's choice is `battle.ai`).
 - `battle.action`'s Pokemon reads 0 for the switch: the choice list holds the
   party positions and nothing else. The party position the player picked is
   the function's result, and 6 is the game's own "backed out".
 - `battle.move`'s target reads 0. The call carries the attacker and the move
   record, and the move record holds no target: the server picks the target
   set itself.
-- `battle.damage` fires on the return of the game's own function, so the
+- `battle.damage` fires once per hit that lands: not while the AI weighs
+  its moves (`BTL_SERVER_FLOW_CalcPredictedMoveDamage` 0x021C7E14 asks the
+  same function for each move it considers; the row's scope leaves it out).
+  It fires on the return of the game's own function, so the
   amount is known: the port writes it into the word the caller reads. The
   target's HP before the hit is filled, because the hit has not landed yet
   (in a multi-hit move the earlier hits have).

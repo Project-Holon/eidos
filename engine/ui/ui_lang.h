@@ -18,8 +18,19 @@ extern "C" {
 void ui_lang_set(int game_language);
 
 /* `en` in a mod's words when a mod has it, else in the game's language when
- * the interface's table has it, else `en`. */
+ * the interface's table has it, else `en`.  The kit draws what it is
+ * handed: each place that draws an interface label asks for it here, and
+ * names, the game's text and a mod's text are drawn as they are. */
 const char *ui_tr(const char *en);
+
+/* Text a mod puts on the interface (a pop-up, a `show` row, the Tracker) in
+ * a mod's words when a mod's ui_text file has it, else as it is: the
+ * interface's own table is not asked (docs/mod-ui-text.md). */
+const char *ui_tr_mod(const char *text);
+
+/* The kit's text drawing tells this what it draws, for the test switch
+ * EIDOS_UI_TEXT_UNTRANSLATED (engine/ui/ui_lang.c). */
+void ui_lang_note_drawn(const char *text);
 
 /* A printf template ("PWR %d  ACC %d") in a mod's words or the game's
  * language, to be filled in after: a label built from numbers or names is

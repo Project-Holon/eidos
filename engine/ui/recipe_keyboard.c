@@ -18,6 +18,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "input.h"
 #include "keyboard_parts.h"
 #include "port_keyboard.h"
@@ -162,7 +163,7 @@ static void kb_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     /* the question and the page tabs (top right; under the question when
      * the panel is narrow), then the field */
     for (i = 0; i < EIDOS_PKB_PAGES; i++) {
-        tabw[i] = ui_text_w(tabs[i], UI_FONT_SMALL) + 18;
+        tabw[i] = ui_text_w(ui_tr(tabs[i]), UI_FONT_SMALL) + 18;
         total += tabw[i] + 3;
     }
     total -= 3;
@@ -179,8 +180,8 @@ static void kb_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         }
         ui_panel(c, tx, ty, tabw[i], 15, UI_CUT_TL | UI_CUT_BR, 4, sel ? UI_CYAN2 : (hv ? 0x242424u : UI_BODY2),
                  sel ? acc : (hv ? UI_EDGE2 : UI_EDGE), 255);
-        ui_text(c, tx + (tabw[i] - ui_text_w(tabs[i], UI_FONT_SMALL)) / 2, ty + ui_text_y(15, UI_FONT_SMALL),
-                tabs[i], sel ? UI_WHITE : UI_LIGHT, sel ? 0x003C50 : (s32)UI_EDGE, UI_FONT_SMALL, 1);
+        ui_text(c, tx + (tabw[i] - ui_text_w(ui_tr(tabs[i]), UI_FONT_SMALL)) / 2, ty + ui_text_y(15, UI_FONT_SMALL),
+                ui_tr(tabs[i]), sel ? UI_WHITE : UI_LIGHT, sel ? 0x003C50 : (s32)UI_EDGE, UI_FONT_SMALL, 1);
         tx += tabw[i] + 3;
     }
     ui_text(c, x0, y + ui_text_y(15, UI_FONT_LARGE),

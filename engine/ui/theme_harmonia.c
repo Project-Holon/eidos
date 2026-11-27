@@ -464,7 +464,7 @@ static void harmonia_party_plate(EidosUiCtx *c, const EidosUiRect *r, const UiPa
         ui_status_badge(c, x + 44, y + h - 13 - (h - 36) / 8, m->status);
     }
     if (m->moving) {
-        ui_text(c, x + w - 20 - 30, y + 6, "MOVE", R(0xFFFFFFu), (s32)R(0x0A3050u), UI_FONT_SMALL, 1);
+        ui_text(c, x + w - 20 - 30, y + 6, ui_tr("MOVE"), R(0xFFFFFFu), (s32)R(0x0A3050u), UI_FONT_SMALL, 1);
     }
     if (m->note != NULL) {
         ui_text(c, x + 76, y + h - 13 - (h - 36) / 8, m->note, R(rx_mix(m->note_rgb, 0xFFFFFFu, 50, 100)), (s32)R(0x0A3050u),
@@ -474,7 +474,7 @@ static void harmonia_party_plate(EidosUiCtx *c, const EidosUiRect *r, const UiPa
     /* the green HP tag and the thin bar */
     bx = x + 44;
     bw = w - 44 - 18;
-    ui_text(c, bx, y + h / 2 - 3, "HP", R(0x60F070u), (s32)R(0x105020u), UI_FONT_SMALL, 1);
+    ui_text(c, bx, y + h / 2 - 3, ui_tr("HP"), R(0x60F070u), (s32)R(0x105020u), UI_FONT_SMALL, 1);
     ui_fill(c, bx + 15, y + h / 2, bw - 15, 5, R(0x202020u), 255);
     ui_fill(c, bx + 16, y + h / 2 + 1, bw - 17, 3, R(0x484848u), 255);
     if (m->maxhp > 0 && m->hp > 0) {
@@ -524,7 +524,8 @@ static void harmonia_party_detail(EidosUiCtx *c, const EidosUiRect *r, const UiP
 
         ui_push(c, 0, 0, &saved);
         ui_clip(c, x + 3, y + 3, w - 6, h - 6);
-        ui_mon_front_draw(c, (u16)m->species, 0, frame, x + (w - pw * k) / 2, py, pw * k, phh * k);
+        ui_mon_front_form_draw(c, (u16)m->species, (u8)m->form, m->shiny, frame, x + (w - pw * k) / 2, py, pw * k,
+                               phh * k);
         ui_pop(c, 0, 0, &saved);
     } else if (m->icon != NULL) {
         ui_image(c, x + (w - m->icon->w * 2) / 2, py + 16, m->icon, 2);
@@ -545,7 +546,7 @@ static void harmonia_party_detail(EidosUiCtx *c, const EidosUiRect *r, const UiP
     }
     snprintf(s, sizeof(s), "%d/%d", m->hp, m->maxhp);
     ui_text(c, x + w - 12 - ui_text_w(s, UI_FONT_SMALL), fy + 24, s, R(RX_WHITE), (s32)R(0x0A3050u), UI_FONT_SMALL, 1);
-    ui_text(c, x + 12, fy + 39, "HP", R(0x60F070u), (s32)R(0x105020u), UI_FONT_SMALL, 1);
+    ui_text(c, x + 12, fy + 39, ui_tr("HP"), R(0x60F070u), (s32)R(0x105020u), UI_FONT_SMALL, 1);
     ui_bar(c, x + 28, fy + 41, w - 40, 6, m->hp, m->maxhp);
 }
 
@@ -709,7 +710,7 @@ static void harmonia_bag_backdrop(EidosUiCtx *c, const UiBagLayout *l, const cha
         ui_fill(c, x + 2, 27, 4, 1, R(0x5A0820u), 255);
         ui_fill(c, x + 3, 28, 2, 1, R(0x5A0820u), 255);
     }
-    ui_header(c, 0, 3, l->w, "BAG", pocket, "", UI_PINK);
+    ui_header(c, 0, 3, l->w, ui_tr("BAG"), pocket, "", UI_PINK);
     /* the pocket bar: the DS's black bar */
     ui_fill(c, 0, l->h - bar, l->w, bar, R(0x000000u), 255);
     ui_fill(c, 0, l->h - bar, l->w, 1, R(0x5A0820u), 255);

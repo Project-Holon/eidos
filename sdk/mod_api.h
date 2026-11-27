@@ -74,7 +74,7 @@ extern "C" {
  * and the hash follows it; the test carries the other width's number, so a
  * change fails on every width the port is built at.
  */
-#define BW_MOD_API_HASH 0x75B3AE08u
+#define BW_MOD_API_HASH 0x6ED47D43u
 
 /* ------------------------------------------------------------------ */
 /* The event header                                                    */
@@ -239,7 +239,8 @@ enum {
     BW_EVENT_AP                 = 125,
     BW_EVENT_MOVE_KNOWN         = 126,
     BW_EVENT_WEB                = 127,
-    BW_EVENT_SETTING_BUTTON     = 128
+    BW_EVENT_SETTING_BUTTON     = 128,
+    BW_EVENT_CONFIRM_DONE       = 129
 };
 
 /* Version 6: where the game asks whether a Pokemon knows a move
@@ -1517,6 +1518,20 @@ typedef struct BwSettingButton {
     BwEvent h;
     u8  key[64];    /* the button's key, NUL-terminated */
 } BwSettingButton;
+
+/*
+ * confirm.done (version 7): the player answered a question a mod asked with
+ * confirm_ask (docs/mod-services.md, "Messages").  Every code mod with a
+ * handler sees it and knows its own by the ticket; a rule sees only its own
+ * mod's answers and knows them by the tag it gave.
+ */
+typedef struct BwConfirmDone {
+    BwEvent h;
+    u32 ticket;     /* the question (confirm_ask's *ticket) */
+    u32 tag;        /* the asker's own number for it (confirm_ask's tag) */
+    u8  answer;     /* 1 yes, 0 no */
+    u8  pad[3];
+} BwConfirmDone;
 
 /* game_hash (version 7): the hashes the port gives of the game in force. */
 enum {

@@ -2,11 +2,13 @@
  * engine/ui/ui_lang.c -- the one-screen interface's own labels in the game's
  * language.
  *
- * The interface is written in English.  The kit's text functions pass every
- * string through ui_tr, which gives the French, German, Italian or Spanish
- * words for a label the table knows (engine/ui/ui_lang.tsv, generated into
- * ui_lang_table.h by tools/ui_lang.py) and the string itself otherwise: the
- * game's own text (names, the game's messages) is already in its language.
+ * The interface is written in English.  Each place that draws one of its
+ * labels asks ui_tr for it, which gives the French, German, Italian or
+ * Spanish words for a label the table knows (engine/ui/ui_lang.tsv,
+ * generated into ui_lang_table.h by tools/ui_lang.py) and the string itself
+ * otherwise.  The kit draws what it is handed: a name (the player's, a
+ * Pokemon's, a mod's) or the game's own text is already in its language and
+ * is never looked up, so a player named like a label keeps the name.
  *
  * A mod can bring the interface's words in its own language (a translation
  * of the game into one the cartridges do not have): its `ui_text` file has
@@ -219,51 +221,64 @@ static const char *mod_lookup(u32 h, const char *en)
     return NULL;
 }
 
-/*
- * For translators: EIDOS_UI_TEXT_DUMP=<file> writes every English string
- * the interface draws and no mod translates, once each, as the start of a
- * ui_text file.  The interface draws a string every frame, so the strings
- * already written are remembered by hash.
- */
-static void dump(u32 h, const char *en)
+/* A file a test switch names, written once a string: the interface draws a
+ * string every frame, so the strings already written are remembered by
+ * hash. */
+typedef struct OnceLog {
+    const char *env;
+    int state;                      /* 0 not looked, 1 on, -1 off */
+    FILE *f;
+    u32 seen[8192];
+} OnceLog;
+
+static void once_log(OnceLog *lg, u32 h, const char *en, const char *tail)
 {
-    static int state;               /* 0 not looked, 1 on, -1 off */
-    static u32 seen[8192];
-    static FILE *f;
     u32 i, k;
     const char *s;
 
-    if (state == 0) {
-        const char *path = getenv("EIDOS_UI_TEXT_DUMP");
+    if (lg->state == 0) {
+        const char *path = getenv(lg->env);
 
-        f = path != NULL && path[0] != '\0' ? fopen(path, "ab") : NULL;
-        state = f != NULL ? 1 : -1;
+        lg->f = path != NULL && path[0] != '\0' ? fopen(path, "ab") : NULL;
+        lg->state = lg->f != NULL ? 1 : -1;
     }
-    if (state < 0 || h == 0u) {
+    if (lg->state < 0 || h == 0u) {
         return;
     }
     for (i = h % 8192u, k = 0; k < 8192u; i = (i + 1u) % 8192u, k++) {
-        if (seen[i] == h) {
+        if (lg->seen[i] == h) {
             return;
         }
-        if (seen[i] == 0u) {
-            seen[i] = h;
+        if (lg->seen[i] == 0u) {
+            lg->seen[i] = h;
             break;
         }
     }
     for (s = en; *s != '\0'; s++) {
         if (*s == '\n') {
-            fputs("\\n", f);
+            fputs("\\n", lg->f);
         } else if (*s == '=') {
-            fputs("\\=", f);
+            fputs("\\=", lg->f);
         } else if (*s == '\\') {
-            fputs("\\\\", f);
+            fputs("\\\\", lg->f);
         } else {
-            fputc(*s, f);
+            fputc(*s, lg->f);
         }
     }
-    fputs(" = \n", f);
-    fflush(f);
+    fputs(tail, lg->f);
+    fflush(lg->f);
+}
+
+/*
+ * For translators: EIDOS_UI_TEXT_DUMP=<file> writes every label the
+ * interface asks for and no mod translates, once each, as the start of a
+ * ui_text file.
+ */
+static OnceLog g_dump = { "EIDOS_UI_TEXT_DUMP", 0, NULL, { 0 } };
+
+static void dump(u32 h, const char *en)
+{
+    once_log(&g_dump, h, en, " = \n");
 }
 
 /* The next conversion of a printf template from *p on: its kind (the
@@ -325,21 +340,13 @@ const char *ui_trf(const char *fmt)
     }
 }
 
-const char *ui_tr(const char *en)
+/* The table's words for en in the game's language, NULL when it has none. */
+static const char *table_lookup(u32 h, const char *en)
 {
-    u32 h, lo = 0, hi = sizeof(k_ui_lang) / sizeof(k_ui_lang[0]);
-    const char *mod;
+    u32 lo = 0, hi = sizeof(k_ui_lang) / sizeof(k_ui_lang[0]);
 
-    if (en == NULL || en[0] == '\0') {
-        return en;
-    }
-    h = fnv1a(en);
-    if (g_mod_n != 0u && (mod = mod_lookup(h, en)) != NULL) {
-        return mod;
-    }
-    dump(h, en);
     if (g_col < 0) {
-        return en;
+        return NULL;
     }
     while (lo < hi) {
         u32 mid = (lo + hi) / 2;
@@ -352,8 +359,62 @@ const char *ui_tr(const char *en)
     }
     for (; lo < sizeof(k_ui_lang) / sizeof(k_ui_lang[0]) && k_ui_lang[lo].hash == h; lo++) {
         if (strcmp(k_ui_lang[lo].en, en) == 0) {
-            return k_ui_lang[lo].tr[g_col] != NULL ? k_ui_lang[lo].tr[g_col] : en;
+            return k_ui_lang[lo].tr[g_col];
         }
     }
-    return en;
+    return NULL;
+}
+
+const char *ui_tr(const char *en)
+{
+    u32 h;
+    const char *word;
+
+    if (en == NULL || en[0] == '\0') {
+        return en;
+    }
+    h = fnv1a(en);
+    if (g_mod_n != 0u && (word = mod_lookup(h, en)) != NULL) {
+        return word;
+    }
+    dump(h, en);
+    word = table_lookup(h, en);
+    return word != NULL ? word : en;
+}
+
+const char *ui_tr_mod(const char *text)
+{
+    const char *word;
+
+    if (text == NULL || text[0] == '\0' || g_mod_n == 0u) {
+        return text;
+    }
+    word = mod_lookup(fnv1a(text), text);
+    return word != NULL ? word : text;
+}
+
+/*
+ * For whoever adds a label: EIDOS_UI_TEXT_UNTRANSLATED=<file> writes each
+ * string the kit draws that is a label of the table with other words in
+ * the game's language, once each: a label whose call site does not ask
+ * ui_tr for it, or a name that happens to be a label (a player named
+ * Hilbert in a French game: drawn as it is, as it should be).
+ */
+static OnceLog g_untranslated = { "EIDOS_UI_TEXT_UNTRANSLATED", 0, NULL, { 0 } };
+
+void ui_lang_note_drawn(const char *text)
+{
+    u32 h;
+    const char *word;
+
+    if (g_untranslated.state < 0 || text == NULL || text[0] == '\0') {
+        return;
+    }
+    h = fnv1a(text);
+    word = table_lookup(h, text);
+    if (word != NULL && strcmp(word, text) != 0) {
+        once_log(&g_untranslated, h, text, "\n");
+    } else if (g_untranslated.state == 0) {
+        once_log(&g_untranslated, 0u, text, "");     /* opens it, writes nothing */
+    }
 }

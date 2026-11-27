@@ -14,13 +14,15 @@
  *
  * The rules the service keeps (docs/mod-services.md):
  *
- *   - The text appears in the field's talk window, or in the battle message
- *     box during a battle.
- *   - It is queued: the port shows it at the next point where the game
- *     would accept a message (after the current script command, or at the
- *     next battle message).
- *   - A confirm is only allowed in the field; in a battle it returns 0 at
- *     once.
+ *   - The text appears in a turn of its own: the field's plain window when
+ *     the field is quiet, or the battle box's next message in a battle
+ *     (sdk/mod_text.h, "A text's own turn").
+ *   - It is queued as written and encoded when its turn comes.
+ *   - A question is asked with a ticket and answered later
+ *     (bw_mod_message_ask, "The question with a ticket"), in the field and
+ *     in a battle.  The old `confirm` call waits for its answer, which a
+ *     handler inside the game's frame cannot do: in the game it answers
+ *     no at once.
  *   - The text is UTF-8; a character the game font lacks shows as '?'.
  *   - A message from a refusal handler appears after the action is refused:
  *     the handler queues the text while the action is refused, and the
@@ -75,10 +77,10 @@ extern "C" {
 #define BW_MOD_MESSAGE_UNKNOWN    0x003Fu   /* '?' */
 
 /*
- * How many code units one text may hold.  The field's talk window takes
- * about three lines of twenty-eight characters; the cap keeps a long text
- * from running over the window's edge.  A text longer than this is cut at
- * the cap.
+ * How many characters one text may hold: about four lines of the field's
+ * plain window.  The port lays a text out for its window (sdk/mod_text.h),
+ * so a long text scrolls instead of running over the edge.  A text longer
+ * than this is cut at the cap.
  */
 #define BW_MOD_MESSAGE_MAX_UNITS  128u
 
@@ -98,6 +100,7 @@ typedef struct BwModMessage {
     u16 units[BW_MOD_MESSAGE_MAX_UNITS];  /* the text itself */
     u8  kind;                             /* BW_MOD_MESSAGE_TEXT or _CONFIRM */
     u8  pad[3];
+    u32 ticket;                           /* a question's ticket (bw_mod_message_ask), 0 for none */
 } BwModMessage;
 
 /* ------------------------------------------------------------------ */
@@ -151,6 +154,64 @@ void bw_mod_message_show(const char *text);
 int  bw_mod_message_confirm(const char *text);
 
 /* ------------------------------------------------------------------ */
+/* The question with a ticket                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A handler runs inside the game's frame, so it cannot wait for the
+ * player.  A question with a ticket does not wait: it goes into the queue
+ * with the texts and keeps its place among them, it is asked in a turn of
+ * its own with the game's own yes/no menu (the field's, or the battle's
+ * choice screen), and the answer comes back later, on the frame, to the
+ * callback that asked.  The text path only records the answer
+ * (bw_mod_message_answered); the callbacks run from the frame tick
+ * (bw_mod_message_deliver), once the window is closed.
+ *
+ * Every ticket gets one answer, except at a reset: the reset drops the
+ * questions that wait and the answers not yet given, with the mods that
+ * asked them.
+ */
+
+/* The answer to a question: 1 for yes, 0 for no. */
+typedef void (*BwModAnswerFn)(void *user, u32 ticket, u32 tag, int yes);
+
+/*
+ * Ask a question.  `tag` is the asker's own number for it, handed back with
+ * the answer.  0 with *ticket set (when `ticket` is not NULL), or -1 when the
+ * text is empty or the queue is full (nothing is asked then).
+ */
+int  bw_mod_message_ask(const char *text, u32 tag, BwModAnswerFn fn, void *user,
+                        u32 *ticket);
+
+/*
+ * The services table's `confirm_ask` (version 7): a mod's question.  The
+ * answer is the event confirm.done (sdk/mod_api.h, BwConfirmDone).
+ */
+int  bw_mod_message_confirm_ask(const char *text, u32 tag, u32 *ticket);
+
+/* The same two for an asker named by its namespace (a rule's mod), not the
+ * namespace in force. */
+int  bw_mod_message_ask_as(const char *ns, const char *text, u32 tag, BwModAnswerFn fn,
+                           void *user, u32 *ticket);
+int  bw_mod_message_confirm_ask_as(const char *ns, const char *text, u32 tag, u32 *ticket);
+
+/* The text path's answer to the question with this ticket (1 yes, 0 no). */
+void bw_mod_message_answered(u32 ticket, int yes);
+
+/* The frame tick: the answers recorded since the last tick go to the
+ * callbacks that asked, in the order they came. */
+void bw_mod_message_deliver(void);
+
+/* While confirm.done is fired: the namespace of the mod that asked (a rule
+ * sees only its own mod's answers); "" otherwise. */
+const char *bw_mod_message_answer_owner(void);
+
+/* The kind of the next queued text (BW_MOD_MESSAGE_TEXT or _CONFIRM), or -1
+ * when the queue is empty.  A text path that cannot ask a question now
+ * leaves it, and the texts behind it, in the queue. */
+int  bw_mod_message_queue_peek_kind(void);
+
+/* ------------------------------------------------------------------ */
 /* The queue                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -167,6 +228,11 @@ u32  bw_mod_message_queue_count(void);
 
 /* Take the next text.  Returns 0, or -1 when the queue is empty. */
 int  bw_mod_message_queue_take(BwModMessage *out);
+
+/* The same, the text encoded with `has` as the answer to "does the font
+ * have this character" (the font of the window that shows it); NULL is the
+ * service's own answer. */
+int  bw_mod_message_queue_take_with(BwModMessage *out, int (*has)(u32 codepoint));
 
 /* Drop every queued text: at power-on and at every reset. */
 void bw_mod_message_queue_clear(void);

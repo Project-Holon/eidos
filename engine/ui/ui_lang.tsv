@@ -26,7 +26,7 @@ BUY	ACHETER	KAUFEN	COMPRA	COMPRAR
 Back	Retour	Zurück	Indietro	Atrás
 Battle	Combat	Kampf	Lotta	Combate
 Berries	Baies	Beeren	Bacche	Bayas
-Box name?	Nom de la boîte ?	Box-Name?	Nome del box?	¿Nombre de la caja?
+Box name?	Nom de la boîte?	Box-Name?	Nome del box?	¿Nombre de la caja?
 Boxes	Boîtes	Boxen	Box	Cajas
 Busy	Occupé	Belegt	Occupato	Ocupado
 Buy	Acheter	Kaufen	Compra	Comprar
@@ -91,7 +91,7 @@ GRASS	PLANTE	PFLANZE	ERBA	PLANTA
 GREETING	SALUTATION	GRUSS	SALUTO	SALUDO
 GROUND	SOL	BODEN	TERRA	TIERRA
 GYM BADGES	BADGES	ORDEN	MEDAGLIE	MEDALLAS
-Give it a nickname?	Donner un surnom ?	Spitznamen geben?	Dargli un soprannome?	¿Ponerle un mote?
+Give it a nickname?	Donner un surnom?	Spitznamen geben?	Dargli un soprannome?	¿Ponerle un mote?
 Give up	Abandonner	Aufgeben	Rinuncia	Rendirse
 HALL OF FAME DEBUT	ENTRÉE AU PANTHÉON	RUHMESHALLE	SALA D'ONORE	HALL DE LA FAMA
 HELD ITEMS	OBJETS TENUS	GETRAGENE ITEMS	STRUMENTI TENUTI	OBJETOS EQUIPADOS
@@ -99,8 +99,8 @@ HP	PV	KP	PS	PS
 HP/PP	PV/PP	KP/AP	PS/PP	PS/PP
 HT	TAILLE	GRÖSSE	ALT.	ALT.
 Heart	Cœur	Herz	Cuore	Corazón
-How do you greet passersby?	Que dire aux passants pour les saluer ?	Wie grüßt du Passanten?	Come saluti i passanti?	¿Cómo saludas a los transeúntes?
-How do you thank passersby?	Que dire aux passants pour les remercier ?	Wie dankst du Passanten?	Come ringrazi i passanti?	¿Cómo das las gracias a los transeúntes?
+How do you greet passersby?	Que dire aux passants pour les saluer?	Wie grüßt du Passanten?	Come saluti i passanti?	¿Cómo saludas a los transeúntes?
+How do you thank passersby?	Que dire aux passants pour les remercier?	Wie dankst du Passanten?	Come ringrazi i passanti?	¿Cómo das las gracias a los transeúntes?
 How the game window is shown. Full covers the whole screen.	L'affichage de la fenêtre du jeu. Plein écran couvre tout l'écran.	Wie das Spielfenster gezeigt wird. Vollbild füllt den ganzen Bildschirm.	Come viene mostrata la finestra del gioco. Schermo intero copre tutto lo schermo.	Cómo se muestra la ventana del juego. Pantalla completa la ocupa entera.
 ICE	GLACE	EIS	GHIACCIO	HIELO
 ID No.	N° ID	ID-Nr.	N. ID	N.º ID
@@ -114,7 +114,7 @@ It cannot go there.	Impossible de le mettre ici.	Das geht dort nicht.	Non può a
 Item	Objet	Item	Strumento	Objeto
 Items	Objets	Items	Strumenti	Objetos
 Its item can't be moved here.	Son objet ne peut pas aller ici.	Sein Item kann nicht hierher.	Il suo strumento non può andare qui.	Su objeto no puede ir aquí.
-Jump to which Box?	Aller à quelle boîte ?	Zu welcher Box?	A quale box andare?	¿Ir a qué caja?
+Jump to which Box?	Aller à quelle boîte?	Zu welcher Box?	A quale box andare?	¿Ir a qué caja?
 Key Items	Objets rares	Basis-Items	Strumenti base	Objetos clave
 LAST USED ITEM	DERNIER OBJET UTILISÉ	ZULETZT BENUTZT	ULTIMO STRUMENTO	ÚLTIMO OBJETO
 LEFT	GAUCHE	LINKS	SINISTRA	IZQUIERDA
@@ -175,7 +175,7 @@ PSN	PSN	GIF	AVV	ENV
 PSYCHIC	PSY	PSYCHO	PSICO	PSÍQUICO
 Page	Page	Seite	Pagina	Página
 Pick up	Prendre	Nehmen	Prendi	Coger
-Place it in which Box?	Le placer dans quelle boîte ?	In welche Box?	In quale box metterlo?	¿En qué caja dejarlo?
+Place it in which Box?	Le placer dans quelle boîte?	In welche Box?	In quale box metterlo?	¿En qué caja dejarlo?
 Pocket	Poche	Tasche	Tasca	Bolsillo
 Prev	Préc.	Zurück	Prec.	Ant.
 Previous	Précédent	Vorherige	Precedente	Anterior
@@ -217,7 +217,7 @@ Search	Rechercher	Suchen	Cerca	Buscar
 Section	Section	Abschnitt	Sezione	Sección
 Select	Choisir	Wählen	Scegli	Elegir
 Shift	Changer	Tauschen	Scambio	Cambiar
-Should a move be deleted...?	Faut-il oublier une capacité ?	Soll eine Attacke vergessen werden?	Dimenticare una mossa?	¿Olvidar un movimiento?
+Should a move be deleted...?	Faut-il oublier une capacité?	Soll eine Attacke vergessen werden?	Dimenticare una mossa?	¿Olvidar un movimiento?
 Show each page of a message at once, whatever the text speed.	Affiche chaque page d'un message d'un coup, quelle que soit la vitesse du texte.	Zeigt jede Seite einer Nachricht sofort, egal wie schnell der Text ist.	Mostra subito ogni pagina di un messaggio, qualunque sia la velocità del testo.	Muestra cada página de un mensaje de golpe, sea cual sea la velocidad del texto.
 Show the bottom screen first.	Affiche d'abord l'écran du bas.	Zeigt zuerst den unteren Bildschirm.	Mostra prima lo schermo inferiore.	Muestra primero la pantalla inferior.
 Sort	Trier	Sortieren	Ordina	Ordenar
@@ -252,18 +252,18 @@ WINDOW	FENÊTRE	FENSTER	FINESTRA	VENTANA
 WIRELESS	SANS FIL	DRAHTLOS	WIRELESS	INALÁMBRICO
 WT	POIDS	GEW.	PESO	PESO
 Wait a moment.	Un instant...	Einen Moment...	Un momento...	Un momento...
-What will hatch from this Egg? It will take some time.	Que va-t-il sortir de cet Œuf ? Il faudra du temps.	Was wohl aus diesem Ei schlüpft? Das dauert noch.	Cosa nascerà da quest'Uovo? Ci vorrà del tempo.	¿Qué saldrá de este Huevo? Tardará un tiempo.
-Would you like to make these changes?	Appliquer ces changements ?	Diese Änderungen übernehmen?	Confermare le modifiche?	¿Aplicar estos cambios?
-Would you like to save the game?	Voulez-vous sauvegarder ?	Möchtest du speichern?	Vuoi salvare il gioco?	¿Quieres guardar la partida?
+What will hatch from this Egg? It will take some time.	Que va-t-il sortir de cet Œuf? Il faudra du temps.	Was wohl aus diesem Ei schlüpft? Das dauert noch.	Cosa nascerà da quest'Uovo? Ci vorrà del tempo.	¿Qué saldrá de este Huevo? Tardará un tiempo.
+Would you like to make these changes?	Appliquer ces changements?	Diese Änderungen übernehmen?	Confermare le modifiche?	¿Aplicar estos cambios?
+Would you like to save the game?	Voulez-vous sauvegarder?	Möchtest du speichern?	Vuoi salvare il gioco?	¿Quieres guardar la partida?
 YES	OUI	JA	SÌ	SÍ
 Yes	Oui	Ja	Sì	Sí
-Your friend's name?	Nom de votre ami ?	Name deines Freundes?	Nome dell'amico?	¿Nombre de tu amigo?
-Your message to passersby?	Votre message aux passants ?	Deine Nachricht an Passanten?	Messaggio per i passanti?	¿Mensaje para los transeúntes?
-Your name?	Votre nom ?	Dein Name?	Il tuo nome?	¿Tu nombre?
-Your rival's name?	Nom de votre rival ?	Name deines Rivalen?	Nome del rivale?	¿Nombre de tu rival?
+Your friend's name?	Nom de votre ami?	Name deines Freundes?	Nome dell'amico?	¿Nombre de tu amigo?
+Your message to passersby?	Votre message aux passants?	Deine Nachricht an Passanten?	Messaggio per i passanti?	¿Mensaje para los transeúntes?
+Your name?	Votre nom?	Dein Name?	Il tuo nome?	¿Tu nombre?
+Your rival's name?	Nom de votre rival?	Name deines Rivalen?	Nome del rivale?	¿Nombre de tu rival?
 lower	min.	klein	minusc.	minús.
-Title screen	Écran titre	Titelbild	Schermata iniziale	Pantalla inicial
-Sure? Unsaved progress is lost	Sûr ? La progression non sauvée sera perdue	Sicher? Ungesicherter Fortschritt geht verloren	Sicuro? I progressi non salvati andranno persi	¿Seguro? Se perderá lo no guardado
+Title screen	Écran titre	Titelbildschirm	Schermo del titolo	Pantalla del título
+Sure? Unsaved progress is lost	Sûr? La progression non sauvée sera perdue	Sicher? Ungesicherter Fortschritt geht verloren	Sicuro? I progressi non salvati andranno persi	¿Seguro? Se perderá lo no guardado
 Box	Boîte	Box	Box	Caja
 Done	Terminé	Fertig	Fatto	Listo
 TRADE	ÉCHANGE	TAUSCH	SCAMBIO	INTERCAMBIO
@@ -280,3 +280,318 @@ Place	Endroit	Stelle	Posto	Lugar
 Choose where to put it.	Choisissez où le mettre.	Wähle, wohin damit.	Scegli dove metterlo.	Elige dónde ponerlo.
 MUSICAL	MUSIC-HALL	MUSICAL	MUSICAL	MUSICAL
 DRESS UP	COSTUME	KOSTÜM	COSTUME	DISFRAZ
+# The mod manager, the mod rows of Settings and the Multiplayer screens.
+MODS	MODS	MODS	MOD	MODS
+%d ON	ACTIFS: %d	AN: %d	ATTIVE: %d	ACTIVOS: %d
+Could not start download.	Impossible de lancer le téléchargement.	Download konnte nicht starten.	Impossibile avviare il download.	No se pudo iniciar la descarga.
+AVAILABLE	DISPONIBLES	VERFÜGBAR	DISPONIBILI	DISPONIBLES
+INSTALLED %d	INSTALLÉS %d	INSTALLIERT %d	INSTALLATE %d	INSTALADOS %d
+AVAILABLE %d	DISPONIBLES %d	VERFÜGBAR %d	DISPONIBILI %d	DISPONIBLES %d
+Loading mod list...	Chargement de la liste des mods...	Mod-Liste wird geladen...	Caricamento elenco mod...	Cargando lista de mods...
+All available mods are installed.	Tous les mods disponibles sont installés.	Alle verfügbaren Mods sind installiert.	Tutte le mod disponibili sono installate.	Todos los mods disponibles están instalados.
+No mods installed.	Aucun mod installé.	Keine Mods installiert.	Nessuna mod installata.	No hay mods instalados.
+Could not load mod list.	Impossible de charger la liste des mods.	Mod-Liste konnte nicht geladen werden.	Impossibile caricare l'elenco mod.	No se pudo cargar la lista de mods.
+UPDATE	METTRE À JOUR	AKTUALISIEREN	AGGIORNA	ACTUALIZAR
+GET	OBTENIR	HOLEN	SCARICA	OBTENER
+by %s	par %s	von %s	di %s	de %s
+Version %s	Version %s	Version %s	Versione %s	Versión %s
+Downloading: %s of %s	Téléchargement: %s sur %s	Download: %s von %s	Download: %s di %s	Descargando: %s de %s
+Installing...	Installation...	Installation...	Installazione...	Instalando...
+Version %s is available.	La version %s est disponible.	Version %s ist verfügbar.	La versione %s è disponibile.	La versión %s está disponible.
+Download: %s	Téléchargement: %s	Download: %s	Download: %s	Descarga: %s
+TURN OFF	DÉSACTIVER	AUSSCHALTEN	DISATTIVA	DESACTIVAR
+TURN ON	ACTIVER	EINSCHALTEN	ATTIVA	ACTIVAR
+REMOVE	SUPPRIMER	ENTFERNEN	RIMUOVI	QUITAR
+On / Off	Activer / Désactiver	An / Aus	Attiva / Disattiva	Activar / Desactivar
+Get	Obtenir	Holen	Scarica	Obtener
+Update	Mettre à jour	Aktualisieren	Aggiorna	Actualizar
+Remove	Supprimer	Entfernen	Rimuovi	Quitar
+Try again	Réessayer	Erneut versuchen	Riprova	Reintentar
+Loading mod list. Try again in a moment.	Chargement de la liste des mods. Réessayez dans un instant.	Mod-Liste wird geladen. Versuche es gleich noch einmal.	Caricamento elenco mod. Riprova tra poco.	Cargando lista de mods. Reinténtalo en un momento.
+KEEP	GARDER	BEHALTEN	TIENI	CONSERVAR
+Remove %s? Its save data is kept.	Supprimer %s? Ses données de sauvegarde sont gardées.	%s entfernen? Die Speicherdaten bleiben erhalten.	Rimuovere %s? I dati di salvataggio restano.	¿Quitar %s? Sus datos de guardado se conservan.
+Keep	Garder	Behalten	Tieni	Conservar
+Stop	Arrêter	Stopp	Interrompi	Detener
+Mod	Mod	Mod	Mod	Mod
+VERSION	VERSION	EDITION	VERSIONE	EDICIÓN
+YOUR TRAINER	VOTRE DRESSEUR	DEIN TRAINER	IL TUO ALLENATORE	TU ENTRENADOR
+Choose a name	Choisissez un nom	Wähle einen Namen	Scegli un nome	Elige un nombre
+Name & avatar	Nom et avatar	Name und Avatar	Nome e avatar	Nombre y avatar
+Name and look	Nom et apparence	Name und Aussehen	Nome e aspetto	Nombre y aspecto
+Co-op Adventure	Aventure en coopération	Koop-Abenteuer	Avventura cooperativa	Aventura cooperativa
+Host a game on your save.	Hébergez une partie sur votre sauvegarde.	Hoste ein Spiel mit deinem Spielstand.	Ospita una partita sul tuo salvataggio.	Aloja una partida con tus datos de guardado.
+Up to 16 players	Jusqu'à 16 joueurs	Bis zu 16 Spieler	Fino a 16 giocatori	Hasta 16 jugadores
+Not in this version	Pas dans cette version	Nicht in dieser Version	Non in questa versione	No disponible en esta versión
+Your own save	Votre propre sauvegarde	Dein eigener Spielstand	Il tuo salvataggio	Tu propia partida
+JOIN	REJOINDRE	BEITRETEN	UNISCITI	UNIRSE
+Paste	Coller	Einfügen	Incolla	Pegar
+Enter code	Saisir un code	Code eingeben	Inserisci codice	Introducir código
+Co-op code, world code, or room port.	Code coop, code de monde ou port de salle.	Koop-Code, Welt-Code oder Raum-Port.	Codice coop, codice mondo o porta stanza.	Código coop, código de mundo o puerto de sala.
+YOUR GAMES	VOS PARTIES	DEINE SPIELE	LE TUE PARTITE	TUS PARTIDAS
+No games yet.	Aucune partie pour l'instant.	Noch keine Spiele.	Ancora nessuna partita.	Aún no hay partidas.
+Co-op	Coop	Koop	Coop	Coop
+HOST	HÔTE	HOST	HOST	ANFITRIÓN
+JOINED	REJOINT	BEIGETRETEN	UNITO	UNIDO
+Needs %s	Nécessite %s	Braucht %s	Richiede %s	Necesita %s
+its mod	son mod	seine Mod	la sua mod	su mod
+%s: new code each time	%s: nouveau code à chaque fois	%s: jedes Mal ein neuer Code	%s: nuovo codice ogni volta	%s: código nuevo cada vez
+Hair	Cheveux	Haare	Capelli	Pelo
+Outfit	Tenue	Outfit	Abiti	Atuendo
+Trousers	Pantalon	Hose	Pantaloni	Pantalones
+Skin	Peau	Haut	Pelle	Piel
+HOW OTHERS SEE YOU	COMMENT LES AUTRES VOUS VOIENT	SO SEHEN DICH ANDERE	COME TI VEDONO GLI ALTRI	CÓMO TE VEN LOS DEMÁS
+No name yet	Pas encore de nom	Noch kein Name	Ancora nessun nome	Aún sin nombre
+YOUR MULTIPLAYER GAMES, NEWEST FIRST	VOS PARTIES MULTIJOUEUR, LES PLUS RÉCENTES D'ABORD	DEINE MEHRSPIELER-SPIELE, NEUESTE ZUERST	LE TUE PARTITE MULTIGIOCATORE, DALLA PIÙ RECENTE	TUS PARTIDAS MULTIJUGADOR, LAS MÁS RECIENTES PRIMERO
++ New game	+ Nouvelle partie	+ Neues Spiel	+ Nuova partita	+ Nueva partida
+Everyone starts a fresh save.	Chacun commence une nouvelle sauvegarde.	Alle beginnen einen neuen Spielstand.	Tutti iniziano un nuovo salvataggio.	Todos empiezan una partida nueva.
+Re-host with a new code	Héberger à nouveau avec un nouveau code	Mit neuem Code erneut hosten	Ospita di nuovo con un nuovo codice	Volver a alojar con un código nuevo
+HOW IT WORKS	FONCTIONNEMENT	SO GEHT'S	COME FUNZIONA	CÓMO FUNCIONA
+Your game keeps everyone's save. The relay gives a new code each time you host. Multiplayer games use save slots too.	Votre partie garde la sauvegarde de chacun. Le relais donne un nouveau code à chaque hébergement. Les parties multijoueur utilisent aussi des emplacements de sauvegarde.	Dein Spiel behält den Spielstand aller. Das Relay gibt bei jedem Hosten einen neuen Code. Mehrspieler-Spiele nutzen auch Speicherplätze.	La tua partita conserva i salvataggi di tutti. Il relay dà un nuovo codice ogni volta che ospiti. Anche le partite multigiocatore usano gli slot di salvataggio.	Tu partida conserva los datos de guardado de todos. El relay da un código nuevo cada vez que alojas. Las partidas multijugador también usan ranuras de guardado.
+This mode has no options.	Ce mode n'a pas d'options.	Dieser Modus hat keine Optionen.	Questa modalità non ha opzioni.	Este modo no tiene opciones.
+ROOM	SALLE	RAUM	STANZA	SALA
+ARCHIPELAGO	ARCHIPELAGO	ARCHIPELAGO	ARCHIPELAGO	ARCHIPELAGO
+Cross-game room generated by the host from each player's options file. Items you find can go to other games, and theirs to yours.	Salle multi-jeux générée par l'hôte à partir du fichier d'options de chaque joueur. Les objets que vous trouvez peuvent aller dans d'autres jeux, et les leurs dans le vôtre.	Spielübergreifender Raum, den der Host aus der Optionsdatei jedes Spielers erstellt. Deine Funde können in andere Spiele gehen und ihre in deins.	Stanza tra giochi creata dall'host dal file opzioni di ogni giocatore. Gli strumenti che trovi possono andare in altri giochi, e i loro nel tuo.	Sala entre juegos creada por el anfitrión con el archivo de opciones de cada jugador. Los objetos que encuentres pueden ir a otros juegos, y los suyos al tuyo.
+WORLD RULES	RÈGLES DU MONDE	WELTREGELN	REGOLE DEL MONDO	REGLAS DEL MUNDO
+JOINING	REJOINDRE	BEITRETEN	UNIRSI	UNIRSE
+Everyone plays on their own save. Items you find go to other players. The world's creator set these rules.	Chacun joue sur sa propre sauvegarde. Les objets que vous trouvez vont aux autres joueurs. Le créateur du monde a fixé ces règles.	Alle spielen mit ihrem eigenen Spielstand. Deine Funde gehen an andere Spieler. Der Ersteller der Welt hat diese Regeln festgelegt.	Ognuno gioca sul proprio salvataggio. Gli strumenti che trovi vanno agli altri giocatori. Il creatore del mondo ha fissato queste regole.	Cada uno juega con su propia partida. Los objetos que encuentres van a otros jugadores. El creador del mundo fijó estas reglas.
+the host	l'hôte	der Host	l'host	el anfitrión
+Missing	Absent	Fehlt	Assente	Ausente
+Mods differ	Mods différents	Andere Mods	Mod diverse	Mods distintos
+Other version	Autre version	Andere Version	Altra versione	Otra versión
+Here	Ici	Da	Qui	Aquí
+ (host)	 (hôte)	 (Host)	 (host)	 (anfitrión)
+Everyone is here	Tout le monde est là	Alle sind da	Ci sono tutti	Están todos
+Same eidos version	Même version d'eidos	Gleiche eidos-Version	Stessa versione di eidos	Misma versión de eidos
+Multiplayer mods match	Mods multijoueur identiques	Mehrspieler-Mods passen	Mod multigiocatore uguali	Mods multijugador iguales
+Same game per save	Même jeu par sauvegarde	Gleiches Spiel je Spielstand	Stesso gioco per salvataggio	Mismo juego por partida
+START CHECKLIST	VÉRIFICATIONS AVANT DE COMMENCER	CHECKLISTE ZUM START	CONTROLLI PRIMA DI INIZIARE	COMPROBACIONES PARA EMPEZAR
+RULES	RÈGLES	REGELN	REGOLE	REGLAS
+HOST RULES	RÈGLES DE L'HÔTE	REGELN DES HOSTS	REGOLE DELL'HOST	REGLAS DEL ANFITRIÓN
+On	Oui	An	Sì	Sí
+Off	Non	Aus	No	No
+No multiplayer mods. Default rules apply.	Aucun mod multijoueur. Les règles par défaut s'appliquent.	Keine Mehrspieler-Mods. Es gelten die Standardregeln.	Nessuna mod multigiocatore. Valgono le regole predefinite.	No hay mods multijugador. Se aplican las reglas por defecto.
+JOIN CODE	CODE POUR REJOINDRE	BEITRITTSCODE	CODICE DI ACCESSO	CÓDIGO PARA UNIRSE
+Copy	Copier	Kopieren	Copia	Copiar
+Start	Commencer	Starten	Inizia	Empezar
+Everyone gets their save from you.	Chacun reçoit sa sauvegarde de votre part.	Alle bekommen ihren Spielstand von dir.	Tutti ricevono il salvataggio da te.	Todos reciben su partida de ti.
+Waiting for %s to start.	En attente du lancement par %s.	Warte, bis %s startet.	In attesa che %s inizi.	Esperando a que %s empiece.
+Hosting	Hébergement	Als Host	Sei l'host	Alojando
+CO-OP ADVENTURE	AVENTURE EN COOPÉRATION	KOOP-ABENTEUER	AVVENTURA COOPERATIVA	AVENTURA COOPERATIVA
+Host a game	Héberger une partie	Spiel hosten	Ospita una partita	Alojar una partida
+ARCHIPELAGO ROOM	SALLE ARCHIPELAGO	ARCHIPELAGO-RAUM	STANZA ARCHIPELAGO	SALA ARCHIPELAGO
+Join	Rejoindre	Beitreten	Unisciti	Unirse
+World %s	Monde %s	Welt %s	Mondo %s	Mundo %s
+JOIN WORLD	REJOINDRE UN MONDE	WELT BEITRETEN	UNISCITI A UN MONDO	UNIRSE A UN MUNDO
+PLAY TOGETHER	JOUER ENSEMBLE	ZUSAMMEN SPIELEN	GIOCA INSIEME	JUGAR JUNTOS
+Connecting	Connexion	Verbindungsaufbau	Collegamento	Conectando
+Joining %s	Connexion à %s	Beitritt zu %s	Accesso a %s	Uniéndose a %s
+Contacting relay	Contact avec le relais	Relay wird kontaktiert	Contatto con il relay	Contactando con el relay
+Multiplayer	Multijoueur	Mehrspieler	Multigiocatore	Multijugador
+Mod settings.	Réglages du mod.	Mod-Einstellungen.	Impostazioni della mod.	Ajustes del mod.
+This mod is for Pokemon White.	Ce mod est pour Pokémon Version Blanche.	Diese Mod ist für Pokémon Weiße Edition.	Questa mod è per Pokémon Versione Bianca.	Este mod es para Pokémon Edición Blanca.
+This mod is for Pokemon Black.	Ce mod est pour Pokémon Version Noire.	Diese Mod ist für Pokémon Schwarze Edition.	Questa mod è per Pokémon Versione Nera.	Este mod es para Pokémon Edición Negra.
+Not for Pokemon Black or White.	Pas pour Pokémon Version Noire ou Blanche.	Nicht für Pokémon Schwarze oder Weiße Edition.	Non per Pokémon Versione Nera o Bianca.	No es para Pokémon Edición Negra o Blanca.
+Not loaded in this game.	Non chargé dans cette partie.	In diesem Spiel nicht geladen.	Non caricata in questa partita.	No cargado en esta partida.
+Made for a newer eidos.	Prévu pour une version plus récente d'eidos.	Für ein neueres eidos gemacht.	Fatta per un eidos più recente.	Hecho para un eidos más reciente.
+Update eidos to use it.	Mettez eidos à jour pour l'utiliser.	Aktualisiere eidos, um sie zu nutzen.	Aggiorna eidos per usarla.	Actualiza eidos para usarlo.
+X/Y: move	X/Y: déplacer	X/Y: verschieben	X/Y: sposta	X/Y: mover
+Delete the mod's saved data.	Effacer les données sauvegardées du mod.	Gespeicherte Daten der Mod löschen.	Cancella i dati salvati della mod.	Borrar los datos guardados del mod.
+Reload the mods folder.	Recharger le dossier des mods.	Mod-Ordner neu laden.	Ricarica la cartella delle mod.	Recargar la carpeta de mods.
+Saved data from a removed mod.	Données sauvegardées d'un mod supprimé.	Gespeicherte Daten einer entfernten Mod.	Dati salvati di una mod rimossa.	Datos guardados de un mod quitado.
+Use tls://host for encryption.	Utilisez tls://hôte pour chiffrer.	Für Verschlüsselung tls://host nutzen.	Usa tls://host per la cifratura.	Usa tls://host para cifrar.
+A: type	A: saisir	A: eingeben	A: scrivi	A: escribir
+A: change	A: changer	A: ändern	A: cambia	A: cambiar
+Reset this page.	Réinitialiser cette page.	Diese Seite zurücksetzen.	Ripristina questa pagina.	Restablecer esta página.
+A: copy	A: copier	A: kopieren	A: copia	A: copiar
+You.	Vous.	Du.	Tu.	Tú.
+Host this game.	Héberger cette partie.	Dieses Spiel hosten.	Ospita questa partita.	Alojar esta partida.
+Host a new game.	Héberger une nouvelle partie.	Neues Spiel hosten.	Ospita una nuova partita.	Alojar una partida nueva.
+You name it first.	Vous lui donnez d'abord un nom.	Du gibst ihm zuerst einen Namen.	Prima le dai un nome.	Primero le pones nombre.
+Back to the title screen.	Retour à l'écran titre.	Zurück zum Titelbildschirm.	Torna allo schermo del titolo.	Volver a la pantalla del título.
+  Clear saved data	  Effacer les données	  Gespeicherte Daten löschen	  Cancella dati salvati	  Borrar datos guardados
+Revert changes	Annuler les changements	Änderungen verwerfen	Annulla modifiche	Deshacer cambios
+Reload mods	Recharger les mods	Mods neu laden	Ricarica mod	Recargar mods
+Mods folder	Dossier des mods	Mod-Ordner	Cartella mod	Carpeta de mods
+Unused	Inutilisé	Ungenutzt	Non in uso	Sin usar
+Relay address	Adresse du relais	Relay-Adresse	Indirizzo relay	Dirección del relay
+Relay port	Port du relais	Relay-Port	Porta relay	Puerto del relay
+Control port	Port de contrôle	Steuer-Port	Porta di controllo	Puerto de control
+Your name	Votre nom	Dein Name	Il tuo nome	Tu nombre
+Code	Code	Code	Codice	Código
+Start game	Commencer la partie	Spiel starten	Inizia partita	Empezar partida
+Ready	Prêt	Bereit	Pronto	Listo
+Playing	En jeu	Spielt	In gioco	Jugando
+offline	hors ligne	offline	offline	sin conexión
+, mods differ	, mods différents	, andere Mods	, mod diverse	, mods distintos
+Connecting...	Connexion en cours...	Verbinde...	Collegamento in corso...	Conectando...
+Waiting for host	En attente de l'hôte	Warte auf den Host	In attesa dell'host	Esperando al anfitrión
+Code not found	Code introuvable	Code nicht gefunden	Codice non trovato	Código no encontrado
+Host	Hôte	Host	Host	Anfitrión
+You	Vous	Du	Tu	Tú
+New game	Nouvelle partie	Neues Spiel	Nuova partita	Nueva partida
+Unavailable	Indisponible	Nicht verfügbar	Non disponibile	No disponible
+Start new game	Commencer une nouvelle partie	Neues Spiel starten	Inizia una nuova partita	Empezar partida nueva
+Create world	Créer un monde	Welt erstellen	Crea mondo	Crear mundo
+Save options file	Enregistrer le fichier d'options	Optionsdatei speichern	Salva file opzioni	Guardar archivo de opciones
+Saved. Path copied.	Enregistré. Chemin copié.	Gespeichert. Pfad kopiert.	Salvato. Percorso copiato.	Guardado. Ruta copiada.
+Could not save file	Impossible d'enregistrer le fichier	Datei konnte nicht gespeichert werden	Impossibile salvare il file	No se pudo guardar el archivo
+Checking code...	Vérification du code...	Code wird geprüft...	Verifica del codice...	Comprobando código...
+Unknown game or world code	Code de partie ou de monde inconnu	Unbekannter Spiel- oder Welt-Code	Codice di partita o mondo sconosciuto	Código de partida o mundo desconocido
+Relay did not respond	Le relais n'a pas répondu	Relay hat nicht geantwortet	Il relay non ha risposto	El relay no respondió
+Still connecting. Try again in a moment.	Connexion en cours. Réessayez dans un instant.	Verbindung läuft noch. Versuche es gleich noch einmal.	Collegamento in corso. Riprova tra poco.	Aún conectando. Reinténtalo en un momento.
+No game code in clipboard	Aucun code de partie dans le presse-papiers	Kein Spiel-Code in der Zwischenablage	Nessun codice partita negli appunti	No hay código de partida en el portapapeles
+Join world	Rejoindre un monde	Welt beitreten	Unisciti a un mondo	Unirse a un mundo
+Not opened by host yet	Pas encore ouvert par l'hôte	Vom Host noch nicht geöffnet	Non ancora aperto dall'host	El anfitrión aún no lo ha abierto
+Closed by host	Fermé par l'hôte	Vom Host geschlossen	Chiuso dall'host	Cerrado por el anfitrión
+Unavailable on relay	Indisponible sur le relais	Auf dem Relay nicht verfügbar	Non disponibile sul relay	No disponible en el relay
+All player slots taken	Toutes les places de joueur sont prises	Alle Spielerplätze belegt	Tutti i posti giocatore occupati	Todas las plazas de jugador ocupadas
+Requires an Archipelago mod	Nécessite un mod Archipelago	Braucht eine Archipelago-Mod	Richiede una mod Archipelago	Necesita un mod de Archipelago
+Join room	Rejoindre la salle	Raum beitreten	Unisciti alla stanza	Unirse a la sala
+World requires Pokemon White	Le monde nécessite Pokémon Version Blanche	Welt braucht Pokémon Weiße Edition	Il mondo richiede Pokémon Versione Bianca	El mundo necesita Pokémon Edición Blanca
+World requires Pokemon Black	Le monde nécessite Pokémon Version Noire	Welt braucht Pokémon Schwarze Edition	Il mondo richiede Pokémon Versione Nera	El mundo necesita Pokémon Edición Negra
+Requires a mod to join worlds	Nécessite un mod pour rejoindre des mondes	Braucht eine Mod, um Welten beizutreten	Richiede una mod per unirsi ai mondi	Necesita un mod para unirse a mundos
+Players	Joueurs	Spieler	Giocatori	Jugadores
+Game	Jeu	Spiel	Gioco	Juego
+Restart run	Redémarrer le jeu	Spiel neu starten	Riavvia il gioco	Reiniciar el juego
+Waiting...	En attente...	Warten...	In attesa...	Esperando...
+In a game	En partie	Im Spiel	In partita	En partida
+Player	Joueur	Spieler	Giocatore	Jugador
+Name	Nom	Name	Nome	Nombre
+BLACK	NOIR	SCHWARZ	NERO	NEGRO
+WHITE	BLANC	WEISS	BIANCO	BLANCO
+Joined	Rejoint	Beigetreten	Unito	Unido
+Multiworld	Multimonde	Multiwelt	Multimondo	Multimundo
+Solo	Solo	Solo	Singolo	Individual
+Mods	Mods	Mods	Mod	Mods
+%s (missing)	%s (absent)	%s (fehlt)	%s (mancante)	%s (falta)
+%s (eidos %s or later)	%s (eidos %s ou plus récent)	%s (eidos %s oder neuer)	%s (eidos %s o successivo)	%s (eidos %s o posterior)
+%s (White only)	%s (Blanche seulement)	%s (nur Weiß)	%s (solo Bianca)	%s (solo Blanca)
+%s (Black only)	%s (Noire seulement)	%s (nur Schwarz)	%s (solo Nera)	%s (solo Negra)
+%s (unknown game)	%s (jeu inconnu)	%s (unbekanntes Spiel)	%s (gioco sconosciuto)	%s (juego desconocido)
+White	Blanc	Weiß	Bianco	Blanco
+Black	Noir	Schwarz	Nero	Negro
+Tabs	Onglets	Reiter	Schede	Pestañas
+Hilda	Ludvina	Lotta	Anita	Liza
+Hilbert	Ludwig	Warren	Alcide	Lucho
+Black Version	Version Noire	Schwarze Edition	Versione Nera	Edición Negra
+White Version	Version Blanche	Weiße Edition	Versione Bianca	Edición Blanca
+Starting Pokémon %s.	Lancement de Pokémon %s.	Pokémon %s wird gestartet.	Avvio di Pokémon %s.	Iniciando Pokémon %s.
+Restart run?	Redémarrer le jeu?	Spiel neu starten?	Riavviare il gioco?	¿Reiniciar el juego?
+Return to title screen.	Retour à l'écran titre.	Zurück zum Titelbildschirm.	Torna allo schermo del titolo.	Volver a la pantalla del título.
+Free	Libre	Frei	Libero	Libre
+Display	Affichage	Anzeige	Schermo	Pantalla
+Layout	Disposition	Anordnung	Disposizione	Disposición
+Controls	Commandes	Steuerung	Comandi	Controles
+Sound	Son	Ton	Suono	Sonido
+Network	Réseau	Netzwerk	Rete	Red
+Extras	Extras	Extras	Extra	Extras
+Status panel	Panneau d'état	Statusanzeige	Pannello di stato	Panel de estado
+Window, scale and resolution.	Fenêtre, échelle et résolution.	Fenster, Skalierung und Auflösung.	Finestra, scala e risoluzione.	Ventana, escala y resolución.
+Screen arrangement.	Disposition des écrans.	Anordnung der Bildschirme.	Disposizione degli schermi.	Disposición de las pantallas.
+Keyboard and gamepad.	Clavier et manette.	Tastatur und Gamepad.	Tastiera e controller.	Teclado y mando.
+Relay and player name.	Relais et nom du joueur.	Relay und Spielername.	Relay e nome del giocatore.	Relay y nombre del jugador.
+# The port's Settings screen (engine/platform/settings_ui.c, settings.c).
+Up	Haut	Oben	Su	Arriba
+Down	Bas	Unten	Giù	Abajo
+Left	Gauche	Links	Sinistra	Izquierda
+Right	Droite	Rechts	Destra	Derecha
+Window mode	Mode fenêtre	Fenstermodus	Modalità finestra	Modo ventana
+Pixel scale	Échelle pixels	Pixel-Skalierung	Scala dei pixel	Escala de píxeles
+3D resolution	Résolution 3D	3D-Auflösung	Risoluzione 3D	Resolución 3D
+Screen layout	Agencement	Bildschirmlayout	Layout schermi	Distribución
+Swap screens	Inverser écrans	Bildschirmtausch	Inverti schermi	Cambiar pantallas
+Screen gap	Écart écrans	Abstand	Spazio schermi	Separación
+Master volume	Volume général	Gesamtlautstärke	Volume generale	Volumen general
+Instant text	Texte instantané	Sofort-Text	Testo istantaneo	Texto instantáneo
+Battle backdrop	Décor de combat	Kampfhintergrund	Sfondo lotta	Fondo de combate
+Battle platforms	Socles de combat	Kampfplattformen	Piattaforme lotta	Plataformas
+Move colours	Couleur capacités	Attackenfarben	Colori mosse	Color movimientos
+Weather haze	Voile météo	Wetterschleier	Foschia meteo	Neblina del clima
+Button icons	Icônes boutons	Knopfsymbole	Icone pulsanti	Iconos de botones
+3D outlines	Contours 3D	3D-Umrisse	Contorni 3D	Contornos 3D
+Map transitions	Transitions carte	Kartenübergänge	Transizioni mappa	Transiciones mapa
+GPU drawing	Rendu GPU	GPU-Zeichnen	Disegno GPU	Dibujo por GPU
+Renderer	Moteur de rendu	Renderer	Renderer	Renderizador
+Interface style	Style d'interface	Oberflächenstil	Stile interfaccia	Estilo interfaz
+Native	Natif	Nativ	Nativo	Nativo
+Windowed	Fenêtré	Fenster	In finestra	En ventana
+Fullscreen	Plein écran	Vollbild	Schermo intero	Pantalla completa
+Borderless	Sans bordure	Randlos	Senza bordi	Sin bordes
+Stacked	Empilés	Gestapelt	Impilati	Apiladas
+Side by side	Côte à côte	Nebeneinander	Affiancati	Lado a lado
+One screen	Un écran	Ein Bildschirm	Uno schermo	Una pantalla
+Real map	Carte	Karte	Mappa	Mapa
+Original	Original	Original	Originale	Original
+Auto	Auto	Auto	Auto	Auto
+Thin	Fin	Dünn	Sottile	Fino
+Fast	Rapide	Schnell	Veloce	Rápida
+Seamless	Fluide	Nahtlos	Continua	Continua
+Window	Fenêtre	Fenster	Finestra	Ventana
+Full	Plein	Vollbild	Intero	Completa
+Border	Sans bord	Randlos	No bordi	Sin borde
+Wide	Larges	Neben	Affiancati	Anchas
+One	Un	Eins	Uno	Una
+Auto fills the window.	Auto remplit la fenêtre.	Auto füllt das Fenster.	Auto riempie la finestra.	Auto llena la ventana.
+Auto matches the window.	Auto suit la fenêtre.	Auto passt sich dem Fenster an.	Auto segue la finestra.	Auto se ajusta a la ventana.
+Overworld map or original	La carte du monde ou les décors	Die Karte der Spielwelt oder die	La mappa del mondo o gli sfondi	El mapa del mundo o los fondos
+battle backgrounds.	de combat originaux.	originalen Kampfhintergründe.	originali delle lotte.	de combate originales.
+Original platforms under Pokemon.	Plateformes d'origine sous les Pokémon.	Originale Plattformen unter den Pokémon.	Piattaforme originali sotto i Pokémon.	Plataformas originales bajo los Pokémon.
+Colour move names by type	Colore le nom des capacités selon	Färbt Attackennamen in Kampftexten	Colora i nomi delle mosse secondo	Colorea los nombres de movimientos
+in battle messages.	leur type dans les messages de combat.	nach ihrem Typ.	il tipo nei messaggi di lotta.	según su tipo en los combates.
+Fog, sand and snow also dim	Le brouillard, le sable et la neige	Nebel, Sand und Schnee trüben	Nebbia, sabbia e neve velano	La niebla, la arena y la nieve
+the Pokemon in battle.	voilent aussi les Pokémon en combat.	auch die Pokémon im Kampf.	anche i Pokémon in lotta.	también velan a los Pokémon.
+Controller icons in hints.	Icônes de la manette dans les aides.	Gamepad-Symbole in den Hinweisen.	Icone del controller nei suggerimenti.	Iconos del mando en las ayudas.
+Auto matches the controller.	Auto suit la manette.	Auto passt sich dem Gamepad an.	Auto segue il controller.	Auto se ajusta al mando.
+One screen pixel wide.	Épais d'un pixel d'écran.	Einen Bildschirmpixel breit.	Spessi un pixel dello schermo.	De un píxel de pantalla.
+Seamless skips the fade to black	Fluide supprime le fondu au noir	Nahtlos lässt das Abblenden weg,	Continua salta la dissolvenza in nero	Continua omite el fundido a negro
+at doors and map changes.	aux portes et changements de carte.	an Türen und bei Kartenwechseln.	alle porte e ai cambi di mappa.	en puertas y cambios de mapa.
+Off renders on the CPU.	Non: rendu par le processeur.	Aus: Zeichnen auf der CPU.	No: disegno sulla CPU.	No: dibujo en la CPU.
+Native: Direct3D, Metal or	Natif: Direct3D, Metal ou	Nativ: Direct3D, Metal oder	Nativo: Direct3D, Metal o	Nativo: Direct3D, Metal o
+Vulkan. Applies on restart.	Vulkan. Effet au redémarrage.	Vulkan. Gilt nach Neustart.	Vulkan. Vale dal riavvio.	Vulkan. Se aplica al reiniciar.
+Syncs frames to display.	Synchronise les images et l'écran.	Synchronisiert Bilder mit dem Monitor.	Sincronizza i fotogrammi con lo schermo.	Sincroniza los fotogramas con la pantalla.
+Off uses native DS frame rate.	Non: fréquence d'images de la DS.	Aus: Bildrate der DS.	No: frequenza di fotogrammi della DS.	No: fotogramas por segundo de la DS.
+Applies to one-screen	S'applique aux menus et aux combats	Gilt für Menüs und Kämpfe	Vale per menu e lotte	Se aplica a los menús y combates
+menus and battles.	sur un écran.	auf einem Bildschirm.	su uno schermo.	en una pantalla.
+Bind a key or gamepad button.	Associer une touche ou un bouton.	Taste oder Gamepad-Knopf zuweisen.	Assegna un tasto o un pulsante.	Asignar una tecla o un botón del mando.
+Press a key or gamepad button.	Appuyez sur une touche ou un bouton.	Drücke eine Taste oder einen Knopf.	Premi un tasto o un pulsante.	Pulsa una tecla o un botón del mando.
+B: cancel	B: annuler	B: abbrechen	B: annulla	B: cancelar
+Host or join a game.	Héberger ou rejoindre une partie.	Spiel hosten oder beitreten.	Ospita o unisciti a una partita.	Alojar o unirse a una partida.
+A: open	A: ouvrir	A: öffnen	A: apri	A: abrir
+B: back	B: retour	B: zurück	B: indietro	B: atrás
+L/R: tabs	L/R: onglets	L/R: Reiter	L/R: schede	L/R: pestañas
+A: select   B: back	A: choisir   B: retour	A: wählen   B: zurück	A: scegli   B: indietro	A: elegir   B: atrás
+Type on the keyboard.	Tapez au clavier.	Tippe auf der Tastatur.	Scrivi con la tastiera.	Escribe con el teclado.
+Enter: done   Esc: cancel	Entrée: terminé   Échap: annuler	Enter: fertig   Esc: abbrechen	Invio: fatto   Esc: annulla	Intro: listo   Esc: cancelar
+copied	copié	kopiert	copiato	copiado
+Left/Right: choose	Gauche/Droite: choisir	Links/Rechts: wählen	Sinistra/Destra: scegli	Izquierda/Derecha: elegir
+A: confirm   B: cancel	A: confirmer   B: annuler	A: bestätigen   B: abbrechen	A: conferma   B: annulla	A: confirmar   B: cancelar
+Max input press (frames).	Appui injecté le plus long (images).	Längster Tastendruck (Frames).	Pressione più lunga (fotogrammi).	Pulsación más larga (fotogramas).
+Max press	Appui max.	Max. Druck	Press. max.	Puls. máx.
+Exit.	Retour.	Zurück.	Esci.	Salir.
+Restore defaults	Valeurs par défaut	Standardwerte	Valori predefiniti	Valores por defecto
+Press a key	Appuyez sur une touche	Drücke eine Taste	Premi un tasto	Pulsa una tecla
+(none)	(aucun)	(keins)	(nessuno)	(ninguno)
+Game code?	Code de partie?	Spiel-Code?	Codice partita?	¿Código de partida?
+New game name?	Nom de la partie?	Name des Spiels?	Nome della partita?	¿Nombre de la partida?
+No relay	Pas de relais	Kein Relay	Nessun relay	Sin relay
+No session	Pas de session	Keine Sitzung	Nessuna sessione	Sin sesión
+Refused	Refusé	Abgelehnt	Rifiutato	Rechazado
+Too big	Trop grand	Zu groß	Troppo grande	Demasiado grande
+No reply	Pas de réponse	Keine Rückmeldung	Nessuna risposta	Sin respuesta
+Bad code	Code erroné	Falscher Code	Codice errato	Código erróneo
+Failed	Échec	Fehlgeschlagen	Non riuscito	Error
+PASSWORD	MOT DE PASSE	PASSWORT	PASSWORD	CONTRASEÑA
+CODE	CODE	CODE	CODICE	CÓDIGO
+Slot name?	Nom du slot?	Slot-Name?	Nome dello slot?	¿Nombre del slot?
+Room password?	Mot de passe de la salle?	Raum-Passwort?	Password della stanza?	¿Contraseña de la sala?
+Server	Serveur	Server	Server	Servidor
+Password	Mot de passe	Passwort	Password	Contraseña
+Key %d	Touche %d	Taste %d	Tasto %d	Tecla %d
+Uses a free save slot, listed under Your games, and your other saves stay as they are.	Utilise un emplacement de sauvegarde libre, listé dans Vos parties. Vos autres sauvegardes restent telles quelles.	Nutzt einen freien Speicherplatz, der unter Deine Spiele steht. Deine anderen Spielstände bleiben, wie sie sind.	Usa uno slot di salvataggio libero, elencato in Le tue partite. Gli altri salvataggi restano come sono.	Usa una ranura de guardado libre, que aparece en Tus partidas. Tus otras partidas guardadas no cambian.
+Makes the world on the relay and starts your game in it. Its code shows in your game: send it to your friends, who type it in the Join box.	Crée le monde sur le relais et y lance votre partie. Son code s'affiche dans votre partie: envoyez-le à vos amis, qui le saisissent dans la case Rejoindre.	Erstellt die Welt auf dem Relay und startet dein Spiel darin. Ihr Code erscheint in deinem Spiel: Schick ihn deinen Freunden, die ihn im Feld Beitreten eingeben.	Crea il mondo sul relay e vi avvia la tua partita. Il suo codice appare nella tua partita: mandalo ai tuoi amici, che lo scrivono nella casella Unisciti.	Crea el mundo en el relay e inicia tu partida en él. Su código aparece en tu partida: envíaselo a tus amigos para que lo escriban en la casilla Unirse.
+Saves your options as a file for the Archipelago room's host. The host also needs the arkhipelagos.apworld file from the mod's releases.	Enregistre vos options dans un fichier pour l'hôte de la salle Archipelago. L'hôte a aussi besoin du fichier arkhipelagos.apworld des versions du mod.	Speichert deine Optionen als Datei für den Host des Archipelago-Raums. Der Host braucht auch die Datei arkhipelagos.apworld aus den Releases der Mod.	Salva le tue opzioni in un file per l'host della stanza Archipelago. L'host ha bisogno anche del file arkhipelagos.apworld dalle release della mod.	Guarda tus opciones en un archivo para el anfitrión de la sala de Archipelago. El anfitrión también necesita el archivo arkhipelagos.apworld de las versiones del mod.
+Left/Right switches the mode. The rows below and the text above change with it.	Gauche/Droite change de mode. Les lignes en dessous et le texte au-dessus changent avec lui.	Links/Rechts wechselt den Modus. Die Zeilen darunter und der Text darüber ändern sich mit.	Sinistra/Destra cambia modalità. Le righe sotto e il testo sopra cambiano con essa.	Izquierda/Derecha cambia el modo. Las filas de abajo y el texto de arriba cambian con él.
+Starts your game in this world, in a free save slot. It is listed under Your games. The host sets the rules.	Lance votre partie dans ce monde, dans un emplacement de sauvegarde libre. Elle est listée dans Vos parties. L'hôte fixe les règles.	Startet dein Spiel in dieser Welt, in einem freien Speicherplatz. Es steht unter Deine Spiele. Der Host legt die Regeln fest.	Avvia la tua partita in questo mondo, in uno slot di salvataggio libero. È elencata in Le tue partite. L'host decide le regole.	Inicia tu partida en este mundo, en una ranura de guardado libre. Aparece en Tus partidas. El anfitrión pone las reglas.
+Starts your game in the room, in a free save slot. It is listed under Your games and links to the room each time you play it.	Lance votre partie dans la salle, dans un emplacement de sauvegarde libre. Elle est listée dans Vos parties et se connecte à la salle à chaque fois que vous jouez.	Startet dein Spiel im Raum, in einem freien Speicherplatz. Es steht unter Deine Spiele und verbindet sich bei jedem Spielen mit dem Raum.	Avvia la tua partita nella stanza, in uno slot di salvataggio libero. È elencata in Le tue partite e si collega alla stanza ogni volta che giochi.	Inicia tu partida en la sala, en una ranura de guardado libre. Aparece en Tus partidas y se conecta a la sala cada vez que juegas.
+The slot name in the room's game, as in the options file you sent its host.	Le nom du slot dans la partie de la salle, comme dans le fichier d'options envoyé à son hôte.	Der Slot-Name im Spiel des Raums, wie in der Optionsdatei, die du seinem Host geschickt hast.	Il nome dello slot nella partita della stanza, come nel file di opzioni inviato al suo host.	El nombre del slot en la partida de la sala, como en el archivo de opciones que enviaste a su anfitrión.
+The room's password, if its host set one. Leave it empty if not.	Le mot de passe de la salle, si son hôte en a mis un. Sinon, laissez vide.	Das Passwort des Raums, falls sein Host eins gesetzt hat. Sonst leer lassen.	La password della stanza, se il suo host ne ha impostata una. Altrimenti lasciala vuota.	La contraseña de la sala, si su anfitrión puso una. Si no, déjala vacía.

@@ -156,6 +156,7 @@ static const char *tab_title(int t);
 static const char *const k_button_short[] = {
     "A", "B", "X", "Y", "L", "R", "Start", "Select", "Up", "Down", "Left", "Right"
 };
+#define BUTTON_FIRST_DIRECTION 8    /* "Up": the first of the four directions above */
 
 /* Short gamepad control names: the value column is narrow.  Indexes match
  * the backend's EIDOS_PADBIND_BUTTON order (SDL game controller buttons). */
@@ -954,7 +955,7 @@ static int keyboard_open(int target)
     if (eidos_ui_enabled != NULL && eidos_ui_enabled()) {
         /* the one-screen interface: the port's own keyboard, as long as the
          * text may be (up to EIDOS_PKB_MAX) */
-        const char *title = "NAME", *sub = "", *prompt = eidos_sui_keyboard_prompt();
+        const char *title = ui_tr("NAME"), *sub = "", *prompt = eidos_sui_keyboard_prompt();
         int flags = 0;
 
         if (target == KB_MOD_TEXT) {
@@ -973,22 +974,22 @@ static int keyboard_open(int target)
                 flags |= EIDOS_PKB_NO_SPACE;
             }
         } else if (target == KB_AP_PASS) {
-            title = "ROOM";
-            sub = "PASSWORD";
+            title = ui_tr("ROOM");
+            sub = ui_tr("PASSWORD");
             flags |= EIDOS_PKB_SECRET;
         } else if (target == KB_AP_SLOT) {
-            title = "ROOM";
-            sub = "SLOT";
+            title = ui_tr("ROOM");
+            sub = ui_tr("SLOT");
             flags |= EIDOS_PKB_NO_SPACE;
         } else if (target == KB_CODE) {
-            title = "JOIN";
-            sub = "CODE";
+            title = ui_tr("JOIN");
+            sub = ui_tr("CODE");
             flags |= EIDOS_PKB_NO_SPACE;
         } else if (target == KB_NEW_GAME) {
-            title = "NEW GAME";
-            sub = "NAME";
+            title = ui_tr("NEW GAME");
+            sub = ui_tr("NAME");
         } else {
-            sub = "MULTIPLAYER";
+            sub = ui_tr("MULTIPLAYER");
         }
         {
             char t2[32], s2[32];
@@ -1027,12 +1028,12 @@ int eidos_sui_keyboard(int *kind, int *max, char *text, int n)
 const char *eidos_sui_keyboard_prompt(void)
 {
     switch (g_kb.target) {
-    case KB_NAME:     return STR_KB_NAME;
-    case KB_CODE:     return STR_KB_CODE;
-    case KB_NEW_GAME: return STR_KB_NEW_GAME;
+    case KB_NAME:     return ui_tr(STR_KB_NAME);
+    case KB_CODE:     return ui_tr(STR_KB_CODE);
+    case KB_NEW_GAME: return ui_tr(STR_KB_NEW_GAME);
     case KB_MOD_TEXT: return bw_mod_menu_option_label((u32)g_kb.mod, (u32)g_kb.opt);
-    case KB_AP_SLOT:  return "Slot name?";
-    case KB_AP_PASS:  return "Room password?";
+    case KB_AP_SLOT:  return ui_tr("Slot name?");
+    case KB_AP_PASS:  return ui_tr("Room password?");
     default:          return NULL;
     }
 }
@@ -1651,7 +1652,7 @@ static int poll_session(void)
         if (!st.host && st.rc != BW_MOD_NET_OK && g_mp_view == MP_VIEW_JOIN && g.tab == TAB_SESSION) {
             /* a join the relay refused: back on the hub, saying why */
             put(g_look.said, (int)sizeof g_look.said,
-                strcmp(bw_mod_net_last_error(), "unknown-code") == 0 ? STR_MP_NO_CODE : session_answer_text(st.rc));
+                strcmp(bw_mod_net_last_error(), "unknown-code") == 0 ? ui_tr(STR_MP_NO_CODE) : session_answer_text(st.rc));
             g_mp_view = MP_VIEW_CHOOSE;
             build_rows();
             g.cursor = 0;
@@ -1662,7 +1663,7 @@ static int poll_session(void)
             if (st.rc != BW_MOD_NET_OK && g_mp_view == MP_VIEW_HOST && g.tab == TAB_SESSION) {
                 /* a game of Your games that could not be hosted: back on the hub, saying why */
                 put(g_look.said, (int)sizeof g_look.said,
-                    st.rc == BW_MOD_NET_E_IO || st.rc == BW_MOD_NET_E_NO_RELAY ? STR_MP_NO_ANSWER
+                    st.rc == BW_MOD_NET_E_IO || st.rc == BW_MOD_NET_E_NO_RELAY ? ui_tr(STR_MP_NO_ANSWER)
                                                                              : session_answer_text(st.rc));
                 g_mp_view = MP_VIEW_CHOOSE;
                 build_rows();
@@ -1695,15 +1696,15 @@ static int poll_session(void)
 static const char *session_answer_text(int rc)
 {
     switch (rc) {
-    case BW_MOD_NET_OK:           return STR_SESS_OK;
-    case BW_MOD_NET_E_NO_RELAY:   return STR_SESS_NORELAY;
-    case BW_MOD_NET_E_BUSY:       return STR_SESS_BUSY;
-    case BW_MOD_NET_E_NO_SESSION: return STR_SESS_NOSESS;
-    case BW_MOD_NET_E_RELAY:      return STR_SESS_REFUSED;
-    case BW_MOD_NET_E_TOO_BIG:    return STR_SESS_BIG;
-    case BW_MOD_NET_E_IO:         return STR_SESS_IO;
-    case BW_MOD_NET_E_ARG:        return STR_SESS_ARG;
-    default:                      return STR_SESS_FAILED;
+    case BW_MOD_NET_OK:           return ui_tr(STR_SESS_OK);
+    case BW_MOD_NET_E_NO_RELAY:   return ui_tr(STR_SESS_NORELAY);
+    case BW_MOD_NET_E_BUSY:       return ui_tr(STR_SESS_BUSY);
+    case BW_MOD_NET_E_NO_SESSION: return ui_tr(STR_SESS_NOSESS);
+    case BW_MOD_NET_E_RELAY:      return ui_tr(STR_SESS_REFUSED);
+    case BW_MOD_NET_E_TOO_BIG:    return ui_tr(STR_SESS_BIG);
+    case BW_MOD_NET_E_IO:         return ui_tr(STR_SESS_IO);
+    case BW_MOD_NET_E_ARG:        return ui_tr(STR_SESS_ARG);
+    default:                      return ui_tr(STR_SESS_FAILED);
     }
 }
 
@@ -1714,12 +1715,12 @@ static void session_value(int host, char *out, int n)
         out[0] = '\0';
     }
     if (g_sess.busy) {
-        put(out, n, STR_SESSION_WAIT);
+        put(out, n, ui_tr(STR_SESSION_WAIT));
         return;
     }
     if (g_sess.have && g_sess.host == host && g_sess.rc != BW_MOD_NET_OK) {
         if (strcmp(bw_mod_net_last_error(), "unknown-code") == 0) {
-            put(out, n, STR_MP_NOT_FOUND);
+            put(out, n, ui_tr(STR_MP_NOT_FOUND));
         } else {
             put(out, n, session_answer_text(g_sess.rc));
         }
@@ -1904,9 +1905,9 @@ static void look_read_world(const char *json)
         }
     }
     have_mod = bw_mod_menu_find_joining(&g_look.join_mod, &g_look.join_mode);
-    look_line(STR_MP_WORLD_GAME, g_look.game[0] == 'w' ? "White" : g_look.game[0] == 'b' ? "Black" : "...");
+    look_line(ui_tr(STR_MP_WORLD_GAME), g_look.game[0] == 'w' ? ui_tr("White") : g_look.game[0] == 'b' ? ui_tr("Black") : "...");
     snprintf(buf, sizeof buf, "%d of %d free", g_look.free, g_look.nplayers);
-    look_line(STR_MP_WORLD_PLAYERS, buf);
+    look_line(ui_tr(STR_MP_WORLD_PLAYERS), buf);
     for (o = 0; have_mod && o < bw_mod_menu_option_count(g_look.join_mod); o++) {
         const char *y = bw_mod_menu_option_yaml(g_look.join_mod, o), *sp;
         char key[48], want[64], have[64];
@@ -1948,7 +1949,7 @@ static void look_read_world(const char *json)
             }
         }
         if (kind == BW_MOD_SETTING_BOOL) {
-            look_line(bw_mod_menu_option_label(g_look.join_mod, o), idx ? STR_ON : STR_OFF);
+            look_line(bw_mod_menu_option_label(g_look.join_mod, o), idx ? ui_tr(STR_ON) : ui_tr(STR_OFF));
         } else {
             const char *c = bw_mod_menu_option_choice(g_look.join_mod, o, idx);
 
@@ -1956,25 +1957,25 @@ static void look_read_world(const char *json)
         }
     }
     for (o = 0; o < (u32)g_look.nplayers; o++) {
-        look_line(g_look.players[o], g_look.claimed[o] ? "Joined" : "Free");
+        look_line(g_look.players[o], g_look.claimed[o] ? ui_tr("Joined") : ui_tr("Free"));
     }
     g_look.can_join = 0;
     g_look.said[0] = '\0';
     if (!have_mod) {
-        put(g_look.said, (int)sizeof g_look.said, STR_MP_WORLD_NO_MOD);
+        put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_WORLD_NO_MOD));
     } else if (strcmp(g_look.state, "waiting") == 0) {
-        put(g_look.said, (int)sizeof g_look.said, STR_MP_WORLD_WAITING);
+        put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_WORLD_WAITING));
     } else if (strcmp(g_look.state, "closed") == 0) {
-        put(g_look.said, (int)sizeof g_look.said, STR_MP_WORLD_CLOSED);
+        put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_WORLD_CLOSED));
     } else if (strcmp(g_look.state, "open") != 0) {
-        put(g_look.said, (int)sizeof g_look.said, STR_MP_WORLD_BROKEN);
+        put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_WORLD_BROKEN));
     } else if (g_look.free <= 0) {
-        put(g_look.said, (int)sizeof g_look.said, STR_MP_WORLD_FULL);
+        put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_WORLD_FULL));
     } else if ((g_look.game[0] == 'w') != (bw_mp_local_game() == 'W')) {
         /* every place is made for the maker's game: the other one's save
          * would get the wrong data */
         put(g_look.said, (int)sizeof g_look.said,
-            g_look.game[0] == 'w' ? STR_MP_WORLD_IS_WHITE : STR_MP_WORLD_IS_BLACK);
+            g_look.game[0] == 'w' ? ui_tr(STR_MP_WORLD_IS_WHITE) : ui_tr(STR_MP_WORLD_IS_BLACK));
     } else {
         g_look.can_join = 1;
     }
@@ -1994,7 +1995,7 @@ static int lookup_step(void)
         /* ten seconds with no answer: said, and nothing is joined */
         bw_mod_net_lookup_stop();
         g_look.busy = 0;
-        put(g_look.said, (int)sizeof g_look.said, STR_MP_NO_ANSWER);
+        put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_NO_ANSWER));
         g_mp_view = MP_VIEW_CHOOSE;
         build_rows();
         g.cursor = 0;
@@ -2015,7 +2016,7 @@ static int lookup_step(void)
         look_read_world(bw_mod_net_lookup_json());
         g_mp_view = MP_VIEW_WORLD;
     } else {
-        put(g_look.said, (int)sizeof g_look.said, STR_MP_NO_CODE);
+        put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_NO_CODE));
         g_mp_view = MP_VIEW_CHOOSE;
     }
     if (getenv("EIDOS_MP_UI_LOG") != NULL) {
@@ -2169,7 +2170,7 @@ static int session_action(int type)
         char line[160];
 
         if (!bw_mod_menu_find_room(&rm, &rk)) {
-            put(g_room.said, (int)sizeof g_room.said, STR_MP_ROOM_NO_MOD);
+            put(g_room.said, (int)sizeof g_room.said, ui_tr(STR_MP_ROOM_NO_MOD));
             return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
         }
         snprintf(line, sizeof line, "ap %s:%s %s %s", g_room.host, g_room.port, g_room.slot,
@@ -2211,10 +2212,10 @@ static int session_action(int type)
             if (bw_mod_menu_mode_write_yaml((u32)g_mode_mod, (u32)g_mode_k, name, bw_mp_local_game(), path,
                                             sizeof path) == 0) {
                 (void)eidos_settings_clipboard_set(path);
-                put(g_mode_said, (int)sizeof g_mode_said, STR_MP_SAVED);
+                put(g_mode_said, (int)sizeof g_mode_said, ui_tr(STR_MP_SAVED));
                 return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_SELECT;
             }
-            put(g_mode_said, (int)sizeof g_mode_said, STR_MP_NOT_SAVED);
+            put(g_mode_said, (int)sizeof g_mode_said, ui_tr(STR_MP_NOT_SAVED));
             return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
         }
         /* A new game in a file of its own (games/, sdk/save_games.h), told
@@ -2543,7 +2544,7 @@ int eidos_sui_input(unsigned pressed, unsigned held)
         g_look.said[0] = '\0';
         if (eidos_settings_clipboard_get(text, (int)sizeof text) != 0 ||
             !eidos_sui_code_from_text(text, code, (int)sizeof code)) {
-            put(g_look.said, (int)sizeof g_look.said, STR_MP_NO_PASTE);
+            put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_NO_PASTE));
             return EIDOS_SUI_REDRAW | EIDOS_SUI_SFX_BACK;
         }
         g_mp_view = MP_VIEW_JOIN;
@@ -2572,7 +2573,7 @@ int eidos_sui_input(unsigned pressed, unsigned held)
                 g_host_from_hub = 1;        /* (poll_session takes its answer) */
             } else if (g_mp_view == MP_VIEW_HOST && !mp_in_game()) {
                 /* it did not start: the hub again, saying why, not the Host view's list */
-                put(g_look.said, (int)sizeof g_look.said, STR_MP_HOST_BUSY);
+                put(g_look.said, (int)sizeof g_look.said, ui_tr(STR_MP_HOST_BUSY));
                 g_mp_view = MP_VIEW_CHOOSE;
                 build_rows();
                 g.cursor = 0;
@@ -3307,7 +3308,7 @@ static const char *tab_title(int t)
 
         return k < g_modtab_n ? bw_mod_menu_tab_title((u32)g_modtab[k].mod, (u32)g_modtab[k].tab) : "";
     }
-    return t >= 0 && t < TAB_COUNT ? k_tab_names[t] : "";
+    return t >= 0 && t < TAB_COUNT ? ui_tr(k_tab_names[t]) : "";
 }
 
 static void option_value_of(int id, int v, char *out, int n)
@@ -3317,16 +3318,22 @@ static void option_value_of(int id, int v, char *out, int n)
     if (o != NULL && o->kind == EIDOS_OPTKIND_CHOICE) {
         for (i = 0; i < sizeof k_value_names / sizeof k_value_names[0]; i++) {
             if (k_value_names[i].id == id && k_value_names[i].index == v) {
-                put(out, n, k_value_names[i].text);
+                put(out, n, ui_tr(k_value_names[i].text));
                 return;
             }
         }
     }
     if (o != NULL && o->zero_name != NULL && v == 0) {
-        put(out, n, STR_AUTO);
+        put(out, n, ui_tr(STR_AUTO));
         return;
     }
-    eidos_settings_value_text(id, out, (size_t)n);
+    {
+        /* a choice's name is the interface's word; a number is a number */
+        char tmp[64];
+
+        eidos_settings_value_text(id, tmp, sizeof tmp);
+        put(out, n, o != NULL && o->kind == EIDOS_OPTKIND_CHOICE ? ui_tr(tmp) : tmp);
+    }
 }
 
 static void option_value(int id, char *out, int n)
@@ -3372,7 +3379,7 @@ static void bind_value(int button, char *out, int n)
         }
     }
     if (key[0] == '\0' && pad[0] == '\0') {
-        put(out, n, STR_UNBOUND);
+        put(out, n, ui_tr(STR_UNBOUND));
     } else if (pad[0] == '\0') {
         put(out, n, key);
     } else if (key[0] == '\0') {
@@ -3385,7 +3392,7 @@ static void bind_value(int button, char *out, int n)
 /* A text of the port's own settings: what is not set says so. */
 static const char *net_text(const char *s)
 {
-    return (s != NULL && s[0] != '\0') ? s : STR_NONE;
+    return (s != NULL && s[0] != '\0') ? s : ui_tr(STR_NONE);
 }
 
 void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
@@ -3399,12 +3406,12 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         /* The menu's own question: the header, the question and the grey
          * bar. */
         if (row == 0) {
-            put(label, nl, STR_Q_TITLE);
+            put(label, nl, ui_tr(STR_Q_TITLE));
         } else if (row == 1) {
-            put(label, nl, k_questions[g_q.asking].label);
-            put(value, nv, g_q.answer ? STR_Q_YES : STR_Q_NO);
+            put(label, nl, ui_tr(k_questions[g_q.asking].label));
+            put(value, nv, g_q.answer ? ui_tr(STR_Q_YES) : ui_tr(STR_Q_NO));
         } else if (row == 2) {
-            put(label, nl, STR_Q_CANCEL);
+            put(label, nl, ui_tr(STR_Q_CANCEL));
         }
         return;
     }
@@ -3418,7 +3425,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         return;
     }
     if (has_back() && row == eidos_sui_row_count() - 1) {
-        put(label, nl, STR_BACK_L1);
+        put(label, nl, ui_tr(STR_BACK_L1));
         return;
     }
     if (row < 1 || g.scroll + row - 1 >= g.nrows) {
@@ -3430,15 +3437,20 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         put(label, nl, tab_title(r->arg));
         break;
     case ROW_OPTION:
-        put(label, nl, k_option_labels[r->arg] != NULL ? k_option_labels[r->arg] : "");
+        put(label, nl, k_option_labels[r->arg] != NULL ? ui_tr(k_option_labels[r->arg]) : "");
         option_value(r->arg, value, nv);
         break;
     case ROW_BIND: {
         const EidosButtonInfo *b = eidos_settings_button(r->arg);
-        put(label, nl, r->arg >= 0 && r->arg < (int)(sizeof k_button_short / sizeof k_button_short[0])
-                           ? k_button_short[r->arg] : (b != NULL ? b->label : ""));
+        const char *name = r->arg >= 0 && r->arg < (int)(sizeof k_button_short / sizeof k_button_short[0])
+                           ? k_button_short[r->arg] : (b != NULL ? b->label : "");
+
+        /* The four directions are the interface's words ("Haut" in
+         * French); the lettered buttons, Start and Select keep the DS's own
+         * names (the table's Start and Select are the action words). */
+        put(label, nl, r->arg >= BUTTON_FIRST_DIRECTION && r->arg < BUTTON_FIRST_DIRECTION + 4 ? ui_tr(name) : name);
         if (g.capturing == r->arg + 1) {
-            put(value, nv, STR_PRESS_KEY);
+            put(value, nv, ui_tr(STR_PRESS_KEY));
         } else {
             bind_value(r->arg, value, nv);
         }
@@ -3446,8 +3458,8 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
     }
     case ROW_PANEL:
         /* The run-status panel and the player's switch. */
-        put(label, nl, STR_PANEL);
-        put(value, nv, eidos_settings_panel_visible() ? STR_ON : STR_OFF);
+        put(label, nl, ui_tr(STR_PANEL));
+        put(value, nv, eidos_settings_panel_visible() ? ui_tr(STR_ON) : ui_tr(STR_OFF));
         break;
     case ROW_MOD_SWITCH:
         /* The mod's name and its switch; a mod whose folder is gone says
@@ -3462,7 +3474,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
             snprintf(buf, sizeof buf, ui_trf("%s (eidos %s or later)"), bw_mod_menu_name_at((u32)r->arg),
                      bw_mod_menu_needs_eidos_at((u32)r->arg));
             put(label, nl, buf);
-            put(value, nv, STR_UNAVAILABLE);
+            put(value, nv, ui_tr(STR_UNAVAILABLE));
             break;
         } else if (bw_mod_menu_unavailable_at((u32)r->arg)) {
             /* A mod made for the other game: the port does not load it.
@@ -3474,18 +3486,18 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
                                                                                                              : "%s (unknown game)"),
                      bw_mod_menu_name_at((u32)r->arg));
             put(label, nl, buf);
-            put(value, nv, STR_UNAVAILABLE);
+            put(value, nv, ui_tr(STR_UNAVAILABLE));
             break;
         } else {
             put(label, nl, bw_mod_menu_name_at((u32)r->arg));
         }
-        put(value, nv, bw_mod_menu_enabled_at((u32)r->arg) ? STR_ON : STR_OFF);
+        put(value, nv, bw_mod_menu_enabled_at((u32)r->arg) ? ui_tr(STR_ON) : ui_tr(STR_OFF));
         break;
     case ROW_MOD_OPTION:
         /* The mod's own setting, under the mod's name (in a mode's view
          * there is no name above it). */
         snprintf(buf, sizeof buf, g.tab == TAB_SESSION || g.tab >= TAB_MOD_BASE ? "%s" : "  %s",
-                 bw_mod_menu_option_label((u32)r->arg, (u32)r->arg2));
+                 ui_tr_mod(bw_mod_menu_option_label((u32)r->arg, (u32)r->arg2)));
         put(label, nl, buf);
         bw_mod_menu_option_text((u32)r->arg, (u32)r->arg2, buf, sizeof buf);
         if (bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_SECRET) {
@@ -3502,39 +3514,39 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
             }
             buf[o2] = '\0';
         }
-        put(value, nv, buf);
+        put(value, nv, bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_SHOW ? ui_tr_mod(buf) : buf);
         break;
     case ROW_MOD_CLEAR:
-        put(label, nl, STR_MOD_CLEAR);
+        put(label, nl, ui_tr(STR_MOD_CLEAR));
         break;
     case ROW_MOD_REVERT:
-        put(label, nl, STR_MOD_REVERT);
+        put(label, nl, ui_tr(STR_MOD_REVERT));
         break;
     case ROW_MOD_RELOAD:
-        put(label, nl, STR_MOD_RELOAD);
+        put(label, nl, ui_tr(STR_MOD_RELOAD));
         break;
     case ROW_MOD_FOLDER:
-        put(label, nl, STR_MOD_FOLDER);
+        put(label, nl, ui_tr(STR_MOD_FOLDER));
         if (bw_mod_menu_installed_folder(buf, sizeof buf) != 0) {
             buf[0] = '\0';
         }
         put(value, nv, buf);
         break;
     case ROW_MOD_RESTART:
-        put(label, nl, STR_MOD_RESTART);
+        put(label, nl, ui_tr(STR_MOD_RESTART));
         break;
     case ROW_ORPHAN: {
         const char *name = bw_mod_menu_orphan_at((u32)r->arg);
         put(label, nl, name != NULL ? name : "");
-        put(value, nv, STR_ORPHAN);
+        put(value, nv, ui_tr(STR_ORPHAN));
         break;
     }
     case ROW_NET_RELAY:
-        put(label, nl, STR_NET_RELAY);
+        put(label, nl, ui_tr(STR_NET_RELAY));
         put(value, nv, net_text(eidos_settings_net_relay()));
         break;
     case ROW_NET_RELAY_PORT:
-        put(label, nl, STR_NET_RPORT);
+        put(label, nl, ui_tr(STR_NET_RPORT));
         if (eidos_settings_net_port_text(0) != NULL) {
             snprintf(buf, sizeof buf, "%s_", eidos_settings_net_port_text(0));
         } else {
@@ -3543,7 +3555,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         put(value, nv, buf);
         break;
     case ROW_NET_CONTROL_PORT:
-        put(label, nl, STR_NET_CPORT);
+        put(label, nl, ui_tr(STR_NET_CPORT));
         if (eidos_settings_net_port_text(1) != NULL) {
             snprintf(buf, sizeof buf, "%s_", eidos_settings_net_port_text(1));
         } else {
@@ -3552,17 +3564,17 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         put(value, nv, buf);
         break;
     case ROW_NET_NAME:
-        put(label, nl, STR_NET_NAME);
+        put(label, nl, ui_tr(STR_NET_NAME));
         put(value, nv, eidos_settings_net_name()[0] != '\0'
-                       ? eidos_settings_net_name() : STR_MP_DEFAULT_NAME);
+                       ? eidos_settings_net_name() : ui_tr(STR_MP_DEFAULT_NAME));
         break;
     case ROW_MP_STATUS:
-        put(label, nl, r->arg == STATUS_CONNECTING ? STR_MP_CONNECTING :
-                       r->arg == STATUS_WAIT_HOST ? STR_MP_WAIT_HOST :
-                       bw_mp_end_reason());
+        put(label, nl, r->arg == STATUS_CONNECTING ? ui_tr(STR_MP_CONNECTING) :
+                       r->arg == STATUS_WAIT_HOST ? ui_tr(STR_MP_WAIT_HOST) :
+                       ui_tr(bw_mp_end_reason()));
         break;
     case ROW_MP_JOIN_GO:
-        put(label, nl, STR_SESSION_JOIN);
+        put(label, nl, ui_tr(STR_SESSION_JOIN));
         session_value(0, value, nv);
         break;
     case ROW_MP_GAME:
@@ -3572,7 +3584,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         }
         break;
     case ROW_MP_NEW_GAME:
-        put(label, nl, STR_MP_NEW_GAME);
+        put(label, nl, ui_tr(STR_MP_NEW_GAME));
         if (bw_mp_game()[0] == '\0') {
             session_value(1, value, nv);
         }
@@ -3580,21 +3592,21 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
     case ROW_MP_MODE:
         put(label, nl, bw_mod_menu_mode_title((u32)r->arg, (u32)r->arg2));
         if (bw_mod_menu_mode_off((u32)r->arg, (u32)r->arg2)) {
-            put(value, nv, STR_MP_MODE_OFF);
+            put(value, nv, ui_tr(STR_MP_MODE_OFF));
         }
         break;
     case ROW_MP_MODE_START:
-        put(label, nl, bw_mod_menu_mode_export((u32)g_mode_mod, (u32)g_mode_k) != NULL ? STR_MP_MODE_EXPORT
-                       : bw_mod_menu_mode_joins((u32)g_mode_mod, (u32)g_mode_k) ? STR_MP_MODE_MAKE
-                       : STR_MP_MODE_START);
+        put(label, nl, bw_mod_menu_mode_export((u32)g_mode_mod, (u32)g_mode_k) != NULL ? ui_tr(STR_MP_MODE_EXPORT)
+                       : bw_mod_menu_mode_joins((u32)g_mode_mod, (u32)g_mode_k) ? ui_tr(STR_MP_MODE_MAKE)
+                       : ui_tr(STR_MP_MODE_START));
         if (bw_mod_menu_mode_off((u32)g_mode_mod, (u32)g_mode_k)) {
-            put(value, nv, STR_MP_MODE_OFF);
+            put(value, nv, ui_tr(STR_MP_MODE_OFF));
         } else if (g_mode_said[0] != '\0') {
             put(value, nv, g_mode_said);
         }
         break;
     case ROW_MP_MODE_TYPE:
-        put(label, nl, STR_MP_MODE_TYPE);
+        put(label, nl, ui_tr(STR_MP_MODE_TYPE));
         put(value, nv, bw_mod_menu_mode_title((u32)g_mode_mod, (u32)g_mode_k));
         break;
     case ROW_MP_WORLD_LINE:
@@ -3604,24 +3616,24 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         }
         break;
     case ROW_MP_WORLD_JOIN:
-        put(label, nl, STR_MP_WORLD_JOIN);
+        put(label, nl, ui_tr(STR_MP_WORLD_JOIN));
         put(value, nv, g_look.said);
         break;
     case ROW_MP_ROOM_LINE:
-        put(label, nl, "Server");
+        put(label, nl, ui_tr("Server"));
         snprintf(buf, sizeof buf, "%s:%s", g_room.host, g_room.port);
         put(value, nv, buf);
         break;
     case ROW_MP_ROOM_SLOT:
-        put(label, nl, "Slot");
+        put(label, nl, ui_tr("Slot"));
         put(value, nv, g_room.slot);
         break;
     case ROW_MP_ROOM_PASS:
-        put(label, nl, "Password");
-        put(value, nv, g_room.pass[0] != '\0' ? "*****" : "None");
+        put(label, nl, ui_tr("Password"));
+        put(value, nv, g_room.pass[0] != '\0' ? "*****" : ui_tr("None"));
         break;
     case ROW_MP_ROOM_JOIN:
-        put(label, nl, STR_MP_ROOM_JOIN);
+        put(label, nl, ui_tr(STR_MP_ROOM_JOIN));
         put(value, nv, g_room.said);
         break;
     case ROW_MP_YOUR_GAME: {
@@ -3630,9 +3642,9 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         if (eidos_sui_mp_game(r->arg, &gm) == 0) {
             put(label, nl, gm.title);
             if (!gm.ok) {
-                snprintf(buf, sizeof buf, "Needs %s", gm.owner);
+                snprintf(buf, sizeof buf, ui_trf("Needs %s"), gm.owner);
             } else {
-                snprintf(buf, sizeof buf, "%s%s%s", gm.host ? "Host" : "Joined", gm.code[0] != '\0' ? " " : "",
+                snprintf(buf, sizeof buf, "%s%s%s", ui_tr(gm.host ? "Host" : "Joined"), gm.code[0] != '\0' ? " " : "",
                          gm.code);
             }
             put(value, nv, buf);
@@ -3641,9 +3653,9 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
     }
     case ROW_INJECT_MAX:
         /* The longest press the injection allows, in frames.  0 is off. */
-        put(label, nl, STR_INJECT);
+        put(label, nl, ui_tr(STR_INJECT));
         if (eidos_settings_input_inject_max() == 0) {
-            put(value, nv, STR_OFF);
+            put(value, nv, ui_tr(STR_OFF));
         } else {
             snprintf(buf, sizeof buf, "%d", eidos_settings_input_inject_max());
             put(value, nv, buf);
@@ -3653,7 +3665,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         /* The code in force: the one the relay handed out when the player
          * hosted a session, or the one the player joined a session with.
          * The code the player types is a row of its own. */
-        put(label, nl, STR_SESSION_CODE);
+        put(label, nl, ui_tr(STR_SESSION_CODE));
         if (g_copied) {
             snprintf(buf, sizeof buf, "%s  %s", net_text(eidos_settings_session_code()),
                      ui_tr(STR_COPIED));
@@ -3665,22 +3677,22 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
     case ROW_SESSION_JOINCODE:
         /* The code being typed: the one the player types to join a
          * session.  Hosting a session does not overwrite it. */
-        put(label, nl, STR_SESSION_JOINCODE);
+        put(label, nl, ui_tr(STR_SESSION_JOINCODE));
         put(value, nv, net_text(eidos_settings_session_join_code()));
         break;
     case ROW_SESSION_HOST:
-        put(label, nl, STR_SESSION_HOST);
+        put(label, nl, ui_tr(STR_SESSION_HOST));
         session_value(1, value, nv);
         break;
     case ROW_SESSION_JOIN:
-        put(label, nl, STR_SESSION_JOIN);
+        put(label, nl, ui_tr(STR_SESSION_JOIN));
         break;
     case ROW_SESSION_LEAVE:
-        put(label, nl, STR_SESSION_LEAVE);
+        put(label, nl, ui_tr(STR_SESSION_LEAVE));
         break;
     case ROW_SESSION_SELF:
         /* This player's own number in the session. */
-        put(label, nl, STR_SESSION_SELF);
+        put(label, nl, ui_tr(STR_SESSION_SELF));
         snprintf(buf, sizeof buf, "#%u",
                  (unsigned int)bw_port_session_self_peer());
         put(value, nv, buf);
@@ -3695,7 +3707,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
                                     (u32)sizeof(name)) != 0) {
             name[0] = '\0';
         }
-        put(label, nl, name[0] != '\0' ? name : STR_SESSION_PEER);
+        put(label, nl, name[0] != '\0' ? name : ui_tr(STR_SESSION_PEER));
         snprintf(buf, sizeof buf, "#%u", (unsigned int)(u32)r->arg);
         put(value, nv, buf);
         break;
@@ -3705,11 +3717,11 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         const char *why = bw_mp_start_blocker();
         BwMpState st = bw_mp_state();
 
-        put(label, nl, STR_MP_START);
+        put(label, nl, ui_tr(STR_MP_START));
         if (st == BW_MP_PLAYING || st == BW_MP_GRACE) {
-            put(value, nv, STR_MP_RUNNING);
+            put(value, nv, ui_tr(STR_MP_RUNNING));
         } else {
-            put(value, nv, why[0] != '\0' ? why : STR_MP_READY);
+            put(value, nv, why[0] != '\0' ? ui_tr(why) : ui_tr(STR_MP_READY));
         }
         break;
     }
@@ -3720,7 +3732,7 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
 
         memset(&p, 0, sizeof p);
         (void)bw_mp_player_at((u32)r->arg2, &p);
-        put(label, nl, p.name[0] != '\0' ? p.name : STR_SESSION_PEER);
+        put(label, nl, p.name[0] != '\0' ? p.name : ui_tr(STR_SESSION_PEER));
         snprintf(buf, sizeof buf, "#%u %s%s", (unsigned int)p.peer,
                  !p.connected ? ui_tr(STR_MP_MISSING) :
                  p.game == 'W' ? ui_tr("White") : p.game == 'B' ? ui_tr("Black") : "...",
@@ -3729,13 +3741,13 @@ void eidos_sui_row_text(int row, char *label, int nl, char *value, int nv)
         break;
     }
     case ROW_SESSION_REVERT:
-        put(label, nl, STR_SESSION_REVERT);
+        put(label, nl, ui_tr(STR_SESSION_REVERT));
         break;
     case ROW_SESSION_DEFAULTS:
-        put(label, nl, STR_DEFAULTS);
+        put(label, nl, ui_tr(STR_DEFAULTS));
         break;
     default:
-        put(label, nl, STR_DEFAULTS);
+        put(label, nl, ui_tr(STR_DEFAULTS));
         break;
     }
 }
@@ -3750,8 +3762,8 @@ int eidos_sui_row_choices(int row, int *active, char names[3][20])
         if (row != 1) {
             return 0;
         }
-        put(names[0], 20, STR_Q_YES);
-        put(names[1], 20, STR_Q_NO);
+        put(names[0], 20, ui_tr(STR_Q_YES));
+        put(names[1], 20, ui_tr(STR_Q_NO));
         *active = g_q.answer ? 0 : 1;
         return 2;
     }
@@ -3770,8 +3782,8 @@ int eidos_sui_row_choices(int row, int *active, char names[3][20])
     r = &g.rows[g.scroll + row - 1];
     if (r->type == ROW_PANEL) {
         /* The panel's switch: two choices, off and on. */
-        put(names[0], 20, STR_OFF);
-        put(names[1], 20, STR_ON);
+        put(names[0], 20, ui_tr(STR_OFF));
+        put(names[1], 20, ui_tr(STR_ON));
         if (active != NULL) {
             *active = eidos_settings_panel_visible() ? 1 : 0;
         }
@@ -3780,8 +3792,8 @@ int eidos_sui_row_choices(int row, int *active, char names[3][20])
     if (r->type == ROW_MOD_OPTION && bw_mod_menu_option_kind((u32)r->arg, (u32)r->arg2) == BW_MOD_SETTING_BOOL) {
         /* A mod's on/off option: the two choices, as the port's own and the
          * mod's switch have them (not "on" between arrows) */
-        put(names[0], 20, STR_OFF);
-        put(names[1], 20, STR_ON);
+        put(names[0], 20, ui_tr(STR_OFF));
+        put(names[1], 20, ui_tr(STR_ON));
         if (active != NULL) {
             *active = bw_mod_menu_option_value((u32)r->arg, (u32)r->arg2) ? 1 : 0;
         }
@@ -3793,8 +3805,8 @@ int eidos_sui_row_choices(int row, int *active, char names[3][20])
         if (bw_mod_menu_unavailable_at((u32)r->arg)) {
             return 0;
         }
-        put(names[0], 20, STR_OFF);
-        put(names[1], 20, STR_ON);
+        put(names[0], 20, ui_tr(STR_OFF));
+        put(names[1], 20, ui_tr(STR_ON));
         if (active != NULL) {
             *active = bw_mod_menu_enabled_at((u32)r->arg) && !bw_mod_menu_unavailable_at((u32)r->arg) ? 1 : 0;
         }
@@ -3817,7 +3829,7 @@ int eidos_sui_row_choices(int row, int *active, char names[3][20])
 
         for (k = 0; k < sizeof k_choice_names / sizeof k_choice_names[0]; k++) {
             if (k_choice_names[k].id == r->arg && k_choice_names[k].index == o->min + i) {
-                put(names[i], 20, k_choice_names[k].text);
+                put(names[i], 20, ui_tr(k_choice_names[k].text));
                 found = 1;
             }
         }
@@ -3842,6 +3854,7 @@ int eidos_sui_help_count(void)
 void eidos_sui_help_line(int i, char *out, int n)
 {
     const char *l[4] = { "", "", "", "" };
+    int data = 0;               /* bit i: line i is a mod's or the relay's words */
     const Row *r = (g.nrows > 0 && !on_back()) ? &g.rows[g.cursor] : NULL;
     if (n > 0) {
         out[0] = '\0';
@@ -3924,6 +3937,7 @@ void eidos_sui_help_line(int i, char *out, int n)
                 }
                 l[0] = half[0];
                 l[1] = half[1];
+                data = 3;
                 break;
             }
             l[0] = HELP_MOD_OPTION1;
@@ -4042,10 +4056,11 @@ void eidos_sui_help_line(int i, char *out, int n)
             g_sess.have && g_sess.rc != BW_MOD_NET_OK &&
             bw_mod_net_last_error_text()[0] != '\0') {
             l[1] = bw_mod_net_last_error_text();
+            data |= 2;
         }
     }
     if (i >= 0 && i < 4) {
-        put(out, n, l[i]);
+        put(out, n, (data >> i) & 1 ? l[i] : ui_tr(l[i]));
     }
 }
 
@@ -4275,6 +4290,9 @@ int eidos_sui_mp_row_extra(int i, const char **heading, const char **help, int *
     } else if (r->type == ROW_MP_ROOM_JOIN) {
         if (help != NULL) *help = "Starts your game in the room, in a free save slot. It is listed under Your "
                                   "games and links to the room each time you play it.";
+    }
+    if (help != NULL && r->type != ROW_MOD_OPTION) {
+        *help = ui_tr(*help);           /* the port's own help, not a mod's */
     }
     return 0;
 }

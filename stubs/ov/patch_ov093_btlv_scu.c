@@ -6,12 +6,12 @@
  * effect machine reads an id from 0x231 on as another kind of effect
  * (ov094 btlv_effvm.c, BTLV_EFFVM_StartScript): a mod's move past the
  * game's would play some other effect.  The request is the one place a
- * move's id goes in as an effect, so this is where it becomes the move
- * whose script it plays (sdk/move_anims.c).  A script from 0x231 on is a
- * mod's own for a move the game does not have: it is asked for as 0x8000 |
- * the move, which the effect machine's patch reads as that move's member
- * of a/0/6/6 (stubs/ov/patch_ov094_btlv_effvm.c).  Otherwise the function
- * is the game's.
+ * move's id goes in as an effect, so this is where it becomes the port's
+ * request (bw_move_anim_request): the game move's id when the move plays
+ * the game's script of a move it is treated as, else 0x8000 | an index the
+ * effect machine's patch reads back for the script and the treated move
+ * (stubs/ov/patch_ov094_btlv_effvm.c).  Otherwise the function is the
+ * game's.
  *
  * The game's own records
  * ----------------------
@@ -29,7 +29,7 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 
 /* sdk/move_anims.c */
-extern u32 bw_move_anim(u32 move);
+extern u32 bw_move_anim_request(u32 move);
 
 typedef struct BtlvScuWazaRequest {
     u16 wazaId;
@@ -65,11 +65,9 @@ void BTLV_SCU_StartWazaEffect(BtlvScu *scu, int attackerPos, int defenderPos, u3
 {
     BtlvScuWazaRequest *req = &scu->waza;
 
-    u32 anim = bw_move_anim(wazaId);            /* (the move whose script it plays) */
-
-    /* a script from 0x231 on (a mod's for a move the game does not have):
-     * asked for as 0x8000 | its move (stubs/ov/patch_ov094_btlv_effvm.c) */
-    req->wazaId = (u16)(anim >= 0x231u ? (0x8000u | anim) : anim);
+    /* the script it plays and the game move it is treated as
+     * (sdk/move_anims.h, stubs/ov/patch_ov094_btlv_effvm.c) */
+    req->wazaId = (u16)bw_move_anim_request(wazaId);
     req->attackerPos = attackerPos;
     req->defenderPos = defenderPos;
     req->turnCount = (u8)turnCount;

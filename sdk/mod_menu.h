@@ -147,8 +147,8 @@ void bw_mod_menu_reset(void);
 /* How many mods the menu shows. */
 u32 bw_mod_menu_count(void);
 
-/* The name the manifest gives the mod at `index`, or "" when there is
- * none. */
+/* The name the manifest gives the mod at `index` (its `name.<lang>` for the
+ * game's language first, docs/mod-strings.md), or "" when there is none. */
 const char *bw_mod_menu_name_at(u32 index);
 
 /* The mod's state namespace (docs/mod-state.md, section 1), or "" when
@@ -192,8 +192,9 @@ const char *bw_mod_menu_needs_eidos_at(u32 index);
  * the other game, or for a newer eidos). */
 int bw_mod_menu_unavailable_at(u32 index);
 
-/* A line of the mod's manifest for a mod list: what 0 its `description`, 1
- * its `author`, 2 its `version`.  "" when the manifest has no such line. */
+/* A line of the mod's manifest for a mod list: what 0 its `description`
+ * (`description.<lang>` for the game's language first), 1 its `author`, 2
+ * its `version`.  "" when the manifest has no such line. */
 const char *bw_mod_menu_about_at(u32 index, int what);
 
 /* The game's own mod manager (the MODS button of the title menu,

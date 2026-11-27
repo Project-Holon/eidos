@@ -99,6 +99,10 @@ typedef struct BwModManifest {
     char          *author;         /* `author = <who made it>`, or NULL */
     char          *version;        /* `version = <the mod's own version>`, or
                                     * NULL */
+    char          *name_local;     /* `name.<lang>` for the game's language
+                                    * (docs/mod-strings.md), or NULL; `name`
+                                    * stays the one the namespace comes from */
+    char          *description_local;  /* `description.<lang>`, or NULL */
 } BwModManifest;
 
 #ifdef __cplusplus

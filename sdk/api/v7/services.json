@@ -1089,6 +1089,56 @@
           "name": "size"
         }
       ]
+    },
+    {
+      "name": "string_get",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "key"
+        },
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "string_language",
+      "ret": "int",
+      "params": [
+        {
+          "type": "char *",
+          "name": "out"
+        },
+        {
+          "type": "u32",
+          "name": "size"
+        }
+      ]
+    },
+    {
+      "name": "confirm_ask",
+      "ret": "int",
+      "params": [
+        {
+          "type": "const char *",
+          "name": "text"
+        },
+        {
+          "type": "u32",
+          "name": "tag"
+        },
+        {
+          "type": "u32 *",
+          "name": "ticket"
+        }
+      ]
     }
   ]
 }

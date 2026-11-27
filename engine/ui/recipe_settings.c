@@ -18,6 +18,7 @@
 
 #include "ui.h"
 #include "kit.h"
+#include "ui_lang.h"
 #include "padglyph.h"
 #include "input.h"
 #include "settings_ui.h"
@@ -175,7 +176,7 @@ static void settings_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *i
     if (!ui_app_window(c, "settings", &mx, &my, &mw, &mh)) {
         ui_panel(c, mx, my, mw, mh, UI_CUT_TL | UI_CUT_BR, 10, 0x060E1Au, 0x103C5Au, 245);
     }
-    ui_header(c, mx + 4, my + 4, mw - 8, "SETTINGS", head[0] != '\0' ? head : NULL, NULL, UI_CYAN);
+    ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("SETTINGS"), head[0] != '\0' ? head : NULL, NULL, UI_CYAN);
     top = my + 30;
 
     /* the sections as tabs, inside a section */

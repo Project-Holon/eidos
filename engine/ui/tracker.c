@@ -28,6 +28,7 @@
 #include "mod_v6.h"
 #include "avatar.h"
 #include "theme.h"
+#include "ui_lang.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define TR_WEAK __attribute__((weak))
@@ -583,12 +584,12 @@ static void preview(EidosUiCtx *c, int gi, int ax, int ay, int vx, int vy, int v
             if (k < 0) {
                 /* the area: its name, how many found */
                 snprintf(buf, sizeof buf, "%d/%d", a->found, a->count);
-                ui_text(c, px + 8, ly, fit_text(tmp, sizeof tmp, a->name, pw - 60, UI_FONT_MEDIUM), UI_CYAN, -1,
+                ui_text(c, px + 8, ly, fit_text(tmp, sizeof tmp, ui_tr_mod(a->name), pw - 60, UI_FONT_MEDIUM), UI_CYAN, -1,
                         UI_FONT_MEDIUM, 1);
                 ui_text(c, px + pw - 12 - ui_text_w(buf, UI_FONT_SMALL), ly + 1, buf,
                         a->found == a->count && a->count > 0 ? SQ_DONE : UI_GREY, -1, UI_FONT_SMALL, 1);
             } else if (a->count == 0) {
-                ui_text(c, px + 20, ly, "No checks here.", UI_GREY, -1, UI_FONT_SMALL, 1);
+                ui_text(c, px + 20, ly, ui_tr("No checks here."), UI_GREY, -1, UI_FONT_SMALL, 1);
             } else {
                 const TrCheck *ck = &g_chk[a->first + k];
                 u32 col = check_col(ck->state);
@@ -597,7 +598,7 @@ static void preview(EidosUiCtx *c, int gi, int ax, int ay, int vx, int vy, int v
                 if (ck->state != CHK_FOUND) {
                     ui_fill(c, px + 13, ly + 4, 5, 5, UI_BODY, 255);     /* a ring: not found yet */
                 }
-                ui_text(c, px + 24, ly, fit_text(tmp, sizeof tmp, ck->name, pw - 40, UI_FONT_MEDIUM),
+                ui_text(c, px + 24, ly, fit_text(tmp, sizeof tmp, ui_tr_mod(ck->name), pw - 40, UI_FONT_MEDIUM),
                         ck->state == CHK_FOUND ? UI_GREY : UI_WHITE, -1, UI_FONT_MEDIUM, 1);
             }
         }
@@ -622,10 +623,10 @@ static void items_strip(EidosUiCtx *c, int x, int y, int w, int h)
         const TrItem *it = &g_item[i];
         int cw, gw = 0, more_w;
 
-        snprintf(buf, sizeof buf, it->count > 1 ? "%s x%d" : "%s", it->name, it->count);
+        snprintf(buf, sizeof buf, it->count > 1 ? "%s x%d" : "%s", ui_tr_mod(it->name), it->count);
         cw = ui_text_w(buf, UI_FONT_SMALL) + 8;
         if (group == NULL || strcmp(group, it->group) != 0) {
-            gw = ui_text_w(it->group, UI_FONT_SMALL) + 6 + (group != NULL ? 6 : 0);
+            gw = ui_text_w(ui_tr_mod(it->group), UI_FONT_SMALL) + 6 + (group != NULL ? 6 : 0);
         }
         /* the last row keeps room for "+N" */
         more_w = row == rows - 1 && i + 1 < g_nitem ? ui_text_w("+999", UI_FONT_SMALL) + 6 : 0;
@@ -638,13 +639,13 @@ static void items_strip(EidosUiCtx *c, int x, int y, int w, int h)
             }
             row++;
             ix = x + 8;
-            gw = gw > 0 ? ui_text_w(it->group, UI_FONT_SMALL) + 6 : 0;
+            gw = gw > 0 ? ui_text_w(ui_tr_mod(it->group), UI_FONT_SMALL) + 6 : 0;
         }
         if (gw > 0) {
             /* the group's name, on the line of its first item */
             group = it->group;
-            ui_text(c, ix + gw - ui_text_w(it->group, UI_FONT_SMALL) - 6, y + 4 + row * pitch + ui_text_y(13, UI_FONT_SMALL),
-                    it->group, UI_CYAN, -1, UI_FONT_SMALL, 1);
+            ui_text(c, ix + gw - ui_text_w(ui_tr_mod(it->group), UI_FONT_SMALL) - 6, y + 4 + row * pitch + ui_text_y(13, UI_FONT_SMALL),
+                    ui_tr_mod(it->group), UI_CYAN, -1, UI_FONT_SMALL, 1);
             ix += gw;
         }
         ui_panel(c, ix, y + 4 + row * pitch, cw, 13, 0, 0, it->count > 0 ? 0x0A283Cu : 0x0C0E12u,
@@ -667,7 +668,7 @@ static void map_view(EidosUiCtx *c, int x, int y, int w, int h, u32 frame, int y
 
     map_load();
     if (g_map.rgba == NULL) {
-        ui_text(c, x + 10, y + 10, "The map could not be read.", UI_GREY, -1, UI_FONT_MEDIUM, 1);
+        ui_text(c, x + 10, y + 10, ui_tr("The map could not be read."), UI_GREY, -1, UI_FONT_MEDIUM, 1);
         return;
     }
     groups();
@@ -757,7 +758,7 @@ static void map_view(EidosUiCtx *c, int x, int y, int w, int h, u32 frame, int y
 
                 ui_fill(c, sx - 3, sy - 3, 7, 7, UI_RAW(0x101010u), 255);
                 ui_fill(c, sx - 2, sy - 2, 5, 5, UI_RAW(0xF2B33Du), 255);
-                ui_text(c, sx + 6, sy - 6, m->name, UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
+                ui_text(c, sx + 6, sy - 6, ui_tr_mod(m->name), UI_WHITE, UI_EDGE, UI_FONT_SMALL, 1);
             }
         }
     }
@@ -780,8 +781,8 @@ static void map_view(EidosUiCtx *c, int x, int y, int w, int h, u32 frame, int y
  * closes (B). */
 int ui_tracker_run(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch, int top)
 {
-    static const char *const hints_you[] = { "B", "Back", "L R", "Tab", "Up Down", "Place", "A", "Here" };
-    static const char *const hints_map[] = { "B", "Back", "L R", "Tab", "Up Down", "Move" };
+    static const char *const hints_you[] = { "B", "Back", "L R", "Tabs", "Up Down", "Place", "A", "Here" };
+    static const char *const hints_map[] = { "B", "Back", "L R", "Tabs", "Up Down", "Move" };
     int mw = cw - 24, mh, mx, my, here, closed = 0, tab0 = g_tab;
     u32 k = eidos_ui_keys_pressed();
     char sub[96];
@@ -859,11 +860,11 @@ int ui_tracker_run(EidosUiCtx *c, const EidosUiFrame *in, int cw, int ch, int to
         }
         ui_push(c, 0, 0, &saved);
         ui_clip(c, mx, my, mw, shown);
-        snprintf(sub, sizeof sub, "%d of %d checks found", g_found, g_total);
-        ui_text(c, mx + 10, my + 7, "TRACKER", UI_CYAN, -1, UI_FONT_SMALL, 1);
-        ui_text(c, mx + 14 + ui_text_w("TRACKER", UI_FONT_SMALL), my + 7, sub, UI_GREY, -1, UI_FONT_SMALL, 1);
-        tab_button(c, mx + mw - 10 - 120, my + 4, 56, 15, "You", g_tab == 0, 0);
-        tab_button(c, mx + mw - 10 - 60, my + 4, 56, 15, "Map", g_tab == 1, 1);
+        snprintf(sub, sizeof sub, ui_trf("%d of %d checks found"), g_found, g_total);
+        ui_text(c, mx + 10, my + 7, ui_tr("TRACKER"), UI_CYAN, -1, UI_FONT_SMALL, 1);
+        ui_text(c, mx + 14 + ui_text_w(ui_tr("TRACKER"), UI_FONT_SMALL), my + 7, sub, UI_GREY, -1, UI_FONT_SMALL, 1);
+        tab_button(c, mx + mw - 10 - 120, my + 4, 56, 15, ui_tr("You"), g_tab == 0, 0);
+        tab_button(c, mx + mw - 10 - 60, my + 4, 56, 15, ui_tr("Map"), g_tab == 1, 1);
         if (g_tab == 0) {
             /* PopTracker's way: the map with the places' squares, the
              * items under it */

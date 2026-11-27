@@ -31,6 +31,7 @@
 #include "mp.h"
 #include "theme.h"
 #include "avatar.h"
+#include "ui_lang.h"
 
 /* engine/ui/recipe_input.c */
 extern int eidos_ui_name_entry_up(void);
@@ -432,18 +433,18 @@ static void hub(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
             ui_image(c, x + 8, y + (cardh - fig->h) / 2, fig, 1);
         }
     }
-    label(c, x + 46, y + 7, "YOUR TRAINER");
-    ui_text(c, x + 46, y + 19, named ? name : "Choose a name", named ? UI_WHITE : UI_CYAN,
+    label(c, x + 46, y + 7, ui_tr("YOUR TRAINER"));
+    ui_text(c, x + 46, y + 19, named ? name : ui_tr("Choose a name"), named ? UI_WHITE : UI_CYAN,
             UI_EDGE, UI_FONT_LARGE, 1);
     snprintf(buf, sizeof buf, "eidos %s", bw_mp_version());
     ui_text(c, x + lw - 8 - ui_text_w(buf, UI_FONT_SMALL), y + 6, buf, UI_GREY, -1, UI_FONT_SMALL, 1);
-    ui_text(c, x + lw - 8 - ui_text_w("Name & avatar", UI_FONT_SMALL), y + cardh - 14, "Name and look",
+    ui_text(c, x + lw - 8 - ui_text_w(ui_tr("Name and look"), UI_FONT_SMALL), y + cardh - 14, ui_tr("Name and look"),
             lit(f) ? UI_WHITE : UI_GREY, -1, UI_FONT_SMALL, 1);
 
     /* the cards, one under another */
-    cards[0].title = "Co-op Adventure";
-    cards[0].line = "Host a game on your save.";
-    cards[0].foot = "Up to 16 players";
+    cards[0].title = ui_tr("Co-op Adventure");
+    cards[0].line = ui_tr("Host a game on your save.");
+    cards[0].foot = ui_tr("Up to 16 players");
     cards[0].act = EIDOS_SUI_MP_ACT_COOP_NEW; cards[0].arg = 0; cards[0].on = 1;
     ncards = 1;
     for (i = 0; i < nmodes && ncards < 4; i++) {
@@ -452,7 +453,7 @@ static void hub(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
 
         cards[ncards].title = title;
         cards[ncards].line = line;
-        cards[ncards].foot = off ? "Not in this version" : "Your own save";
+        cards[ncards].foot = off ? ui_tr("Not in this version") : ui_tr("Your own save");
         cards[ncards].act = EIDOS_SUI_MP_ACT_MODE;
         cards[ncards].arg = i;
         cards[ncards].on = !off;
@@ -478,23 +479,23 @@ static void hub(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
 
     /* Join: every code goes here, a friend's co-op game or a world */
     ui_panel(c, rx, y, rw, 56, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
-    label(c, rx + 8, y + 6, "JOIN");
+    label(c, rx + 8, y + 6, ui_tr("JOIN"));
     {
         /* the code's field, and beside it Paste: the clipboard's code, joined with at once */
-        int pw = ui_text_w("Paste", UI_FONT_MEDIUM) + 16, fw = rw - 16 - pw - 4, phov = 0;
+        int pw = ui_text_w(ui_tr("Paste"), UI_FONT_MEDIUM) + 16, fw = rw - 16 - pw - 4, phov = 0;
         int pf = target(c, rx + 8 + fw + 4, y + 18, pw, 18, EIDOS_SUI_MP_ACT_PASTE, 0, 1, &phov);
 
         ui_panel(c, rx + 8 + fw + 4, y + 18, pw, 18, UI_CUT_TL | UI_CUT_BR, 4,
                  lit(pf) ? 0x0A283Cu : 0x05080Du, lit(pf) || phov ? UI_CYAN : UI_EDGE, 255);
-        ui_text(c, rx + 8 + fw + 4 + 8, y + 18 + ui_text_y(18, UI_FONT_MEDIUM), "Paste",
+        ui_text(c, rx + 8 + fw + 4 + 8, y + 18 + ui_text_y(18, UI_FONT_MEDIUM), ui_tr("Paste"),
                 lit(pf) || phov ? UI_WHITE : UI_GREY, -1, UI_FONT_MEDIUM, 1);
         f = target(c, rx + 8, y + 18, fw, 18, EIDOS_SUI_MP_ACT_JOIN, 0, 1, &hov);
         ui_panel(c, rx + 8, y + 18, fw, 18, UI_CUT_TL | UI_CUT_BR, 4,
                  lit(f) ? 0x0A283Cu : 0x05080Du, lit(f) || hov ? UI_CYAN : UI_EDGE, 255);
     }
-    ui_text(c, rx + 14, y + 18 + ui_text_y(18, UI_FONT_MEDIUM), "Enter code",
+    ui_text(c, rx + 14, y + 18 + ui_text_y(18, UI_FONT_MEDIUM), ui_tr("Enter code"),
             lit(f) || hov ? UI_WHITE : UI_GREY, -1, UI_FONT_MEDIUM, 1);
-    para(c, rx + 8, y + 40, rw - 16, "Co-op code, world code, or room port.", UI_GREY, UI_FONT_SMALL, 1);
+    para(c, rx + 8, y + 40, rw - 16, ui_tr("Co-op code, world code, or room port."), UI_GREY, UI_FONT_SMALL, 1);
 
     /* Your games: a list in its own box (up and down scroll it, left goes
      * back to the cards) */
@@ -505,9 +506,9 @@ static void hub(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
         n = eidos_sui_mp_games();
         g_games_n = n;
         ui_panel(c, rx, py, rw, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
-        label(c, rx + 8, py + 6, "YOUR GAMES");
+        label(c, rx + 8, py + 6, ui_tr("YOUR GAMES"));
         if (n <= 0) {
-            para(c, rx + 8, ly + 2, rw - 16, "No games yet.", UI_GREY,
+            para(c, rx + 8, ly + 2, rw - 16, ui_tr("No games yet."), UI_GREY,
                  UI_FONT_SMALL, 3);
         }
         g_games_vis = lh / (rowh + gap);
@@ -537,7 +538,7 @@ static void hub(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
             kind = gm.kind == EIDOS_SUI_GAME_WORLD ? "Multiworld" : gm.kind == EIDOS_SUI_GAME_SOLO ? "Solo"
                  : gm.kind == EIDOS_SUI_GAME_ROOM ? "Archipelago"
                  : "Co-op";
-            badge = gm.host ? "HOST" : "JOINED";
+            badge = gm.host ? ui_tr("HOST") : ui_tr("JOINED");
             kc = gm.ok ? game_colour(gm.kind) : 0x707070u;
             f = target(c, rx + 8, ry, rw - 20, rowh, EIDOS_SUI_MP_ACT_CONTINUE, i, gm.ok, &hov);
             card(c, rx + 8, ry, rw - 20, rowh, gm.ok, lit(f), hov);
@@ -559,14 +560,14 @@ static void hub(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
                 ui_text(c, bx + 3, ry + 4, badge, UI_RAW(0x101010u), -1, UI_FONT_SMALL, 1);
             }
             if (!gm.ok) {
-                snprintf(buf, sizeof buf, "Needs %s", gm.owner[0] != '\0' ? gm.owner : "its mod");
+                snprintf(buf, sizeof buf, ui_trf("Needs %s"), gm.owner[0] != '\0' ? gm.owner : ui_tr("its mod"));
             } else if (gm.kind == EIDOS_SUI_GAME_COOP) {
-                snprintf(buf, sizeof buf, "%s: new code each time", kind);
+                snprintf(buf, sizeof buf, ui_trf("%s: new code each time"), ui_tr(kind));
             } else if (gm.code[0] != '\0') {
-                snprintf(buf, sizeof buf, gm.kind == EIDOS_SUI_GAME_ROOM ? "%s: room port %s" : "%s: world %s", kind,
+                snprintf(buf, sizeof buf, gm.kind == EIDOS_SUI_GAME_ROOM ? ui_trf("%s: room port %s") : ui_trf("%s: world %s"), ui_tr(kind),
                          gm.kind == EIDOS_SUI_GAME_ROOM && strncmp(gm.code, "AP", 2) == 0 ? gm.code + 2 : gm.code);
             } else {
-                snprintf(buf, sizeof buf, "%s", gm.kind == EIDOS_SUI_GAME_SOLO ? "Solo: on this device" : kind);
+                snprintf(buf, sizeof buf, "%s", gm.kind == EIDOS_SUI_GAME_SOLO ? ui_tr("Solo: on this device") : ui_tr(kind));
             }
             ui_text(c, rx + 8 + pad, ry + 17, fit(tmp, sizeof tmp, buf, rw - 32 - pad, UI_FONT_SMALL),
                     gm.ok ? UI_GREY : 0x707070u, -1, UI_FONT_SMALL, 1);
@@ -595,7 +596,7 @@ static void trainer_view(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
     avatar_look(&look);
     /* the preview: the walking figure, turning through the four ways */
     ui_panel(c, x, y, pw, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
-    label(c, x + 8, y + 6, "HOW OTHERS SEE YOU");
+    label(c, x + 8, y + 6, ui_tr("HOW OTHERS SEE YOU"));
     {
         static const int dirs[4] = { 0, 3, 1, 2 };
         /* the chosen look, which a plain game does not show */
@@ -606,7 +607,7 @@ static void trainer_view(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
         if (fig != NULL) {
             ui_image(c, x + (pw - fig->w * scale) / 2, y + 24 + (h - 64 - fig->h * scale) / 2, fig, scale);
         }
-        snprintf(buf, sizeof buf, "%s", named ? name : "No name yet");
+        snprintf(buf, sizeof buf, "%s", named ? name : ui_tr("No name yet"));
         ui_text(c, x + (pw - ui_text_w(buf, UI_FONT_LARGE)) / 2, y + h - 30, buf, named ? UI_WHITE : UI_CYAN,
                 UI_EDGE, UI_FONT_LARGE, 1);
     }
@@ -614,16 +615,16 @@ static void trainer_view(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
     /* the name: the other players see it (the keyboard asks for it) */
     f = target(c, rx, ry, rw, 22, TR_NAME, 0, 1, &hov);
     card(c, rx, ry, rw, 22, 1, lit(f), hov);
-    ui_text(c, rx + pad, ry + ui_text_y(22, UI_FONT_MEDIUM), "Name", UI_WHITE, UI_EDGE, UI_FONT_MEDIUM, 1);
-    snprintf(buf, sizeof buf, "%s", named ? name : "Choose a name");
+    ui_text(c, rx + pad, ry + ui_text_y(22, UI_FONT_MEDIUM), ui_tr("Name"), UI_WHITE, UI_EDGE, UI_FONT_MEDIUM, 1);
+    snprintf(buf, sizeof buf, "%s", named ? name : ui_tr("Choose a name"));
     ui_text(c, rx + rw - 8 - ui_text_w(buf, UI_FONT_MEDIUM), ry + ui_text_y(22, UI_FONT_MEDIUM), buf,
             named ? UI_CYAN : 0xF2B33Du, -1, UI_FONT_MEDIUM, 1);
     ry += 26;
     /* the body */
     f = target(c, rx, ry, rw, 22, TR_BODY, 0, 1, &hov);
     card(c, rx, ry, rw, 22, 1, lit(f), hov);
-    ui_text(c, rx + pad, ry + ui_text_y(22, UI_FONT_MEDIUM), "Trainer", UI_WHITE, UI_EDGE, UI_FONT_MEDIUM, 1);
-    snprintf(buf, sizeof buf, lit(f) || hov ? "< %s >" : "%s", look.body ? "Hilda" : "Hilbert");
+    ui_text(c, rx + pad, ry + ui_text_y(22, UI_FONT_MEDIUM), ui_tr("Trainer"), UI_WHITE, UI_EDGE, UI_FONT_MEDIUM, 1);
+    snprintf(buf, sizeof buf, lit(f) || hov ? "< %s >" : "%s", ui_tr(look.body ? "Hilda" : "Hilbert"));
     ui_text(c, rx + rw - 8 - ui_text_w(buf, UI_FONT_MEDIUM), ry + ui_text_y(22, UI_FONT_MEDIUM), buf, UI_CYAN, -1,
             UI_FONT_MEDIUM, 1);
     ry += 26;
@@ -637,8 +638,8 @@ static void trainer_view(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
         }
         f = target(c, rx, ry, rw, rh, TR_BODY + 1 + row, 0, 1, &hov);
         card(c, rx, ry, rw, rh, 1, lit(f), hov);
-        ui_text(c, rx + pad, ry + 4, part_label[row], UI_WHITE, UI_EDGE, UI_FONT_MEDIUM, 1);
-        snprintf(buf, sizeof buf, lit(f) || hov ? "< %s >" : "%s", avatar_choice_name(row, id));
+        ui_text(c, rx + pad, ry + 4, ui_tr(part_label[row]), UI_WHITE, UI_EDGE, UI_FONT_MEDIUM, 1);
+        snprintf(buf, sizeof buf, lit(f) || hov ? "< %s >" : "%s", ui_tr(avatar_choice_name(row, id)));
         ui_text(c, rx + rw - 8 - ui_text_w(buf, UI_FONT_MEDIUM), ry + 4, buf, UI_CYAN, -1, UI_FONT_MEDIUM, 1);
         sw = (rw - pad - 8) / n;
         sw = sw > 14 ? 14 : sw;
@@ -662,8 +663,8 @@ static void trainer_view(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
             ui_panel(c, rx, y + h - 22, rw, 22, UI_CUT_TL | UI_CUT_BR, 4, lit(f) || hov ? UI_CYAN : UI_CYAN2,
                      UI_CYAN, 255);
         }
-        ui_text(c, rx + (rw - ui_text_w("Done", UI_FONT_LARGE)) / 2, y + h - 22 + ui_text_y(22, UI_FONT_LARGE),
-                "Done", UI_WHITE, -1, UI_FONT_LARGE, 1);
+        ui_text(c, rx + (rw - ui_text_w(ui_tr("Done"), UI_FONT_LARGE)) / 2, y + h - 22 + ui_text_y(22, UI_FONT_LARGE),
+                ui_tr("Done"), UI_WHITE, -1, UI_FONT_LARGE, 1);
     }
 }
 
@@ -674,11 +675,11 @@ static void host_list(EidosUiCtx *c, int x, int y, int w, int h)
     int n = bw_mp_game_list(games, MP_GAMES), i, f, hov, rowh = 32, lw = w * 3 / 5;
     char tmp[96];
 
-    label(c, x, y, "YOUR MULTIPLAYER GAMES, NEWEST FIRST");
+    label(c, x, y, ui_tr("YOUR MULTIPLAYER GAMES, NEWEST FIRST"));
     f = target(c, x, y + 12, lw, rowh, EIDOS_SUI_MP_ACT_NEW_GAME, 0, 1, &hov);
     card(c, x, y + 12, lw, rowh, 1, lit(f), hov);
-    ui_text(c, x + card_pad(), y + 12 + 4, "+ New game", UI_CYAN, UI_EDGE, UI_FONT_LARGE, 1);
-    ui_text(c, x + card_pad(), y + 12 + 20, "Everyone starts a fresh save.", UI_GREY, -1,
+    ui_text(c, x + card_pad(), y + 12 + 4, ui_tr("+ New game"), UI_CYAN, UI_EDGE, UI_FONT_LARGE, 1);
+    ui_text(c, x + card_pad(), y + 12 + 20, ui_tr("Everyone starts a fresh save."), UI_GREY, -1,
             UI_FONT_SMALL, 1);
     for (i = 0; i < n && y + 12 + (i + 2) * (rowh + 4) <= y + h; i++) {
         int ry = y + 12 + (i + 1) * (rowh + 4);
@@ -687,16 +688,16 @@ static void host_list(EidosUiCtx *c, int x, int y, int w, int h)
         card(c, x, ry, lw, rowh, 1, lit(f), hov);
         ui_text(c, x + card_pad(), ry + 4, fit(tmp, sizeof tmp, games[i], lw - 24, UI_FONT_LARGE), UI_WHITE,
                 UI_EDGE, UI_FONT_LARGE, 1);
-        ui_text(c, x + card_pad(), ry + 20, "Re-host with a new code", UI_GREY, -1, UI_FONT_SMALL, 1);
+        ui_text(c, x + card_pad(), ry + 20, ui_tr("Re-host with a new code"), UI_GREY, -1, UI_FONT_SMALL, 1);
     }
     {
         int px = x + lw + 8, pw = w - lw - 8;
 
         ui_panel(c, px, y + 12, pw, h - 12, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
-        label(c, px + 8, y + 18, "HOW IT WORKS");
+        label(c, px + 8, y + 18, ui_tr("HOW IT WORKS"));
         para(c, px + 8, y + 32, pw - 16,
-             "Your game keeps everyone's save. The relay gives a new code each time you host. "
-             "Multiplayer games use save slots too.", UI_LIGHT, UI_FONT_SMALL, 8);
+             ui_tr("Your game keeps everyone's save. The relay gives a new code each time you host. "
+             "Multiplayer games use save slots too."), UI_LIGHT, UI_FONT_SMALL, 8);
     }
 }
 
@@ -744,7 +745,7 @@ static void side_panel(EidosUiCtx *c, int px, int py, int pw, int ph, const char
 /* A row's value, right-aligned, with arrows while it can be changed */
 static void row_value(EidosUiCtx *c, int rx, int ry, int rw, int rowh, int kind, const char *value, int lit_)
 {
-    const char *shown = kind == EIDOS_SUI_MP_ROW_TEXT && value[0] == '\0' ? "Not set" : value;
+    const char *shown = kind == EIDOS_SUI_MP_ROW_TEXT && value[0] == '\0' ? ui_tr("Not set") : value;
     char arrows[112];
 
     if (kind == EIDOS_SUI_MP_ROW_VALUE && lit_) {
@@ -887,13 +888,13 @@ static void mode_view(EidosUiCtx *c, int x, int y, int w, int h)
     char row_label[96] = "", value[8];
 
     (void)eidos_sui_mp_mode_info(-1, NULL, NULL, &line);
-    label(c, x, y, "OPTIONS");
-    focus_row = row_list(c, x, y + 12, lw, h - 12, 22, 24, "This mode has no options.");
+    label(c, x, y, ui_tr("OPTIONS"));
+    focus_row = row_list(c, x, y + 12, lw, h - 12, 22, 24, ui_tr("This mode has no options."));
     if (focus_row >= 0) {
         (void)eidos_sui_mp_row(focus_row, row_label, (int)sizeof row_label, value, (int)sizeof value);
         (void)eidos_sui_mp_row_extra(focus_row, NULL, &help, NULL);
     }
-    side_panel(c, x + lw + 8, y + 12, w - lw - 8, h - 12, "HOW IT WORKS", line, row_label, help);
+    side_panel(c, x + lw + 8, y + 12, w - lw - 8, h - 12, ui_tr("HOW IT WORKS"), line, row_label, help);
 }
 
 /* An Archipelago room a typed port names: the server, the slot, the
@@ -904,15 +905,15 @@ static void room_view(EidosUiCtx *c, int x, int y, int w, int h)
     int lw = w * 3 / 5, focus_row;
     char row_label[96] = "", value[8];
 
-    label(c, x, y, "ROOM");
+    label(c, x, y, ui_tr("ROOM"));
     focus_row = row_list(c, x, y + 12, lw, h - 12, 22, 24, NULL);
     if (focus_row >= 0) {
         (void)eidos_sui_mp_row(focus_row, row_label, (int)sizeof row_label, value, (int)sizeof value);
         (void)eidos_sui_mp_row_extra(focus_row, NULL, &help, NULL);
     }
-    side_panel(c, x + lw + 8, y + 12, w - lw - 8, h - 12, "ARCHIPELAGO",
-               "Cross-game room generated by the host from each player's options file. Items you find "
-               "can go to other games, and theirs to yours.", row_label, help);
+    side_panel(c, x + lw + 8, y + 12, w - lw - 8, h - 12, ui_tr("ARCHIPELAGO"),
+               ui_tr("Cross-game room generated by the host from each player's options file. Items you find "
+               "can go to other games, and theirs to yours."), row_label, help);
 }
 
 /* The world a typed code names: its game, players and rules, and Join */
@@ -922,15 +923,15 @@ static void world_view(EidosUiCtx *c, int x, int y, int w, int h)
     int lw = w * 3 / 5, focus_row;
     char row_label[96] = "", value[8];
 
-    label(c, x, y, "WORLD RULES");
+    label(c, x, y, ui_tr("WORLD RULES"));
     focus_row = row_list(c, x, y + 12, lw, h - 12, 22, 24, NULL);
     if (focus_row >= 0) {
         (void)eidos_sui_mp_row(focus_row, row_label, (int)sizeof row_label, value, (int)sizeof value);
         (void)eidos_sui_mp_row_extra(focus_row, NULL, &help, NULL);
     }
-    side_panel(c, x + lw + 8, y + 12, w - lw - 8, h - 12, "JOINING",
-               "Everyone plays on their own save. Items you find go to other players. The world's "
-               "creator set these rules.", row_label, help);
+    side_panel(c, x + lw + 8, y + 12, w - lw - 8, h - 12, ui_tr("JOINING"),
+               ui_tr("Everyone plays on their own save. Items you find go to other players. The world's "
+               "creator set these rules."), row_label, help);
 }
 
 /* ------------------------------------------------------------------ */
@@ -943,7 +944,7 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
     u32 n = bw_mp_player_count(), i, here = 0, mods_ok = 0, same_ver = 0;
     int host = bw_mp_is_host(), f, hov, standh = 60, slot, sx;
     const char *ver = bw_mp_version(), *block = host ? bw_mp_start_blocker() : NULL;
-    const char *host_name = "the host";
+    const char *host_name = ui_tr("the host");
     char buf[128], tmp[96];
 
     if (n > BW_MP_PLAYERS_MAX) {
@@ -984,18 +985,18 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
         if (fig != NULL) {
             ui_image(c, px + (slot - fig->w) / 2, y, fig, 1);
         }
-        snprintf(buf, sizeof buf, "%s%s", p[i].name, p[i].peer == 1u ? " (host)" : "");
+        snprintf(buf, sizeof buf, "%s%s", p[i].name, p[i].peer == 1u ? ui_tr(" (host)") : "");
         shown = fit(tmp, sizeof tmp, buf, slot - 4, UI_FONT_MEDIUM);
         tw = ui_text_w(shown, UI_FONT_MEDIUM);
         ui_text(c, px + (slot - tw) / 2, y + 34, shown, UI_WHITE, UI_EDGE, UI_FONT_MEDIUM, 1);
-        tw = ui_text_w(tag, UI_FONT_SMALL);
-        ui_text(c, px + (slot - tw) / 2, y + 47, tag, tagc, -1, UI_FONT_SMALL, 1);
+        tw = ui_text_w(ui_tr(tag), UI_FONT_SMALL);
+        ui_text(c, px + (slot - tw) / 2, y + 47, ui_tr(tag), tagc, -1, UI_FONT_SMALL, 1);
     }
     for (; i < 4; i++) {
         int px = sx + (int)i * slot;
 
         ui_panel(c, px + slot / 2 - 12, y + 2, 24, 28, 0, 0, 0x0C0E12u, UI_EDGE, 200);
-        ui_text(c, px + (slot - ui_text_w("Open", UI_FONT_SMALL)) / 2, y + 36, "Open", UI_GREY, -1,
+        ui_text(c, px + (slot - ui_text_w(ui_tr("Open"), UI_FONT_SMALL)) / 2, y + 36, ui_tr("Open"), UI_GREY, -1,
                 UI_FONT_SMALL, 1);
     }
     ui_fill(c, x + 20, y + standh, w - 40, 1, UI_CYAN, 255);
@@ -1013,15 +1014,15 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
         checks[3].what = "Same game per save";          checks[3].ok = !host || bw_mp_start_blocker_kind() != BW_MP_BLOCK_SAVE_GAME;
 
         ui_panel(c, ax, py, cw3, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
-        label(c, ax + 8, py + 6, "START CHECKLIST");
+        label(c, ax + 8, py + 6, ui_tr("START CHECKLIST"));
         for (k = 0; k < 4; k++) {
             check_box(c, ax + 8, py + 22 + k * 13, checks[k].ok);
-            ui_text(c, ax + 20, py + 20 + k * 13, checks[k].what, checks[k].ok ? UI_LIGHT : 0xF2B33Du, -1,
+            ui_text(c, ax + 20, py + 20 + k * 13, ui_tr(checks[k].what), checks[k].ok ? UI_LIGHT : 0xF2B33Du, -1,
                     UI_FONT_MEDIUM, 1);
         }
 
         ui_panel(c, bx, py, cw3, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
-        label(c, bx + 8, py + 6, host ? "RULES" : "HOST RULES");
+        label(c, bx + 8, py + 6, host ? ui_tr("RULES") : ui_tr("HOST RULES"));
         {
             const char *mods = n > 0 ? p[0].mods : "";
             int ly = py + 20, rows = eidos_sui_mp_rows(), r, shown = 0;
@@ -1056,7 +1057,7 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
             if (shown > 0) {
                 /* the rules are drawn; the mods' names are not repeated */
             } else if (mods[0] == '\0') {
-                para(c, bx + 8, ly, cw3 - 16, "No multiplayer mods. Default rules apply.", UI_GREY,
+                para(c, bx + 8, ly, cw3 - 16, ui_tr("No multiplayer mods. Default rules apply."), UI_GREY,
                      UI_FONT_SMALL, 3);
             } else {
                 const char *s = mods;
@@ -1083,7 +1084,7 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
 
         /* the code, big, above Start */
         ui_panel(c, cx, py, cwl, ph, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 240);
-        label(c, cx + 8, py + 6, "JOIN CODE");
+        label(c, cx + 8, py + 6, ui_tr("JOIN CODE"));
         {
             const char *code = bw_mp_code();
             int cy = py + 18, bh = 20, sy = py + ph - 8 - bh - 22;
@@ -1093,8 +1094,8 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
             f = target(c, cx + 8, cy + 30, 46, 16, EIDOS_SUI_MP_ACT_COPY, 0, 1, &hov);
             ui_panel(c, cx + 8, cy + 30, 46, 16, UI_CUT_TL | UI_CUT_BR, 3, lit(f) || hov ? UI_CYAN2 : UI_BODY,
                      lit(f) || hov ? UI_CYAN : UI_EDGE, 255);
-            ui_text(c, cx + 8 + (46 - ui_text_w("Copy", UI_FONT_SMALL)) / 2, cy + 30 + ui_text_y(16, UI_FONT_SMALL),
-                    "Copy", UI_WHITE, -1, UI_FONT_SMALL, 1);
+            ui_text(c, cx + 8 + (46 - ui_text_w(ui_tr("Copy"), UI_FONT_SMALL)) / 2, cy + 30 + ui_text_y(16, UI_FONT_SMALL),
+                    ui_tr("Copy"), UI_WHITE, -1, UI_FONT_SMALL, 1);
             if (host) {
                 /* (the model's reason is a text, "" when the lobby is ready: never NULL) */
                 int ok = block == NULL || block[0] == '\0';
@@ -1106,16 +1107,16 @@ static void lobby(EidosUiCtx *c, int x, int y, int w, int h, u32 frame)
                     ui_panel(c, cx + 8, sy, cwl - 16, bh, UI_CUT_TL | UI_CUT_BR, 4,
                              ok ? (lit(f) || hov ? UI_CYAN : UI_CYAN2) : 0x14181Cu, ok ? UI_CYAN : UI_EDGE, 255);
                 }
-                ui_text(c, cx + 8 + (cwl - 16 - ui_text_w("Start", UI_FONT_LARGE)) / 2,
-                        sy + ui_text_y(bh, UI_FONT_LARGE), "Start", ok ? UI_WHITE : UI_GREY, -1, UI_FONT_LARGE, 1);
+                ui_text(c, cx + 8 + (cwl - 16 - ui_text_w(ui_tr("Start"), UI_FONT_LARGE)) / 2,
+                        sy + ui_text_y(bh, UI_FONT_LARGE), ui_tr("Start"), ok ? UI_WHITE : UI_GREY, -1, UI_FONT_LARGE, 1);
                 /* the model's reason, as a sentence */
-                snprintf(buf, sizeof buf, "%s", ok ? "Everyone gets their save from you." : block);
+                snprintf(buf, sizeof buf, "%s", ok ? ui_tr("Everyone gets their save from you.") : ui_tr(block));
                 if (buf[0] >= 'a' && buf[0] <= 'z') {
                     buf[0] = (char)(buf[0] - 'a' + 'A');
                 }
                 para(c, cx + 8, sy + bh + 4, cwl - 16, buf, ok ? UI_GREY : 0xF2B33Du, UI_FONT_SMALL, 2);
             } else {
-                snprintf(buf, sizeof buf, "Waiting for %s to start.", host_name);
+                snprintf(buf, sizeof buf, ui_trf("Waiting for %s to start."), host_name);
                 para(c, cx + 8, sy + 4, cwl - 16, buf, UI_LIGHT, UI_FONT_MEDIUM, 3);
             }
         }
@@ -1181,12 +1182,12 @@ static void mp_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     if (in_game) {
         const char *game = bw_mp_game();
 
-        snprintf(sub, sizeof sub, "%s", bw_mp_is_host() ? "Hosting" : "Co-op Adventure");
-        ui_header(c, mx + 4, my + 4, mw - 8, game != NULL && game[0] != '\0' ? game : "CO-OP ADVENTURE", sub,
+        snprintf(sub, sizeof sub, "%s", bw_mp_is_host() ? ui_tr("Hosting") : ui_tr("Co-op Adventure"));
+        ui_header(c, mx + 4, my + 4, mw - 8, game != NULL && game[0] != '\0' ? game : ui_tr("CO-OP ADVENTURE"), sub,
                   NULL, UI_CYAN);
         lobby(c, mx + 10, my + 32, mw - 20, mh - 40, in->frame);
     } else if (v == EIDOS_SUI_MP_HOST) {
-        ui_header(c, mx + 4, my + 4, mw - 8, "CO-OP ADVENTURE", "Host a game", NULL, UI_CYAN);
+        ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("CO-OP ADVENTURE"), ui_tr("Host a game"), NULL, UI_CYAN);
         host_list(c, mx + 10, my + 32, mw - 20, mh - 40);
     } else if (v == EIDOS_SUI_MP_MODE) {
         const char *title = "";
@@ -1201,21 +1202,21 @@ static void mp_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         ui_header(c, mx + 4, my + 4, mw - 8, up, eidos_sui_mp_mode_owner(), NULL, UI_CYAN);
         mode_view(c, mx + 10, my + 32, mw - 20, mh - 40);
     } else if (v == EIDOS_SUI_MP_ROOM) {
-        ui_header(c, mx + 4, my + 4, mw - 8, "ARCHIPELAGO ROOM", "Join", NULL, UI_CYAN);
+        ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("ARCHIPELAGO ROOM"), ui_tr("Join"), NULL, UI_CYAN);
         room_view(c, mx + 10, my + 32, mw - 20, mh - 40);
     } else if (v == EIDOS_SUI_MP_WORLD) {
         const char *code = eidos_settings_session_join_code();
 
-        snprintf(sub, sizeof sub, "World %s", code != NULL ? code : "");
-        ui_header(c, mx + 4, my + 4, mw - 8, "JOIN WORLD", sub, NULL, UI_CYAN);
+        snprintf(sub, sizeof sub, ui_trf("World %s"), code != NULL ? code : "");
+        ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("JOIN WORLD"), sub, NULL, UI_CYAN);
         world_view(c, mx + 10, my + 32, mw - 20, mh - 40);
     } else if (v == EIDOS_SUI_MP_BUSY || v == EIDOS_SUI_MP_JOIN) {
         /* the code being joined (the one in force is a session's, later) */
         const char *code = eidos_settings_session_join_code();
 
-        ui_header(c, mx + 4, my + 4, mw - 8, "PLAY TOGETHER", "Connecting", NULL, UI_CYAN);
+        ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("PLAY TOGETHER"), ui_tr("Connecting"), NULL, UI_CYAN);
         snprintf(sub, sizeof sub, v == EIDOS_SUI_MP_JOIN && code != NULL && code[0] != '\0'
-                 ? "Joining %s" : "Contacting relay", code);
+                 ? ui_trf("Joining %s") : ui_tr("Contacting relay"), code);
         ui_text(c, mx + (mw - ui_text_w(sub, UI_FONT_LARGE)) / 2, my + mh / 2 - 6, sub, UI_WHITE, UI_EDGE,
                 UI_FONT_LARGE, 1);
     } else if (g_trainer) {
@@ -1225,10 +1226,10 @@ static void mp_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         if (eidos_ui_keys_pressed() & BW_KEY_B) {
             do_act(TR_DONE, 0);
         }
-        ui_header(c, mx + 4, my + 4, mw - 8, "YOUR TRAINER", "Name & avatar", NULL, UI_CYAN);
+        ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("YOUR TRAINER"), ui_tr("Name & avatar"), NULL, UI_CYAN);
         trainer_view(c, mx + 10, my + 32, mw - 20, mh - 40, in->frame);
     } else {
-        ui_header(c, mx + 4, my + 4, mw - 8, "PLAY TOGETHER", "Multiplayer", NULL, UI_CYAN);
+        ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("PLAY TOGETHER"), ui_tr("Multiplayer"), NULL, UI_CYAN);
         hub(c, mx + 10, my + 32, mw - 20, mh - 40, in->frame);
     }
     /* the model's own line: connecting, a code not found, how a session ended */

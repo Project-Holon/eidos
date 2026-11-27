@@ -590,11 +590,11 @@ static u32 next_code(const char **sp)
 int ui_text(EidosUiCtx *c, int x, int y, const char *utf8, u32 color,
             s32 shadow, int font, int k)
 {
-    const char *s;
+    const char *s = utf8;
 
-    utf8 = ui_tr(utf8);         /* the label in the game's language */
-    s = utf8;
-
+    /* drawn as given: a label's call site translates it (ui_tr), a name
+     * or the game's text is already in its language */
+    ui_lang_note_drawn(utf8);
     if (utf8 == NULL) {
         return x;
     }
@@ -656,12 +656,10 @@ int ui_text(EidosUiCtx *c, int x, int y, const char *utf8, u32 color,
 
 int ui_text_w(const char *utf8, int font)
 {
-    const char *s;
+    const char *s = utf8;
     int w = 0;
 
-    utf8 = ui_tr(utf8);
-    s = utf8;
-
+    ui_lang_note_drawn(utf8);
     if (utf8 == NULL) {
         return 0;
     }
@@ -696,7 +694,7 @@ static int is_space(char ch)
 int ui_wrap(const char *utf8, int width, int font,
             void (*line)(void *user, const char *start, int len), void *user)
 {
-    const char *p = utf8 = ui_tr(utf8);
+    const char *p = utf8;
     const char *ls = NULL, *le = NULL;      /* the current line            */
     int lines = 0;
 
@@ -952,12 +950,14 @@ const char *ui_key_label(const char *ds)
         snprintf(pair, sizeof(pair), "%s %s", g_key_names[9], g_key_names[8]);
         return pair;
     }
+    /* a device's key name is the device's ("Tab", "Shift"): drawn as it
+     * is; a DS name is the interface's word ("UP" is "HAUT" in French) */
     for (i = 0; i < 12; i++) {
         if (strcmp(ds, ds_names[i]) == 0) {
-            return g_key_names[i] != NULL ? g_key_names[i] : ds;
+            return g_key_names[i] != NULL ? g_key_names[i] : ui_tr(ds);
         }
     }
-    return ds;                  /* arrows and anything else stay as written */
+    return ui_tr(ds);           /* arrows and anything else as written */
 }
 
 /*
@@ -1205,7 +1205,7 @@ const char *ui_type_name(int type)
     int i;
 
     if (type >= 0 && type < 17) {
-        return k_type_name[type];
+        return ui_tr(k_type_name[type]);
     }
     if (type >= 17 && type <= 30 && ui_type_game_name != NULL &&
         ui_type_game_name(type, added[type - 17], (int)sizeof added[0]) > 0) {
@@ -1258,7 +1258,7 @@ void ui_def_status_badge(EidosUiCtx *c, int x, int y, int status)
     }
     col = k_status_color[status];
     dark = ((col >> 17) & 0x7F) << 16 | ((col >> 9) & 0x7F) << 8 | ((col >> 1) & 0x7F);
-    name = k_status_name[status];
+    name = ui_tr(k_status_name[status]);
     tw = ui_text_w(name, UI_FONT_SMALL);
     w = tw + 8 > 24 ? tw + 8 : 24;
     ui_panel(c, x, y, w, 11, CUT_DEF, 2, col, col, 255);
@@ -1853,7 +1853,7 @@ void ui_def_party_row(EidosUiCtx *c, int x, int y, int w, int slot, const char *
     if (name == NULL) {
         ui_panel(c, x, y, w, h, CUT_DEF, 5, 0x06182Cu, UI_NAVY, 200);
         ui_text(c, x + 10, y + ui_text_y(h, UI_FONT_LARGE), num, UI_EDGE2, -1, UI_FONT_LARGE, 1);
-        ui_text(c, x + 40, y + ui_text_y(h, UI_FONT_LARGE), "Empty", UI_EDGE2, -1,
+        ui_text(c, x + 40, y + ui_text_y(h, UI_FONT_LARGE), ui_tr("Empty"), UI_EDGE2, -1,
                 UI_FONT_LARGE, 1);
         return;
     }
@@ -1995,7 +1995,7 @@ void ui_def_plate(EidosUiCtx *c, int x, int y, int w, const char *name, int gend
     snprintf(lv, sizeof lv, "%s%d", ui_tr("Lv."), level);
     tw = ui_text_w(lv, UI_FONT_SMALL);
     ui_text(c, x + w - 10 - tw, y + 2, lv, UI_LIGHT, SHADOW_DARK, UI_FONT_SMALL, 1);
-    ui_text(c, x + 8, y + 14, "HP", UI_LIME, SHADOW_DARK, UI_FONT_SMALL, 1);
+    ui_text(c, x + 8, y + 14, ui_tr("HP"), UI_LIME, SHADOW_DARK, UI_FONT_SMALL, 1);
     if (!player) {
         ui_bar(c, x + 24, y + 16, w - 36 - room, 4, hp, maxhp);
         plate_balls(c, x + w - 12 - 41, y + 15, 0);

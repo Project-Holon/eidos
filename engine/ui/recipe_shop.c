@@ -372,7 +372,7 @@ static const char *quit_label(const Shop *s)
             units_to_utf8(b.chars, g_quit, (int)sizeof g_quit);
         }
         if (g_quit[0] == '\0') {
-            snprintf(g_quit, sizeof g_quit, "Quit");
+            snprintf(g_quit, sizeof g_quit, "%s", ui_tr("Quit"));
         }
     }
     return g_quit;
@@ -543,7 +543,7 @@ static void hints_bar(EidosUiCtx *c, int y, int w, const Hint *h, int n)
     }
     for (i = 0; i < n; i++) {
         int kw = ui_keycap_w(h[i].key);
-        int aw = ui_text_w(h[i].what, UI_FONT_SMALL);
+        int aw = ui_text_w(ui_tr(h[i].what), UI_FONT_SMALL);
         int rw = kw + 4 + aw + 4;
         int st = eidos_ui_hit(rect(x - 2, y, rw, 17));
 
@@ -555,7 +555,7 @@ static void hints_bar(EidosUiCtx *c, int y, int w, const Hint *h, int n)
         }
         ui_keycap(c, x, y + 2, h[i].key);
         x += kw + 4;
-        x = ui_text(c, x, y + 2 + ui_text_y(13, UI_FONT_SMALL), h[i].what, UI_LIGHT,
+        x = ui_text(c, x, y + 2 + ui_text_y(13, UI_FONT_SMALL), ui_tr(h[i].what), UI_LIGHT,
                     UI_EDGE, UI_FONT_SMALL, 1) + 10;
     }
 }
@@ -694,8 +694,8 @@ static void draw_dialog(EidosUiCtx *c, const Shop *s, int mx, int my, int mw, in
         const char *labels[2];
         int bw = 56, by = dy + dh - row_h - 8, hover = -1;
 
-        labels[0] = "YES";
-        labels[1] = "NO";
+        labels[0] = ui_tr("YES");
+        labels[1] = ui_tr("NO");
         for (i = 0; i < 2; i++) {
             int bx = dx + dw - 12 - (2 - i) * bw - (1 - i) * 6;
 
@@ -743,10 +743,10 @@ static void draw_dialog(EidosUiCtx *c, const Shop *s, int mx, int my, int mw, in
         ui_text(c, dx + dw - 12 - ui_text_w(total, UI_FONT_LARGE), by + ui_text_y(row_h, UI_FONT_LARGE),
                 total, UI_WHITE, SHADOW, UI_FONT_LARGE, 1);
         by += row_h + 6;
-        if (small_button(c, dx + dw - 12 - 56 * 2 - 6, by, 56, row_h, "OK")) {
+        if (small_button(c, dx + dw - 12 - 56 * 2 - 6, by, 56, row_h, ui_tr("OK"))) {
             press_key(BW_KEY_A);
         }
-        if (small_button(c, dx + dw - 12 - 56, by, 56, row_h, "BACK")) {
+        if (small_button(c, dx + dw - 12 - 56, by, 56, row_h, ui_tr("BACK"))) {
             press_key(BW_KEY_B);
         }
         wh = eidos_ui_wheel(rect(mx, my, mw, mh));
@@ -825,10 +825,10 @@ static void run_shop(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         for (i = 0; i < 5; i++) {
             ui_fill(c, mx + 10 + i, my + 10 + i, 1, 11 - 2 * i, ACCENT, 255);
         }
-        tx = ui_text(c, mx + 20, my + 6 + ui_text_y(hdr - 3, UI_FONT_LARGE), "MART", UI_WHITE,
+        tx = ui_text(c, mx + 20, my + 6 + ui_text_y(hdr - 3, UI_FONT_LARGE), ui_tr("MART"), UI_WHITE,
                      UI_EDGE, UI_FONT_LARGE, 1);
         ui_line(c, tx + 6, my + 6 + 15, tx + 11, my + 6 + 4, UI_EDGE2, 255);
-        ui_text(c, tx + 15, my + 6 + ui_text_y(hdr - 3, UI_FONT_LARGE), s.bp ? "BATTLE POINTS" : "BUY",
+        ui_text(c, tx + 15, my + 6 + ui_text_y(hdr - 3, UI_FONT_LARGE), s.bp ? ui_tr("BATTLE POINTS") : ui_tr("BUY"),
                 UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
         if (s.bp) {
             snprintf(money, sizeof money, ui_trf("%u BP"), currency(&s));

@@ -43,6 +43,7 @@
 extern void *bw_dsref__GameSystemGlobal BW_WEAK;
 extern u32   POKE_TOOL_GetPartyValue(void *mon, u32 paramId, u32 arg) BW_WEAK;
 extern u32   POKE_TOOL_GetExpForLevel(u32 species, u32 form, u32 level) BW_WEAK;
+extern u32   POKE_TOOL_IsShiny(void *mon) BW_WEAK;
 extern void *POKEPARTY_GetMember(void *party, u32 pos) BW_WEAK;
 extern u32   POKEPARTY_GetCount(const void *party) BW_WEAK;
 extern u16  *STRBUF_GetChars(void *strbuf) BW_WEAK;
@@ -389,6 +390,12 @@ enum {
 static u32 pv(void *mon, u32 id)
 {
     return POKE_TOOL_GetPartyValue(mon, id, 0);
+}
+
+/* Shiny: the game's own test (its trainer id against its personality). */
+static int mon_shiny(void *mon)
+{
+    return POKE_TOOL_IsShiny != NULL && POKE_TOOL_IsShiny(mon) != 0;
 }
 
 static void mon_nick(void *mon, char *out, int cap)
@@ -848,7 +855,8 @@ static void party_mon_fill(const PartyView *v, int i, const EidosUiFrame *in, in
         m->maxhp = (int)pv(mon, P_MAXHP);
         m->status = mon_status(mon, hp);
         m->item = ui_held_kind(pv(mon, P_ITEM));
-        m->front = ui_mon_front(species, (u8)pv(mon, P_FORM), 0);
+        m->shiny = mon_shiny(mon);
+        m->front = ui_mon_front(species, (u8)pv(mon, P_FORM), m->shiny);
         m->species = species;
         m->form = (int)pv(mon, P_FORM);
         m->type1 = kit_type((int)pv(mon, P_TYPE1));
@@ -964,10 +972,10 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
     mh = pl.frame.h;
     if (pl.header) {
         draw_modal(c, mx, my, mw, mh);
-        ui_header(c, mx + 4, my + 4, mw - 8, "POK\xC3\x89MON", entry ? "ENTRY" : "PARTY", right, UI_SKY);
+        ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("POK\xC3\x89MON"), entry ? ui_tr("ENTRY") : ui_tr("PARTY"), right, UI_SKY);
     }
     if (theme->party_backdrop != NULL) {
-        theme->party_backdrop(c, &pl, "POK\xC3\x89MON", entry ? "ENTRY" : "PARTY", right);
+        theme->party_backdrop(c, &pl, ui_tr("POK\xC3\x89MON"), entry ? ui_tr("ENTRY") : ui_tr("PARTY"), right);
     }
 
     if (pl.column && phase_pick && !entry) {
@@ -1120,7 +1128,7 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 }
             }
             if (v.phase == 3 && i == v.swap_src) {
-                ui_text(c, x + colw - 78, y + 3, "MOVE", UI_CYAN, UI_NAVY, UI_FONT_SMALL, 1);
+                ui_text(c, x + colw - 78, y + 3, ui_tr("MOVE"), UI_CYAN, UI_NAVY, UI_FONT_SMALL, 1);
             }
             {
                 /* the teach and evolution lists: the game's label in place
@@ -1381,8 +1389,8 @@ static void party_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
                 ui_panel(c, rr.x, rr.y, rr.w, rr.h, UI_CUT_TL | UI_CUT_BR, 4,
                          (hit & EIDOS_UI_HOVER) ? UI_NAVY2 : UI_BODY,
                          (hit & EIDOS_UI_HOVER) ? UI_SKY : UI_EDGE, 255);
-                ui_text(c, rr.x + (sw - ui_text_w("EXIT", UI_FONT_SMALL)) / 2,
-                        rr.y + ui_text_y(16, UI_FONT_SMALL), "EXIT", UI_WHITE, UI_EDGE,
+                ui_text(c, rr.x + (sw - ui_text_w(ui_tr("EXIT"), UI_FONT_SMALL)) / 2,
+                        rr.y + ui_text_y(16, UI_FONT_SMALL), ui_tr("EXIT"), UI_WHITE, UI_EDGE,
                         UI_FONT_SMALL, 1);
                 if (hit & EIDOS_UI_CLICK) {
                     eidos_ui_tap(212, 180, 3);
@@ -1611,8 +1619,8 @@ static void draw_card(EidosUiCtx *c, const SummaryView *s, int x, int y, int w, 
     /* the picture: the game's 3D model cannot be copied, so the party icon
      * grows by a whole number */
     img = ui_mon_icon((u16)species, (u8)form, (int)((in->frame / 24) & 1));
-    if (w > 130 && !s->egg && ui_mon_front((u16)species, (u8)form, 0) != NULL) {
-        img = ui_mon_front((u16)species, (u8)form, 0);      /* a wide card: its picture */
+    if (w > 130 && !s->egg && ui_mon_front((u16)species, (u8)form, mon_shiny(s->mon)) != NULL) {
+        img = ui_mon_front((u16)species, (u8)form, mon_shiny(s->mon));     /* a wide card: its picture */
     }
     picw = w - 12;
     k = fit_scale(img != NULL ? img->w : 32, picw);
@@ -1731,7 +1739,7 @@ static void draw_info_page(EidosUiCtx *c, const SummaryView *s, int x, int y, in
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 255);
     if (s->egg) {
         draw_wrapped(c, x + 8, y + 8, w - 16, 16, 4,
-                     "What will hatch from this Egg? It will take some time.",
+                     ui_tr("What will hatch from this Egg? It will take some time."),
                      UI_FONT_LARGE, UI_WHITE, UI_EDGE);
         return;
     }
@@ -1757,7 +1765,7 @@ static void draw_info_page(EidosUiCtx *c, const SummaryView *s, int x, int y, in
     ui_info_row(c, x + 6, yy, w - 12, lab, val);
     yy += 17;
     if (next > cur && level < 100) {
-        ui_text(c, x + 8, yy + ui_text_y(10, UI_FONT_SMALL), "EXP", UI_SKY, UI_NAVY,
+        ui_text(c, x + 8, yy + ui_text_y(10, UI_FONT_SMALL), ui_tr("EXP"), UI_SKY, UI_NAVY,
                 UI_FONT_SMALL, 1);
         ui_bar(c, x + 34, yy + 3, w - 46, 5, (int)(exp > cur ? exp - cur : 0),
                (int)(next - cur));
@@ -1837,7 +1845,7 @@ static void draw_moves(EidosUiCtx *c, const SummaryView *s, int x, int y, int w,
                         i < 4 ? (int)pv(s->mon, P_PP1 + (u32)i) : 0,
                         i < 4 ? (int)pv(s->mon, P_MAXPP1 + (u32)i) : 0, sel || hov == i);
             if (i == 4) {
-                ui_text(c, x + w - 44, yy + ui_text_y(rowh, UI_FONT_SMALL), "NEW", UI_CYAN,
+                ui_text(c, x + w - 44, yy + ui_text_y(rowh, UI_FONT_SMALL), ui_tr("NEW"), UI_CYAN,
                         UI_NAVY, UI_FONT_SMALL, 1);
             }
         } else {
@@ -1907,7 +1915,7 @@ static int draw_stats(EidosUiCtx *c, const SummaryView *s, int x, int y, int col
     int i, yy = y, maxstat = 1;
 
     ui_panel(c, x, yy, colw, 17, UI_CUT_TL | UI_CUT_BR, 4, UI_BODY2, UI_EDGE, 255);
-    ui_text(c, x + 6, yy + ui_text_y(17, UI_FONT_LARGE), "HP", UI_LIME, UI_DEX3, UI_FONT_LARGE, 1);
+    ui_text(c, x + 6, yy + ui_text_y(17, UI_FONT_LARGE), ui_tr("HP"), UI_LIME, UI_DEX3, UI_FONT_LARGE, 1);
     snprintf(val, sizeof val, "%u/%u", (unsigned)hp, (unsigned)maxhp);
     ui_bar(c, x + 26, yy + 6, colw - 32 - ui_text_w(val, UI_FONT_SMALL) - 4, 5, (int)hp, (int)maxhp);
     ui_text(c, x + colw - 6 - ui_text_w(val, UI_FONT_SMALL), yy + ui_text_y(17, UI_FONT_SMALL),
@@ -2025,7 +2033,7 @@ static void draw_ribbon_page(EidosUiCtx *c, const SummaryView *s, int x, int y, 
 
     ui_panel(c, x, y, w, h, UI_CUT_TL | UI_CUT_BR, 6, UI_BODY2, UI_EDGE, 255);
     if (n <= 0 || tab == NULL) {
-        ui_text(c, x + 8, y + 8, "No ribbons.", UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
+        ui_text(c, x + 8, y + 8, ui_tr("No ribbons."), UI_GREY, UI_EDGE, UI_FONT_LARGE, 1);
         return;
     }
     if (n > 81) n = 81;
@@ -2243,7 +2251,7 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
                     i < 4 ? (int)pv(s->mon, P_PP1 + (u32)i) : move_pp_max(mv),
                     i < 4 ? (int)pv(s->mon, P_MAXPP1 + (u32)i) : move_pp_max(mv), sel);
         if (i == 4) {
-            ui_text(c, x2 + mw2 + 8, y2 + ui_text_y(22, UI_FONT_SMALL), "NEW", UI_CYAN, UI_NAVY,
+            ui_text(c, x2 + mw2 + 8, y2 + ui_text_y(22, UI_FONT_SMALL), ui_tr("NEW"), UI_CYAN, UI_NAVY,
                     UI_FONT_SMALL, 1);
         }
     }
@@ -2296,7 +2304,7 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
         EidosUiRect r = { ix, nav_y, 140, 18 };
 
         st = busy ? 0 : eidos_ui_hit(r);
-        ui_cmd_button(c, r.x, r.y, r.w, r.h, "FORGET", UI_PINK, (st & EIDOS_UI_HOVER) != 0);
+        ui_cmd_button(c, r.x, r.y, r.w, r.h, ui_tr("FORGET"), UI_PINK, (st & EIDOS_UI_HOVER) != 0);
         if (st & EIDOS_UI_CLICK) {
             eidos_ui_press(BW_KEY_A, 3);
         }
@@ -2306,7 +2314,7 @@ static void forget_view(EidosUiCtx *c, const SummaryView *s, int mx, int my, int
         EidosUiRect r = { ix + iw - bw, nav_y, bw, 18 };
 
         st = busy ? 0 : eidos_ui_hit(r);
-        ui_cmd_button(c, r.x, r.y, r.w, r.h, picking ? "BACK" : "GIVE UP", UI_GREY,
+        ui_cmd_button(c, r.x, r.y, r.w, r.h, picking ? ui_tr("BACK") : ui_tr("GIVE UP"), UI_GREY,
                       (st & EIDOS_UI_HOVER) != 0);
         if (((st & EIDOS_UI_CLICK) || eidos_ui_right_click()) && !busy) {
             eidos_ui_press(BW_KEY_B, 3);
@@ -2390,14 +2398,14 @@ static void summary_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
 
     page_idx = s.page;
     snprintf(sub, sizeof sub, "%s",
-             s.mode == 2 ? "FORGET A MOVE" : one_screen && page_idx <= 1 && !s.egg ? "" :
+             ui_tr(s.mode == 2 ? "FORGET A MOVE" : one_screen && page_idx <= 1 && !s.egg ? "" :
              page_idx == 0 ? "INFO" : page_idx == 1 ? "SKILLS" :
-             page_idx == 2 ? "RIBBONS" : "MOVES");
+             page_idx == 2 ? "RIBBONS" : "MOVES"));
     right[0] = '\0';
     if (s.max > 1) {
         snprintf(right, sizeof right, "%d/%d", s.pos + 1, s.max);
     }
-    ui_header(c, mx + 4, my + 4, mw - 8, "SUMMARY", sub, "", UI_SKY);
+    ui_header(c, mx + 4, my + 4, mw - 8, ui_tr("SUMMARY"), sub, "", UI_SKY);
     if (s.mode == 2) {
         forget_view(c, &s, mx, my, mw, mh, in->frame);
         return;
@@ -2444,7 +2452,7 @@ static void summary_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
         int t;
 
         for (t = 0; t < 3; t++) {
-            int tw = ui_text_w(names[t], UI_FONT_SMALL) + 16;
+            int tw = ui_text_w(ui_tr(names[t]), UI_FONT_SMALL) + 16;
             EidosUiRect r;
             int hit, avail = 1;
 
@@ -2456,7 +2464,7 @@ static void summary_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in
             }
             r.x = tabx; r.y = taby; r.w = tw; r.h = 14;
             hit = eidos_ui_hit(r);
-            ui_tab(c, tabx, taby, names[t], t == s.page || (one_screen && t == 0 && s.page == 1) || (hit & EIDOS_UI_HOVER),
+            ui_tab(c, tabx, taby, ui_tr(names[t]), t == s.page || (one_screen && t == 0 && s.page == 1) || (hit & EIDOS_UI_HOVER),
                    t == s.page ? UI_SKY : UI_EDGE2, t == s.page ? UI_NAVY2 : UI_NAVY);
             if ((hit & EIDOS_UI_CLICK) && s.seq == 4 && s.input_enabled && t != s.page) {
                 eidos_ui_tap(tap_x[t], 180, 3);

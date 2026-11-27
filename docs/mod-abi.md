@@ -287,8 +287,13 @@ The version moves when the surface moves.
   `time_utc`, `ticks_ms`, `game_hash` and `popup`, with the event `web`
   (127, payload `BwWeb`) and the enums `BW_GAME_HASH_*` and `BW_POPUP_*`
   (`docs/mod-services.md`, "Version 7: the web, the clock, the game's hash
-  and the pop-up"). Version 7 is open: `sdk/api/v7` is the current
-  description.
+  and the pop-up"). Added later in version 7 (appended, nothing moved): the
+  services table's `string_get` and `string_language` (a mod's own words in
+  the game's language, `docs/mod-strings.md`) and the rule language's
+  `@<key>` text; the services table's `confirm_ask` with the event
+  `confirm.done` (129, payload `BwConfirmDone`) and the rule action `ask`
+  (a question that does not wait, `docs/mod-services.md`, "Messages").
+  Version 7 is open: `sdk/api/v7` is the current description.
 
 The number cannot be forgotten. A test recomputes the hash of the surface out
 of the headers themselves and compares it with the number the header carries,
@@ -321,8 +326,8 @@ width and the hash follows it: the number beside the version number is the
 
 | Pointers | Hash |
 |---|---|
-| 32-bit | 0x75B3AE08 (the number in `sdk/mod_api.h`) |
-| 64-bit | 0x0FC83E7C |
+| 32-bit | 0x6ED47D43 (the number in `sdk/mod_api.h`) |
+| 64-bit | 0x02777027 |
 
 The payload structs, the ids and the enums hold no pointer and hash the
 same everywhere.

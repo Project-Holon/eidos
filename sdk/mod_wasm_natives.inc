@@ -1329,6 +1329,37 @@ static int32_t wn_hardcore_allowed(wasm_exec_env_t env, void *why, int32_t size)
     return (int32_t)w->host->services->hardcore_allowed((char *)why, (u32)size);
 }
 
+static int32_t wn_string_get(wasm_exec_env_t env, const char *key, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->string_get == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->string_get(key, (char *)out, (u32)size);
+}
+
+static int32_t wn_string_language(wasm_exec_env_t env, void *out, int32_t size)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->string_language == NULL) {
+        return -1;
+    }
+    return (int32_t)w->host->services->string_language((char *)out, (u32)size);
+}
+
+static int32_t wn_confirm_ask(wasm_exec_env_t env, const char *text, int32_t tag, void *ticket)
+{
+    BwWasmMod *w = wasm_mod_of(env);
+    if (w == NULL || w->host == NULL || w->host->services == NULL ||
+        w->host->services->confirm_ask == NULL ||
+        !wasm_object_ok(env, ticket, sizeof(u32))) {
+        return -1;
+    }
+    return (int32_t)w->host->services->confirm_ask(text, (u32)tag, (u32 *)ticket);
+}
+
 /* The state calls and the services, as imports of module "eidos". */
 static NativeSymbol k_wasm_api_natives[] = {
     { "party_count", (void *)wn_party_count, "()i", NULL },
@@ -1460,4 +1491,7 @@ static NativeSymbol k_wasm_api_natives[] = {
     { "setting_show", (void *)wn_setting_show, "($$)i", NULL },
     { "setting_set_text", (void *)wn_setting_set_text, "($$)i", NULL },
     { "hardcore_allowed", (void *)wn_hardcore_allowed, "(*~)i", NULL },
+    { "string_get", (void *)wn_string_get, "($*~)i", NULL },
+    { "string_language", (void *)wn_string_language, "(*~)i", NULL },
+    { "confirm_ask", (void *)wn_confirm_ask, "($i*)i", NULL },
 };

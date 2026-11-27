@@ -2609,6 +2609,16 @@
       "aliases": []
     },
     {
+      "address": "0x021C7E14",
+      "name": "BTL_SERVER_FLOW_CalcPredictedMoveDamage",
+      "region": "ov093",
+      "events": [],
+      "prototype": "unsigned short BTL_SERVER_FLOW_CalcPredictedMoveDamage(void *, unsigned char, unsigned char, unsigned short, int, int)",
+      "signature": "unsigned short (void *, unsigned char, unsigned char, unsigned short, int, int)",
+      "aletheia_name": "BTL_SERVER_FLOW_CalcPredictedMoveDamage",
+      "aliases": []
+    },
+    {
       "address": "0x021C84D8",
       "name": "BTL_SERVER_FLOW_GetBattleResult",
       "region": "ov093",

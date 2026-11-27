@@ -101,6 +101,7 @@
 #include "mod_net.h"
 #include "mod_rule.h"
 #include "mod_state.h"
+#include "mod_strings.h"
 #include "mod_table.h"
 #include "mod_v7.h"
 
@@ -139,8 +140,10 @@ extern const char *bw_mod_savedata_namespace(void);
 /* How many rules the port holds at once, over every event together. */
 #define BW_RULE_MAX             64u
 
-/* The event ids of sdk/mod_api.h go up to BW_EVENT_BATTLE_TURN (113). */
-#define BW_RULE_KINDS_MAX       128u
+/* The event ids of sdk/mod_api.h go up to BW_EVENT_CONFIRM_DONE (129); the
+ * room is the event layer's (sdk/mod_event.c, 160).  At 128 the rules of
+ * setting.button (128) were never bound. */
+#define BW_RULE_KINDS_MAX       160u
 
 /*
  * How many nodes one rule's expressions may hold together.  The bound is
@@ -256,7 +259,11 @@ enum {
     BW_RULE_OP_GT,          /* > */
     BW_RULE_OP_GE,          /* >= */
     BW_RULE_OP_AND,         /* && */
-    BW_RULE_OP_OR           /* || */
+    BW_RULE_OP_OR,          /* || */
+    BW_RULE_OP_STRING,      /* @<key>: text the key's line; left: the first
+                             * value (an OP_ARG), or BW_RULE_NO_NODE */
+    BW_RULE_OP_ARG          /* one value of @<key>(...): left the value,
+                             * right the next OP_ARG or BW_RULE_NO_NODE */
 };
 
 /* The actions of the language document, section 2. */
@@ -271,7 +278,8 @@ enum {
     BW_RULE_ACT_GIVE,       /* give <item> <count> */
     BW_RULE_ACT_BOX,        /* box <mon or party position> <box> */
     BW_RULE_ACT_WITHDRAW,   /* withdraw <box> <slot> */
-    BW_RULE_ACT_GIFT        /* gift "<card file>" */
+    BW_RULE_ACT_GIFT,       /* gift "<card file>" */
+    BW_RULE_ACT_ASK         /* ask <text> [<tag>] */
 };
 
 /* The kinds of a target. */
@@ -879,6 +887,12 @@ static const BwRuleField g_f_web[] = {
     BW_RULE_FIELD(BwWeb, size, BW_RULE_FK_INT, 0)
 };
 
+static const BwRuleField g_f_confirm_done[] = {
+    BW_RULE_FIELD(BwConfirmDone, ticket, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwConfirmDone, tag, BW_RULE_FK_INT, 0),
+    BW_RULE_FIELD(BwConfirmDone, answer, BW_RULE_FK_INT, 0)
+};
+
 static const BwRuleField g_f_move_known[] = {
     BW_RULE_FIELD(BwMoveKnown, slot, BW_RULE_FK_INT, 0),
     BW_RULE_FIELD(BwMoveKnown, site, BW_RULE_FK_INT, 0),
@@ -1068,7 +1082,10 @@ static const BwRuleEvent g_events[] = {
       .fields = g_f_web, .field_count = 3 },
     /* (its key is a text: rules see that it fired, a code mod reads it) */
     { .kind = BW_EVENT_SETTING_BUTTON, .name = "setting.button", .refusable = 0,
-      .fields = g_f_game_new, .field_count = 0 }
+      .fields = g_f_game_new, .field_count = 0 },
+    /* (a rule sees only its own mod's answers: run_rule) */
+    { .kind = BW_EVENT_CONFIRM_DONE, .name = "confirm.done", .refusable = 0,
+      .fields = g_f_confirm_done, .field_count = 3 }
 };
 
 #define BW_RULE_EVENT_COUNT \
@@ -1302,6 +1319,8 @@ typedef struct BwRule {
     char         *text;       /* the file's text: the names point into it */
     const char   *base;       /* while the rule is compiled: the folder a
                                * `gift` action's file is named from */
+    const char   *root;       /* the mod's folder, kept when the rule names
+                               * a line of its strings files (@<key>) */
     char        **strings;    /* the copies the rule keeps */
     u32           string_count;
     u32           string_cap;
@@ -1594,7 +1613,9 @@ enum {
     BW_RULE_TK_LBRACKET,
     BW_RULE_TK_RBRACKET,
     BW_RULE_TK_DOT,
-    BW_RULE_TK_OP
+    BW_RULE_TK_OP,
+    BW_RULE_TK_AT,          /* @<key>: a line of the mod's strings files */
+    BW_RULE_TK_COMMA        /* the values of @<key>(<expr>, <expr>) */
 };
 
 typedef struct BwRuleToken {
@@ -1713,12 +1734,37 @@ static int scan_next(BwRuleScan *s, BwRuleToken *t, char *err, size_t err_size)
         return 0;
     }
 
+    if (c == '@') {
+        /* `@<key>`: a key of the mod's strings files (docs/mod-strings.md),
+         * letters, digits, '.', '_' and '-' */
+        size_t n = 0;
+
+        s->p++;
+        while (s->p < s->end &&
+               (is_ident_char((unsigned char)*s->p) || *s->p == '.' || *s->p == '-')) {
+            if (n + 1u >= BW_MOD_STRINGS_KEY_MAX) {
+                snprintf(err, err_size, "the key after '@' is longer than %d",
+                         BW_MOD_STRINGS_KEY_MAX - 1);
+                return -1;
+            }
+            t->text[n++] = *s->p++;
+        }
+        t->text[n] = '\0';
+        if (n == 0) {
+            snprintf(err, err_size, "'@' needs a key of the mod's strings files");
+            return -1;
+        }
+        t->kind = BW_RULE_TK_AT;
+        return 0;
+    }
+
     switch (c) {
     case '(': s->p++; t->kind = BW_RULE_TK_LPAREN; return 0;
     case ')': s->p++; t->kind = BW_RULE_TK_RPAREN; return 0;
     case '[': s->p++; t->kind = BW_RULE_TK_LBRACKET; return 0;
     case ']': s->p++; t->kind = BW_RULE_TK_RBRACKET; return 0;
     case '.': s->p++; t->kind = BW_RULE_TK_DOT; return 0;
+    case ',': s->p++; t->kind = BW_RULE_TK_COMMA; return 0;
     default:
         break;
     }
@@ -2201,6 +2247,90 @@ static int parse_name(BwRuleParse *p)
     return node;
 }
 
+/* "@" <key> [ "(" <expr> { "," <expr> } ")" ]: a text, the line `key` of
+ * the mod's strings.<lang>.txt or strings.txt.  A key neither file has is
+ * a load error, as a table the mod does not declare is.  Each value is a
+ * text or a number, at most BW_MOD_STRINGS_VALUES_MAX of them. */
+static int parse_string(BwRuleParse *p)
+{
+    int node = new_node(p, BW_RULE_OP_STRING, BW_RULE_T_TEXT);
+    int prev;
+    int count = 0;
+
+    if (node < 0) {
+        return -1;
+    }
+    if (p->rule->root == NULL) {
+        p->rule->root = rule_string(p->rule, p->rule->base != NULL ? p->rule->base : "");
+    }
+    p->rule->nodes[node].text = rule_string(p->rule, p->tok.text);
+    if (p->rule->root == NULL || p->rule->nodes[node].text == NULL) {
+        parse_error(p, p->err_line, "no room for the text");
+        return -1;
+    }
+    if (bw_mod_strings_get(p->rule->root, p->tok.text) == NULL) {
+        parse_error(p, p->err_line, "@%s is in neither strings.%s.txt nor strings.txt of the mod",
+                    p->tok.text, bw_mod_lang_code());
+        return -1;
+    }
+    if (p_advance(p) != 0) {
+        return -1;
+    }
+    if (p->tok.kind != BW_RULE_TK_LPAREN) {
+        return node;
+    }
+    if (p_advance(p) != 0) {
+        return -1;
+    }
+    prev = node;
+    for (;;) {
+        int arg;
+        int value = parse_expr(p);
+
+        if (value < 0) {
+            return -1;
+        }
+        if (p->rule->nodes[value].type != BW_RULE_T_TEXT &&
+            p->rule->nodes[value].type != BW_RULE_T_INT) {
+            parse_error(p, p->err_line, "a value of @%s must be a text or a number",
+                        p->rule->nodes[node].text);
+            return -1;
+        }
+        if (++count > BW_MOD_STRINGS_VALUES_MAX) {
+            parse_error(p, p->err_line, "@%s takes at most %d values ({1} to {%d})",
+                        p->rule->nodes[node].text, BW_MOD_STRINGS_VALUES_MAX,
+                        BW_MOD_STRINGS_VALUES_MAX);
+            return -1;
+        }
+        arg = new_node(p, BW_RULE_OP_ARG, BW_RULE_T_TEXT);
+        if (arg < 0) {
+            return -1;
+        }
+        p->rule->nodes[arg].left = (u16)value;
+        if (prev == node) {
+            p->rule->nodes[node].left = (u16)arg;
+        } else {
+            p->rule->nodes[prev].right = (u16)arg;
+        }
+        prev = arg;
+        if (p->tok.kind == BW_RULE_TK_COMMA) {
+            if (p_advance(p) != 0) {
+                return -1;
+            }
+            continue;
+        }
+        if (p->tok.kind != BW_RULE_TK_RPAREN) {
+            parse_error(p, p->err_line, "expected ',' or ')' after a value of @%s",
+                        p->rule->nodes[node].text);
+            return -1;
+        }
+        if (p_advance(p) != 0) {
+            return -1;
+        }
+        return node;
+    }
+}
+
 /* <atom> */
 static int parse_atom(BwRuleParse *p)
 {
@@ -2232,6 +2362,12 @@ static int parse_atom(BwRuleParse *p)
             return -1;
         }
         return node;
+
+    case BW_RULE_TK_AT:
+        /* @<key> and @<key>(<value>, ...): the key's line of the mod's
+         * strings files in the game's language, with the values in its {1}
+         * to {9} places (docs/mod-strings.md) */
+        return parse_string(p);
 
     case BW_RULE_TK_IDENT:
         if (strcmp(p->tok.text, "true") == 0) {
@@ -2791,6 +2927,43 @@ static int parse_action(BwRuleParse *p, const char *keyword)
         a->sub = t.sub;
         a->cell = t.cell;
         a->expr = (u16)expr;
+        r->action_count++;
+        return 0;
+    }
+
+    /* ask <text> [<tag>]: a question with the game's yes/no menu; the
+     * answer is the event confirm.done, with the tag (0 when none). */
+    if (strcmp(keyword, "ask") == 0) {
+        int tag = -1;
+
+        expr = parse_expr(p);
+        if (expr < 0) {
+            return -1;
+        }
+        if (p->tok.kind != BW_RULE_TK_END) {
+            tag = parse_expr(p);
+            if (tag < 0) {
+                return -1;
+            }
+        }
+        if (p->tok.kind != BW_RULE_TK_END) {
+            parse_error(p, p->err_line, "the action has more than it needs");
+            return -1;
+        }
+        if (r->nodes[expr].type != BW_RULE_T_TEXT &&
+            r->nodes[expr].type != BW_RULE_T_INT) {
+            parse_error(p, p->err_line, "the question must be a text or a "
+                        "number");
+            return -1;
+        }
+        if (tag >= 0 && !type_is_number(r->nodes[tag].type)) {
+            parse_error(p, p->err_line, "the question's tag must be a "
+                        "number");
+            return -1;
+        }
+        a->op = BW_RULE_ACT_ASK;
+        a->expr = (u16)expr;
+        a->sub = tag >= 0 ? (u16)tag : (u16)BW_RULE_NO_NODE;
         r->action_count++;
         return 0;
     }
@@ -4357,6 +4530,53 @@ static int event_write(const BwRuleEvent *event, u16 index, BwEvent *payload,
 
 static int eval_node(BwRuleVm *vm, u32 index, BwRuleValue *out);
 
+/* The texts @<key>(...) makes, one a buffer in turn: the values of one
+ * text may themselves be such texts.  Rules run on the game's thread, one
+ * at a time. */
+#define BW_RULE_FILLS 8u
+static char g_fill[BW_RULE_FILLS][BW_RULE_TEXT_MAX + 1u];
+static u32  g_fill_next;
+
+/* @<key> and @<key>(<value>, ...): the key's line in the game's language
+ * (the key itself when the file lost the line since the rule was loaded),
+ * with the values in its {1} to {9} places. */
+static int eval_string(BwRuleVm *vm, const BwRuleNode *n, BwRuleValue *out)
+{
+    const char *line = bw_mod_strings_get(vm->rule->root, n->text);
+    const char *values[BW_MOD_STRINGS_VALUES_MAX];
+    char nums[BW_MOD_STRINGS_VALUES_MAX][16];
+    u32 count = 0;
+    u16 arg;
+    char *buf;
+
+    if (line == NULL) {
+        line = n->text;
+    }
+    if (n->left == BW_RULE_NO_NODE) {
+        out->text = line;
+        return 0;
+    }
+    for (arg = n->left; arg != BW_RULE_NO_NODE && count < BW_MOD_STRINGS_VALUES_MAX;
+         arg = vm->rule->nodes[arg].right) {
+        BwRuleValue v;
+
+        if (eval_node(vm, vm->rule->nodes[arg].left, &v) != 0) {
+            return -1;
+        }
+        if (v.type == BW_RULE_T_TEXT) {
+            values[count] = v.text != NULL ? v.text : "";
+        } else {
+            snprintf(nums[count], sizeof nums[count], "%ld", (long)v.i);
+            values[count] = nums[count];
+        }
+        count++;
+    }
+    buf = g_fill[g_fill_next++ % BW_RULE_FILLS];
+    bw_mod_strings_fill(line, values, count, buf, sizeof g_fill[0]);
+    out->text = buf;
+    return 0;
+}
+
 /* Evaluate a node's subscript. */
 static int eval_sub(BwRuleVm *vm, const BwRuleNode *n, BwRuleValue *out)
 {
@@ -4475,6 +4695,9 @@ static int eval_node(BwRuleVm *vm, u32 index, BwRuleValue *out)
     case BW_RULE_OP_TEXT:
         out->text = n->text;
         return 0;
+
+    case BW_RULE_OP_STRING:
+        return eval_string(vm, n, out);
 
     case BW_RULE_OP_EVENT: {
         const BwRuleEvent *event = vm->rule->event;
@@ -4883,6 +5106,23 @@ static int do_action(BwRuleVm *vm, const BwRuleAction *a)
         action_send(vm, &value);
         return 0;
 
+    case BW_RULE_ACT_ASK:
+        {
+            u32 ticket;
+
+            if (eval_node(vm, a->expr, &value) != 0) {
+                return -1;
+            }
+            /* the question is the rule's mod's: its answer goes to that
+             * mod's rules only (run_rule).  A full queue is not a fault
+             * of the rule: the question is not asked, as a message past
+             * the queue is not shown. */
+            (void)bw_mod_message_confirm_ask_as(vm->rule->ns,
+                                                value_text(&value, buf, sizeof buf),
+                                                (u32)value_number(&sub), &ticket);
+            return 0;
+        }
+
     case BW_RULE_ACT_RELEASE:
         {
             const BwModState *st = bw_mod_state_table();
@@ -4982,6 +5222,12 @@ static int run_rule(BwRule *rule, BwEvent *event)
     u32 i;
     int failed = 0;
 
+    /* An answer is its asker's: a rule sees its own mod's answers only
+     * (the tags are each mod's own numbers). */
+    if (rule->kind == BW_EVENT_CONFIRM_DONE &&
+        strcmp(bw_mod_message_answer_owner(), rule->ns) != 0) {
+        return 0;
+    }
     vm.rule = rule;
     vm.event = event;
     vm.owner = rule->ns[0] != '\0' ? owner_get(rule->ns) : NULL;

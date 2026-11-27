@@ -22,6 +22,7 @@
 #include "kit.h"
 #include "mod_popup.h"
 #include "popup.h"
+#include "ui_lang.h"
 
 #define POPUP_IN    12u     /* frames to slide in, and out */
 #define POPUP_SHOW  240u    /* frames in place (four seconds) */
@@ -75,6 +76,9 @@ void eidos_ui_popup_draw(EidosUiCtx *c, u32 frame, int below, int centred)
     if (!bw_mod_popup_peek(&title, &text, &icon, &serial)) {
         return;
     }
+    /* the mod's words, in its ui_text file's language when it has them */
+    title = ui_tr_mod(title);
+    text = ui_tr_mod(text);
     if (serial != g_serial) {
         g_serial = serial;
         g_start = frame;

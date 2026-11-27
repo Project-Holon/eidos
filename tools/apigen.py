@@ -240,7 +240,7 @@ def parse_rules(rule_c):
     version = int(re.search(r'#define BW_RULE_LANGUAGE_VERSION (\d+)u', rule_c).group(1))
     return {'language': version, 'actions': actions, 'state_fields': fields,
             'names': ['event.<field>', 'state.<cell>[key]', 'setting.<key>',
-                      'table.<name>[key]'],
+                      'table.<name>[key]', '@<key>', '@<key>(<expr>, ...)'],
             'operators': ['||', '&&', '!', '==', '!=', '<', '<=', '>', '>=',
                           '+', '-', '*', '/', '%'],
             'events': events}

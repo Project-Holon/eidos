@@ -23,15 +23,26 @@ Show text to the player in the game's own windows.
 
 ```c
 void (*message)(const char *text);                    /* one window, A to close */
-int  (*confirm)(const char *text);                    /* yes/no; 1 for yes */
+int  (*confirm)(const char *text);                    /* yes/no, waits: no in the game */
+int  (*confirm_ask)(const char *text, u32 tag, u32 *ticket);   /* version 7: yes/no, answered later */
 ```
 
-The text appears in the field's talk window, or in the battle message box
-during a battle, in the game's font. It is queued: the port shows it at the
-next point where the game would accept a message (after the current script
-command, or at the next battle message), so a handler never draws over the
-game. `confirm` is only allowed in the field; in battle it returns 0 at once.
-Text is UTF-8; characters the game font lacks show as `?`. A message from a
+Each text gets a turn of its own, in the game's font, and never shares a
+window with the game's own text:
+
+- In the field it waits until the field is quiet and the player stands still
+  for a few frames (a player who keeps walking is not stopped mid-step). Then
+  the field's plain window opens at the bottom, the text prints at the game's
+  speed, and A or B closes it. The next waiting text follows in the same
+  window.
+- In a battle it is the battle box's next message: the battle's own message
+  waits until it is done, and the text waits as the battle's messages wait
+  (a key or 80 frames).
+
+The text is laid out for the window: it breaks between words by the font's
+own widths, a `\n` in the text starts a new line, and from the third line on
+the game's own page tag waits for A and scrolls, as the game's long lines do.
+A question is asked with `confirm_ask` (below). Text is UTF-8; characters the game font lacks show as `?`. A message from a
 refusal handler appears after the action is refused.
 
 The service is `sdk/mod_message.c`, the queue and the encoding, and
@@ -42,17 +53,42 @@ character, with 0xFFFF ending a string and 0xFFFE a line break, and the
 service encodes the UTF-8 into those units. The answer to "does the game font
 have this character" is the font's own glyph table, which the port reads
 through the game's own accessor, with the font the text path makes (arc 0x17,
-member 0). With no game under the port there is no font, and the answer is
-the built-in one the message service keeps: the printable ASCII range. The
-showing is the port's text path: it builds the game's string object out of
-the code units and prints it with the game's own print queue in the window
-the game has open, the field's talk window or the battle's message box.
+member 0). The queue keeps the text as written and encodes it when its turn
+comes, with the font of the window that shows it, so the French, German,
+Italian and Spanish letters of the game's own font show. With no game under
+the port there is no font, and the answer is the built-in one the message
+service keeps: the printable ASCII range. The field's turn is an event of the
+port's own (`stubs/ov/patch_ov021_scrcmd_msgwin.c`), the battle's is the scene
+unit's message procedure (`stubs/ov/patch_ov093_btlv_scu_message.c`).
 
-A confirm waits for the answer. The question goes into the queue with the
-other texts, the wait advances the game to the next message point, the port's
-text path asks the question in the field's yes/no window, and the answer
-comes back to the caller. The wait gives up after 3600 ticks and answers no.
-With no text path that can ask, a confirm answers no at once.
+**Questions.** A handler runs inside the game's frame, so it cannot wait for
+the player. `confirm_ask` (version 7) does not wait: it queues the question
+with the texts, in the order the mod wrote them, and answers 0 with
+`*ticket` set, or -1 when the text is empty or eight texts already wait. The
+question gets its own turn like a text:
+
+- In the field the plain window shows it, and 8 frames after the text the
+  field's own yes/no menu opens beside it (YES first), as a script's
+  question does. B answers no.
+- In a battle it is the box's next message, printed with no key wait at its
+  end, and then the battle's yes/no choice opens with the battle's own YES
+  and NO. The question waits while the touch screen holds a menu (the
+  commands, the moves, the targets) or before it is made (the battle's
+  entry), and during a link or recorded battle; the battle's own messages
+  go first then, and the texts behind the question wait with it.
+
+The answer comes on the frame after the menu closed as the event
+`confirm.done` (`BwConfirmDone`: `ticket`, `tag`, `answer` 1 yes or 0 no).
+Every code mod with a handler sees it and knows its own by the ticket; `tag`
+is the mod's own number for the question, given back unchanged. A rule asks
+with `ask <text> [<tag>]` and sees only its own mod's answers
+(`docs/mod-rules-language.md`). Every ticket gets one answer; a reset drops
+the questions that wait, with the mods that asked them.
+
+The old `confirm` waits for its answer. It keeps its seam (a draw side with
+the yes/no window and the game's advance, `sdk/mod_text.h`), but the game
+registers none: no handler can wait. In the game it answers no at once and
+queues nothing; use `confirm_ask`.
 
 ## Peer sessions
 
@@ -461,9 +497,12 @@ own messages keep their own key.
 confirmation is asked for, and the save is installed: the game save written,
 and the mod's own data written beside it with the checksum of the save that
 was installed, so the mod's file is in step with the save it belongs to. The
-port's confirmation is the port's own: it asks the player in the game's own
-yes/no window, and a save the player does not take is reported and dropped,
-and nothing is installed. A port that installs no confirmation reports every
+port's confirmation is the port's own: it asks the player with the game's own
+yes/no menu in a turn of its own, as a mod's question is asked (`confirm_ask`
+above), and the handoff keeps the save until the answer comes. A save the
+player does not take is reported and dropped, and nothing is installed. One
+save waits for its answer at a time; another that arrives meanwhile is
+dropped. A port that installs no confirmation reports every
 save that arrives and drops it. The reload behind it is the port's own: the
 boot's handler starts the run again, and it loads the save that is now in
 force.
@@ -563,6 +602,9 @@ The file's rules:
 - A key declared twice is reported, and the second line is ignored.
 - A mod may declare any number of options, and a choice may have any
   number of names (each name up to 31 characters).
+- `@key` stands for a text of the mod's strings files in the game's
+  language, wherever a quoted text goes and for each name of a choice:
+  `option nuz.lives int @nuz.lives 0 10 3` (version 7, `docs/mod-strings.md`).
 
 The port lists them on its settings screen under the mod's name, stores the
 player's choices beside the mod's saved data, and the mod reads them:
@@ -1223,6 +1265,25 @@ Code: `sdk/mod_menu.c` (the lines, the calls), `engine/platform/settings_ui.c`
 `engine/ui/recipe_keyboard.c` (the keyboard), `engine/ui/assets.c` (the
 straight quotes and the dot the game's fonts lack).
 
+## Version 7: a mod's own words
+
+Two calls at the end of the services table read the calling mod's strings
+files (`strings.<lang>.txt` for the game's language, else `strings.txt`,
+`docs/mod-strings.md`):
+
+```c
+int  (*string_get)(const char *key, char *out, u32 size);
+int  (*string_language)(char *out, u32 size);
+```
+
+- `string_get` copies the text of `key`, cut to `size` and never in the
+  middle of a character, and answers its whole length; -1 when no file has
+  the key. The text's `{1}` to `{9}` are places for the mod's own values.
+- `string_language` writes the game's language code (`en`, `fr`, `de`,
+  `it` or `es`) and answers 2; -1 when `size` is under 3.
+
+Code: `sdk/mod_strings.c`.
+
 ## Related documents
 
 - `docs/mod-modes.md`: which runs use which service.
@@ -1230,4 +1291,5 @@ straight quotes and the dot the game's fonts lack).
 - `docs/mod-coop.md`: co-op and the field avatars.
 - `docs/mod-state.md`: the mod's saved data.
 - `docs/mod-rules-language.md`: the `message` and `send` actions.
+- `docs/mod-strings.md`: a mod's words in the game's language.
 - `docs/mod-events.md`: the events, and the script command hooks.

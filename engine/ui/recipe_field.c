@@ -378,7 +378,7 @@ static int hint_bar(EidosUiCtx *c, int y, int w, const char *const *pairs, int n
         ui_fill(c, 0, top, w, 1, UI_EDGE, 255);
     }
     for (i = 0; i < n; i++) {
-        const char *key = pairs[2 * i], *what = pairs[2 * i + 1];
+        const char *key = pairs[2 * i], *what = ui_tr(pairs[2 * i + 1]);
         int kw = ui_keycap_w(key);
         int aw = ui_text_w(what, UI_FONT_SMALL);
         EidosUiRect r;
@@ -967,7 +967,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
             static const char *const dflt[7] = { "", "POKeMON", "POKeDEX", "BAG", "",
                                                  "SAVE", "OPTIONS" };
 
-            snprintf(label[i], 40, "%s", dflt[btn_of[i]]);
+            snprintf(label[i], 40, "%s", ui_tr(dflt[btn_of[i]]));
         }
     }
     /* The icons: taken from the game's sprites once the menu has settled;
@@ -1073,7 +1073,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         char cnt[16];
 
         snprintf(cnt, sizeof(cnt), "%d/6", np);
-        ui_header(c, px, py, pw, "PARTY", NULL, cnt, UI_SKY);
+        ui_header(c, px, py, pw, ui_tr("PARTY"), NULL, cnt, UI_SKY);
     }
     for (i = 0; i < np; i++) {
         const PartyLine *l = &party[i];
@@ -1090,7 +1090,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         if (st & EIDOS_UI_CLICK) {
             click_party = i;
         }
-        ui_party_row(c, px, r.y, pw, i, l->egg ? "Egg" : l->name,
+        ui_party_row(c, px, r.y, pw, i, l->egg ? ui_tr("Egg") : l->name,
                      l->egg ? 2 : l->gender, l->egg ? 0 : l->level,
                      l->egg ? 0 : l->hp, l->egg ? 0 : l->maxhp, ic,
                      (st & EIDOS_UI_HOVER) != 0);
@@ -1166,7 +1166,7 @@ static void menu_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         /* (not in the style chooser's preview: its own keys stand there, START goes back) */
         int st = eidos_ui_try_state() != 0 ? 0
                  : small_button(c, &tx, top + (bh - 17) / 2,
-                                armed ? "Sure? Unsaved progress is lost" : "Title screen", 17, NULL);
+                                armed ? ui_tr("Sure? Unsaved progress is lost") : ui_tr("Title screen"), 17, NULL);
 
         if (st & EIDOS_UI_CLICK) {
             if (armed) {
@@ -2147,7 +2147,7 @@ static int small_button_w(const char *label, const char *key)
 {
     int kw = key != NULL ? ui_keycap_w(key) : 0;
 
-    return ui_text_w(label, UI_FONT_SMALL) + 10 + (kw > 0 ? (kw < 13 ? 13 : kw) + 3 : 0);
+    return ui_text_w(ui_tr(label), UI_FONT_SMALL) + 10 + (kw > 0 ? (kw < 13 ? 13 : kw) + 3 : 0);
 }
 
 static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h,
@@ -2183,7 +2183,7 @@ static int small_button(EidosUiCtx *c, int *x, int y, const char *label, int h,
         if (key != NULL) {
             tx += ui_keycap(c, tx, y + (h - 13) / 2, key) + 3;
         }
-        ui_text(c, tx, y + ui_text_y(h, UI_FONT_SMALL), label, UI_WHITE, UI_EDGE,
+        ui_text(c, tx, y + ui_text_y(h, UI_FONT_SMALL), ui_tr(label), UI_WHITE, UI_EDGE,
                 UI_FONT_SMALL, 1);
     }
     *x = xx - 4;
@@ -2283,7 +2283,7 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
         { "WIRELESS", 0xF08A24u, 190, 118 },
     };
     const int bw = 76, bhh = 28, gap = 4, pad = 5;
-    int fullw = ui_text_w("C-GEAR", UI_FONT_SMALL) + 14;
+    int fullw = ui_text_w(ui_tr("C-GEAR"), UI_FONT_SMALL) + 14;
     int w = pad * 2 + 3 * bw + 2 * gap + gap + fullw, h = bhh + pad * 2;
     int x0 = cw - w - 4, y0 = top + 2, i, res = 0, themed = 0;
     int lit[3];
@@ -2334,10 +2334,10 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
                         ui_fill(c, tx - 7 + k * slant / 16, ty + k, 3, 1, UI_RAW(col), ir ? 90 : lit[i] ? 255 : 150);
                     }
                     if (dark) {
-                        ui_text(c, tx, ty, ch[i].name, UI_RAW(0x181818u), -1, UI_FONT_SMALL, 1);
+                        ui_text(c, tx, ty, ui_tr(ch[i].name), UI_RAW(0x181818u), -1, UI_FONT_SMALL, 1);
                         ui_text(c, tx, ty + 11, ui_tr(status), UI_RAW(0x505058u), -1, UI_FONT_SMALL, 1);
                     } else {
-                    ui_text(c, tx, ty, ch[i].name, UI_RAW(ir ? 0x8A8A8Au : 0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
+                    ui_text(c, tx, ty, ui_tr(ch[i].name), UI_RAW(ir ? 0x8A8A8Au : 0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
                             UI_FONT_SMALL, 1);
                     ui_text(c, tx + 11 * slant / 16, ty + 11, ui_tr(status),
                             UI_RAW(ir ? 0x6A6A6Au : lit[i] ? col : 0xB0B0B0u), -1, UI_FONT_SMALL, 1);
@@ -2347,9 +2347,9 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
                         res = 1;
                     }
                 } else {
-                    int tw = ui_text_w("C-GEAR", UI_FONT_SMALL);
+                    int tw = ui_text_w(ui_tr("C-GEAR"), UI_FONT_SMALL);
 
-                    ui_text(c, rx + (rw - tw) / 2 + (rh / 2) * slant / 16, ry + ui_text_y(rh, UI_FONT_SMALL), "C-GEAR",
+                    ui_text(c, rx + (rw - tw) / 2 + (rh / 2) * slant / 16, ry + ui_text_y(rh, UI_FONT_SMALL), ui_tr("C-GEAR"),
                             UI_RAW(dark ? 0x181818u : 0xF8F8F8u), dark ? -1 : (s32)UI_RAW(0x0C0C0Cu), UI_FONT_SMALL, 1);
                     if (st & EIDOS_UI_CLICK) {
                         res = 2;
@@ -2402,7 +2402,7 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
 
             (void)ui_app_window(c, "sheet-tile", &fx, &fy, &fw, &fh);
             ui_fill(c, bx + 4, by + 5, 3, bhh - 10, UI_RAW(col), ir ? 90 : lit[i] ? 255 : 150);
-            ui_text(c, bx + 11, by + 3, ch[i].name, UI_RAW(ir ? 0x8A8A8Au : 0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
+            ui_text(c, bx + 11, by + 3, ui_tr(ch[i].name), UI_RAW(ir ? 0x8A8A8Au : 0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
                     UI_FONT_SMALL, 1);
             ui_text(c, bx + 11, by + 15, ui_tr(status), UI_RAW(ir ? 0x6A6A6Au : lit[i] ? col : 0xB0B0B0u), -1,
                     UI_FONT_SMALL, 1);
@@ -2410,9 +2410,9 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
         ui_panel(c, bx, by, bw, bhh, UI_CUT_TL | UI_CUT_BR, 4,
                  (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, lit[i] ? col : UI_EDGE2, ir ? 150 : 245);
         ui_fill(c, bx + 4, by + 4, 3, bhh - 8, lit[i] ? col : UI_EDGE2, 255);
-        ui_text(c, bx + 11, by + 3, ch[i].name, ir ? UI_GREY : lit[i] ? UI_WHITE : UI_LIGHT, UI_EDGE,
+        ui_text(c, bx + 11, by + 3, ui_tr(ch[i].name), ir ? UI_GREY : lit[i] ? UI_WHITE : UI_LIGHT, UI_EDGE,
                 UI_FONT_SMALL, 1);
-        ui_text(c, bx + 11, by + 15, status, ir ? UI_EDGE2 : lit[i] ? col : UI_GREY, -1, UI_FONT_SMALL, 1);
+        ui_text(c, bx + 11, by + 15, ui_tr(status), ir ? UI_EDGE2 : lit[i] ? col : UI_GREY, -1, UI_FONT_SMALL, 1);
         }
         if (st & EIDOS_UI_CLICK) {
             eidos_ui_tap(ch[i].tx, ch[i].ty, 3);
@@ -2428,12 +2428,12 @@ static int cgear_drop(EidosUiCtx *c, const EidosUiFrame *in, int cw, int top,
             int fx = bx, fy = by, fw = fullw, fh = (st & EIDOS_UI_HOVER) ? -bhh : bhh;
 
             (void)ui_app_window(c, "sheet-tile", &fx, &fy, &fw, &fh);
-            ui_text(c, bx + 7, by + ui_text_y(bhh, UI_FONT_SMALL), "C-GEAR", UI_RAW(0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
+            ui_text(c, bx + 7, by + ui_text_y(bhh, UI_FONT_SMALL), ui_tr("C-GEAR"), UI_RAW(0xF8F8F8u), (s32)UI_RAW(0x0C0C0Cu),
                     UI_FONT_SMALL, 1);
         } else {
         ui_panel(c, bx, by, fullw, bhh, UI_CUT_TL | UI_CUT_BR, 4,
                  (st & EIDOS_UI_HOVER) ? UI_EDGE : UI_BODY2, UI_CYAN2, 245);
-        ui_text(c, bx + 7, by + ui_text_y(bhh, UI_FONT_SMALL), "C-GEAR", UI_WHITE, UI_EDGE,
+        ui_text(c, bx + 7, by + ui_text_y(bhh, UI_FONT_SMALL), ui_tr("C-GEAR"), UI_WHITE, UI_EDGE,
                 UI_FONT_SMALL, 1);
         }
         if (st & EIDOS_UI_CLICK) {
@@ -2964,7 +2964,7 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         int i, named = wide, need = 0;
 
         for (i = 0; i < 3; i++) {
-            need += ui_text_w(names[i], UI_FONT_SMALL) + 13;
+            need += ui_text_w(ui_tr(names[i]), UI_FONT_SMALL) + 13;
         }
         if (x - need < tab_r + 6 + small_button_w("Menu", "X") + tracker_w + 8) {
             named = 0;
@@ -2973,12 +2973,12 @@ static void field_run(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in)
         lit[1] = comm && last_cmd == 5;
         lit[2] = comm && last_cmd == 1;
         for (i = 0; i < 3; i++) {
-            int tw = named ? ui_text_w(names[i], UI_FONT_SMALL) : 0;
+            int tw = named ? ui_text_w(ui_tr(names[i]), UI_FONT_SMALL) : 0;
             int ty = ui_text_y(bh, UI_FONT_SMALL);
 
             x -= tw;
             if (named) {
-                ui_text(c, x, ty, names[i], lit[i] ? UI_WHITE : UI_EDGE2, -1, UI_FONT_SMALL, 1);
+                ui_text(c, x, ty, ui_tr(names[i]), lit[i] ? UI_WHITE : UI_EDGE2, -1, UI_FONT_SMALL, 1);
             }
             x -= 7;
             ui_fill(c, x, bh / 2 - 1, 3, 3, lit[i] ? UI_CYAN : UI_EDGE2, 255);
@@ -3603,7 +3603,7 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
         chh += 11 + 16 * (nwrap[i] > 0 ? nwrap[i] : 1) + 4;
     }
     chh += 2;
-    card_window(c, x0, top, pw, chh, "UNION ROOM");
+    card_window(c, x0, top, pw, chh, ui_tr("UNION ROOM"));
     {
         /* Hide: the card goes away so the room shows */
         int hx = x0 + pw - 6;
@@ -3701,7 +3701,7 @@ static int union_card(EidosUiCtx *c, const EidosUiFrame *in, const FieldNow *f)
                     }
                 }
             }
-            ui_text(c, tx + (tile - ui_text_w(names[i], UI_FONT_SMALL)) / 2 + 2, ty + 22, names[i],
+            ui_text(c, tx + (tile - ui_text_w(ui_tr(names[i]), UI_FONT_SMALL)) / 2 + 2, ty + 22, ui_tr(names[i]),
                     lit ? UI_WHITE : UI_LIGHT, 0x313131u, UI_FONT_SMALL, 1);
             if ((st & EIDOS_UI_CLICK) || (focus && (keys & BW_KEY_A))) {
                 eidos_ui_tap(bx[i], 181, 3);
@@ -3762,7 +3762,7 @@ static int entralink_card(EidosUiCtx *c, const EidosUiFrame *in)
         }
         return 1;
     }
-    card_window(c, x0, top, pw, ph, "OWN WORLD");
+    card_window(c, x0, top, pw, ph, ui_tr("OWN WORLD"));
     {
         int hx = x0 + pw - 6;
 

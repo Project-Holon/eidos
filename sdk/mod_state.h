@@ -604,6 +604,22 @@ typedef struct BwModServices {
      * cut to `size`) while another mod is on or a test switch that changes
      * the game is set. */
     int  (*hardcore_allowed)(char *why, u32 size);
+    /* Version 7, the mod's own words (docs/mod-strings.md): string_get
+     * copies the line `key` of the calling mod's strings.<lang>.txt for
+     * the game's language, else of its strings.txt, cut to `size` (never
+     * in the middle of a character), and answers the line's whole length;
+     * -1 when neither file has it.  string_language writes the game's
+     * language as those files name it ("en", "fr", "de", "it" or "es")
+     * and answers 2; -1 when `size` is under 3. */
+    int  (*string_get)(const char *key, char *out, u32 size);
+    int  (*string_language)(char *out, u32 size);
+    /* Version 7, a question that does not wait (docs/mod-services.md,
+     * "Messages"): the text is asked in a turn of its own with the game's
+     * own yes/no menu, in the field or in a battle, and the answer comes as
+     * the event confirm.done with this ticket and `tag` (the mod's own
+     * number for the question).  0 with *ticket set, or -1 when the text
+     * is empty or eight texts already wait. */
+    int  (*confirm_ask)(const char *text, u32 tag, u32 *ticket);
 } BwModServices;
 
 /* ------------------------------------------------------------------ */

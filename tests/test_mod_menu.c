@@ -988,6 +988,92 @@ int main(void)
                     bw_mod_menu_option_text(g, pass, buf, sizeof buf)[0], 0);
     }
 
+    /* The game here is English (no cartridge), so strings.en.txt and the
+     * manifest's `.en` lines are the game's language's (docs/mod-strings.md). */
+    printf("a mod's own words: name.<lang>, description.<lang> and @key texts\n");
+    {
+        static const char *const e_files[] = {
+            T_ROOT "/e/eidos_mod.txt", T_ROOT "/e/e.ini", T_ROOT "/e/strings.txt",
+            T_ROOT "/e/strings.en.txt", T_MODS "/epsilon/settings.ini",
+            T_MODS "/epsilon/settings.ini.tmp"
+        };
+        u32 e, o, lives = 99, cap = 99, tag = 99, lob = 99, cond = 99, miss = 99;
+        char buf[160];
+        size_t i;
+
+        BW_REQUIRE("the fifth mod's folder", make_dirs(T_ROOT "/e") == 0);
+        BW_REQUIRE("its manifest",
+                   make_mod(T_ROOT "/e", "name = Epsilon\nname.en = Epsilon Words\nname.fr = Mots\n"
+                                         "description = Plain.\ndescription.en = In English.\n"
+                                         "settings = e.ini\n") == 0);
+        BW_REQUIRE("its words", write_file(T_ROOT "/e/strings.txt",
+                                           "# the plain words\n"
+                                           "e.lives = Lives\ne.cap = Caps\ne.cap.off = Off\n"
+                                           "e.cap.gym = Gym\ne.group = Rules\ne.tab = Words\n"
+                                           "e.help = How many.\ne.mode = Solo\n"
+                                           "e.mode.line = On your own.\n") == 0);
+        BW_REQUIRE("its English words", write_file(T_ROOT "/e/strings.en.txt",
+                                                   "e.lives = Lives left\ne.cap.gym = Gym leader\n"
+                                                   "e.cap.off =\n") == 0);
+        BW_REQUIRE("its declaration", write_file(T_ROOT "/e/e.ini",
+                                                 "mode solo @e.mode @e.mode.line\n"
+                                                 "heading @e.group\n"
+                                                 "option e.lives int @e.lives 0 10 3\n"
+                                                 "help e.lives @e.help\n"
+                                                 "option e.cap choice @e.cap @e.cap.off|@e.cap.gym\n"
+                                                 "option e.tag choice \"Tagged\" @e.cap.off|@e.cap.gym @solo\n"
+                                                 "option e.lob choice \"Lobby\" @e.cap.off|@e.cap.gym @lobby\n"
+                                                 "option e.cond bool \"Shown\" on ?e.cap=@e.cap.gym\n"
+                                                 "tab @e.tab\n"
+                                                 "option e.miss bool @e.missing off\n") == 0);
+        bw_clear_mods();
+        BW_REQUIRE("the fifth mod is added", bw_add_mod_root(T_ROOT "/e") == 0);
+        bw_mod_menu_open();
+        e = (u32)index_of_ns("epsilon");
+        BW_REQUIRE("the namespace comes from the plain name", e < bw_mod_menu_count());
+        BW_CHECK_EQ("the name in the game's language", strcmp(bw_mod_menu_name_at(e), "Epsilon Words"), 0);
+        BW_CHECK_EQ("the description in the game's language",
+                    strcmp(bw_mod_menu_about_at(e, 0), "In English."), 0);
+        for (o = 0; o < bw_mod_menu_option_count(e); o++) {
+            const char *k = bw_mod_menu_option_key(e, o);
+
+            if (strcmp(k, "e.lives") == 0) lives = o;
+            if (strcmp(k, "e.cap") == 0) cap = o;
+            if (strcmp(k, "e.tag") == 0) tag = o;
+            if (strcmp(k, "e.lob") == 0) lob = o;
+            if (strcmp(k, "e.cond") == 0) cond = o;
+            if (strcmp(k, "e.miss") == 0) miss = o;
+        }
+        BW_REQUIRE("every option is declared",
+                   lives < 99 && cap < 99 && tag < 99 && lob < 99 && cond < 99 && miss < 99);
+        BW_CHECK_EQ("a label from the language's file",
+                    strcmp(bw_mod_menu_option_label(e, lives), "Lives left"), 0);
+        BW_CHECK_EQ("a help line from the plain file", strcmp(bw_mod_menu_option_help(e, lives), "How many."), 0);
+        BW_CHECK_EQ("the heading", strcmp(bw_mod_menu_option_heading(e, lives), "Rules"), 0);
+        BW_CHECK_EQ("an empty line is as none: the plain choice",
+                    strcmp(bw_mod_menu_option_choice(e, cap, 0), "Off"), 0);
+        BW_CHECK_EQ("a choice from the language's file", strcmp(bw_mod_menu_option_choice(e, cap, 1), "Gym leader"), 0);
+        BW_CHECK_EQ("the value shown", strcmp(bw_mod_menu_option_text(e, cap, buf, sizeof buf), "Off"), 0);
+        BW_CHECK_EQ("@key names are not the mode word", (long)bw_mod_menu_option_choice_count(e, tag), 2);
+        BW_CHECK_EQ("the mode word after them still is", (long)bw_mod_menu_option_in_mode(e, tag, 0), 1);
+        BW_CHECK_EQ("@lobby after them", (long)bw_mod_menu_option_in_lobby(e, lob), 1);
+        BW_CHECK_EQ("and the names stay two", (long)bw_mod_menu_option_choice_count(e, lob), 2);
+        BW_CHECK_EQ("a condition on a @key choice: not yet", (long)bw_mod_menu_option_shown(e, cond), 0);
+        BW_CHECK_EQ("the choice is set", (long)bw_mod_menu_option_set(e, cap, 1), 0);
+        BW_CHECK_EQ("a condition on a @key choice: now", (long)bw_mod_menu_option_shown(e, cond), 1);
+        BW_CHECK_EQ("the tab's title", strcmp(bw_mod_menu_tab_title(e, 0), "Words"), 0);
+        BW_CHECK_EQ("the mode's title", strcmp(bw_mod_menu_mode_title(e, 0), "Solo"), 0);
+        BW_CHECK_EQ("the mode's line", strcmp(bw_mod_menu_mode_line(e, 0), "On your own."), 0);
+        BW_CHECK_EQ("a key no file has shows as the key", strcmp(bw_mod_menu_option_label(e, miss), "e.missing"), 0);
+
+        bw_mod_menu_reset();
+        for (i = 0; i < sizeof e_files / sizeof e_files[0]; i++) {
+            remove(e_files[i]);
+        }
+        (void)BW_RMDIR(T_MODS "/epsilon");
+        (void)BW_RMDIR(T_ROOT "/e");
+    }
+
     bw_mod_menu_reset();
     bw_clear_mods();
     clean_tree();

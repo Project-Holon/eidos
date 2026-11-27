@@ -1019,6 +1019,14 @@ The payloads of the version 6 events (`docs/mod-events.md`, section 1,
 | `move` | u16 | the move the game looks for |
 | `known` | u8 | the game's answer; a mod sets 1 to make it known (written back) |
 
+**`confirm.done`** (version 7)
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ticket` | u32 | the number `confirm_ask` gave |
+| `tag` | u32 | the asker's own number for the question (`confirm_ask`'s `tag`, a rule's `ask` tag; 0 when none) |
+| `answer` | u8 | 1 yes, 0 no (B is no) |
+
 ## Still to build
 
 1. **The applier the nickname's row still needs.** `mon.nickname`'s `force`

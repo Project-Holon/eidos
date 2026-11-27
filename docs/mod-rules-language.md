@@ -59,6 +59,7 @@ rule <name> on <event>
 | `box <mon> <n>` | move a party Pokemon (or party position) to box `n` (0 first); applied at the next field step (version 4) |
 | `withdraw <box> <slot>` | move the Pokemon at (`box`, `slot`) to the party; applied at the next field step (version 4) |
 | `gift "<file>"` | put the Wonder Card of `<file>` in the Mystery Gift album, once per save (version 7, below) |
+| `ask <expr> [<tag>]` | ask the player a yes/no question with the game's own menu (version 7). The answer is the event `confirm.done` (`event.answer` 1 yes, 0 no; `event.tag` the tag, 0 when none); a rule on it sees only its own mod's answers, so `when event.tag == 2 and event.answer == 1` picks the yes to `ask @q.trade 2` |
 
 ### Targets
 
@@ -89,11 +90,13 @@ A target is a modifiable payload field, a game state field or a mod cell:
 <sum>     = <product> { ( "+" | "-" ) <product> }
 <product> = <unary> { ( "*" | "/" | "%" ) <unary> }
 <unary>   = [ "-" ] <atom>
-<atom>    = <number> | "true" | "false" | <text> | <name> | "(" <expr> ")"
+<atom>    = <number> | "true" | "false" | <text> | <name> | <string>
+          | "(" <expr> ")"
 <name>    = "event" "." <field> | <state-field> [ "[" <expr> "]" ]
           | "state" "." <ident> [ "[" <expr> "]" ]
           | "setting" "." <ident>
           | "table" "." <ident> "[" <expr> "]"
+<string>  = "@" <key> [ "(" <expr> { "," <expr> } ")" ]
 ```
 
 The two-character operators are `==`, `!=`, `<=`, `>=`, `&&` and `||`. Any
@@ -105,6 +108,11 @@ mean what they look like. `=`, `&` and `|` alone are errors.
 - `table.<name>[key]` reads the mod's own data table (`docs/mod-tables.md`);
   a key the table does not list reads the table's default. A rule that names
   a table its mod does not declare is refused at load.
+- `@<key>` is a text of the mod's strings files in the game's language
+  (`strings.<lang>.txt`, else `strings.txt`, `docs/mod-strings.md`), and
+  `@<key>(<value>, ...)` puts the values, texts or numbers, in its `{1}` to
+  `{9}` places: `do message @nuz.dead(state.lost, 3 - state.lost)`. A key
+  neither file has is refused at load (version 7).
 
 ### Types
 
@@ -112,7 +120,7 @@ mean what they look like. `=`, `&` and `|` alone are errors.
 |---|---|
 | `int` | a 32-bit signed value; every numeric payload and state field |
 | `bool` | true or false; comparisons and flag fields |
-| `text` | a string literal or a nickname |
+| `text` | a string literal, a nickname or a `@<key>` text |
 | `mon` | a Pokemon reference, a `BwMonRef` payload field |
 
 A comparison needs the same type on both sides; arithmetic needs `int`. A

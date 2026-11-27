@@ -260,6 +260,18 @@ static BwHandoffConfirmFn g_confirm;
 static void              *g_confirm_user;
 static BwHandoffReloadFn  g_reload;
 
+/* A whole save whose question is still on its way to the player: the blob
+ * and where its parts are, kept until bw_mod_handoff_answer. */
+typedef struct BwHandoffWaiting {
+    u32 peer;
+    u8 *blob;
+    u32 ns_len;
+    u32 save_len;
+    u32 state_len;
+} BwHandoffWaiting;
+
+static BwHandoffWaiting g_waiting;
+
 /* The port's own key (the empty namespace): the handoff's pieces travel
  * under it, and the port's session handler takes them in. */
 #define BW_MOD_HANDOFF_PORT_KEY ""
@@ -798,6 +810,7 @@ static void finish_save(u32 peer, BwHandoffStream *st)
     u32 ns_len;
     u32 save_len;
     u32 state_len;
+    int answer;
     u32 save_crc;
     u32 state_crc;
     char name[BW_MOD_HANDOFF_NS_MAX + 1];
@@ -851,12 +864,52 @@ static void finish_save(u32 peer, BwHandoffStream *st)
                 (unsigned int)peer);
         return;
     }
-    if (g_confirm(peer, save, save_len, g_confirm_user) == 0) {
+    answer = g_confirm(peer, save, save_len, g_confirm_user);
+    if (answer == BW_HANDOFF_CONFIRM_LATER) {
+        /* The question is asked in its own turn: the blob is kept until
+         * the answer comes (bw_mod_handoff_answer). */
+        if (g_waiting.blob != NULL) {
+            fprintf(stderr, "eidos: handoff: a save is already waiting for "
+                            "the player's answer; the save from peer %u was "
+                            "dropped\n", (unsigned int)peer);
+            return;
+        }
+        g_waiting.peer = peer;
+        g_waiting.blob = st->buf;
+        g_waiting.ns_len = ns_len;
+        g_waiting.save_len = save_len;
+        g_waiting.state_len = state_len;
+        st->buf = NULL;             /* the stream's drop leaves it */
+        return;
+    }
+    if (answer == 0) {
         fprintf(stderr, "eidos: handoff: the save from peer %u was refused\n",
                 (unsigned int)peer);
         return;
     }
     install_save(peer, name, save, save_len, state, state_len);
+}
+
+void bw_mod_handoff_answer(u32 peer, int yes)
+{
+    char name[BW_MOD_HANDOFF_NS_MAX + 1];
+    BwHandoffWaiting w = g_waiting;
+    const u8 *save;
+
+    if (w.blob == NULL || w.peer != peer) {
+        return;
+    }
+    memset(&g_waiting, 0, sizeof(g_waiting));
+    if (yes == 0) {
+        fprintf(stderr, "eidos: handoff: the save from peer %u was refused\n",
+                (unsigned int)peer);
+    } else {
+        memcpy(name, w.blob + BW_MOD_HANDOFF_BLOB_HEAD, w.ns_len);
+        name[w.ns_len] = '\0';
+        save = w.blob + BW_MOD_HANDOFF_BLOB_HEAD + w.ns_len;
+        install_save(peer, name, save, w.save_len, save + w.save_len, w.state_len);
+    }
+    free(w.blob);
 }
 
 /* One piece of a save. */
@@ -1117,5 +1170,8 @@ void bw_mod_handoff_reset(void)
     }
     free(g_send.blob);
     memset(&g_send, 0, sizeof(g_send));
+    /* (its question went with the message queue's reset) */
+    free(g_waiting.blob);
+    memset(&g_waiting, 0, sizeof(g_waiting));
     g_bound = 0;
 }

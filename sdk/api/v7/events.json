@@ -279,7 +279,7 @@
       "size": 16,
       "doc": "The player is about to warp to another map (a door, stairs, Fly, a cave exit); the destination can be changed.",
       "details": "",
-      "where": "`EVENT_MAPCHANGE_ChangeFieldEvent` 0x021841C0",
+      "where": "`EVENT_MAPCHANGE_ChangeFieldEvent` 0x021841C0, its first step (the map change runs it every frame with its step; step 0 is before the old map goes)",
       "refuse": null,
       "modify": "destination",
       "fields": [
@@ -423,7 +423,7 @@
       "size": 16,
       "doc": "A trainer saw the player and is about to walk up for a battle; refused, the trainer does not see the player.",
       "details": "",
-      "where": "`EVENT_TRAINER_EYE_Check` 0x021AE0CC",
+      "where": "`EVENT_TRAINER_EYE_Check` 0x021AE0CC, when the game's own search (`EVENT_TRAINER_EYE_FindTrainer`) finds a trainer who sees the player; the field asks at every step",
       "refuse": "the trainer does not see the player (the function returns no event)",
       "modify": null,
       "fields": [
@@ -622,7 +622,7 @@
       "size": 24,
       "doc": "A wild Pokemon was rolled on the field, before the battle starts; species, level and shiny can be changed, or the roll done again; refused, there is no encounter.",
       "details": "",
-      "where": "the return of `FIELD_ENCOUNT_CreateZoneWildMons` 0x021A954C; roamers the return of `FIELD_ENCOUNT_PickRoamer` 0x021A957C",
+      "where": "the return of `FIELD_ENCOUNT_CreateZoneWildMons` 0x021A954C; roamers the return of `FIELD_ENCOUNT_PickRoamer` 0x021A957C when it picks one (every wild check asks it first)",
       "refuse": "no battle; the player keeps walking; the payload names the area, the method (grass, surf, fishing, shaking grass) and the slot",
       "modify": "species, level, shiny; the second Pokemon of a double; a reroll",
       "fields": [
@@ -749,7 +749,7 @@
       "size": 16,
       "doc": "A story or fixed battle with a wild Pokemon is about to start (a legendary, a gift battle); species and level can be changed.",
       "details": "",
-      "where": "`EVENT_BATTLE_CreateScriptedBattle` 0x0216E7C8",
+      "where": "`EVENT_BATTLE_CreateScriptedBattle` 0x0216E7C8 when a script starts the battle (`FIELD_ENCOUNT_StartScriptedWild`, the one caller that passes 1 as the fourth argument); the walking, fishing and Entree Forest wild battles go through the same function and fire `encounter.wild` only",
       "refuse": null,
       "modify": "species, level",
       "fields": [
@@ -1875,7 +1875,7 @@
       "size": 20,
       "doc": "A battle is set up and about to start; the format and a level change for the opposing Pokemon can be set.",
       "details": "",
-      "where": "`BTL_SETUP_Create` 0x02013090 (arm9); the return of the setups: the wild `BTL_SETUP_SetupWild` 0x0201347C (arm9), the trainer `FIELD_ENCOUNT_SetupTrainerBattle` 0x021AA5CC (ov021), the scripted `EVENT_BATTLE_CreateScriptedBattle` 0x0216E7C8 (ov010)",
+      "where": "once per battle: the return of the first setup that builds it, the wild `BTL_SETUP_SetupWild` 0x0201347C (arm9), the trainer `FIELD_ENCOUNT_SetupTrainerBattle` 0x021AA5CC (ov021) or the scripted `EVENT_BATTLE_CreateScriptedBattle` 0x0216E7C8 (ov010); for a battle none of them builds, the first frame of the battle (below)",
       "refuse": null,
       "modify": "format, levels; the payload names the trainer ids and whether the battle is wild",
       "fields": [
@@ -4754,6 +4754,67 @@
           "writable": false,
           "rule_name": "key",
           "doc": "the button's key, NUL-terminated",
+          "c_type": "u8"
+        }
+      ]
+    },
+    {
+      "id": 129,
+      "name": "confirm.done",
+      "category": "progress",
+      "since": 7,
+      "refusable": false,
+      "struct": "EidosConfirmDone",
+      "c_struct": "BwConfirmDone",
+      "size": 20,
+      "doc": "The player answered a question a mod asked with confirm_ask (docs/mod-services.md, \"Messages\").",
+      "details": "Every code mod with a handler sees it and knows its own by the ticket; a rule sees only its own mod's answers and knows them by the tag it gave.",
+      "where": "the player's answer to a question a mod asked with `confirm_ask` or a rule's `ask`",
+      "refuse": null,
+      "modify": null,
+      "fields": [
+        {
+          "name": "ticket",
+          "type": "uint32_t",
+          "offset": 8,
+          "size": 4,
+          "count": null,
+          "writable": false,
+          "rule_name": "ticket",
+          "doc": "the number `confirm_ask` gave",
+          "c_type": "u32"
+        },
+        {
+          "name": "tag",
+          "type": "uint32_t",
+          "offset": 12,
+          "size": 4,
+          "count": null,
+          "writable": false,
+          "rule_name": "tag",
+          "doc": "the asker's own number for the question (`confirm_ask`'s `tag`, a rule's `ask` tag; 0 when none)",
+          "c_type": "u32"
+        },
+        {
+          "name": "answer",
+          "type": "uint8_t",
+          "offset": 16,
+          "size": 1,
+          "count": null,
+          "writable": false,
+          "rule_name": "answer",
+          "doc": "1 yes, 0 no (B is no)",
+          "c_type": "u8"
+        },
+        {
+          "name": "pad",
+          "type": "uint8_t",
+          "offset": 17,
+          "size": 3,
+          "count": 3,
+          "writable": false,
+          "rule_name": "pad",
+          "doc": "",
           "c_type": "u8"
         }
       ]

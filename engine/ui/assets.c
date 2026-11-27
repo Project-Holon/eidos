@@ -65,6 +65,10 @@ typedef struct UiFontData {
 
 static UiFontData g_font[3];
 
+/* sdk/vfs_narc.c: how many members the mods bring to an archive (weak: the
+ * interface's tests link this file without the file layer) */
+extern int bw_vfs_member_overrides(const char *rel) __attribute__((weak));
+
 static u32 rd16(const u8 *p) { return (u32)p[0] | ((u32)p[1] << 8); }
 static u32 rd32(const u8 *p) { return rd16(p) | (rd16(p + 2) << 16); }
 
@@ -165,9 +169,15 @@ static int font_parse(UiFontData *f, const u8 *data, u32 size)
  * codes take the font's own nearest letter (its capitals with an accent
  * are drawn small, as its A-umlaut and U-umlaut are, so the lower case
  * letter with the same accent stands in), and u-grave is its u-acute with
- * the accent turned round.
+ * the accent turned round.  Its two capital Es with an accent sit one slot
+ * on: the E-acute slot holds the E with a grave accent and the
+ * E-circumflex slot the E with an acute one (the E-grave slot holds
+ * another letter), so they move back to their codes, and E-circumflex,
+ * which it lacks, takes e-circumflex.  The cartridge's font only: a font a
+ * mod brings (ui_font_load_nftr, or a/0/2/3 members from a mod) keeps
+ * its slots.
  */
-static void small_fix(UiFontData *f)
+static void small_fix(UiFontData *f, int cartridge)
 {
     static const u16 sub[][2] = {
         { 0xC2, 0xE2 }, { 0xC3, 0xE3 }, { 0xC5, 'A' }, { 0xC6, 'A' }, { 0xC7, 0xE7 },
@@ -177,7 +187,13 @@ static void small_fix(UiFontData *f)
         { 0xFD, 'y' }, { 0xFE, 'p' }, { 0xFF, 'y' },
     };
     u32 i, g = f->map[0xFA];
+    u16 e_grave = f->map[0xC9], e_acute = f->map[0xCA];
 
+    if (cartridge) {
+        f->map[0xC8] = e_grave;
+        f->map[0xC9] = e_acute;
+        f->map[0xCA] = f->map[0xEA];
+    }
     for (i = 0; i < sizeof sub / sizeof sub[0]; i++) {
         if (f->map[sub[i][1]] != 0xFFFF) {
             f->map[sub[i][0]] = f->map[sub[i][1]];
@@ -418,7 +434,7 @@ int ui_font_load_nftr(int font, const u8 *data, u32 size)
     f->tried = 1;
     f->ok = 1;
     if (font == 1) {
-        small_fix(f);
+        small_fix(f, 0);
     }
     port_marks(f);
     return 0;
@@ -443,7 +459,7 @@ static void font_ensure(int font)
         f->size = size;
         f->ok = 1;
         if (font == 1) {
-            small_fix(f);
+            small_fix(f, bw_vfs_member_overrides == NULL || bw_vfs_member_overrides("a/0/2/3") == 0);
         }
         port_marks(f);
     } else {

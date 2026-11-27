@@ -25,6 +25,7 @@
  * the highlighted row.
  */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -440,14 +441,59 @@ static OptWork *g_w;
 
 /* ---- text ---- */
 
+/* The game's glyph lookup (the address sdk/mod_text.c gives it): the index
+ * of a character in a font, the same index as '?' for one it lacks. */
+struct GfFont;
+extern u32 GF_FONT_GetGlyphIndex(struct GfFont *font, u16 ch) __attribute__((weak));
+
+/* The next character of UTF-8 text in [*s, end): its code point, or '?'
+ * for a byte that starts none. */
+static u32 utf8_next(const u8 **s, const u8 *end)
+{
+    u32 c = **s;
+    int k, more = c >= 0xF0u ? 3 : c >= 0xE0u ? 2 : c >= 0xC0u ? 1 : 0;
+
+    (*s)++;
+    if (c < 0x80u) {
+        return c;
+    }
+    if (more == 0) {
+        return '?';
+    }
+    c &= 0x3Fu >> more;
+    for (k = 0; k < more; k++) {
+        if (*s >= end || (**s & 0xC0u) != 0x80u) {
+            return '?';
+        }
+        c = (c << 6) | (**s & 0x3Fu);
+        (*s)++;
+    }
+    return c;
+}
+
+/* The text in the game's code units, the screen font's own characters: a
+ * mod's label or help line in its own language ("Pokémon") is UTF-8, and a
+ * byte taken as a code unit sent the font's read past its archive.  A
+ * character the font lacks shows as '?'. */
 static void *ascii_obj(const char *t, int n)
 {
     u16 buf[96];
+    const u8 *s = (const u8 *)t, *end = (const u8 *)t + n;
     void *o;
-    int i;
+    int i = 0;
 
-    for (i = 0; i < n && i < 94; i++) {
-        buf[i] = (u8)t[i];
+    while (s < end && i < 94) {
+        u32 c = utf8_next(&s, end);
+
+        if (c >= 0x80u) {
+            struct GfFont *font = g_w != NULL ? (struct GfFont *)(uintptr_t)g_w->font : NULL;
+
+            if (c > 0xFFFFu || font == NULL || GF_FONT_GetGlyphIndex == NULL ||
+                GF_FONT_GetGlyphIndex(font, (u16)c) == GF_FONT_GetGlyphIndex(font, (u16)'?')) {
+                c = '?';
+            }
+        }
+        buf[i++] = (u16)c;
     }
     buf[i] = 0xFFFF;
     o = func_020457B0((u32)(i + 1), OPT_HEAP);
@@ -474,6 +520,9 @@ static int put_text(u32 win, const char *t, int x, int right, int room, int y,
     while (w > room && n > 1) {
         func_02045808(o);
         n--;
+        while (n > 1 && ((u8)t[n] & 0xC0u) == 0x80u) {
+            n--;                /* a whole character at a time */
+        }
         o = ascii_obj(t, n);
         w = (int)func_0201D304(o, g_w->font, 0);
     }
@@ -529,12 +578,18 @@ static void win_commit(u32 win)
     func_02041B6C(func_02045730(win));
 }
 
-/* The rows are in capitals, as the title menu's are. */
+/* The rows are in capitals, as the title menu's are.  The translated rows
+ * (engine/ui/ui_lang.tsv) are UTF-8: a small accented Latin-1 letter
+ * (U+00E0..U+00FE, but U+00F7, the division sign) is C3 A0..C3 BE, and its
+ * capital 0x20 below it, as the game writes "RÉGLAGES". */
 static void upper(char *t)
 {
     for (; *t; t++) {
         if (*t >= 'a' && *t <= 'z') {
             *t = (char)(*t - 'a' + 'A');
+        } else if ((u8)t[0] == 0xC3u && (u8)t[1] >= 0xA0u && (u8)t[1] <= 0xBEu && (u8)t[1] != 0xB7u) {
+            t[1] = (char)((u8)t[1] - 0x20u);
+            t++;
         }
     }
 }
@@ -1252,10 +1307,25 @@ const void *eidos_opt_proc_table(void)
  * typedefs, and this file has its own (a second typedef of the same name
  * in one translation unit is a constraint violation in C99).
  */
-extern int  bw_mod_message_confirm(const char *text);
+extern int  bw_mod_message_ask(const char *text, u32 tag,
+                                void (*fn)(void *user, u32 ticket, u32 tag, int yes),
+                                void *user, u32 *ticket);
 extern void bw_mod_handoff_set_confirm(int (*fn)(u32 peer, const void *buf,
                                                   u32 size, void *user),
                                         void *user);
+extern void bw_mod_handoff_answer(u32 peer, int yes);
+
+/* The handoff's "answer later" (sdk/mod_handoff.h, BW_HANDOFF_CONFIRM_LATER). */
+#define HANDOFF_CONFIRM_LATER (-1)
+
+/* The player's answer, on the frame after the menu closed: the tag is the
+ * peer the save came from. */
+static void handoff_answer(void *user, u32 ticket, u32 tag, int yes)
+{
+    (void)user;
+    (void)ticket;
+    bw_mod_handoff_answer(tag, yes);
+}
 
 static int handoff_confirm(u32 peer, const void *buf, u32 size, void *user)
 {
@@ -1266,7 +1336,12 @@ static int handoff_confirm(u32 peer, const void *buf, u32 size, void *user)
     (void)user;
     snprintf(text, sizeof text, TRF("Peer %u sent a save. Take it?"),
              (unsigned int)peer);
-    return bw_mod_message_confirm(text);
+    /* The question gets a turn of its own with the game's yes/no menu; a
+     * question that cannot be queued is a no. */
+    if (bw_mod_message_ask(text, peer, handoff_answer, NULL, NULL) != 0) {
+        return 0;
+    }
+    return HANDOFF_CONFIRM_LATER;
 }
 
 /*

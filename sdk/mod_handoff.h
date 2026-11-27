@@ -96,6 +96,18 @@ typedef int (*BwHandoffConfirmFn)(u32 peer, const void *buf, u32 size,
 void bw_mod_handoff_set_confirm(BwHandoffConfirmFn fn, void *user);
 
 /*
+ * The callback may also answer "later": it has asked the question in a
+ * turn of its own (the game's yes/no menu, sdk/mod_message.h, "The
+ * question with a ticket") and the answer comes on a later frame.  The
+ * handoff keeps the save until then, and the port hands the answer in
+ * with bw_mod_handoff_answer (1 takes the save).  One save waits at a
+ * time; another that arrives meanwhile is dropped, and the reset drops
+ * the one that waits.
+ */
+#define BW_HANDOFF_CONFIRM_LATER (-1)
+void bw_mod_handoff_answer(u32 peer, int yes);
+
+/*
  * The reload: the save is installed and the game goes on with it.  The
  * port's own call, because only the port can start the game again (the
  * boot owns the run's start-up, demo/eidos_boot.c).

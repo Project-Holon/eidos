@@ -904,6 +904,19 @@ static void build_route_change(const BwEventCall *call, BwEventPayload *out)
  * the rail cell of the destination in its own way, and the cell the port
  * reads is the one of a direct position.
  */
+/*
+ * map.warp fires once per warp.  EVENT_MAPCHANGE_ChangeFieldEvent is the
+ * map change's event function, run every frame with its step (*seq) until
+ * the new map is up; its first step (0) is before anything of the old map
+ * goes, so the warp fires there alone.
+ */
+static int when_map_warp_starts(const BwEventCall *call)
+{
+    const int *seq = (const int *)call->a[1];
+
+    return seq != NULL && *seq == 0;
+}
+
 static void build_map_warp(const BwEventCall *call, BwEventPayload *out)
 {
     const BwPortChangeFieldWork *change =
@@ -1053,6 +1066,23 @@ static void build_trainer_spotted(const BwEventCall *call, BwEventPayload *out)
     if (EVENT_TRAINER_EYE_FindTrainer(fieldMap, hit.trainer, &partner) == 1) {
         out->trainer_spotted.partner_id = (u16)partner.trainerId;
     }
+}
+
+/*
+ * trainer.spotted fires when a trainer sees the player.  The field asks
+ * EVENT_TRAINER_EYE_Check at every step and most steps nobody looks, so the
+ * row fires only when the game's own search finds a trainer.
+ */
+static int when_trainer_spotted(const BwEventCall *call)
+{
+    struct FieldMap *fieldMap = (struct FieldMap *)call->a[0];
+    struct BwPortTrainerEyeHit hit;
+
+    if (fieldMap == NULL || EVENT_TRAINER_EYE_FindTrainer == NULL) {
+        return 0;
+    }
+    memset(&hit, 0, sizeof(hit));
+    return EVENT_TRAINER_EYE_FindTrainer(fieldMap, NULL, &hit) == 1;
 }
 
 /*
@@ -1399,6 +1429,16 @@ static void refuse_encounter_wild(BwEventCall *call)
  * personality is the save's own, and the game does not roll it.  The
  * double flag reads 0: the game sets the roamer's battle up alone.
  */
+/*
+ * encounter.wild for a roamer fires only when the game picked one: every
+ * wild check asks FIELD_ENCOUNT_PickRoamer first, and when it answers no
+ * roamer the area's own encounter follows and fires the event itself.
+ */
+static int when_roamer_picked(const BwEventCall *call)
+{
+    return call->ret != 0;
+}
+
 static void build_encounter_roamer(const BwEventCall *call, BwEventPayload *out)
 {
     const BwPortEncountParam *param = (const BwPortEncountParam *)call->a[1];
@@ -1461,6 +1501,20 @@ static void refuse_encounter_roamer(BwEventCall *call)
  * species in the script that starts the battle, and the setup carries no
  * flag for it.
  */
+/*
+ * encounter.static fires for a battle a script starts.  The game makes
+ * every field wild battle's event with EVENT_BATTLE_CreateScriptedBattle:
+ * the walking and shaking-grass encounters (FIELD_ENCOUNT_CheckWildEncount),
+ * fishing (event_fishing.c), the Entree Forest's and the script's own wild
+ * battle (FIELD_ENCOUNT_StartScriptedWild).  Only the script's passes 1 as
+ * its fourth argument (the event returns to the script at once), so that
+ * call alone is the static encounter; the others are encounter.wild's.
+ */
+static int when_encounter_static(const BwEventCall *call)
+{
+    return call->a[3] != 0u;
+}
+
 static void build_encounter_static(const BwEventCall *call, BwEventPayload *out)
 {
     struct GameSystem *gameSystem = (struct GameSystem *)call->a[0];
@@ -1570,14 +1624,14 @@ static const BwEventBinding g_field_rows[] = {
       BW_SCOPE_ANY, 0u, 0u, build_route_change_walk, NULL, NULL, NULL },
 
     { BW_MOD_REGION_OVL(20), 0x021841C0u, BW_EVENT_MAP_WARP, BW_EVENT_BEFORE,
-      BW_SCOPE_ANY, 0u, 0u, build_map_warp, apply_map_warp, NULL, NULL },
+      BW_SCOPE_ANY, 0u, 0u, build_map_warp, apply_map_warp, NULL, when_map_warp_starts },
 
     { BW_MOD_REGION_OVL(21), 0x0218A9B0u, BW_EVENT_PLAYER_STEP, BW_EVENT_BEFORE,
       BW_SCOPE_ANY, 0u, 0u, build_player_step, NULL, NULL, NULL },
 
     { BW_MOD_REGION_OVL(21), 0x021AE0CCu, BW_EVENT_TRAINER_SPOTTED,
       BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_trainer_spotted, NULL,
-      refuse_trainer_spotted, NULL },
+      refuse_trainer_spotted, when_trainer_spotted },
 
     { BW_MOD_REGION_OVL(21), 0x0218B4B0u, BW_EVENT_NPC_TALK, BW_EVENT_BEFORE,
       BW_SCOPE_ANY, 0u, 0u, build_npc_talk, NULL, refuse_npc_talk, NULL },
@@ -1609,11 +1663,11 @@ static const BwEventBinding g_field_rows[] = {
 
     { BW_MOD_REGION_OVL(21), 0x021A957Cu, BW_EVENT_ENCOUNTER_WILD,
       BW_EVENT_AFTER, BW_SCOPE_ANY, 0u, 0u, build_encounter_roamer,
-      apply_encounter_roamer, refuse_encounter_roamer, NULL },
+      apply_encounter_roamer, refuse_encounter_roamer, when_roamer_picked },
 
     { BW_MOD_REGION_OVL(10), 0x0216E7C8u, BW_EVENT_ENCOUNTER_STATIC,
       BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_encounter_static,
-      apply_encounter_static, NULL, NULL },
+      apply_encounter_static, NULL, when_encounter_static },
 
     { BW_MOD_REGION_OVL(21), 0x021AA5CCu, BW_EVENT_ENCOUNTER_TRAINER,
       BW_EVENT_BEFORE, BW_SCOPE_ANY, 0u, 0u, build_encounter_trainer, NULL,
