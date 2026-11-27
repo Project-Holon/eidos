@@ -1872,6 +1872,15 @@ static s32 state_species_learns(u16 species, u16 form, u16 move, u8 level)
                 break;
             }
         }
+        /* the TMs mods add (TM96 on: bits 101..127, machine_items.txt) */
+        for (item = 101u; (how & 2) == 0 && item < 128u; item++) {
+            u32 it = bw_machine_item_of_bit(item);
+
+            if (it != 0u && FILE_UTIL_GetMachineMove((u16)it) == move &&
+                POKE_TOOL_CheckSpeciesTmCompat(species, form, (s32)item) != 0u) {
+                how |= 2;
+            }
+        }
     }
     /* the egg moves */
     if (ARC_TOOL_LoadMember != NULL && GFL_HEAP_Free != NULL) {

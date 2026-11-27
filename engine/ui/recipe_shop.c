@@ -272,17 +272,52 @@ static int match_shop(void)
 /* Text                                                                */
 /* ------------------------------------------------------------------ */
 
-static char g_name[ITEM_ID_MAX][40];
-static u8   g_name_ok[ITEM_ID_MAX];
-static char g_desc[ITEM_ID_MAX][320];
-static u8   g_desc_ok[ITEM_ID_MAX];
+/* The item caches grow to the highest item asked for (mods add items past
+ * the game's 627, limit.items). */
+static char (*g_name)[40];
+static u8   *g_name_ok;
+static char (*g_desc)[320];
+static u8   *g_desc_ok;
+static u32  g_item_cap;
 static char g_quit[32];
 static const void *g_seen;
 
+/* Room in the item caches for `id`: 1, or 0 (no memory, or no item). */
+static int item_room(u32 id)
+{
+    u32 cap;
+    void *a, *b, *c, *d;
+
+    if (id == 0 || id > 0xFFFEu) {
+        return 0;
+    }
+    if (id < g_item_cap) {
+        return 1;
+    }
+    cap = id < ITEM_ID_MAX ? ITEM_ID_MAX : id + 64u;
+    a = realloc(g_name, cap * sizeof *g_name);
+    if (a != NULL) g_name = (char (*)[40])a;
+    b = realloc(g_name_ok, cap);
+    if (b != NULL) g_name_ok = (u8 *)b;
+    c = realloc(g_desc, cap * sizeof *g_desc);
+    if (c != NULL) g_desc = (char (*)[320])c;
+    d = realloc(g_desc_ok, cap);
+    if (d != NULL) g_desc_ok = (u8 *)d;
+    if (a == NULL || b == NULL || c == NULL || d == NULL) {
+        return 0;
+    }
+    memset(g_name_ok + g_item_cap, 0, cap - g_item_cap);
+    memset(g_desc_ok + g_item_cap, 0, cap - g_item_cap);
+    g_item_cap = cap;
+    return 1;
+}
+
 static void caches_clear(void)
 {
-    memset(g_name_ok, 0, sizeof g_name_ok);
-    memset(g_desc_ok, 0, sizeof g_desc_ok);
+    if (g_item_cap != 0) {
+        memset(g_name_ok, 0, g_item_cap);
+        memset(g_desc_ok, 0, g_item_cap);
+    }
     g_quit[0] = '\0';
 }
 
@@ -290,7 +325,7 @@ static const char *item_name(const Shop *s, u32 id)
 {
     ShopStr b;
 
-    if (id == 0 || id >= ITEM_ID_MAX) {
+    if (!item_room(id)) {
         return "";
     }
     if (!g_name_ok[id]) {
@@ -309,7 +344,7 @@ static const char *item_desc(const Shop *s, u32 id)
 {
     ShopStr b;
 
-    if (id == 0 || id >= ITEM_ID_MAX) {
+    if (!item_room(id)) {
         return "";
     }
     if (!g_desc_ok[id]) {
