@@ -17,7 +17,7 @@
 #
 
 cmake_minimum_required(VERSION 3.16)
-project(eidos VERSION 0.2.7 LANGUAGES C)
+project(eidos VERSION 0.2.8 LANGUAGES C)
 
 # The version players and the lobby see (docs/distribution.md).  A release
 # build (EIDOS_RELEASE=ON, the release workflow) is the plain number; any
@@ -1107,6 +1107,10 @@ endif()
 # rebuild the whole game at each commit.
 set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mp.c APPEND PROPERTY
     COMPILE_DEFINITIONS "EIDOS_VERSION=\"${EIDOS_VERSION_STRING}\"")
+# The release number alone (no commit) to the file that checks a mod's
+# `eidos` line (sdk/vfs.c): a test build counts as the release it will be.
+set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/sdk/vfs.c APPEND PROPERTY
+    COMPILE_DEFINITIONS "EIDOS_RELEASE_VERSION=\"${PROJECT_VERSION}\"")
 # The public relay a session uses when the player has set none
 # (docs/distribution.md): `tls://name:port`.  Empty: no default.
 set(EIDOS_DEFAULT_RELAY "" CACHE STRING "The public relay (tls://name:port), empty for none")
@@ -1800,6 +1804,10 @@ file(GLOB _eidos_port_c ${CMAKE_CURRENT_SOURCE_DIR}/sdk/*.c
      ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform/*.c ${CMAKE_CURRENT_SOURCE_DIR}/demo/*.c)
 add_test(NAME check_port_names COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_port_names.py ${ALETHEIA_ROOT} ${_eidos_port_c})
+# sdk/features.json lists every table file and limit key the code reads
+# (kenon writes a mod's `eidos` line from it)
+add_test(NAME check_features COMMAND ${Python3_EXECUTABLE} -I
+         ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_features.py ${CMAKE_CURRENT_SOURCE_DIR})
 eidos_data_test(test_g2d bw_g2d_oracle)
 
 # The BG test reads its screen list out of the oracle's own manifest, so the

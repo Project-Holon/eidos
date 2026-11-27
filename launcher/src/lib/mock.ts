@@ -28,9 +28,9 @@ const remote = [
 ];
 
 const mods = [
-  { folder: "Nuzlocke", name: "Nuzlocke", order: 0, enabled: true, hasManifest: true, catalogId: "katalogos/nuzlocke", version: "0.9.0", icon: { item: 4 }, games: ["black", "white"] },
-  { folder: "fast-bike", name: "Fast Bike", order: 1, enabled: false, hasManifest: true, catalogId: null, version: null, icon: { species: 506 }, games: ["white"] },
-  { folder: "my-test", name: "my-test", order: 2, enabled: true, hasManifest: false, catalogId: null, version: null, icon: null, games: ["black", "white"] },
+  { folder: "Nuzlocke", name: "Nuzlocke", order: 0, enabled: true, hasManifest: true, catalogId: "katalogos/nuzlocke", version: "0.9.0", icon: { item: 4 }, games: ["black", "white"], eidos: "" },
+  { folder: "fast-bike", name: "Fast Bike", order: 1, enabled: false, hasManifest: true, catalogId: null, version: null, icon: { species: 506 }, games: ["white"], eidos: "" },
+  { folder: "my-test", name: "my-test", order: 2, enabled: true, hasManifest: false, catalogId: null, version: null, icon: null, games: ["black", "white"], eidos: "99.0.0" },
 ];
 
 const catalog = {

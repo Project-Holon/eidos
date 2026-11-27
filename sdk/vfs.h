@@ -72,6 +72,11 @@ int         bw_add_mod_root(const char *path);   /* 0, or -1 (empty, no memory, 
 int         bw_mod_games_of(const char *value, size_t n);  /* the bits a `game` value names; 0: neither */
 int         bw_mod_games_at(const char *root);             /* ... the mod in this folder says */
 int         bw_mod_game_loaded(void);                      /* the data root's game; 0: not known */
+/* A mod's `eidos` line, the oldest eidos it works on (X.Y.Z): a mod that asks
+ * for a newer one than this is not loaded. */
+int         bw_mod_eidos_too_old(const char *need);        /* 1: `need` is newer than this eidos */
+int         bw_mod_needs_eidos_at(const char *root, char *out, size_t size);   /* 1: the mod in `root` is, with its value */
+const char *bw_mod_eidos_version(void);                    /* this eidos's release version ("0.2.8") */
 u32         bw_mod_count(void);
 const char *bw_mod_root_at(u32 i);   /* load order: 0 loads first, wins least */
 const char *bw_mod_name_at(u32 i);

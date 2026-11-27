@@ -270,6 +270,9 @@ typedef struct BwModMenuMod {
                                          * (BW_MOD_GAME_*, sdk/vfs.h; -1: its
                                          * `game` line names none): the port
                                          * does not load it */
+    char needs_eidos[16];               /* its `eidos` line when that asks
+                                         * for a newer eidos than this one,
+                                         * else "": the port does not load it */
     int  has_code;                      /* the mod ships code            */
     u32  option_count;
     u32  option_cap;
@@ -282,6 +285,13 @@ typedef struct BwModMenuMod {
     u32  tab_count;
     int  tab_cur;                       /* the tab the next lines go on, -1 none */
 } BwModMenuMod;
+
+/* A mod the port does not load whatever its switch says: made for the
+ * other game, or for a newer eidos. */
+static int unavailable(const BwModMenuMod *m)
+{
+    return m->needs_game != 0 || m->needs_eidos[0] != '\0';
+}
 
 /* One row of the port's own record: a mod's root, its switch and the
  * player's place in the list. */
@@ -1998,11 +2008,16 @@ static void model_build(void)
 
             g_mods[i].needs_game = games == 0 ? -1 : have != 0 && (games & have) == 0 ? games : 0;
         }
+        /* (made for a newer eidos: the same, named so) */
+        g_mods[i].needs_eidos[0] = '\0';
+        if (g_mods[i].present) {
+            (void)bw_mod_needs_eidos_at(g_mods[i].root, g_mods[i].needs_eidos, sizeof g_mods[i].needs_eidos);
+        }
     }
     model_sort();
     for (i = 0; i < g_count; i++) {
         g_mods[i].base_pos = i;
-        if (g_mods[i].needs_game == 0) {
+        if (!unavailable(&g_mods[i])) {
             read_settings(&g_mods[i]);      /* (a mod for the other game offers no options and no modes) */
         }
     }
@@ -2053,7 +2068,7 @@ static int model_list_matches(void)
     for (i = 0; i < g_count; i++) {
         const char *root;
 
-        if (!g_mods[i].enabled || !g_mods[i].present || g_mods[i].needs_game != 0) {
+        if (!g_mods[i].enabled || !g_mods[i].present || unavailable(&g_mods[i])) {
             continue;
         }
         if (n >= count) {
@@ -2085,7 +2100,7 @@ static int model_rebuild_roots(void)
     u32 i;
 
     for (i = 0; i < g_count; i++) {
-        if (!g_mods[i].enabled || !g_mods[i].present || g_mods[i].needs_game != 0) {
+        if (!g_mods[i].enabled || !g_mods[i].present || unavailable(&g_mods[i])) {
             continue;   /* off, its folder is gone, or it is made for the other game */
         }
         roots[n++] = g_mods[i].root;
@@ -2093,7 +2108,7 @@ static int model_rebuild_roots(void)
     if (!g_player_order) {
         bw_clear_mods();
         for (i = 0; i < g_count; i++) {
-            if (!g_mods[i].enabled || !g_mods[i].present || g_mods[i].needs_game != 0) {
+            if (!g_mods[i].enabled || !g_mods[i].present || unavailable(&g_mods[i])) {
                 continue;
             }
             if (bw_add_mod_root(g_mods[i].root) != 0) {
@@ -2189,7 +2204,7 @@ void bw_mod_menu_start(void)
         (void)model_rebuild_roots();
     }
     for (i = 0; i < g_count; i++) {
-        g_mods[i].running = g_mods[i].enabled && g_mods[i].needs_game == 0;
+        g_mods[i].running = g_mods[i].enabled && !unavailable(&g_mods[i]);
     }
 }
 
@@ -2251,6 +2266,18 @@ int bw_mod_menu_needs_game_at(u32 index)
     return index < g_count ? g_mods[index].needs_game : 0;
 }
 
+const char *bw_mod_menu_needs_eidos_at(u32 index)
+{
+    model_ready();
+    return index < g_count && g_mods[index].needs_eidos[0] != '\0' ? g_mods[index].needs_eidos : NULL;
+}
+
+int bw_mod_menu_unavailable_at(u32 index)
+{
+    model_ready();
+    return index < g_count && unavailable(&g_mods[index]);
+}
+
 const char *bw_mod_menu_about_at(u32 index, int what)
 {
     model_ready();
@@ -2304,7 +2331,7 @@ int bw_mod_menu_dirty(void)
 
     model_ready();
     for (i = 0; i < g_count; i++) {
-        if ((g_mods[i].enabled && g_mods[i].needs_game == 0) != g_mods[i].running) {
+        if ((g_mods[i].enabled && !unavailable(&g_mods[i])) != g_mods[i].running) {
             return 1;
         }
         if (g_mods[i].base_pos != i) {
@@ -2377,7 +2404,7 @@ void bw_mod_menu_revert(void)
 
     model_ready();
     for (i = 0; i < g_count; i++) {
-        if (g_mods[i].needs_game == 0) {    /* (a mod for the other game keeps the switch the player gave it) */
+        if (!unavailable(&g_mods[i])) {    /* (a mod for the other game keeps the switch the player gave it) */
             g_mods[i].enabled = g_mods[i].running;
         }
     }
@@ -2456,7 +2483,7 @@ int bw_mod_menu_apply(void)
     (void)write_record();
 
     for (i = 0; i < g_count; i++) {
-        g_mods[i].running = g_mods[i].enabled && g_mods[i].needs_game == 0;
+        g_mods[i].running = g_mods[i].enabled && !unavailable(&g_mods[i]);
         /* The list is the port's list now, so the order the player chose
          * is the order the list holds: there is nothing left to apply. */
         g_mods[i].base_pos = i;

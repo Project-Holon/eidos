@@ -184,6 +184,14 @@ int bw_mod_menu_present_at(u32 index);
  * load it, whatever its switch says. */
 int bw_mod_menu_needs_game_at(u32 index);
 
+/* The eidos version the mod needs (its `eidos` line, "0.2.9") when that is
+ * newer than this one, else NULL: the port does not load it either. */
+const char *bw_mod_menu_needs_eidos_at(u32 index);
+
+/* 1 when the port does not load the mod whatever its switch says (made for
+ * the other game, or for a newer eidos). */
+int bw_mod_menu_unavailable_at(u32 index);
+
 /* A line of the mod's manifest for a mod list: what 0 its `description`, 1
  * its `author`, 2 its `version`.  "" when the manifest has no such line. */
 const char *bw_mod_menu_about_at(u32 index, int what);

@@ -36,6 +36,8 @@ export type ModInfo = {
   icon: ModIcon | null;
   /** The games it works on ("black", "white"); empty when its game line names neither. */
   games: string[];
+  /** The oldest eidos it works on (its eidos line, "0.2.8"), "" for none. */
+  eidos: string;
 };
 
 /// A mod's icon: a game item's or a species' picture from the player's ROM,

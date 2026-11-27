@@ -3580,11 +3580,13 @@ static int boot_user_dir(char *out, size_t n)
 /* The run plays `game` from its profile: the folders are made, a plain
  * start's old saves are copied in once, and the save folder, the mods
  * folder and the settings file are the profile's from here on. */
-/* The battle handler keys this eidos takes (docs/battle-handlers.md):
- * handler_params.json beside the program, copied to the user folder when
- * it differs there, so kenon finds the one of the eidos that ran last at a
- * fixed place (<user folder>/handler_params.json). */
-static void boot_share_handler_params(void)
+/* The reference files kenon reads, beside the program, copied to the user
+ * folder when they differ there, so kenon finds the ones of the eidos that
+ * ran last at a fixed place: handler_params.json (the battle handler keys
+ * this eidos takes, docs/battle-handlers.md) and features.json (the first
+ * eidos version that reads each table, key and archive a mod may use,
+ * docs/modding.md). */
+static void boot_share_reference(const char *name)
 {
     enum { CAP = 256 * 1024 };
     char exe[1024], user[1024], from[1200], to[1200];
@@ -3593,8 +3595,8 @@ static void boot_share_handler_params(void)
     FILE *f;
 
     if (bw_os_exe_dir(exe, sizeof exe) != 0 || boot_user_dir(user, sizeof user) != 0
-        || snprintf(from, sizeof from, "%s/handler_params.json", exe) >= (int)sizeof from
-        || snprintf(to, sizeof to, "%s/handler_params.json", user) >= (int)sizeof to) {
+        || snprintf(from, sizeof from, "%s/%s", exe, name) >= (int)sizeof from
+        || snprintf(to, sizeof to, "%s/%s", user, name) >= (int)sizeof to) {
         return;
     }
     if ((f = fopen(from, "rb")) == NULL) {
@@ -3614,7 +3616,7 @@ static void boot_share_handler_params(void)
     }
     if (na > 0 && na < (long)CAP && !(na == nb && memcmp(a, b, (size_t)na) == 0)
         && bw_plat_mkdirs(user) == 0 && bw_save_write_atomic(to, a, (u32)na) == 0) {
-        fprintf(stderr, "eidos: the battle handler keys of this version are in %s\n", to);
+        fprintf(stderr, "eidos: this version's %s is in %s\n", name, to);
     }
     free(a);
 }
@@ -4406,7 +4408,8 @@ int main(int argc, char **argv)
     boot_profile_first(argc, argv);
     boot_preview_setup();
     boot_test_saves_setup();
-    boot_share_handler_params();
+    boot_share_reference("handler_params.json");
+    boot_share_reference("features.json");
     if (g_import_only) {
         if (g_profile_game == BW_GAME_UNKNOWN) {
             fprintf(stderr, "eidos: no old saves were copied: the install names no game they are of\n");

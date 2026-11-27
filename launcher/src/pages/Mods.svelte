@@ -23,6 +23,9 @@
     getSettings,
     catalogList,
     catalogInstall,
+    newerThan,
+    LATEST,
+    LOCAL,
     type Catalog,
     type CatalogMod,
     type ModInfo,
@@ -36,9 +39,18 @@
   // The game species icons are drawn from: the profile's.
   const game = $derived(ov.profiles.find((p) => p.name === selected)?.game || "black");
 
-  // A mod made for the other game: eidos does not load it in this profile.
-  // "" when it fits; else what the hover says, the game it needs.
-  function needs(games: string[]): string {
+  // The eidos version the profile runs ("latest": the newest installed); null
+  // for the local build or none, which loads every mod.
+  const engine = $derived.by(() => {
+    const v = ov.profiles.find((p) => p.name === selected)?.version;
+    const r = v === LATEST ? ov.installed[0] : v;
+    return r && r !== LOCAL ? r : null;
+  });
+
+  // A mod made for the other game or for a newer eidos: eidos does not load
+  // it in this profile. "" when it fits; else what the hover says.
+  function needs(games: string[], eidos = ""): string {
+    if (eidos !== "" && engine !== null && newerThan(eidos, engine)) return `Requires eidos ${eidos} or later`;
     if (games.includes(game)) return "";
     if (games.length === 0) return "Requires another game";
     return `Requires Pokémon ${games[0] === "white" ? "White" : "Black"}`;
@@ -187,7 +199,7 @@
     <h2 class="section-label">{mods.length} {mods.length === 1 ? "mod" : "mods"} · {enabled} on</h2>
     <ul class="rows window">
       {#each mods as m (m.folder)}
-        {@const need = needs(m.games)}
+        {@const need = needs(m.games, m.eidos)}
         <li class:off={!m.enabled || need !== ""}>
           <label class="switch" title={need !== "" ? need : m.enabled ? "On" : "Off"}>
             <input

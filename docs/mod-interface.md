@@ -182,6 +182,7 @@ later versions can add keys (`sdk/vfs.c`, `read_manifest`).
 | `ui_text` | relative path | none | the one-screen interface's words in the mod's language (`docs/mod-ui-text.md`) |
 | `multiplayer` | integer from 1 | none | the mod's multiplayer compatibility number; only it has to match between players (`docs/multiplayer.md`) |
 | `game` | `black` or `white` | both | the game version the mod is made for; the port does not load it in the other one, and the mod lists show it as unavailable or leave it out (`sdk/vfs.c`) |
+| `eidos` | `X.Y.Z` | none | the oldest eidos the mod works on; an older eidos (0.2.8 on) does not load it, and the mod list shows it as unavailable with the version it needs (`sdk/vfs.c`). `features.json` beside the program lists the first version that reads each table, key and archive (kenon writes this line from it). A test build counts as the release it will be |
 | `description` | text, one line | none | what the mod does, for a mod list (the game's own mod manager shows it under the name and on the mod's side) |
 | `author` | text | none | who made it |
 | `version` | text | none | the mod's own version, as its maker counts it |
