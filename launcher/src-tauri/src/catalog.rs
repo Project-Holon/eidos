@@ -8,6 +8,7 @@
 //! `katalogos.json` beside the manifest that says which mod and version it
 //! is, so the list can show what is installed and what has an update.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -65,6 +66,11 @@ pub struct CatalogMod {
     pub version: String,
     pub author: String,
     pub description: String,
+    /// The name and the description in other languages (`fr`, `de`, `it`,
+    /// `es`), from the mod's `name.<lang>` and `description.<lang>` lines;
+    /// the Mods page picks the selected profile's.
+    pub names: BTreeMap<String, String>,
+    pub descriptions: BTreeMap<String, String>,
     /// The Official badge: a mod of the index repository unless the index
     /// marks it `unofficial`, another repository's mod only when the index
     /// marks it `official` ([`Mark`]).
@@ -259,6 +265,8 @@ pub fn list(index_setting: &str, cache: &Path) -> Result<Catalog, String> {
                 version: j.version,
                 author: j.author,
                 description: j.description,
+                names: j.names,
+                descriptions: j.descriptions,
                 official: marks[i].badge(e.repo.is_some() && e.official.is_none(), j.official),
                 multiplayer: j.multiplayer.is_some(),
                 has_code: j.has_code,

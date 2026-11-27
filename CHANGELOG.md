@@ -14,6 +14,7 @@ Custom Pokémon species, types, TMs, and battle effects, expanded data-table mod
 - **Post-Install Save Maintenance**: Legacy save import and save-slot cleanup now run immediately after a new engine version finishes installing rather than waiting for the next launcher restart, and the save list header now displays the total save count instead of `"of 8"`.
 - **Window Scaling**: Scaled the launcher UI proportionally with the window so text, cards, sprites, and spacing keep their 1280×720 proportions at 1080p, 1440p, and 4K.
 - **Layout & Scrolling**: Fixed short lists scrolling alongside long ones, kept the Settings `Save` button in view, slimmed scrollbars to fit cards, made the sidebar appear immediately during page loads, and eliminated the white startup flash.
+- **Translated Mod Listings**: The `Mods` page shows each index mod's name and description in the selected profile's language (French, German, Italian, or Spanish) when the mod provides `name.<lang>` and `description.<lang>` lines, and falls back to its own name and description otherwise.
 
 ### Modding
 - **Custom Species, Forms & Cries**:

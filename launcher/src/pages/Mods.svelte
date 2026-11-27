@@ -39,6 +39,12 @@
   // The game species icons are drawn from: the profile's.
   const game = $derived(ov.profiles.find((p) => p.name === selected)?.game || "black");
 
+  // A mod's name and description in the profile's language (fr, de, it, es),
+  // else its own (eidos reads a mod's text the same way: sdk/mod_strings.c).
+  const lang = $derived(ov.profiles.find((p) => p.name === selected)?.language ?? "");
+  const nameOf = (c: CatalogMod) => c.names?.[lang] || c.name;
+  const descOf = (c: CatalogMod) => c.descriptions?.[lang] || c.description;
+
   // The eidos version the profile runs ("latest": the newest installed); null
   // for the local build or none, which loads every mod.
   const engine = $derived.by(() => {
@@ -123,7 +129,7 @@
   async function install(c: CatalogMod) {
     installing = c.id;
     const s = modState(c);
-    await run(() => catalogInstall(selected, c.index), s === "update" ? `${c.name} updated.` : `${c.name} installed.`);
+    await run(() => catalogInstall(selected, c.index), s === "update" ? `${nameOf(c)} updated.` : `${nameOf(c)} installed.`);
     installing = null;
   }
 
@@ -244,13 +250,13 @@
             <ModIcon icon={c.icon} {game} />
             <div class="main">
               <span class="title">
-                {c.name}
+                {nameOf(c)}
                 {#if c.official}<span class="badge accent">Official</span>{/if}
                 {#if c.multiplayer}<span class="badge">Multiplayer</span>{/if}
                 {#if c.hasCode}<span class="badge" title="Runs custom code in the game">Code</span>{/if}
               </span>
               <span class="sub">{c.author} · {c.version} · {size(c.size)}{c.games.length === 1 ? ` · ${c.games[0] === "black" ? "Black" : "White"} only` : ""}</span>
-              <span class="desc">{c.description}</span>
+              <span class="desc">{descOf(c)}</span>
             </div>
             <div class="actions">
               {#if st === "installed"}

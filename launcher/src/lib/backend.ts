@@ -50,6 +50,9 @@ export type CatalogMod = {
   version: string;
   author: string;
   description: string;
+  /// The name and the description in other languages (fr, de, it, es).
+  names: Record<string, string>;
+  descriptions: Record<string, string>;
   /// The Official badge: an index mod unless the index marks it
   /// unofficial, another repository's mod only when marked official.
   official: boolean;
