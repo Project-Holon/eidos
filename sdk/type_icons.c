@@ -117,6 +117,7 @@ typedef struct AddedType {
 } AddedType;
 
 static AddedType g_types[ADDED];
+static u32 g_game_color[GAME_TYPES];   /* a game type's `color` line: 0x1000000 | RRGGBB, else 0 */
 
 static AddedType *added(u32 type)
 {
@@ -163,8 +164,28 @@ static void type_line(const char *path, u32 line, char *text, int root)
         fprintf(stderr, "eidos: %s:%u: expected `<type> = <key> <values> ...`\n", path, (unsigned)line);
         return;
     }
-    if (type < GAME_TYPES || type > MAX_TYPE) {
-        fprintf(stderr, "eidos: %s:%u: type %lu is not an added type (17 to 30)\n", path, (unsigned)line, type);
+    if (type > MAX_TYPE) {
+        fprintf(stderr, "eidos: %s:%u: type %lu is not a type (0 to 30)\n", path, (unsigned)line, type);
+        return;
+    }
+    if (type < GAME_TYPES) {
+        u32 c;
+
+        /* a game type's line holds its colour only (bw_type_color) */
+        for (end++; *end == ' ' || *end == '\t'; end++) {
+        }
+        if (strncmp(end, "color", 5) != 0 || (end[5] != ' ' && end[5] != '\t')) {
+            fprintf(stderr, "eidos: %s:%u: a game type's line (0 to 16) holds only `color RRGGBB`\n", path,
+                    (unsigned)line);
+            return;
+        }
+        for (end += 5; *end == ' ' || *end == '\t'; end++) {
+        }
+        if (rgb(end, &c) != 0) {
+            fprintf(stderr, "eidos: %s:%u: expected `color RRGGBB`\n", path, (unsigned)line);
+            return;
+        }
+        g_game_color[type] = 0x1000000u | c;
         return;
     }
     for (end++; n < 40;) {
@@ -264,6 +285,7 @@ static void read_types(void)
     u32 m;
 
     memset(g_types, 0, sizeof g_types);
+    memset(g_game_color, 0, sizeof g_game_color);
     for (m = 0; m < bw_mod_count(); m++) {
         const char *root = bw_mod_root_at(m);
         char path[1200], line[1024];
@@ -491,6 +513,15 @@ int bw_type_ui_color(u32 type, u32 *rgb)
     }
     *rgb = t->has_color ? t->color : t->first_rgb;
     return 1;
+}
+
+int bw_type_color(u32 type, u32 *rgb)
+{
+    if (type < GAME_TYPES) {
+        *rgb = g_game_color[type] & 0xFFFFFFu;
+        return g_game_color[type] != 0;
+    }
+    return bw_type_ui_color(type, rgb);
 }
 
 /* ------------------------------------------------------------------ */

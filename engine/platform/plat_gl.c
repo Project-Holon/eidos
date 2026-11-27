@@ -309,6 +309,11 @@ static const char *k_fsw =
     "uniform int under;\n"
     "uniform float vpy;\n"
     "uniform float vpx;\n"
+    /* wide: the screen's text BGs continue past its left and right edges
+     * (a move's effect background); side: the screen 256 pixels further
+     * right (DS columns 256 to 511) */
+    "uniform sampler2D side;\n"
+    "uniform int wide;\n"
     "in vec2 uv;\n"
     "out vec4 color;\n"
     SHARP_FN
@@ -330,6 +335,22 @@ static const char *k_fsw =
     /* A scene drawn for the DS's own frame: nothing outside its rectangle. */
     "    if (crop != 0 && (duv.x < 0.0 || duv.y < 0.0 || duv.x >= 1.0 || duv.y >= 1.0)) {\n"
     "        color = vec4(0.0, 0.0, 0.0, 1.0);\n"
+    "        return;\n"
+    "    }\n"
+    /* A move's effect background (BG3 with the move's picture, the other
+     * 2D layers left out) continues past the DS screen's left and right
+     * edges as the hardware wraps its map: BG3's map is 512 pixels wide
+     * (the battle's BG3 template, screen size 512 x 512), so DS column x
+     * shows what column x & 511 shows.  `behind` (the screen with the 3D
+     * off) holds columns 0 to 255, `side` 256 to 511.  The 3D goes over it
+     * as inside. */
+    "    if (!inside && wide != 0 && hide2d == 0 && duv.y >= 0.0 && duv.y < 1.0) {\n"
+    "        ivec2 bs = textureSize(behind, 0);\n"
+    "        int cx = int(floor(duv.x * 256.0)) & 511;\n"
+    "        int cy = clamp(int(floor(duv.y * 192.0)), 0, 191);\n"
+    "        vec3 B = cx < 256 ? texelFetch(behind, ivec2(cx * bs.x / 256, cy * bs.y / 192), 0).rgb\n"
+    "                          : texelFetch(side, ivec2(cx - 256, cy), 0).rgb;\n"
+    "        color = vec4(P + (1.0 - A) * B, 1.0);\n"
     "        return;\n"
     "    }\n"
     /* Outside the DS rectangle the world shows its 3D, except where the
@@ -449,7 +470,8 @@ static struct {
     SDL_Rect ds;                   /* the DS screen's rectangle in the window */
     GLuint progw, progb, progu;
     GLint w_tex, w_behind, w_g3d, w_zero, w_texsize, w_dsr, w_win, w_bmode,
-          w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect, w_bd, w_held, w_under, w_vpy, w_vpx;
+          w_dil, w_hasz, w_hide2d, w_crop, w_bfac, w_sent, w_rect, w_bd, w_held, w_under, w_vpy, w_vpx,
+          w_side, w_wide;
     float bd[3];                   /* the backdrop colour beyond the DS screen */
     float fill[2];                 /* around a DS rectangle, by screen (eidos_gl_set_screen_fill) */
     GLint b_src, b_win, b_dir, b_tint, b_rect;
@@ -823,6 +845,13 @@ EidosGl *eidos_gl_create(SDL_Window *window)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 192, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glGenTextures(1, &g->side_tex);
+    glBindTexture(GL_TEXTURE_2D, g->side_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 192, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     if (glGetError() != GL_NO_ERROR) {
         eidos_gl_destroy(g);
         return NULL;
@@ -851,7 +880,9 @@ EidosGl *eidos_gl_create(SDL_Window *window)
         g->u3_zero = g->glGetUniformLocation(g->prog3, "zero");
         g->u3_hasz = g->glGetUniformLocation(g->prog3, "hasz");
         g->u3_sent = g->glGetUniformLocation(g->prog3, "sent");
-        if (eidos_gl3d_init(g) != 0) {
+        /* (EIDOS_GL_NO3D: a test of that fallback, as EIDOS_GPU_NO3D for
+         * the SDL GPU presenter) */
+        if (getenv("EIDOS_GL_NO3D") != NULL || eidos_gl3d_init(g) != 0) {
             /* said out loud: a 3D renderer that turns itself off leaves
              * the one-screen layout on its two-screen fallback */
             g->have3d = 0;
@@ -916,6 +947,8 @@ EidosGl *eidos_gl_create(SDL_Window *window)
         g_one.w_vpx = g->glGetUniformLocation(g_one.progw, "vpx");
         g_one.w_bfac = g->glGetUniformLocation(g_one.progw, "bfac");
         g_one.w_sent = g->glGetUniformLocation(g_one.progw, "sent");
+        g_one.w_side = g->glGetUniformLocation(g_one.progw, "side");
+        g_one.w_wide = g->glGetUniformLocation(g_one.progw, "wide");
     }
     g_one.progb = eidos_gl_compile_program(g, k_vs, k_fsb);
     if (g_one.progb != 0) {
@@ -951,6 +984,9 @@ void eidos_gl_destroy(EidosGl *g)
         }
         if (g->zero_tex != 0) {
             glDeleteTextures(1, &g->zero_tex);
+        }
+        if (g->side_tex != 0) {
+            glDeleteTextures(1, &g->side_tex);
         }
         if (g->behind_tex != 0) {
             glDeleteTextures(1, &g->behind_tex);
@@ -1073,6 +1109,21 @@ void eidos_gl_set_3d_zero(EidosGl *g, const unsigned char *zero, int w, int h)
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, zero);
     g->has_zero = 1;
+}
+
+void eidos_gl_set_3d_side(EidosGl *g, const unsigned char *side, int w, int h)
+{
+    if (g == NULL) {
+        return;
+    }
+    g->has_side = 0;
+    if (side == NULL || g->side_tex == 0 || w != 256 || h != 192) {
+        return;
+    }
+    glBindTexture(GL_TEXTURE_2D, g->side_tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, side);
+    g->has_side = 1;
 }
 
 void eidos_gl_set_3d(EidosGl *g, int screen, const unsigned char *behind,
@@ -1443,8 +1494,10 @@ static void draw_panel(EidosGl *g, int out_w, int out_h, const SDL_Rect *r)
 void eidos_gl_one_set(EidosGl *g, int on, int world, int screen,
                       const SDL_Rect *ds, int hide_2d, int blur, int no_fade)
 {
-    (void)g;
     g_one.on = on != 0;
+    if (g != NULL) {
+        g->side_want = on && (no_fade & (1 << 22)) != 0;
+    }
     g_one.world = on && world && ds != NULL && screen >= 0 && screen < 2;
     g_one.screen = screen;
     g_one.hide2d = hide_2d != 0;
@@ -1698,6 +1751,10 @@ static void one_world(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
         g->glUniform1i(g_one.w_under, (g_one.under && frozen && g_one.frozen != 0) ? g_one.under : 0);
         g->glUniform1f(g_one.w_vpy, (float)(blur ? 0 : g_vp_y));
         g->glUniform1f(g_one.w_vpx, (float)(blur ? 0 : g_vp_x));
+        g->glUniform1i(g_one.w_side, 5);
+        g->glUniform1i(g_one.w_wide, g->side_want && g->has_side);
+        g->glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D, g->side_tex);
         g->glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D, g_one.frozen != 0 ? g_one.frozen : g->behind_tex);
         g->glActiveTexture(GL_TEXTURE3);
@@ -1823,6 +1880,66 @@ static void one_canvas(EidosGl *g, int out_w, int out_h)
     glDisable(GL_BLEND);
 }
 
+/*
+ * The one-screen layout with no world because there is no GPU 3D (the DS
+ * screens stand in for the world; with the GPU 3D a view without a world
+ * is a screen of its own and keeps the DS screens).  The field's picture is kept as one_world keeps the world's
+ * (EidosUiView.keep_world), and an app over the field
+ * (EidosUiView.hold_world) shows that picture, blurred as the app asks,
+ * not the app's own DS screens behind its modal; a plain dark ground when
+ * no picture was kept.
+ */
+static void one_keep_screens(int out_w, int out_h)
+{
+    if (g_one.frozen == 0) {
+        glGenTextures(1, &g_one.frozen);
+    }
+    glBindTexture(GL_TEXTURE_2D, g_one.frozen);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, out_w, out_h, 0);
+    g_one.fw = out_w;
+    g_one.fh = out_h;
+    g_one.frozen_ok = 1;
+}
+
+static void one_held(EidosGl *g, int out_w, int out_h)
+{
+    int frozen = g_one.frozen_ok && g_one.frozen != 0 && g_one.fw == out_w && g_one.fh == out_h;
+    int blur = g_one.blur && g_one.progb != 0;
+
+    if (!frozen || g_one.progb == 0) {
+        g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, out_w, out_h);
+        glClearColor(0.04f, 0.04f, 0.05f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        return;
+    }
+    if (blur && one_bind_target(g, 0, out_w, out_h) != 0) {
+        blur = 0;
+    }
+    if (!blur) {
+        g->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, out_w, out_h);
+    }
+    g->glBindVertexArray(g->vao);
+    g->glUseProgram(g_one.progb);
+    g->glUniform1i(g_one.b_src, 0);
+    g->glUniform4f(g_one.b_rect, -1.f, -1.f, 1.f, 1.f);
+    g->glUniform2f(g_one.b_win, (float)out_w, (float)out_h);
+    g->glUniform2f(g_one.b_dir, 0.f, 0.f);
+    g->glUniform1f(g_one.b_tint, 1.f);
+    g->glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_one.frozen);
+    glDisable(GL_BLEND);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    if (blur) {
+        one_blur(g, out_w, out_h);
+    }
+}
+
 /* One frame: the layout's picture, or the two screens as ever. */
 static void draw_scene(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
 {
@@ -1854,8 +1971,13 @@ static void draw_scene(EidosGl *g, int out_w, int out_h, const SDL_Rect dst[2])
             one_world(g, out_w, out_h - b, dst);
         }
         g_vp_x = g_vp_y = 0;
+    } else if (!eidos_gl_has3d(g) && g_one.hold) {
+        one_held(g, out_w, out_h);
     } else {
         draw_frame(g, out_w, out_h, dst);
+        if (!eidos_gl_has3d(g) && g_one.keep) {
+            one_keep_screens(out_w, out_h);
+        }
     }
     one_canvas(g, out_w, out_h);
 }

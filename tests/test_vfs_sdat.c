@@ -550,9 +550,69 @@ static int test_real(const char *root)
     CHECK("real new file bytes", blob.size == sizeof(s) && memcmp(blob.data, s, sizeof(s)) == 0);
 
     bw_sdat_close(&o);
-    bw_sdat_close(&orig);
     bw_sdat_decl_free(&d);
     free(out);
+    out = NULL;
+
+    /* A sound past player 3's 10200-byte heap, from a mod whose name has a
+     * space, and a second mod with the same key: player 3's record grows to
+     * what the sound needs, the others stay, the sound heap grows by more
+     * than the raise, and both mods' names are found. */
+    {
+        static u8 big[29168];
+        BwSdatDecl d2;
+        BwSdatAdd two[2];
+        BwSdatPlayerRecord p0, p1;
+        u32 i, id2;
+
+        make_file(big, "SWAR", 4, sizeof(big));
+        f[0].data = big; f[0].size = sizeof(big);
+        BW_REQUIRE("parse big", bw_sdat_parse_decl(
+            "wavarc w = w\nbank b = b wavarc=w\nseq s = s bank=b player=3\n", &d, err, sizeof(err)) == 0);
+        BW_REQUIRE("parse small", bw_sdat_parse_decl("seq t = s bank=#1\n", &d2, err, sizeof(err)) == 0);
+        two[0].mod_name = "Fairy Type"; two[0].decl = &d; two[0].files = f; two[0].file_count = 3;
+        two[1].mod_name = "Fairy_Type"; two[1].decl = &d2; two[1].files = f + 2; two[1].file_count = 1;
+        BW_REQUIRE("merge big", bw_vfs_sdat_merge(base, (u32)n, two, 2, &out, &out_size) == 0);
+        BW_REQUIRE("open merged big", bw_sdat_open(&o, out, out_size) == 0);
+        CHECK("big original bytes", bytes_preserved(base, (u32)n, out));
+        for (i = 0; i < bw_sdat_count(&orig, BW_SDAT_PLAYER); i++) {
+            BW_REQUIRE("players", bw_sdat_player_record(&orig, i, &p0) == 0
+                                  && bw_sdat_player_record(&o, i, &p1) == 0);
+            if (i == 3) {
+                CHECK("player 3 raised", p1.heap_size > sizeof(big) && p0.heap_size == 10200);
+                CHECK("heap extra covers it", bw_sdat_sound_heap_extra() > p1.heap_size - p0.heap_size);
+            } else {
+                CHECK("other players kept", p1.heap_size == p0.heap_size && p1.seq_max == p0.seq_max);
+            }
+            CHECK("channels kept", p1.channel_bitmask == p0.channel_bitmask);
+        }
+        BW_CHECK_EQ("key with a space", bw_sdat_lookup(out, out_size, BW_SDATM_SEQ, "Fairy_Type:s", &id), 0);
+        BW_CHECK_EQ("name with a space", bw_sdat_lookup(out, out_size, BW_SDATM_SEQ, "Fairy Type:s", &id2), 0);
+        BW_CHECK_EQ("same id", id2, id);
+        BW_CHECK_EQ("second key", bw_sdat_lookup(out, out_size, BW_SDATM_SEQ, "Fairy_Type_2:t", &id2), 0);
+        BW_CHECK_EQ("second id", id2, id + 1);
+        bw_sdat_close(&o);
+        bw_sdat_decl_free(&d);
+        bw_sdat_decl_free(&d2);
+        free(out);
+        out = NULL;
+
+        /* small sounds raise nothing */
+        BW_REQUIRE("parse tiny", bw_sdat_parse_decl("seq t = s bank=#1 player=2\n", &d2, err, sizeof(err)) == 0);
+        two[1].mod_name = "A: B";
+        BW_REQUIRE("merge tiny", bw_vfs_sdat_merge(base, (u32)n, &two[1], 1, &out, &out_size) == 0);
+        BW_REQUIRE("open merged tiny", bw_sdat_open(&o, out, out_size) == 0);
+        CHECK("tiny players kept", records_preserved(&orig, &o));
+        BW_CHECK_EQ("colon in a mod name", bw_sdat_lookup(out, out_size, BW_SDATM_SEQ, "A: B:t", &id), 0);
+        BW_CHECK_EQ("its key", bw_sdat_lookup(out, out_size, BW_SDATM_SEQ, "A__B:t", &id2), 0);
+        BW_CHECK_EQ("one id", id2, id);
+        bw_sdat_close(&o);
+        bw_sdat_decl_free(&d2);
+        free(out);
+        out = NULL;
+    }
+
+    bw_sdat_close(&orig);
     free(base);
     return g_failed_here;
 }

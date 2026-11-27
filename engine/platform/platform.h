@@ -546,6 +546,13 @@ int  eidos_platform_read3d_1x(EidosPlatform *p, const struct G3dSnapshot *snap,
  * the 2D layers the game blends over the 3D (plat_gl.c); NULL for none.
  * Call before eidos_platform_set_3d. */
 void eidos_platform_set_3d_zero(EidosPlatform *p, const u8 *zero);
+/* 1 when the one-screen world shows its text BGs past the DS screen's left
+ * and right edges (EidosUiView.wide_bg: a move's effect background).  Then
+ * eidos_platform_set_3d_side takes the screen's continuation past its right
+ * edge (g2d_hw_main_shifted_dsmem(256), 256x192 RGBA); NULL for none.  A
+ * world the 2D shader composes makes its own (plat_gl2d.c). */
+int  eidos_platform_world_wide_bg(EidosPlatform *p);
+void eidos_platform_set_3d_side(EidosPlatform *p, const u8 *side);
 int  eidos_platform_set_3d(EidosPlatform *p, int screen, const u8 *behind,
                            const struct G3dSnapshot *snap, int n, int bmode,
                            float bfac, int dilate);

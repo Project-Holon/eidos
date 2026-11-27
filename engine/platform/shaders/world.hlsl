@@ -22,13 +22,17 @@ struct VSOut
 // the kept picture of the field, the window's size, top-down
 [[vk::combinedImageSampler]] Texture2D<float4> held : register(t4, space2);
 [[vk::combinedImageSampler]] SamplerState s4 : register(s4, space2);
+// the screen 256 pixels further right (DS columns 256 to 511), for m2.z
+[[vk::combinedImageSampler]] Texture2D<float4> side : register(t5, space2);
+[[vk::combinedImageSampler]] SamplerState s5 : register(s5, space2);
 
 cbuffer FragmentUniforms : register(b0, space3)
 {
     float4 dsr;         // the DS screen's rectangle: x, y, w, h
     float4 sz2;         // texsize, win
     int4 m;             // bmode, dilate, has zero, hide 2D
-    int4 m2;            // crop, under (beyond the DS screen: the kept picture)
+    int4 m2;            // crop, under (beyond the DS screen: the kept picture),
+                        // wide (the text BGs continue past the DS screen's sides)
     float4 bd;          // the backdrop colour, bfac in .a
     float4 sent;        // the sentinel colour
 };
@@ -61,6 +65,18 @@ float4 fs_main(VSOut i) : SV_Target0
     // a scene drawn for the DS's own frame: nothing outside its rectangle
     if (m2.x != 0 && (duv.x < 0.0 || duv.y < 0.0 || duv.x >= 1.0 || duv.y >= 1.0))
         return float4(0.0, 0.0, 0.0, 1.0);
+    // a move's effect background continues past the DS screen's left and
+    // right edges as the hardware wraps BG3's 512-pixel map: DS column x
+    // shows column x & 511, `behind` holds 0 to 255, `side` 256 to 511
+    if (!inside && m2.z != 0 && m.w == 0 && duv.y >= 0.0 && duv.y < 1.0) {
+        uint bw, bh;
+        behind.GetDimensions(bw, bh);
+        int cx = int(floor(duv.x * 256.0)) & 511;
+        int cy = clamp(int(floor(duv.y * 192.0)), 0, 191);
+        float3 B = cx < 256 ? behind.Load(int3(cx * int(bw) / 256, cy * int(bh) / 192, 0)).rgb
+                            : side.Load(int3(cx - 256, cy, 0)).rgb;
+        return float4(P + (1.0 - A) * B, 1.0);
+    }
     // outside the DS rectangle: a black or one-colour layer across the row
     // (a wipe, a fade the game draws with a layer) reaches the window's edge
     if (!inside && m.w == 0 && m2.y == 0 && duv.y >= 0.0 && duv.y < 1.0) {

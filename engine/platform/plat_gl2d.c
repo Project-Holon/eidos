@@ -653,6 +653,29 @@ int eidos_gl2d_compose(EidosGl *g, const G2dGpuFrame *f, unsigned char *readback
                 g->glActiveTexture(GL_TEXTURE0);
                 g->has_zero = 1;
             }
+            g->has_side = 0;
+            if (g->side_want && g->side_tex != 0) {
+                /* the world's wide_bg: the screen with the 3D off, every
+                 * text BG scrolled 256 pixels further (DS columns 256 to
+                 * 511, as the CPU's g2d_hw_main_shifted_dsmem makes it) */
+                for (i = 0; i < 4; i++) {
+                    const G2dGpuText *t = &f->text[i];
+                    GLint *v = ints + i * 10;
+
+                    v[0] = t->enabled; v[1] = (GLint)t->priority; v[2] = (t->hofs + 256) & 0x1FF;
+                    v[3] = t->vofs; v[4] = (GLint)t->tiles_wide; v[5] = (GLint)t->tiles_high;
+                    v[6] = (GLint)t->size_code; v[7] = (GLint)t->map_ofs; v[8] = (GLint)t->char_ofs;
+                    v[9] = t->bpp8;
+                }
+                g->glUniform1iv(s->u_text, 40, ints);
+                g->glUniform1i(s->u_g3m, 5);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+                g->glActiveTexture(GL_TEXTURE7);
+                glBindTexture(GL_TEXTURE_2D, g->side_tex);
+                glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, 256, 192);
+                g->glActiveTexture(GL_TEXTURE0);
+                g->has_side = 1;
+            }
         }
     }
     g->glBindFramebuffer(GL_FRAMEBUFFER, 0);

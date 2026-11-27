@@ -87,6 +87,8 @@
 #include "trainer_mons.h"
 #include "shops.h"
 #include "item_heal.h"
+#include "wild_forms.h"
+#include "balls.h"
 extern void bw_text_from_apply(void);    /* sdk/text_from.c */
 #include "move_anims.h"
 #include "mod_catalog.h"
@@ -371,6 +373,8 @@ typedef struct BootRun {
     u8 *sentinel;      /* a 3D layer of one unlikely colour, alpha 255   */
     u8 *black3d;       /* a 3D layer of opaque black                      */
     u8 *zero;          /* the 3D screen composed with black3d, 256x192    */
+    u8 *side;          /* the 3D screen's continuation past its right edge
+                          (the world's wide_bg), 256x192                  */
     int gpu_real;      /* this frame's 3D layer is the real read-back frame */
     int gpu2d;         /* the GPU composes the 2D screens (boot_gpu2d_on) */
     int gpu2d3d;       /* phase 3: the 2D shader composes the main screen's
@@ -1028,6 +1032,19 @@ static void boot_gpu3d_do(BootRun *run, int behind_done, const char **why)
             }
         }
         eidos_platform_set_3d_zero(run->plat, zero);
+        /* a move's effect background past the DS screen's sides (the
+         * world's wide_bg): the screen with every text BG scrolled 256
+         * pixels further, the columns a 512-wide map shows past either
+         * edge (a world the 2D shader composes makes its own) */
+        if (eidos_platform_world_wide_bg(run->plat)) {
+            if (run->side == NULL) {
+                run->side = (u8 *)calloc(1, (size_t)256 * 192 * 4);
+            }
+            eidos_platform_set_3d_side(run->plat, run->side != NULL
+                                       && g2d_hw_main_shifted_dsmem(256u, run->side) == 0 ? run->side : NULL);
+        } else {
+            eidos_platform_set_3d_side(run->plat, NULL);
+        }
         if (eidos_platform_set_3d(run->plat, screen, run->behind, snap,
                                   eidos_settings_internal_scale(),
                                   bmode == 1u || bmode == 2u ? (int)bmode : 0,
@@ -1728,11 +1745,14 @@ static void boot_render(void *user, u8 *top, u8 *bottom)
     {
         u32 want = (u32)eidos_settings_internal_scale();
         int gpu = run->plat != NULL && eidos_platform_gpu3d(run->plat);
-        int skip = gpu && run->gpu3d_ok;
+        /* (a one-screen page that composes a screen with its 3D itself asks
+         * for the frame at DS size: the CPU draws it too, at 1x) */
+        int wanted = gpu && run->gpu3d_ok && eidos_ui_3d_wanted();
+        int skip = gpu && run->gpu3d_ok && !wanted;
 
         g3d_hw_snapshot_enable(gpu);
         g3d_hw_skip_raster(skip);
-        if (skip) {
+        if (skip || wanted) {
             g3d_hw_set_scale(1u);
         } else {
             g3d_hw_set_scale(want > BOOT_CPU_3D_MAX ? BOOT_CPU_3D_MAX : want);
@@ -2263,7 +2283,7 @@ static void boot_mp_hold(BootRun *run)
 
                 snprintf(code_line, sizeof code_line, ui_trf("Code: %s"), bw_mp_code());
                 /* a host whose relay restarted shows its new code */
-                hold_draw(work, top, n, bw_mp_wait_text(),
+                hold_draw(work, top, n, ui_tr(bw_mp_wait_text()),
                           !bw_mp_is_host() ? ui_tr("The host starts the game.") :
                           bw_mp_relay_restarted()
                           ? ui_tr(bw_mp_end_reason()) : code_line);
@@ -2349,7 +2369,7 @@ static void boot_mp_wait_saves(BootRun *run)
             if (top != NULL && bottom != NULL) {
                 memcpy(top, run->hi_top, bytes);
                 memcpy(bottom, run->hi_bottom, bytes);
-                hold_draw(work, top, n, "Saving everyone's games", line);
+                hold_draw(work, top, n, ui_tr("Saving everyone's games"), line);
                 memcpy(run->hi_top, work, bytes);
                 hold_draw(work, bottom, n, NULL, NULL);
                 memcpy(run->hi_bottom, work, bytes);
@@ -2876,12 +2896,18 @@ static void boot_frame(void *user)
         run->ff_since = run->ff_skip ? run->ff_since + 1u : 0u;
     }
 #endif
-    eidos_frame_run_one(&run->loop);
+    /* (a test script's `freeze`: the game stands where it is, the screens
+     * are composed and the interface drawn from what it left) */
+    if (!eidos_ui_script_frozen()) {
+        eidos_frame_run_one(&run->loop);
+    }
     eidos_prof_end(EIDOS_PROF_STEP, t_step + g_render_ns);
     /* The mod layer's frame tick: the mods' own frame handlers and the
      * network's, once a frame, after the game's own frame work and in the
      * game's thread (the halt hook runs on the game's idle thread). */
-    bw_mod_frame_tick();
+    if (!eidos_ui_script_frozen()) {
+        bw_mod_frame_tick();
+    }
     g_frames_seen++;
     boot_capture_step(run);
     {
@@ -3365,6 +3391,10 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     bw_move_anims_load();
     /* and how much HP items heal past the record's byte (sdk/item_heal.h) */
     bw_item_heal_load();
+    /* and the Poke Balls mods add or tune (sdk/balls.h) */
+    bw_balls_load();
+    /* and the wild slots' forms past the slot's 5 bits (sdk/wild_forms.h) */
+    bw_wild_forms_load();
     /* The mods: the loader runs after the save is chosen and before the
      * game runs (docs/mod-implementation.md, section 3).  The declared
      * table the manifest's address check asks is registered by

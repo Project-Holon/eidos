@@ -421,6 +421,11 @@ static u32 text_size_code(u32 hw_size)
     return k_code[hw_size & 3u];
 }
 
+/* Added to every text BG's horizontal scroll while g2d_hw_main_shifted_dsmem
+ * composes (0 otherwise): the screen as it would be `shift` pixels further
+ * right. */
+static u32 g_text_hofs_shift;
+
 static int build_text(Engine *e, u32 n, u16 cnt)
 {
     G2dNscr *nscr = &e->nscr[n];
@@ -452,7 +457,7 @@ static int build_text(Engine *e, u32 n, u16 cnt)
     layer->screen_size = code;
     layer->screen_order = G2D_BG_ORDER_VRAM;
     layer->priority = cnt & 3u;
-    layer->hofs = (s32)(reg16(e, REG_BG0HOFS + n * 4u) & 0x1FFu);
+    layer->hofs = (s32)((reg16(e, REG_BG0HOFS + n * 4u) + g_text_hofs_shift) & 0x1FFu);
     layer->vofs = (s32)(reg16(e, REG_BG0HOFS + n * 4u + 2u) & 0x1FFu);
     layer->wrap = 1;
     layer->enabled = 1;
@@ -2100,6 +2105,16 @@ int g2d_hw_main_graphics_dsmem(const u8 *rgba3d, u8 *out)
     }
     free(tmp);
     free(g6);
+    return rc;
+}
+
+int g2d_hw_main_shifted_dsmem(u32 shift, u8 *out)
+{
+    int rc;
+
+    g_text_hofs_shift = shift;
+    rc = g2d_hw_main_graphics_dsmem(NULL, out);
+    g_text_hofs_shift = 0;
     return rc;
 }
 

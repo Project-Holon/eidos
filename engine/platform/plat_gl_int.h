@@ -124,6 +124,10 @@ struct EidosGl {
     GLuint behind_tex;
     GLuint zero_tex;               /* the screen with a black 3D layer, or 0 */
     int has_zero;                  /* zero_tex holds this frame's          */
+    GLuint side_tex;               /* the screen's continuation past its right
+                                      edge (the world's wide_bg), or 0      */
+    int has_side;                  /* side_tex holds this frame's          */
+    int side_want;                 /* the world asks for it (one_set)      */
     int behind_w, behind_h;
     int bmode;                     /* master brightness: 0 off, 1 up, 2 down */
     float bfac;                    /* 0..1                                  */

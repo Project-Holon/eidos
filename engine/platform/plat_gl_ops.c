@@ -75,6 +75,8 @@ static void op_set_world_backdrop(EidosGpu *g, unsigned rgb)
 { eidos_gl_set_world_backdrop(gl(g), rgb); }
 static void op_set_3d_zero(EidosGpu *g, const unsigned char *zero, int w, int h)
 { eidos_gl_set_3d_zero(gl(g), zero, w, h); }
+static void op_set_3d_side(EidosGpu *g, const unsigned char *side, int w, int h)
+{ eidos_gl_set_3d_side(gl(g), side, w, h); }
 static int op_read3d(EidosGpu *g, unsigned char *out, int w, int h)
 { return eidos_gl_read3d(gl(g), out, w, h); }
 static int op_read3d_1x(EidosGpu *g, const struct G3dSnapshot *snap, unsigned char *out, int async)
@@ -98,8 +100,8 @@ static const EidosGpuOps g_gl_ops = {
     op_view_keep3d, op_view_upload, op_view_free, op_view_begin, op_view_draw, op_view_draw_fx,
     op_view_read, op_view_end,
     op_has3d, op_capture, op_show_capture, op_render3d, op_set_edges, op_set_3d, op_set_3d2d,
-    op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
-    op_read3d_1x,
+    op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_set_3d_side,
+    op_read3d, op_read3d_1x,
     op_set_vsync,
     op_set_screen_fill,
 };

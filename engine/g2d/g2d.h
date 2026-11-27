@@ -1094,6 +1094,11 @@ int g2d_hw_render_dsmem_adaptive_ex(u32 scale, const u8 *rgba3d, u8 *top,
 /* The main engine's graphics screen (the capture's source A) at DS size,
  * RGBA8, whatever the display mode; rgba3d NULL turns the 3D layer off. */
 int g2d_hw_main_graphics_dsmem(const u8 *rgba3d, u8 *out);
+/* The same with the 3D layer off and every text BG scrolled `shift` pixels
+ * further right: with 256, the screen's continuation past its right edge,
+ * which a 512-wide map wraps to its left edge too (the one-screen world's
+ * sides, EidosUiView.wide_bg). */
+int g2d_hw_main_shifted_dsmem(u32 shift, u8 *out);
 
 /* Whether the main engine's last compose alpha blended a 2D pixel over
  * the 3D layer (G2dFrameDesc.blend_over_3d): when it did not, a compose of

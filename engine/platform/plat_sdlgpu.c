@@ -263,6 +263,7 @@ static void op_destroy(EidosGpu *g)
         sg_free_pic(s->dev, &s->panel);
         sg_free_pic(s->dev, &s->behind);
         sg_free_pic(s->dev, &s->zero);
+        sg_free_pic(s->dev, &s->side);
         if (s->capa != NULL) SDL_ReleaseGPUTexture(s->dev, s->capa);
         if (s->scene != NULL) SDL_ReleaseGPUTexture(s->dev, s->scene);
         if (s->frozen != NULL) SDL_ReleaseGPUTexture(s->dev, s->frozen);
@@ -535,9 +536,10 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
              * the interface's picture of the room fades in over it) */
             SDL_GPURenderPass *pass = boxed && !s->no_fade ? begin(cmd, dst, 1, s->bd[0], s->bd[1], s->bd[2])
                                                            : begin(cmd, dst, 1, 0, 0, 0);
-            SDL_GPUTextureSamplerBinding tb[5];
+            SDL_GPUTextureSamplerBinding tb[6];
             float u[24];
             int *m = (int *)&u[8], *m2 = (int *)&u[12];
+            int wide = s->side_want && s->has_side && s->side.tex != NULL;
 
             memset(u, 0, sizeof u);
             tb[0].texture = s->screen[sc].tex;
@@ -546,8 +548,12 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
             tb[3].texture = s->has_zero && s->zero.tex != NULL ? s->zero.tex : s->behind.tex;
             /* the kept picture beyond the DS screen (a cut-in: the VS) */
             tb[4].texture = frozen ? s->frozen : s->behind.tex;
+            /* the screen's continuation past its right edge (wide_bg) */
+            tb[5].texture = wide ? s->side.tex : s->behind.tex;
             tb[0].sampler = tb[1].sampler = tb[2].sampler = tb[3].sampler = tb[4].sampler = s->linear;
+            tb[5].sampler = s->linear;
             m2[1] = (s->under && frozen) ? s->under : 0;
+            m2[2] = wide;
             u[0] = (float)(s->ds.x + wx);
             u[1] = (float)(s->ds.y + wy);
             u[2] = (float)s->ds.w;
@@ -570,7 +576,7 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
             u[20] = k_sent[0];
             u[21] = k_sent[1];
             u[22] = k_sent[2];
-            quad_n(cmd, pass, s->p_world, tb, 5, world, dst.w, dst.h, u, sizeof u);
+            quad_n(cmd, pass, s->p_world, tb, 6, world, dst.w, dst.h, u, sizeof u);
             if (s->mix > 0 && frozen && !blur && g_p_mix != NULL) {
                 /* a scene change blends the old picture out over the new
                  * world: the kept wide picture at the game's weight */
@@ -653,6 +659,73 @@ static void draw_world(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
     }
 }
 
+/*
+ * The one-screen layout with no world because the GPU draws no 3D (the DS
+ * screens stand in for the world; with the GPU 3D a view without a world
+ * is a screen of its own and keeps the DS screens).  The field's picture is kept as draw_world keeps the
+ * world's (EidosUiView.keep_world), and an app over the field
+ * (EidosUiView.hold_world) shows that picture, blurred as the app asks,
+ * not the app's own DS screens behind its modal; a plain dark ground when
+ * no picture was kept.
+ */
+static void keep_screens(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
+{
+    SDL_GPUBlitInfo bi;
+
+    sg_ensure_target(s, &s->frozen, &s->frozen_w, &s->frozen_h, t.w, t.h);
+    if (s->frozen == NULL) {
+        return;
+    }
+    memset(&bi, 0, sizeof bi);
+    bi.source.texture = t.tex;
+    bi.source.w = (Uint32)t.w;
+    bi.source.h = (Uint32)t.h;
+    bi.destination.texture = s->frozen;
+    bi.destination.w = (Uint32)t.w;
+    bi.destination.h = (Uint32)t.h;
+    bi.load_op = SDL_GPU_LOADOP_DONT_CARE;
+    bi.filter = SDL_GPU_FILTER_NEAREST;
+    SDL_BlitGPUTexture(cmd, &bi);
+    s->frozen_ok = 1;
+}
+
+static void draw_held(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
+{
+    int frozen = s->frozen_ok && s->frozen != NULL && s->frozen_w == t.w && s->frozen_h == t.h;
+    int blur = s->blur_amount > 0 && s->p_blur != NULL;
+    SDL_Rect all;
+
+    all.x = all.y = 0;
+    all.w = t.w;
+    all.h = t.h;
+    if (!frozen) {
+        SDL_GPURenderPass *pass = begin(cmd, t, 1, 0.04f, 0.04f, 0.05f);
+
+        SDL_EndGPURenderPass(pass);
+        return;
+    }
+    if (blur) {
+        sg_ensure_target(s, &s->blur[1], &s->blur1_w, &s->blur1_h, t.w, t.h);
+        blur = s->blur[1] != NULL;
+    }
+    if (!blur) {
+        blur_pass(s, cmd, s->frozen, t, all, 0.f, 0.f, 1.f, 1);
+        return;
+    }
+    {
+        /* draw_world's blur: across, then down with the tint */
+        float a = (float)s->blur_amount / 16.f;
+        float step = (float)t.h / 180.f * a;
+        Target b1;
+
+        b1.tex = s->blur[1];
+        b1.w = t.w;
+        b1.h = t.h;
+        blur_pass(s, cmd, s->frozen, b1, all, step, 0.f, 1.f, 1);
+        blur_pass(s, cmd, s->blur[1], t, all, 0.f, step, 1.f - 0.55f * a, 1);
+    }
+}
+
 /* The interface canvas over the scene. */
 static void draw_canvas(SdlGpu *s, SDL_GPUCommandBuffer *cmd, Target t)
 {
@@ -682,6 +755,7 @@ static Target draw_scene(SdlGpu *s, SDL_GPUCommandBuffer *cmd, int out_w, int ou
     sg_pic_flush(cp, &s->panel);
     sg_pic_flush(cp, &s->behind);
     sg_pic_flush(cp, &s->zero);
+    sg_pic_flush(cp, &s->side);
     SDL_EndGPUCopyPass(cp);
     sg_ensure_target(s, &s->scene, &s->scene_w, &s->scene_h, out_w, out_h);
     t.tex = s->scene;
@@ -689,8 +763,13 @@ static Target draw_scene(SdlGpu *s, SDL_GPUCommandBuffer *cmd, int out_w, int ou
     t.h = out_h;
     if (s->on && s->world) {
         draw_world(s, cmd, t);
+    } else if (s->on && !s->have3d && s->hold) {
+        draw_held(s, cmd, t);
     } else {
         draw_screens(s, cmd, t, dst, 0.f);
+        if (s->on && !s->have3d && s->keep) {
+            keep_screens(s, cmd, t);
+        }
     }
     if (s->on) {
         draw_canvas(s, cmd, t);
@@ -847,6 +926,7 @@ static void op_one_set(EidosGpu *g, int on, int world, int screen, const SDL_Rec
     s->under = (no_fade >> 20) & 3;
     s->dark = (no_fade >> 8) & 31;
     s->mix = (no_fade >> 13) & 31;
+    s->side_want = s->on && (no_fade & (1 << 22)) != 0;
     if (ds != NULL) {
         s->ds = *ds;
     }
@@ -910,6 +990,18 @@ static void op_set_3d_zero(EidosGpu *g, const unsigned char *zero, int w, int h)
     }
     sg_pic_set(s, &s->zero, zero, w, h);
     s->has_zero = s->zero.tex != NULL;
+}
+
+static void op_set_3d_side(EidosGpu *g, const unsigned char *side, int w, int h)
+{
+    SdlGpu *s = sg(g);
+
+    s->has_side = 0;
+    if (side == NULL || w != 256 || h != 192) {
+        return;
+    }
+    sg_pic_set(s, &s->side, side, w, h);
+    s->has_side = s->side.tex != NULL;
 }
 
 static void op_set_3d(EidosGpu *g, int screen, const unsigned char *behind, int w, int h, int bmode,
@@ -1171,8 +1263,8 @@ static const EidosGpuOps g_sdlgpu_ops = {
     op_view_keep3d, op_view_upload, op_view_free, op_view_begin, op_view_draw, op_view_draw_fx,
     op_view_read, op_view_end,
     op_has3d, op_capture, op_show_capture, op_render3d, op_set_edges, op_set_3d, op_set_3d2d,
-    op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_read3d,
-    op_read3d_1x,
+    op_set_3d_from2d, op_set_3d2d_shown, op_set_world_backdrop, op_set_3d_zero, op_set_3d_side,
+    op_read3d, op_read3d_1x,
     op_set_vsync,
     op_set_screen_fill,
 };

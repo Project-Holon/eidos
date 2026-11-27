@@ -71,6 +71,11 @@ void bw_type_icon_chars_release(const void *owner);
  * else its first `colors`): 1 and *rgb (0xRRGGBB), or 0. */
 int bw_type_ui_color(u32 type, u32 *rgb);
 
+/* A type's colour from types.txt: a game type's `color` line (0 to 16), an
+ * added type's bw_type_ui_color.  1 and *rgb (0xRRGGBB), or 0 (the effect
+ * scripts then take the type's move button shade, sdk/move_anims.h). */
+int bw_type_color(u32 type, u32 *rgb);
+
 /* The added type a types.txt `name` names (`fairy`: the battle tables'
  * `type=fairy`), -1 for none. */
 int bw_type_by_name(const char *s, size_t n);

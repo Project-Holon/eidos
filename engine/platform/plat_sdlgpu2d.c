@@ -543,6 +543,22 @@ int sg2d_compose(SdlGpu *s, const G2dGpuFrame *f, unsigned char *readback, int t
             pass(s, cmd, tb, v, 4, s->zero.tex, 256, 192);
             s->has_zero = 1;
         }
+        s->has_side = 0;
+        if (s->side_want && sg_pic_target(s, &s->side, 256, 192) == 0) {
+            /* the world's wide_bg: the screen with the 3D off, every text
+             * BG scrolled 256 pixels further (DS columns 256 to 511, as the
+             * CPU's g2d_hw_main_shifted_dsmem makes it) */
+            int k;
+
+            for (k = 0; k < 4; k++) {
+                v[U_TEXT + k * 10 + 2] = (f->text[k].hofs + 256) & 0x1FF;
+            }
+            pass(s, cmd, tb, v, 5, s->side.tex, 256, 192);
+            for (k = 0; k < 4; k++) {
+                v[U_TEXT + k * 10 + 2] = f->text[k].hofs;
+            }
+            s->has_side = 1;
+        }
     }
     if (t->dl[to_screen] != NULL) {
         t->dl_fence[to_screen] = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);

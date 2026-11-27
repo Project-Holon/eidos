@@ -299,9 +299,22 @@ set(EIDOS_BOOT_SHIM_REPLACED
     # stubs/reimpl_0206CB8C.c: one clear over two locals, which only the DS
     # compiler's stack layout makes adjacent
     src/matched/arm9/func_0206CB8C.c
-    # stubs/reimpl_02050DB8.c: PARTICLE_KillAllEffects called with no
-    # argument, which only r0 passing through makes work
-    src/matched/arm9/func_02050DB8.c
+    # sdk/particle_ext.c: the particle manager past the game's arrays (more
+    # systems, handles and pools).  Its PARTICLE_DeleteSystem also passes the
+    # system to PARTICLE_KillAllEffects, which the matched C calls with no
+    # argument (only r0 passing through makes that work on the DS).
+    src/matched/arm9/func_02050C30.c       # PARTICLE_CreateSystem
+    src/matched/arm9/func_02050DB8.c       # PARTICLE_DeleteSystem
+    src/matched/arm9/func_02050ED4.c       # PARTICLE_ExitManager
+    src/matched/arm9/func_02051504.c       # PARTICLE_CountSystems
+    src/matched/arm9/func_02051534.c       # PARTICLE_DrawAllSystems
+    src/matched/arm9/func_02051574.c       # PARTICLE_UpdateAllSystems
+    src/matched/arm9/func_02051A54.c       # PARTICLE_AllocTexVramTracked
+    src/matched/arm9/func_02051AB8.c       # PARTICLE_AllocPlttVramTracked
+    # sdk/snd_se.c: the sound heap past the game's (mods' sounds) and the
+    # player a mod's sound effect plays on
+    src/matched/arm9/func_02005B24.c       # GFL_USE_InitSound
+    src/matched/arm9/func_02006148.c       # GFL_USE_GetSeSlot
 )
 
 # The pointer-width switches (CMakeLists.txt, "Pointer width") put a
@@ -382,7 +395,6 @@ list(APPEND EIDOS_BOOT_PORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_0204D360.c
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_0204D380.c
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_0206CB8C.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_02050DB8.c
     # unit members the pinned manifests do not list (stubs/unit_members.c)
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs/unit_members.c
 )
@@ -396,11 +408,9 @@ if(EIDOS_SOURCE_TREE STREQUAL "game")
     list(APPEND EIDOS_BOOT_PORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/stubs/game_app_env.c)
     # Stand-ins for src/matched's gaps that src/game closed: unit_members.c
     # forwards address spellings to members the old manifests did not list
-    # (in src/game its func_02048AE8 is renamed onto itself and recurses),
-    # and reimpl_02050DB8.c passes an argument src/game's particle.c passes.
+    # (in src/game its func_02048AE8 is renamed onto itself and recurses).
     list(REMOVE_ITEM EIDOS_BOOT_PORT_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/stubs/unit_members.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/stubs/reimpl_02050DB8.c)
+        ${CMAKE_CURRENT_SOURCE_DIR}/stubs/unit_members.c)
 endif()
 if(EIDOS_NATIVE_TCBL)
     # The whole pointer-typed scheduler is already compiled into eidos.

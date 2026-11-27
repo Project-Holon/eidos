@@ -77,6 +77,10 @@ typedef struct SdlGpu {
     int s3d, bmode, dilate, has_zero;
     float bfac;
     SgPic behind, zero;
+    /* the screen's continuation past its right edge (the world's wide_bg,
+     * plat_gl.c's side_tex): wanted by one_set, filled this frame */
+    SgPic side;
+    int side_want, has_side;
     /* the 2D compositor's composites (plat_gl.c's s3d2, s3d_from2d): the
      * screen whose 3D the 2D shader composes and the size it is shown at;
      * s3d's screens made by the shader (the one-screen world) */

@@ -42,8 +42,20 @@
  * A's first sequence is 2076.  Ids are assigned at load and are not stable
  * when the mod list changes, so mods should name sounds, not number them.
  *
- * Naming.  A new entry's SYMB name is `<modname>:<name>`.  bw_sdat_lookup
- * finds an id from a qualified name in a merged image.
+ * Naming.  A new entry's SYMB name is `<modkey>:<name>`.  The mod key is the
+ * mod's name (the manifest's `name`, else its folder's) with every character
+ * other than a letter, a digit, `_`, `-` and `.` made `_`, at most 63 of them:
+ * a mod named "Fairy Type" files its sounds as `Fairy_Type:<name>`.
+ * bw_sdat_lookup finds an id from a qualified name in a merged image, and
+ * makes the part before the last `:` a key first, so `Fairy Type:zap` finds
+ * it too.  When two mods have one key, the later one in load order files its
+ * sounds under `<key>_2` (then `_3`), with a line in the log.  In sdat.txt a
+ * reference to another mod's entry is split at spaces, so it uses the key.
+ *
+ * Players.  A sequence plays out of its player's heap (players 1 to 5, the
+ * sound effects).  A player whose heap is too small for a mod's sequence on
+ * it gets a larger record in the merged PLAYER table; the sound heap grows by
+ * what the merge adds to it (bw_sdat_sound_heap_extra, sdk/snd_se.c).
  */
 
 #ifndef BW_PORT_VFS_SDAT_H
@@ -132,6 +144,17 @@ int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
  */
 int bw_sdat_lookup(const u8 *sdat, u32 size, BwSdatMKind kind,
                    const char *qualified_name, u32 *id);
+
+/* A mod's key in sound names (above, "Naming"), into `out`. */
+void bw_sdat_mod_key(const char *mod_name, char *out, size_t size);
+
+/*
+ * The bytes the last merge with additions adds to the game's sound heap
+ * (0x95AD0 bytes, arm9 GFL_USE_InitSound): the grown INFO and FAT blocks,
+ * the raised player heaps and a mod's music past the game's largest on its
+ * player.  0 before a merge and after a merge with nothing to add.
+ */
+u32 bw_sdat_sound_heap_extra(void);
 
 #ifdef __cplusplus
 }

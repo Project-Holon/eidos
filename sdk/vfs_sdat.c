@@ -58,6 +58,56 @@ static void set_err(char *err, size_t n, int line, const char *msg, const char *
     }
 }
 
+static int name_char_ok(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
+}
+
+void bw_sdat_mod_key(const char *mod_name, char *out, size_t size)
+{
+    size_t i, n = 0;
+
+    if (out == NULL || size == 0) {
+        return;
+    }
+    for (i = 0; mod_name != NULL && mod_name[i] != '\0' && n + 1 < size
+                && n + 1 < BW_SDATM_NAME_MAX; i++) {
+        out[n++] = name_char_ok(mod_name[i]) ? mod_name[i] : '_';
+    }
+    if (n == 0 && size > 3) {
+        memcpy(out, "mod", 3);   /* (a mod has a name: its folder's at least) */
+        n = 3;
+    }
+    out[n] = '\0';
+}
+
+/* `ref` with the part before its last ':' made a mod key, into `out` (an
+ * entry's own name holds no ':', a mod's name may). */
+static void key_qualified(const char *ref, char *out, size_t size)
+{
+    const char *colon = strrchr(ref, ':');
+    char *mod;
+    char key[BW_SDATM_NAME_MAX];
+    size_t n;
+
+    if (colon == NULL) {
+        snprintf(out, size, "%s", ref);
+        return;
+    }
+    n = (size_t)(colon - ref);
+    mod = (char *)malloc(n + 1);
+    if (mod == NULL) {
+        snprintf(out, size, "%s", ref);
+        return;
+    }
+    memcpy(mod, ref, n);
+    mod[n] = '\0';
+    bw_sdat_mod_key(mod, key, sizeof(key));
+    free(mod);
+    snprintf(out, size, "%s%s", key, colon);
+}
+
 static int name_ok(const char *s)
 {
     size_t i, n = strlen(s);
@@ -66,10 +116,7 @@ static int name_ok(const char *s)
         return 0;
     }
     for (i = 0; i < n; i++) {
-        char c = s[i];
-        int ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-              || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
-        if (!ok) {
+        if (!name_char_ok(s[i])) {
             return 0;
         }
     }
@@ -423,11 +470,15 @@ int bw_sdat_lookup(const u8 *sdat, u32 size, BwSdatMKind kind,
                    const char *qualified_name, u32 *id)
 {
     Image im;
+    char key[2 * BW_SDATM_NAME_MAX + 2];
 
-    if (img_parse(&im, sdat, size) != NULL) {
+    if (qualified_name == NULL || img_parse(&im, sdat, size) != NULL) {
         return -1;
     }
-    return symb_find(&im, (u32)kind, qualified_name, id);
+    /* a mod's names are filed under its key: "Fairy Type:zap" finds
+     * "Fairy_Type:zap" */
+    key_qualified(qualified_name, key, sizeof(key));
+    return symb_find(&im, (u32)kind, key, id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -542,8 +593,11 @@ static int resolve_ref(const Image *im, const Item *items, u32 nitems,
         return 0;
     }
     if (strchr(ref, ':') != NULL) {
+        char key[2 * BW_SDATM_NAME_MAX + 2];
+
+        key_qualified(ref, key, sizeof(key));
         for (i = 0; i < nitems; i++) {
-            if (items[i].e->kind == kind && strcmp(items[i].qname, ref) == 0) {
+            if (items[i].e->kind == kind && strcmp(items[i].qname, key) == 0) {
                 *id = items[i].id;
                 return 0;
             }
@@ -565,6 +619,141 @@ static u32 rec_size(BwSdatMKind k)
     return k == BW_SDATM_WAVARC ? 4u : 12u;
 }
 
+/* ------------------------------------------------------------------ */
+/* Player heaps and the sound heap                                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A sound effect plays out of its player's heap: NNSi_SndArcPlayerStartSeq
+ * (arm9 nns_snd_arcplayer.c) loads the bank, the bank's wave archives and
+ * the sequence into the heap NNS_SndArcPlayerSetup (nns_snd_arc.c) cut for
+ * the player out of the sound heap, as large as the PLAYER record says
+ * (10200 bytes for players 1, 2, 3 and 5, 2000 for player 4).  When a file
+ * does not fit the start fails and the sound is silent.  So a player that
+ * plays a mod's sequence gets a record as large as the largest such
+ * sequence needs, and the game's own sequences play as before in a larger
+ * heap.  A player with no heap (0, the music, and 6, the fanfares) plays
+ * what GFL_USE_LoadBgmData loaded into the sound heap itself.
+ *
+ * What a file costs a heap: its size, the 0x20 bytes NNSi_SndArcLoadFile
+ * asks for on top, rounded to 0x20 by NNS_SndHeapAlloc, the 0x20-byte block
+ * head that function puts before it and up to 0x20 bytes of alignment in
+ * the frame heap (NNS_FndAllocFromFrmHeapEx with alignment 0x20).
+ * PLAYER_HEAD holds a player heap's own heads: the sound heap's 0x10, the
+ * frame heap's 0x30 and the first level NNSi_SndHeapAllocLevel takes.
+ *
+ * Everything the merge adds to the sound heap is given back on top of the
+ * game's size (bw_sdat_sound_heap_extra): the grown INFO and FAT blocks,
+ * which NNS_SndArcInit loads into it, each raised player's extra bytes and
+ * a mod's music past the largest the game has on that player.  The room
+ * the game leaves for its music stays what it was.
+ */
+#define FILE_COST(size)  ((((size) + 0x20u + 0x1Fu) & ~0x1Fu) + 0x40u)
+#define PLAYER_HEAD      0x100u
+#define PLAYER_KIND      4u     /* the PLAYER record table */
+#define PLAYER_REC       8u     /* playable count u8, pad, channel mask u16, heap size u32 */
+#define PLAYERS_MAX      32u    /* NNS_SndArcPlayerSetup reads players 0..31 */
+#define PLAYER_HEAP_HEAD 0x40u  /* NNS_SndPlayerCreateHeap's 0x14 head, rounded, and the block head */
+
+static u32 g_heap_extra;
+
+u32 bw_sdat_sound_heap_extra(void)
+{
+    return g_heap_extra;
+}
+
+/* An original record of `kind`, at least `len` bytes, or NULL. */
+static const u8 *base_record(const Image *im, u32 kind, u32 id, u32 len)
+{
+    u32 off;
+
+    if (kind >= KINDS || im->tab[kind] == 0 || id >= im->count[kind]) {
+        return NULL;
+    }
+    off = rd32(im->d + im->info_off + im->tab[kind] + 4 + id * 4);
+    if (off == 0 || (size_t)off + len > im->info_size) {
+        return NULL;
+    }
+    return im->d + im->info_off + off;
+}
+
+static u32 base_file_size(const Image *im, u32 fid)
+{
+    return fid < im->fat_count ? rd32(im->d + im->fat_off + 12 + fid * 16 + 4) : 0;
+}
+
+static const Item *added_item(const Item *items, u32 nitems, BwSdatMKind kind, u32 id)
+{
+    u32 i;
+
+    for (i = 0; i < nitems; i++) {
+        if (items[i].e->kind == kind && items[i].id == id) {
+            return &items[i];
+        }
+    }
+    return NULL;
+}
+
+static u32 wavarc_cost(const Image *im, const Item *items, u32 nitems, u32 id)
+{
+    const Item *it = added_item(items, nitems, BW_SDATM_WAVARC, id);
+    const u8 *rec;
+
+    if (it != NULL) {
+        return FILE_COST(it->size);
+    }
+    rec = base_record(im, BW_SDATM_WAVARC, id, 4);
+    return rec != NULL ? FILE_COST(base_file_size(im, rd32(rec) & 0xFFFFFFu)) : 0;
+}
+
+/* What a sequence on bank `bank` with a `seq_size`-byte file needs of a
+ * player heap. */
+static u32 seq_need(const Image *im, const Item *items, u32 nitems, u32 seq_size, u32 bank)
+{
+    const Item *it = added_item(items, nitems, BW_SDATM_BANK, bank);
+    u32 need = PLAYER_HEAD + FILE_COST(seq_size), r;
+
+    if (it != NULL) {
+        need += FILE_COST(it->size);
+        for (r = 0; r < it->e->nrefs; r++) {
+            need += wavarc_cost(im, items, nitems, it->ref_id[r]);
+        }
+    } else {
+        const u8 *rec = base_record(im, BW_SDATM_BANK, bank, 12);
+
+        if (rec != NULL) {
+            need += FILE_COST(base_file_size(im, rd32(rec)));
+            for (r = 0; r < 4; r++) {
+                u32 w = (u32)rec[4 + r * 2] | (u32)rec[5 + r * 2] << 8;
+                if (w != 0xFFFFu) {
+                    need += wavarc_cost(im, items, nitems, w);
+                }
+            }
+        }
+    }
+    return need;
+}
+
+/* The largest need of the game's own sequences on `player`. */
+static u32 base_player_need(const Image *im, u32 player)
+{
+    u32 i, best = 0;
+
+    for (i = 0; i < im->count[BW_SDATM_SEQ]; i++) {
+        const u8 *rec = base_record(im, BW_SDATM_SEQ, i, 12);
+        u32 need;
+
+        if (rec == NULL || rec[9] != player) {
+            continue;
+        }
+        need = seq_need(im, NULL, 0, base_file_size(im, rd32(rec)), (u32)rec[4] | (u32)rec[5] << 8);
+        if (need > best) {
+            best = need;
+        }
+    }
+    return best;
+}
+
 int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
                       u32 count, u8 **out, u32 *out_size)
 {
@@ -577,9 +766,15 @@ int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
     u32 info_new, fat_new, symb_new;
     const char *why;
     const char *msg = NULL;
+    u32 raise[PLAYERS_MAX], bgm[PLAYERS_MAX], heap_extra = 0;
+    int raised = 0;
+    char *keys = NULL;     /* each mod's key, BW_SDATM_NAME_MAX bytes a mod */
 
     *out = NULL;
     *out_size = 0;
+    g_heap_extra = 0;
+    memset(raise, 0, sizeof(raise));
+    memset(bgm, 0, sizeof(bgm));
     memset(&b, 0, sizeof(b));
     if ((why = img_parse(&im, base, base_size)) != NULL) {
         fprintf(stderr, "sdat merge: base archive: %s\n", why);
@@ -588,10 +783,16 @@ int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
     for (m = 0; m < count; m++) {
         nitems += adds[m].decl->count;
     }
+    keys = (char *)calloc(count + 1, BW_SDATM_NAME_MAX);
+    if (keys == NULL) {
+        fprintf(stderr, "sdat merge: out of memory\n");
+        return -1;
+    }
     if (nitems > 0) {
         items = (Item *)calloc(nitems, sizeof(Item));
         if (items == NULL) {
             fprintf(stderr, "sdat merge: out of memory\n");
+            free(keys);
             return -1;
         }
     }
@@ -605,10 +806,21 @@ int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
      * sequences, each in declaration order. */
     for (m = 0; m < count; m++) {
         const BwSdatAdd *a = &adds[m];
+        char *key = keys + (size_t)m * BW_SDATM_NAME_MAX;
+        char first[BW_SDATM_NAME_MAX];
+        u32 dup = 1;
 
-        if (!name_ok(a->mod_name)) {
-            fprintf(stderr, "sdat merge: bad mod name\n");
-            goto fail;
+        bw_sdat_mod_key(a->mod_name, first, sizeof(first));
+        memcpy(key, first, sizeof(first));
+        /* two mods with one key (`Fairy Type` and `Fairy_Type`): the later
+         * one's is made unique in load order, `Fairy_Type_2` */
+        for (j = 0; j < m; j++) {
+            if (strcmp(keys + (size_t)j * BW_SDATM_NAME_MAX, key) == 0) {
+                snprintf(key, BW_SDATM_NAME_MAX, "%.56s_%u", first, (unsigned)++dup);
+                fprintf(stderr, "sdat merge: mod `%s`: its sounds are named %s:<name> (another mod has the key)\n",
+                        a->mod_name != NULL ? a->mod_name : "", key);
+                j = (u32)-1;    /* (check the new key against every earlier one) */
+            }
         }
         for (o = 0; o < 3; o++) {
             for (i = 0; i < a->decl->count; i++) {
@@ -624,7 +836,7 @@ int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
                 it->id = next_id[e->kind]++;
                 it->file_id = next_file++;
                 added[e->kind]++;
-                snprintf(it->qname, sizeof(it->qname), "%s:%s", a->mod_name, e->name);
+                snprintf(it->qname, sizeof(it->qname), "%s:%s", key, e->name);
                 for (j = 0; j < a->file_count; j++) {
                     if (strcmp(a->files[j].name, e->file) == 0) {
                         it->data = a->files[j].data;
@@ -669,6 +881,31 @@ int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
                         it->qname, kind_word(rk), e->refs[j]);
                 goto fail;
             }
+        }
+    }
+
+    /* The players' heaps (see bw_sdat_sound_heap_extra). */
+    for (i = 0; i < nitems; i++) {
+        const Item *it = &items[i];
+        const u8 *rec;
+        u32 p = it->e->player, need;
+
+        if (it->e->kind != BW_SDATM_SEQ || p >= PLAYERS_MAX
+            || (rec = base_record(&im, PLAYER_KIND, p, PLAYER_REC)) == NULL) {
+            continue;
+        }
+        need = seq_need(&im, items, nitems, it->size, it->ref_id[0]);
+        if (rd32(rec + 4) == 0) {
+            bgm[p] = need > bgm[p] ? need : bgm[p];
+        } else if (need > rd32(rec + 4) && need > raise[p]) {
+            raise[p] = need;
+            raised = 1;
+        }
+    }
+    for (k = 0; k < PLAYERS_MAX; k++) {
+        if (bgm[k] != 0) {
+            u32 game = base_player_need(&im, k);
+            heap_extra += bgm[k] > game ? bgm[k] - game : 0;
         }
     }
 
@@ -732,6 +969,33 @@ int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
             buf_align(&b, 4);
             buf_set32(&b, slot0 + (it->id - im.count[kind]) * 4, b.len - info_new);
             buf_put(&b, rec, rec_size(kind));
+        }
+    }
+    if (raised) {
+        /* A copy of the PLAYER table, each raised player on a new record. */
+        u32 tab_rel, slot0;
+
+        buf_align(&b, 4);
+        tab_rel = b.len - info_new;
+        buf_put32(&b, im.count[PLAYER_KIND]);
+        slot0 = b.len;
+        for (i = 0; i < im.count[PLAYER_KIND]; i++) {
+            buf_put32(&b, rd32(base + im.info_off + im.tab[PLAYER_KIND] + 4 + i * 4));
+        }
+        buf_set32(&b, info_new + 8 + PLAYER_KIND * 4, tab_rel);
+        for (k = 0; k < PLAYERS_MAX; k++) {
+            const u8 *old;
+            u8 rec[PLAYER_REC];
+
+            if (raise[k] == 0) {
+                continue;
+            }
+            old = base_record(&im, PLAYER_KIND, k, PLAYER_REC);
+            memcpy(rec, old, PLAYER_REC);
+            wr32(rec + 4, raise[k]);
+            heap_extra += (raise[k] - rd32(old + 4) + PLAYER_HEAP_HEAD) * (old[0] != 0 ? old[0] : 1u);
+            buf_set32(&b, slot0 + k * 4, b.len - info_new);
+            buf_put(&b, rec, PLAYER_REC);
         }
     }
     buf_align(&b, 4);
@@ -800,12 +1064,18 @@ int bw_vfs_sdat_merge(const u8 *base, u32 base_size, const BwSdatAdd *adds,
     buf_set32(&b, 0x24, rd32(b.p + fat_new + 4));
     buf_set32(&b, 0x14, rd32(b.p + symb_new + 4));
 
+    /* The sound heap holds INFO and FAT (NNS_SndArcInit): their growth. */
+    heap_extra += FILE_COST(rd32(b.p + info_new + 4) - im.info_size)
+                + FILE_COST(rd32(b.p + fat_new + 4) - im.fat_size);
+
 done:
     if (b.failed) {
         msg = "out of memory or image over the size limit";
         goto fail;
     }
+    g_heap_extra = heap_extra;
     free(items);
+    free(keys);
     *out = b.p;
     *out_size = b.len;
     return 0;
@@ -815,6 +1085,7 @@ fail:
         fprintf(stderr, "sdat merge: %s\n", msg);
     }
     free(items);
+    free(keys);
     free(b.p);
     return -1;
 }

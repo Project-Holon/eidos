@@ -80,6 +80,8 @@ typedef struct EidosGpuOps {
     void (*set_3d2d_shown)(EidosGpu *g, int w, int h);
     void (*set_world_backdrop)(EidosGpu *g, unsigned rgb);
     void (*set_3d_zero)(EidosGpu *g, const unsigned char *zero, int w, int h);
+    /* the world screen's continuation past its right edge (wide_bg), NULL none */
+    void (*set_3d_side)(EidosGpu *g, const unsigned char *side, int w, int h);
     int  (*read3d)(EidosGpu *g, unsigned char *out, int w, int h);
     int  (*read3d_1x)(EidosGpu *g, const struct G3dSnapshot *snap, unsigned char *out, int async);
 
@@ -183,6 +185,8 @@ static inline void eidos_gpu_set_screen_fill(EidosGpu *g, int screen, unsigned l
 { g->ops->set_screen_fill(g, screen, level); }
 static inline void eidos_gpu_set_3d_zero(EidosGpu *g, const unsigned char *zero, int w, int h)
 { g->ops->set_3d_zero(g, zero, w, h); }
+static inline void eidos_gpu_set_3d_side(EidosGpu *g, const unsigned char *side, int w, int h)
+{ g->ops->set_3d_side(g, side, w, h); }
 static inline int eidos_gpu_read3d(EidosGpu *g, unsigned char *out, int w, int h)
 { return g->ops->read3d(g, out, w, h); }
 static inline int eidos_gpu_read3d_1x(EidosGpu *g, const struct G3dSnapshot *snap,

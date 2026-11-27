@@ -153,6 +153,9 @@ void eidos_gl_set_screen_fill(EidosGl *gl, int screen, unsigned level);
  * the presenter can tell what a 2D layer adds over the 3D and how much of
  * the 3D shows through a blend; NULL for none.  Call before eidos_gl_set_3d. */
 void eidos_gl_set_3d_zero(EidosGl *gl, const unsigned char *zero, int w, int h);
+/* The world screen's continuation past its right edge (256x192 RGBA, made
+ * on the CPU: g2d_hw_main_shifted_dsmem), NULL for none. */
+void eidos_gl_set_3d_side(EidosGl *gl, const unsigned char *side, int w, int h);
 
 /* Test aid: the last 3D frame as top-down, non-premultiplied RGBA, w x h as
  * rendered (the size given to eidos_gl_render3d).  0 on success. */
