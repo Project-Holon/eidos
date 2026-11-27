@@ -42,12 +42,28 @@ Sets the move each TM and HM teaches.
 
     TM35 = 53        # TM35 teaches Flamethrower
     HM03 = 57
+    TM96 = 605       # a TM a mod adds
 
-The machine is `TM01` to `TM95` or `HM01` to `HM06`, and the value is a
-move ID up to `limit.moves`. The Bag and move-teaching screens show the
-new move. The item's description text is separate: update the TM's
-description in the item text when changing its move. TM and HM
-compatibility is set in each species' data.
+Keys are `TM01` to `TM95`, `HM01` to `HM06`, or custom TMs `TM96` to `TM122`
+(see `machine_items.txt`). Values are move IDs up to `limit.moves`. The Bag
+and move-teaching screens show the assigned move. Item descriptions are
+separate: update the TM's description in the item text when changing its
+move. TM and HM compatibility is set in each species' data.
+
+## machine_items.txt
+
+Maps each custom TM to an item ID.
+
+    TM96 = 627
+
+Keys are `TM96` to `TM122`. Values are custom item IDs (627 up to
+`limit.items`) assigned to the TM pocket in the item data, like base TMs.
+The taught move comes from `machine_moves.txt`. A species can learn the TM
+when bit `TM number + 5` of its machine compatibility bitfield is set
+(`TM96` is bit 101, `TM122` is bit 127). The Bag lists custom TMs by number
+after base TMs and before HMs, and both the Bag and shops display their TM
+number. Custom TMs are never HMs. The TM pocket holds 109 items, leaving
+room for 8 custom TMs alongside all 101 base TMs and HMs.
 
 ## shops.txt
 
