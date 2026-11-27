@@ -12,10 +12,65 @@
  * game's three functions with those items added; the game's own machines go
  * the game's way.  FILE_UTIL_GetMachineIndex (the HM number) and
  * FILE_UTIL_IsHmMove are the game's: an added TM is never an HM.
+ *
+ * The TM pocket is sorted by machine bit (MYITEM_SAVEDATA_SortPocketByItemOrder),
+ * which puts an added TM after the HMs (bits 95..100).  The port's sort
+ * puts it with the TMs: TM01..TM122 by number, then HM01..HM06, then
+ * anything else, as the game's order is for its own.
  */
 
 #include "bw_limits.h"
 #include "types.h"
+
+#if defined(__GNUC__) || defined(__clang__)
+#define GAME_FN __attribute__((weak))
+#else
+#define GAME_FN
+#endif
+
+/* arm9 myitem_savedata_types.h: one bag slot */
+struct BagSlot {
+    u16 itemId;
+    u16 quantity;
+};
+
+extern void MYITEM_SAVEDATA_ClearEmptyQuantities(struct BagSlot *slots, u32 count) GAME_FN;
+extern void MYITEM_SAVEDATA_SwapSlots(struct BagSlot *a, struct BagSlot *b) GAME_FN;
+u32 FILE_UTIL_GetId(u32 machineId);
+
+/* The pocket order of an item: TMs by number, then the HMs, then the rest. */
+static u32 pocket_order(u32 item)
+{
+    u32 bit = FILE_UTIL_GetId(item);
+
+    if (bit == 0xFFu) {
+        return 0xFFFFFFFFu;
+    }
+    if (bit < 95u) {
+        return bit;                 /* TM01..TM95 */
+    }
+    if (bit <= 100u) {
+        return 1000u + bit;         /* HM01..HM06 */
+    }
+    return bit - 6u;                /* TM96.. (TM number - 1) */
+}
+
+void MYITEM_SAVEDATA_SortPocketByItemOrder(struct BagSlot *slots, u32 count)
+{
+    u32 lastIndex;
+    u32 i;
+    u32 j;
+
+    MYITEM_SAVEDATA_ClearEmptyQuantities(slots, count);
+    for (i = 0, lastIndex = count - 1; i < lastIndex; i++) {
+        for (j = i + 1; j < count; j++) {
+            if (slots[i].quantity == 0 ||
+                (slots[j].quantity != 0 && pocket_order(slots[i].itemId) > pocket_order(slots[j].itemId))) {
+                MYITEM_SAVEDATA_SwapSlots(&slots[i], &slots[j]);
+            }
+        }
+    }
+}
 
 u32 FILE_UTIL_IsMachineItem(u32 id)
 {
