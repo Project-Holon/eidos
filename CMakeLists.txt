@@ -585,6 +585,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/cries.c  # the cry a species plays (cries.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_chart.c  # the chart with the types mods add (type_chart.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/machines.c  # the TMs mods add (machine_items.txt)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tm_pocket.c  # a TM pocket with room for them
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_icons.c  # the added types' icons and buttons (types.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/palanm_fade.c  # a fade over a screen's type rows covers the added types' row
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_table.c     # a mod's own data tables (`table` lines)

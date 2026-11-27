@@ -62,8 +62,12 @@ The taught move comes from `machine_moves.txt`. A species can learn the TM
 when bit `TM number + 5` of its machine compatibility bitfield is set
 (`TM96` is bit 101, `TM122` is bit 127). The Bag lists custom TMs by number
 after base TMs and before HMs, and both the Bag and shops display their TM
-number. Custom TMs are never HMs. The TM pocket holds 109 items, leaving
-room for 8 custom TMs alongside all 101 base TMs and HMs.
+number. Custom TMs are never HMs. While a mod adds TMs, the TM pocket
+holds all 27 alongside the 101 base TMs and HMs. The save's own pocket
+keeps only the base machines. eidos stores each custom TM the player has
+in a file of the mod that adds it, beside the save
+(`saves/mods/<mod folder>.bag/`), written with each game save. With the
+mod off, the save's bag shows only the base machines.
 
 ## shops.txt
 

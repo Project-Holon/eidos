@@ -832,6 +832,7 @@ extern void bw_dex_data_forget(void) __attribute__((weak));    /* sdk/dex_data.c
 extern void bw_cries_forget(void) __attribute__((weak));       /* sdk/cries.c */
 extern void bw_type_chart_forget(void) __attribute__((weak));  /* sdk/type_chart.c */
 extern void bw_type_icons_apply(void) __attribute__((weak));   /* sdk/type_icons.c */
+extern void bw_tm_pocket_forget(void) __attribute__((weak));   /* sdk/tm_pocket.c */
 
 int bw_limits_apply(void)
 {
@@ -840,6 +841,9 @@ int bw_limits_apply(void)
 
     if (bw_dex_ext_forget != NULL) {
         bw_dex_ext_forget();        /* (the mod list may be another: which mod adds which species) */
+    }
+    if (bw_tm_pocket_forget != NULL) {
+        bw_tm_pocket_forget();      /* (and which mod adds which TM) */
     }
     if (bw_dex_data_forget != NULL) {
         bw_dex_data_forget();       /* (and another regional table, other species) */

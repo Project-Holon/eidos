@@ -225,6 +225,8 @@ static u32 play_seconds_of_game(const struct GameData *gameData)
  */
 extern void bw_dex_ext_new_game(void) __attribute__((weak));    /* sdk/dex_save.c */
 extern void bw_dex_ext_save_loaded(void) __attribute__((weak)); /* sdk/dex_save.c */
+extern void bw_tm_pocket_new_game(void) __attribute__((weak));    /* sdk/tm_pocket.c */
+extern void bw_tm_pocket_save_loaded(void) __attribute__((weak)); /* sdk/tm_pocket.c */
 
 static void build_game_new(const BwEventCall *call, BwEventPayload *out)
 {
@@ -233,6 +235,10 @@ static void build_game_new(const BwEventCall *call, BwEventPayload *out)
     /* the dex extension of a new game starts empty (sdk/dex_save.c) */
     if (bw_dex_ext_new_game != NULL) {
         bw_dex_ext_new_game();
+    }
+    /* and the TM pocket's (sdk/tm_pocket.c) */
+    if (bw_tm_pocket_new_game != NULL) {
+        bw_tm_pocket_new_game();
     }
 }
 
@@ -253,6 +259,9 @@ static void build_game_new(const BwEventCall *call, BwEventPayload *out)
  * the way a failed write drops it.
  */
 extern void bw_dex_ext_save(void) __attribute__((weak));       /* sdk/dex_save.c */
+extern void bw_tm_pocket_save(void *bagBlock) __attribute__((weak));   /* sdk/tm_pocket.c */
+extern void *SAVE_CONTROL_GetBlock(struct SaveControl *saveControl, u32 blockId) __attribute__((weak));
+#define SAVE_BLOCK_MY_ITEM 0x19     /* the bag (game_data.c: GAME_DATA_GetMyItem's block) */
 
 static void build_save_begin(const BwEventCall *call, BwEventPayload *out)
 {
@@ -270,6 +279,11 @@ static void build_save_begin(const BwEventCall *call, BwEventPayload *out)
     /* the dex extension (sdk/dex_save.c) is stored with the save */
     if (bw_dex_ext_save != NULL) {
         bw_dex_ext_save();
+    }
+    /* and the TM pocket goes back into the bag block, its overflow into
+     * the mods' files (sdk/tm_pocket.c), before the game writes the save */
+    if (bw_tm_pocket_save != NULL && SAVE_CONTROL_GetBlock != NULL && save != NULL) {
+        bw_tm_pocket_save(SAVE_CONTROL_GetBlock((struct SaveControl *)save, SAVE_BLOCK_MY_ITEM));
     }
 }
 
@@ -343,6 +357,9 @@ static void build_save_load(const BwEventCall *call, BwEventPayload *out)
     /* the dex extension: the loaded save's own files (sdk/dex_save.c) */
     if (bw_dex_ext_save_loaded != NULL) {
         bw_dex_ext_save_loaded();
+    }
+    if (bw_tm_pocket_save_loaded != NULL) {
+        bw_tm_pocket_save_loaded();     /* (and the TM pocket's, sdk/tm_pocket.c) */
     }
     save = GAME_DATA_GetSaveControl(gameData);
     out->save_load.play_seconds = play_seconds_of_save(save);
