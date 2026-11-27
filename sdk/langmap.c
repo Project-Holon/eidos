@@ -85,6 +85,7 @@ int g_pm_language = LANG_ENGLISH;
 int g_pm_version = 1;
 
 static const BwLangMap *g_map;
+static int g_read;              /* bw_lang_init has run */
 
 /* The cartridge's own images, as they were read: the ARM9's and each
  * overlay's (bw_lang_target_ptr). */
@@ -191,6 +192,7 @@ void bw_lang_init(void)
     char code[4];
     u32 i;
 
+    g_read = 1;
     g_map = NULL;
     free(g_rows);
     g_rows = NULL;
@@ -236,8 +238,13 @@ void bw_lang_init(void)
     }
 }
 
+/* (read here when asked before the game's first archive: the mods' text at
+ * boot, sdk/text_from.c) */
 int bw_lang_language(void)
 {
+    if (!g_read) {
+        bw_lang_init();
+    }
     return g_pm_language;
 }
 

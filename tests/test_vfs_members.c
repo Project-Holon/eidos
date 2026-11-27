@@ -37,7 +37,10 @@
 #include "port.h"
 #include "fs.h"
 #include "vfs.h"
+#include "vfs_msg.h"
 #include "port_test.h"
+
+int bw_msg_bank_get(const u8 *bank, u32 size, u32 entry, u32 block, u16 *out, u32 max_units);
 
 #ifdef _WIN32
 #include <direct.h>
@@ -754,6 +757,44 @@ static void real_data(const char *root)
 
     free(buf);
     free(keep);
+
+    /* Lines the port makes for a mod (sdk/text_from.c) apply after the
+     * mod's own line file for the bank, and go with bw_vfs_lines_clear. */
+    printf("real data: made lines over a mod's line file\n");
+    MKDIR(REAL_MOD "/a/0/0");
+    MKDIR(REAL_MOD "/a/0/0/2");
+    write_text(REAL_MOD "/a/0/0/2/13.msg", "1716 = Plain\n1717 = Kept\n");
+    {
+        static const u16 made_units[] = { 'M', 'a', 'd', 'e' };
+        BwMsgLine made;
+        u8 *img;
+        u32 img_size, len;
+        const u8 *bank;
+        u16 got[16];
+
+        made.index = 1716;
+        made.units = (u16 *)made_units;
+        made.len = 4;
+        BW_REQUIRE_VOID(bw_mod_count() == 1);
+        BW_CHECK_EQ("bw_vfs_lines_set", bw_vfs_lines_set(bw_mod_root_at(0), "a/0/0/2", 13, &made, 1), 0);
+        BW_REQUIRE_VOID(bw_vfs_build_merged("a/0/0/2", &img, &img_size) == 1);
+        BW_REQUIRE_VOID(bw_narc_member(img, img_size, 13, &bank, &len) == 0);
+        BW_CHECK_EQ("the made line wins", bw_msg_bank_get(bank, len, 1716, 0, got, 16) == 4 &&
+                    got[0] == 'M' && got[3] == 'e', 1);
+        BW_CHECK_EQ("the mod's other line stays", bw_msg_bank_get(bank, len, 1717, 0, got, 16) == 4 &&
+                    got[0] == 'K', 1);
+        free(img);
+        bw_vfs_lines_clear();
+        BW_REQUIRE_VOID(bw_vfs_build_merged("a/0/0/2", &img, &img_size) == 1);
+        BW_REQUIRE_VOID(bw_narc_member(img, img_size, 13, &bank, &len) == 0);
+        BW_CHECK_EQ("cleared: the mod's line again", bw_msg_bank_get(bank, len, 1716, 0, got, 16) == 5 &&
+                    got[0] == 'P', 1);
+        free(img);
+    }
+    remove(REAL_MOD "/a/0/0/2/13.msg");
+    RMDIR(REAL_MOD "/a/0/0/2");
+    RMDIR(REAL_MOD "/a/0/0");
+
     bw_set_mod_root(NULL);
     bw_arm9_set_image(NULL, 0);
     remove(ovr_path);

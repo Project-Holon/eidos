@@ -87,6 +87,7 @@
 #include "trainer_mons.h"
 #include "shops.h"
 #include "item_heal.h"
+extern void bw_text_from_apply(void);    /* sdk/text_from.c */
 #include "move_anims.h"
 #include "mod_catalog.h"
 #include "mod_menu.h"
@@ -3348,6 +3349,8 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     /* The mods' moves, abilities and items that work like a built-in one
      * (sdk/battle_handlers.h), read with the same final mod list. */
     bw_bh_load();
+    /* and a mod's move and item lines in the game's language (sdk/text_from.c) */
+    bw_text_from_apply();
     /* (the move a preview plays is one there is, now the mods' limit is known) */
     if (bw_preview_move() > bw_limit_get(BW_PORT_LIMIT_MOVE_LAST)) {
         fprintf(stderr, "eidos: --preview-move: no move %u (the moves are 1 to %u)\n", (unsigned)bw_preview_move(),

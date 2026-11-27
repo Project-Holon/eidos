@@ -24,6 +24,23 @@ language's game only. It applies after the mod's `<bank>.msg`, so a line it
 lacks keeps the plain file's text. eidos runs the English, French, German,
 Italian and Spanish games, which share the same banks and line numbers.
 
+Some lines are whole sentences with a name inside: a move's "used" lines
+(bank 13, three per move at `3 × move`: the player's, a wild and a foe's
+Pokémon), its name in capitals (bank 286), and an item's article and plural
+lines (banks 279 and 280; the article line is empty in every language but
+English). The manifest's `lang` (`en`, `fr`, `de`, `it` or `es`; English
+when omitted) says which language a mod's plain files are written in. In a
+game of another language, eidos makes these lines for the moves and items a
+mod adds (moves from 560, items from 627) that have no line in the game's
+language: it takes the game's own line of a source entry and swaps in the
+mod's name in the game's language (bank 203 or 54, the `.<lang>.msg` line
+first). A move's source is the move it works like in `move_handlers.txt`,
+else Pound. An item's source is TM95 for a TM, the Flame Plate for a plate,
+the Douse Drive for a drive. `eidos/tables/text_from.txt` names a source:
+
+    move.572 = 469        # Crafty Shield's lines from Quick Guard's
+    item.630 = 17         # item 630's lines from the Potion's
+
 ## item_icons.txt
 
 Maps each item's bag icon to its tile member and palette member in a/0/2/5.

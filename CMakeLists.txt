@@ -588,6 +588,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tm_pocket.c  # a TM pocket with room for them
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_items.c  # the added types' plates and drives
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/item_heal.c  # how much HP items heal (item_heal.txt)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/text_from.c  # a mod's move and item lines in the game's language
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_icons.c  # the added types' icons and buttons (types.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/palanm_fade.c  # a fade over a screen's type rows covers the added types' row
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_table.c     # a mod's own data tables (`table` lines)

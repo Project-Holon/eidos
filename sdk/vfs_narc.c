@@ -363,7 +363,9 @@ typedef struct Override {
     const u8 *mem;  /* a memory member's bytes (the layer owns them) */
     u32   mem_size;
     u32   lang;     /* a line file: 1 for `<bank>.<lang>.msg` (the game's
-                     * language), applied after the mod's `<bank>.msg` */
+                     * language), applied after the mod's `<bank>.msg`; 2
+                     * for lines made in memory (bw_vfs_lines_set) */
+    const BwMsgLines *lines;    /* lines made in memory, path NULL */
 } Override;
 
 typedef struct Collect {
@@ -652,8 +654,119 @@ static int add_entry(Override **list, u32 *count, u32 *cap, u32 index,
     (*list)[*count].mem = NULL;
     (*list)[*count].mem_size = 0;
     (*list)[*count].lang = 0;
+    (*list)[*count].lines = NULL;
     (*count)++;
     return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Line files made in memory                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A mod's lines made by the port for one bank (sdk/text_from.c: its move
+ * and item lines in the game's language).  They apply as the mod's
+ * `<bank>.<lang>.msg` would: after its own line files for the bank.
+ */
+typedef struct MemLines {
+    char      *root;
+    char      *rel;
+    u32        bank;
+    BwMsgLines lines;
+} MemLines;
+
+static MemLines *g_lines;
+static u32 g_lines_count, g_lines_cap;
+
+static int copy_lines(BwMsgLines *dst, const BwMsgLine *src, u32 count)
+{
+    u32 i;
+
+    memset(dst, 0, sizeof(*dst));
+    dst->lines = (BwMsgLine *)calloc(count == 0 ? 1 : count, sizeof(*dst->lines));
+    if (dst->lines == NULL) {
+        return -1;
+    }
+    dst->cap = count;
+    for (i = 0; i < count; i++) {
+        BwMsgLine *l = &dst->lines[i];
+
+        l->index = src[i].index;
+        l->len = src[i].len;
+        l->units = NULL;
+        if (src[i].len != 0) {
+            l->units = (u16 *)malloc(src[i].len * sizeof(u16));
+            if (l->units == NULL) {
+                dst->count = i;
+                bw_msg_lines_free(dst);
+                return -1;
+            }
+            memcpy(l->units, src[i].units, src[i].len * sizeof(u16));
+        }
+        dst->count = i + 1;
+    }
+    return 0;
+}
+
+int bw_vfs_lines_set(const char *root, const char *rel, u32 bank, const BwMsgLine *lines, u32 count)
+{
+    MemLines *m = NULL;
+    BwMsgLines made;
+    u32 k;
+
+    if (root == NULL || rel == NULL || bank >= BW_NARC_MAX_MEMBERS || (lines == NULL && count != 0) ||
+        copy_lines(&made, lines, count) != 0) {
+        return -1;
+    }
+    for (k = 0; k < g_lines_count; k++) {
+        if (g_lines[k].bank == bank && strcmp(g_lines[k].root, root) == 0 && strcmp(g_lines[k].rel, rel) == 0) {
+            m = &g_lines[k];
+            bw_msg_lines_free(&m->lines);
+            break;
+        }
+    }
+    if (m == NULL) {
+        if (g_lines_count == g_lines_cap) {
+            u32 cap = g_lines_cap == 0 ? 8 : g_lines_cap * 2;
+            MemLines *grown = (MemLines *)realloc(g_lines, cap * sizeof(*grown));
+
+            if (grown == NULL) {
+                bw_msg_lines_free(&made);
+                return -1;
+            }
+            g_lines = grown;
+            g_lines_cap = cap;
+        }
+        m = &g_lines[g_lines_count];
+        m->root = dup_str(root);
+        m->rel = dup_str(rel);
+        if (m->root == NULL || m->rel == NULL) {
+            free(m->root);
+            free(m->rel);
+            bw_msg_lines_free(&made);
+            return -1;
+        }
+        m->bank = bank;
+        g_lines_count++;
+    }
+    m->lines = made;
+    bw_vfs_flush_path(rel);
+    return 0;
+}
+
+void bw_vfs_lines_clear(void)
+{
+    u32 k;
+
+    for (k = 0; k < g_lines_count; k++) {
+        bw_vfs_flush_path(g_lines[k].rel);
+        free(g_lines[k].root);
+        free(g_lines[k].rel);
+        bw_msg_lines_free(&g_lines[k].lines);
+    }
+    free(g_lines);
+    g_lines = NULL;
+    g_lines_count = g_lines_cap = 0;
 }
 
 static int collect_one(void *ctx, const char *name)
@@ -781,6 +894,18 @@ static int collect(const char *rel, int layer, Collect *c)
             c->list[c->count - 1].mem = g_mem[k].data;
             c->list[c->count - 1].mem_size = g_mem[k].size;
         }
+        /* the lines the port made for the mod, after its line files */
+        for (k = 0; (int)i > layer && k < g_lines_count; k++) {
+            if (strcmp(g_lines[k].rel, rel) != 0 || strcmp(g_lines[k].root, root) != 0) {
+                continue;
+            }
+            if (add_entry(&c->msg, &c->msg_count, &c->msg_cap, g_lines[k].bank, i * 2u, NULL) != 0) {
+                free_collect(c);
+                return -1;
+            }
+            c->msg[c->msg_count - 1].lang = 2;
+            c->msg[c->msg_count - 1].lines = &g_lines[k].lines;
+        }
     }
     /* The port's own layer (root ""), over every mod: what the port puts
      * in for a moment, the title of a mod's text input (sdk/mod_v6.c). */
@@ -895,6 +1020,22 @@ static int apply_msg(const char *rel, const Collect *c, const u8 **data,
                 break;
             }
             lists[n] = (BwMsgLines *)calloc(1, sizeof(BwMsgLines));
+            if (c->msg[j].lines != NULL) {
+                /* lines made in memory */
+                if (lists[n] == NULL ||
+                    copy_lines(lists[n], c->msg[j].lines->lines, c->msg[j].lines->count) != 0) {
+                    fprintf(stderr, "vfs: %s bank %u: no memory for the made lines\n", rel, idx);
+                    free(lists[n]);
+                    for (j = 0; j < n; j++) {
+                        bw_msg_lines_free(lists[j]);
+                        free(lists[j]);
+                    }
+                    return -1;
+                }
+                const_lists[n] = lists[n];
+                n++;
+                continue;
+            }
             text = read_whole(c->msg[j].path, &text_size);
             if (lists[n] == NULL || text == NULL ||
                 bw_msg_parse((const char *)text, text_size, lists[n], err,
