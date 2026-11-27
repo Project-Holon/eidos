@@ -1,6 +1,6 @@
 {
  "format": 1,
- "aletheia": "50731dd699",
+ "aletheia": "ea39ea3ad6",
  "keys": {
   "stat": [
    "accuracy",
@@ -519,6 +519,49 @@
     "ratio": 2.0
    },
    "notes": []
+  },
+  "misty_terrain": {
+   "keys": {},
+   "notes": [
+    "eidos base: for five turns, grounded Pokemon get no major status, confusion or Yawn, Rest fails for them, and Dragon moves do half damage to them.",
+    "Move record: category 10, target 10 (as Gravity).",
+    "Lines: a/0/0/2 bank 15 lines 400 (start) and 401 (end), bank 14 lines 2003 to 2005 (status blocked)."
+   ]
+  },
+  "flower_shield": {
+   "keys": {
+    "type": "grass",
+    "stat": "def",
+    "stages": 1
+   },
+   "notes": [
+    "eidos base: raises the stat of every Pokemon of the type on the field. Fails when there is none.",
+    "Move record: category 10, target 10 (as Haze)."
+   ]
+  },
+  "crafty_shield": {
+   "keys": {},
+   "notes": [
+    "eidos base: for the rest of the turn, status moves other Pokemon use on the user's side fail. Moves that target every Pokemon (Perish Song) still work.",
+    "Move record: category 11, target 12, priority 3 (as Quick Guard).",
+    "Lines: a/0/0/2 bank 14 lines 2006 to 2008 (start) and 2009 to 2011 (move blocked)."
+   ]
+  },
+  "fairy_lock": {
+   "keys": {},
+   "notes": [
+    "eidos base: no Pokemon on the field can flee or switch out during the next turn. Fails when every Pokemon is already trapped.",
+    "Move record: category 10, target 10 (as Haze).",
+    "Lines: a/0/0/2 bank 15 line 402."
+   ]
+  },
+  "geomancy": {
+   "keys": {},
+   "notes": [
+    "eidos base: Razor Wind's charge turn with its own line. The stat changes come from the move record. Power Herb skips the charge.",
+    "Move record: category 2, target 7, the charge flag and its stat changes.",
+    "Lines: a/0/0/2 bank 14 lines 2000 to 2002 (charge turn)."
+   ]
   }
  },
  "ability": {
@@ -1615,7 +1658,7 @@
    },
    "notes": [
     "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
-    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnEntry: 2 places of hp, not adjustable",
     "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
    ]
   },
@@ -1626,7 +1669,7 @@
    },
    "notes": [
     "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
-    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnEntry: 2 places of hp, not adjustable",
     "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
    ]
   },
@@ -1637,7 +1680,7 @@
    },
    "notes": [
     "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
-    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnEntry: 2 places of hp, not adjustable",
     "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
    ]
   },
@@ -1648,7 +1691,7 @@
    },
    "notes": [
     "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
-    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnEntry: 2 places of hp, not adjustable",
     "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
    ]
   },
@@ -1659,7 +1702,7 @@
    },
    "notes": [
     "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
-    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnEntry: 2 places of hp, not adjustable",
     "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
    ]
   },
@@ -1667,7 +1710,7 @@
    "keys": {},
    "notes": [
     "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
-    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnEntry: 2 places of hp, not adjustable",
     "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable"
    ]
   },
@@ -1675,7 +1718,7 @@
    "keys": {},
    "notes": [
     "HAND_ITEM_HpBerryCheckAfterDamage: 2 places of hp, not adjustable",
-    "HAND_ITEM_HpBerryCheckAtTurnEnd: 2 places of hp, not adjustable",
+    "HAND_ITEM_HpBerryCheckOnEntry: 2 places of hp, not adjustable",
     "HAND_ITEM_HpBerryCheckOnUse: its hp is decided at run time, not adjustable",
     "HAND_ITEM_RaiseRandomStatTwo: its rank is decided at run time, not adjustable"
    ]
@@ -1689,8 +1732,8 @@
   "209": {
    "keys": {},
    "notes": [
-    "HAND_ITEM_MicleBerryCheckOnSwitchIn: its hp is decided at run time, not adjustable",
     "HAND_ITEM_MicleBerryCheckAfterDamage: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_MicleBerryCheckOwnerHp: its hp is decided at run time, not adjustable",
     "HAND_ITEM_MicleBerryCheckAfterAction: its hp is decided at run time, not adjustable",
     "HAND_ITEM_MicleBerryCheckHp: its hp is decided at run time, not adjustable",
     "HAND_ITEM_MicleBerryRaiseAccuracy: its sick is decided at run time, not adjustable",

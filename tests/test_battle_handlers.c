@@ -69,7 +69,30 @@ int main(void)
     bw_bh_check();
     BW_CHECK_EQ("a cycle is left out", bw_bh_base(BW_BH_ABILITY, 180), 180);
 
+    printf("eidos's own move bases, by name\n");
+    bw_bh_clear();
+    BW_CHECK_EQ("a named base", line(BW_BH_MOVE, "571 = misty_terrain"), 0);
+    BW_CHECK_EQ("its id", bw_bh_base(BW_BH_MOVE, 571), BW_BH_MISTY_TERRAIN);
+    BW_CHECK_EQ("its name", strcmp(bw_bh_named_name(BW_BH_MISTY_TERRAIN), "misty_terrain"), 0);
+    BW_CHECK_EQ("a named base with keys", line(BW_BH_MOVE, "570 = flower_shield stat=spdef stages=2 # x"), 0);
+    BW_CHECK_EQ("a name in a line of several", line(BW_BH_MOVE, "572 = 182 + crafty_shield"), 0);
+    BW_CHECK_EQ("an unknown name", line(BW_BH_MOVE, "573 = fairy_locks"), -1);
+    BW_CHECK_EQ("names are for moves", line(BW_BH_ABILITY, "165 = geomancy"), -1);
+    line(BW_BH_MOVE, "574 = misty_terrain type=fire");
+    bw_bh_check();
+    BW_CHECK_EQ("the names' keys", bw_bh_key(BW_BH_MOVE, 570, BW_BH_KEY_STAGES, 1, &v) && v == 2, 1);
+    BW_CHECK_EQ("the second part's base", bw_bh_part_base(BW_BH_MOVE, 572, 1), BW_BH_CRAFTY_SHIELD);
+    BW_CHECK_EQ("a key a named base has no place for", bw_bh_key(BW_BH_MOVE, 574, BW_BH_KEY_TYPE, 1, &v), 0);
+    stat = 2;
+    amount = 1;
+    bw_bh_enter(BW_BH_MOVE, 570, 0);
+    bw_bh_rank(&stat, &amount);
+    bw_bh_leave();
+    BW_CHECK_EQ("Flower Shield's stat change takes the keys", stat == 4 && amount == 2, 1);
+
     printf("keys the base has no place for are left out\n");
+    bw_bh_clear();
+    line(BW_BH_ABILITY, "165 = 22 stat=spdef stages=-2");
     line(BW_BH_ABILITY, "171 = 22 ratio=2.0 stat=spatk");
     line(BW_BH_ABILITY, "172 = 22 stat.2=def");
     bw_bh_check();

@@ -1147,8 +1147,10 @@ static void debug_party(void)
         fprintf(stderr, "eidos: debug party: %u member(s)\n", (unsigned)POKEPARTY_GetCount(party));
     }
     /* EIDOS_DEBUG_MOVES="move,move,move,move": the first member's moves,
-     * slot by slot (0 keeps a slot's move), each with its full PP */
-    if (getenv("EIDOS_DEBUG_MOVES") != NULL && POKE_TOOL_SetMoveSlot != NULL && POKEPARTY_GetCount(party) > 0) {
+     * slot by slot (0 keeps a slot's move), each with its full PP.  (The
+     * "member:move:slot,..." form is read below.) */
+    if (getenv("EIDOS_DEBUG_MOVES") != NULL && strchr(getenv("EIDOS_DEBUG_MOVES"), ':') == NULL &&
+        POKE_TOOL_SetMoveSlot != NULL && POKEPARTY_GetCount(party) > 0) {
         const char *m = getenv("EIDOS_DEBUG_MOVES");
         u32 slot;
 

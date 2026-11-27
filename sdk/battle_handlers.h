@@ -7,6 +7,8 @@
  *
  *     <id> = <base id> [key=value ...] [+ <base id> [key=value ...] ...]
  *
+ * A move's base may also be one of eidos's own, by name (BW_BH_NAMED_*).
+ *
  * The battle runs the base id's handlers for the id (the game's handler
  * tables, hand_tokusei.c, hand_waza.c, hand_item.c), and the keys change
  * the numbers those handlers use: `165 = 22 stat=spatk stages=-2` is an
@@ -43,6 +45,39 @@ enum {
     BW_BH_KEY_WEATHER,      /* the weather it starts                      */
     BW_BH_KEY_COUNT
 };
+
+/*
+ * eidos's own move bases, for moves Black and White have no handlers for.
+ * A line names them in place of a base id (`600 = misty_terrain`).  Their
+ * ids are past the u16 range, so no move id is one; the handlers are in
+ * stubs/ov/patch_ov093_hand_waza.c, which keeps the same numbers.
+ */
+#define BW_BH_NAMED_FIRST    0x10000
+#define BW_BH_MISTY_TERRAIN  0x10000    /* 5 turns: no status for grounded Pokemon, Dragon moves half */
+#define BW_BH_FLOWER_SHIELD  0x10001    /* +1 Defense for every Grass-type Pokemon on the field      */
+#define BW_BH_CRAFTY_SHIELD  0x10002    /* the user's side is safe from status moves this turn       */
+#define BW_BH_FAIRY_LOCK     0x10003    /* no Pokemon on the field can flee or switch next turn       */
+#define BW_BH_GEOMANCY       0x10004    /* Razor Wind's charge with its own line; stats from the move */
+#define BW_BH_NAMED_END      0x10005
+
+/* The name of an eidos base ("misty_terrain"), NULL for any other id. */
+const char *bw_bh_named_name(int base);
+
+/*
+ * The battle lines eidos's bases show (a/0/0/2): a mod's own line of the
+ * same bank and index wins (`<mod>/a/0/0/2/14.msg`).  Bank 15 lines are
+ * one line each; bank 14 lines are sets of three (the player's Pokemon, a
+ * wild one, a foe's), as the game's are.
+ */
+#define BW_BH_LINE_BANK_STD      15u
+#define BW_BH_LINE_BANK_SET      14u
+#define BW_BH_LINE_MISTY_START   400u   /* bank 15 */
+#define BW_BH_LINE_MISTY_END     401u   /* bank 15 */
+#define BW_BH_LINE_FAIRY_LOCK    402u   /* bank 15 */
+#define BW_BH_LINE_GEOMANCY      2000u  /* bank 14, set of three */
+#define BW_BH_LINE_MISTY_BLOCK   2003u  /* bank 14, set of three */
+#define BW_BH_LINE_CRAFTY_START  2006u  /* bank 14, set of three */
+#define BW_BH_LINE_CRAFTY_BLOCK  2009u  /* bank 14, set of three */
 
 /* The kinds of place a handler uses a number (tools/handler_params.py
  * writes battle_handler_sites.inc with them). */

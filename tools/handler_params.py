@@ -417,6 +417,36 @@ def work_slots(func, aliases=("work",), depth=0, seen=None):
     return out
 
 
+# eidos's own move bases (sdk/battle_handlers.h BW_BH_NAMED_*, handlers in
+# stubs/ov/patch_ov093_hand_waza.c), keyed by the name a line writes.  By
+# hand: the code is eidos's, not the game's, so there is nothing to read.
+# Their keys are the rows of k_named_sites in sdk/battle_handlers.c.
+NAMED_MOVE_BASES = {
+    "misty_terrain": {"keys": {}, "notes": [
+        "eidos base: for five turns, grounded Pokemon get no major status, confusion or Yawn, Rest fails for them, "
+        "and Dragon moves do half damage to them.",
+        "Move record: category 10, target 10 (as Gravity).",
+        "Lines: a/0/0/2 bank 15 lines 400 (start) and 401 (end), bank 14 lines 2003 to 2005 (status blocked)."]},
+    "flower_shield": {"keys": {"type": "grass", "stat": "def", "stages": 1}, "notes": [
+        "eidos base: raises the stat of every Pokemon of the type on the field. Fails when there is none.",
+        "Move record: category 10, target 10 (as Haze)."]},
+    "crafty_shield": {"keys": {}, "notes": [
+        "eidos base: for the rest of the turn, status moves other Pokemon use on the user's side fail. "
+        "Moves that target every Pokemon (Perish Song) still work.",
+        "Move record: category 11, target 12, priority 3 (as Quick Guard).",
+        "Lines: a/0/0/2 bank 14 lines 2006 to 2008 (start) and 2009 to 2011 (move blocked)."]},
+    "fairy_lock": {"keys": {}, "notes": [
+        "eidos base: no Pokemon on the field can flee or switch out during the next turn. "
+        "Fails when every Pokemon is already trapped.",
+        "Move record: category 10, target 10 (as Haze).",
+        "Lines: a/0/0/2 bank 15 line 402."]},
+    "geomancy": {"keys": {}, "notes": [
+        "eidos base: Razor Wind's charge turn with its own line. The stat changes come from the move record. "
+        "Power Herb skips the charge.",
+        "Move record: category 2, target 7, the charge flag and its stat changes.",
+        "Lines: a/0/0/2 bank 14 lines 2000 to 2002 (charge turn)."]},
+}
+
 SITE_ENUM = {RANK: "BW_BH_SITE_RANK", SICK: "BW_BH_SITE_SICK", WEATHER: "BW_BH_SITE_WEATHER",
              CHANCE: "BW_BH_SITE_CHANCE", HP: "BW_BH_SITE_HP", RATIO: "BW_BH_SITE_RATIO", TYPE: "BW_BH_SITE_TYPE"}
 
@@ -502,6 +532,8 @@ if __name__ == "__main__":
                 inc.append("{ %d, %d, %d, %s, %d }," % (ftype, rid, h, SITE_ENUM[site], n))
             if r["work"]:
                 winc.append("{ %d, %d, 0x%02X }," % (ftype, rid, sum(1 << s for s in r["work"])))
+        if kind == "move":
+            doc[kind].update(NAMED_MOVE_BASES)
         adj = sum(1 for r in res.values() if r["keys"])
         print("%-8s %3d ids, %3d with adjustable keys, %4d keys" % (
             kind, len(res), adj, sum(len(r["keys"]) for r in res.values())))

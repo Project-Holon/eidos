@@ -29,6 +29,7 @@ typedef struct Part {
 
 typedef struct Entry {
     int   type, id;
+    int   root;             /* the mod whose line it is (bw_mod_root_at), -1 for a test line */
     int   nparts;
     Part  parts[MAX_PARTS];
     /* the joined handler table (bw_bh_join), made at the first battle that
@@ -40,6 +41,7 @@ typedef struct Entry {
 
 static Entry *g_entries;
 static int    g_count, g_cap;
+static int    g_loading_root = -1;  /* the mod whose tables load_file reads */
 
 /* ------------------------------------------------------------------ */
 /* The words                                                           */
@@ -223,14 +225,40 @@ static int parse_param(Part *part, const char *s, const char *e, char *why, int 
     return 0;
 }
 
-/* A base id at p: its value and the end, or -1. */
-static int parse_base(const char **p, int *base)
+/* eidos's own move bases, by name (battle_handlers.h) */
+static const char *const k_named[BW_BH_NAMED_END - BW_BH_NAMED_FIRST] = {
+    "misty_terrain", "flower_shield", "crafty_shield", "fairy_lock", "geomancy"
+};
+
+const char *bw_bh_named_name(int base)
+{
+    return base >= BW_BH_NAMED_FIRST && base < BW_BH_NAMED_END ? k_named[base - BW_BH_NAMED_FIRST] : NULL;
+}
+
+/* A base at p, a move's eidos base by name too: its value and the end, or -1. */
+static int parse_base(int type, const char **p, int *base)
 {
     char *end;
     long v;
 
     while (is_space(**p)) {
         (*p)++;
+    }
+    if ((**p >= 'a' && **p <= 'z') || **p == '_') {
+        const char *s = *p;
+        int k;
+
+        while ((**p >= 'a' && **p <= 'z') || (**p >= '0' && **p <= '9') || **p == '_') {
+            (*p)++;
+        }
+        for (k = 0; type == BW_BH_MOVE && k < BW_BH_NAMED_END - BW_BH_NAMED_FIRST; k++) {
+            if ((size_t)(*p - s) == strlen(k_named[k]) && strncmp(k_named[k], s, (size_t)(*p - s)) == 0) {
+                *base = BW_BH_NAMED_FIRST + k;
+                return 0;
+            }
+        }
+        *p = s;
+        return -1;
     }
     v = strtol(*p, &end, 10);
     if (end == *p || v < 1 || v > 0xFFFF) {
@@ -251,6 +279,7 @@ int bw_bh_parse_line(int type, const char *line, char *why, int why_size)
 
     memset(&e, 0, sizeof e);
     e.type = type;
+    e.root = g_loading_root;
     while (is_space(*p)) {
         p++;
     }
@@ -272,8 +301,9 @@ int bw_bh_parse_line(int type, const char *line, char *why, int why_size)
         return -1;
     }
     p++;
-    if (parse_base(&p, &e.parts[0].base) != 0) {
-        say(why, why_size, "expected the base id after `=`");
+    if (parse_base(type, &p, &e.parts[0].base) != 0) {
+        say(why, why_size, type == BW_BH_MOVE ? "expected a base id or an eidos base name after `=`"
+                                               : "expected the base id after `=`");
         return -1;
     }
     e.nparts = 1;
@@ -290,8 +320,9 @@ int bw_bh_parse_line(int type, const char *line, char *why, int why_size)
                 say(why, why_size, "more than 4 bases on one line");
                 return -1;
             }
-            if (parse_base(&p, &e.parts[e.nparts].base) != 0) {
-                say(why, why_size, "expected a base id after `+`");
+            if (parse_base(type, &p, &e.parts[e.nparts].base) != 0) {
+                say(why, why_size, type == BW_BH_MOVE ? "expected a base id or an eidos base name after `+`"
+                                                       : "expected a base id after `+`");
                 return -1;
             }
             e.nparts++;
@@ -396,6 +427,25 @@ static const Work k_work[] = {
 
 #define WORK_COUNT ((int)(sizeof(k_work) / sizeof(k_work[0])))
 
+/* The places of eidos's own bases (stubs/ov/patch_ov093_hand_waza.c),
+ * by hand: Flower Shield's one handler (row 0, event 0x9E) tests a type
+ * (bw_bh_type) and commits one stat change.  The others use fixed
+ * numbers, as the game's own field and side effects do.  None keeps state
+ * in a work slot of its move factor. */
+typedef struct NamedSite {
+    int id;
+    u8  handler;
+    u8  site;
+    u8  index;
+} NamedSite;
+
+static const NamedSite k_named_sites[] = {
+    { BW_BH_FLOWER_SHIELD, 0, BW_BH_SITE_TYPE, 1 },
+    { BW_BH_FLOWER_SHIELD, 0, BW_BH_SITE_RANK, 1 },
+};
+
+#define NAMED_SITE_COUNT ((int)(sizeof(k_named_sites) / sizeof(k_named_sites[0])))
+
 static int work_mask(int type, int id)
 {
     int i;
@@ -429,6 +479,14 @@ static int site_index(int type, int id, int handler, int site)
 {
     int i;
 
+    if (type == BW_BH_MOVE && id >= BW_BH_NAMED_FIRST) {
+        for (i = 0; i < NAMED_SITE_COUNT; i++) {
+            if (k_named_sites[i].id == id && k_named_sites[i].handler == handler && k_named_sites[i].site == site) {
+                return k_named_sites[i].index;
+            }
+        }
+        return 0;
+    }
     for (i = 0; i < SITE_COUNT; i++) {
         if (k_sites[i].type == type && k_sites[i].id == id && k_sites[i].handler == handler
             && k_sites[i].site == site) {
@@ -443,6 +501,14 @@ static int site_exists(int type, int id, int site, int index)
 {
     int i;
 
+    if (type == BW_BH_MOVE && id >= BW_BH_NAMED_FIRST) {
+        for (i = 0; i < NAMED_SITE_COUNT; i++) {
+            if (k_named_sites[i].id == id && k_named_sites[i].site == site && k_named_sites[i].index == index) {
+                return 1;
+            }
+        }
+        return 0;
+    }
     for (i = 0; i < SITE_COUNT; i++) {
         if (k_sites[i].type == type && k_sites[i].id == id && k_sites[i].site == site
             && k_sites[i].index == index) {
@@ -569,14 +635,108 @@ static void check_lines(void)
                 int site = site_of_key(pt->params[j].key);
 
                 if (!site_exists(e->type, bases[k], site, pt->params[j].index)) {
-                    fprintf(stderr, "eidos: battle tables: %s %d (works like %d): %s%s%d has no place in its "
+                    char base[24];
+
+                    if (bw_bh_named_name(bases[k]) != NULL) {
+                        snprintf(base, sizeof base, "%s", bw_bh_named_name(bases[k]));
+                    } else {
+                        snprintf(base, sizeof base, "%d", bases[k]);
+                    }
+                    fprintf(stderr, "eidos: battle tables: %s %d (works like %s): %s%s%d has no place in its "
                             "handlers (handler_params.json lists the keys); left out\n", type_name(e->type),
-                            e->id, bases[k], k_keys[pt->params[j].key], pt->params[j].index > 1 ? "." : " ",
+                            e->id, base, k_keys[pt->params[j].key], pt->params[j].index > 1 ? "." : " ",
                             pt->params[j].index);
                     pt->params[j] = pt->params[--pt->nparams];
                     j--;
                 }
             }
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* The lines eidos's bases show                                        */
+/* ------------------------------------------------------------------ */
+
+extern int bw_mod_text_get(u32 archive, u32 file, u32 entry, u32 block, u16 *out, u32 max_units);
+extern int bw_mod_text_set_for(const char *root, u32 archive, u32 file, u32 entry, u32 block,
+                               const u16 *units, u32 count);
+
+/* `@` is the Pokemon's name (control code F000, kind 0x0102, argument 0),
+ * `|` a line break (0xFFFE).  Black and White's wording. */
+typedef struct NamedLine {
+    int         base;
+    u32         bank, line;
+    const char *text;
+} NamedLine;
+
+static const NamedLine k_named_lines[] = {
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_STD, BW_BH_LINE_MISTY_START,     "Mist swirled about the battlefield!" },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_STD, BW_BH_LINE_MISTY_END,       "The mist disappeared|from the battlefield." },
+    { BW_BH_FAIRY_LOCK,    BW_BH_LINE_BANK_STD, BW_BH_LINE_FAIRY_LOCK,      "No one will be able to run away|during the next turn!" },
+    { BW_BH_GEOMANCY,      BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY,        "@ is absorbing|power!" },
+    { BW_BH_GEOMANCY,      BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY + 1,    "The wild @ is absorbing|power!" },
+    { BW_BH_GEOMANCY,      BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY + 2,    "The foe's @ is absorbing|power!" },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK,     "@ surrounds itself|with a protective mist!" },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK + 1, "The wild @ surrounds itself|with a protective mist!" },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK + 2, "The foe's @ surrounds itself|with a protective mist!" },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START,    "Crafty Shield protected|your team!" },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START + 1, "Crafty Shield protected|the foe's team!" },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START + 2, "Crafty Shield protected|the foe's team!" },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK,    "Crafty Shield protected|@!" },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK + 1, "Crafty Shield protected|the wild @!" },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK + 2, "Crafty Shield protected|the foe's @!" },
+};
+
+#define NAMED_LINE_COUNT ((int)(sizeof(k_named_lines) / sizeof(k_named_lines[0])))
+
+static u32 line_units(const char *s, u16 *out, u32 max)
+{
+    u32 n = 0;
+
+    for (; *s != '\0' && n + 4 <= max; s++) {
+        if (*s == '@') {
+            out[n++] = 0xF000;
+            out[n++] = 0x0102;
+            out[n++] = 0x0001;
+            out[n++] = 0x0000;
+        } else if (*s == '|') {
+            out[n++] = 0xFFFE;
+        } else {
+            out[n++] = (u16)(unsigned char)*s;
+        }
+    }
+    return n;
+}
+
+/* Every line an eidos base of a mod's line shows: put in for that mod,
+ * unless some mod already has a line there (its own wording wins). */
+static void add_named_lines(void)
+{
+    int i, k, j;
+
+    for (j = 0; j < NAMED_LINE_COUNT; j++) {
+        const NamedLine *l = &k_named_lines[j];
+        int root = -1;
+        u16 units[96];
+        u32 n;
+
+        for (i = 0; i < g_count && root < 0; i++) {
+            for (k = 0; k < g_entries[i].nparts; k++) {
+                if (g_entries[i].type == BW_BH_MOVE && g_entries[i].parts[k].base == l->base &&
+                    g_entries[i].root >= 0) {
+                    root = g_entries[i].root;
+                    break;
+                }
+            }
+        }
+        if (root < 0 || bw_mod_text_get(2, l->bank, l->line, 0, units, 96) > 0) {
+            continue;
+        }
+        n = line_units(l->text, units, 96);
+        if (bw_mod_text_set_for(bw_mod_root_at((u32)root), 2, l->bank, l->line, 0, units, n) != 0) {
+            fprintf(stderr, "eidos: battle tables: %s: bank %u line %u could not be added\n",
+                    bw_bh_named_name(l->base), (unsigned)l->bank, (unsigned)l->line);
         }
     }
 }
@@ -589,11 +749,14 @@ void bw_bh_load(void)
     for (m = 0; m < bw_mod_count(); m++) {
         const char *root = bw_mod_root_at(m);
 
+        g_loading_root = (int)m;
         load_file(root, "ability_handlers.txt", BW_BH_ABILITY);
         load_file(root, "move_handlers.txt", BW_BH_MOVE);
         load_file(root, "item_handlers.txt", BW_BH_ITEM);
     }
+    g_loading_root = -1;
     check_lines();
+    add_named_lines();
 }
 
 void bw_bh_check(void)

@@ -50,6 +50,40 @@ whose slots overlap would overwrite each other's state, so such a line is
 refused (item slot 6 is the engine's own and does not count). Kenon
 refuses the same lines before they reach the game.
 
+## eidos's own move bases
+
+Some later moves have no Black and White move to work like. eidos adds
+their battle code, and a move line names it in place of a base id:
+
+    571 = misty_terrain
+    570 = flower_shield type=grass stat=def stages=1
+    568 = geomancy
+
+| Name | What it does | Move record |
+|---|---|---|
+| `misty_terrain` | For five turns, grounded Pokemon get no major status, confusion or Yawn, Rest fails for them, and Dragon moves do half damage to them. Fails while it is up. | category 10, target 10 (as Gravity) |
+| `flower_shield` | Raises the stat of every Pokemon of the type on the field (`type`, `stat`, `stages`: Grass, Defense, +1). Fails when there is none. | category 10, target 10 (as Haze) |
+| `crafty_shield` | For the rest of the turn, status moves other Pokemon use on the user's side fail. Moves that target every Pokemon (Perish Song) still work. Fails while it is up. | category 11, target 12, priority 3 (as Quick Guard) |
+| `fairy_lock` | No Pokemon on the field can flee or switch out during the next turn (Mean Look's trap for two turn ends). Fails when every Pokemon is already trapped. | category 10, target 10 (as Haze) |
+| `geomancy` | Razor Wind's charge turn with its own line. The stat changes come from the move record. Power Herb skips the charge. | category 2, target 7, the charge flag, its stat changes |
+
+Names are for moves only. A name can be one part of a line of several
+bases. The code is in `stubs/ov/patch_ov093_hand_waza.c`: Misty Terrain
+and Crafty Shield add a field and a side event factor of their own and
+end them in the turn check, so the game's field and side effect tables
+keep their size.
+
+Their battle lines are added when a mod's line names the base, in that
+mod's text (`a/0/0/2`). A mod that ships its own line at the same bank and
+index keeps it, so a mod can reword them or translate them:
+
+| Base | Bank 15 (one line) | Bank 14 (set of three: yours, wild, foe's) |
+|---|---|---|
+| `misty_terrain` | 400 start, 401 end | 2003 status blocked |
+| `crafty_shield` |  | 2006 start, 2009 move blocked |
+| `fairy_lock` | 402 |  |
+| `geomancy` |  | 2000 charge turn |
+
 ## The keys
 
 | Key | Values | Where the handler uses it |
@@ -78,6 +112,9 @@ built-in move, ability and item the keys it takes and their built-in
 values, and notes for the places that cannot be changed:
 
     {"ability": {"22": {"keys": {"stat": "atk", "stages": -1}, "notes": []}, ...}}
+
+eidos's own move bases are listed in `"move"` under their names
+(`"misty_terrain"`), from a hand-written block in the generator.
 
 `tools/handler_params.py` writes it, and `sdk/battle_handler_sites.inc`
 (the same places for the engine), from the game itself: the handler
