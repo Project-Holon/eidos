@@ -8,11 +8,20 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `d4dfca395614e28ed01ea2307baaca626be43340`
-- Date: 2026-11-26
-- Subject: Type limit for mods past 16, ball ids and last move type
+- Revision: `ea39ea3ad618b328cb5df5230800506461759b82`
+- Date: 2026-11-27
+- Subject: Day care TM scan runs to ITEM_LAST
 
-The step from `50731dd699`: types past the game's 17 for mods, and names; the
+The step from `d4dfca3956`: the day care's TM scan (ov021 sodateya.c)
+runs to `ITEM_LAST` in place of a literal 626, so on the PC build it
+reaches a TM a mod adds under `limit.items` (sdk/machines.c,
+machine_items.txt); the ROM is byte-identical.  `674d551a0b` on the way is
+names: BTL_SERVER_FLOW_IsPokeFloating (was IsPokeGrounded, its result
+inverted in name only), the sick add and end messages, WAZA_RANGE_ALL_OTHERS
+4 and ALL_ENEMIES 5, BTL_STRTYPE_STD and BTL_STRTYPE_SET; the port names
+none of them.
+
+The step before, from `50731dd699`: types past the game's 17 for mods, and names; the
 ROM is byte-identical.  port_limits.h names BW_LIMIT_TYPE_LAST, and
 arm9/poke_type.h gives POKETYPE_LAST, POKETYPE_COUNT and POKETYPE_NONE.  The
 PC build reads the type chart as [attacker * POKETYPE_COUNT + defender] and
