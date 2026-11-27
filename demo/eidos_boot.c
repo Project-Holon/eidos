@@ -86,6 +86,7 @@
 #include "battle_handlers.h"
 #include "trainer_mons.h"
 #include "shops.h"
+#include "item_heal.h"
 #include "move_anims.h"
 #include "mod_catalog.h"
 #include "mod_menu.h"
@@ -3359,6 +3360,8 @@ static int boot_run_start(EidosFrameHooks *hooks, int own_thread)
     bw_shops_load();
     /* and the moves' animations (sdk/move_anims.h) */
     bw_move_anims_load();
+    /* and how much HP items heal past the record's byte (sdk/item_heal.h) */
+    bw_item_heal_load();
     /* The mods: the loader runs after the save is chosen and before the
      * game runs (docs/mod-implementation.md, section 3).  The declared
      * table the manifest's address check asks is registered by

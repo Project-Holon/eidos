@@ -587,6 +587,7 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/machines.c  # the TMs mods add (machine_items.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tm_pocket.c  # a TM pocket with room for them
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_items.c  # the added types' plates and drives
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/item_heal.c  # how much HP items heal (item_heal.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_icons.c  # the added types' icons and buttons (types.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/palanm_fade.c  # a fade over a screen's type rows covers the added types' row
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_table.c     # a mod's own data tables (`table` lines)
@@ -1990,7 +1991,7 @@ add_test(NAME test_native_port_tools COMMAND ${Python3_EXECUTABLE}
 foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_mod_messages
           test_mod_text test_mod_script test_mod_rule test_mod_timer test_mod_export
           test_mod_menu test_mod_input test_mod_handoff test_mod_restart
-          test_mod_avatar test_mod_net test_save_games test_save_tidy test_save_species test_battle_handlers test_trainer_mons test_shops test_move_anims test_https
+          test_mod_avatar test_mod_net test_save_games test_save_tidy test_save_species test_battle_handlers test_trainer_mons test_shops test_item_heal test_move_anims test_https
           test_mod_catalog)
     add_executable(${t} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${t}.c)
     target_include_directories(${t} PRIVATE

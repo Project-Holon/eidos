@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov093/btl_server_flow.c BTL_SERVER_FLOW_CommitCmdRecord
+ * patches: src/game/ov093/btl_server_flow.c BTL_SERVER_FLOW_CommitCmdRecord BTL_SERVER_FLOW_ItemEffectRecoverHp BTL_SERVER_FLOW_ItemEffectRevive
  *
  * A command a running handler commits takes the numbers a mod gives its
  * move, ability or item (sdk/battle_handlers.h, eidos/tables/
@@ -10,8 +10,22 @@
  * it; with no table line for the running id nothing changes, and the
  * function is the game's own.
  *
+ * The bag's HP items in battle (ItemEffectRecoverHp, ItemEffectRevive) heal
+ * what a mod's eidos/tables/item_heal.txt gives the item (sdk/item_heal.h),
+ * at most the HP the Pokemon is missing; an item with no line heals the
+ * record's byte, as the game does.
+ *
  * symbols:
- *   BTL_CALC_MakeDefaultSickCont  0x021D7D18  thumb  ov093
+ *   BTL_CALC_MakeDefaultSickCont        0x021D7D18  thumb  ov093
+ *   BTL_POKEPARAM_IsHpFull              0x021D5B48  thumb  ov093
+ *   BTL_POKEPARAM_IsFainted             0x021D5B68  thumb  ov093
+ *   BTL_POKEPARAM_GetValue              0x021D59B4  thumb  ov093
+ *   BTL_POKEPARAM_GetPokeId             0x021D5440  thumb  ov093
+ *   BTL_CALC_GetItemParam               0x021D805C  thumb  ov093
+ *   BTL_CALC_DivideMaxHpMin1            0x021D7B74  thumb  ov093
+ *   BTL_SERVER_FLOW_AllocCmdRecord      0x021C88A4  thumb  ov093
+ *   BTL_SERVER_FLOW_InitMsgRecord       0x021C8838  thumb  ov093
+ *   BTL_SERVER_FLOW_AppendMsgRecordArg  0x021C8860  thumb  ov093
  */
 
 typedef unsigned char u8;
@@ -103,4 +117,110 @@ void BTL_SERVER_FLOW_CommitCmdRecord(struct BtlServerFlow *flow, void *record)
     }
     BTL_SERVER_FLOW_ExecCmd(flow, record);
     BTL_SERVER_FLOW_FreeLastHandExRecord((QueueA *)FLOW_CMD_LOCK(flow), (QueueB *)record);
+}
+
+/* ------------------------------------------------------------------ */
+/* The bag's HP items in battle                                        */
+/* ------------------------------------------------------------------ */
+
+struct BtlPokeParam;
+
+/* btl_server_flow.c: kind 5 (HP change) and kind 0x2C (revive) records */
+struct CmdValuePoke { u32 header; unsigned short value; u8 pokeId; u8 showMessage; };
+struct CmdRevive { u32 header; u8 pokeId; u8 pad5; unsigned short amount; };
+
+#define BTL_VALUE_HP     13
+#define BTL_VALUE_MAX_HP 14
+
+extern int BTL_POKEPARAM_IsHpFull(struct BtlPokeParam *poke);
+extern int BTL_POKEPARAM_IsFainted(struct BtlPokeParam *poke);
+extern int BTL_POKEPARAM_GetValue(struct BtlPokeParam *poke, int which);
+extern int BTL_POKEPARAM_GetPokeId(struct BtlPokeParam *poke);
+extern u32 BTL_CALC_GetItemParam(u32 itemId, int param);
+extern u32 BTL_CALC_DivideMaxHpMin1(struct BtlPokeParam *poke, u32 divisor);
+extern void *BTL_SERVER_FLOW_AllocCmdRecord(struct BtlServerFlow *flow, int kind, int pokeId);
+extern void BTL_SERVER_FLOW_InitMsgRecord(void *record, int kind, int stringId);
+extern void BTL_SERVER_FLOW_AppendMsgRecordArg(void *message, u32 arg);
+extern void BTL_SERVER_FLOW_AddSeenPokeThunk(struct BtlServerFlow *flow, int pokeId);
+
+/* sdk/item_heal.c */
+extern int bw_item_heal_hp(u32 item, u32 max_hp, u32 missing, u32 *amount);
+
+int BTL_SERVER_FLOW_ItemEffectRecoverHp(struct BtlServerFlow *flow, struct BtlPokeParam *poke, u32 itemId)
+{
+    int id;
+    u8 *r;
+    u32 k, heal;
+
+    if (BTL_POKEPARAM_IsHpFull(poke) == 0 && BTL_POKEPARAM_IsFainted(poke) == 0) {
+        id = BTL_POKEPARAM_GetPokeId(poke);
+        r = (u8 *)BTL_SERVER_FLOW_AllocCmdRecord(flow, 5, id);
+        r[6] = id;
+        r[7] = 1;
+        if (bw_item_heal_hp(itemId, (u32)BTL_POKEPARAM_GetValue(poke, BTL_VALUE_MAX_HP),
+                            (u32)(BTL_POKEPARAM_GetValue(poke, BTL_VALUE_MAX_HP) - BTL_POKEPARAM_GetValue(poke, BTL_VALUE_HP)),
+                            &heal)) {
+            ((struct CmdValuePoke *)r)->value = (unsigned short)heal;     /* (a mod's item_heal.txt) */
+        } else {
+            k = BTL_CALC_GetItemParam(itemId, 0x3a);
+            switch (k) {
+            case 0xff:
+                ((struct CmdValuePoke *)r)->value = BTL_POKEPARAM_GetValue(poke, 14);
+                break;
+            case 0xfe:
+                ((struct CmdValuePoke *)r)->value = BTL_CALC_DivideMaxHpMin1(poke, 2);
+                break;
+            case 0xfd:
+                ((struct CmdValuePoke *)r)->value = BTL_CALC_DivideMaxHpMin1(poke, 4);
+                break;
+            default:
+                ((struct CmdValuePoke *)r)->value = k;
+                break;
+            }
+        }
+        BTL_SERVER_FLOW_InitMsgRecord(r + 8, 2, 387);
+        BTL_SERVER_FLOW_AppendMsgRecordArg(r + 8, (u32)id);
+        BTL_SERVER_FLOW_CommitCmdRecord(flow, r);
+        return 1;
+    }
+    return 0;
+}
+
+int BTL_SERVER_FLOW_ItemEffectRevive(struct BtlServerFlow *flow, struct BtlPokeParam *poke, unsigned short itemId)
+{
+    int id;
+    u8 *w;
+    u32 r, heal;
+
+    if (BTL_POKEPARAM_IsFainted(poke)) {
+        id = BTL_POKEPARAM_GetPokeId(poke);
+        w = (u8 *)BTL_SERVER_FLOW_AllocCmdRecord(flow, 0x2c, id);
+        w[4] = id;
+        if (bw_item_heal_hp(itemId, (u32)BTL_POKEPARAM_GetValue(poke, BTL_VALUE_MAX_HP),
+                            (u32)BTL_POKEPARAM_GetValue(poke, BTL_VALUE_MAX_HP), &heal)) {
+            ((struct CmdRevive *)w)->amount = (unsigned short)heal;      /* (a mod's item_heal.txt) */
+        } else {
+            r = BTL_CALC_GetItemParam(itemId, 0x3a);
+            switch (r) {
+            case 0xff:
+                ((struct CmdRevive *)w)->amount = BTL_POKEPARAM_GetValue(poke, 0xe);
+                break;
+            case 0xfe:
+                ((struct CmdRevive *)w)->amount = BTL_CALC_DivideMaxHpMin1(poke, 2);
+                break;
+            case 0xfd:
+                ((struct CmdRevive *)w)->amount = BTL_CALC_DivideMaxHpMin1(poke, 4);
+                break;
+            default:
+                ((struct CmdRevive *)w)->amount = BTL_CALC_GetItemParam(itemId, 0x3a);
+                break;
+            }
+        }
+        BTL_SERVER_FLOW_InitMsgRecord(w + 8, 2, 3);
+        BTL_SERVER_FLOW_AppendMsgRecordArg(w + 8, (u32)id);
+        BTL_SERVER_FLOW_CommitCmdRecord(flow, w);
+        BTL_SERVER_FLOW_AddSeenPokeThunk(flow, id);
+        return 1;
+    }
+    return 0;
 }

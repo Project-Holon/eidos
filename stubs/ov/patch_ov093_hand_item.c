@@ -1,5 +1,5 @@
 /*
- * patches: src/game/ov093/hand_item.c HAND_ITEM_AddFactor HAND_ITEM_WeakenHitOfType HAND_ITEM_BoostMovePowerOfType
+ * patches: src/game/ov093/hand_item.c HAND_ITEM_AddFactor HAND_ITEM_WeakenHitOfType HAND_ITEM_BoostMovePowerOfType HAND_ITEM_RecoverFixedHpOnEaten
  *
  * A mod's held item that works like a built-in one (sdk/battle_handlers.h,
  * eidos/tables/item_handlers.txt): the registry is searched for the base
@@ -8,8 +8,11 @@
  * HAND_ITEM_WeakenHitOfType (the berries that halve a super-effective hit
  * of one type) and HAND_ITEM_BoostMovePowerOfType (the plates, incenses and
  * the like that raise the power of one type's moves) are given the type
- * they test: a mod's `type` for the running item takes its place.  With no
- * table line the functions are the game's own.
+ * they test: a mod's `type` for the running item takes its place.
+ * HAND_ITEM_RecoverFixedHpOnEaten (Oran Berry, Berry Juice) heals the item's
+ * `held_hp` from a mod's eidos/tables/item_heal.txt (sdk/item_heal.h), at
+ * most the HP the holder is missing.  With no table line the functions are
+ * the game's own.
  *
  * symbols:
  *   gItemHandlerRegistry     0x021F1EA4  data  ov093
@@ -154,4 +157,55 @@ void HAND_ITEM_BoostMovePowerOfType(struct BtlEventFactor *factor, struct BtlSer
     if (moveType != BTL_EVENT_GetVar(BTL_EVAR_MOVE_TYPE))
         return;
     BTL_EVENT_MultiplyVar(BTL_EVAR_POWER_RATIO, HAND_ITEM_GetBoostRatio(factor));
+}
+
+/* hand_common_types.h: HANDEX_KIND_RECOVER_HP, its head (the message follows) */
+typedef struct {
+    u32 header;
+    u16 amount;
+    u8 pokeId;
+    u8 pad07;
+    u8 message[0x24];
+} HandExRecoverHp;
+
+#define HANDEX_KIND_RECOVER_HP 5
+#define BTL_EVAR_POKE_ID       0x02
+#define BTL_STRTYPE_SET        2
+#define BTL_VALUE_HP           13
+#define BTL_VALUE_MAX_HP       14
+
+extern void *BTL_SERVER_FLOW_AllocCmdRecord(struct BtlServerFlow *flow, int kind, int pokeId);
+extern void BTL_SERVER_FLOW_CommitCmdRecord(struct BtlServerFlow *flow, void *record);
+extern void BTL_SERVER_FLOW_InitMsgRecord(void *record, int kind, int stringId);
+extern void BTL_SERVER_FLOW_AppendMsgRecordArg(void *message, u32 arg);
+extern u16 BTL_EVENT_GetFactorKey(struct BtlEventFactor *factor);
+extern int HAND_ITEM_GetParam(struct BtlEventFactor *factor, int param);
+extern int BTL_POKEPARAM_GetValue(struct BtlPokeParam *pp, int valueId);
+
+/* sdk/item_heal.c */
+extern int bw_item_heal_held_hp(u32 item, u32 missing, u32 *amount);
+
+/* Oran Berry and the like: a fixed amount of HP when eaten. */
+void HAND_ITEM_RecoverFixedHpOnEaten(struct BtlEventFactor *factor, struct BtlServerFlow *flow, int pokeId)
+{
+    HandExRecoverHp *rec;
+    u32 heal;
+
+    if (pokeId == BTL_EVENT_GetVar(BTL_EVAR_POKE_ID)) {
+        struct BtlPokeParam *bpp = BTL_SERVER_FLOW_GetPokeParam(flow, pokeId);
+
+        rec = (HandExRecoverHp *)BTL_SERVER_FLOW_AllocCmdRecord(flow, HANDEX_KIND_RECOVER_HP, pokeId);
+        rec->pokeId = (u8)pokeId;
+        if (bw_item_heal_held_hp(BTL_EVENT_GetFactorKey(factor),
+                                 (u32)(BTL_POKEPARAM_GetValue(bpp, BTL_VALUE_MAX_HP) - BTL_POKEPARAM_GetValue(bpp, BTL_VALUE_HP)),
+                                 &heal)) {
+            rec->amount = (u16)heal;            /* (a mod's item_heal.txt) */
+        } else {
+            rec->amount = (u16)HAND_ITEM_GetParam(factor, 2);
+        }
+        BTL_SERVER_FLOW_InitMsgRecord(rec->message, BTL_STRTYPE_SET, 908);
+        BTL_SERVER_FLOW_AppendMsgRecordArg(rec->message, (u32)pokeId);
+        BTL_SERVER_FLOW_AppendMsgRecordArg(rec->message, BTL_EVENT_GetFactorKey(factor));
+        BTL_SERVER_FLOW_CommitCmdRecord(flow, rec);
+    }
 }

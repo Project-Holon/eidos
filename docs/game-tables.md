@@ -85,6 +85,26 @@ and department store floors. A `bp` list is one of the 3 Battle Subway prize
 lists and sets each item's price in BP. Each list holds up to 40 items.
 Omitted lists keep their base-game inventories.
 
+## item_heal.txt
+
+Sets how much HP an item heals past what its item record can hold.
+
+    600 = hp=500                 # a bag item that heals 500 HP
+    601 = hp=1/3                 # a third of the Pokemon's max HP
+    602 = hp=full
+    155 = held_hp=300            # Oran Berry, held, heals 300 HP
+
+The item record holds the HP an item restores in one byte: 1 to 252 HP, with
+253, 254 and 255 for a quarter, a half and all of the Pokemon's HP. A held
+berry's fixed heal is its hold effect parameter, 1 to 255. `hp` (1 to 65535,
+`1/2` to `1/16` of max HP, or `full`) replaces the record's amount when the
+item is used from the Bag in battle or on a party member, and when it
+revives. The item still needs its HP-restore or revive flag in the record.
+`held_hp` (1 to 65535) replaces the amount of a held item that heals a fixed
+amount when eaten (the Oran Berry's handler, or an item that works like it in
+`item_handlers.txt`). An item never heals more than the HP the Pokemon is
+missing. Omitted items keep their record's amounts.
+
 ## move_anims.txt
 
 Maps a move to a base-game move's battle animation.
