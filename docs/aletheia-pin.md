@@ -8,11 +8,26 @@ This file records that revision.
 
 ## The pin
 
-- Revision: `ea39ea3ad618b328cb5df5230800506461759b82`
+- Revision: `9402dda5747b169c96ef06f0f7c489861d198a44`
 - Date: 2026-11-27
-- Subject: Day care TM scan runs to ITEM_LAST
+- Subject: Move stat-change var and party list type fields
 
-The step from `d4dfca3956`: the day care's TM scan (ov021 sodateya.c)
+The step from `d0e437a095`: battle var 0x1F is named
+`WAZAVAR_RANK_EFFECT_STAT` (the stat a move's stat change raises, 10 for
+all five; the chance is var 0x26), so Ancient Power, Silver Wind and Ominous
+Wind's handler sets the stat, not a chance (sdk/handler_params.json follows
+it).  The battle party list's two bytes read from party values 0xAE and
+0xAF are named `type1` and `type2`.  The ROM is byte-identical.
+
+The step before, from `ea39ea3ad6`: 725 symbol lines in 167 files that name a
+function of another overlay (or of twl) now carry its region, as the ARM9
+stub list showed was missing: ovlink took each such call for an ARM9
+function and linked a panicking stub, so the call panicked (any Mold
+Breaker attack and Entrainment, ov093 calling ov095's BTL_ID_* sets; ov095
+calling ov093; ov010 and ov021 calling each other; ov009's Wi-Fi functions;
+the twl functions).  The ROM is byte-identical.
+
+The step before, from `d4dfca3956`: the day care's TM scan (ov021 sodateya.c)
 runs to `ITEM_LAST` in place of a literal 626, so on the PC build it
 reaches a TM a mod adds under `limit.items` (sdk/machines.c,
 machine_items.txt); the ROM is byte-identical.  `674d551a0b` on the way is
