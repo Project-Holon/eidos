@@ -258,6 +258,9 @@ const UiImage *ui_mon_front_anim(u16 species, int shiny, u32 t, int *ox, int *oy
 /* That loop drawn in a box: the largest whole scale that fits, standing on
  * the box's bottom, centred. */
 void ui_mon_front_draw(EidosUiCtx *c, u16 species, int shiny, u32 t, int x, int y, int w, int h);
+/* The same two for a form of the species (form 0: the two above). */
+const UiImage *ui_mon_front_form_anim(u16 species, u8 form, int shiny, u32 t, int *ox, int *oy);
+void ui_mon_front_form_draw(EidosUiCtx *c, u16 species, u8 form, int shiny, u32 t, int x, int y, int w, int h);
 
 /* ------------------------------------------------------------------ */
 /* Pieces (docs/ui-kit.md, "Pieces")                                   */
@@ -349,13 +352,16 @@ int  ui_species_name(int species, char *out, int cap);
 /* recipe_dex.c: a type's name from the game's text (bank 199, > 0 when found). */
 int  ui_type_game_name(int type, char *out, int cap);
 void ui_species_types(int species, int *t1, int *t2);
+/* The same for a form: its own stats record's types (form 0: the species'). */
+void ui_species_form_types(int species, int form, int *t1, int *t2);
 /* recipe_dex.c: the style's Pokedex screen on one species, for the registration after a catch (recipe_menus.c, the
  * scene "catch"), outside the Pokedex app.  open: how far the Pokedex is open, as the Pokedex itself counts it (0
  * shut, 200 slid open, 256 its screens on).  facts: the species' facts shown as known (1 category, 2 type, 4
  * height, 8 weight, 16 entry); the others keep the look of a species that was only seen.  owned: the Pokedex's
- * counter counts the species (0: one less, as before the catch).  next: the hint bar offers A. */
-void ui_dex_registration(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, int species, int open, int facts,
-                         int owned, int next);
+ * counter counts the species (0: one less, as before the catch).  next: the hint bar offers A.  form, shiny: the
+ * caught Pokemon's, which the screen shows (not the form the Pokedex shows for the species). */
+void ui_dex_registration(EidosUiCtx *c, EidosUiView *view, const EidosUiFrame *in, int species, int form, int shiny,
+                         int open, int facts, int owned, int next);
 
 /* Each returns the width it drew, where that depends on the text. */
 int  ui_keycap(EidosUiCtx *c, int x, int y, const char *label);

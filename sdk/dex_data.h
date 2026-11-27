@@ -11,20 +11,26 @@
 int bw_dex_regional(u32 species);
 
 /* 1 when the id is a species: 1..649, or a species a mod adds (715 up to
- * the species limit, with a stats record). */
+ * the species limit, with a stats record, not the stats slot of a form). */
 int bw_dex_species_exists(u32 species);
 
 /* The dex record of a species (its id) or of a mod's form (its stats
  * slot): the id below 715, 727 + (id - 715) from there. */
 u32 bw_dex_record(u32 id);
 
-/* A mod species' forms past its first (formCount - 1), the first one's
- * stats slot in *firstSlot; 0 when none are a mod's. */
+/* A species' forms past its first (formCount - 1) when a mod put them at
+ * its own stats slots (an added species, or a game species whose forms a
+ * mod moved), the first one's slot in *firstSlot; 0 when none are a mod's. */
 u32 bw_dex_mod_forms(u32 species, u32 *firstSlot);
 
-/* The form chain (a/0/9/8 member 0) with the added species' chains, on the
+/* The form chain (a/0/9/8 member 0) with the added species' chains and
+ * those of a game species whose forms a mod moved to its own slots, on the
  * game's heap `heap` (GFL_HEAP_Free); *rows its length. */
 u16 *bw_dex_links(u32 heap, u32 *rows);
+
+/* The dex record of a species' form (form 0: the species'), as the form
+ * chain gives it: its name, height and weight lines (banks 244, 245, 268). */
+u32 bw_dex_form_record(u32 species, u32 form);
 
 /* A mod's body shape (0..13) of a species or form, and the letter group of
  * a species' name, from eidos/tables/pokedex.txt; -1 when not given. */

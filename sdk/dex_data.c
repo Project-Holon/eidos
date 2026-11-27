@@ -21,7 +21,8 @@
  *
  *   Which ids are species: 1..649, and from 715 (the first id past the
  *   game's forms and eggs in every archive a species indexes) up to the
- *   limit, each one a mod ships a stats record for (a/0/1/6 member n).
+ *   limit, each one a mod ships a stats record for (a/0/1/6 member n) that
+ *   is not the stats slot of a form.
  *
  *   The search's two values a species or form has that no record of the
  *   game holds (a/0/9/8 members 1 and 2): its body shape (0..13) and its
@@ -56,7 +57,7 @@ extern void *GFL_HEAP_Alloc(u32 heapId, u32 size, int clear, const char *site, u
 #define UNOVA_NEXT      0xFFFEu          /* a `unova` line, before its number is known */
 #define DEX_IDS         2048u           /* the species limit's ceiling + 1 */
 #define FIRST_MOD_ID    715u
-#define DEX_FORMS       32u             /* forms a table line can name (0..31) */
+#define DEX_FORMS       64u             /* forms a table line can name (0..63): the forms the Pokedex lists */
 
 static u16 *g_regional;                 /* rows: max(the game's, limit + 1) */
 static u32 g_regional_rows;
@@ -254,6 +255,48 @@ u16 *POKE_PERSONAL_LoadFormTable(u32 heap, u16 *countOut)
 /* Which ids are species                                               */
 /* ------------------------------------------------------------------ */
 
+/*
+ * The ids from 715 are shared: a species a mod adds and the forms a mod puts
+ * at its own stats slots (formStatsIndex + f - 1, from 715) both take one.
+ * A slot that is a form is not a species, though it has a stats record: the
+ * slots of the forms of every species, read from the species' records (the
+ * game's 1..649 and each record from 715 that is not itself such a slot, in
+ * id order; a form's own record has no forms of its own, formStatsIndex 0).
+ * Worked out once, with the first question past 714.
+ */
+static u8 *g_form_slot;                 /* [id]: 1 the slot of a form */
+
+static void form_slots(void)
+{
+    BwArcFile arc;
+    u32 id, last;
+
+    if (g_form_slot != NULL || (g_form_slot = (u8 *)calloc(DEX_IDS, 1)) == NULL) {
+        return;
+    }
+    if (bw_arc_open(&arc, "a/0/1/6") != 0) {
+        return;
+    }
+    last = arc.count < DEX_IDS ? arc.count : DEX_IDS;
+    for (id = 1; id < last; id++) {
+        u8 rec[0x40];           /* (a stats record is 0x3C bytes; a read wants room for all of it) */
+        u32 first, count, k;
+
+        if ((id > 649u && id < FIRST_MOD_ID) || g_form_slot[id] || bw_arc_read_member(&arc, id, rec, sizeof rec) < 0x21) {
+            continue;
+        }
+        first = (u32)rec[0x1C] | (u32)rec[0x1D] << 8;
+        count = rec[0x20];
+        if (first < FIRST_MOD_ID || count < 2u) {
+            continue;
+        }
+        for (k = 0; k + 1u < count && first + k < DEX_IDS; k++) {
+            g_form_slot[first + k] = 1;
+        }
+    }
+    bw_arc_close(&arc);
+}
+
 int bw_dex_species_exists(u32 species)
 {
     if (species == 0 || species > bw_limit_get(BW_PORT_LIMIT_SPECIES_LAST) || species >= DEX_IDS) {
@@ -269,6 +312,10 @@ int bw_dex_species_exists(u32 species)
         BwArcFile arc;
 
         g_exists[species] = -1;
+        form_slots();
+        if (g_form_slot != NULL && g_form_slot[species]) {
+            return 0;           /* a form's slot */
+        }
         if (bw_arc_open(&arc, "a/0/1/6") == 0) {
             if (species < arc.count && bw_arc_member_size(&arc, species) > 0) {
                 g_exists[species] = 1;
@@ -316,15 +363,75 @@ u32 bw_dex_mod_forms(u32 species, u32 *firstSlot)
     return count > 1u && first >= FIRST_MOD_ID ? count - 1u : 0u;
 }
 
+/* The game's form chain (a/0/9/8 member 0), read once; NULL if it cannot be. */
+static u16 *g_chain;
+static u32 g_chain_n;
+
+/* The dex record of a species' form (its names, heights and weights, text
+ * banks 244, 245 and 268): form 0 the species' own; a form at a mod's
+ * stats slot its slot's (bw_dex_record); a game form the record the game's
+ * form chain gives, `form` steps from the species. */
+u32 bw_dex_form_record(u32 species, u32 form)
+{
+    u32 first, count, r, k;
+
+    if (form == 0) {
+        return bw_dex_record(species);
+    }
+    count = bw_dex_mod_forms(species, &first);
+    if (count > 0) {
+        return form <= count ? bw_dex_record(first + form - 1u) : bw_dex_record(species);
+    }
+    if (g_chain == NULL) {
+        BwArcFile arc;
+
+        if (bw_arc_open(&arc, "a/0/9/8") == 0) {
+            long size = arc.count > 0 ? bw_arc_member_size(&arc, 0) : -1;
+
+            if (size > 0 && (g_chain = (u16 *)malloc((size_t)size)) != NULL) {
+                if (bw_arc_read_member(&arc, 0, g_chain, (u32)size) == size) {
+                    g_chain_n = (u32)size / 2u;     /* (little-endian u16s, as the host reads them) */
+                } else {
+                    free(g_chain);
+                    g_chain = NULL;
+                }
+            }
+            bw_arc_close(&arc);
+        }
+    }
+    r = species;
+    for (k = 0; k < form; k++) {
+        if (g_chain == NULL || r >= g_chain_n || g_chain[r] == 0) {
+            return bw_dex_record(species);
+        }
+        r = g_chain[r];
+    }
+    return r;
+}
+
 /* The form chain (a/0/9/8 member 0, one u16 a record: the record of the
- * next form, 0 after the last) with the added species' chains, on the
- * game's heap (GFL_HEAP_Free).  *rows its length. */
+ * next form, 0 after the last) with the added species' chains and the
+ * chains of the game's species whose forms a mod moved, on the game's heap
+ * (GFL_HEAP_Free).  *rows its length. */
 u16 *bw_dex_links(u32 heap, u32 *rows)
 {
     BwArcFile arc;
     u8 *raw = NULL;
     u32 game = 0, n, s, i, last = bw_limit_get(BW_PORT_LIMIT_SPECIES_LAST);
     u16 *links;
+    /* a species of the game's whose forms a mod put at its own stats slots
+     * (Arceus with a form for an added type): its chain is its slots'
+     * records (none when no mod ships a stats record) */
+    static u16 moved_first[650];
+    static u8 moved_count[650];
+    int moved = bw_vfs_member_overrides("a/0/1/6") > 0;
+
+    for (s = 1; s < 650u; s++) {
+        u32 first = 0;
+
+        moved_count[s] = (u8)(moved ? bw_dex_mod_forms(s, &first) : 0u);
+        moved_first[s] = (u16)first;
+    }
 
     if (bw_arc_open(&arc, "a/0/9/8") == 0) {
         long size = arc.count > 0 ? bw_arc_member_size(&arc, 0) : -1;
@@ -350,6 +457,11 @@ u16 *bw_dex_links(u32 heap, u32 *rows)
             n = bw_dex_record(first + count - 1u) + 1u;
         }
     }
+    for (s = 1; s < 650u; s++) {
+        if (moved_count[s] > 0 && bw_dex_record(moved_first[s] + moved_count[s] - 1u) + 1u > n) {
+            n = bw_dex_record(moved_first[s] + moved_count[s] - 1u) + 1u;
+        }
+    }
     links = (u16 *)GFL_HEAP_Alloc(heap, n * 2u, 0, "dex_data.c", 1);
     for (i = 0; i < n; i++) {
         links[i] = i < game ? (u16)(raw[i * 2u] | raw[i * 2u + 1u] << 8) : 0;
@@ -365,6 +477,15 @@ u16 *bw_dex_links(u32 heap, u32 *rows)
         r = bw_dex_record(s);
         for (k = 1; k <= count; k++) {
             links[r] = (u16)bw_dex_record(first + k - 1u);
+            r = links[r];
+            links[r] = 0;
+        }
+    }
+    for (s = 1; s < 650u; s++) {
+        u32 k, r = s;
+
+        for (k = 1; k <= moved_count[s]; k++) {
+            links[r] = (u16)bw_dex_record(moved_first[s] + k - 1u);
             r = links[r];
             links[r] = 0;
         }
@@ -443,5 +564,10 @@ void bw_dex_data_forget(void)
     g_regional = NULL;
     g_regional_rows = 0;
     memset(g_exists, 0, sizeof g_exists);
+    free(g_form_slot);
+    g_form_slot = NULL;
     g_tables_done = 0;
+    free(g_chain);
+    g_chain = NULL;
+    g_chain_n = 0;
 }
