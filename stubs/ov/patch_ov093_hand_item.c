@@ -1,14 +1,15 @@
 /*
- * patches: src/game/ov093/hand_item.c HAND_ITEM_AddFactor HAND_ITEM_WeakenHitOfType
+ * patches: src/game/ov093/hand_item.c HAND_ITEM_AddFactor HAND_ITEM_WeakenHitOfType HAND_ITEM_BoostMovePowerOfType
  *
  * A mod's held item that works like a built-in one (sdk/battle_handlers.h,
  * eidos/tables/item_handlers.txt): the registry is searched for the base
  * item's handlers and the factor is added under the poke's own item id,
  * so the battle knows which item runs and the keys of that id apply.
  * HAND_ITEM_WeakenHitOfType (the berries that halve a super-effective hit
- * of one type) is given the type it tests: a mod's `type` for the running
- * item takes its place.  With no table line both functions are the game's
- * own.
+ * of one type) and HAND_ITEM_BoostMovePowerOfType (the plates, incenses and
+ * the like that raise the power of one type's moves) are given the type
+ * they test: a mod's `type` for the running item takes its place.  With no
+ * table line the functions are the game's own.
  *
  * symbols:
  *   gItemHandlerRegistry     0x021F1EA4  data  ov093
@@ -136,4 +137,21 @@ int HAND_ITEM_WeakenHitOfType(struct BtlEventFactor *factor, struct BtlServerFlo
         return 1;
     }
     return 0;
+}
+
+#define BTL_EVAR_ATTACKER_ID                0x03
+#define BTL_EVAR_POWER_RATIO                0x31
+
+int HAND_ITEM_GetBoostRatio(struct BtlEventFactor *factor);
+
+/* The plates, incenses and the like: the item's power ratio on the holder's moves of one type. */
+void HAND_ITEM_BoostMovePowerOfType(struct BtlEventFactor *factor, struct BtlServerFlow *flow, int pokeId, int moveType)
+{
+    (void)flow;
+    moveType = bw_bh_type(moveType);      /* (a mod's `type` for the running item) */
+    if (pokeId != BTL_EVENT_GetVar(BTL_EVAR_ATTACKER_ID))
+        return;
+    if (moveType != BTL_EVENT_GetVar(BTL_EVAR_MOVE_TYPE))
+        return;
+    BTL_EVENT_MultiplyVar(BTL_EVAR_POWER_RATIO, HAND_ITEM_GetBoostRatio(factor));
 }

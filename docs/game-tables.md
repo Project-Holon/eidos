@@ -189,5 +189,9 @@ Defines each added type's graphics and colors.
 - `hof`: Hall of Fame particle and palette members in a/2/1/6. Defaults to Normal's.
 - `color`: RRGGBB color for the one-screen interface. Defaults to the first `colors` entry.
 - `name`: A lowercase word (`a` to `z`, `0` to `9`, `_`) that battle handler tables use for the type (`type=fairy`, see `docs/battle-handlers.md`). The type's displayed name comes from text bank 199.
+- `plate`: The item that is this type's plate. Arceus with Multitype holding it takes the type, Judgment becomes the type, and giving it to Arceus in the party or the PC Box sets Arceus's form to the type number (form 17 for type 17). Make the item boost the type's moves like a plate with an `item_handlers.txt` line (`628 = 298 type=fairy`).
+- `drive`: The item that is this type's drive, and the Genesect form it gives (5 or more; 1 to 4 are the base drives): `drive 629 5`. Techno Blast becomes the type and plays the plain animation.
+
+Arceus and Genesect show an added form only when the mod adds it. Without one they keep their base form's look and stats, and their type still follows the plate. The base game stores every species' alternate forms in one block, so a mod adds a form to Arceus or Genesect by moving the species' forms to its own stats slots: set `formStatsIndex` and `formSpriteIndex` in the species' stats record to a slot from 715, raise its form count, and provide every form's stats record and pictures at those slots (see New species below).
 
 A type without an entry or a valid icon falls back to Normal's icon. A later mod's entry for a type overrides an earlier one. Each screen allocates colors for the added types it displays, so up to six added types can appear on one screen at a time.

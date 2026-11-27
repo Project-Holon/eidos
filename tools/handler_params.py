@@ -219,6 +219,7 @@ TYPE_HELPERS = {  # a helper that takes the type it tests -> argument index
     "HAND_TOKUSEI_PinchBoostType": 2,
     "HAND_TOKUSEI_AbsorbCheckMoveType": 2,
     "HAND_ITEM_WeakenHitOfType": 4,
+    "HAND_ITEM_BoostMovePowerOfType": 3,
 }
 
 

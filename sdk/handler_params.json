@@ -1797,7 +1797,9 @@
    ]
   },
   "222": {
-   "keys": {},
+   "keys": {
+    "type": "bug"
+   },
    "notes": [
     "HAND_ITEM_SilverPowderBoostPower: its ratio is decided at run time, not adjustable"
    ]
@@ -1831,7 +1833,9 @@
    ]
   },
   "233": {
-   "keys": {},
+   "keys": {
+    "type": "steel"
+   },
    "notes": [
     "HAND_ITEM_MetalCoatBoostPower: its ratio is decided at run time, not adjustable"
    ]
@@ -1850,55 +1854,72 @@
    "notes": []
   },
   "237": {
-   "keys": {},
+   "keys": {
+    "type": "ground"
+   },
    "notes": [
     "HAND_ITEM_SoftSandBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "238": {
-   "keys": {},
+   "keys": {
+    "type": "rock"
+   },
    "notes": [
     "HAND_ITEM_HardStoneBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "239": {
-   "keys": {},
+   "keys": {
+    "type": "grass"
+   },
    "notes": [
     "HAND_ITEM_MiracleSeedBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "240": {
-   "keys": {},
+   "keys": {
+    "type": "dark"
+   },
    "notes": [
     "HAND_ITEM_BlackGlassesBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "241": {
-   "keys": {},
+   "keys": {
+    "type": "fighting"
+   },
    "notes": [
     "HAND_ITEM_BlackBeltBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "242": {
-   "keys": {},
+   "keys": {
+    "type": "electric"
+   },
    "notes": [
     "HAND_ITEM_MagnetBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "243": {
-   "keys": {},
+   "keys": {
+    "type": "water"
+   },
    "notes": [
     "HAND_ITEM_MysticWaterBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "244": {
-   "keys": {},
+   "keys": {
+    "type": "flying"
+   },
    "notes": [
     "HAND_ITEM_SharpBeakBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "245": {
    "keys": {
+    "type": "poison",
     "status": "poison"
    },
    "notes": [
@@ -1906,43 +1927,57 @@
    ]
   },
   "246": {
-   "keys": {},
+   "keys": {
+    "type": "ice"
+   },
    "notes": [
     "HAND_ITEM_NeverMeltIceBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "247": {
-   "keys": {},
+   "keys": {
+    "type": "ghost"
+   },
    "notes": [
     "HAND_ITEM_SpellTagBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "248": {
-   "keys": {},
+   "keys": {
+    "type": "psychic"
+   },
    "notes": [
     "HAND_ITEM_TwistedSpoonBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "249": {
-   "keys": {},
+   "keys": {
+    "type": "fire"
+   },
    "notes": [
     "HAND_ITEM_CharcoalBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "250": {
-   "keys": {},
+   "keys": {
+    "type": "dragon"
+   },
    "notes": [
     "HAND_ITEM_DragonFangBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "251": {
-   "keys": {},
+   "keys": {
+    "type": "normal"
+   },
    "notes": [
     "HAND_ITEM_SilkScarfBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "254": {
-   "keys": {},
+   "keys": {
+    "type": "water"
+   },
    "notes": [
     "HAND_ITEM_SeaIncenseBoostPower: its ratio is decided at run time, not adjustable"
    ]
@@ -2126,121 +2161,161 @@
    ]
   },
   "298": {
-   "keys": {},
+   "keys": {
+    "type": "fire"
+   },
    "notes": [
     "HAND_ITEM_CharcoalBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "299": {
-   "keys": {},
+   "keys": {
+    "type": "water"
+   },
    "notes": [
     "HAND_ITEM_MysticWaterBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "300": {
-   "keys": {},
+   "keys": {
+    "type": "electric"
+   },
    "notes": [
     "HAND_ITEM_MagnetBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "301": {
-   "keys": {},
+   "keys": {
+    "type": "grass"
+   },
    "notes": [
     "HAND_ITEM_MiracleSeedBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "302": {
-   "keys": {},
+   "keys": {
+    "type": "ice"
+   },
    "notes": [
     "HAND_ITEM_NeverMeltIceBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "303": {
-   "keys": {},
+   "keys": {
+    "type": "fighting"
+   },
    "notes": [
     "HAND_ITEM_BlackBeltBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "304": {
-   "keys": {},
+   "keys": {
+    "type": "poison"
+   },
    "notes": [
     "HAND_ITEM_PoisonBarbBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "305": {
-   "keys": {},
+   "keys": {
+    "type": "ground"
+   },
    "notes": [
     "HAND_ITEM_SoftSandBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "306": {
-   "keys": {},
+   "keys": {
+    "type": "flying"
+   },
    "notes": [
     "HAND_ITEM_SharpBeakBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "307": {
-   "keys": {},
+   "keys": {
+    "type": "psychic"
+   },
    "notes": [
     "HAND_ITEM_TwistedSpoonBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "308": {
-   "keys": {},
+   "keys": {
+    "type": "bug"
+   },
    "notes": [
     "HAND_ITEM_SilverPowderBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "309": {
-   "keys": {},
+   "keys": {
+    "type": "rock"
+   },
    "notes": [
     "HAND_ITEM_HardStoneBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "310": {
-   "keys": {},
+   "keys": {
+    "type": "ghost"
+   },
    "notes": [
     "HAND_ITEM_SpellTagBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "311": {
-   "keys": {},
+   "keys": {
+    "type": "dragon"
+   },
    "notes": [
     "HAND_ITEM_DragonFangBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "312": {
-   "keys": {},
+   "keys": {
+    "type": "dark"
+   },
    "notes": [
     "HAND_ITEM_BlackGlassesBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "313": {
-   "keys": {},
+   "keys": {
+    "type": "steel"
+   },
    "notes": [
     "HAND_ITEM_MetalCoatBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "314": {
-   "keys": {},
+   "keys": {
+    "type": "psychic"
+   },
    "notes": [
     "HAND_ITEM_OddIncenseBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "315": {
-   "keys": {},
+   "keys": {
+    "type": "rock"
+   },
    "notes": [
     "HAND_ITEM_RockIncenseBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "317": {
-   "keys": {},
+   "keys": {
+    "type": "water"
+   },
    "notes": [
     "HAND_ITEM_WaveIncenseBoostPower: its ratio is decided at run time, not adjustable"
    ]
   },
   "318": {
-   "keys": {},
+   "keys": {
+    "type": "grass"
+   },
    "notes": [
     "HAND_ITEM_RoseIncenseBoostPower: its ratio is decided at run time, not adjustable"
    ]

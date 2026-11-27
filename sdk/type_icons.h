@@ -75,6 +75,14 @@ int bw_type_ui_color(u32 type, u32 *rgb);
  * `type=fairy`), -1 for none. */
 int bw_type_by_name(const char *s, size_t n);
 
+/* An added type's plate (types.txt `plate <item>`): the type the item is
+ * the plate of, 0 for none (sdk/type_items.c: Arceus, Judgment). */
+u32 bw_type_of_plate(u32 item);
+
+/* An added type's drive (types.txt `drive <item> <Genesect form>`): 1 with
+ * the type and form, 0 for none (sdk/type_items.c: Genesect, Techno Blast). */
+int bw_type_of_drive(u32 item, u32 *type, u32 *form);
+
 /* The row a fade over `rows` of `bank` of `palanm` also covers (palanm_fade.c):
  * the bit to add, or 0. */
 u16 bw_type_screen_fade_extra(const void *palanm, int bank, u16 rows);

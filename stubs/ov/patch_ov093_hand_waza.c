@@ -1,5 +1,9 @@
 /*
- * patches: src/game/ov093/hand_waza.c HAND_WAZA_AddMoveHandler
+ * patches: src/game/ov093/hand_waza.c HAND_WAZA_AddMoveHandler HAND_WAZA_JudgmentOnWazaTypeCheck HAND_WAZA_TechnoBlastOnWazaTypeCheck
+ *
+ * Judgment and Techno Blast take the plates and drives of the types mods
+ * add (types.txt `plate` and `drive`, sdk/type_items.c) after the game's
+ * own; with none they are the game's.
  *
  * A mod's move that works like a built-in one (sdk/battle_handlers.h,
  * eidos/tables/move_handlers.txt): the registry is searched for the base
@@ -40,6 +44,9 @@
  *   BTL_MAIN_IsPokeIdInSecondPair        0x021B9A40  thumb  ov093
  *   WAZA_TOOL_GetParam                   0x0201BD28  thumb
  *   WAZA_TOOL_IsDamaging                 0x0201C314  thumb
+ *   BTL_SERVER_FLOW_CanUseHeldItem       0x021C824C  thumb  ov093
+ *   BTL_POKEPARAM_GetItem                0x021D5B40  thumb  ov093
+ *   BTL_SERVER_FLOW_SetCurTurnStateFlag  0x021C83DC  thumb  ov093
  */
 
 typedef unsigned char u8;
@@ -499,6 +506,82 @@ static void geomancy_charge(struct BtlEventFactor *factor, void *context, u8 own
 static const BtlEventHandler k_geomancy[] = {
     { 0x95, geomancy_charge },
 };
+
+/* ------------------------------------------------------------------ */
+/* Judgment and Techno Blast                                           */
+/* ------------------------------------------------------------------ */
+
+extern int BTL_SERVER_FLOW_CanUseHeldItem(struct BtlServerFlow *flow, int pokeId);
+extern u16 BTL_POKEPARAM_GetItem(struct BtlPokeParam *pp);
+extern void BTL_SERVER_FLOW_SetCurTurnStateFlag(struct BtlServerFlow *flow, int flag);
+
+/* sdk/type_icons.c: the added types' plates and drives */
+extern u32 bw_type_of_plate(u32 item);
+extern int bw_type_of_drive(u32 item, u32 *type, u32 *form);
+
+/* Judgment: the type follows the plate that the user holds. */
+void HAND_WAZA_JudgmentOnWazaTypeCheck(struct BtlEventFactor *factor, struct BtlServerFlow *flow, int pokeId, int *work)
+{
+    (void)factor;
+    (void)work;
+    if (pokeId == BTL_EVENT_GetVar(BTL_EVAR_POKE_ID)) {
+        if (BTL_SERVER_FLOW_CanUseHeldItem(flow, pokeId) != 0) {
+            u16 itemId = (u16)(int)BTL_POKEPARAM_GetItem(BTL_SERVER_FLOW_GetPokeParam(flow, pokeId));
+            int type = 0;               /* (Normal) */
+
+            switch (itemId) {
+            case 0x12A: type = 9; break;    /* Flame Plate: Fire   */
+            case 0x12B: type = 10; break;   /* Splash: Water       */
+            case 0x12C: type = 12; break;   /* Zap: Electric       */
+            case 0x12D: type = 11; break;   /* Meadow: Grass       */
+            case 0x12E: type = 14; break;   /* Icicle: Ice         */
+            case 0x12F: type = 1; break;    /* Fist: Fighting      */
+            case 0x130: type = 3; break;    /* Toxic: Poison       */
+            case 0x131: type = 4; break;    /* Earth: Ground       */
+            case 0x132: type = 2; break;    /* Sky: Flying         */
+            case 0x133: type = 13; break;   /* Mind: Psychic       */
+            case 0x134: type = 6; break;    /* Insect: Bug         */
+            case 0x135: type = 5; break;    /* Stone: Rock         */
+            case 0x136: type = 7; break;    /* Spooky: Ghost       */
+            case 0x137: type = 15; break;   /* Draco: Dragon       */
+            case 0x138: type = 16; break;   /* Dread: Dark         */
+            case 0x139: type = 8; break;    /* Iron: Steel         */
+            default: type = (int)bw_type_of_plate(itemId); break;   /* an added type's plate */
+            }
+            BTL_EVENT_OverwriteVar(BTL_EVAR_MOVE_TYPE, (__UINTPTR_TYPE__)type);
+        }
+    }
+}
+
+/* Techno Blast: the type and the animation variant follow the drive that
+ * the user holds (an added type's drive: the plain animation). */
+void HAND_WAZA_TechnoBlastOnWazaTypeCheck(struct BtlEventFactor *factor, struct BtlServerFlow *flow, int pokeId, int *work)
+{
+    (void)factor;
+    (void)work;
+    if (pokeId == BTL_EVENT_GetVar(BTL_EVAR_POKE_ID)) {
+        if (BTL_SERVER_FLOW_CanUseHeldItem(flow, pokeId) != 0) {
+            u16 itemId = (u16)(int)BTL_POKEPARAM_GetItem(BTL_SERVER_FLOW_GetPokeParam(flow, pokeId));
+            int type = 0;               /* (Normal) */
+            int variant = 0;
+            u32 added, form;
+
+            switch (itemId) {
+            case 0x74: type = 10; variant = 1; break;   /* Douse Drive: Water   */
+            case 0x75: type = 12; variant = 2; break;   /* Shock: Electric      */
+            case 0x76: type = 9; variant = 3; break;    /* Burn: Fire           */
+            case 0x77: type = 14; variant = 4; break;   /* Chill: Ice           */
+            default:
+                if (bw_type_of_drive(itemId, &added, &form)) {
+                    type = (int)added;
+                }
+                break;
+            }
+            BTL_EVENT_OverwriteVar(BTL_EVAR_MOVE_TYPE, (__UINTPTR_TYPE__)type);
+            BTL_SERVER_FLOW_SetCurTurnStateFlag(flow, variant);
+        }
+    }
+}
 
 #define ROWS(t) ((int)(sizeof(t) / sizeof((t)[0])))
 

@@ -109,6 +109,9 @@ typedef struct AddedType {
     int has_color;
     u32 color;              /* 0xRRGGBB                              */
     char name[24];          /* its word in the tables (`type=fairy`) */
+    u32 plate;              /* its plate's item (Arceus, Judgment), 0 none */
+    u32 drive;              /* its drive's item (Genesect, Techno Blast), 0 none */
+    u32 drive_form;         /* the Genesect form its drive gives */
     int variants;           /* the icon variants are in memory       */
     int labels;             /* the label variants are in memory      */
 } AddedType;
@@ -223,6 +226,16 @@ static void type_line(const char *path, u32 line, char *text, int root)
             t.color = c;
             t.has_color = 1;
             i++;
+        } else if (strcmp(k, "plate") == 0 && i < n) {
+            t.plate = (u32)strtoul(w[i++], NULL, 10);
+        } else if (strcmp(k, "drive") == 0 && i + 1 < n) {
+            t.drive = (u32)strtoul(w[i++], NULL, 10);
+            t.drive_form = (u32)strtoul(w[i++], NULL, 10);
+            if (t.drive_form < 5u) {
+                fprintf(stderr, "eidos: %s:%u: a drive's Genesect form is 5 or more (1 to 4 are the game's "
+                        "drives); the drive is left out\n", path, (unsigned)line);
+                t.drive = 0;
+            }
         } else if (strcmp(k, "name") == 0 && i < n) {
             const char *s = w[i++];
             size_t l = strlen(s), q;
@@ -239,7 +252,7 @@ static void type_line(const char *path, u32 line, char *text, int root)
             }
         } else {
             fprintf(stderr, "eidos: %s:%u: `%s` is not a key of types.txt (icon, colors, label, button, hof, color, "
-                    "name)\n", path, (unsigned)line, k);
+                    "name, plate, drive)\n", path, (unsigned)line, k);
             return;
         }
     }
@@ -434,6 +447,39 @@ int bw_type_by_name(const char *s, size_t n)
         }
     }
     return -1;
+}
+
+/* The added type whose `plate` is `item` (17..30), or 0. */
+u32 bw_type_of_plate(u32 item)
+{
+    u32 type;
+
+    for (type = GAME_TYPES; item != 0u && type <= MAX_TYPE; type++) {
+        AddedType *t = added(type);
+
+        if (t != NULL && t->have && t->plate == item) {
+            return type;
+        }
+    }
+    return 0;
+}
+
+/* The added type whose `drive` is `item` and the Genesect form it gives:
+ * 1, or 0 for an item that is no added drive. */
+int bw_type_of_drive(u32 item, u32 *type, u32 *form)
+{
+    u32 k;
+
+    for (k = GAME_TYPES; item != 0u && k <= MAX_TYPE; k++) {
+        AddedType *t = added(k);
+
+        if (t != NULL && t->have && t->drive == item) {
+            *type = k;
+            *form = t->drive_form;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 int bw_type_ui_color(u32 type, u32 *rgb)
