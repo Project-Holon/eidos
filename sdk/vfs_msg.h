@@ -7,6 +7,12 @@
  * Instead a mod ships a plain text file `<bank index>.msg` in the directory
  * at the message archive's path, for example `<mod>/a/0/0/2/70.msg`.
  *
+ * Languages: `<bank index>.<lang>.msg` (`70.fr.msg`; `en`, `fr`, `de`,
+ * `it`, `es`) holds lines for the game in that language only, and applies
+ * after the same mod's `70.msg`, line by line: a mod translates the lines
+ * it has words for, and the rest keep its plain file's.  A file for another
+ * language is not read (sdk/vfs_narc.c).
+ *
  * File grammar (UTF-8):
  *
  *   - One entry per line: `<index> = <text>`.  The index is decimal.  One

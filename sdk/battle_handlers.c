@@ -681,47 +681,151 @@ extern int bw_mod_text_set_for(const char *root, u32 archive, u32 file, u32 entr
                                const u16 *units, u32 count);
 
 /* `@` is the Pokemon's name (control code F000, kind 0x0102, argument 0),
- * `|` a line break (0xFFFE).  Black and White's wording. */
+ * `|` a line break (0xFFFE), anything else UTF-8 (the Western games' text
+ * is Unicode: é 0xE9, ¡ 0xA1).  The lines follow each language's own lines
+ * of the same shape (Gravity, Quick Guard, Razor Wind's charge), and name
+ * the moves as that language does. */
 typedef struct NamedLine {
     int         base;
     u32         bank, line;
-    const char *text;
+    const char *text[5];        /* English, French, German, Italian, Spanish */
 } NamedLine;
 
 static const NamedLine k_named_lines[] = {
-    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_STD, BW_BH_LINE_MISTY_START,     "Mist swirled about the battlefield!" },
-    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_STD, BW_BH_LINE_MISTY_END,       "The mist disappeared|from the battlefield." },
-    { BW_BH_FAIRY_LOCK,    BW_BH_LINE_BANK_STD, BW_BH_LINE_FAIRY_LOCK,      "No one will be able to run away|during the next turn!" },
-    { BW_BH_GEOMANCY,      BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY,        "@ is absorbing|power!" },
-    { BW_BH_GEOMANCY,      BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY + 1,    "The wild @ is absorbing|power!" },
-    { BW_BH_GEOMANCY,      BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY + 2,    "The foe's @ is absorbing|power!" },
-    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK,     "@ surrounds itself|with a protective mist!" },
-    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK + 1, "The wild @ surrounds itself|with a protective mist!" },
-    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK + 2, "The foe's @ surrounds itself|with a protective mist!" },
-    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START,    "Crafty Shield protected|your team!" },
-    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START + 1, "Crafty Shield protected|the foe's team!" },
-    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START + 2, "Crafty Shield protected|the foe's team!" },
-    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK,    "Crafty Shield protected|@!" },
-    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK + 1, "Crafty Shield protected|the wild @!" },
-    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK + 2, "Crafty Shield protected|the foe's @!" },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_STD, BW_BH_LINE_MISTY_START, {
+        "Mist swirled about the battlefield!",
+        "La brume recouvre le terrain!",
+        "Nebel breitet sich auf dem\nKampffeld aus!",
+        "La nebbia avvolge il campo di lotta!",
+        "¡La niebla ha cubierto el terreno\nde combate!" } },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_STD, BW_BH_LINE_MISTY_END, {
+        "The mist disappeared|from the battlefield.",
+        "La brume s'est dissipée!",
+        "Der Nebel hat sich aufgelöst!",
+        "La nebbia si è dissolta!",
+        "¡La niebla se ha disipado!" } },
+    { BW_BH_FAIRY_LOCK, BW_BH_LINE_BANK_STD, BW_BH_LINE_FAIRY_LOCK, {
+        "No one will be able to run away|during the next turn!",
+        "Personne ne pourra fuir au\nprochain tour!",
+        "In der nächsten Runde kann\nniemand fliehen!",
+        "Nessuno potrà fuggire nel\nprossimo turno!",
+        "¡Nadie podrá huir durante el\npróximo turno!" } },
+    { BW_BH_GEOMANCY, BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY, {
+        "@ is absorbing|power!",
+        "@ absorbe de l'énergie!",
+        "@ sammelt\nEnergie!",
+        "@ assorbe energia!",
+        "¡@ está absorbiendo\nenergía!" } },
+    { BW_BH_GEOMANCY, BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY + 1, {
+        "The wild @ is absorbing|power!",
+        "Le @ sauvage absorbe\nde l'énergie!",
+        "@ (Wild) sammelt\nEnergie!",
+        "@ selvatico assorbe energia!",
+        "¡El @ salvaje está\nabsorbiendo energía!" } },
+    { BW_BH_GEOMANCY, BW_BH_LINE_BANK_SET, BW_BH_LINE_GEOMANCY + 2, {
+        "The foe's @ is absorbing|power!",
+        "Le @ ennemi absorbe\nde l'énergie!",
+        "@ (Gegner) sammelt\nEnergie!",
+        "@ nemico assorbe energia!",
+        "¡El @ enemigo está\nabsorbiendo energía!" } },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK, {
+        "@ surrounds itself|with a protective mist!",
+        "@ s'entoure d'une brume\nprotectrice!",
+        "@ hüllt sich in\nschützenden Nebel!",
+        "@ si avvolge in una\nnebbia protettiva!",
+        "¡@ se ha envuelto en una\nniebla protectora!" } },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK + 1, {
+        "The wild @ surrounds itself|with a protective mist!",
+        "Le @ sauvage s'entoure\nd'une brume protectrice!",
+        "@ (Wild) hüllt sich in\nschützenden Nebel!",
+        "@ selvatico si avvolge in\nuna nebbia protettiva!",
+        "¡El @ salvaje se ha envuelto\nen una niebla protectora!" } },
+    { BW_BH_MISTY_TERRAIN, BW_BH_LINE_BANK_SET, BW_BH_LINE_MISTY_BLOCK + 2, {
+        "The foe's @ surrounds itself|with a protective mist!",
+        "Le @ ennemi s'entoure\nd'une brume protectrice!",
+        "@ (Gegner) hüllt sich in\nschützenden Nebel!",
+        "@ nemico si avvolge in\nuna nebbia protettiva!",
+        "¡El @ enemigo se ha envuelto\nen una niebla protectora!" } },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START, {
+        "Crafty Shield protected|your team!",
+        "Votre équipe est protégée par\nVigilance!",
+        "Die Pokémon auf deiner Seite werden\nvon Trickschutz behütet!",
+        "La tua squadra è protetta da\nTruccodifesa!",
+        "¡Truco Defensa protege a tu equipo!" } },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START + 1, {
+        "Crafty Shield protected|the foe's team!",
+        "L'équipe ennemie est protégée par\nVigilance!",
+        "Die Pokémon auf der gegnerischen Seite\nwerden von Trickschutz behütet!",
+        "La squadra avversaria è protetta da\nTruccodifesa!",
+        "¡Truco Defensa protege al equipo rival!" } },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_START + 2, {
+        "Crafty Shield protected|the foe's team!",
+        "L'équipe ennemie est protégée par\nVigilance!",
+        "Die Pokémon auf der gegnerischen Seite\nwerden von Trickschutz behütet!",
+        "La squadra avversaria è protetta da\nTruccodifesa!",
+        "¡Truco Defensa protege al equipo rival!" } },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK, {
+        "Crafty Shield protected|@!",
+        "@ est protégé par Vigilance!",
+        "@ wird durch\nTrickschutz beschützt!",
+        "@ è protetto da Truccodifesa!",
+        "¡@ está protegido por\nTruco Defensa!" } },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK + 1, {
+        "Crafty Shield protected|the wild @!",
+        "Le @ sauvage est protégé\npar Vigilance!",
+        "@ (Wild) wird durch\nTrickschutz beschützt!",
+        "@ selvatico è protetto da\nTruccodifesa!",
+        "¡El @ salvaje está protegido\npor Truco Defensa!" } },
+    { BW_BH_CRAFTY_SHIELD, BW_BH_LINE_BANK_SET, BW_BH_LINE_CRAFTY_BLOCK + 2, {
+        "Crafty Shield protected|the foe's @!",
+        "Le @ ennemi est protégé\npar Vigilance!",
+        "@ (Gegner) wird durch\nTrickschutz beschützt!",
+        "@ nemico è protetto da Truccodifesa!",
+        "¡El @ enemigo está protegido\npor Truco Defensa!" } },
 };
 
 #define NAMED_LINE_COUNT ((int)(sizeof(k_named_lines) / sizeof(k_named_lines[0])))
 
+extern u32 bw_mod_text_language(void);
+
+/* The column of the game's language (src/game/version.h: 2 English, 3
+ * French, 4 Italian, 5 German, 7 Spanish); English for any other. */
+static int line_column(void)
+{
+    switch (bw_mod_text_language()) {
+    case 3: return 1;
+    case 5: return 2;
+    case 4: return 3;
+    case 7: return 4;
+    }
+    return 0;
+}
+
 static u32 line_units(const char *s, u16 *out, u32 max)
 {
+    const unsigned char *p = (const unsigned char *)s;
     u32 n = 0;
 
-    for (; *s != '\0' && n + 4 <= max; s++) {
-        if (*s == '@') {
+    while (*p != '\0' && n + 4 <= max) {
+        if (*p == '@') {
             out[n++] = 0xF000;
             out[n++] = 0x0102;
             out[n++] = 0x0001;
             out[n++] = 0x0000;
-        } else if (*s == '|') {
+            p++;
+        } else if (*p == '|' || *p == '\n') {
             out[n++] = 0xFFFE;
+            p++;
+        } else if (*p < 0x80) {
+            out[n++] = *p++;
+        } else if ((*p & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80) {
+            out[n++] = (u16)(((p[0] & 0x1F) << 6) | (p[1] & 0x3F));
+            p += 2;
+        } else if ((*p & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80) {
+            out[n++] = (u16)(((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F));
+            p += 3;
         } else {
-            out[n++] = (u16)(unsigned char)*s;
+            p++;                        /* (not UTF-8 the table writes) */
         }
     }
     return n;
@@ -751,7 +855,7 @@ static void add_named_lines(void)
         if (root < 0 || bw_mod_text_get(2, l->bank, l->line, 0, units, 96) > 0) {
             continue;
         }
-        n = line_units(l->text, units, 96);
+        n = line_units(l->text[line_column()], units, 96);
         if (bw_mod_text_set_for(bw_mod_root_at((u32)root), 2, l->bank, l->line, 0, units, n) != 0) {
             fprintf(stderr, "eidos: battle tables: %s: bank %u line %u could not be added\n",
                     bw_bh_named_name(l->base), (unsigned)l->bank, (unsigned)l->line);

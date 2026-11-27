@@ -362,6 +362,8 @@ typedef struct Override {
     char *path;     /* the member file, or NULL for a memory member */
     const u8 *mem;  /* a memory member's bytes (the layer owns them) */
     u32   mem_size;
+    u32   lang;     /* a line file: 1 for `<bank>.<lang>.msg` (the game's
+                     * language), applied after the mod's `<bank>.msg` */
 } Override;
 
 typedef struct Collect {
@@ -410,17 +412,46 @@ static int member_index(const char *name, u32 *index)
     return 1;
 }
 
-/* `<digits>.msg`: lines for text bank `<digits>` (sdk/vfs_msg.h). */
-static int msg_index(const char *name, u32 *index)
+extern int bw_lang_language(void) __attribute__((weak));   /* sdk/langmap.c */
+
+/* The game's language as a line file names it: `en`, `fr`, `de`, `it`,
+ * `es` (src/game/version.h: 2, 3, 5, 4, 7). */
+static const char *game_lang_code(void)
+{
+    switch (bw_lang_language != NULL ? bw_lang_language() : 2) {
+    case 3: return "fr";
+    case 4: return "it";
+    case 5: return "de";
+    case 7: return "es";
+    }
+    return "en";
+}
+
+/* `<digits>.msg`: lines for text bank `<digits>` (sdk/vfs_msg.h), in every
+ * language; `<digits>.<lang>.msg` (`70.fr.msg`): lines for the game in that
+ * language only, over the mod's `70.msg` line by line (*lang 1).  A file
+ * for another language is not one (0). */
+static int msg_index(const char *name, u32 *index, u32 *lang)
 {
     size_t n = strlen(name);
     u32 v = 0;
     size_t i;
 
+    *lang = 0;
     if (n < 5 || strcmp(name + n - 4, ".msg") != 0) {
         return 0;
     }
-    for (i = 0; i < n - 4; i++) {
+    n -= 4;
+    if (n > 3 && name[n - 3] == '.') {
+        const char *code = game_lang_code();
+
+        if (name[n - 2] != code[0] || name[n - 1] != code[1]) {
+            return 0;                   /* (another language's lines) */
+        }
+        *lang = 1;
+        n -= 3;
+    }
+    for (i = 0; i < n; i++) {
         if (name[i] < '0' || name[i] > '9') {
             return 0;
         }
@@ -620,6 +651,7 @@ static int add_entry(Override **list, u32 *count, u32 *cap, u32 index,
     (*list)[*count].path = path;
     (*list)[*count].mem = NULL;
     (*list)[*count].mem_size = 0;
+    (*list)[*count].lang = 0;
     (*count)++;
     return 0;
 }
@@ -632,10 +664,11 @@ static int collect_one(void *ctx, const char *name)
     size_t need;
     char *path;
     int is_msg;
+    u32 lang = 0;
 
     /* A line file is not a member: `70.msg` holds lines for bank 70, it is
      * not member 70 itself. */
-    kind = msg_index(name, &index);
+    kind = msg_index(name, &index, &lang);
     is_msg = kind != 0;
     if (!is_msg) {
         kind = member_index(name, &index);
@@ -666,6 +699,9 @@ static int collect_one(void *ctx, const char *name)
         c->error = 1;
         return 1;
     }
+    if (is_msg) {
+        c->msg[c->msg_count - 1].lang = lang;
+    }
     return 0;
 }
 
@@ -679,6 +715,9 @@ static int cmp_override(const void *a, const void *b)
     }
     if (x->mod != y->mod) {
         return x->mod < y->mod ? -1 : 1;
+    }
+    if (x->lang != y->lang) {
+        return x->lang < y->lang ? -1 : 1;      /* (a mod's language lines after its own) */
     }
     return 0;
 }
@@ -761,10 +800,15 @@ static int collect(const char *rel, int layer, Collect *c)
             c->list[c->count - 1].mem_size = g_mem[k].size;
         }
     }
+    /* The line files go in load order per bank, a mod's `<bank>.<lang>.msg`
+     * after its `<bank>.msg` (the merge applies them in this order; a
+     * folder lists "70.fr.msg" before "70.msg"). */
+    if (c->msg_count > 1) {
+        qsort(c->msg, c->msg_count, sizeof(*c->msg), cmp_override);
+    }
     if (c->count == 0) {
         return 0;
     }
-    /* The line files stay in load order (the merge applies them in it). */
     qsort(c->list, c->count, sizeof(*c->list), cmp_override);
     kept = 0;
     for (i = 0; i < c->count; i++) {

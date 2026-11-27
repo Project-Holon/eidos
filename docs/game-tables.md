@@ -10,6 +10,20 @@ Other files in the same directory: `trainer_mons.txt` ([trainer-mons.md](trainer
 and `ability_handlers.txt`, `move_handlers.txt`, `item_handlers.txt`
 ([battle-handlers.md](battle-handlers.md)).
 
+## Text lines
+
+A mod adds or changes game text line by line with `a/0/0/2/<bank>.msg`
+files (`<line> = <text>`, format in `sdk/vfs_msg.h`), without shipping the
+whole bank. Later mods win per line.
+
+    a/0/0/2/203.msg       572 = Crafty Shield
+    a/0/0/2/203.fr.msg    572 = Vigilance
+
+`<bank>.<lang>.msg` (`en`, `fr`, `de`, `it`, `es`) holds lines for that
+language's game only. It applies after the mod's `<bank>.msg`, so a line it
+lacks keeps the plain file's text. eidos runs the English, French, German,
+Italian and Spanish games, which share the same banks and line numbers.
+
 ## item_icons.txt
 
 Maps each item's bag icon to its tile member and palette member in a/0/2/5.
