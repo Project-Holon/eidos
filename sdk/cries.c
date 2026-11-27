@@ -12,7 +12,8 @@
  * The wave archive is one of the game's cries (a species' number) or one a
  * mod adds to the sound archive.  A form with no line of its own takes its
  * species' line.  A later mod's line wins.  A species with no line keeps
- * the game's number, and an added one with none plays no cry.
+ * the game's number, and an added one with none plays no cry (an empty
+ * slot, whatever its number).
  *
  * Starting a cry whose wave did not load stops a voice that holds no
  * channel: the game's PM_VOICE_Stop then stops channel "0", a read at
@@ -148,6 +149,9 @@ static int lookup(u32 species, u32 form, u32 *wave)
 /* The game's two functions                                            */
 /* ------------------------------------------------------------------ */
 
+#define GAME_CRY_LAST 649u      /* the game's last species with a cry of its own number */
+#define NO_CRY_SLOT   651u      /* an empty wave archive slot */
+
 void PM_VOICE_GetCryIndex(u32 species, u32 form, u32 *cryIndex)
 {
     if (!g_loaded) {
@@ -159,6 +163,15 @@ void PM_VOICE_GetCryIndex(u32 species, u32 form, u32 *cryIndex)
     /* the game's: the species' own number, Shaymin's Sky Forme 650 */
     if (species == 492 && form == 1) {
         *cryIndex = 650;
+        return;
+    }
+    /* an added species with no line plays no cry: wave archive 651, past
+     * the game's cries.  The archive's slots 651..999 hold nothing, and the
+     * merge appends a mod's wave archives past the game's 1986 (sdk/
+     * vfs_sdat.h), so 651 stays empty; the species' own number would reach
+     * the game's music and sound effect waves (1000..1985) and mods' waves. */
+    if (species > GAME_CRY_LAST) {
+        *cryIndex = NO_CRY_SLOT;
         return;
     }
     *cryIndex = species;
