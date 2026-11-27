@@ -575,11 +575,16 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_bw.c        # `.bw` mod packages, unpacked to a cache
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/bw_limits.c     # content limits mods raise (bw_limit_get)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_handlers.c  # mod moves, abilities, items that work like a built-in one
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/move_kinds.c  # bite, pulse, ball and powder moves (move_kinds.txt)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/battle_moves.c  # guards' contact effects and third types of eidos's move bases
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/trainer_mons.c  # mod per-member numbers for trainers' Pokemon
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/shops.c  # mod shop lists
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/move_anims.c  # mod move animations, the move preview
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/particle_ext.c  # particle systems, handles and pools past the game's arrays
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/dex_save.c  # the dex's bits of species past the save's room
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/dex_data.c  # the regional table, shapes and letters of mod species
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mon_form.c  # a Pokemon's form past the box record's 5 bits
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/wild_forms.c  # a wild slot's form past the slot's 5 bits (wild_forms.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/form_gfx.c  # the pictures of a form a mod adds
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/snd_se.c  # the player a mod's sound effect plays on
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/cries.c  # the cry a species plays (cries.txt)
@@ -587,8 +592,11 @@ set(BW_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/machines.c  # the TMs mods add (machine_items.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/tm_pocket.c  # a TM pocket with room for them
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_items.c  # the added types' plates and drives
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/poke_value.c  # the record getters, with a mod's Multitype
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/item_heal.c  # how much HP items heal (item_heal.txt)
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/balls.c  # the Poke Balls mods add or tune (balls.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/text_from.c  # a mod's move and item lines in the game's language
+    ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_strings.c  # a mod's own words per language (strings.<lang>.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/type_icons.c  # the added types' icons and buttons (types.txt)
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/palanm_fade.c  # a fade over a screen's type rows covers the added types' row
     ${CMAKE_CURRENT_SOURCE_DIR}/sdk/mod_table.c     # a mod's own data tables (`table` lines)
@@ -1988,12 +1996,14 @@ add_test(NAME test_native_port_tools COMMAND ${Python3_EXECUTABLE}
 # and the external control (the relay protocol, the session, the frame and
 # the control's endpoint); test_https checks the https download with canned
 # answers and the JSON reader; test_mod_catalog checks the mods index's
-# rules, SHA-256 and the folder removal.
+# rules, SHA-256 and the folder removal; test_mod_strings checks a mod's own
+# words per language (the strings files, name.<lang>, a rule's @key,
+# string_get).
 foreach(t test_mod_surface test_mod_event test_mod_state test_mod_declare test_mod_messages
           test_mod_text test_mod_script test_mod_rule test_mod_timer test_mod_export
           test_mod_menu test_mod_input test_mod_handoff test_mod_restart
           test_mod_avatar test_mod_net test_save_games test_save_tidy test_save_species test_battle_handlers test_trainer_mons test_shops test_item_heal test_move_anims test_https
-          test_mod_catalog)
+          test_mod_catalog test_mod_strings test_balls)
     add_executable(${t} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${t}.c)
     target_include_directories(${t} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/tests)
@@ -2954,6 +2964,22 @@ if(EIDOS_SDL_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform
         ${CMAKE_CURRENT_SOURCE_DIR}/install)
     target_link_libraries(bcam_check PRIVATE eidos_platform)
+    # eidos_review -- the theme review app (tools/review/eidos_review.c): one
+    # screen in several views, each the game on a device's own window, shown
+    # through the embed mapping; comments to a file.  A tool, not packaged
+    # (build it with `ninja eidos_review.exe`).
+    add_executable(eidos_review EXCLUDE_FROM_ALL ${CMAKE_CURRENT_SOURCE_DIR}/tools/review/eidos_review.c)
+    target_include_directories(eidos_review PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/engine/platform)
+    target_link_libraries(eidos_review PRIVATE eidos_sdl3)
+    if(WIN32)
+        target_link_libraries(eidos_review PRIVATE gdi32)   # the text: Segoe UI drawn by GDI
+    endif()
+    if(EIDOS_SDL_RUNTIME)
+        add_custom_command(TARGET eidos_review POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${EIDOS_SDL_RUNTIME}" "$<TARGET_FILE_DIR:eidos_review>"
+            COMMENT "Copying SDL3.dll next to eidos_review")
+    endif()
     if(EIDOS_SDL_RUNTIME)
         add_custom_command(TARGET eidos_spots POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
