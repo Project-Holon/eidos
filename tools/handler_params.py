@@ -206,6 +206,7 @@ def value_of(expr, depth=0):
 
 # Site kinds and the engine's patch points (sdk/battle_handlers.h, BW_BH_SITE_*).
 RANK, SICK, WEATHER, CHANCE, HP, RATIO, TYPE = "rank", "sick", "weather", "chance", "hp", "ratio", "type"
+TURNS, DAMAGE, POWER, ACCURACY = "turns", "damage", "power", "accuracy"
 RECORD_KIND = {14: RANK, 12: SICK, 0x1D: WEATHER}
 RECORD_FIELDS = {RANK: [("statId|rankKind", "stat"), ("amount|volume", "stages")],
                  SICK: [("sickKind", "status")], WEATHER: [("weather", "weather")]}
@@ -214,7 +215,22 @@ CALLS = {  # primitive -> (argument index, site, key)
     "BTL_CALC_DivideMaxHp": (1, HP, "hp"),
     "BTL_CALC_DivideMaxHpMin1": (1, HP, "hp"),
     "BTL_EVENT_MultiplyVar": (1, RATIO, "ratio"),
+    # a duration word: the turns (stubs/ov/patch_ov093_btl_sickcont_moves.c, _btl_calc_moves.c)
+    "BTL_SICKCONT_MakeKind2Index": (0, TURNS, "turns"),
+    "BTL_SICKCONT_MakeKind2": (0, TURNS, "turns"),
+    "BTL_CALC_MakeSickContTurns": (0, TURNS, "turns"),
+    # the power times a whole factor (Gust, Hex, Acrobatics...): a ratio of factor * 4096
+    # (stubs/ov/patch_ov093_hand_common_moves.c)
+    "HAND_COMMON_EventScaleDamage": (0, RATIO, "ratio"),
 }
+SCALE = {"HAND_COMMON_EventScaleDamage": 4096}      # a call's literal in the key's units
+# BTL_EVENT_OverwriteVar of these event variables with a literal (stubs/ov/patch_ov093_btl_event_moves.c).
+# 0x1F is the stat of a move's stat change at event 0x59, not a chance: Ancient Power's handler, its only
+# writer, sets 10 (every stat but accuracy and evasion). Its `chance` is the record's chance of that change
+# (10 in the records of Ancient Power, Silver Wind and Ominous Wind), used where the server rolls it
+# (patch_ov093_btl_server_flow_moves.c RollMoveAddedEffectChance, sdk/battle_handlers.c bw_bh_move_chance).
+VAR_SITES = {0x37: (DAMAGE, "damage"), 0x30: (POWER, "power"), 0x2B: (ACCURACY, "accuracy"),
+             0x26: (CHANCE, "chance"), 0x1F: (CHANCE, "chance"), 0x24: (TURNS, "turns")}
 TYPE_HELPERS = {  # a helper that takes the type it tests -> argument index
     "HAND_TOKUSEI_PinchBoostType": 2,
     "HAND_TOKUSEI_AbsorbCheckMoveType": 2,
@@ -331,7 +347,11 @@ def sites_of(func, args=None, depth=0, looped=False, late=False):
             continue                # (the engine's own work: not the handler's numbers)
         if name in CALLS:
             idx, site, key = CALLS[name]
-            out.append((site, key, lit(argv[idx]) if idx < len(argv) else None, loop, after))
+            v = lit(argv[idx]) if idx < len(argv) else None
+            out.append((site, key, v * SCALE[name] if v is not None and name in SCALE else v, loop, after))
+        elif name == "BTL_EVENT_OverwriteVar" and argv and value_of(argv[0]) in VAR_SITES:
+            site, key = VAR_SITES[value_of(argv[0])]
+            out.append((site, key, lit(argv[1]) if len(argv) > 1 else None, loop, after))
         elif name in TYPE_HELPERS:
             idx = TYPE_HELPERS[name]
             out.append((TYPE, "type", lit(argv[idx]) if idx < len(argv) else None, loop, after))
@@ -369,6 +389,14 @@ def shown(key, v):
         return "1/%d" % v if 1 <= v <= 16 else None
     if key == "weather":
         return WEATHER_NAMES.get(v)
+    if key == "turns":
+        return v if 1 <= v <= 63 else None
+    if key == "damage":
+        return v if 1 <= v <= 999 else None
+    if key == "power":
+        return v if 1 <= v <= 255 else None
+    if key == "accuracy":
+        return v if 1 <= v <= 100 else None
     return None
 
 
@@ -423,9 +451,10 @@ def work_slots(func, aliases=("work",), depth=0, seen=None):
 # hand: the code is eidos's, not the game's, so there is nothing to read.
 # Their keys are the rows of k_named_sites in sdk/battle_handlers.c.
 NAMED_MOVE_BASES = {
-    "misty_terrain": {"keys": {}, "notes": [
-        "eidos base: for five turns, grounded Pokemon get no major status, confusion or Yawn, Rest fails for them, "
-        "and Dragon moves do half damage to them.",
+    "misty_terrain": {"keys": {"turns": 5, "ratio": 0.5}, "notes": [
+        "eidos base: for five turns (turns), grounded Pokemon get no major status, confusion or Yawn, Rest fails for "
+        "them, and Dragon moves do half damage (ratio) to them. One terrain is up at a time: another kind replaces "
+        "it, the same kind fails.",
         "Move record: category 10, target 10 (as Gravity).",
         "Lines: a/0/0/2 bank 15 lines 400 (start) and 401 (end), bank 14 lines 2003 to 2005 (status blocked)."]},
     "flower_shield": {"keys": {"type": "grass", "stat": "def", "stages": 1}, "notes": [
@@ -446,10 +475,248 @@ NAMED_MOVE_BASES = {
         "Power Herb skips the charge.",
         "Move record: category 2, target 7, the charge flag and its stat changes.",
         "Lines: a/0/0/2 bank 14 lines 2000 to 2002 (charge turn)."]},
+    "fell_stinger": {"keys": {"stat": "atk", "stages": 3}, "notes": [
+        "eidos base: when the move knocks a target out, the user's stat rises (Attack +3, Generation VII; "
+        "stages=2 for VI).",
+        "Move record: a damaging move (as Bug Bite: category 0, target 0, power 50)."]},
+    "needs_status": {"keys": {"status": "poison"}, "notes": [
+        "eidos base: the move fails on a target without the status (Venom Drench: poison). "
+        "The move record gives what it does to one that has it (its stat changes, its damage).",
+        "Move record: as Venom Drench, category 2 (stat changes on the target), target 5, "
+        "Attack, Sp. Atk and Speed -1."]},
+    "spiky_shield": {"keys": {"hp": "1/8"}, "notes": [
+        "eidos base: Protect (its streak, its line). A contact move it stops costs the attacker an HP fraction "
+        "(Rough Skin's line).",
+        "The game's checks of Protect by id count it as Protect (the streak, Metronome's and Assist's lists, the AI).",
+        "Move record: a copy of Protect's (priority 4)."]},
+    "kings_shield": {"keys": {"stat": "atk", "stages": -2}, "notes": [
+        "eidos base: Protect from damaging moves only (status moves pass). A contact move it stops lowers the "
+        "attacker's stat (Attack -2, Generations VI and VII; stages=-1 for VIII).",
+        "Move record: a copy of Protect's (priority 4)."]},
+    "baneful_bunker": {"keys": {"status": "poison"}, "notes": [
+        "eidos base: Protect. A contact move it stops gives the attacker the status (poison).",
+        "Move record: a copy of Protect's (priority 4)."]},
+    "contact_guard": {"keys": {"hp": None, "stat": None, "stages": None, "status": None}, "notes": [
+        "eidos building block: Protect, and a contact move it stops does what its keys say to the attacker: "
+        "lose `hp`, `stat` changed by `stages`, `status`. Any of them, or none.",
+        "Move record: a copy of Protect's (priority 4)."]},
+    "super_effective": {"keys": {"type": None}, "notes": [
+        "eidos building block: the move is super effective against the type, whatever the type chart says. "
+        "No handlers: a part of a line with the move's own base (`600 = 58 + super_effective type=water`).",
+        "Move record: the move's own (its type, power, added effect)."]},
+    "freeze_dry": {"keys": {"type": "water"}, "notes": [
+        "eidos base: super_effective against Water (Freeze-Dry).",
+        "Move record: as Ice Beam, power 70, freeze chance 10."]},
+    "second_type": {"keys": {"type": None}, "notes": [
+        "eidos building block: the move's effectiveness is that of its type and of the second type, together "
+        "(Fighting and Flying: Flying Press). Same-type power stays its own type's.",
+        "Move record: the move's own."]},
+    "flying_press": {"keys": {"type": "flying"}, "notes": [
+        "eidos base: second_type Flying (Flying Press).",
+        "Move record: a Fighting move, power 80 (100 from Generation VII), accuracy 95, contact."]},
+    "add_type": {"keys": {"type": None}, "notes": [
+        "eidos building block: each target gets the type as a third type until it leaves the field or its type "
+        "changes. Fails on a target that has the type. Line: bank 14 lines 2030 to 2032 (English, and French from "
+        "Soak's \"prend le type\"; the game has no line that says a type was added in the other languages).",
+        "Move record: a copy of Soak's."]},
+    "trick_or_treat": {"keys": {"type": "ghost"}, "notes": [
+        "eidos base: add_type Ghost (Trick-or-Treat).",
+        "Move record: as Soak, Ghost."]},
+    "forests_curse": {"keys": {"type": "grass"}, "notes": [
+        "eidos base: add_type Grass (Forest's Curse).",
+        "Move record: as Soak, Grass."]},
+    "grassy_terrain": {"keys": {"turns": 5, "ratio": 1.5, "hp": "1/16"}, "notes": [
+        "eidos base: for five turns, grounded Pokemon heal an HP fraction at each turn end, their Grass moves have "
+        "more power (1.5, Generation VII; 1.3 for VIII), and Earthquake, Magnitude and Bulldoze do half damage to them.",
+        "Move record: as Gravity.",
+        "Lines: bank 15 lines 403 (start), 404 (end); the heal uses the game's \"HP was restored\" line."]},
+    "electric_terrain": {"keys": {"turns": 5, "ratio": 1.5}, "notes": [
+        "eidos base: for five turns, grounded Pokemon cannot fall asleep or get drowsy (Rest fails), and their "
+        "Electric moves have more power.",
+        "Move record: as Gravity.",
+        "Lines: bank 15 lines 405, 406; bank 14 lines 2012 to 2014 (sleep blocked)."]},
+    "psychic_terrain": {"keys": {"turns": 5, "ratio": 1.5}, "notes": [
+        "eidos base: for five turns, grounded Pokemon are safe from other sides' moves of raised priority (the move "
+        "record's, or an ability's: Prankster), and their Psychic moves have more power.",
+        "Move record: as Gravity.",
+        "Lines: bank 15 lines 407, 408; bank 14 lines 2015 to 2017 (move blocked)."]},
+    "hits_floating": {"keys": {}, "notes": [
+        "eidos building block: a Ground move hits Flying and floating Pokemon (Levitate, Magnet Rise, Air Balloon) "
+        "as neutral. Thousand Arrows: 479 + hits_floating (Smack Down grounds the target).",
+        "Move record: the move's own."]},
+    "parting_shot": {"keys": {"stat": "atk", "stages": -1, "stat.2": "spatk", "stages.2": -1}, "notes": [
+        "eidos base: the target's two stats fall, then the user switches out as after U-turn.",
+        "Move record: a copy of Soak's; the stat changes are the base's."]},
+    "topsy_turvy": {"keys": {}, "notes": [
+        "eidos base: each target's stat stages turn the other way. Fails when none has a stage changed.",
+        "Move record: a copy of Soak's.",
+        "Lines: bank 14 lines 2018 to 2020."]},
+    "needs_berry": {"keys": {}, "notes": [
+        "eidos building block: the move fails unless the user has eaten a berry since it came in. It cannot be chosen "
+        "before (the AI leaves it out; choosing it shows bank 14 lines 2045 to 2047, English only: \"But it failed!\" in "
+        "the other languages).",
+        "Move record: the move's own."]},
+    "belch": {"keys": {}, "notes": [
+        "eidos base: needs_berry (Belch).",
+        "Move record: Poison, special, power 120, accuracy 90."]},
+    "burn_up": {"keys": {"type": "fire"}, "notes": [
+        "eidos base: fails unless the user has the type; after the damage the user loses it. A Pokemon of that type "
+        "alone is left with no type: every move hits it for neutral damage.",
+        "Move record: Fire, special, power 130, thaws the user.",
+        "Lines: bank 14 lines 2021 to 2023."]},
+    "shore_up": {"keys": {"ratio": 0.5, "ratio.2": 0.667}, "notes": [
+        "eidos base: heals a part of the HP (ratio), more in a sandstorm (ratio.2: two thirds, Generation VII).",
+        "Move record: as Recover."]},
+    "strength_sap": {"keys": {"stat": "atk", "stages": -1}, "notes": [
+        "eidos base: the user heals as much HP as the target's Attack (with its stages), then the target's stat falls. "
+        "Fails when the target's Attack is at its lowest.",
+        "Move record: a copy of Soak's."]},
+    "rototiller": {"keys": {"type": "grass", "stat": "atk", "stages": 1, "stat.2": "spatk", "stages.2": 1},
+                   "notes": [
+        "eidos base: every grounded Pokemon of the type on the field has two stats raised. Fails when there is none.",
+        "Move record: as Gravity."]},
+    "magnetic_flux": {"keys": {"stat": "def", "stages": 1, "stat.2": "spdef", "stages.2": 1}, "notes": [
+        "eidos base: every Pokemon on the user's side with Plus or Minus has two stats raised. Fails when there is none.",
+        "Move record: a copy of Quick Guard's."]},
+    "set_type": {"keys": {"type": "water"}, "notes": [
+        "eidos building block: each target becomes the type alone (Soak with a type of your choice).",
+        "Move record: as Soak."]},
+    "electrify": {"keys": {"type": "electric"}, "notes": [
+        "eidos base: the target's moves for the rest of the turn are of the type.",
+        "Move record: as Soak.",
+        "Lines: bank 14 lines 2024 to 2026."]},
+    "ion_deluge": {"keys": {"type": "electric", "type.2": "normal"}, "notes": [
+        "eidos base: for the rest of the turn, moves of type.2 (Normal) are of the type (Electric). Fails while it is up.",
+        "Move record: as Gravity, priority 1.",
+        "Lines: bank 15 line 409."]},
+    "sticky_web": {"keys": {"stat": "speed", "stages": -1}, "notes": [
+        "eidos base: a web on the foes' side: each grounded Pokemon that comes in there has its stat lowered. "
+        "Fails while it is up. Defog takes it off its target's side, Rapid Spin off its user's (and the moves that "
+        "work like them).",
+        "Move record: as Spikes.",
+        "Lines: bank 15 lines 410 (your side), 411 (the foe's side), 412 and 413 (taken away); bank 14 lines 2027 to "
+        "2029 (caught, English only: the Speed line shows in the other languages)."]},
+    "powder": {"keys": {"type": "fire", "hp": "1/4"}, "notes": [
+        "eidos base: for the rest of the turn, a move of the type the target uses fails and explodes, costing it an HP "
+        "fraction. Grass Pokemon are not covered.",
+        "Move record: as Soak, Bug, priority 1.",
+        "Lines: bank 14 lines 2033 to 2035 (covered), bank 15 line 414 (exploded); English only."]},
+    "throat_chop": {"keys": {"turns": 2}, "notes": [
+        "eidos base: each target the move hits cannot use sound moves for this turn and the next: they cannot be "
+        "chosen, and fail when called.",
+        "Move record: Dark, physical, power 80, contact.",
+        "Lines: bank 14 lines 2036 to 2038 (Heal Block's shape; English only, \"But it failed!\" in the others)."]},
+    "laser_focus": {"keys": {}, "notes": [
+        "eidos base: the user's moves are critical hits for the rest of the turn and the next, unless the target is "
+        "safe from them (Battle Armor, Lucky Chant).",
+        "Move record: as Focus Energy.",
+        "Lines: bank 14 lines 2039 to 2041 (English only)."]},
+    "stomping_tantrum": {"keys": {"ratio": 2.0}, "notes": [
+        "eidos base: the power is multiplied when the user's last move failed (missed, had no effect or did nothing).",
+        "Move record: Ground, physical, power 75, contact."]},
+    "spectral_thief": {"keys": {}, "notes": [
+        "eidos base: before the damage, the user takes the target's raised stat stages for its own (up to +6), and "
+        "the target's go back to neutral.",
+        "Move record: Ghost, physical, power 90, contact.",
+        "Lines: bank 14 lines 2042 to 2044 (English only)."]},
+    "pollen_puff": {"keys": {"hp": "1/2"}, "notes": [
+        "eidos base: aimed at an ally, the move heals it an HP fraction in place of the damage (Present's heal).",
+        "Move record: Bug, special, power 90, aimed at any other Pokemon."]},
 }
 
+# eidos's own ability bases (sdk/battle_handlers.h BW_BH_PIXILATE and on, handlers
+# in stubs/ov/patch_ov093_hand_tokusei.c), keyed by the name a line writes.  By
+# hand, as the move bases: their keys are the rows of k_named_ability_keys in
+# sdk/battle_handlers.c, their values the defaults of the patch's code.
+_ATE_NOTE = ("eidos base: the holder's Normal moves take the type and have `ratio` times the power "
+             "(1.2, Generation VII).")
+_KIND_NOTE = ("`kind`: contact, punch, sound (the move record's flags), physical, special, status, or bite, "
+              "pulse, ball, powder (eidos/tables/move_kinds.txt).")
+NAMED_ABILITY_BASES = {
+    "pixilate": {"keys": {"type": "fairy", "ratio": 1.2}, "notes": [
+        _ATE_NOTE, "Without a `type`, the added type named fairy in types.txt; with none, the moves keep their "
+        "type."]},
+    "aerilate": {"keys": {"type": "flying", "ratio": 1.2}, "notes": [_ATE_NOTE]},
+    "refrigerate": {"keys": {"type": "ice", "ratio": 1.2}, "notes": [_ATE_NOTE]},
+    "galvanize": {"keys": {"type": "electric", "ratio": 1.2}, "notes": [_ATE_NOTE]},
+    "boost_kind": {"keys": {"kind": "contact", "ratio": 1.3}, "notes": [
+        "eidos base: the holder's moves of the kind have `ratio` times the power (Tough Claws, Strong Jaw, "
+        "Mega Launcher, Punk Rock's attack side, Sharpness).", _KIND_NOTE]},
+    "tough_claws": {"keys": {"ratio": 1.3}, "notes": ["eidos base: contact moves have 1.3 times the power."]},
+    "strong_jaw": {"keys": {"ratio": 1.5}, "notes": ["eidos base: bite moves have 1.5 times the power."]},
+    "mega_launcher": {"keys": {"ratio": 1.5}, "notes": [
+        "eidos base: pulse moves have 1.5 times the power. Heal Pulse heals as the move's own handler does."]},
+    "boost_type": {"keys": {"type": "steel", "ratio": 1.5}, "notes": [
+        "eidos base: the holder's moves of the type have `ratio` times the power (Steelworker, Transistor, "
+        "Dragon's Maw, Rocky Payload)."]},
+    "guard_kind": {"keys": {"kind": "contact", "ratio": 0.5}, "notes": [
+        "eidos base: moves of the kind do `ratio` of their damage to the holder (Fluffy's contact half, Ice "
+        "Scales with kind=special, Punk Rock's sound half).", _KIND_NOTE]},
+    "fur_coat": {"keys": {"ratio": 2.0}, "notes": [
+        "eidos base: the holder's Defense is `ratio` times as high against physical moves."]},
+    "block_kind": {"keys": {"kind": "ball"}, "notes": [
+        "eidos base: moves of the kind have no effect on the holder, with its pop-up and the line "
+        "\"It doesn't affect ...\" (Bulletproof, Overcoat's powder side with kind=powder).", _KIND_NOTE]},
+    "bulletproof": {"keys": {}, "notes": ["eidos base: ball and bomb moves have no effect on the holder."]},
+    "priority_type": {"keys": {"type": "flying", "priority": 1}, "notes": [
+        "eidos base: the holder's moves of the type get `priority` more priority. With `hp`, only while its "
+        "HP is at least that fraction of its maximum."]},
+    "gale_wings": {"keys": {"priority": 1, "hp": "1/1"}, "notes": [
+        "eidos base: Flying moves get +1 priority while the holder's HP is full (hp=1/1, Generation VII; "
+        "priority_type for Generation VI's at any HP)."]},
+    "entry_stat": {"keys": {"stat": "atk", "stages": 1}, "notes": [
+        "eidos base: the holder's own stat changes when it enters the battle (Intrepid Sword, Dauntless "
+        "Shield with stat=def)."]},
+    "ko_stat": {"keys": {"stat": "atk", "stages": 1}, "notes": [
+        "eidos base: the holder's stat changes for each Pokemon its move knocks out (Moxie on any stat: "
+        "Chilling Neigh, Grim Neigh with stat=spatk)."]},
+    "hit_type_stat": {"keys": {"type": "water", "stat": "def", "stages": 2}, "notes": [
+        "eidos base: hit by a move of the type (or `type.2`), the holder's stat changes (Water Compaction; "
+        "Steam Engine: type=fire type.2=water stat=speed stages=6; Thermal Exchange: type=fire stat=atk "
+        "stages=1)."]},
+    "sweet_veil": {"keys": {}, "notes": [
+        "eidos base: the holder and its side cannot fall asleep, become drowsy or use Rest; the pop-up and "
+        "\"It doesn't affect ...\" when it holds one off."], "work": [0, 1]},
+    "aroma_veil": {"keys": {}, "notes": [
+        "eidos base: the holder and its side are safe from infatuation, Taunt, Torment, Disable, Heal Block "
+        "and Encore."], "work": [2, 3]},
+    "flower_veil": {"keys": {"type": "grass"}, "notes": [
+        "eidos base: Pokemon of the type on the holder's side keep their stats and get no major status from "
+        "the other side; the line of Clear Body or \"It doesn't affect ...\"."], "work": [4, 5]},
+    "cheek_pouch": {"keys": {"hp": "1/3"}, "notes": [
+        "eidos base: when the holder eats its held berry, it also heals that fraction of its maximum HP. A "
+        "berry it eats through Bug Bite or Pluck does not count."], "work": [0]},
+    "protean": {"keys": {}, "notes": [
+        "eidos base: when its move goes ahead (not asleep, frozen, flinching or fully paralysed), the holder "
+        "takes the move's type, after Normalize and the -ate bases, with the pop-up and Color Change's line, "
+        "before \"X used Y!\". A move Metronome or Sleep Talk calls counts, not the caller. Not Struggle."]},
+    "magician": {"keys": {}, "notes": [
+        "eidos base: holding nothing, the holder takes the item of the first Pokemon its move hits, with "
+        "Pickpocket's line. Not with a move Sheer Force powers."]},
+    "symbiosis": {"keys": {}, "notes": [
+        "eidos base: when an ally uses up its held item (a berry, a herb, a gem; not one taken from it), the "
+        "holder passes it its own, with Bestow's line. Not Mail, nor an item bound to a species."]},
+    "parental_bond": {"keys": {"ratio": 0.25, "kind": "one_hit"}, "notes": [
+        "eidos base: the holder's damaging moves that hit once hit twice, the second hit with `ratio` of the "
+        "power (1/4, Generation VII; 0.5 for Generation VI), with \"Hit 2 times!\". Not moves that hit "
+        "several targets, moves with a charge turn (the record's flag Sleep Talk tests), nor moves of `kind` "
+        "(one_hit: Self-Destruct, Explosion, Endeavor, Fling and Final Gambit; move_kinds.txt changes the "
+        "list)."], "work": [0]},
+    "stance_change": {"keys": {"form": 1, "form.2": 0}, "notes": [
+        "eidos base: before a damaging move (\"X used Y!\") the holder takes its attack form (`form`), before King's Shield (a "
+        "move whose line names kings_shield) its guard form (`form.2`), with its pop-up and \"X transformed!\". "
+        "It takes the guard form again when it leaves the battle. The species needs both forms (a mod's "
+        "Aegislash-style species)."]},
+    "grass_pelt": {"keys": {"ratio": 1.5}, "notes": [
+        "eidos base: the holder's Defense is `ratio` times as high while Grassy Terrain (grassy_terrain) is up."]},
+}
+KINDS_OF_MOVE = ["contact", "punch", "sound", "bite", "pulse", "ball", "powder", "physical", "special", "status",
+                 "one_hit"]
+
 SITE_ENUM = {RANK: "BW_BH_SITE_RANK", SICK: "BW_BH_SITE_SICK", WEATHER: "BW_BH_SITE_WEATHER",
-             CHANCE: "BW_BH_SITE_CHANCE", HP: "BW_BH_SITE_HP", RATIO: "BW_BH_SITE_RATIO", TYPE: "BW_BH_SITE_TYPE"}
+             CHANCE: "BW_BH_SITE_CHANCE", HP: "BW_BH_SITE_HP", RATIO: "BW_BH_SITE_RATIO", TYPE: "BW_BH_SITE_TYPE",
+             TURNS: "BW_BH_SITE_TURNS", DAMAGE: "BW_BH_SITE_DAMAGE", POWER: "BW_BH_SITE_POWER",
+             ACCURACY: "BW_BH_SITE_ACCURACY"}
 
 
 def analyse(kind):
@@ -513,7 +780,9 @@ if __name__ == "__main__":
     pin = os.environ.get("ALETHEIA_PIN", "")
     doc = {"format": 1, "aletheia": pin, "keys": {
         "stat": sorted(STAT.values()), "stages": [-6, 6], "status": sorted(STATUS.values()), "chance": [0, 100],
-        "type": TYPES, "ratio": [0.1, 4.0], "hp": ["1/1", "1/16"], "weather": sorted(WEATHER_NAMES.values())}}
+        "type": TYPES, "ratio": [0.1, 4.0], "hp": ["1/1", "1/16"], "weather": sorted(WEATHER_NAMES.values()),
+        "turns": [1, 63], "damage": [1, 999], "power": [1, 255], "accuracy": [1, 100],
+        "kind": KINDS_OF_MOVE, "priority": [-6, 6], "form": [0, 31]}}
     inc = ["/* sdk/battle_handler_sites.inc: generated by tools/handler_params.py from aletheia's",
            " * overlay 93 handler tables and hand_*.c; do not edit.  One row a place a handler",
            " * uses a number eidos can change: { type, base id, handler, site, index }. */"]
@@ -535,6 +804,8 @@ if __name__ == "__main__":
                 winc.append("{ %d, %d, 0x%02X }," % (ftype, rid, sum(1 << s for s in r["work"])))
         if kind == "move":
             doc[kind].update(NAMED_MOVE_BASES)
+        if kind == "ability":
+            doc[kind].update(NAMED_ABILITY_BASES)
         adj = sum(1 for r in res.values() if r["keys"])
         print("%-8s %3d ids, %3d with adjustable keys, %4d keys" % (
             kind, len(res), adj, sum(len(r["keys"]) for r in res.values())))

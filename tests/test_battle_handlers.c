@@ -10,6 +10,7 @@
 
 #include "port_test.h"
 #include "battle_handlers.h"
+#include "move_kinds.h"
 
 /* ability 22 Intimidate (handler 0: one stat change: atk -1), ability 66
  * Blaze (handler 0: type fire, hp 1/3, ratio 1.5), ability 9 Static
@@ -43,7 +44,7 @@ int main(void)
     BW_CHECK_EQ("a blank line", line(BW_BH_ABILITY, "\n"), 1);
     BW_CHECK_EQ("a trailing comment", line(BW_BH_ABILITY, "166 = 66 ratio=2.0 type=water # a Torrent x2"), 0);
     BW_CHECK_EQ("an indexed key", line(BW_BH_ABILITY, "167 = 22 stat.1=def"), 0);
-    BW_CHECK_EQ("an unknown key", line(BW_BH_ABILITY, "168 = 22 power=3"), -1);
+    BW_CHECK_EQ("an unknown key", line(BW_BH_ABILITY, "168 = 22 luck=3"), -1);
     BW_CHECK_EQ("a stat that is none", line(BW_BH_ABILITY, "168 = 22 stat=luck"), -1);
     BW_CHECK_EQ("stages past 6", line(BW_BH_ABILITY, "168 = 22 stages=-7"), -1);
     BW_CHECK_EQ("a ratio past 4", line(BW_BH_ABILITY, "168 = 66 ratio=5"), -1);
@@ -226,6 +227,113 @@ int main(void)
     BW_CHECK_EQ("still two bases", (long)bw_bh_parts(BW_BH_ABILITY, 22), 2);
     BW_CHECK_EQ("its own id is the built-in one", (long)bw_bh_part_base(BW_BH_ABILITY, 22, 0), INTIMIDATE);
     BW_CHECK_EQ("and Drizzle", (long)bw_bh_part_base(BW_BH_ABILITY, 22, 1), 2);
+
+    printf("the game's move-id checks follow the base\n");
+    bw_bh_clear();
+    BW_CHECK_EQ("no lines: a move is itself", bw_bh_move_is(182, 182) && !bw_bh_move_is(574, 182), 1);
+    line(BW_BH_MOVE, "574 = 182");
+    line(BW_BH_MOVE, "575 = 574");
+    line(BW_BH_MOVE, "576 = 85 + 182");
+    line(BW_BH_MOVE, "197 = 33");
+    line(BW_BH_MOVE, "577 = misty_terrain");
+    bw_bh_check();
+    BW_CHECK_EQ("a copy of Protect is Protect", bw_bh_move_is(574, 182), 1);
+    BW_CHECK_EQ("through a chain", bw_bh_move_is(575, 182), 1);
+    BW_CHECK_EQ("a second part counts", bw_bh_move_is(576, 182) && bw_bh_move_is(576, 85), 1);
+    BW_CHECK_EQ("Detect working like Tackle is not Detect", bw_bh_move_is(197, 197), 0);
+    BW_CHECK_EQ("a built-in with no line is itself", bw_bh_move_is(182, 182) && !bw_bh_move_is(182, 197), 1);
+    BW_CHECK_EQ("an eidos base is no game move", bw_bh_move_is(577, 0), 0);
+    {
+        static const u16 protects[5] = { 182, 197, 203, 469, 501 };
+
+        BW_CHECK_EQ("a list takes the copy", bw_bh_move_in(574, protects, 5), 1);
+        BW_CHECK_EQ("and not Detect working like Tackle", bw_bh_move_in(197, protects, 5), 0);
+        BW_CHECK_EQ("nor an unrelated move", bw_bh_move_in(33, protects, 5), 0);
+    }
+
+    printf("the game's ability-id checks follow the base\n");
+    bw_bh_clear();
+    BW_CHECK_EQ("no lines: an ability is itself", bw_bh_ability_is(104, 104) && !bw_bh_ability_is(165, 104), 1);
+    line(BW_BH_ABILITY, "165 = 104");
+    line(BW_BH_ABILITY, "166 = 26 + 24");
+    line(BW_BH_ABILITY, "23 = 22");
+    bw_bh_check();
+    BW_CHECK_EQ("a copy of Mold Breaker is Mold Breaker", bw_bh_ability_is(165, 104), 1);
+    BW_CHECK_EQ("each part of a line counts", bw_bh_ability_is(166, 26) && bw_bh_ability_is(166, 24), 1);
+    BW_CHECK_EQ("Shadow Tag working like Intimidate is not Shadow Tag", bw_bh_ability_is(23, 23), 0);
+    {
+        static const u16 rough[2] = { 160, 24 };
+
+        BW_CHECK_EQ("a list takes the second part", bw_bh_ability_in(166, rough, 2), 1);
+    }
+    {
+        static const int levitate[3] = { 1, 2, 3 }, rough_skin[1] = { 4 };
+        const void *tables[2] = { levitate, rough_skin };
+        const u32 counts[2] = { 3, 1 };
+        u32 total = 0;
+
+        (void)bw_bh_join(BW_BH_ABILITY, 166, 2, tables, counts, sizeof(int), &total);
+        bw_bh_checking(BW_BH_ABILITY, 166, 2);
+        BW_CHECK_EQ("a skip check on Levitate's row sees Levitate", (long)bw_bh_checked_base(BW_BH_ABILITY, 166), 26);
+        bw_bh_checking(BW_BH_ABILITY, 166, 3);
+        BW_CHECK_EQ("on Rough Skin's row, Rough Skin", (long)bw_bh_checked_base(BW_BH_ABILITY, 166), 24);
+        BW_CHECK_EQ("the row after Levitate's goes on at Rough Skin's", (long)bw_bh_row_end(BW_BH_ABILITY, 166, 1), 3);
+        bw_bh_enter(BW_BH_ABILITY, 166, 3);
+        BW_CHECK_EQ("the running base is Rough Skin", (long)bw_bh_running_base(BW_BH_ABILITY, 166), 24);
+        bw_bh_leave();
+        BW_CHECK_EQ("outside a handler, the first base", (long)bw_bh_running_base(BW_BH_ABILITY, 166), 26);
+    }
+
+    printf("eidos's own ability bases\n");
+    bw_bh_clear();
+    BW_CHECK_EQ("a named base", line(BW_BH_ABILITY, "170 = pixilate ratio=1.3"), 0);
+    BW_CHECK_EQ("a building block with a kind", line(BW_BH_ABILITY, "171 = boost_kind kind=bite ratio=1.5"), 0);
+    BW_CHECK_EQ("a kind that is none", line(BW_BH_ABILITY, "172 = boost_kind kind=claw"), -1);
+    BW_CHECK_EQ("several named bases", line(BW_BH_ABILITY, "172 = protean + magician + 26"), 0);
+    BW_CHECK_EQ("a move name is no ability base", line(BW_BH_ABILITY, "173 = misty_terrain"), -1);
+    BW_CHECK_EQ("an ability name is no move base", line(BW_BH_MOVE, "600 = pixilate"), -1);
+    BW_CHECK_EQ("a priority", line(BW_BH_ABILITY, "174 = priority_type type=fire priority=2"), 0);
+    BW_CHECK_EQ("two veils, each with its own slots", line(BW_BH_ABILITY, "175 = sweet_veil + aroma_veil"), 0);
+    BW_CHECK_EQ("two bases of one slot", line(BW_BH_ABILITY, "177 = cheek_pouch + parental_bond"), 0);
+    BW_CHECK_EQ("two forms", line(BW_BH_ABILITY, "178 = stance_change form=2 form.2=1"), 0);
+    BW_CHECK_EQ("a form past 31", line(BW_BH_ABILITY, "179 = stance_change form=32"), -1);
+    BW_CHECK_EQ("a key the base has no place for", line(BW_BH_ABILITY, "176 = protean ratio=2.0"), 0);
+    bw_bh_check();
+    BW_CHECK_EQ("the named base", (long)bw_bh_base(BW_BH_ABILITY, 170), BW_BH_PIXILATE);
+    BW_CHECK_EQ("its name", strcmp(bw_bh_ability_named_name(BW_BH_PIXILATE), "pixilate"), 0);
+    BW_CHECK_EQ("the kind's value", bw_bh_key(BW_BH_ABILITY, 171, BW_BH_KEY_KIND, 1, &v) && v == 4, 1);
+    BW_CHECK_EQ("the line of two veils is kept", (long)bw_bh_parts(BW_BH_ABILITY, 175), 2);
+    BW_CHECK_EQ("the line of two bases of one slot is left out", (long)bw_bh_parts(BW_BH_ABILITY, 177), 1);
+    BW_CHECK_EQ("the attack form", bw_bh_key(BW_BH_ABILITY, 178, BW_BH_KEY_FORM, 1, &v) && v == 2, 1);
+    BW_CHECK_EQ("the guard form", bw_bh_key(BW_BH_ABILITY, 178, BW_BH_KEY_FORM, 2, &v) && v == 1, 1);
+    BW_CHECK_EQ("the ratio protean has no place for is left out",
+                bw_bh_key(BW_BH_ABILITY, 176, BW_BH_KEY_RATIO, 1, &v), 0);
+    BW_CHECK_EQ("a named base is no game ability", bw_bh_ability_is(170, 0), 0);
+    bw_bh_enter(BW_BH_ABILITY, 170, 1);
+    BW_CHECK_EQ("the running handler reads its ratio", (long)bw_bh_arg("ratio", 1, 4915), 5325);
+    BW_CHECK_EQ("and the default of a key the line has not", (long)bw_bh_arg("type", 1, 18), 18);
+    bw_bh_leave();
+    BW_CHECK_EQ("outside a handler, the default", (long)bw_bh_arg("ratio", 1, 4915), 4915);
+
+    printf("move kinds\n");
+    bw_move_kinds_clear();
+    BW_CHECK_EQ("Crunch bites", (bw_move_kinds(242) & BW_MOVE_KIND_BITE) != 0, 1);
+    BW_CHECK_EQ("Aura Sphere is a pulse and a ball", bw_move_kinds(396), BW_MOVE_KIND_PULSE | BW_MOVE_KIND_BALL);
+    BW_CHECK_EQ("Tackle is none", bw_move_kinds(33), 0);
+    BW_CHECK_EQ("an added move that bites", bw_move_kinds_parse_line("560 = bite", why, sizeof why), 0);
+    BW_CHECK_EQ("Bite that is none", bw_move_kinds_parse_line("44 = none  # not a bite", why, sizeof why), 0);
+    BW_CHECK_EQ("a kind that is none", bw_move_kinds_parse_line("33 = claw", why, sizeof why), -1);
+    BW_CHECK_EQ("no kind", bw_move_kinds_parse_line("33 =", why, sizeof why), -1);
+    BW_CHECK_EQ("the line's kind", bw_move_kinds(560), BW_MOVE_KIND_BITE);
+    BW_CHECK_EQ("the line wins over the game's", bw_move_kinds(44), 0);
+    bw_move_kinds_clear();
+    BW_CHECK_EQ("cleared: the game's again", bw_move_kinds(44), BW_MOVE_KIND_BITE);
+    BW_CHECK_EQ("Explosion hits once", bw_move_kinds(153), BW_MOVE_KIND_ONE_HIT);
+    BW_CHECK_EQ("an added move that hits once", bw_move_kinds_parse_line("561 = one_hit ball", why, sizeof why), 0);
+    BW_CHECK_EQ("its kinds", bw_move_kinds(561), BW_MOVE_KIND_ONE_HIT | BW_MOVE_KIND_BALL);
+    BW_CHECK_EQ("Fling that is none", bw_move_kinds_parse_line("374 = none", why, sizeof why), 0);
+    BW_CHECK_EQ("Fling hits twice then", bw_move_kinds(374), 0);
+    bw_move_kinds_clear();
 
     (void)why;
     bw_bh_clear();

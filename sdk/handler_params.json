@@ -1,6 +1,6 @@
 {
  "format": 1,
- "aletheia": "ea39ea3ad6",
+ "aletheia": "9402dda574",
  "keys": {
   "stat": [
    "accuracy",
@@ -60,9 +60,52 @@
    "rain",
    "sand",
    "sun"
+  ],
+  "turns": [
+   1,
+   63
+  ],
+  "damage": [
+   1,
+   999
+  ],
+  "power": [
+   1,
+   255
+  ],
+  "accuracy": [
+   1,
+   100
+  ],
+  "kind": [
+   "contact",
+   "punch",
+   "sound",
+   "bite",
+   "pulse",
+   "ball",
+   "powder",
+   "physical",
+   "special",
+   "status",
+   "one_hit"
+  ],
+  "priority": [
+   -6,
+   6
+  ],
+  "form": [
+   0,
+   31
   ]
  },
  "move": {
+  "16": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
   "23": {
    "keys": {},
    "notes": [
@@ -79,19 +122,52 @@
    "keys": {},
    "notes": [
     "HAND_WAZA_ThrashStartLock: its sick is decided at run time, not adjustable",
-    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable"
+    "HAND_WAZA_ThrashStartLock: its turns is decided at run time, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its turns comes after a command, not adjustable"
    ]
+  },
+  "49": {
+   "keys": {
+    "damage": 20
+   },
+   "notes": []
   },
   "50": {
    "keys": {},
    "notes": [
-    "HAND_WAZA_DisableOnUncategorizedMove: its sick is decided at run time, not adjustable"
+    "HAND_WAZA_DisableOnUncategorizedMove: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_DisableOnUncategorizedMove: its turns is decided at run time, not adjustable"
    ]
+  },
+  "54": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": []
   },
   "57": {
    "keys": {},
    "notes": [
     "HAND_WAZA_SurfDoubleDamageVsDiving: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "67": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_LowKickOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "68": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_CounterOnCalcFixedDamage: its damage is decided at run time, not adjustable"
+   ]
+  },
+  "69": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_LevelDamageOnCalcFixedDamage: its damage is decided at run time, not adjustable"
    ]
   },
   "76": {
@@ -104,8 +180,22 @@
    "keys": {},
    "notes": [
     "HAND_WAZA_ThrashStartLock: its sick is decided at run time, not adjustable",
-    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable"
+    "HAND_WAZA_ThrashStartLock: its turns is decided at run time, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its turns comes after a command, not adjustable"
    ]
+  },
+  "82": {
+   "keys": {
+    "damage": 40
+   },
+   "notes": []
+  },
+  "87": {
+   "keys": {
+    "accuracy": 50
+   },
+   "notes": []
   },
   "89": {
    "keys": {
@@ -120,10 +210,29 @@
    },
    "notes": []
   },
+  "101": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_LevelDamageOnCalcFixedDamage: its damage is decided at run time, not adjustable"
+   ]
+  },
+  "113": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": []
+  },
+  "115": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": []
+  },
   "117": {
    "keys": {},
    "notes": [
-    "HAND_WAZA_BideAdvanceTurn: its sick is decided at run time, not adjustable"
+    "HAND_WAZA_BideAdvanceTurn: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_BideDoubleStoredDamage: its damage is decided at run time, not adjustable"
    ]
   },
   "119": {
@@ -152,11 +261,36 @@
    },
    "notes": []
   },
+  "149": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_PsywaveOnCalcFixedDamage: its damage is decided at run time, not adjustable"
+   ]
+  },
   "156": {
    "keys": {
-    "status": "sleep"
+    "status": "sleep",
+    "turns": 3
    },
    "notes": []
+  },
+  "161": {
+   "keys": {
+    "chance": 20
+   },
+   "notes": []
+  },
+  "162": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_SuperFangOnCalcFixedDamage: its damage is decided at run time, not adjustable"
+   ]
+  },
+  "167": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_TripleKickRaisePower: its power is decided at run time, not adjustable"
+   ]
   },
   "168": {
    "keys": {},
@@ -185,6 +319,18 @@
     "HAND_WAZA_CurseApply: its hp comes after a command, not adjustable"
    ]
   },
+  "175": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_FlailCalcPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "179": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_FlailCalcPower: its power is decided at run time, not adjustable"
+   ]
+  },
   "187": {
    "keys": {
     "hp": "1/2"
@@ -210,13 +356,24 @@
    "keys": {},
    "notes": [
     "HAND_WAZA_ThrashStartLock: its sick is decided at run time, not adjustable",
-    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable"
+    "HAND_WAZA_ThrashStartLock: its turns is decided at run time, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its sick comes after a command, not adjustable",
+    "HAND_WAZA_ThrashAdvanceTurn: its turns comes after a command, not adjustable"
    ]
   },
   "205": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": [
+    "HAND_WAZA_RolloutStartLock: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_RolloutScalePower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "210": {
    "keys": {},
    "notes": [
-    "HAND_WAZA_RolloutStartLock: its sick is decided at run time, not adjustable"
+    "HAND_WAZA_FuryCutterOnWazaPower: its power is decided at run time, not adjustable"
    ]
   },
   "212": {
@@ -238,21 +395,43 @@
     6
    ]
   },
+  "216": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_ReturnOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
   "217": {
    "keys": {
     "chance": 20,
     "hp": "1/4"
    },
-   "notes": [],
+   "notes": [
+    "HAND_WAZA_PresentOnWazaPower: its power is decided at run time, not adjustable"
+   ],
    "work": [
     0
    ]
+  },
+  "218": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_FrustrationOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "219": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": []
   },
   "222": {
    "keys": {
     "ratio": 2.0
    },
-   "notes": [],
+   "notes": [
+    "HAND_WAZA_MagnitudeSetPower: its power is decided at run time, not adjustable"
+   ],
    "work": [
     0
    ]
@@ -260,8 +439,39 @@
   "227": {
    "keys": {},
    "notes": [
-    "HAND_WAZA_EncoreAddSick: its sick is decided at run time, not adjustable"
+    "HAND_WAZA_EncoreAddSick: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_EncoreAddSick: its turns is decided at run time, not adjustable"
    ]
+  },
+  "228": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "237": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_HiddenPowerOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "239": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "243": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_MirrorCoatOnCalcFixedDamage: its damage is decided at run time, not adjustable"
+   ]
+  },
+  "246": {
+   "keys": {
+    "chance": 10
+   },
+   "notes": []
   },
   "250": {
    "keys": {},
@@ -271,13 +481,17 @@
   },
   "251": {
    "keys": {},
-   "notes": [],
+   "notes": [
+    "HAND_WAZA_BeatUpSetBasePower: its power is decided at run time, not adjustable"
+   ],
    "work": [
     0
    ]
   },
   "253": {
-   "keys": {},
+   "keys": {
+    "turns": 3
+   },
    "notes": [
     "HAND_WAZA_UproarStart: its sick is decided at run time, not adjustable"
    ]
@@ -291,6 +505,7 @@
   "255": {
    "keys": {},
    "notes": [
+    "HAND_WAZA_SpitUpOnGetMovePower: its power is decided at run time, not adjustable",
     "HAND_WAZA_StockpileUseOnMoveEnd: 2 places of rank, not adjustable"
    ]
   },
@@ -318,6 +533,12 @@
    },
    "notes": []
   },
+  "265": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
   "266": {
    "keys": {},
    "notes": [],
@@ -334,7 +555,8 @@
   "269": {
    "keys": {},
    "notes": [
-    "HAND_WAZA_TauntOnUncategorizedMove: its sick is decided at run time, not adjustable"
+    "HAND_WAZA_TauntOnUncategorizedMove: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_TauntOnUncategorizedMove: its turns is decided at run time, not adjustable"
    ]
   },
   "270": {
@@ -351,6 +573,24 @@
    "notes": [],
    "work": [
     6
+   ]
+  },
+  "279": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_RevengeDoublePowerOnHit: its ratio runs in a loop, not adjustable"
+   ]
+  },
+  "283": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_EndeavorOnCalcFixedDamage: its damage is decided at run time, not adjustable"
+   ]
+  },
+  "284": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_EruptionOnWazaPower: its power is decided at run time, not adjustable"
    ]
   },
   "288": {
@@ -372,13 +612,35 @@
    "keys": {},
    "notes": [
     "HAND_WAZA_SecretPowerOnAddEffect: its sick is decided at run time, not adjustable",
-    "HAND_WAZA_SecretPowerOnAddEffect: its rank comes after a command, not adjustable"
+    "HAND_WAZA_SecretPowerOnAddEffect: its rank comes after a command, not adjustable",
+    "HAND_WAZA_SecretPowerOnAddEffect: its turns is decided at run time, not adjustable"
    ]
   },
   "301": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": [
+    "HAND_WAZA_RolloutStartLock: its sick is decided at run time, not adjustable",
+    "HAND_WAZA_RolloutScalePower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "311": {
    "keys": {},
    "notes": [
-    "HAND_WAZA_RolloutStartLock: its sick is decided at run time, not adjustable"
+    "HAND_WAZA_WeatherBallOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "318": {
+   "keys": {
+    "chance": 10
+   },
+   "notes": []
+  },
+  "323": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_EruptionOnWazaPower: its power is decided at run time, not adjustable"
    ]
   },
   "335": {
@@ -395,14 +657,46 @@
    ]
   },
   "355": {
-   "keys": {},
+   "keys": {
+    "turns": 1
+   },
    "notes": [
     "HAND_WAZA_RoostGroundFlyingType: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "356": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": []
+  },
+  "358": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "360": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_GyroBallCalcPower: its power is decided at run time, not adjustable"
    ]
   },
   "362": {
    "keys": {
     "ratio": 2.0
+   },
+   "notes": []
+  },
+  "363": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_NaturalGiftOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "366": {
+   "keys": {
+    "turns": 4
    },
    "notes": []
   },
@@ -412,9 +706,29 @@
     "HAND_WAZA_AcupressureRaiseRandomStat: its rank runs in a loop, not adjustable"
    ]
   },
+  "368": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_MetalBurstOnCalcFixedDamage: its damage is decided at run time, not adjustable"
+   ]
+  },
+  "371": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "372": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
   "374": {
    "keys": {},
-   "notes": [],
+   "notes": [
+    "HAND_WAZA_FlingSetBasePower: its power is decided at run time, not adjustable"
+   ],
    "work": [
     0
    ]
@@ -425,11 +739,29 @@
     "HAND_WAZA_PsychoShiftTransferStatus: its sick is decided at run time, not adjustable"
    ]
   },
+  "376": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_TrumpCardOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "378": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_WringOutOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
   "380": {
    "keys": {},
    "notes": [
     "HAND_WAZA_GastroAcidSuppressAbility: its sick is decided at run time, not adjustable"
    ]
+  },
+  "381": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": []
   },
   "382": {
    "keys": {
@@ -446,6 +778,12 @@
     6
    ]
   },
+  "386": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_PunishmentOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
   "392": {
    "keys": {},
    "notes": [
@@ -453,15 +791,66 @@
    ]
   },
   "393": {
-   "keys": {},
+   "keys": {
+    "turns": 5
+   },
    "notes": [
     "HAND_WAZA_MagnetRiseAddFloating: its sick is decided at run time, not adjustable"
+   ]
+  },
+  "419": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_RevengeDoublePowerOnHit: its ratio runs in a loop, not adjustable"
    ]
   },
   "432": {
    "keys": {
     "stat": "evasion",
     "stages": -1
+   },
+   "notes": []
+  },
+  "433": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": []
+  },
+  "447": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_LowKickOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "448": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_ChatterOnDecideAddSick: its turns is decided at run time, not adjustable",
+    "HAND_WAZA_ChatterOnDecideAddSick: its chance is decided at run time, not adjustable"
+   ]
+  },
+  "462": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_WringOutOnWazaPower: its power is decided at run time, not adjustable"
+   ]
+  },
+  "466": {
+   "keys": {
+    "chance": 10
+   },
+   "notes": []
+  },
+  "469": {
+   "keys": {
+    "turns": 1
+   },
+   "notes": []
+  },
+  "472": {
+   "keys": {
+    "turns": 5
    },
    "notes": []
   },
@@ -478,6 +867,12 @@
     6
    ]
   },
+  "478": {
+   "keys": {
+    "turns": 5
+   },
+   "notes": []
+  },
   "479": {
    "keys": {},
    "notes": [
@@ -490,11 +885,59 @@
     "HAND_WAZA_FlameBurstDamageAdjacent: its hp runs in a loop, not adjustable"
    ]
   },
+  "484": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_HeavySlamSetPowerByWeight: its power is decided at run time, not adjustable"
+   ]
+  },
+  "486": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_ElectroBallSetPowerBySpeed: its power is decided at run time, not adjustable"
+   ]
+  },
+  "496": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "497": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_EchoedVoiceSetPowerByStreak: its power is decided at run time, not adjustable"
+   ]
+  },
+  "500": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_StoredPowerAddPowerPerStage: its power is decided at run time, not adjustable"
+   ]
+  },
+  "501": {
+   "keys": {
+    "turns": 1
+   },
+   "notes": []
+  },
   "504": {
    "keys": {},
    "notes": [
     "HAND_WAZA_ShellSmashChangeStats: 5 places of rank, not adjustable"
    ]
+  },
+  "506": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
+  },
+  "512": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": []
   },
   "514": {
    "keys": {},
@@ -502,11 +945,50 @@
     "HAND_WAZA_RetaliateDoublePowerAfterAllyFaint: its ratio runs in a loop, not adjustable"
    ]
   },
+  "515": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_FinalGambitSetFixedDamage: its damage is decided at run time, not adjustable"
+   ]
+  },
+  "518": {
+   "keys": {
+    "power": 150,
+    "turns": 4
+   },
+   "notes": []
+  },
+  "519": {
+   "keys": {
+    "power": 150,
+    "turns": 4
+   },
+   "notes": []
+  },
+  "520": {
+   "keys": {
+    "power": 150,
+    "turns": 4
+   },
+   "notes": []
+  },
+  "535": {
+   "keys": {},
+   "notes": [
+    "HAND_WAZA_HeavySlamSetPowerByWeight: its power is decided at run time, not adjustable"
+   ]
+  },
   "537": {
    "keys": {},
    "notes": [
     "HAND_WAZA_StompDoubleDamageVsMinimized: its ratio is decided at run time, not adjustable"
    ]
+  },
+  "542": {
+   "keys": {
+    "accuracy": 50
+   },
+   "notes": []
   },
   "558": {
    "keys": {
@@ -521,9 +1003,12 @@
    "notes": []
   },
   "misty_terrain": {
-   "keys": {},
+   "keys": {
+    "turns": 5,
+    "ratio": 0.5
+   },
    "notes": [
-    "eidos base: for five turns, grounded Pokemon get no major status, confusion or Yawn, Rest fails for them, and Dragon moves do half damage to them.",
+    "eidos base: for five turns (turns), grounded Pokemon get no major status, confusion or Yawn, Rest fails for them, and Dragon moves do half damage (ratio) to them. One terrain is up at a time: another kind replaces it, the same kind fails.",
     "Move record: category 10, target 10 (as Gravity).",
     "Lines: a/0/0/2 bank 15 lines 400 (start) and 401 (end), bank 14 lines 2003 to 2005 (status blocked)."
    ]
@@ -562,9 +1047,364 @@
     "Move record: category 2, target 7, the charge flag and its stat changes.",
     "Lines: a/0/0/2 bank 14 lines 2000 to 2002 (charge turn)."
    ]
+  },
+  "fell_stinger": {
+   "keys": {
+    "stat": "atk",
+    "stages": 3
+   },
+   "notes": [
+    "eidos base: when the move knocks a target out, the user's stat rises (Attack +3, Generation VII; stages=2 for VI).",
+    "Move record: a damaging move (as Bug Bite: category 0, target 0, power 50)."
+   ]
+  },
+  "needs_status": {
+   "keys": {
+    "status": "poison"
+   },
+   "notes": [
+    "eidos base: the move fails on a target without the status (Venom Drench: poison). The move record gives what it does to one that has it (its stat changes, its damage).",
+    "Move record: as Venom Drench, category 2 (stat changes on the target), target 5, Attack, Sp. Atk and Speed -1."
+   ]
+  },
+  "spiky_shield": {
+   "keys": {
+    "hp": "1/8"
+   },
+   "notes": [
+    "eidos base: Protect (its streak, its line). A contact move it stops costs the attacker an HP fraction (Rough Skin's line).",
+    "The game's checks of Protect by id count it as Protect (the streak, Metronome's and Assist's lists, the AI).",
+    "Move record: a copy of Protect's (priority 4)."
+   ]
+  },
+  "kings_shield": {
+   "keys": {
+    "stat": "atk",
+    "stages": -2
+   },
+   "notes": [
+    "eidos base: Protect from damaging moves only (status moves pass). A contact move it stops lowers the attacker's stat (Attack -2, Generations VI and VII; stages=-1 for VIII).",
+    "Move record: a copy of Protect's (priority 4)."
+   ]
+  },
+  "baneful_bunker": {
+   "keys": {
+    "status": "poison"
+   },
+   "notes": [
+    "eidos base: Protect. A contact move it stops gives the attacker the status (poison).",
+    "Move record: a copy of Protect's (priority 4)."
+   ]
+  },
+  "contact_guard": {
+   "keys": {
+    "hp": null,
+    "stat": null,
+    "stages": null,
+    "status": null
+   },
+   "notes": [
+    "eidos building block: Protect, and a contact move it stops does what its keys say to the attacker: lose `hp`, `stat` changed by `stages`, `status`. Any of them, or none.",
+    "Move record: a copy of Protect's (priority 4)."
+   ]
+  },
+  "super_effective": {
+   "keys": {
+    "type": null
+   },
+   "notes": [
+    "eidos building block: the move is super effective against the type, whatever the type chart says. No handlers: a part of a line with the move's own base (`600 = 58 + super_effective type=water`).",
+    "Move record: the move's own (its type, power, added effect)."
+   ]
+  },
+  "freeze_dry": {
+   "keys": {
+    "type": "water"
+   },
+   "notes": [
+    "eidos base: super_effective against Water (Freeze-Dry).",
+    "Move record: as Ice Beam, power 70, freeze chance 10."
+   ]
+  },
+  "second_type": {
+   "keys": {
+    "type": null
+   },
+   "notes": [
+    "eidos building block: the move's effectiveness is that of its type and of the second type, together (Fighting and Flying: Flying Press). Same-type power stays its own type's.",
+    "Move record: the move's own."
+   ]
+  },
+  "flying_press": {
+   "keys": {
+    "type": "flying"
+   },
+   "notes": [
+    "eidos base: second_type Flying (Flying Press).",
+    "Move record: a Fighting move, power 80 (100 from Generation VII), accuracy 95, contact."
+   ]
+  },
+  "add_type": {
+   "keys": {
+    "type": null
+   },
+   "notes": [
+    "eidos building block: each target gets the type as a third type until it leaves the field or its type changes. Fails on a target that has the type. Line: bank 14 lines 2030 to 2032 (English, and French from Soak's \"prend le type\"; the game has no line that says a type was added in the other languages).",
+    "Move record: a copy of Soak's."
+   ]
+  },
+  "trick_or_treat": {
+   "keys": {
+    "type": "ghost"
+   },
+   "notes": [
+    "eidos base: add_type Ghost (Trick-or-Treat).",
+    "Move record: as Soak, Ghost."
+   ]
+  },
+  "forests_curse": {
+   "keys": {
+    "type": "grass"
+   },
+   "notes": [
+    "eidos base: add_type Grass (Forest's Curse).",
+    "Move record: as Soak, Grass."
+   ]
+  },
+  "grassy_terrain": {
+   "keys": {
+    "turns": 5,
+    "ratio": 1.5,
+    "hp": "1/16"
+   },
+   "notes": [
+    "eidos base: for five turns, grounded Pokemon heal an HP fraction at each turn end, their Grass moves have more power (1.5, Generation VII; 1.3 for VIII), and Earthquake, Magnitude and Bulldoze do half damage to them.",
+    "Move record: as Gravity.",
+    "Lines: bank 15 lines 403 (start), 404 (end); the heal uses the game's \"HP was restored\" line."
+   ]
+  },
+  "electric_terrain": {
+   "keys": {
+    "turns": 5,
+    "ratio": 1.5
+   },
+   "notes": [
+    "eidos base: for five turns, grounded Pokemon cannot fall asleep or get drowsy (Rest fails), and their Electric moves have more power.",
+    "Move record: as Gravity.",
+    "Lines: bank 15 lines 405, 406; bank 14 lines 2012 to 2014 (sleep blocked)."
+   ]
+  },
+  "psychic_terrain": {
+   "keys": {
+    "turns": 5,
+    "ratio": 1.5
+   },
+   "notes": [
+    "eidos base: for five turns, grounded Pokemon are safe from other sides' moves of raised priority (the move record's, or an ability's: Prankster), and their Psychic moves have more power.",
+    "Move record: as Gravity.",
+    "Lines: bank 15 lines 407, 408; bank 14 lines 2015 to 2017 (move blocked)."
+   ]
+  },
+  "hits_floating": {
+   "keys": {},
+   "notes": [
+    "eidos building block: a Ground move hits Flying and floating Pokemon (Levitate, Magnet Rise, Air Balloon) as neutral. Thousand Arrows: 479 + hits_floating (Smack Down grounds the target).",
+    "Move record: the move's own."
+   ]
+  },
+  "parting_shot": {
+   "keys": {
+    "stat": "atk",
+    "stages": -1,
+    "stat.2": "spatk",
+    "stages.2": -1
+   },
+   "notes": [
+    "eidos base: the target's two stats fall, then the user switches out as after U-turn.",
+    "Move record: a copy of Soak's; the stat changes are the base's."
+   ]
+  },
+  "topsy_turvy": {
+   "keys": {},
+   "notes": [
+    "eidos base: each target's stat stages turn the other way. Fails when none has a stage changed.",
+    "Move record: a copy of Soak's.",
+    "Lines: bank 14 lines 2018 to 2020."
+   ]
+  },
+  "needs_berry": {
+   "keys": {},
+   "notes": [
+    "eidos building block: the move fails unless the user has eaten a berry since it came in. It cannot be chosen before (the AI leaves it out; choosing it shows bank 14 lines 2045 to 2047, English only: \"But it failed!\" in the other languages).",
+    "Move record: the move's own."
+   ]
+  },
+  "belch": {
+   "keys": {},
+   "notes": [
+    "eidos base: needs_berry (Belch).",
+    "Move record: Poison, special, power 120, accuracy 90."
+   ]
+  },
+  "burn_up": {
+   "keys": {
+    "type": "fire"
+   },
+   "notes": [
+    "eidos base: fails unless the user has the type; after the damage the user loses it. A Pokemon of that type alone is left with no type: every move hits it for neutral damage.",
+    "Move record: Fire, special, power 130, thaws the user.",
+    "Lines: bank 14 lines 2021 to 2023."
+   ]
+  },
+  "shore_up": {
+   "keys": {
+    "ratio": 0.5,
+    "ratio.2": 0.667
+   },
+   "notes": [
+    "eidos base: heals a part of the HP (ratio), more in a sandstorm (ratio.2: two thirds, Generation VII).",
+    "Move record: as Recover."
+   ]
+  },
+  "strength_sap": {
+   "keys": {
+    "stat": "atk",
+    "stages": -1
+   },
+   "notes": [
+    "eidos base: the user heals as much HP as the target's Attack (with its stages), then the target's stat falls. Fails when the target's Attack is at its lowest.",
+    "Move record: a copy of Soak's."
+   ]
+  },
+  "rototiller": {
+   "keys": {
+    "type": "grass",
+    "stat": "atk",
+    "stages": 1,
+    "stat.2": "spatk",
+    "stages.2": 1
+   },
+   "notes": [
+    "eidos base: every grounded Pokemon of the type on the field has two stats raised. Fails when there is none.",
+    "Move record: as Gravity."
+   ]
+  },
+  "magnetic_flux": {
+   "keys": {
+    "stat": "def",
+    "stages": 1,
+    "stat.2": "spdef",
+    "stages.2": 1
+   },
+   "notes": [
+    "eidos base: every Pokemon on the user's side with Plus or Minus has two stats raised. Fails when there is none.",
+    "Move record: a copy of Quick Guard's."
+   ]
+  },
+  "set_type": {
+   "keys": {
+    "type": "water"
+   },
+   "notes": [
+    "eidos building block: each target becomes the type alone (Soak with a type of your choice).",
+    "Move record: as Soak."
+   ]
+  },
+  "electrify": {
+   "keys": {
+    "type": "electric"
+   },
+   "notes": [
+    "eidos base: the target's moves for the rest of the turn are of the type.",
+    "Move record: as Soak.",
+    "Lines: bank 14 lines 2024 to 2026."
+   ]
+  },
+  "ion_deluge": {
+   "keys": {
+    "type": "electric",
+    "type.2": "normal"
+   },
+   "notes": [
+    "eidos base: for the rest of the turn, moves of type.2 (Normal) are of the type (Electric). Fails while it is up.",
+    "Move record: as Gravity, priority 1.",
+    "Lines: bank 15 line 409."
+   ]
+  },
+  "sticky_web": {
+   "keys": {
+    "stat": "speed",
+    "stages": -1
+   },
+   "notes": [
+    "eidos base: a web on the foes' side: each grounded Pokemon that comes in there has its stat lowered. Fails while it is up. Defog takes it off its target's side, Rapid Spin off its user's (and the moves that work like them).",
+    "Move record: as Spikes.",
+    "Lines: bank 15 lines 410 (your side), 411 (the foe's side), 412 and 413 (taken away); bank 14 lines 2027 to 2029 (caught, English only: the Speed line shows in the other languages)."
+   ]
+  },
+  "powder": {
+   "keys": {
+    "type": "fire",
+    "hp": "1/4"
+   },
+   "notes": [
+    "eidos base: for the rest of the turn, a move of the type the target uses fails and explodes, costing it an HP fraction. Grass Pokemon are not covered.",
+    "Move record: as Soak, Bug, priority 1.",
+    "Lines: bank 14 lines 2033 to 2035 (covered), bank 15 line 414 (exploded); English only."
+   ]
+  },
+  "throat_chop": {
+   "keys": {
+    "turns": 2
+   },
+   "notes": [
+    "eidos base: each target the move hits cannot use sound moves for this turn and the next: they cannot be chosen, and fail when called.",
+    "Move record: Dark, physical, power 80, contact.",
+    "Lines: bank 14 lines 2036 to 2038 (Heal Block's shape; English only, \"But it failed!\" in the others)."
+   ]
+  },
+  "laser_focus": {
+   "keys": {},
+   "notes": [
+    "eidos base: the user's moves are critical hits for the rest of the turn and the next, unless the target is safe from them (Battle Armor, Lucky Chant).",
+    "Move record: as Focus Energy.",
+    "Lines: bank 14 lines 2039 to 2041 (English only)."
+   ]
+  },
+  "stomping_tantrum": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": [
+    "eidos base: the power is multiplied when the user's last move failed (missed, had no effect or did nothing).",
+    "Move record: Ground, physical, power 75, contact."
+   ]
+  },
+  "spectral_thief": {
+   "keys": {},
+   "notes": [
+    "eidos base: before the damage, the user takes the target's raised stat stages for its own (up to +6), and the target's go back to neutral.",
+    "Move record: Ghost, physical, power 90, contact.",
+    "Lines: bank 14 lines 2042 to 2044 (English only)."
+   ]
+  },
+  "pollen_puff": {
+   "keys": {
+    "hp": "1/2"
+   },
+   "notes": [
+    "eidos base: aimed at an ally, the move heals it an HP fraction in place of the damage (Present's heal).",
+    "Move record: Bug, special, power 90, aimed at any other Pokemon."
+   ]
   }
  },
  "ability": {
+  "1": {
+   "keys": {
+    "chance": 10
+   },
+   "notes": []
+  },
   "2": {
    "keys": {
     "weather": "rain"
@@ -705,7 +1545,8 @@
   "28": {
    "keys": {},
    "notes": [
-    "HAND_TOKUSEI_SynchronizeOnSickAdded: its sick is decided at run time, not adjustable"
+    "HAND_TOKUSEI_SynchronizeOnSickAdded: its sick is decided at run time, not adjustable",
+    "HAND_TOKUSEI_SynchronizeOnSickAdded: its turns is decided at run time, not adjustable"
    ]
   },
   "29": {
@@ -725,6 +1566,12 @@
    "notes": [],
    "work": [
     0
+   ]
+  },
+  "32": {
+   "keys": {},
+   "notes": [
+    "HAND_TOKUSEI_SereneGrace_DoubleEffectChance: its chance is decided at run time, not adjustable"
    ]
   },
   "33": {
@@ -833,7 +1680,9 @@
     "status": "infatuation",
     "chance": 30
    },
-   "notes": []
+   "notes": [
+    "HAND_TOKUSEI_CuteCharmOnDamageReaction: its turns is decided at run time, not adjustable"
+   ]
   },
   "57": {
    "keys": {
@@ -1191,7 +2040,8 @@
     "chance": 30
    },
    "notes": [
-    "HAND_TOKUSEI_CursedBody_DisableAttackerMove: its sick is decided at run time, not adjustable"
+    "HAND_TOKUSEI_CursedBody_DisableAttackerMove: its sick is decided at run time, not adjustable",
+    "HAND_TOKUSEI_CursedBody_DisableAttackerMove: its turns is decided at run time, not adjustable"
    ]
   },
   "131": {
@@ -1282,6 +2132,12 @@
    },
    "notes": []
   },
+  "147": {
+   "keys": {
+    "accuracy": 50
+   },
+   "notes": []
+  },
   "148": {
    "keys": {
     "ratio": 1.3
@@ -1353,6 +2209,255 @@
    "work": [
     0
    ]
+  },
+  "pixilate": {
+   "keys": {
+    "type": "fairy",
+    "ratio": 1.2
+   },
+   "notes": [
+    "eidos base: the holder's Normal moves take the type and have `ratio` times the power (1.2, Generation VII).",
+    "Without a `type`, the added type named fairy in types.txt; with none, the moves keep their type."
+   ]
+  },
+  "aerilate": {
+   "keys": {
+    "type": "flying",
+    "ratio": 1.2
+   },
+   "notes": [
+    "eidos base: the holder's Normal moves take the type and have `ratio` times the power (1.2, Generation VII)."
+   ]
+  },
+  "refrigerate": {
+   "keys": {
+    "type": "ice",
+    "ratio": 1.2
+   },
+   "notes": [
+    "eidos base: the holder's Normal moves take the type and have `ratio` times the power (1.2, Generation VII)."
+   ]
+  },
+  "galvanize": {
+   "keys": {
+    "type": "electric",
+    "ratio": 1.2
+   },
+   "notes": [
+    "eidos base: the holder's Normal moves take the type and have `ratio` times the power (1.2, Generation VII)."
+   ]
+  },
+  "boost_kind": {
+   "keys": {
+    "kind": "contact",
+    "ratio": 1.3
+   },
+   "notes": [
+    "eidos base: the holder's moves of the kind have `ratio` times the power (Tough Claws, Strong Jaw, Mega Launcher, Punk Rock's attack side, Sharpness).",
+    "`kind`: contact, punch, sound (the move record's flags), physical, special, status, or bite, pulse, ball, powder (eidos/tables/move_kinds.txt)."
+   ]
+  },
+  "tough_claws": {
+   "keys": {
+    "ratio": 1.3
+   },
+   "notes": [
+    "eidos base: contact moves have 1.3 times the power."
+   ]
+  },
+  "strong_jaw": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": [
+    "eidos base: bite moves have 1.5 times the power."
+   ]
+  },
+  "mega_launcher": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": [
+    "eidos base: pulse moves have 1.5 times the power. Heal Pulse heals as the move's own handler does."
+   ]
+  },
+  "boost_type": {
+   "keys": {
+    "type": "steel",
+    "ratio": 1.5
+   },
+   "notes": [
+    "eidos base: the holder's moves of the type have `ratio` times the power (Steelworker, Transistor, Dragon's Maw, Rocky Payload)."
+   ]
+  },
+  "guard_kind": {
+   "keys": {
+    "kind": "contact",
+    "ratio": 0.5
+   },
+   "notes": [
+    "eidos base: moves of the kind do `ratio` of their damage to the holder (Fluffy's contact half, Ice Scales with kind=special, Punk Rock's sound half).",
+    "`kind`: contact, punch, sound (the move record's flags), physical, special, status, or bite, pulse, ball, powder (eidos/tables/move_kinds.txt)."
+   ]
+  },
+  "fur_coat": {
+   "keys": {
+    "ratio": 2.0
+   },
+   "notes": [
+    "eidos base: the holder's Defense is `ratio` times as high against physical moves."
+   ]
+  },
+  "block_kind": {
+   "keys": {
+    "kind": "ball"
+   },
+   "notes": [
+    "eidos base: moves of the kind have no effect on the holder, with its pop-up and the line \"It doesn't affect ...\" (Bulletproof, Overcoat's powder side with kind=powder).",
+    "`kind`: contact, punch, sound (the move record's flags), physical, special, status, or bite, pulse, ball, powder (eidos/tables/move_kinds.txt)."
+   ]
+  },
+  "bulletproof": {
+   "keys": {},
+   "notes": [
+    "eidos base: ball and bomb moves have no effect on the holder."
+   ]
+  },
+  "priority_type": {
+   "keys": {
+    "type": "flying",
+    "priority": 1
+   },
+   "notes": [
+    "eidos base: the holder's moves of the type get `priority` more priority. With `hp`, only while its HP is at least that fraction of its maximum."
+   ]
+  },
+  "gale_wings": {
+   "keys": {
+    "priority": 1,
+    "hp": "1/1"
+   },
+   "notes": [
+    "eidos base: Flying moves get +1 priority while the holder's HP is full (hp=1/1, Generation VII; priority_type for Generation VI's at any HP)."
+   ]
+  },
+  "entry_stat": {
+   "keys": {
+    "stat": "atk",
+    "stages": 1
+   },
+   "notes": [
+    "eidos base: the holder's own stat changes when it enters the battle (Intrepid Sword, Dauntless Shield with stat=def)."
+   ]
+  },
+  "ko_stat": {
+   "keys": {
+    "stat": "atk",
+    "stages": 1
+   },
+   "notes": [
+    "eidos base: the holder's stat changes for each Pokemon its move knocks out (Moxie on any stat: Chilling Neigh, Grim Neigh with stat=spatk)."
+   ]
+  },
+  "hit_type_stat": {
+   "keys": {
+    "type": "water",
+    "stat": "def",
+    "stages": 2
+   },
+   "notes": [
+    "eidos base: hit by a move of the type (or `type.2`), the holder's stat changes (Water Compaction; Steam Engine: type=fire type.2=water stat=speed stages=6; Thermal Exchange: type=fire stat=atk stages=1)."
+   ]
+  },
+  "sweet_veil": {
+   "keys": {},
+   "notes": [
+    "eidos base: the holder and its side cannot fall asleep, become drowsy or use Rest; the pop-up and \"It doesn't affect ...\" when it holds one off."
+   ],
+   "work": [
+    0,
+    1
+   ]
+  },
+  "aroma_veil": {
+   "keys": {},
+   "notes": [
+    "eidos base: the holder and its side are safe from infatuation, Taunt, Torment, Disable, Heal Block and Encore."
+   ],
+   "work": [
+    2,
+    3
+   ]
+  },
+  "flower_veil": {
+   "keys": {
+    "type": "grass"
+   },
+   "notes": [
+    "eidos base: Pokemon of the type on the holder's side keep their stats and get no major status from the other side; the line of Clear Body or \"It doesn't affect ...\"."
+   ],
+   "work": [
+    4,
+    5
+   ]
+  },
+  "cheek_pouch": {
+   "keys": {
+    "hp": "1/3"
+   },
+   "notes": [
+    "eidos base: when the holder eats its held berry, it also heals that fraction of its maximum HP. A berry it eats through Bug Bite or Pluck does not count."
+   ],
+   "work": [
+    0
+   ]
+  },
+  "protean": {
+   "keys": {},
+   "notes": [
+    "eidos base: when its move goes ahead (not asleep, frozen, flinching or fully paralysed), the holder takes the move's type, after Normalize and the -ate bases, with the pop-up and Color Change's line, before \"X used Y!\". A move Metronome or Sleep Talk calls counts, not the caller. Not Struggle."
+   ]
+  },
+  "magician": {
+   "keys": {},
+   "notes": [
+    "eidos base: holding nothing, the holder takes the item of the first Pokemon its move hits, with Pickpocket's line. Not with a move Sheer Force powers."
+   ]
+  },
+  "symbiosis": {
+   "keys": {},
+   "notes": [
+    "eidos base: when an ally uses up its held item (a berry, a herb, a gem; not one taken from it), the holder passes it its own, with Bestow's line. Not Mail, nor an item bound to a species."
+   ]
+  },
+  "parental_bond": {
+   "keys": {
+    "ratio": 0.25,
+    "kind": "one_hit"
+   },
+   "notes": [
+    "eidos base: the holder's damaging moves that hit once hit twice, the second hit with `ratio` of the power (1/4, Generation VII; 0.5 for Generation VI), with \"Hit 2 times!\". Not moves that hit several targets, moves with a charge turn (the record's flag Sleep Talk tests), nor moves of `kind` (one_hit: Self-Destruct, Explosion, Endeavor, Fling and Final Gambit; move_kinds.txt changes the list)."
+   ],
+   "work": [
+    0
+   ]
+  },
+  "stance_change": {
+   "keys": {
+    "form": 1,
+    "form.2": 0
+   },
+   "notes": [
+    "eidos base: before a damaging move (\"X used Y!\") the holder takes its attack form (`form`), before King's Shield (a move whose line names kings_shield) its guard form (`form.2`), with its pop-up and \"X transformed!\". It takes the guard form again when it leaves the battle. The species needs both forms (a mod's Aegislash-style species)."
+   ]
+  },
+  "grass_pelt": {
+   "keys": {
+    "ratio": 1.5
+   },
+   "notes": [
+    "eidos base: the holder's Defense is `ratio` times as high while Grassy Terrain (grassy_terrain) is up."
+   ]
   }
  },
  "item": {
@@ -1410,8 +2515,10 @@
     "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
     "HAND_ITEM_FigyBerryFlavorHeal: its sick comes after a command, not adjustable",
     "HAND_ITEM_FigyBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_FigyBerryFlavorHeal: its turns comes after a command, not adjustable",
     "HAND_ITEM_FigyBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
-    "HAND_ITEM_FigyBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+    "HAND_ITEM_FigyBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_FigyBerryFlavorHealIfForcedUse: its turns comes after a command, not adjustable"
    ],
    "work": [
     0
@@ -1426,8 +2533,10 @@
     "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
     "HAND_ITEM_WikiBerryFlavorHeal: its sick comes after a command, not adjustable",
     "HAND_ITEM_WikiBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_WikiBerryFlavorHeal: its turns comes after a command, not adjustable",
     "HAND_ITEM_WikiBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
-    "HAND_ITEM_WikiBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+    "HAND_ITEM_WikiBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_WikiBerryFlavorHealIfForcedUse: its turns comes after a command, not adjustable"
    ],
    "work": [
     0
@@ -1442,8 +2551,10 @@
     "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
     "HAND_ITEM_MagoBerryFlavorHeal: its sick comes after a command, not adjustable",
     "HAND_ITEM_MagoBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_MagoBerryFlavorHeal: its turns comes after a command, not adjustable",
     "HAND_ITEM_MagoBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
-    "HAND_ITEM_MagoBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+    "HAND_ITEM_MagoBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_MagoBerryFlavorHealIfForcedUse: its turns comes after a command, not adjustable"
    ],
    "work": [
     0
@@ -1458,8 +2569,10 @@
     "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
     "HAND_ITEM_AguavBerryFlavorHeal: its sick comes after a command, not adjustable",
     "HAND_ITEM_AguavBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_AguavBerryFlavorHeal: its turns comes after a command, not adjustable",
     "HAND_ITEM_AguavBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
-    "HAND_ITEM_AguavBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+    "HAND_ITEM_AguavBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_AguavBerryFlavorHealIfForcedUse: its turns comes after a command, not adjustable"
    ],
    "work": [
     0
@@ -1474,8 +2587,10 @@
     "HAND_ITEM_RequestUseAtHalfHp: 2 places of hp, not adjustable",
     "HAND_ITEM_IapapaBerryFlavorHeal: its sick comes after a command, not adjustable",
     "HAND_ITEM_IapapaBerryFlavorHeal: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_IapapaBerryFlavorHeal: its turns comes after a command, not adjustable",
     "HAND_ITEM_IapapaBerryFlavorHealIfForcedUse: its sick comes after a command, not adjustable",
-    "HAND_ITEM_IapapaBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable"
+    "HAND_ITEM_IapapaBerryFlavorHealIfForcedUse: its hp is decided at run time, not adjustable",
+    "HAND_ITEM_IapapaBerryFlavorHealIfForcedUse: its turns comes after a command, not adjustable"
    ],
    "work": [
     0
@@ -1796,6 +2911,12 @@
     "HAND_ITEM_Choice_LockMove: its sick is decided at run time, not adjustable"
    ]
   },
+  "221": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_KingsRockSetFlinchChance: its chance is decided at run time, not adjustable"
+   ]
+  },
   "222": {
    "keys": {
     "type": "bug"
@@ -2096,6 +3217,30 @@
     "HAND_ITEM_BlackSludge_HealOrDamage: 2 places of hp, not adjustable"
    ]
   },
+  "282": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_IcyRockExtendHail: its turns is decided at run time, not adjustable"
+   ]
+  },
+  "283": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_SmoothRockExtendSandstorm: its turns is decided at run time, not adjustable"
+   ]
+  },
+  "284": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_HeatRockExtendSunshine: its turns is decided at run time, not adjustable"
+   ]
+  },
+  "285": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_DampRockExtendRain: its turns is decided at run time, not adjustable"
+   ]
+  },
   "287": {
    "keys": {
     "ratio": 1.5
@@ -2318,6 +3463,12 @@
    },
    "notes": [
     "HAND_ITEM_RoseIncenseBoostPower: its ratio is decided at run time, not adjustable"
+   ]
+  },
+  "327": {
+   "keys": {},
+   "notes": [
+    "HAND_ITEM_KingsRockSetFlinchChance: its chance is decided at run time, not adjustable"
    ]
   },
   "538": {

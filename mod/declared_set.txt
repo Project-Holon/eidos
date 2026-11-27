@@ -277,7 +277,8 @@
 0x021C5A1C	BTL_SERVER_FLOW_PushAbilityPopupIn	ov093	battle.ability
 0x021C5A8C	BTL_SERVER_FLOW_ChangeStatStage	ov093	battle.stat
 0x021C6080	BTL_SERVER_FLOW_RestoreMovePp	ov093	mon.pp
-0x021C6564	BTL_SERVER_FLOW_DispatchMoveDoneEvent	ov093	
+0x021C6564	BTL_SERVER_FLOW_DispatchMoveDoneEvent	ov093
+0x021C7E14	BTL_SERVER_FLOW_CalcPredictedMoveDamage	ov093
 0x021C84D8	BTL_SERVER_FLOW_GetBattleResult	ov093	
 0x021CA270	BTL_SERVER_FLOW_ProcHandExReviveAndSendIn	ov093	
 0x021CA748	BTL_SERVER_FLOW_ProcHandExChangeForm	ov093	mon.form

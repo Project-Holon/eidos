@@ -9,7 +9,9 @@
  * more events.  BTL_EVENT_MultiplyVar is one such place (`ratio`).
  * The game runs the first row of a factor that answers an event; a
  * factor of several bases (`165 = 22 + 2`) runs the first row of each
- * base, in line order (bw_bh_row_end).
+ * base, in line order (bw_bh_row_end).  A skip check (Mold Breaker's)
+ * is told the row it asks about (bw_bh_checking), so it can skip one base
+ * of such a factor and let the next one run.
  * Otherwise both functions are the game's own.
  *
  * symbols:
@@ -93,6 +95,7 @@ extern void bw_bh_enter(int type, int id, int handler);
 extern void bw_bh_leave(void);
 extern int bw_bh_row_end(int type, int id, int row);
 extern int bw_bh_ratio(int ratio);
+extern void bw_bh_checking(int type, int id, int row);
 
 void BTL_EVENT_DispatchToFactors(struct BtlServerFlow *context, int eventId, int factorType, int checkSkip)
 {
@@ -120,7 +123,17 @@ void BTL_EVENT_DispatchToFactors(struct BtlServerFlow *context, int eventId, int
         for (; i < count; i++) {
             handler = (BtlEventHandler *)&handlers[i];
             if (eventId != handler->eventId) continue;
-            if (checkSkip && BTL_EVENT_IsEventBlocked(context, factor, eventId)) break;
+            if (checkSkip) {
+                /* (the skip checks ask the base of this row: a joined
+                 * table's blocked base gives way to its next one) */
+                bw_bh_checking(factor->factorType, factor->key, (int)i);
+                if (BTL_EVENT_IsEventBlocked(context, factor, eventId)) {
+                    end = bw_bh_row_end(factor->factorType, factor->key, (int)i);
+                    if (end <= (int)i) break;
+                    i = (u32)end - 1;
+                    continue;
+                }
+            }
             factor->running = 1;
             ownerId = factor->ownerId;
             bw_bh_enter(factor->factorType, factor->key, (int)i);
